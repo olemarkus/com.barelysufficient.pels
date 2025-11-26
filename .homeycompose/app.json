@@ -1,0 +1,52 @@
+{
+  "id": "com.barelysufficient.pels",
+  "version": "1.0.0",
+  "compatibility": ">=12.4.0",
+  "sdk": 3,
+  "platforms": [
+    "local"
+  ],
+  "name": {
+    "en": "PELS"
+  },
+  "description": {
+    "en": "Price and power controlled energy storage system"
+  },
+  "category": [
+    "energy"
+  ],
+  "permissions": [],
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
+  },
+  "author": {
+    "name": "Ole Markus With",
+    "email": "olemarkus@gmail.com"
+  },
+  "settings": [
+    {
+      "type": "group",
+      "label": {
+        "en": "Temperature control"
+      },
+      "children": [
+        {
+          "id": "global_target_temperature",
+          "type": "number",
+          "label": {
+            "en": "Target temperature (°C)"
+          },
+          "hint": {
+            "en": "Applies the chosen target to every device that supports temperature control."
+          },
+          "value": 21,
+          "min": 5,
+          "max": 35,
+          "step": 0.5
+        }
+      ]
+    }
+  ]
+}
