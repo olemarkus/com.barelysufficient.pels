@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PELS Control Panel</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="screen">
+    <header class="hero">
+      <p class="eyebrow">PELS · App control</p>
+      <h1>Temperature control</h1>
+      <p class="lede">Manage the global target temperature and prepare room for extra controls or diagnostics.</p>
+    </header>
+
+    <section class="card">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Global target temperature</p>
+          <h2>Applies to all supported devices</h2>
+        </div>
+        <div class="pill" id="status-badge">Idle</div>
+      </div>
+      <form id="temperature-form" class="form-grid">
+        <label class="field">
+          <span class="field__label">Target temperature (°C)</span>
+          <input id="temperature-input" name="temperature" type="number" step="0.5" min="5" max="35" inputmode="decimal" autocomplete="off" required>
+          <small class="field__hint">Stored as `global_target_temperature` setting.</small>
+        </label>
+        <div class="form__actions">
+          <button type="submit" class="btn primary">Save &amp; apply</button>
+          <button type="button" id="reapply-button" class="btn ghost">Re-apply to devices</button>
+        </div>
+      </form>
+      <p class="muted">
+        This form uses the settings API and leaves room for custom API calls for more advanced flows.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Custom logic area</p>
+          <h2>Wire any extra controls here</h2>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn secondary" id="ping-action">Run sample action</button>
+        <p class="muted">Hook this up to a custom API endpoint (e.g. `/actions/ping`) or keep it as a placeholder.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="/homey.js" data-origin="settings"></script>
+  <script type="module" src="./script.js"></script>
+</body>
+</html>
