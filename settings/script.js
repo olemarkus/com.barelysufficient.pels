@@ -7,8 +7,37 @@ const emptyState = qs('#empty-state');
 const refreshButton = /** @type {HTMLButtonElement} */ (qs('#refresh-button'));
 
 let isBusy = false;
+let homey = null;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const withTimeout = (promise, ms, message) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+]);
+
+const pollSetting = async (key, attempts = 10, delay = 300) => {
+  for (let i = 0; i < attempts; i += 1) {
+    const value = await getSetting(key);
+    if (value) return value;
+    await sleep(delay);
+  }
+  return null;
+};
+
+const getSetting = (key) => new Promise((resolve, reject) => {
+  homey.get(key, (err, value) => {
+    if (err) return reject(err);
+    resolve(value);
+  });
+});
+
+const setSetting = (key, value) => new Promise((resolve, reject) => {
+  homey.set(key, value, (err) => {
+    if (err) return reject(err);
+    resolve();
+  });
+});
 
 const showToast = async (message, tone = 'default') => {
   toastEl.textContent = message;
@@ -58,36 +87,28 @@ const renderDevices = (devices) => {
 };
 
 const getTargetDevices = async () => {
-  const devices = await Homey.devices.getDevices();
+  const snapshot = await withTimeout(
+    getSetting('target_devices_snapshot'),
+    5000,
+    'Timed out reading device snapshot from Homey.',
+  );
 
-  return Object.values(devices)
-    .map((device) => {
-      const capabilitiesObj = device.capabilitiesObj || {};
-      const targetCapabilities = Object.keys(capabilitiesObj).filter((cap) => cap.startsWith('target_temperature'));
+  if (!Array.isArray(snapshot)) {
+    return [];
+  }
 
-      if (!targetCapabilities.length) {
-        return null;
-      }
-
-      const targets = targetCapabilities.map((capId) => ({
-        id: capId,
-        value: capabilitiesObj[capId]?.value ?? null,
-        unit: capabilitiesObj[capId]?.units || '°C',
-      }));
-
-      return {
-        id: device.id,
-        name: device.name,
-        targets,
-      };
-    })
-    .filter(Boolean);
+  return snapshot;
 };
 
 const refreshDevices = async () => {
   if (isBusy) return;
   setBusy(true);
   try {
+    // Request backend to refresh snapshot; this triggers app settings listener.
+    await setSetting('refresh_target_devices_snapshot', Date.now());
+    // Wait for snapshot to be rebuilt
+    await pollSetting('target_devices_snapshot', 10, 300);
+
     const devices = await getTargetDevices();
     renderDevices(devices);
     statusBadge.textContent = 'Live';
@@ -95,15 +116,43 @@ const refreshDevices = async () => {
     console.error(error);
     statusBadge.textContent = 'Failed';
     statusBadge.classList.add('warn');
-    await showToast('Unable to load devices. Check the console for details.', 'warn');
+    await showToast(error.message || 'Unable to load devices. Check the console for details.', 'warn');
   } finally {
     setBusy(false);
   }
 };
 
+const waitForHomey = async (attempts = 50, interval = 100) => {
+  const resolveHomey = () => {
+    if (typeof Homey !== 'undefined') return Homey;
+    if (typeof window !== 'undefined' && window.parent && window.parent.Homey) return window.parent.Homey;
+    return null;
+  };
+
+  for (let i = 0; i < attempts; i += 1) {
+    const candidate = resolveHomey();
+    if (candidate && typeof candidate.ready === 'function' && typeof candidate.get === 'function') {
+      homey = candidate;
+      return candidate;
+    }
+    await sleep(interval);
+  }
+  return null;
+};
+
 const boot = async () => {
   try {
-    await Homey.ready();
+    const found = await waitForHomey(200, 100); // wait up to ~20s for embedded Homey SDK
+    if (!found) {
+      statusBadge.textContent = 'Unavailable';
+      statusBadge.classList.add('warn');
+      emptyState.hidden = false;
+      emptyState.textContent = 'Homey SDK not available. Make sure you are logged in and opened the settings from Homey.';
+      await showToast('Homey SDK not available. Check your Homey session/connection.', 'warn');
+      return;
+    }
+
+    await homey.ready();
     await refreshDevices();
     refreshButton.addEventListener('click', refreshDevices);
     statusBadge.classList.add('ok');

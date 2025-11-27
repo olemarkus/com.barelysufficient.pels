@@ -26,6 +26,10 @@ export class MockDevice {
 
   private capabilityValues = new Map<string, any>();
 
+  get idValue() {
+    return this.id;
+  }
+
   async ready(): Promise<void> {
     return;
   }
@@ -36,6 +40,14 @@ export class MockDevice {
 
   getName(): string {
     return this.name;
+  }
+
+  getData() {
+    return { id: this.id };
+  }
+
+  async getCapabilityValue(capabilityId: string): Promise<any> {
+    return this.capabilityValues.get(capabilityId);
   }
 
   async setCapabilityValue(capabilityId: string, value: any): Promise<void> {
@@ -64,6 +76,11 @@ export class MockDriver {
 
 export const mockHomeyInstance = {
   settings: new MockSettings(),
+  api: {
+    get: async () => {
+      throw new Error('not implemented');
+    },
+  },
   drivers: {
     getDrivers: (): Record<string, MockDriver> => ({}),
   },

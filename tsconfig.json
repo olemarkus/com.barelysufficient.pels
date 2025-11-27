@@ -1,7 +1,17 @@
 {
   "extends": "@tsconfig/node16/tsconfig.json",
   "compilerOptions": {
-    "allowJs": true,
+    "allowJs": false,
     "outDir": ".homeybuild/"
-  }
+  },
+  "include": [
+    "app.ts",
+    "drivers/**/*.ts",
+    "test/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".homeybuild",
+    "settings/**"
+  ]
 }
