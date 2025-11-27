@@ -10,6 +10,11 @@ const { HomeyAPI } = require('homey-api');
 
 module.exports = class MyApp extends Homey.App {
   private homeyApi?: any;
+  private powerTracker: {
+    lastPowerW?: number;
+    lastTimestamp?: number;
+    buckets?: Record<string, number>;
+  } = {};
 
   /**
    * onInit is called when the app is initialized.
@@ -37,10 +42,61 @@ module.exports = class MyApp extends Homey.App {
     await this.applyGlobalTargetTemperature(initialTargetTemperature);
     await this.initHomeyApi();
     await this.refreshTargetDevicesSnapshot();
+    this.registerFlowCards();
+    this.loadPowerTracker();
   }
 
   private logDebug(...args: any[]): void {
     if (DEBUG_LOG) this.log(...args);
+  }
+
+  private loadPowerTracker(): void {
+    const stored = this.homey.settings.get('power_tracker_state');
+    if (stored && typeof stored === 'object') {
+      this.powerTracker = stored;
+    }
+  }
+
+  private savePowerTracker(): void {
+    this.homey.settings.set('power_tracker_state', this.powerTracker);
+  }
+
+  private truncateToHour(timestamp: number): number {
+    const date = new Date(timestamp);
+    date.setMinutes(0, 0, 0);
+    return date.getTime();
+  }
+
+  private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
+    const state = this.powerTracker;
+    state.buckets = state.buckets || {};
+
+    if (typeof state.lastTimestamp !== 'number' || typeof state.lastPowerW !== 'number') {
+      state.lastTimestamp = nowMs;
+      state.lastPowerW = currentPowerW;
+      this.savePowerTracker();
+      return;
+    }
+
+    let previousTs = state.lastTimestamp;
+    let previousPower = state.lastPowerW;
+    let remainingMs = nowMs - previousTs;
+
+    while (remainingMs > 0) {
+      const hourStart = this.truncateToHour(previousTs);
+      const hourEnd = hourStart + 60 * 60 * 1000;
+      const segmentMs = Math.min(remainingMs, hourEnd - previousTs);
+      const energyKWh = (previousPower * (segmentMs / 3600000));
+      const bucketKey = new Date(hourStart).toISOString();
+      state.buckets[bucketKey] = (state.buckets[bucketKey] || 0) + energyKWh;
+
+      remainingMs -= segmentMs;
+      previousTs += segmentMs;
+    }
+
+    state.lastTimestamp = nowMs;
+    state.lastPowerW = currentPowerW;
+    this.savePowerTracker();
   }
 
   private async initHomeyApi(): Promise<void> {
@@ -56,6 +112,18 @@ module.exports = class MyApp extends Homey.App {
       this.error('Failed to initialize Homey API client', error);
       this.homeyApi = undefined;
     }
+  }
+
+  private registerFlowCards(): void {
+    const reportPowerCard = this.homey.flow.getActionCard('report_power_usage');
+    reportPowerCard.registerRunListener(async (args: { power: number }) => {
+      const power = Number(args.power);
+      if (!Number.isFinite(power) || power < 0) {
+        throw new Error('Power must be a non-negative number (W).');
+      }
+      await this.recordPowerSample(power);
+      return true;
+    });
   }
 
   private async applyGlobalTargetTemperature(targetTemperature: unknown): Promise<void> {
@@ -107,10 +175,7 @@ module.exports = class MyApp extends Homey.App {
 
     let snapshot: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }> }> = [];
 
-    snapshot = await this.fetchDevicesViaApi().catch((error: Error) => {
-      this.error('Manager API device fetch failed, falling back to drivers', error);
-      return [];
-    });
+    snapshot = await this.fetchDevicesViaApi();
 
     if (snapshot.length === 0) {
       snapshot = await this.fetchDevicesViaDrivers();
@@ -129,7 +194,7 @@ module.exports = class MyApp extends Homey.App {
         this.logDebug(`HomeyAPI returned ${list.length} devices`);
         return this.parseDeviceList(list);
       } catch (error) {
-        this.error('HomeyAPI.getDevices failed, falling back to raw API', error);
+        this.logDebug('HomeyAPI.getDevices failed, falling back to raw API', error as Error);
       }
     }
 
@@ -137,8 +202,13 @@ module.exports = class MyApp extends Homey.App {
     try {
       devices = await this.homey.api.get('manager/devices');
     } catch (error) {
-      this.logDebug('Manager API manager/devices failed, retrying devices');
-      devices = await this.homey.api.get('devices');
+      this.logDebug('Manager API manager/devices failed, retrying devices', error as Error);
+      try {
+        devices = await this.homey.api.get('devices');
+      } catch (err) {
+        this.logDebug('Manager API devices failed as well', err as Error);
+        return [];
+      }
     }
     const list = Array.isArray(devices) ? devices : Object.values(devices || {});
 

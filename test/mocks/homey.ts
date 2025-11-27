@@ -81,6 +81,11 @@ export const mockHomeyInstance = {
       throw new Error('not implemented');
     },
   },
+  flow: {
+    getActionCard: () => ({
+      registerRunListener: () => {},
+    }),
+  },
   drivers: {
     getDrivers: (): Record<string, MockDriver> => ({}),
   },

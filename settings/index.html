@@ -10,11 +10,15 @@
   <main class="screen">
     <header class="hero">
       <p class="eyebrow">PELS · App control</p>
-      <h1>Temperature devices</h1>
-      <p class="lede">Overview of devices that support target temperature control and their current setting.</p>
+      <h1>Energy overview</h1>
+      <p class="lede">Device targets and hourly power usage.</p>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="devices" role="tab" aria-selected="true">Devices</button>
+        <button class="tab" data-tab="power" role="tab" aria-selected="false">Power usage</button>
+      </div>
     </header>
 
-    <section class="card">
+    <section class="card panel" id="devices-panel" data-panel="devices">
       <div class="card__header">
         <div>
           <p class="eyebrow">Devices</p>
@@ -31,6 +35,24 @@
       <div class="list__footer">
         <button type="button" class="btn secondary" id="refresh-button">Refresh</button>
         <p class="muted">Values come from the device capability state; this view is read-only for now.</p>
+      </div>
+    </section>
+
+    <section class="card panel hidden" id="power-panel" data-panel="power">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Power usage</p>
+          <h2>Hourly totals</h2>
+        </div>
+      </div>
+      <div class="list__header">
+        <p class="muted">Hour (local)</p>
+        <div class="muted">Energy (kWh)</div>
+      </div>
+      <div id="power-list" class="device-list" role="list"></div>
+      <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the “Report power usage” Flow action.</p>
+      <div class="list__footer">
+        <p class="muted">Totals are derived from reported power samples and grouped per hour.</p>
       </div>
     </section>
   </main>

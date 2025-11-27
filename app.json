@@ -44,5 +44,29 @@
       "max": 35,
       "step": 0.5
     }
-  ]
+  ],
+  "flow": {
+    "actions": [
+      {
+        "title": {
+          "en": "Report power usage"
+        },
+        "hint": {
+          "en": "Feed instantaneous power (W) from a meter to track hourly energy usage."
+        },
+        "args": [
+          {
+            "name": "power",
+            "type": "number",
+            "title": {
+              "en": "Power (W)"
+            },
+            "min": 0,
+            "step": 1
+          }
+        ],
+        "id": "report_power_usage"
+      }
+    ]
+  }
 }

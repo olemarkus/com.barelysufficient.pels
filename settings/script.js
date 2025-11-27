@@ -5,6 +5,10 @@ const statusBadge = qs('#status-badge');
 const deviceList = qs('#device-list');
 const emptyState = qs('#empty-state');
 const refreshButton = /** @type {HTMLButtonElement} */ (qs('#refresh-button'));
+const powerList = qs('#power-list');
+const powerEmpty = qs('#power-empty');
+const tabs = Array.from(document.querySelectorAll('.tab'));
+const panels = Array.from(document.querySelectorAll('.panel'));
 
 let isBusy = false;
 let homey = null;
@@ -38,6 +42,17 @@ const setSetting = (key, value) => new Promise((resolve, reject) => {
     resolve();
   });
 });
+
+const showTab = (tabId) => {
+  tabs.forEach((tab) => {
+    const isActive = tab.dataset.tab === tabId;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-selected', String(isActive));
+  });
+  panels.forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
+  });
+};
 
 const showToast = async (message, tone = 'default') => {
   toastEl.textContent = message;
@@ -100,6 +115,47 @@ const getTargetDevices = async () => {
   return snapshot;
 };
 
+const getPowerUsage = async () => {
+  const tracker = await getSetting('power_tracker_state');
+  if (!tracker || typeof tracker !== 'object' || !tracker.buckets) return [];
+
+  return Object.entries(tracker.buckets)
+    .map(([iso, value]) => {
+      const date = new Date(iso);
+      return {
+        hour: date,
+        kWh: (Number(value) || 0) / 1000,
+      };
+    })
+    .sort((a, b) => a.hour.getTime() - b.hour.getTime());
+};
+
+const renderPowerUsage = (entries) => {
+  powerList.innerHTML = '';
+  if (!entries.length) {
+    powerEmpty.hidden = false;
+    return;
+  }
+
+  powerEmpty.hidden = true;
+  entries.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'device-row';
+    row.setAttribute('role', 'listitem');
+
+    const hour = document.createElement('div');
+    hour.className = 'device-row__name';
+    hour.textContent = entry.hour.toLocaleString();
+
+    const val = document.createElement('div');
+    val.className = 'device-row__target';
+    val.innerHTML = `<span class="chip"><strong>Energy</strong><span>${entry.kWh.toFixed(3)} kWh</span></span>`;
+
+    row.append(hour, val);
+    powerList.appendChild(row);
+  });
+};
+
 const refreshDevices = async () => {
   if (isBusy) return;
   setBusy(true);
@@ -153,7 +209,13 @@ const boot = async () => {
     }
 
     await homey.ready();
+    showTab('devices');
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => showTab(tab.dataset.tab));
+    });
     await refreshDevices();
+    const usage = await getPowerUsage();
+    renderPowerUsage(usage);
     refreshButton.addEventListener('click', refreshDevices);
     statusBadge.classList.add('ok');
   } catch (error) {

@@ -45,6 +45,31 @@ body {
   color: var(--muted);
 }
 
+.tabs {
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tab.active {
+  background: linear-gradient(120deg, var(--accent), var(--accent-strong));
+  color: #0d1117;
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -207,6 +232,10 @@ input[type="number"]:focus {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.panel.hidden {
+  display: none;
 }
 
 .chip {

@@ -5,8 +5,18 @@ const buildDom = () => {
   document.body.innerHTML = `
     <div id="toast"></div>
     <div id="status-badge"></div>
+    <div class="tabs">
+      <button class="tab active" data-tab="devices"></button>
+      <button class="tab" data-tab="power"></button>
+    </div>
+    <section class="panel" data-panel="devices">
     <div id="device-list"></div>
     <p id="empty-state" hidden></p>
+    </section>
+    <section class="panel hidden" data-panel="power">
+      <div id="power-list"></div>
+      <p id="power-empty" hidden></p>
+    </section>
     <button id="refresh-button"></button>
   `;
 };
