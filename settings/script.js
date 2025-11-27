@@ -1,17 +1,12 @@
-const GLOBAL_SETTING_KEY = 'global_target_temperature';
-
 const qs = (selector) => /** @type {HTMLElement} */ (document.querySelector(selector));
 
 const toastEl = qs('#toast');
-const tempInput = /** @type {HTMLInputElement} */ (qs('#temperature-input'));
-const formEl = /** @type {HTMLFormElement} */ (qs('#temperature-form'));
-const reapplyButton = /** @type {HTMLButtonElement} */ (qs('#reapply-button'));
-const pingButton = /** @type {HTMLButtonElement} */ (qs('#ping-action'));
 const statusBadge = qs('#status-badge');
+const deviceList = qs('#device-list');
+const emptyState = qs('#empty-state');
+const refreshButton = /** @type {HTMLButtonElement} */ (qs('#refresh-button'));
 
-let state = {
-  targetTemperature: 21,
-};
+let isBusy = false;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -23,123 +18,94 @@ const showToast = async (message, tone = 'default') => {
   toastEl.classList.remove('show');
 };
 
-const setBusy = (isBusy) => {
-  formEl.classList.toggle('is-busy', isBusy);
-  formEl.querySelectorAll('button, input').forEach((el) => {
-    el.disabled = isBusy;
-  });
-  statusBadge.textContent = isBusy ? 'Working…' : 'Idle';
-  statusBadge.classList.toggle('ok', !isBusy);
+const setBusy = (busy) => {
+  isBusy = busy;
+  statusBadge.textContent = busy ? 'Loading…' : 'Live';
+  statusBadge.classList.toggle('ok', !busy);
+  refreshButton.disabled = busy;
 };
 
-const getSetting = (key) => new Promise((resolve, reject) => {
-  Homey.get(key, (err, value) => {
-    if (err) return reject(err);
-    resolve(value);
-  });
-});
+const renderDevices = (devices) => {
+  deviceList.innerHTML = '';
 
-const setSetting = (key, value) => new Promise((resolve, reject) => {
-  Homey.set(key, value, (err) => {
-    if (err) return reject(err);
-    resolve();
-  });
-});
-
-const callApi = (method, path, body) => new Promise((resolve, reject) => {
-  if (typeof Homey.api !== 'function') {
-    return reject(new Error('Homey.api not available'));
+  if (!devices.length) {
+    emptyState.hidden = false;
+    return;
   }
 
-  Homey.api(method, path, body, (err, result) => {
-    if (err) return reject(err);
-    resolve(result);
+  emptyState.hidden = true;
+
+  devices.forEach((device) => {
+    const row = document.createElement('div');
+    row.className = 'device-row';
+    row.setAttribute('role', 'listitem');
+
+    const name = document.createElement('div');
+    name.className = 'device-row__name';
+    name.textContent = device.name;
+
+    const targets = document.createElement('div');
+    targets.className = 'device-row__target';
+    targets.innerHTML = device.targets.map((target) => {
+      const value = target.value === null || target.value === undefined ? '—' : target.value;
+      const unit = target.unit || '°C';
+      return `<span class="chip"><strong>${target.id}</strong><span>${value} ${unit}</span></span>`;
+    }).join('');
+
+    row.append(name, targets);
+    deviceList.appendChild(row);
   });
-});
-
-const refreshState = async () => {
-  const stored = await getSetting(GLOBAL_SETTING_KEY);
-  state = {
-    targetTemperature: typeof stored === 'number' ? stored : state.targetTemperature,
-  };
-  tempInput.value = state.targetTemperature.toString();
 };
 
-const saveAndApply = async () => {
-  const value = parseFloat(tempInput.value);
-  if (Number.isNaN(value)) {
-    throw new Error('Provide a numeric temperature value.');
-  }
+const getTargetDevices = async () => {
+  const devices = await Homey.devices.getDevices();
 
-  await setSetting(GLOBAL_SETTING_KEY, value);
-  state.targetTemperature = value;
+  return Object.values(devices)
+    .map((device) => {
+      const capabilitiesObj = device.capabilitiesObj || {};
+      const targetCapabilities = Object.keys(capabilitiesObj).filter((cap) => cap.startsWith('target_temperature'));
+
+      if (!targetCapabilities.length) {
+        return null;
+      }
+
+      const targets = targetCapabilities.map((capId) => ({
+        id: capId,
+        value: capabilitiesObj[capId]?.value ?? null,
+        unit: capabilitiesObj[capId]?.units || '°C',
+      }));
+
+      return {
+        id: device.id,
+        name: device.name,
+        targets,
+      };
+    })
+    .filter(Boolean);
 };
 
-const reapply = async () => {
-  // Prefer a custom API action if available, otherwise fall back to re-saving the setting.
+const refreshDevices = async () => {
+  if (isBusy) return;
+  setBusy(true);
   try {
-    await callApi('POST', '/actions/reapply-target', { targetTemperature: state.targetTemperature });
-    await showToast('Triggered backend action.', 'ok');
+    const devices = await getTargetDevices();
+    renderDevices(devices);
+    statusBadge.textContent = 'Live';
   } catch (error) {
-    await saveAndApply();
-    await showToast('API unavailable; re-saved setting instead.', 'warn');
+    console.error(error);
+    statusBadge.textContent = 'Failed';
+    statusBadge.classList.add('warn');
+    await showToast('Unable to load devices. Check the console for details.', 'warn');
+  } finally {
+    setBusy(false);
   }
-};
-
-const pingCustomAction = async () => {
-  try {
-    const result = await callApi('POST', '/actions/ping', { timestamp: Date.now() });
-    await showToast(`Ping result: ${JSON.stringify(result)}`, 'ok');
-  } catch (error) {
-    await showToast('Custom API not wired yet. Update app.ts to handle /actions/ping.', 'warn');
-  }
-};
-
-const attachEvents = () => {
-  formEl.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    setBusy(true);
-    try {
-      await saveAndApply();
-      await showToast('Saved and applied.', 'ok');
-      statusBadge.textContent = 'Updated';
-    } catch (error) {
-      console.error(error);
-      await showToast(error.message || 'Failed to save.', 'warn');
-      statusBadge.textContent = 'Error';
-      statusBadge.classList.add('warn');
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  reapplyButton.addEventListener('click', async () => {
-    setBusy(true);
-    try {
-      await reapply();
-    } catch (error) {
-      console.error(error);
-      await showToast('Failed to re-apply.', 'warn');
-    } finally {
-      setBusy(false);
-    }
-  });
-
-  pingButton.addEventListener('click', async () => {
-    setBusy(true);
-    try {
-      await pingCustomAction();
-    } finally {
-      setBusy(false);
-    }
-  });
 };
 
 const boot = async () => {
   try {
     await Homey.ready();
-    attachEvents();
-    await refreshState();
+    await refreshDevices();
+    refreshButton.addEventListener('click', refreshDevices);
     statusBadge.classList.add('ok');
   } catch (error) {
     console.error(error);
