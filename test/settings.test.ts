@@ -10,8 +10,11 @@ const buildDom = () => {
       <button class="tab" data-tab="power"></button>
     </div>
     <section class="panel" data-panel="devices">
-    <div id="device-list"></div>
-    <p id="empty-state" hidden></p>
+      <form id="targets-form">
+        <select id="target-mode-select"></select>
+      </form>
+      <div id="device-list"></div>
+      <p id="empty-state" hidden></p>
     </section>
     <section class="panel hidden" data-panel="power">
       <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"></form>

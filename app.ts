@@ -23,6 +23,7 @@ module.exports = class MyApp extends Homey.App {
   };
   private capacityMode = 'home';
   private capacityPriorities: Record<string, Record<string, number>> = {};
+  private modeDeviceTargets: Record<string, Record<string, number>> = {};
 
   /**
    * onInit is called when the app is initialized.
@@ -35,6 +36,14 @@ module.exports = class MyApp extends Homey.App {
         const targetTemperature = this.homey.settings.get(GLOBAL_TARGET_TEMPERATURE_KEY);
         this.applyGlobalTargetTemperature(targetTemperature).catch((error: Error) => {
           this.error('Failed to apply target temperature from setting change', error);
+        });
+        return;
+      }
+
+      if (key === 'mode_device_targets' || key === 'capacity_mode') {
+        this.loadCapacitySettings();
+        this.applyDeviceTargetsForMode(this.capacityMode).catch((error: Error) => {
+          this.error('Failed to apply per-mode device targets', error);
         });
         return;
       }
@@ -72,6 +81,7 @@ module.exports = class MyApp extends Homey.App {
     this.capacityGuard.setSoftLimitProvider(() => this.computeDynamicSoftLimit());
     this.capacityGuard.start();
     await this.refreshTargetDevicesSnapshot();
+    await this.applyDeviceTargetsForMode(this.capacityMode);
     this.registerFlowCards();
     this.loadPowerTracker();
   }
@@ -92,10 +102,12 @@ module.exports = class MyApp extends Homey.App {
     const margin = this.homey.settings.get('capacity_margin_kw');
     const mode = this.homey.settings.get('capacity_mode');
     const priorities = this.homey.settings.get('capacity_priorities');
+    const modeTargets = this.homey.settings.get('mode_device_targets');
     if (Number.isFinite(limit)) this.capacitySettings.limitKw = Number(limit);
     if (Number.isFinite(margin)) this.capacitySettings.marginKw = Number(margin);
     if (typeof mode === 'string' && mode.length > 0) this.capacityMode = mode;
     if (priorities && typeof priorities === 'object') this.capacityPriorities = priorities as Record<string, Record<string, number>>;
+    if (modeTargets && typeof modeTargets === 'object') this.modeDeviceTargets = modeTargets as Record<string, Record<string, number>>;
   }
 
   private savePowerTracker(): void {
@@ -280,6 +292,52 @@ module.exports = class MyApp extends Homey.App {
           try {
             await device.setCapabilityValue(capabilityId, targetTemperature);
             this.log(`Set ${capabilityId} for ${device.getName()} to ${targetTemperature}`);
+          } catch (error) {
+            this.error(`Failed to set ${capabilityId} for ${device.getName()}`, error);
+          }
+        }
+      }
+    }
+
+    await this.refreshTargetDevicesSnapshot();
+  }
+
+  private async applyDeviceTargetsForMode(mode: string): Promise<void> {
+    const targets = this.modeDeviceTargets[mode];
+    if (!targets || typeof targets !== 'object') {
+      this.log(`No device targets configured for mode ${mode}`);
+      return;
+    }
+
+    const drivers = this.homey.drivers.getDrivers();
+    for (const driver of Object.values(drivers)) {
+      try {
+        await driver.ready();
+      } catch (error) {
+        this.error(`Driver ${driver.id} is not ready, skipping devices`, error);
+        continue;
+      }
+
+      const devices = driver.getDevices();
+      for (const device of devices) {
+        const deviceId = device.getData ? device.getData().id || device.getName() : device.getName();
+        const targetValue = targets[deviceId];
+        if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
+
+        const targetCapabilities = device.getCapabilities().filter((capability) => TARGET_CAPABILITY_PREFIXES.some((prefix) => capability.startsWith(prefix)));
+        if (targetCapabilities.length === 0) continue;
+
+        try {
+          await device.ready();
+        } catch (error) {
+          this.error(`Device ${device.getName()} is not ready`, error);
+          continue;
+        }
+
+        for (const capabilityId of targetCapabilities) {
+          try {
+            await device.setCapabilityValue(capabilityId, targetValue);
+            this.log(`Set ${capabilityId} for ${device.getName()} to ${targetValue} (${mode})`);
           } catch (error) {
             this.error(`Failed to set ${capabilityId} for ${device.getName()}`, error);
           }

@@ -22,19 +22,29 @@
       <div class="card__header">
         <div>
           <p class="eyebrow">Devices</p>
-          <h2>Current targets</h2>
+          <h2>Desired temperatures</h2>
         </div>
         <div class="pill" id="status-badge">Loading…</div>
       </div>
       <div class="list__header">
         <p class="muted">Name</p>
-        <div class="muted">Target</div>
+        <div class="muted">Desired (per mode)</div>
       </div>
+      <form id="targets-form" class="form-grid form-inline">
+        <label class="field">
+          <span class="field__label">Mode</span>
+          <select id="target-mode-select" name="target_mode"></select>
+        </label>
+        <div class="form__actions">
+          <button type="submit" class="btn secondary">Save targets</button>
+        </div>
+        <small class="field__hint">Set desired temperature per device per mode. Leave blank to leave it unchanged.</small>
+      </form>
       <div id="device-list" class="device-list" role="list"></div>
       <p id="empty-state" class="muted" hidden>No devices with target temperature capabilities were found.</p>
       <div class="list__footer">
         <button type="button" class="btn secondary" id="refresh-button">Refresh</button>
-        <p class="muted">Values come from the device capability state; this view is read-only for now.</p>
+        <p class="muted">Values show your desired setpoints for the selected mode.</p>
       </div>
     </section>
 
