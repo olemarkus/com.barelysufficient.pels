@@ -715,11 +715,14 @@ module.exports = class MyApp extends Homey.App {
     );
     if (signature !== this.lastPlanSignature) {
       try {
-        const lines = plan.devices.map((d) => {
-          const temp = `${d.currentTarget ?? '–'}° -> ${d.plannedTarget ?? '–'}°`;
-          const power = `${d.currentState} -> ${d.plannedState === 'shed' ? 'off' : d.plannedState}`;
-          return `${d.name}: temp ${temp}, power ${power}, reason: ${d.reason ?? 'n/a'}`;
-        });
+        const lines = plan.devices
+          .filter((d) => d.controllable !== false)
+          .map((d) => {
+            const temp = `${d.currentTarget ?? '–'}° -> ${d.plannedTarget ?? '–'}°`;
+            const nextPower = d.plannedState === 'shed' ? 'off' : d.currentState === 'off' ? 'off' : 'on';
+            const power = `${d.currentState} -> ${nextPower}`;
+            return `${d.name}: temp ${temp}, power ${power}, reason: ${d.reason ?? 'n/a'}`;
+          });
         if (lines.length) {
           this.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
         }
@@ -759,14 +762,22 @@ module.exports = class MyApp extends Homey.App {
     const softLimit = this.computeDynamicSoftLimit();
     const headroomRaw = total === null ? null : softLimit - total;
     let headroom = headroomRaw === null && softLimit <= 0 ? -1 : headroomRaw;
+    // Hysteresis: require some positive margin before we start turning things back on.
+    const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
+    if (headroom !== null && headroom < restoreMargin) {
+      // Treat as deficit until we have at least restoreMargin of headroom.
+      headroom = headroom - restoreMargin;
+    }
     // If the hourly energy budget is exhausted and soft limit is zero while instantaneous power reads ~0,
     // force a minimal negative headroom to proactively shed controllable devices.
     if (this.hourlyBudgetExhausted && softLimit <= 0 && total !== null && total <= 0.01) {
       headroom = -1; // triggers shedding logic with needed ~=1 kW (effectivePower fallback)
     }
 
+    const sheddingActive = this.capacityGuard ? (this.capacityGuard as any).isSheddingActive?.() === true : false;
     const shedSet = new Set<string>();
     const shedReasons = new Map<string, string>();
+    const restoreMarginPlanning = Math.max(0.1, this.capacitySettings.marginKw || 0);
     if (headroom !== null && headroom < 0) {
       const needed = -headroom;
       this.logDebug(
@@ -827,6 +838,23 @@ module.exports = class MyApp extends Homey.App {
         controllable,
       };
     });
+
+    // Secondary guard: if a device is currently off and headroom is still below what it needs plus margin,
+    // keep it shed to avoid on/off flapping.
+    if (headroomRaw !== null) {
+      for (const dev of planDevices) {
+        if (dev.controllable === false) continue;
+        if (dev.currentState !== 'off') continue;
+        if (dev.plannedState === 'shed') continue;
+        const needed = (dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1) + restoreMarginPlanning;
+        if (headroomRaw < needed || sheddingActive) {
+          dev.plannedState = 'shed';
+          dev.reason = sheddingActive
+            ? 'stay off while shedding is active'
+            : `stay off until headroom >= ${needed.toFixed(2)}kW`;
+        }
+      }
+    }
 
     return {
       meta: {
@@ -997,6 +1025,16 @@ module.exports = class MyApp extends Homey.App {
       // Restore power if the plan keeps it on and it was off.
       if (dev.plannedState !== 'shed' && dev.currentState === 'off') {
         const name = dev.name || dev.id;
+        // Skip turning back on unless we have some headroom to avoid flapping.
+        const headroom = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
+        const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
+        const neededForDevice = ((dev as any).powerKw && (dev as any).powerKw > 0 ? (dev as any).powerKw : 1) + restoreMargin;
+        if (headroom !== null && headroom < neededForDevice) {
+          this.logDebug(
+            `Capacity: keeping ${name} off (headroom ${headroom.toFixed(3)}kW < needed ${neededForDevice.toFixed(3)}kW including restore margin)`,
+          );
+          continue;
+        }
         const device = await this.findDeviceInstance(dev.id);
         if (device) {
           const caps = device.getCapabilities ? device.getCapabilities() : [];

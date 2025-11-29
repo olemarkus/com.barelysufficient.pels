@@ -118,6 +118,14 @@ export default class CapacityGuard {
     return this.getSoftLimit() - this.mainPowerKw;
   }
 
+  isSheddingActive(): boolean {
+    return this.sheddingActive;
+  }
+
+  getHeadroom(): number | null {
+    return this.headroom();
+  }
+
   headroomBand(): 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN' {
     const h = this.headroom();
     if (h === null) return 'UNKNOWN';

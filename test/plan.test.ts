@@ -132,4 +132,114 @@ describe('Device plan snapshot', () => {
     const comfortPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(comfortPlan?.plannedTarget).toBe(21);
   });
+
+  it('keeps device shed until headroom exceeds restore margin', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Force soft limit to 1 kW and total to 1.1 kW -> deficit triggers shed.
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+    await (app as any).recordPowerSample(1100);
+    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
+
+    // Slight headroom (+0.05 kW) should not restore because below restore margin (0.2).
+    (app as any).computeDynamicSoftLimit = () => 1.15;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1.15);
+    }
+    await (app as any).recordPowerSample(1100);
+    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
+
+    // Large headroom should allow restoration.
+    (app as any).computeDynamicSoftLimit = () => 2;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+    }
+    await (app as any).recordPowerSample(1100);
+    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('keep');
+  });
+
+  it('does not turn a shed device back on if headroom is below its power need', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Force headroom small; monkey-patch guard headroom and margin.
+    (app as any).capacitySettings.marginKw = 0.2;
+    (app as any).capacityGuard.getHeadroom = () => 0.3;
+
+    const plan = {
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater A',
+          plannedState: 'keep',
+          currentState: 'off',
+          plannedTarget: null,
+          currentTarget: null,
+          powerKw: 2, // needs at least 2 + margin headroom
+          controllable: true,
+        },
+      ],
+    };
+
+    const findSpy = jest.fn();
+    (app as any).findDeviceInstance = findSpy;
+
+    await (app as any).applyPlanActions(plan);
+    expect(findSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps planned state as shed when headroom is below device need even after turn-off', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2500); // 2.5 kW
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Force soft limit to 2 kW and total to 2.1 kW -> shed.
+    (app as any).computeDynamicSoftLimit = () => 2;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+    }
+    await (app as any).recordPowerSample(2100);
+    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
+
+    // Simulate device now off, but headroom still below need (2.5 + margin).
+    plan = (app as any).buildDevicePlanSnapshot([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 2.5,
+        priority: 1,
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+    const nextState = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(nextState?.plannedState).toBe('shed');
+  });
 });
