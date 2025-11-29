@@ -1,0 +1,11 @@
+{
+  "title": {
+    "en": "Capacity mode"
+  },
+  "desc": {
+    "en": "Shows the current capacity mode selected in settings or Flow."
+  },
+  "type": "string",
+  "getable": true,
+  "setable": false
+}

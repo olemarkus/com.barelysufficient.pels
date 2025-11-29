@@ -43,5 +43,8 @@
       "max": 35,
       "step": 0.5
     }
+  ],
+  "drivers": [
+    "mode_indicator"
   ]
 }

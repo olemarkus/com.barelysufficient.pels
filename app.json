@@ -350,5 +350,48 @@
         "id": "set_device_priority"
       }
     ]
+  },
+  "drivers": [
+    {
+      "id": "mode_indicator",
+      "name": {
+        "en": "Capacity mode"
+      },
+      "class": "sensor",
+      "capabilities": [
+        "mode_indicator"
+      ],
+      "icon": "/assets/icon.svg",
+      "images": {
+        "small": "/drivers/mode_indicator/assets/images/small.png",
+        "large": "/drivers/mode_indicator/assets/images/large.png"
+      },
+      "pair": [
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ]
+    }
+  ],
+  "capabilities": {
+    "mode_indicator": {
+      "title": {
+        "en": "Capacity mode"
+      },
+      "desc": {
+        "en": "Shows the current capacity mode selected in settings or Flow."
+      },
+      "type": "string",
+      "getable": true,
+      "setable": false
+    }
   }
 }
