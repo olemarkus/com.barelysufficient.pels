@@ -18,7 +18,7 @@ const buildDom = () => {
       <p id="empty-state" hidden></p>
     </section>
     <section class="panel hidden" data-panel="power">
-      <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"></form>
+      <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"><input id="capacity-dry-run" type="checkbox"></form>
       <form id="active-mode-form"><select id="active-mode-select"></select></form>
       <select id="mode-select"></select>
       <input id="mode-new">

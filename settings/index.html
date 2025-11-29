@@ -67,6 +67,10 @@
           <input id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required>
           <small class="field__hint">Soft limit = limit - margin.</small>
         </label>
+        <label class="field checkbox-field">
+          <input id="capacity-dry-run" name="capacity_dry_run" type="checkbox" checked>
+          <span class="field__label">Dry run (do not switch devices)</span>
+        </label>
         <div class="form__actions">
           <button type="submit" class="btn primary">Save capacity settings</button>
         </div>

@@ -95,6 +95,24 @@ module.exports = class MyApp extends Homey.App {
         return;
       }
 
+      if (key === 'capacity_dry_run') {
+        this.loadCapacitySettings();
+        if (this.capacityGuard) {
+          this.capacityGuard.setDryRun(this.capacityDryRun, async (deviceId, deviceName) => {
+            await this.applySheddingToDevice(deviceId, deviceName);
+          });
+        }
+        this.rebuildPlanFromCache();
+        return;
+      }
+
+      if (key === 'capacity_dry_run') {
+        this.loadCapacitySettings();
+        if (this.capacityGuard) this.capacityGuard.setDryRun(this.capacityDryRun);
+        this.rebuildPlanFromCache();
+        return;
+      }
+
       if (key === 'refresh_target_devices_snapshot') {
         this.refreshTargetDevicesSnapshot().catch((error: Error) => {
           this.error('Failed to refresh target devices snapshot', error);
@@ -109,7 +127,10 @@ module.exports = class MyApp extends Homey.App {
     this.capacityGuard = new CapacityGuard({
       limitKw: this.capacitySettings.limitKw,
       softMarginKw: this.capacitySettings.marginKw,
-      dryRun: true,
+      dryRun: this.capacityDryRun,
+      actuator: async (deviceId, deviceName) => {
+        await this.applySheddingToDevice(deviceId, deviceName);
+      },
       onSheddingStart: async () => {
         await this.homey.flow.getTriggerCard('capacity_shedding_started').trigger({});
       },
@@ -126,6 +147,9 @@ module.exports = class MyApp extends Homey.App {
       errorLog: (...args) => this.error(...args),
     });
     this.capacityGuard.setSoftLimitProvider(() => this.computeDynamicSoftLimit());
+    this.capacityGuard.setDryRun(this.capacityDryRun, async (deviceId, deviceName) => {
+      await this.applySheddingToDevice(deviceId, deviceName);
+    });
     this.capacityGuard.start();
     await this.refreshTargetDevicesSnapshot();
     await this.applyDeviceTargetsForMode(this.capacityMode);
@@ -822,7 +846,13 @@ module.exports = class MyApp extends Homey.App {
       }
       for (const device of driver.getDevices()) {
         const data = device.getData ? device.getData() : {};
-        const candidates = [data?.id, data?.uuid, (device as any).id].filter((v) => v !== undefined && v !== null).map((v) => String(v));
+        const candidates = [
+          data?.id,
+          data?.uuid,
+          (device as any).id,
+        ]
+          .filter((v) => v !== undefined && v !== null)
+          .map((v) => String(v));
         if (candidates.includes(target)) {
           return device;
         }
@@ -850,6 +880,7 @@ module.exports = class MyApp extends Homey.App {
       }
     }
 
+    // Fallback to Homey API if driver lookup failed.
     if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
       try {
         await this.homeyApi.devices.setCapabilityValue({ id: deviceId, capabilityId: 'onoff' }, false);

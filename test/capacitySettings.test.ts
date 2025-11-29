@@ -11,6 +11,7 @@ jest.mock('../capacityGuard', () => {
   return class MockCapacityGuard {
     public setLimit = jest.fn();
     public setSoftMargin = jest.fn();
+    public setDryRun = jest.fn();
     public setSoftLimitProvider = jest.fn();
     public start = jest.fn();
     public stop = jest.fn();
@@ -52,9 +53,12 @@ describe('capacity settings propagation', () => {
     // Change limit and margin via settings events.
     mockHomeyInstance.settings.set('capacity_limit_kw', 7);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.4);
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(guard.setLimit).toHaveBeenLastCalledWith(7);
     expect(guard.setSoftMargin).toHaveBeenLastCalledWith(0.4);
+    const calls = (guard.setDryRun as jest.Mock).mock.calls;
+    expect(calls[calls.length - 1][0]).toBe(false);
   });
 });
