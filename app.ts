@@ -225,12 +225,20 @@ module.exports = class MyApp extends Homey.App {
 
     const setCapacityMode = this.homey.flow.getActionCard('set_capacity_mode');
     setCapacityMode.registerRunListener(async (args: { mode: string }) => {
-      const mode = (args.mode || '').trim();
-      if (!mode) throw new Error('Mode must be provided');
-      this.capacityMode = mode;
-      this.homey.settings.set('capacity_mode', mode);
+      const chosen = (args.mode || '').trim();
+      if (!chosen) throw new Error('Mode must be provided');
+      this.capacityMode = chosen;
+      this.homey.settings.set('capacity_mode', chosen);
       return true;
     });
+    if (typeof (setCapacityMode as any).registerArgumentAutocompleteListener === 'function') {
+      setCapacityMode.registerArgumentAutocompleteListener('mode', async (query: string) => {
+        const q = (query || '').toLowerCase();
+        return Array.from(this.getAllModes())
+          .filter((m) => !q || m.toLowerCase().includes(q))
+          .map((m) => ({ id: m, name: m }));
+      });
+    }
 
     const setDevicePriority = this.homey.flow.getActionCard('set_device_priority');
     setDevicePriority.registerRunListener(async (args: { mode: string; device_id: string; priority: number }) => {
@@ -544,8 +552,23 @@ module.exports = class MyApp extends Homey.App {
   }
 
   private getPriorityForDevice(deviceId: string): number {
-    const mode = this.capacityMode || 'home';
+    const mode = this.capacityMode || 'Home';
     return this.capacityPriorities[mode]?.[deviceId] ?? 100;
+  }
+
+  private getAllModes(): Set<string> {
+    const modes = new Set<string>();
+    const defaults = ['Home', 'Away', 'Vacation', 'Home Office'];
+    defaults.forEach((m) => modes.add(m));
+    if (this.capacityMode) modes.add(this.capacityMode);
+    Object.keys(this.capacityPriorities || {}).forEach((m) => {
+      if (m && m.trim()) modes.add(m);
+    });
+    Object.keys(this.modeDeviceTargets || {}).forEach((m) => {
+      if (m && m.trim()) modes.add(m);
+    });
+    if (!modes.size) modes.add('Home');
+    return modes;
   }
 
   private computeDynamicSoftLimit(): number {

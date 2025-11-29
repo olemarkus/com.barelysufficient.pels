@@ -4,9 +4,9 @@
   "scripts": {
     "build": "tsc",
     "lint": "eslint --ext .js,.ts --ignore-path .gitignore .",
-    "test": "jest",
+    "test": "jest && npm run validate",
     "validate": "homey app validate",
-    "check": "npm test && npm run validate"
+    "check": "npm test"
   },
   "dependencies": {
     "homey-api": "^3.14.21"

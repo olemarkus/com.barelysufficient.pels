@@ -84,6 +84,7 @@ export const mockHomeyInstance = {
   flow: {
     getActionCard: () => ({
       registerRunListener: () => {},
+      registerArgumentAutocompleteListener: () => {},
     }),
     getConditionCard: () => ({
       registerRunListener: () => {},

@@ -307,9 +307,15 @@
         "args": [
           {
             "name": "mode",
-            "type": "text",
+            "type": "autocomplete",
             "title": {
               "en": "Mode (e.g. home, away, vacation)"
+            },
+            "placeholder": {
+              "en": "Choose a mode"
+            },
+            "example": {
+              "en": "Home"
             }
           }
         ],
