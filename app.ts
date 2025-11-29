@@ -68,6 +68,16 @@ module.exports = class MyApp extends Homey.App {
         return;
       }
 
+      if (key === 'capacity_limit_kw' || key === 'capacity_margin_kw') {
+        this.loadCapacitySettings();
+        if (this.capacityGuard) {
+          this.capacityGuard.setLimit(this.capacitySettings.limitKw);
+          this.capacityGuard.setSoftMargin(this.capacitySettings.marginKw);
+        }
+        this.rebuildPlanFromCache();
+        return;
+      }
+
       if (key === 'refresh_target_devices_snapshot') {
         this.refreshTargetDevicesSnapshot().catch((error: Error) => {
           this.error('Failed to refresh target devices snapshot', error);
