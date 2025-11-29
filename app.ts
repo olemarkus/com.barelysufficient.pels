@@ -24,6 +24,15 @@ module.exports = class MyApp extends Homey.App {
   private capacityMode = 'Home';
   private capacityPriorities: Record<string, Record<string, number>> = {};
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
+  private latestTargetSnapshot: Array<{
+    id: string;
+    name: string;
+    targets: Array<{ id: string; value: unknown; unit: string }>;
+    powerKw?: number;
+    priority?: number;
+    currentOn?: boolean;
+    zone?: string;
+  }> = [];
 
   /**
    * onInit is called when the app is initialized.
@@ -41,10 +50,21 @@ module.exports = class MyApp extends Homey.App {
       }
 
       if (key === 'mode_device_targets' || key === 'capacity_mode') {
+        const newMode = this.homey.settings.get('capacity_mode');
+        if (typeof newMode === 'string' && newMode.trim()) {
+          this.capacityMode = newMode;
+        }
         this.loadCapacitySettings();
         this.applyDeviceTargetsForMode(this.capacityMode).catch((error: Error) => {
           this.error('Failed to apply per-mode device targets', error);
         });
+        this.rebuildPlanFromCache();
+        return;
+      }
+
+      if (key === 'capacity_priorities') {
+        this.loadCapacitySettings();
+        this.rebuildPlanFromCache();
         return;
       }
 
@@ -128,6 +148,7 @@ module.exports = class MyApp extends Homey.App {
       state.lastTimestamp = nowMs;
       state.lastPowerW = currentPowerW;
       if (this.capacityGuard) this.capacityGuard.reportTotalPower(currentPowerW / 1000);
+      this.rebuildPlanFromCache();
       this.savePowerTracker();
       return;
     }
@@ -151,6 +172,7 @@ module.exports = class MyApp extends Homey.App {
     state.lastTimestamp = nowMs;
     state.lastPowerW = currentPowerW;
     if (this.capacityGuard) this.capacityGuard.reportTotalPower(currentPowerW / 1000);
+    this.rebuildPlanFromCache();
     this.savePowerTracker();
   }
 
@@ -229,6 +251,8 @@ module.exports = class MyApp extends Homey.App {
       if (!chosen) throw new Error('Mode must be provided');
       this.capacityMode = chosen;
       this.homey.settings.set('capacity_mode', chosen);
+      this.rebuildPlanFromCache();
+      await this.previewDeviceTargetsForMode(chosen);
       return true;
     });
     if (typeof (setCapacityMode as any).registerArgumentAutocompleteListener === 'function') {
@@ -356,6 +380,37 @@ module.exports = class MyApp extends Homey.App {
     await this.refreshTargetDevicesSnapshot();
   }
 
+  private async previewDeviceTargetsForMode(mode: string): Promise<void> {
+    const targets = this.modeDeviceTargets[mode];
+    if (!targets || typeof targets !== 'object') {
+      this.log(`Dry-run mode change: no device targets configured for mode ${mode}`);
+      return;
+    }
+
+    const drivers = this.homey.drivers.getDrivers();
+    for (const driver of Object.values(drivers)) {
+      try {
+        await driver.ready();
+      } catch {
+        continue;
+      }
+
+      const devices = driver.getDevices();
+      for (const device of devices) {
+        const deviceId = device.getData ? device.getData().id || device.getName() : device.getName();
+        const targetValue = targets[deviceId];
+        if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
+
+        const targetCapabilities = device.getCapabilities().filter((capability) => TARGET_CAPABILITY_PREFIXES.some((prefix) => capability.startsWith(prefix)));
+        if (targetCapabilities.length === 0) continue;
+
+        targetCapabilities.forEach((capId) => {
+          this.log(`Dry-run: would set ${capId} for ${device.getName()} to ${targetValue}°C (mode ${mode})`);
+        });
+      }
+    }
+  }
+
   private async refreshTargetDevicesSnapshot(): Promise<void> {
     this.logDebug('Refreshing target devices snapshot');
 
@@ -368,7 +423,10 @@ module.exports = class MyApp extends Homey.App {
     }
 
     this.homey.settings.set('target_devices_snapshot', snapshot);
+    this.latestTargetSnapshot = snapshot;
     this.logDebug(`Stored snapshot with ${snapshot.length} devices`);
+    const plan = this.buildDevicePlanSnapshot(snapshot);
+    this.homey.settings.set('device_plan_snapshot', plan);
     await this.dryRunShedding(snapshot);
   }
 
@@ -404,7 +462,7 @@ module.exports = class MyApp extends Homey.App {
     return this.parseDeviceList(list);
   }
 
-  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number }> {
+  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }> {
     return list
       .map((device: any) => {
         const capabilities: string[] = device.capabilities || [];
@@ -432,13 +490,15 @@ module.exports = class MyApp extends Homey.App {
           targets,
           powerKw,
           priority: this.getPriorityForDevice(device.id || device.data?.id || device.name),
+          currentOn: typeof capabilityObj.onoff?.value === 'boolean' ? capabilityObj.onoff.value : undefined,
+          zone: device.zoneName || device.zone?.name || device.zone || 'Unknown',
         };
       })
-      .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number }>;
+      .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }>;
   }
 
-  private async fetchDevicesViaDrivers(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number }>> {
-    const results: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number }> = [];
+  private async fetchDevicesViaDrivers(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }>> {
+    const results: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }> = [];
 
     const drivers = this.homey.drivers.getDrivers();
     this.logDebug(`Found ${Object.keys(drivers).length} drivers`);
@@ -461,10 +521,19 @@ module.exports = class MyApp extends Homey.App {
         }
 
         let powerKw: number | undefined;
+        let onoffValue: boolean | undefined;
         try {
           const power = await device.getCapabilityValue('measure_power');
           if (typeof power === 'number') {
             powerKw = power > 50 ? power / 1000 : power;
+          }
+        } catch (err) {
+          // ignore
+        }
+        try {
+          const onoff = await device.getCapabilityValue('onoff');
+          if (typeof onoff === 'boolean') {
+            onoffValue = onoff;
           }
         } catch (err) {
           // ignore
@@ -497,6 +566,7 @@ module.exports = class MyApp extends Homey.App {
           targets,
           powerKw,
           priority: this.getPriorityForDevice(device.getData ? device.getData().id || device.getName() : device.getName()),
+          currentOn: typeof onoffValue === 'boolean' ? onoffValue : undefined,
         });
       }
     }
@@ -520,16 +590,16 @@ module.exports = class MyApp extends Homey.App {
 
     const needed = -headroom;
     const candidates = devices
-      .filter((d) => typeof d.powerKw === 'number' && (d.powerKw as number) > 0)
-      .map((d) => ({
-        ...d,
-        priority: this.getPriorityForDevice(d.id),
-      }))
+      .map((d) => {
+        const priority = this.getPriorityForDevice(d.id);
+        const power = typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1; // fallback if unknown
+        return { ...d, priority, effectivePower: power };
+      })
       .sort((a, b) => {
         const pa = (a as any).priority as number;
         const pb = (b as any).priority as number;
         if (pa !== pb) return pa - pb;
-        return (b.powerKw as number) - (a.powerKw as number);
+        return (b as any).effectivePower - (a as any).effectivePower;
       });
 
     let remaining = needed;
@@ -547,6 +617,91 @@ module.exports = class MyApp extends Homey.App {
 
     const names = shedList.map((s) => `${s.name} (${s.powerKw.toFixed(2)}kW)`).join(', ');
     this.logDebug(`Dry run: total=${total.toFixed(2)}kW soft=${softLimit.toFixed(2)}kW, would shed: ${names}`);
+  }
+
+  private rebuildPlanFromCache(): void {
+    if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) return;
+    const plan = this.buildDevicePlanSnapshot(this.latestTargetSnapshot);
+    this.homey.settings.set('device_plan_snapshot', plan);
+  }
+
+  private buildDevicePlanSnapshot(devices: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }>): {
+    meta: { totalKw: number | null; softLimitKw: number; headroomKw: number | null };
+    devices: Array<{
+      id: string;
+      name: string;
+      currentState: string;
+      plannedState: string;
+      currentTarget: unknown;
+      plannedTarget: number | null;
+      priority?: number;
+      powerKw?: number;
+      reason?: string;
+      zone?: string;
+    }>;
+  } {
+    const desiredForMode = this.modeDeviceTargets[this.capacityMode] || {};
+    const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
+    const softLimit = this.computeDynamicSoftLimit();
+    const headroom = total === null ? null : softLimit - total;
+
+    const shedSet = new Set<string>();
+    const shedReasons = new Map<string, string>();
+    if (headroom !== null && headroom < 0) {
+      const needed = -headroom;
+      const candidates = devices
+        .map((d) => {
+          const priority = this.getPriorityForDevice(d.id);
+          const power = typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1; // fallback when unknown
+          return { ...d, priority, effectivePower: power };
+        })
+        .sort((a, b) => {
+          const pa = (a as any).priority ?? 100;
+          const pb = (b as any).priority ?? 100;
+          if (pa !== pb) return pa - pb;
+          return (b as any).effectivePower - (a as any).effectivePower;
+        });
+
+      let remaining = needed;
+      for (const c of candidates) {
+        if (remaining <= 0) break;
+        shedSet.add(c.id);
+        shedReasons.set(c.id, `shed due to capacity (priority ${c.priority ?? 100}, est ${((c as any).effectivePower as number).toFixed(2)}kW)`);
+        remaining -= (c as any).effectivePower as number;
+      }
+    }
+
+    const planDevices = devices.map((dev) => {
+      const priority = this.getPriorityForDevice(dev.id);
+      const desired = desiredForMode[dev.id];
+      const plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
+      const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
+      const currentState = typeof dev.currentOn === 'boolean' ? (dev.currentOn ? 'on' : 'off') : 'unknown';
+      const plannedState = shedSet.has(dev.id) ? 'shed' : 'keep';
+      const reason = shedReasons.get(dev.id) || `keep (priority ${priority})`;
+
+      return {
+        id: dev.id,
+        name: dev.name,
+        currentState,
+        plannedState,
+        currentTarget,
+        plannedTarget,
+        priority,
+        powerKw: dev.powerKw,
+        reason,
+        zone: dev.zone || 'Unknown',
+      };
+    });
+
+    return {
+      meta: {
+        totalKw: total,
+        softLimitKw: softLimit,
+        headroomKw: headroom,
+      },
+      devices: planDevices,
+    };
   }
 
   private getPriorityForDevice(deviceId: string): number {

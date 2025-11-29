@@ -15,6 +15,7 @@
       <div class="tabs" role="tablist">
         <button class="tab active" data-tab="devices" role="tab" aria-selected="true">Devices</button>
         <button class="tab" data-tab="power" role="tab" aria-selected="false">Power usage</button>
+        <button class="tab" data-tab="plan" role="tab" aria-selected="false">Plan</button>
       </div>
     </header>
 
@@ -75,6 +76,16 @@
           <h2>Mode &amp; device priorities</h2>
         </div>
       </div>
+      <form id="active-mode-form" class="form-grid form-inline">
+        <label class="field">
+          <span class="field__label">Active mode</span>
+          <select id="active-mode-select" name="active_mode"></select>
+        </label>
+        <div class="form__actions">
+          <button type="submit" class="btn secondary">Set active mode</button>
+        </div>
+        <small class="field__hint">Applies immediately; device targets stay dry-run for now.</small>
+      </form>
       <form id="priority-form" class="form-grid">
         <label class="field">
           <span class="field__label">Mode</span>
@@ -102,6 +113,27 @@
       <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the “Report power usage” Flow action.</p>
       <div class="list__footer">
         <p class="muted">Totals are derived from reported power samples and grouped per hour.</p>
+      </div>
+    </section>
+
+    <section class="card panel hidden" id="plan-panel" data-panel="plan">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Plan</p>
+          <h2>Planned device states</h2>
+        </div>
+        <div class="pill" id="plan-meta">Awaiting data…</div>
+      </div>
+      <div class="list__header">
+        <p class="muted">Device</p>
+        <div class="muted">Current</div>
+        <div class="muted">Planned</div>
+      </div>
+      <div id="plan-list" class="device-list" role="list"></div>
+      <p id="plan-empty" class="muted" hidden>No plan available yet. Send power data or refresh devices.</p>
+      <div class="list__footer">
+        <button type="button" class="btn secondary" id="plan-refresh-button">Refresh plan</button>
+        <p class="muted">Plan is recalculated when power usage updates or when you refresh devices.</p>
       </div>
     </section>
   </main>

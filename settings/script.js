@@ -14,11 +14,17 @@ const panels = Array.from(document.querySelectorAll('.panel'));
 const capacityForm = /** @type {HTMLFormElement} */ (document.querySelector('#capacity-form'));
 const capacityLimitInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-limit'));
 const capacityMarginInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-margin'));
+const planList = qs('#plan-list');
+const planEmpty = qs('#plan-empty');
+const planMeta = qs('#plan-meta');
+const planRefreshButton = /** @type {HTMLButtonElement} */ (document.querySelector('#plan-refresh-button'));
 const modeSelect = /** @type {HTMLSelectElement} */ (document.querySelector('#mode-select'));
 const modeNewInput = /** @type {HTMLInputElement} */ (document.querySelector('#mode-new'));
 const addModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#add-mode-button'));
 const deleteModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#delete-mode-button'));
 const renameModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#rename-mode-button'));
+const activeModeForm = /** @type {HTMLFormElement} */ (document.querySelector('#active-mode-form'));
+const activeModeSelect = /** @type {HTMLSelectElement} */ (document.querySelector('#active-mode-select'));
 const priorityForm = /** @type {HTMLFormElement} */ (document.querySelector('#priority-form'));
 const priorityList = qs('#priority-list');
 const priorityEmpty = qs('#priority-empty');
@@ -69,6 +75,9 @@ const showTab = (tabId) => {
   panels.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
   });
+  if (tabId === 'plan') {
+    refreshPlan().catch(() => {});
+  }
 };
 
 const showToast = async (message, tone = 'default') => {
@@ -116,6 +125,9 @@ const renderDevices = (devices) => {
     input.value = desired === null ? '' : desired.toString();
     input.dataset.deviceId = device.id;
     input.className = 'target-input';
+    input.addEventListener('change', () => {
+      applyTargetChange(device.id, input.value);
+    });
     targets.appendChild(input);
 
     row.append(name, targets);
@@ -136,6 +148,8 @@ const getTargetDevices = async () => {
 
   return snapshot;
 };
+
+const getPlanSnapshot = async () => getSetting('device_plan_snapshot');
 
 const getPowerUsage = async () => {
   const tracker = await getSetting('power_tracker_state');
@@ -212,7 +226,7 @@ const renderModeOptions = () => {
   Object.keys(capacityPriorities || {}).forEach((m) => modes.add(m));
   Object.keys(modeTargets || {}).forEach((m) => modes.add(m));
   if (modes.size === 0) modes.add('Home');
-  [modeSelect, targetModeSelect].forEach((selectEl) => {
+  [modeSelect, targetModeSelect, activeModeSelect].forEach((selectEl) => {
     if (!selectEl) return;
     selectEl.innerHTML = '';
     Array.from(modes).forEach((m) => {
@@ -392,6 +406,95 @@ const saveTargets = async () => {
   await showToast('Targets saved.', 'ok');
 };
 
+const applyTargetChange = async (deviceId, rawValue) => {
+  const mode = (targetModeSelect?.value || currentMode || 'Home').trim() || 'Home';
+  currentMode = mode;
+  const val = parseFloat(rawValue);
+  if (!Number.isFinite(val)) return;
+  if (!modeTargets[mode]) modeTargets[mode] = {};
+  modeTargets[mode][deviceId] = val;
+  await setSetting('capacity_mode', mode);
+  await setSetting('mode_device_targets', modeTargets);
+};
+
+const renderPlan = (plan) => {
+  planList.innerHTML = '';
+  if (!plan || !Array.isArray(plan.devices) || plan.devices.length === 0) {
+    planEmpty.hidden = false;
+    planMeta.textContent = 'Awaiting data…';
+    return;
+  }
+  planEmpty.hidden = true;
+
+  const meta = plan.meta || {};
+  if (typeof meta.totalKw === 'number' && typeof meta.softLimitKw === 'number' && typeof meta.headroomKw === 'number') {
+    const headroomText = meta.headroomKw >= 0 ? `Headroom: +${meta.headroomKw.toFixed(2)} kW` : `Over: ${meta.headroomKw.toFixed(2)} kW`;
+    planMeta.textContent = `${headroomText} · Total ${meta.totalKw.toFixed(2)} / Soft ${meta.softLimitKw.toFixed(2)} kW`;
+  } else {
+    planMeta.textContent = 'Planning based on latest data';
+  }
+
+  const grouped = plan.devices.reduce((acc, dev) => {
+    const zone = dev.zone || 'Unknown';
+    if (!acc[zone]) acc[zone] = [];
+    acc[zone].push(dev);
+    return acc;
+  }, {});
+
+  Object.keys(grouped)
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((zone) => {
+      const header = document.createElement('div');
+      header.className = 'zone-header';
+      header.textContent = zone;
+      planList.appendChild(header);
+
+      grouped[zone]
+        .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
+        .forEach((dev) => {
+          const row = document.createElement('div');
+          row.className = 'device-row';
+          row.dataset.deviceId = dev.id;
+
+          const name = document.createElement('div');
+          name.className = 'device-row__name';
+          name.textContent = dev.name;
+
+          const metaWrap = document.createElement('div');
+          metaWrap.className = 'device-row__target plan-row__meta';
+
+          const tempLine = document.createElement('div');
+          tempLine.className = 'plan-meta-line';
+          tempLine.innerHTML = `<span class="plan-label">Temperature</span><span>${dev.currentTarget ?? '–'}° → ${dev.plannedTarget ?? '–'}°</span>`;
+
+          const powerLine = document.createElement('div');
+          powerLine.className = 'plan-meta-line';
+          const currentPower = dev.currentState || 'unknown';
+          const plannedPower =
+            dev.plannedState === 'shed'
+              ? 'off'
+              : dev.plannedState === 'keep'
+                ? currentPower
+                : dev.plannedState || 'keep';
+          powerLine.innerHTML = `<span class="plan-label">Power</span><span>${currentPower} → ${plannedPower}</span>`;
+
+          const reasonLine = document.createElement('div');
+          reasonLine.className = 'plan-meta-line';
+          reasonLine.innerHTML = `<span class="plan-label">Reason</span><span>${dev.reason || 'Plan unchanged'}</span>`;
+
+          metaWrap.append(name, tempLine, powerLine, reasonLine);
+
+          row.append(metaWrap);
+          planList.appendChild(row);
+        });
+    });
+};
+
+const refreshPlan = async () => {
+  const plan = await getPlanSnapshot();
+  renderPlan(plan);
+};
+
 const refreshDevices = async () => {
   if (isBusy) return;
   setBusy(true);
@@ -405,6 +508,7 @@ const refreshDevices = async () => {
     latestDevices = devices;
     renderDevices(devices);
     renderPriorities(devices);
+    await refreshPlan();
     statusBadge.textContent = 'Live';
   } catch (error) {
     console.error(error);
@@ -463,6 +567,13 @@ const boot = async () => {
     });
     targetModeSelect?.addEventListener('change', () => {
       setCurrentMode(targetModeSelect.value || 'Home');
+    });
+    activeModeForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const mode = (activeModeSelect?.value || '').trim();
+      if (!mode) return;
+      setCurrentMode(mode);
+      await showToast(`Active mode set to ${mode}`, 'ok');
     });
     addModeButton?.addEventListener('click', async () => {
       const mode = (modeNewInput?.value || '').trim();
@@ -526,6 +637,7 @@ const boot = async () => {
       }
     });
     refreshButton.addEventListener('click', refreshDevices);
+    planRefreshButton?.addEventListener('click', refreshPlan);
     statusBadge.classList.add('ok');
   } catch (error) {
     console.error(error);

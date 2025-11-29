@@ -8,6 +8,7 @@ const buildDom = () => {
     <div class="tabs">
       <button class="tab active" data-tab="devices"></button>
       <button class="tab" data-tab="power"></button>
+      <button class="tab" data-tab="plan"></button>
     </div>
     <section class="panel" data-panel="devices">
       <form id="targets-form">
@@ -18,6 +19,7 @@ const buildDom = () => {
     </section>
     <section class="panel hidden" data-panel="power">
       <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"></form>
+      <form id="active-mode-form"><select id="active-mode-select"></select></form>
       <select id="mode-select"></select>
       <input id="mode-new">
       <button id="add-mode-button"></button>
@@ -28,6 +30,12 @@ const buildDom = () => {
       <p id="priority-empty" hidden></p>
       <div id="power-list"></div>
       <p id="power-empty" hidden></p>
+    </section>
+    <section class="panel hidden" data-panel="plan">
+      <div id="plan-list"></div>
+      <p id="plan-empty" hidden></p>
+      <div id="plan-meta"></div>
+      <button id="plan-refresh-button"></button>
     </section>
     <button id="refresh-button"></button>
   `;

@@ -207,8 +207,7 @@ input[type="number"]:focus {
 
 .list__header,
 .device-row {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
+  display: block;
   gap: 8px;
   align-items: center;
   padding: 10px 0;
@@ -219,19 +218,46 @@ input[type="number"]:focus {
   display: grid;
 }
 
+.zone-header {
+  margin: 12px 0 4px;
+  font-weight: 700;
+  color: #9fb2c8;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 12px;
+}
+
+.plan-row__meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  color: #cdd6e1;
+  font-size: 12px;
+}
+
+.plan-meta-line {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.plan-label {
+  color: #9fb2c8;
+  min-width: 78px;
+  font-weight: 600;
+}
+
 .device-row:last-child {
   border-bottom: none;
 }
 
 .device-row__name {
   font-weight: 700;
+  margin-bottom: 4px;
 }
 
 .device-row__target {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: block;
 }
 
 .panel.hidden {
