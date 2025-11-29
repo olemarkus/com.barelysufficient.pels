@@ -491,7 +491,12 @@ module.exports = class MyApp extends Homey.App {
           powerKw,
           priority: this.getPriorityForDevice(device.id || device.data?.id || device.name),
           currentOn: typeof capabilityObj.onoff?.value === 'boolean' ? capabilityObj.onoff.value : undefined,
-          zone: device.zoneName || device.zone?.name || device.zone || 'Unknown',
+          // Prefer modern zone structure; fall back to legacy to avoid deprecation warning.
+          zone:
+            device.zone?.name ||
+            (typeof device.zone === 'string' ? device.zone : undefined) ||
+            device.zoneName ||
+            'Unknown',
         };
       })
       .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }>;
