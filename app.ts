@@ -644,6 +644,19 @@ module.exports = class MyApp extends Homey.App {
   private rebuildPlanFromCache(): void {
     if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) return;
     const plan = this.buildDevicePlanSnapshot(this.latestTargetSnapshot);
+    // Log planned changes (dry run) for visibility.
+    try {
+      const lines = plan.devices.map((d) => {
+        const temp = `${d.currentTarget ?? '–'}° -> ${d.plannedTarget ?? '–'}°`;
+        const power = `${d.currentState} -> ${d.plannedState === 'shed' ? 'off' : d.plannedState}`;
+        return `${d.name}: temp ${temp}, power ${power}, reason: ${d.reason ?? 'n/a'}`;
+      });
+      if (lines.length) {
+        this.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
+      }
+    } catch (err) {
+      this.logDebug('Plan updated (logging failed)', err);
+    }
     this.homey.settings.set('device_plan_snapshot', plan);
   }
 
