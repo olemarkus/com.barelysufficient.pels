@@ -745,6 +745,9 @@ module.exports = class MyApp extends Homey.App {
 
     // Allow higher instantaneous draw if budget remaining and time is short.
     const allowedKw = remainingKWh / remainingHours;
+    this.logDebug(
+      `Soft limit calc: budget=${netBudgetKWh.toFixed(3)}kWh used=${usedKWh.toFixed(3)}kWh remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h soft=${allowedKw.toFixed(3)}kW`,
+    );
     return allowedKw;
   }
 }
