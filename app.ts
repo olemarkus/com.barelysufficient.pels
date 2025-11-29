@@ -417,7 +417,6 @@ module.exports = class MyApp extends Homey.App {
 
         const targetCaps = capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
         if (targetCaps.length === 0) {
-          this.logDebug(`(API) Device ${device.name} capabilities: ${capabilities.join(', ')}`);
           return null;
         }
 
@@ -458,7 +457,6 @@ module.exports = class MyApp extends Homey.App {
         const deviceCaps = device.getCapabilities();
         const targetCapabilities = deviceCaps.filter((capability) => TARGET_CAPABILITY_PREFIXES.some((prefix) => capability.startsWith(prefix)));
         if (targetCapabilities.length === 0) {
-          this.logDebug(`Device ${device.getName()} capabilities: ${deviceCaps.join(', ')}`);
           continue;
         }
 
