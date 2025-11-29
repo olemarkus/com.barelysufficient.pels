@@ -68,6 +68,12 @@ module.exports = class MyApp extends Homey.App {
         return;
       }
 
+      if (key === 'power_tracker_state') {
+        this.loadPowerTracker();
+        this.rebuildPlanFromCache();
+        return;
+      }
+
       if (key === 'capacity_limit_kw' || key === 'capacity_margin_kw') {
         this.loadCapacitySettings();
         if (this.capacityGuard) {
@@ -171,7 +177,8 @@ module.exports = class MyApp extends Homey.App {
       const hourStart = this.truncateToHour(previousTs);
       const hourEnd = hourStart + 60 * 60 * 1000;
       const segmentMs = Math.min(remainingMs, hourEnd - previousTs);
-      const energyKWh = (previousPower * (segmentMs / 3600000));
+      // previousPower is in W; convert to kWh for the elapsed segment.
+      const energyKWh = (previousPower / 1000) * (segmentMs / 3600000);
       const bucketKey = new Date(hourStart).toISOString();
       state.buckets[bucketKey] = (state.buckets[bucketKey] || 0) + energyKWh;
 

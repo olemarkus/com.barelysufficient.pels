@@ -18,6 +18,7 @@ const planList = qs('#plan-list');
 const planEmpty = qs('#plan-empty');
 const planMeta = qs('#plan-meta');
 const planRefreshButton = /** @type {HTMLButtonElement} */ (document.querySelector('#plan-refresh-button'));
+const resetStatsButton = /** @type {HTMLButtonElement} */ (document.querySelector('#reset-stats-button'));
 const modeSelect = /** @type {HTMLSelectElement} */ (document.querySelector('#mode-select'));
 const modeNewInput = /** @type {HTMLInputElement} */ (document.querySelector('#mode-new'));
 const addModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#add-mode-button'));
@@ -160,7 +161,7 @@ const getPowerUsage = async () => {
       const date = new Date(iso);
       return {
         hour: date,
-        kWh: (Number(value) || 0) / 1000,
+        kWh: Number(value) || 0,
       };
     })
     .sort((a, b) => a.hour.getTime() - b.hour.getTime());
@@ -638,6 +639,15 @@ const boot = async () => {
     });
     refreshButton.addEventListener('click', refreshDevices);
     planRefreshButton?.addEventListener('click', refreshPlan);
+    resetStatsButton?.addEventListener('click', async () => {
+      try {
+        await setSetting('power_tracker_state', {});
+        renderPowerUsage([]);
+        await showToast('Power stats reset.', 'ok');
+      } catch (err) {
+        await showToast(err.message || 'Failed to reset stats.', 'warn');
+      }
+    });
     statusBadge.classList.add('ok');
   } catch (error) {
     console.error(error);
