@@ -150,6 +150,26 @@ export default class CapacityGuard {
     this.allocatedKw = total;
   }
 
+  /**
+   * Replace the controllable set with a supplied list (used by app snapshot sync).
+   */
+  setControllables(devices: Array<{ id: string; name: string; powerKw: number; priority: number; on?: boolean }>): void {
+    this.controllables.clear();
+    for (const dev of devices) {
+      if (!dev || !dev.id) continue;
+      const power = Number.isFinite(dev.powerKw) && dev.powerKw >= 0 ? dev.powerKw : 0;
+      const priority = Number.isFinite(dev.priority) ? dev.priority : 100;
+      const desired: DesiredState = dev.on ? 'ON' : 'OFF';
+      this.controllables.set(dev.id, {
+        name: dev.name,
+        powerKw: power,
+        priority,
+        desired,
+      });
+    }
+    this.recomputeAllocation();
+  }
+
   async tick(): Promise<void> {
     if (this.mainPowerKw === null) return;
     const soft = this.getSoftLimit();

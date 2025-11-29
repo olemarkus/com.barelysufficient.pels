@@ -496,6 +496,7 @@ module.exports = class MyApp extends Homey.App {
 
     this.homey.settings.set('target_devices_snapshot', snapshot);
     this.latestTargetSnapshot = snapshot;
+    this.syncGuardFromSnapshot(snapshot);
     this.logDebug(`Stored snapshot with ${snapshot.length} devices`);
     const plan = this.buildDevicePlanSnapshot(snapshot);
     this.homey.settings.set('device_plan_snapshot', plan);
@@ -738,7 +739,7 @@ module.exports = class MyApp extends Homey.App {
   }
 
   private buildDevicePlanSnapshot(devices: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }>): {
-    meta: { totalKw: number | null; softLimitKw: number; headroomKw: number | null };
+    meta: { totalKw: number | null; softLimitKw: number; headroomKw: number | null; hourlyBudgetExhausted?: boolean };
     devices: Array<{
       id: string;
       name: string;
@@ -774,6 +775,7 @@ module.exports = class MyApp extends Homey.App {
         )} total=${total === null ? 'unknown' : total.toFixed(3)}`,
       );
       const candidates = devices
+        .filter((d) => d.controllable !== false)
         .map((d) => {
           const priority = this.getPriorityForDevice(d.id);
           const power = typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1; // fallback when unknown
@@ -802,8 +804,14 @@ module.exports = class MyApp extends Homey.App {
       const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
       const currentState = typeof dev.currentOn === 'boolean' ? (dev.currentOn ? 'on' : 'off') : 'unknown';
       const controllable = dev.controllable !== false;
-      const plannedState = controllable ? (shedSet.has(dev.id) ? 'shed' : 'keep') : 'keep';
-      const reason = controllable ? shedReasons.get(dev.id) || `keep (priority ${priority})` : 'not controllable by PELS';
+      let plannedState = controllable ? (shedSet.has(dev.id) ? 'shed' : 'keep') : 'keep';
+      let reason = controllable ? shedReasons.get(dev.id) || `keep (priority ${priority})` : 'not controllable by PELS';
+
+      // If hourly energy budget exhausted, proactively shed any controllable device that is currently on (or unknown state)
+      if (this.hourlyBudgetExhausted && controllable && plannedState !== 'shed' && (currentState === 'on' || currentState === 'unknown')) {
+        plannedState = 'shed';
+        reason = 'shed due to exhausted hourly energy budget';
+      }
 
       return {
         id: dev.id,
@@ -825,9 +833,45 @@ module.exports = class MyApp extends Homey.App {
         totalKw: total,
         softLimitKw: softLimit,
         headroomKw: headroom,
+        hourlyBudgetExhausted: this.hourlyBudgetExhausted,
       },
       devices: planDevices,
     };
+  }
+
+  private syncGuardFromSnapshot(snapshot: Array<{ id: string; name: string; powerKw?: number; priority?: number; currentOn?: boolean; controllable?: boolean }>): void {
+    if (!this.capacityGuard) return;
+    const guardAny: any = this.capacityGuard as any;
+    const hasHelper = typeof guardAny.setControllables === 'function';
+    const controllables = snapshot
+      .filter((d) => d.controllable !== false)
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        powerKw: typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1,
+        priority: this.getPriorityForDevice(d.id),
+        on: d.currentOn === true,
+      }));
+    if (hasHelper) {
+      guardAny.setControllables(controllables);
+      return;
+    }
+
+    // Fallback for older CapacityGuard builds: manually reset the internal map.
+    if (guardAny.controllables && typeof guardAny.controllables.clear === 'function') {
+      guardAny.controllables.clear();
+      for (const dev of controllables) {
+        guardAny.controllables.set(dev.id, {
+          name: dev.name,
+          powerKw: dev.powerKw,
+          priority: dev.priority,
+          desired: dev.on ? 'ON' : 'OFF',
+        });
+      }
+      if (typeof guardAny.recomputeAllocation === 'function') {
+        guardAny.recomputeAllocation();
+      }
+    }
   }
 
   private getPriorityForDevice(deviceId: string): number {
@@ -946,7 +990,37 @@ module.exports = class MyApp extends Homey.App {
       if (dev.controllable === false) continue;
       // Apply on/off when shedding.
       if (dev.plannedState === 'shed' && dev.currentState !== 'off') {
+        this.log(`Capacity: turning off ${dev.name || dev.id} due to shedding`);
         await this.applySheddingToDevice(dev.id, dev.name);
+        continue;
+      }
+      // Restore power if the plan keeps it on and it was off.
+      if (dev.plannedState !== 'shed' && dev.currentState === 'off') {
+        const name = dev.name || dev.id;
+        const device = await this.findDeviceInstance(dev.id);
+        if (device) {
+          const caps = device.getCapabilities ? device.getCapabilities() : [];
+          if (caps.includes('onoff')) {
+            try {
+              await device.setCapabilityValue('onoff', true);
+              this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
+              this.updateLocalSnapshot(dev.id, { on: true });
+              continue;
+            } catch (error) {
+              this.error(`Failed to turn on ${name} via driver`, error);
+            }
+          }
+        }
+
+        if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
+          try {
+            await this.homeyApi.devices.setCapabilityValue({ deviceId: dev.id, capabilityId: 'onoff', value: true });
+            this.log(`Capacity: turning on ${name} via HomeyAPI (restored from shed/off state)`);
+            this.updateLocalSnapshot(dev.id, { on: true });
+          } catch (error) {
+            this.error(`Failed to turn on ${name} via HomeyAPI`, error);
+          }
+        }
       }
 
       // Apply target temperature changes.

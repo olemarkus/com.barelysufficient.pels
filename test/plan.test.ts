@@ -47,6 +47,65 @@ describe('Device plan snapshot', () => {
     expect(dev1Plan?.plannedState).toBe('keep');
   });
 
+  it('executes shedding action when plan says shed and dry run is off', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    const spy = jest.fn().mockResolvedValue(undefined);
+    (app as any).applySheddingToDevice = spy;
+
+    const plan = {
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater A',
+          plannedState: 'shed',
+          currentState: 'on',
+          plannedTarget: null,
+          currentTarget: null,
+          controllable: true,
+        },
+      ],
+    };
+
+    await (app as any).applyPlanActions(plan);
+    expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A');
+  });
+
+  it('ignores non-controllable devices when planning shedding', async () => {
+    const controllable = new MockDevice('dev-ctl', 'Heater A', ['target_temperature']);
+    const nonCtl = new MockDevice('dev-non', 'Heater B', ['target_temperature']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [controllable, nonCtl]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-ctl': true, 'dev-non': false });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Force soft limit low and total high to trigger shedding.
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+    await (app as any).recordPowerSample(5000); // 5 kW total, over limit
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const ctlPlan = plan.devices.find((d: any) => d.id === 'dev-ctl');
+    const nonCtlPlan = plan.devices.find((d: any) => d.id === 'dev-non');
+
+    expect(ctlPlan?.plannedState).toBe('shed');
+    expect(nonCtlPlan?.plannedState).toBe('keep');
+  });
+
   it('updates planned target when switching modes', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
     setMockDrivers({
