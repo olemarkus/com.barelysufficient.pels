@@ -46,10 +46,139 @@
     }
   ],
   "flow": {
+    "triggers": [
+      {
+        "title": {
+          "en": "Device shed due to capacity"
+        },
+        "titleFormatted": {
+          "en": "[[device_name]] ([[device_id]]) shed due to capacity"
+        },
+        "args": [
+          {
+            "name": "device_name",
+            "type": "text",
+            "title": {
+              "en": "Device name"
+            }
+          },
+          {
+            "name": "device_id",
+            "type": "text",
+            "title": {
+              "en": "Device ID"
+            }
+          }
+        ],
+        "id": "capacity_device_shed"
+      },
+      {
+        "title": {
+          "en": "Capacity guard: shedding ended"
+        },
+        "titleFormatted": {
+          "en": "Capacity guard: shedding ended"
+        },
+        "id": "capacity_shedding_ended"
+      },
+      {
+        "title": {
+          "en": "Capacity guard: shedding started"
+        },
+        "titleFormatted": {
+          "en": "Capacity guard: shedding started"
+        },
+        "id": "capacity_shedding_started"
+      }
+    ],
+    "conditions": [
+      {
+        "title": {
+          "en": "Is there enough capacity?"
+        },
+        "titleFormatted": {
+          "en": "Is there enough capacity for [[required_kw]] kW?"
+        },
+        "args": [
+          {
+            "name": "required_kw",
+            "type": "number",
+            "title": {
+              "en": "Required power (kW)"
+            },
+            "min": 0,
+            "step": 0.1
+          }
+        ],
+        "id": "has_capacity_for"
+      },
+      {
+        "title": {
+          "en": "Capacity headroom band"
+        },
+        "titleFormatted": {
+          "en": "Capacity headroom is [[band]]"
+        },
+        "args": [
+          {
+            "name": "band",
+            "type": "dropdown",
+            "title": {
+              "en": "Band"
+            },
+            "values": [
+              {
+                "id": "HIGH",
+                "title": {
+                  "en": "High"
+                }
+              },
+              {
+                "id": "MEDIUM",
+                "title": {
+                  "en": "Medium"
+                }
+              },
+              {
+                "id": "LOW",
+                "title": {
+                  "en": "Low"
+                }
+              }
+            ]
+          }
+        ],
+        "id": "headroom_band"
+      }
+    ],
     "actions": [
       {
         "title": {
+          "en": "Force OFF"
+        },
+        "titleFormatted": {
+          "en": "Force OFF [[device_id]]"
+        },
+        "hint": {
+          "en": "Turn a controllable device OFF and free its capacity."
+        },
+        "args": [
+          {
+            "name": "device_id",
+            "type": "text",
+            "title": {
+              "en": "Device ID"
+            }
+          }
+        ],
+        "id": "force_off_capacity"
+      },
+      {
+        "title": {
           "en": "Report power usage"
+        },
+        "titleFormatted": {
+          "en": "Report power [[power]] W"
         },
         "hint": {
           "en": "Feed instantaneous power (W) from a meter to track hourly energy usage."
@@ -66,6 +195,130 @@
           }
         ],
         "id": "report_power_usage"
+      },
+      {
+        "title": {
+          "en": "Report total power"
+        },
+        "titleFormatted": {
+          "en": "Report total power [[total_power_kw]] kW"
+        },
+        "hint": {
+          "en": "Feed instantaneous total power (kW) from main meter to the capacity guard."
+        },
+        "args": [
+          {
+            "name": "total_power_kw",
+            "type": "number",
+            "title": {
+              "en": "Total power (kW)"
+            },
+            "min": 0,
+            "step": 0.01
+          }
+        ],
+        "id": "report_total_power"
+      },
+      {
+        "title": {
+          "en": "Request ON under capacity limit"
+        },
+        "titleFormatted": {
+          "en": "Request ON [[device_name]] ([[device_id]]) at [[power_kw]] kW (priority [[priority]])"
+        },
+        "hint": {
+          "en": "Turn a controllable device ON only if capacity allows."
+        },
+        "args": [
+          {
+            "name": "device_id",
+            "type": "text",
+            "title": {
+              "en": "Device ID"
+            }
+          },
+          {
+            "name": "device_name",
+            "type": "text",
+            "title": {
+              "en": "Device name"
+            }
+          },
+          {
+            "name": "power_kw",
+            "type": "number",
+            "title": {
+              "en": "Power (kW)"
+            },
+            "min": 0,
+            "step": 0.1
+          },
+          {
+            "name": "priority",
+            "type": "number",
+            "title": {
+              "en": "Priority (lower sheds first)"
+            },
+            "min": 0,
+            "step": 1
+          }
+        ],
+        "id": "request_on_capacity"
+      },
+      {
+        "title": {
+          "en": "Save capacity settings"
+        },
+        "titleFormatted": {
+          "en": "Save capacity limit [[limit_kw]] kW with margin [[margin_kw]] kW"
+        },
+        "hint": {
+          "en": "Persist limit and margin for the capacity guard."
+        },
+        "args": [
+          {
+            "name": "limit_kw",
+            "type": "number",
+            "title": {
+              "en": "Limit (kW)"
+            },
+            "min": 0.1,
+            "step": 0.1
+          },
+          {
+            "name": "margin_kw",
+            "type": "number",
+            "title": {
+              "en": "Margin (kW)"
+            },
+            "min": 0,
+            "step": 0.05
+          }
+        ],
+        "id": "save_capacity_settings"
+      },
+      {
+        "title": {
+          "en": "Set capacity limit"
+        },
+        "titleFormatted": {
+          "en": "Set capacity limit to [[limit_kw]] kW"
+        },
+        "hint": {
+          "en": "Set the max allowed power (kW) for the capacity guard."
+        },
+        "args": [
+          {
+            "name": "limit_kw",
+            "type": "number",
+            "title": {
+              "en": "Limit (kW)"
+            },
+            "min": 0.1,
+            "step": 0.1
+          }
+        ],
+        "id": "set_capacity_limit"
       }
     ]
   }

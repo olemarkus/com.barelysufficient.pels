@@ -85,6 +85,12 @@ export const mockHomeyInstance = {
     getActionCard: () => ({
       registerRunListener: () => {},
     }),
+    getConditionCard: () => ({
+      registerRunListener: () => {},
+    }),
+    getTriggerCard: () => ({
+      trigger: () => {},
+    }),
   },
   drivers: {
     getDrivers: (): Record<string, MockDriver> => ({}),

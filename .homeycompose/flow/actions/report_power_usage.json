@@ -2,6 +2,9 @@
   "title": {
     "en": "Report power usage"
   },
+  "titleFormatted": {
+    "en": "Report power [[power]] W"
+  },
   "hint": {
     "en": "Feed instantaneous power (W) from a meter to track hourly energy usage."
   },

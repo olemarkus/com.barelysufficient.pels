@@ -1,0 +1,24 @@
+{
+  "title": {
+    "en": "Device shed due to capacity"
+  },
+  "titleFormatted": {
+    "en": "[[device_name]] ([[device_id]]) shed due to capacity"
+  },
+  "args": [
+    {
+      "name": "device_name",
+      "type": "text",
+      "title": {
+        "en": "Device name"
+      }
+    },
+    {
+      "name": "device_id",
+      "type": "text",
+      "title": {
+        "en": "Device ID"
+      }
+    }
+  ]
+}

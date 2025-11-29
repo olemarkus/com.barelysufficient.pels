@@ -14,6 +14,7 @@ const buildDom = () => {
     <p id="empty-state" hidden></p>
     </section>
     <section class="panel hidden" data-panel="power">
+      <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"></form>
       <div id="power-list"></div>
       <p id="power-empty" hidden></p>
     </section>

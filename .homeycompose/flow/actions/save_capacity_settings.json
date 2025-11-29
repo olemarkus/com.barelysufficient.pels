@@ -1,0 +1,31 @@
+{
+  "title": {
+    "en": "Save capacity settings"
+  },
+  "titleFormatted": {
+    "en": "Save capacity limit [[limit_kw]] kW with margin [[margin_kw]] kW"
+  },
+  "hint": {
+    "en": "Persist limit and margin for the capacity guard."
+  },
+  "args": [
+    {
+      "name": "limit_kw",
+      "type": "number",
+      "title": {
+        "en": "Limit (kW)"
+      },
+      "min": 0.1,
+      "step": 0.1
+    },
+    {
+      "name": "margin_kw",
+      "type": "number",
+      "title": {
+        "en": "Margin (kW)"
+      },
+      "min": 0,
+      "step": 0.05
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "title": {
+    "en": "Request ON under capacity limit"
+  },
+  "titleFormatted": {
+    "en": "Request ON [[device_name]] ([[device_id]]) at [[power_kw]] kW (priority [[priority]])"
+  },
+  "hint": {
+    "en": "Turn a controllable device ON only if capacity allows."
+  },
+  "args": [
+    {
+      "name": "device_id",
+      "type": "text",
+      "title": {
+        "en": "Device ID"
+      }
+    },
+    {
+      "name": "device_name",
+      "type": "text",
+      "title": {
+        "en": "Device name"
+      }
+    },
+    {
+      "name": "power_kw",
+      "type": "number",
+      "title": {
+        "en": "Power (kW)"
+      },
+      "min": 0,
+      "step": 0.1
+    },
+    {
+      "name": "priority",
+      "type": "number",
+      "title": {
+        "en": "Priority (lower sheds first)"
+      },
+      "min": 0,
+      "step": 1
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": {
+    "en": "Set capacity limit"
+  },
+  "titleFormatted": {
+    "en": "Set capacity limit to [[limit_kw]] kW"
+  },
+  "hint": {
+    "en": "Set the max allowed power (kW) for the capacity guard."
+  },
+  "args": [
+    {
+      "name": "limit_kw",
+      "type": "number",
+      "title": {
+        "en": "Limit (kW)"
+      },
+      "min": 0.1,
+      "step": 0.1
+    }
+  ]
+}

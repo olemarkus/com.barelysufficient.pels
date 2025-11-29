@@ -9,6 +9,9 @@ const powerList = qs('#power-list');
 const powerEmpty = qs('#power-empty');
 const tabs = Array.from(document.querySelectorAll('.tab'));
 const panels = Array.from(document.querySelectorAll('.panel'));
+const capacityForm = /** @type {HTMLFormElement} */ (document.querySelector('#capacity-form'));
+const capacityLimitInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-limit'));
+const capacityMarginInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-margin'));
 
 let isBusy = false;
 let homey = null;
@@ -156,6 +159,25 @@ const renderPowerUsage = (entries) => {
   });
 };
 
+const loadCapacitySettings = async () => {
+  const limit = await getSetting('capacity_limit_kw');
+  const margin = await getSetting('capacity_margin_kw');
+  const fallbackLimit = 10;
+  const fallbackMargin = 0.2;
+  capacityLimitInput.value = typeof limit === 'number' ? limit.toString() : fallbackLimit.toString();
+  capacityMarginInput.value = typeof margin === 'number' ? margin.toString() : fallbackMargin.toString();
+};
+
+const saveCapacitySettings = async () => {
+  const limit = parseFloat(capacityLimitInput.value);
+  const margin = parseFloat(capacityMarginInput.value);
+  if (!Number.isFinite(limit) || limit <= 0) throw new Error('Limit must be positive.');
+  if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
+  await setSetting('capacity_limit_kw', limit);
+  await setSetting('capacity_margin_kw', margin);
+  await showToast('Capacity settings saved.', 'ok');
+};
+
 const refreshDevices = async () => {
   if (isBusy) return;
   setBusy(true);
@@ -216,6 +238,15 @@ const boot = async () => {
     await refreshDevices();
     const usage = await getPowerUsage();
     renderPowerUsage(usage);
+    await loadCapacitySettings();
+    capacityForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await saveCapacitySettings();
+      } catch (err) {
+        await showToast(err.message || 'Failed to save capacity settings.', 'warn');
+      }
+    });
     refreshButton.addEventListener('click', refreshDevices);
     statusBadge.classList.add('ok');
   } catch (error) {
