@@ -36,6 +36,22 @@ module.exports = class MyApp extends Homey.App {
     zone?: string;
     controllable?: boolean;
   }> = [];
+  private lastPlanSignature = '';
+  // Set when remaining hourly energy budget has been fully consumed (remainingKWh <= 0)
+  private hourlyBudgetExhausted = false;
+
+  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
+    const snap = this.latestTargetSnapshot.find((d) => d.id === deviceId);
+    if (!snap) return;
+    if (typeof updates.target === 'number') {
+      if (snap.targets && snap.targets[0]) {
+        snap.targets[0].value = updates.target;
+      }
+    }
+    if (typeof updates.on === 'boolean') {
+      snap.currentOn = updates.on;
+    }
+  }
 
   /**
    * onInit is called when the app is initialized.
@@ -686,20 +702,36 @@ module.exports = class MyApp extends Homey.App {
   private rebuildPlanFromCache(): void {
     if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) return;
     const plan = this.buildDevicePlanSnapshot(this.latestTargetSnapshot);
-    // Log planned changes (dry run) for visibility.
-    try {
-      const lines = plan.devices.map((d) => {
-        const temp = `${d.currentTarget ?? '–'}° -> ${d.plannedTarget ?? '–'}°`;
-        const power = `${d.currentState} -> ${d.plannedState === 'shed' ? 'off' : d.plannedState}`;
-        return `${d.name}: temp ${temp}, power ${power}, reason: ${d.reason ?? 'n/a'}`;
-      });
-      if (lines.length) {
-        this.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
+    // Log planned changes (dry run) for visibility, but skip if nothing changed.
+    const signature = JSON.stringify(
+      plan.devices.map((d) => ({
+        id: d.id,
+        plannedState: d.plannedState,
+        plannedTarget: d.plannedTarget,
+        currentState: d.currentState,
+        reason: d.reason,
+      })),
+    );
+    if (signature !== this.lastPlanSignature) {
+      try {
+        const lines = plan.devices.map((d) => {
+          const temp = `${d.currentTarget ?? '–'}° -> ${d.plannedTarget ?? '–'}°`;
+          const power = `${d.currentState} -> ${d.plannedState === 'shed' ? 'off' : d.plannedState}`;
+          return `${d.name}: temp ${temp}, power ${power}, reason: ${d.reason ?? 'n/a'}`;
+        });
+        if (lines.length) {
+          this.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
+        }
+      } catch (err) {
+        this.logDebug('Plan updated (logging failed)', err);
       }
-    } catch (err) {
-      this.logDebug('Plan updated (logging failed)', err);
+      this.lastPlanSignature = signature;
     }
     this.homey.settings.set('device_plan_snapshot', plan);
+    const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
+    if (this.capacityDryRun && hasShedding) {
+      this.logDebug('Dry run enabled; skipping shedding actions.');
+    }
     if (!this.capacityDryRun) {
       this.applyPlanActions(plan).catch((error: Error) => this.error('Failed to apply plan actions', error));
     }
@@ -724,12 +756,23 @@ module.exports = class MyApp extends Homey.App {
     const desiredForMode = this.modeDeviceTargets[this.capacityMode] || {};
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
     const softLimit = this.computeDynamicSoftLimit();
-    const headroom = total === null ? null : softLimit - total;
+    const headroomRaw = total === null ? null : softLimit - total;
+    let headroom = headroomRaw === null && softLimit <= 0 ? -1 : headroomRaw;
+    // If the hourly energy budget is exhausted and soft limit is zero while instantaneous power reads ~0,
+    // force a minimal negative headroom to proactively shed controllable devices.
+    if (this.hourlyBudgetExhausted && softLimit <= 0 && total !== null && total <= 0.01) {
+      headroom = -1; // triggers shedding logic with needed ~=1 kW (effectivePower fallback)
+    }
 
     const shedSet = new Set<string>();
     const shedReasons = new Map<string, string>();
     if (headroom !== null && headroom < 0) {
       const needed = -headroom;
+      this.logDebug(
+        `Planning shed: soft=${softLimit.toFixed(3)} headroom=${headroom.toFixed(
+          3,
+        )} total=${total === null ? 'unknown' : total.toFixed(3)}`,
+      );
       const candidates = devices
         .map((d) => {
           const priority = this.getPriorityForDevice(d.id);
@@ -825,6 +868,7 @@ module.exports = class MyApp extends Homey.App {
     const bucketKey = new Date(hourStart).toISOString();
     const usedKWh = this.powerTracker.buckets?.[bucketKey] || 0;
     const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
+    this.hourlyBudgetExhausted = remainingKWh <= 0;
 
     // Allow higher instantaneous draw if budget remaining and time is short.
     const allowedKw = remainingKWh / remainingHours;
@@ -874,6 +918,7 @@ module.exports = class MyApp extends Homey.App {
       try {
         await device.setCapabilityValue('onoff', false);
         this.log(`Actuator: turned off ${name} due to capacity`);
+        this.updateLocalSnapshot(deviceId, { on: false });
         return;
       } catch (error) {
         this.error(`Failed to turn off ${name} via driver`, error);
@@ -883,8 +928,9 @@ module.exports = class MyApp extends Homey.App {
     // Fallback to Homey API if driver lookup failed.
     if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
       try {
-        await this.homeyApi.devices.setCapabilityValue({ id: deviceId, capabilityId: 'onoff' }, false);
+        await this.homeyApi.devices.setCapabilityValue({ deviceId, capabilityId: 'onoff', value: false });
         this.log(`Actuator: turned off ${name} via HomeyAPI`);
+        this.updateLocalSnapshot(deviceId, { on: false });
         return;
       } catch (error) {
         this.error(`Failed to turn off ${name} via HomeyAPI`, error);
@@ -915,6 +961,7 @@ module.exports = class MyApp extends Homey.App {
           try {
             await device.setCapabilityValue(targetCap, dev.plannedTarget);
             this.log(`Set ${targetCap} for ${dev.name || dev.id} to ${dev.plannedTarget}`);
+            this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
             continue;
           } catch (error) {
             this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via driver`, error);
@@ -924,8 +971,13 @@ module.exports = class MyApp extends Homey.App {
         // Fallback to Homey API if available.
         if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
           try {
-            await this.homeyApi.devices.setCapabilityValue({ id: dev.id, capabilityId: targetCap }, dev.plannedTarget);
+            await this.homeyApi.devices.setCapabilityValue({
+              deviceId: dev.id,
+              capabilityId: targetCap,
+              value: dev.plannedTarget,
+            });
             this.log(`Set ${targetCap} for ${dev.name || dev.id} to ${dev.plannedTarget} via HomeyAPI`);
+            this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
           } catch (error) {
             this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via HomeyAPI`, error);
           }
