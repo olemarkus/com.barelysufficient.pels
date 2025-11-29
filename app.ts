@@ -21,7 +21,7 @@ module.exports = class MyApp extends Homey.App {
     limitKw: 10,
     marginKw: 0.2,
   };
-  private capacityMode = 'home';
+  private capacityMode = 'Home';
   private capacityPriorities: Record<string, Record<string, number>> = {};
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
 

@@ -22,6 +22,7 @@ const buildDom = () => {
       <input id="mode-new">
       <button id="add-mode-button"></button>
       <button id="delete-mode-button"></button>
+      <button id="rename-mode-button"></button>
       <form id="priority-form"></form>
       <div id="priority-list"></div>
       <p id="priority-empty" hidden></p>
@@ -73,5 +74,42 @@ describe('settings script', () => {
 
     expect(document.querySelectorAll('#device-list .device-row').length).toBe(0);
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(false);
+  });
+
+  it('renames a mode and updates settings', async () => {
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
+      if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
+      if (key === 'capacity_mode') return cb(null, 'Home');
+      return cb(null, [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        },
+      ]);
+    });
+
+    // @ts-ignore settings script is plain JS
+    await import('../settings/script.js');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const renameBtn = document.querySelector('#rename-mode-button') as HTMLButtonElement;
+    const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
+    const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
+    modeSelect.value = 'home';
+    modeInput.value = 'cozy';
+    renameBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const modeOptions = Array.from(modeSelect.options).map((o) => o.value);
+    expect(modeOptions).toContain('cozy');
+    expect(setSpy).toHaveBeenCalledWith('capacity_mode', 'cozy', expect.any(Function));
+    expect(setSpy).toHaveBeenCalledWith('capacity_priorities', { cozy: { 'dev-1': 1 } }, expect.any(Function));
+    expect(setSpy).toHaveBeenCalledWith('mode_device_targets', { cozy: { 'dev-1': 20 } }, expect.any(Function));
   });
 });

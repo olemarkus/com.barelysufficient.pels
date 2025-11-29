@@ -18,6 +18,7 @@ const modeSelect = /** @type {HTMLSelectElement} */ (document.querySelector('#mo
 const modeNewInput = /** @type {HTMLInputElement} */ (document.querySelector('#mode-new'));
 const addModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#add-mode-button'));
 const deleteModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#delete-mode-button'));
+const renameModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#rename-mode-button'));
 const priorityForm = /** @type {HTMLFormElement} */ (document.querySelector('#priority-form'));
 const priorityList = qs('#priority-list');
 const priorityEmpty = qs('#priority-empty');
@@ -25,7 +26,7 @@ const priorityEmpty = qs('#priority-empty');
 let isBusy = false;
 let homey = null;
 let capacityPriorities = {};
-let currentMode = 'home';
+let currentMode = 'Home';
 let latestDevices = [];
 let modeTargets = {};
 
@@ -200,16 +201,17 @@ const loadModeAndPriorities = async () => {
   const mode = await getSetting('capacity_mode');
   const priorities = await getSetting('capacity_priorities');
   const targets = await getSetting('mode_device_targets');
-  currentMode = typeof mode === 'string' && mode.trim() ? mode : 'home';
+  currentMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
   capacityPriorities = priorities && typeof priorities === 'object' ? priorities : {};
   modeTargets = targets && typeof targets === 'object' ? targets : {};
   renderModeOptions();
 };
 
 const renderModeOptions = () => {
-  const modes = new Set(['home', currentMode]);
+  const modes = new Set([currentMode]);
   Object.keys(capacityPriorities || {}).forEach((m) => modes.add(m));
   Object.keys(modeTargets || {}).forEach((m) => modes.add(m));
+  if (modes.size === 0) modes.add('Home');
   [modeSelect, targetModeSelect].forEach((selectEl) => {
     if (!selectEl) return;
     selectEl.innerHTML = '';
@@ -261,12 +263,12 @@ const renderPriorities = (devices) => {
 };
 
 const getPriority = (deviceId) => {
-  const mode = currentMode || 'home';
+  const mode = currentMode || 'Home';
   return capacityPriorities[mode]?.[deviceId] ?? 100;
 };
 
 const getDesiredTarget = (device) => {
-  const mode = currentMode || 'home';
+  const mode = currentMode || 'Home';
   const value = modeTargets[mode]?.[device.id];
   if (typeof value === 'number') return value;
   const firstTarget = device.targets?.find?.(() => true);
@@ -275,12 +277,38 @@ const getDesiredTarget = (device) => {
 };
 
 const setCurrentMode = (mode) => {
-  const next = (mode || '').trim() || 'home';
+  const next = (mode || '').trim() || 'Home';
   currentMode = next;
   renderModeOptions();
   renderPriorities(latestDevices);
   renderDevices(latestDevices);
   setSetting('capacity_mode', currentMode).catch(() => {});
+};
+
+const renameMode = async (oldName, newName) => {
+  const oldKey = (oldName || '').trim();
+  const newKey = (newName || '').trim();
+  if (!oldKey || !newKey || oldKey === newKey) return;
+  if (capacityPriorities[newKey] || modeTargets[newKey]) {
+    await showToast('Mode name already exists.', 'warn');
+    return;
+  }
+  if (capacityPriorities[oldKey]) {
+    capacityPriorities[newKey] = capacityPriorities[oldKey];
+    delete capacityPriorities[oldKey];
+  }
+  if (modeTargets[oldKey]) {
+    modeTargets[newKey] = modeTargets[oldKey];
+    delete modeTargets[oldKey];
+  }
+  if (currentMode === oldKey) currentMode = newKey;
+  await setSetting('capacity_priorities', capacityPriorities);
+  await setSetting('mode_device_targets', modeTargets);
+  await setSetting('capacity_mode', currentMode);
+  renderModeOptions();
+  renderPriorities(latestDevices);
+  renderDevices(latestDevices);
+  await showToast(`Renamed mode to ${newKey}`, 'ok');
 };
 
 const refreshPriorityBadges = () => {
@@ -326,7 +354,7 @@ priorityList?.addEventListener('dragover', (e) => {
 });
 
 const savePriorities = async () => {
-  const mode = (modeSelect?.value || '').trim() || 'home';
+  const mode = (modeSelect?.value || '').trim() || 'Home';
   currentMode = mode;
   const rows = priorityList?.querySelectorAll('.device-row') || [];
   const modeMap = capacityPriorities[mode] || {};
@@ -345,7 +373,7 @@ const savePriorities = async () => {
 };
 
 const saveTargets = async () => {
-  const mode = (targetModeSelect?.value || currentMode || 'home').trim() || 'home';
+  const mode = (targetModeSelect?.value || currentMode || 'Home').trim() || 'Home';
   currentMode = mode;
   const inputs = deviceList?.querySelectorAll('.target-input') || [];
   const modeMap = modeTargets[mode] || {};
@@ -431,10 +459,10 @@ const boot = async () => {
     renderPriorities(latestDevices);
     renderDevices(latestDevices);
     modeSelect?.addEventListener('change', () => {
-      setCurrentMode(modeSelect.value || 'home');
+      setCurrentMode(modeSelect.value || 'Home');
     });
     targetModeSelect?.addEventListener('change', () => {
-      setCurrentMode(targetModeSelect.value || 'home');
+      setCurrentMode(targetModeSelect.value || 'Home');
     });
     addModeButton?.addEventListener('click', async () => {
       const mode = (modeNewInput?.value || '').trim();
@@ -456,7 +484,7 @@ const boot = async () => {
       if (mode && capacityPriorities[mode]) {
         delete capacityPriorities[mode];
         if (modeTargets[mode]) delete modeTargets[mode];
-        currentMode = 'home';
+        currentMode = 'Home';
         renderModeOptions();
         renderPriorities(latestDevices);
         renderDevices(latestDevices);
@@ -465,6 +493,13 @@ const boot = async () => {
         await setSetting('capacity_mode', currentMode);
         await showToast(`Deleted mode ${mode}`, 'warn');
       }
+    });
+    renameModeButton?.addEventListener('click', async () => {
+      const oldMode = modeSelect?.value || currentMode;
+      const newMode = (modeNewInput?.value || '').trim();
+      if (!newMode) return;
+      await renameMode(oldMode, newMode);
+      modeNewInput.value = '';
     });
     capacityForm.addEventListener('submit', async (event) => {
       event.preventDefault();
