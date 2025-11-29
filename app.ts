@@ -7,141 +7,7 @@ const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint']
 const DEBUG_LOG = false;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { HomeyAPI } = require('homey-api');
-
-type DesiredState = 'ON' | 'OFF' | 'SHED';
-
-class CapacityGuard {
-  private limitKw = 10;
-  private softMarginKw = 0.2;
-  private restoreMarginKw = 0.2;
-  private planReserveKw = 0;
-  private mainPowerKw: number | null = null;
-  private allocatedKw = 0;
-  private controllables: Map<string, { name: string; powerKw: number; priority: number; desired: DesiredState }> = new Map();
-  private interval: NodeJS.Timeout | null = null;
-  private sheddingActive = false;
-  private triggerStarted: Homey.FlowCardTrigger;
-  private triggerEnded: Homey.FlowCardTrigger;
-  private triggerDeviceShed: Homey.FlowCardTrigger;
-
-  constructor(private homey: any, private log: (...args: any[]) => void, private errorLog: (...args: any[]) => void) {
-    this.triggerStarted = this.homey.flow.getTriggerCard('capacity_shedding_started');
-    this.triggerEnded = this.homey.flow.getTriggerCard('capacity_shedding_ended');
-    this.triggerDeviceShed = this.homey.flow.getTriggerCard('capacity_device_shed');
-  }
-
-  start(): void {
-    if (this.interval) return;
-    this.interval = setInterval(() => this.tick().catch((err) => this.errorLog('Capacity guard tick failed', err)), 3000);
-  }
-
-  stop(): void {
-    if (this.interval) clearInterval(this.interval);
-    this.interval = null;
-  }
-
-  setLimit(limitKw: number): void {
-    this.limitKw = Math.max(0, limitKw);
-  }
-
-  reportTotalPower(powerKw: number): void {
-    if (!Number.isFinite(powerKw)) return;
-    this.mainPowerKw = powerKw;
-  }
-
-  requestOn(deviceId: string, name: string, powerKw: number, priority = 100): boolean {
-    if (!Number.isFinite(powerKw) || powerKw < 0) return false;
-    const planMax = this.getPlanMax();
-    if (this.allocatedKw + powerKw > planMax) {
-      return false;
-    }
-    this.controllables.set(deviceId, { name, powerKw, priority, desired: 'ON' });
-    this.recomputeAllocation();
-    return true;
-  }
-
-  forceOff(deviceId: string): void {
-    const device = this.controllables.get(deviceId);
-    if (!device) return;
-    device.desired = 'OFF';
-    this.controllables.set(deviceId, device);
-    this.recomputeAllocation();
-  }
-
-  hasCapacity(requiredKw: number): boolean {
-    if (!Number.isFinite(requiredKw) || requiredKw < 0) return false;
-    return this.allocatedKw + requiredKw <= this.getPlanMax();
-  }
-
-  headroom(): number | null {
-    if (this.mainPowerKw === null) return null;
-    return this.getSoftLimit() - this.mainPowerKw;
-  }
-
-  headroomBand(): 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN' {
-    const h = this.headroom();
-    if (h === null) return 'UNKNOWN';
-    if (h >= 1) return 'HIGH';
-    if (h >= 0.2) return 'MEDIUM';
-    return 'LOW';
-  }
-
-  private getSoftLimit(): number {
-    return Math.max(0, this.limitKw - this.softMarginKw);
-  }
-
-  private getPlanMax(): number {
-    return Math.max(0, this.getSoftLimit() - this.planReserveKw);
-  }
-
-  getLastTotalPower(): number | null {
-    return this.mainPowerKw;
-  }
-
-  private recomputeAllocation(): void {
-    let total = 0;
-    this.controllables.forEach((c) => {
-      if (c.desired === 'ON') total += c.powerKw;
-    });
-    this.allocatedKw = total;
-  }
-
-  private async tick(): Promise<void> {
-    if (this.mainPowerKw === null) return;
-    const soft = this.getSoftLimit();
-    const headroom = soft - this.mainPowerKw;
-
-    if (headroom < 0) {
-      await this.shedUntilHealthy();
-    } else if (this.sheddingActive && headroom >= this.restoreMarginKw) {
-      this.sheddingActive = false;
-      await this.triggerEnded.trigger({});
-    }
-  }
-
-  private async shedUntilHealthy(): Promise<void> {
-    let headroom = this.headroom();
-    if (headroom === null) return;
-
-    const toShed = Array.from(this.controllables.entries())
-      .filter(([, c]) => c.desired === 'ON')
-      .sort((a, b) => a[1].priority - b[1].priority);
-
-    for (const [deviceId, device] of toShed) {
-      if (headroom === null || headroom >= 0) break;
-      device.desired = 'SHED';
-      this.controllables.set(deviceId, device);
-      this.recomputeAllocation();
-      this.sheddingActive = true;
-      await this.triggerDeviceShed.trigger({ device_id: deviceId, device_name: device.name });
-      headroom = this.headroom();
-    }
-
-    if (this.sheddingActive) {
-      await this.triggerStarted.trigger({});
-    }
-  }
-}
+import CapacityGuard from './capacityGuard';
 
 module.exports = class MyApp extends Homey.App {
   private homeyApi?: any;
@@ -180,10 +46,27 @@ module.exports = class MyApp extends Homey.App {
 
     const initialTargetTemperature = this.homey.settings.get(GLOBAL_TARGET_TEMPERATURE_KEY);
     await this.applyGlobalTargetTemperature(initialTargetTemperature);
-    await this.initHomeyApi();
-    this.capacityGuard = new CapacityGuard(this.homey, (...args) => this.log(...args), (...args) => this.error(...args));
     this.loadCapacitySettings();
-    this.capacityGuard.setLimit(this.capacitySettings.limitKw);
+    await this.initHomeyApi();
+    this.capacityGuard = new CapacityGuard({
+      limitKw: this.capacitySettings.limitKw,
+      softMarginKw: this.capacitySettings.marginKw,
+      dryRun: true,
+      onSheddingStart: async () => {
+        await this.homey.flow.getTriggerCard('capacity_shedding_started').trigger({});
+      },
+      onSheddingEnd: async () => {
+        await this.homey.flow.getTriggerCard('capacity_shedding_ended').trigger({});
+      },
+      onDeviceShed: async (deviceId, deviceName) => {
+        await this.homey.flow.getTriggerCard('capacity_device_shed').trigger({
+          device_id: deviceId,
+          device_name: deviceName,
+        });
+      },
+      log: (...args) => this.log(...args),
+      errorLog: (...args) => this.error(...args),
+    });
     this.capacityGuard.start();
     await this.refreshTargetDevicesSnapshot();
     this.registerFlowCards();
@@ -323,6 +206,7 @@ module.exports = class MyApp extends Homey.App {
       if (Number.isFinite(margin)) {
         this.homey.settings.set('capacity_margin_kw', margin);
         this.capacitySettings.marginKw = margin;
+        if (this.capacityGuard) this.capacityGuard.setSoftMargin(margin);
       }
       return true;
     });

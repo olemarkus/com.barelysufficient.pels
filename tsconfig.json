@@ -6,6 +6,7 @@
   },
   "include": [
     "app.ts",
+    "capacityGuard.ts",
     "drivers/**/*.ts",
     "test/**/*.ts"
   ],
