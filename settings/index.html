@@ -59,6 +59,30 @@
           <button type="submit" class="btn primary">Save capacity settings</button>
         </div>
       </form>
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Priorities</p>
+          <h2>Mode &amp; device priorities</h2>
+        </div>
+      </div>
+      <form id="priority-form" class="form-grid">
+        <label class="field">
+          <span class="field__label">Mode</span>
+          <select id="mode-select" name="mode">
+          </select>
+          <div class="inline-actions">
+            <input id="mode-new" type="text" placeholder="New mode name">
+            <button type="button" class="btn secondary" id="add-mode-button">Add</button>
+            <button type="button" class="btn ghost" id="delete-mode-button">Delete</button>
+          </div>
+          <small class="field__hint">Priorities are stored per mode. Drag to reorder; top is kept on longest.</small>
+        </label>
+        <div id="priority-list" class="device-list" role="list"></div>
+        <p id="priority-empty" class="muted" hidden>No controllable devices found. Refresh devices first.</p>
+        <div class="form__actions">
+          <button type="submit" class="btn secondary">Save priorities</button>
+        </div>
+      </form>
       <div class="list__header">
         <p class="muted">Hour (local)</p>
         <div class="muted">Energy (kWh)</div>

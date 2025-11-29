@@ -4,7 +4,7 @@ import Homey from 'homey';
 
 const GLOBAL_TARGET_TEMPERATURE_KEY = 'global_target_temperature';
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
-const DEBUG_LOG = false;
+const DEBUG_LOG = true;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { HomeyAPI } = require('homey-api');
 import CapacityGuard from './capacityGuard';
@@ -21,6 +21,8 @@ module.exports = class MyApp extends Homey.App {
     limitKw: 10,
     marginKw: 0.2,
   };
+  private capacityMode = 'home';
+  private capacityPriorities: Record<string, Record<string, number>> = {};
 
   /**
    * onInit is called when the app is initialized.
@@ -67,6 +69,7 @@ module.exports = class MyApp extends Homey.App {
       log: (...args) => this.log(...args),
       errorLog: (...args) => this.error(...args),
     });
+    this.capacityGuard.setSoftLimitProvider(() => this.computeDynamicSoftLimit());
     this.capacityGuard.start();
     await this.refreshTargetDevicesSnapshot();
     this.registerFlowCards();
@@ -87,8 +90,12 @@ module.exports = class MyApp extends Homey.App {
   private loadCapacitySettings(): void {
     const limit = this.homey.settings.get('capacity_limit_kw');
     const margin = this.homey.settings.get('capacity_margin_kw');
+    const mode = this.homey.settings.get('capacity_mode');
+    const priorities = this.homey.settings.get('capacity_priorities');
     if (Number.isFinite(limit)) this.capacitySettings.limitKw = Number(limit);
     if (Number.isFinite(margin)) this.capacitySettings.marginKw = Number(margin);
+    if (typeof mode === 'string' && mode.length > 0) this.capacityMode = mode;
+    if (priorities && typeof priorities === 'object') this.capacityPriorities = priorities as Record<string, Record<string, number>>;
   }
 
   private savePowerTracker(): void {
@@ -108,6 +115,7 @@ module.exports = class MyApp extends Homey.App {
     if (typeof state.lastTimestamp !== 'number' || typeof state.lastPowerW !== 'number') {
       state.lastTimestamp = nowMs;
       state.lastPowerW = currentPowerW;
+      if (this.capacityGuard) this.capacityGuard.reportTotalPower(currentPowerW / 1000);
       this.savePowerTracker();
       return;
     }
@@ -130,6 +138,7 @@ module.exports = class MyApp extends Homey.App {
 
     state.lastTimestamp = nowMs;
     state.lastPowerW = currentPowerW;
+    if (this.capacityGuard) this.capacityGuard.reportTotalPower(currentPowerW / 1000);
     this.savePowerTracker();
   }
 
@@ -185,15 +194,6 @@ module.exports = class MyApp extends Homey.App {
       return true;
     });
 
-    const reportTotalPowerCard = this.homey.flow.getActionCard('report_total_power');
-    reportTotalPowerCard.registerRunListener(async (args: { total_power_kw: number }) => {
-      if (!this.capacityGuard) return false;
-      const val = Number(args.total_power_kw);
-      if (!Number.isFinite(val) || val < 0) throw new Error('Total power must be non-negative (kW).');
-      this.capacityGuard.reportTotalPower(val);
-      return true;
-    });
-
     const saveCapacityCard = this.homey.flow.getActionCard('save_capacity_settings');
     saveCapacityCard.registerRunListener(async (args: { limit_kw: number; margin_kw: number }) => {
       const limit = Number(args.limit_kw);
@@ -208,6 +208,28 @@ module.exports = class MyApp extends Homey.App {
         this.capacitySettings.marginKw = margin;
         if (this.capacityGuard) this.capacityGuard.setSoftMargin(margin);
       }
+      return true;
+    });
+
+    const setCapacityMode = this.homey.flow.getActionCard('set_capacity_mode');
+    setCapacityMode.registerRunListener(async (args: { mode: string }) => {
+      const mode = (args.mode || '').trim();
+      if (!mode) throw new Error('Mode must be provided');
+      this.capacityMode = mode;
+      this.homey.settings.set('capacity_mode', mode);
+      return true;
+    });
+
+    const setDevicePriority = this.homey.flow.getActionCard('set_device_priority');
+    setDevicePriority.registerRunListener(async (args: { mode: string; device_id: string; priority: number }) => {
+      const mode = (args.mode || '').trim() || this.capacityMode;
+      const deviceId = (args.device_id || '').trim();
+      const priority = Number(args.priority);
+      if (!deviceId) throw new Error('Device ID required');
+      if (!Number.isFinite(priority)) throw new Error('Priority must be a number');
+      if (!this.capacityPriorities[mode]) this.capacityPriorities[mode] = {};
+      this.capacityPriorities[mode][deviceId] = priority;
+      this.homey.settings.set('capacity_priorities', this.capacityPriorities);
       return true;
     });
 
@@ -316,7 +338,7 @@ module.exports = class MyApp extends Homey.App {
     return this.parseDeviceList(list);
   }
 
-  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number }> {
+  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number }> {
     return list
       .map((device: any) => {
         const capabilities: string[] = device.capabilities || [];
@@ -344,13 +366,14 @@ module.exports = class MyApp extends Homey.App {
           name: device.name,
           targets,
           powerKw,
+          priority: this.getPriorityForDevice(device.id || device.data?.id || device.name),
         };
       })
-      .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number }>;
+      .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number }>;
   }
 
-  private async fetchDevicesViaDrivers(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number }>> {
-    const results: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number }> = [];
+  private async fetchDevicesViaDrivers(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number }>> {
+    const results: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number }> = [];
 
     const drivers = this.homey.drivers.getDrivers();
     this.logDebug(`Found ${Object.keys(drivers).length} drivers`);
@@ -409,6 +432,7 @@ module.exports = class MyApp extends Homey.App {
           name: device.getName(),
           targets,
           powerKw,
+          priority: this.getPriorityForDevice(device.getData ? device.getData().id || device.getName() : device.getName()),
         });
       }
     }
@@ -433,7 +457,16 @@ module.exports = class MyApp extends Homey.App {
     const needed = -headroom;
     const candidates = devices
       .filter((d) => typeof d.powerKw === 'number' && (d.powerKw as number) > 0)
-      .sort((a, b) => (b.powerKw as number) - (a.powerKw as number));
+      .map((d) => ({
+        ...d,
+        priority: this.getPriorityForDevice(d.id),
+      }))
+      .sort((a, b) => {
+        const pa = (a as any).priority as number;
+        const pb = (b as any).priority as number;
+        if (pa !== pb) return pa - pb;
+        return (b.powerKw as number) - (a.powerKw as number);
+      });
 
     let remaining = needed;
     const shedList: Array<{ name: string; powerKw: number }> = [];
@@ -450,5 +483,34 @@ module.exports = class MyApp extends Homey.App {
 
     const names = shedList.map((s) => `${s.name} (${s.powerKw.toFixed(2)}kW)`).join(', ');
     this.logDebug(`Dry run: total=${total.toFixed(2)}kW soft=${softLimit.toFixed(2)}kW, would shed: ${names}`);
+  }
+
+  private getPriorityForDevice(deviceId: string): number {
+    const mode = this.capacityMode || 'home';
+    return this.capacityPriorities[mode]?.[deviceId] ?? 100;
+  }
+
+  private computeDynamicSoftLimit(): number {
+    const budgetKw = this.capacitySettings.limitKw;
+    const marginKw = this.capacitySettings.marginKw;
+    const netBudgetKWh = Math.max(0, budgetKw - marginKw);
+    if (netBudgetKWh <= 0) return 0;
+
+    const now = Date.now();
+    const date = new Date(now);
+    date.setMinutes(0, 0, 0);
+    const hourStart = date.getTime();
+    const hourEnd = hourStart + 60 * 60 * 1000;
+    const elapsedMs = now - hourStart;
+    const remainingMs = hourEnd - now;
+    const remainingHours = Math.max(remainingMs / 3600000, 0.01);
+
+    const bucketKey = new Date(hourStart).toISOString();
+    const usedKWh = this.powerTracker.buckets?.[bucketKey] || 0;
+    const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
+
+    // Allow higher instantaneous draw if budget remaining and time is short.
+    const allowedKw = remainingKWh / remainingHours;
+    return allowedKw;
   }
 }

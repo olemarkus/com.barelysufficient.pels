@@ -12,9 +12,19 @@ const panels = Array.from(document.querySelectorAll('.panel'));
 const capacityForm = /** @type {HTMLFormElement} */ (document.querySelector('#capacity-form'));
 const capacityLimitInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-limit'));
 const capacityMarginInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-margin'));
+const modeSelect = /** @type {HTMLSelectElement} */ (document.querySelector('#mode-select'));
+const modeNewInput = /** @type {HTMLInputElement} */ (document.querySelector('#mode-new'));
+const addModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#add-mode-button'));
+const deleteModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#delete-mode-button'));
+const priorityForm = /** @type {HTMLFormElement} */ (document.querySelector('#priority-form'));
+const priorityList = qs('#priority-list');
+const priorityEmpty = qs('#priority-empty');
 
 let isBusy = false;
 let homey = null;
+let capacityPriorities = {};
+let currentMode = 'home';
+let latestDevices = [];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -178,6 +188,131 @@ const saveCapacitySettings = async () => {
   await showToast('Capacity settings saved.', 'ok');
 };
 
+const loadModeAndPriorities = async () => {
+  const mode = await getSetting('capacity_mode');
+  const priorities = await getSetting('capacity_priorities');
+  currentMode = typeof mode === 'string' && mode.trim() ? mode : 'home';
+  capacityPriorities = priorities && typeof priorities === 'object' ? priorities : {};
+  renderModeOptions();
+};
+
+const renderModeOptions = () => {
+  if (!modeSelect) return;
+  const modes = new Set(['home', currentMode]);
+  Object.keys(capacityPriorities || {}).forEach((m) => modes.add(m));
+  modeSelect.innerHTML = '';
+  Array.from(modes).forEach((m) => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    if (m === currentMode) opt.selected = true;
+    modeSelect.appendChild(opt);
+  });
+};
+
+const renderPriorities = (devices) => {
+  if (!priorityList) return;
+  priorityList.innerHTML = '';
+  if (!devices.length) {
+    priorityEmpty.hidden = false;
+    return;
+  }
+  priorityEmpty.hidden = true;
+
+  const sorted = [...devices].sort((a, b) => getPriority(b.id) - getPriority(a.id));
+
+  sorted.forEach((device) => {
+    const row = document.createElement('div');
+    row.className = 'device-row draggable';
+    row.draggable = true;
+    row.setAttribute('role', 'listitem');
+    row.dataset.deviceId = device.id;
+
+    const name = document.createElement('div');
+    name.className = 'device-row__name';
+    name.textContent = device.name;
+
+    const controls = document.createElement('div');
+    controls.className = 'device-row__target';
+    const badge = document.createElement('span');
+    badge.className = 'chip priority-badge';
+    badge.textContent = '…';
+    controls.appendChild(badge);
+
+    row.append(name, controls);
+    attachDragHandlers(row);
+    priorityList.appendChild(row);
+  });
+
+  refreshPriorityBadges();
+};
+
+const getPriority = (deviceId) => {
+  const mode = currentMode || 'home';
+  return capacityPriorities[mode]?.[deviceId] ?? 100;
+};
+
+const refreshPriorityBadges = () => {
+  const rows = priorityList?.querySelectorAll('.device-row') || [];
+  rows.forEach((row, index) => {
+    const badge = row.querySelector('.priority-badge');
+    if (badge) badge.textContent = `#${index + 1}`;
+  });
+};
+
+const getDragAfterElement = (container, y) => {
+  const elements = [...container.querySelectorAll('.draggable:not(.dragging)')];
+  return elements.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      return { offset, element: child };
+    }
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+};
+
+const attachDragHandlers = (row) => {
+  row.addEventListener('dragstart', () => {
+    row.classList.add('dragging');
+  });
+  row.addEventListener('dragend', () => {
+    row.classList.remove('dragging');
+    refreshPriorityBadges();
+  });
+};
+
+priorityList?.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  const afterElement = getDragAfterElement(priorityList, e.clientY);
+  const dragging = priorityList.querySelector('.dragging');
+  if (!dragging) return;
+  if (afterElement == null) {
+    priorityList.appendChild(dragging);
+  } else {
+    priorityList.insertBefore(dragging, afterElement);
+  }
+});
+
+const savePriorities = async () => {
+  const mode = (modeSelect?.value || '').trim() || 'home';
+  currentMode = mode;
+  const rows = priorityList?.querySelectorAll('.device-row') || [];
+  const modeMap = capacityPriorities[mode] || {};
+  const total = rows.length;
+  rows.forEach((row, index) => {
+    const id = row.dataset.deviceId;
+    if (id) {
+      // Higher in the list = higher priority to keep (shed later), so invert order.
+      modeMap[id] = total - index;
+    }
+  });
+  capacityPriorities[mode] = modeMap;
+  await setSetting('capacity_mode', mode);
+  await setSetting('capacity_priorities', capacityPriorities);
+  await showToast('Priorities saved.', 'ok');
+};
+
 const refreshDevices = async () => {
   if (isBusy) return;
   setBusy(true);
@@ -188,7 +323,9 @@ const refreshDevices = async () => {
     await pollSetting('target_devices_snapshot', 10, 300);
 
     const devices = await getTargetDevices();
+    latestDevices = devices;
     renderDevices(devices);
+    renderPriorities(devices);
     statusBadge.textContent = 'Live';
   } catch (error) {
     console.error(error);
@@ -239,12 +376,51 @@ const boot = async () => {
     const usage = await getPowerUsage();
     renderPowerUsage(usage);
     await loadCapacitySettings();
+    await loadModeAndPriorities();
+    renderPriorities(latestDevices);
+    modeSelect?.addEventListener('change', () => {
+      currentMode = modeSelect.value || 'home';
+      renderModeOptions();
+      renderPriorities(latestDevices);
+    });
+    addModeButton?.addEventListener('click', async () => {
+      const mode = (modeNewInput?.value || '').trim();
+      if (!mode) return;
+      if (!capacityPriorities[mode]) capacityPriorities[mode] = {};
+      currentMode = mode;
+      renderModeOptions();
+      renderPriorities(latestDevices);
+      await setSetting('capacity_priorities', capacityPriorities);
+      await setSetting('capacity_mode', currentMode);
+      modeNewInput.value = '';
+      await showToast(`Added mode ${mode}`, 'ok');
+    });
+    deleteModeButton?.addEventListener('click', async () => {
+      const mode = modeSelect?.value || currentMode;
+      if (mode && capacityPriorities[mode]) {
+        delete capacityPriorities[mode];
+        currentMode = 'home';
+        renderModeOptions();
+        renderPriorities(latestDevices);
+        await setSetting('capacity_priorities', capacityPriorities);
+        await setSetting('capacity_mode', currentMode);
+        await showToast(`Deleted mode ${mode}`, 'warn');
+      }
+    });
     capacityForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       try {
         await saveCapacitySettings();
       } catch (err) {
         await showToast(err.message || 'Failed to save capacity settings.', 'warn');
+      }
+    });
+    priorityForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await savePriorities();
+      } catch (err) {
+        await showToast(err.message || 'Failed to save priorities.', 'warn');
       }
     });
     refreshButton.addEventListener('click', refreshDevices);

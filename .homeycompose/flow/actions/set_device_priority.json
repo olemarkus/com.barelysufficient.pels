@@ -1,0 +1,33 @@
+{
+  "title": {
+    "en": "Set device priority for mode"
+  },
+  "titleFormatted": {
+    "en": "Set priority [[priority]] for [[device_id]] in mode [[mode]]"
+  },
+  "args": [
+    {
+      "name": "mode",
+      "type": "text",
+      "title": {
+        "en": "Mode (e.g. home, away)"
+      }
+    },
+    {
+      "name": "device_id",
+      "type": "text",
+      "title": {
+        "en": "Device ID"
+      }
+    },
+    {
+      "name": "priority",
+      "type": "number",
+      "title": {
+        "en": "Priority (lower sheds first)"
+      },
+      "min": 0,
+      "step": 1
+    }
+  ]
+}

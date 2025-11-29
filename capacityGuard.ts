@@ -3,6 +3,7 @@ type DesiredState = 'ON' | 'OFF' | 'SHED';
 type ShedCallback = (deviceId: string, name: string) => Promise<void> | void;
 type TriggerCallback = () => Promise<void> | void;
 type ActuatorCallback = (deviceId: string, name: string) => Promise<void> | void;
+type SoftLimitProvider = () => number | null;
 
 export interface CapacityGuardOptions {
   limitKw?: number;
@@ -37,6 +38,7 @@ export default class CapacityGuard {
   private intervalMs: number;
   private log?: (...args: any[]) => void;
   private errorLog?: (...args: any[]) => void;
+  private softLimitProvider?: SoftLimitProvider;
 
   constructor(options: CapacityGuardOptions = {}) {
     this.limitKw = options.limitKw ?? 10;
@@ -71,6 +73,10 @@ export default class CapacityGuard {
 
   setSoftMargin(marginKw: number): void {
     this.softMarginKw = Math.max(0, marginKw);
+  }
+
+  setSoftLimitProvider(provider: SoftLimitProvider | undefined): void {
+    this.softLimitProvider = provider;
   }
 
   setDryRun(dryRun: boolean, actuator?: ActuatorCallback): void {
@@ -129,6 +135,10 @@ export default class CapacityGuard {
   }
 
   private getSoftLimit(): number {
+    if (this.softLimitProvider) {
+      const dynamic = this.softLimitProvider();
+      if (typeof dynamic === 'number' && dynamic >= 0) return dynamic;
+    }
     return Math.max(0, this.limitKw - this.softMarginKw);
   }
 
@@ -146,6 +156,7 @@ export default class CapacityGuard {
     const headroom = soft - this.mainPowerKw;
 
     if (headroom < 0) {
+      this.log?.(`Guard: overshoot detected. total=${this.mainPowerKw.toFixed(2)}kW soft=${soft.toFixed(2)}kW headroom=${headroom.toFixed(2)}kW`);
       await this.shedUntilHealthy(headroom);
     } else if (this.sheddingActive && headroom >= this.restoreMarginKw) {
       this.sheddingActive = false;
@@ -167,6 +178,7 @@ export default class CapacityGuard {
       this.controllables.set(deviceId, device);
       this.recomputeAllocation();
       shedThisTick = true;
+      this.log?.(`Guard: shedding ${device.name} (${device.powerKw.toFixed(2)}kW) dryRun=${this.dryRun}`);
       await this.onDeviceShed?.(deviceId, device.name);
       if (!this.dryRun && this.actuator) {
         await this.actuator(deviceId, device.name);

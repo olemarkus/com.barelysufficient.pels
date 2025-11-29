@@ -15,6 +15,13 @@ const buildDom = () => {
     </section>
     <section class="panel hidden" data-panel="power">
       <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"></form>
+      <select id="mode-select"></select>
+      <input id="mode-new">
+      <button id="add-mode-button"></button>
+      <button id="delete-mode-button"></button>
+      <form id="priority-form"></form>
+      <div id="priority-list"></div>
+      <p id="priority-empty" hidden></p>
       <div id="power-list"></div>
       <p id="power-empty" hidden></p>
     </section>
@@ -45,7 +52,7 @@ describe('settings script', () => {
     await import('../settings/script.js');
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const rows = document.querySelectorAll('.device-row');
+    const rows = document.querySelectorAll('#device-list .device-row');
     expect(rows.length).toBe(1);
     expect(rows[0].querySelector('.device-row__name')?.textContent).toContain('Heater');
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(true);
@@ -61,7 +68,7 @@ describe('settings script', () => {
     await import('../settings/script.js');
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(document.querySelectorAll('.device-row').length).toBe(0);
+    expect(document.querySelectorAll('#device-list .device-row').length).toBe(0);
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(false);
   });
 });

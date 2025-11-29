@@ -3,7 +3,7 @@
     "en": "Report power usage"
   },
   "titleFormatted": {
-    "en": "Report power [[power]] W"
+    "en": "Report power [[power]] W (feeds guard + hourly usage)"
   },
   "hint": {
     "en": "Feed instantaneous power (W) from a meter to track hourly energy usage."

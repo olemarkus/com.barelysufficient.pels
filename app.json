@@ -178,7 +178,7 @@
           "en": "Report power usage"
         },
         "titleFormatted": {
-          "en": "Report power [[power]] W"
+          "en": "Report power [[power]] W (feeds guard + hourly usage)"
         },
         "hint": {
           "en": "Feed instantaneous power (W) from a meter to track hourly energy usage."
@@ -195,29 +195,6 @@
           }
         ],
         "id": "report_power_usage"
-      },
-      {
-        "title": {
-          "en": "Report total power"
-        },
-        "titleFormatted": {
-          "en": "Report total power [[total_power_kw]] kW"
-        },
-        "hint": {
-          "en": "Feed instantaneous total power (kW) from main meter to the capacity guard."
-        },
-        "args": [
-          {
-            "name": "total_power_kw",
-            "type": "number",
-            "title": {
-              "en": "Total power (kW)"
-            },
-            "min": 0,
-            "step": 0.01
-          }
-        ],
-        "id": "report_total_power"
       },
       {
         "title": {
@@ -319,6 +296,58 @@
           }
         ],
         "id": "set_capacity_limit"
+      },
+      {
+        "title": {
+          "en": "Set capacity mode"
+        },
+        "titleFormatted": {
+          "en": "Set capacity mode to [[mode]]"
+        },
+        "args": [
+          {
+            "name": "mode",
+            "type": "text",
+            "title": {
+              "en": "Mode (e.g. home, away, vacation)"
+            }
+          }
+        ],
+        "id": "set_capacity_mode"
+      },
+      {
+        "title": {
+          "en": "Set device priority for mode"
+        },
+        "titleFormatted": {
+          "en": "Set priority [[priority]] for [[device_id]] in mode [[mode]]"
+        },
+        "args": [
+          {
+            "name": "mode",
+            "type": "text",
+            "title": {
+              "en": "Mode (e.g. home, away)"
+            }
+          },
+          {
+            "name": "device_id",
+            "type": "text",
+            "title": {
+              "en": "Device ID"
+            }
+          },
+          {
+            "name": "priority",
+            "type": "number",
+            "title": {
+              "en": "Priority (lower sheds first)"
+            },
+            "min": 0,
+            "step": 1
+          }
+        ],
+        "id": "set_device_priority"
       }
     ]
   }

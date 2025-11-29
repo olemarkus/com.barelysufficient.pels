@@ -53,4 +53,31 @@ describe('CapacityGuard', () => {
     await guard.tick();
     expect(shedOrder).toEqual(['devB']);
   });
+
+  it('respects hourly energy budget by allowing higher draw when budget remains', async () => {
+    const shedOrder: string[] = [];
+    let remainingHours = 0.5;
+    let usedKWh = 2.5;
+    const budgetKWh = 5;
+    const guard = new CapacityGuard({
+      dryRun: false,
+      softMarginKw: 0,
+      intervalMs: 100000,
+      actuator: async (deviceId) => {
+        shedOrder.push(deviceId);
+      },
+    });
+
+    guard.setSoftLimitProvider(() => {
+      const remainingKWh = Math.max(0, budgetKWh - usedKWh);
+      return remainingKWh / remainingHours;
+    });
+
+    guard.requestOn('devA', 'A', 3, 5);
+    guard.requestOn('devB', 'B', 2, 1); // shed first
+
+    guard.reportTotalPower(6); // current draw
+    await guard.tick();
+    expect(shedOrder).toEqual(['devB']); // shed 2kW to get within dynamic soft limit (5kW)
+  });
 });

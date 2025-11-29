@@ -1,0 +1,17 @@
+{
+  "title": {
+    "en": "Set capacity mode"
+  },
+  "titleFormatted": {
+    "en": "Set capacity mode to [[mode]]"
+  },
+  "args": [
+    {
+      "name": "mode",
+      "type": "text",
+      "title": {
+        "en": "Mode (e.g. home, away, vacation)"
+      }
+    }
+  ]
+}
