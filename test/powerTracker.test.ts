@@ -21,7 +21,9 @@ describe('power tracker integration', () => {
     const app = new MyApp();
     await app.onInit();
 
-    const start = Date.now();
+    // Use a deterministic timestamp aligned to the hour to avoid hour-boundary splits
+    // changing the expected energy total.
+    const start = Date.UTC(2020, 0, 1, 0, 0, 0);
     // 1 kW for 30 minutes => 0.5 kWh
     await app['recordPowerSample'](1000, start);
     await app['recordPowerSample'](1000, start + 30 * 60 * 1000);

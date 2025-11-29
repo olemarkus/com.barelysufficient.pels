@@ -14,6 +14,7 @@ const panels = Array.from(document.querySelectorAll('.panel'));
 const capacityForm = /** @type {HTMLFormElement} */ (document.querySelector('#capacity-form'));
 const capacityLimitInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-limit'));
 const capacityMarginInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-margin'));
+const capacityDryRunInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-dry-run'));
 const planList = qs('#plan-list');
 const planEmpty = qs('#plan-empty');
 const planMeta = qs('#plan-meta');
@@ -36,6 +37,7 @@ let capacityPriorities = {};
 let currentMode = 'Home';
 let latestDevices = [];
 let modeTargets = {};
+let controllableMap = {};
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -131,7 +133,23 @@ const renderDevices = (devices) => {
     });
     targets.appendChild(input);
 
-    row.append(name, targets);
+    const ctrlWrap = document.createElement('div');
+    ctrlWrap.className = 'device-row__target';
+    const ctrlLabel = document.createElement('label');
+    ctrlLabel.className = 'checkbox-field-inline';
+    const ctrlInput = document.createElement('input');
+    ctrlInput.type = 'checkbox';
+    ctrlInput.checked = controllableMap[device.id] !== false;
+    ctrlInput.addEventListener('change', async () => {
+      controllableMap[device.id] = ctrlInput.checked;
+      await setSetting('controllable_devices', controllableMap);
+    });
+    const ctrlText = document.createElement('span');
+    ctrlText.textContent = 'Controllable';
+    ctrlLabel.append(ctrlInput, ctrlText);
+    ctrlWrap.append(ctrlLabel);
+
+    row.append(name, targets, ctrlWrap);
     deviceList.appendChild(row);
   });
 };
@@ -196,19 +214,25 @@ const renderPowerUsage = (entries) => {
 const loadCapacitySettings = async () => {
   const limit = await getSetting('capacity_limit_kw');
   const margin = await getSetting('capacity_margin_kw');
+  const dryRun = await getSetting('capacity_dry_run');
   const fallbackLimit = 10;
   const fallbackMargin = 0.2;
   capacityLimitInput.value = typeof limit === 'number' ? limit.toString() : fallbackLimit.toString();
   capacityMarginInput.value = typeof margin === 'number' ? margin.toString() : fallbackMargin.toString();
+  if (capacityDryRunInput) {
+    capacityDryRunInput.checked = typeof dryRun === 'boolean' ? dryRun : true;
+  }
 };
 
 const saveCapacitySettings = async () => {
   const limit = parseFloat(capacityLimitInput.value);
   const margin = parseFloat(capacityMarginInput.value);
+  const dryRun = capacityDryRunInput ? capacityDryRunInput.checked : true;
   if (!Number.isFinite(limit) || limit <= 0) throw new Error('Limit must be positive.');
   if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
   await setSetting('capacity_limit_kw', limit);
   await setSetting('capacity_margin_kw', margin);
+  await setSetting('capacity_dry_run', dryRun);
   await showToast('Capacity settings saved.', 'ok');
 };
 
@@ -216,9 +240,11 @@ const loadModeAndPriorities = async () => {
   const mode = await getSetting('capacity_mode');
   const priorities = await getSetting('capacity_priorities');
   const targets = await getSetting('mode_device_targets');
+  const controllables = await getSetting('controllable_devices');
   currentMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
   capacityPriorities = priorities && typeof priorities === 'object' ? priorities : {};
   modeTargets = targets && typeof targets === 'object' ? targets : {};
+  controllableMap = controllables && typeof controllables === 'object' ? controllables : {};
   renderModeOptions();
 };
 

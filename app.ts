@@ -21,9 +21,11 @@ module.exports = class MyApp extends Homey.App {
     limitKw: 10,
     marginKw: 0.2,
   };
+  private capacityDryRun = true;
   private capacityMode = 'Home';
   private capacityPriorities: Record<string, Record<string, number>> = {};
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
+  private controllableDevices: Record<string, boolean> = {};
   private latestTargetSnapshot: Array<{
     id: string;
     name: string;
@@ -32,6 +34,7 @@ module.exports = class MyApp extends Homey.App {
     priority?: number;
     currentOn?: boolean;
     zone?: string;
+    controllable?: boolean;
   }> = [];
 
   /**
@@ -65,6 +68,14 @@ module.exports = class MyApp extends Homey.App {
       if (key === 'capacity_priorities') {
         this.loadCapacitySettings();
         this.rebuildPlanFromCache();
+        return;
+      }
+
+      if (key === 'controllable_devices') {
+        this.loadCapacitySettings();
+        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
+          this.error('Failed to refresh devices after controllable change', error);
+        });
         return;
       }
 
@@ -139,11 +150,15 @@ module.exports = class MyApp extends Homey.App {
     const mode = this.homey.settings.get('capacity_mode');
     const priorities = this.homey.settings.get('capacity_priorities');
     const modeTargets = this.homey.settings.get('mode_device_targets');
+    const dryRun = this.homey.settings.get('capacity_dry_run');
+    const controllables = this.homey.settings.get('controllable_devices');
     if (Number.isFinite(limit)) this.capacitySettings.limitKw = Number(limit);
     if (Number.isFinite(margin)) this.capacitySettings.marginKw = Number(margin);
     if (typeof mode === 'string' && mode.length > 0) this.capacityMode = mode;
     if (priorities && typeof priorities === 'object') this.capacityPriorities = priorities as Record<string, Record<string, number>>;
     if (modeTargets && typeof modeTargets === 'object') this.modeDeviceTargets = modeTargets as Record<string, Record<string, number>>;
+    if (typeof dryRun === 'boolean') this.capacityDryRun = dryRun;
+    if (controllables && typeof controllables === 'object') this.controllableDevices = controllables as Record<string, boolean>;
   }
 
   private savePowerTracker(): void {
@@ -479,7 +494,7 @@ module.exports = class MyApp extends Homey.App {
     return this.parseDeviceList(list);
   }
 
-  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }> {
+  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }> {
     return list
       .map((device: any) => {
         const capabilities: string[] = device.capabilities || [];
@@ -514,13 +529,14 @@ module.exports = class MyApp extends Homey.App {
             (typeof device.zone === 'string' ? device.zone : undefined) ||
             device.zoneName ||
             'Unknown',
+          controllable: this.controllableDevices[device.id || device.data?.id || device.name] ?? true,
         };
       })
-      .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }>;
+      .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }>;
   }
 
-  private async fetchDevicesViaDrivers(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }>> {
-    const results: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }> = [];
+  private async fetchDevicesViaDrivers(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }>> {
+    const results: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }> = [];
 
     const drivers = this.homey.drivers.getDrivers();
     this.logDebug(`Found ${Object.keys(drivers).length} drivers`);
@@ -589,6 +605,7 @@ module.exports = class MyApp extends Homey.App {
           powerKw,
           priority: this.getPriorityForDevice(device.getData ? device.getData().id || device.getName() : device.getName()),
           currentOn: typeof onoffValue === 'boolean' ? onoffValue : undefined,
+          controllable: this.controllableDevices[device.getData ? device.getData().id || device.getName() : device.getName()] ?? true,
         });
       }
     }
@@ -596,7 +613,7 @@ module.exports = class MyApp extends Homey.App {
     return results;
   }
 
-  private async dryRunShedding(devices: Array<{ id: string; name: string; powerKw?: number }>): Promise<void> {
+  private async dryRunShedding(devices: Array<{ id: string; name: string; powerKw?: number; controllable?: boolean }>): Promise<void> {
     if (!this.capacityGuard) return;
     const total = this.capacityGuard.getLastTotalPower();
     if (total === null) {
@@ -612,6 +629,7 @@ module.exports = class MyApp extends Homey.App {
 
     const needed = -headroom;
     const candidates = devices
+      .filter((d) => d.controllable !== false)
       .map((d) => {
         const priority = this.getPriorityForDevice(d.id);
         const power = typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1; // fallback if unknown
@@ -658,9 +676,12 @@ module.exports = class MyApp extends Homey.App {
       this.logDebug('Plan updated (logging failed)', err);
     }
     this.homey.settings.set('device_plan_snapshot', plan);
+    if (!this.capacityDryRun) {
+      this.applyPlanActions(plan).catch((error: Error) => this.error('Failed to apply plan actions', error));
+    }
   }
 
-  private buildDevicePlanSnapshot(devices: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string }>): {
+  private buildDevicePlanSnapshot(devices: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }>): {
     meta: { totalKw: number | null; softLimitKw: number; headroomKw: number | null };
     devices: Array<{
       id: string;
@@ -673,6 +694,7 @@ module.exports = class MyApp extends Homey.App {
       powerKw?: number;
       reason?: string;
       zone?: string;
+      controllable?: boolean;
     }>;
   } {
     const desiredForMode = this.modeDeviceTargets[this.capacityMode] || {};
@@ -712,8 +734,9 @@ module.exports = class MyApp extends Homey.App {
       const plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
       const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
       const currentState = typeof dev.currentOn === 'boolean' ? (dev.currentOn ? 'on' : 'off') : 'unknown';
-      const plannedState = shedSet.has(dev.id) ? 'shed' : 'keep';
-      const reason = shedReasons.get(dev.id) || `keep (priority ${priority})`;
+      const controllable = dev.controllable !== false;
+      const plannedState = controllable ? (shedSet.has(dev.id) ? 'shed' : 'keep') : 'keep';
+      const reason = controllable ? shedReasons.get(dev.id) || `keep (priority ${priority})` : 'not controllable by PELS';
 
       return {
         id: dev.id,
@@ -726,6 +749,7 @@ module.exports = class MyApp extends Homey.App {
         powerKw: dev.powerKw,
         reason,
         zone: dev.zone || 'Unknown',
+        controllable,
       };
     });
 
@@ -784,5 +808,98 @@ module.exports = class MyApp extends Homey.App {
       `Soft limit calc: budget=${netBudgetKWh.toFixed(3)}kWh used=${usedKWh.toFixed(3)}kWh remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h soft=${allowedKw.toFixed(3)}kW`,
     );
     return allowedKw;
+  }
+
+  private async findDeviceInstance(deviceId: string): Promise<any | null> {
+    if (!deviceId) return null;
+    const target = String(deviceId);
+    const drivers = this.homey.drivers.getDrivers();
+    for (const driver of Object.values(drivers)) {
+      try {
+        await driver.ready();
+      } catch {
+        continue;
+      }
+      for (const device of driver.getDevices()) {
+        const data = device.getData ? device.getData() : {};
+        const candidates = [data?.id, data?.uuid, (device as any).id].filter((v) => v !== undefined && v !== null).map((v) => String(v));
+        if (candidates.includes(target)) {
+          return device;
+        }
+      }
+    }
+    return null;
+  }
+
+  private async applySheddingToDevice(deviceId: string, deviceName?: string): Promise<void> {
+    if (this.capacityDryRun) return;
+    const name = deviceName || deviceId;
+    const device = await this.findDeviceInstance(deviceId);
+    if (device) {
+      const caps = device.getCapabilities ? device.getCapabilities() : [];
+      if (!caps.includes('onoff')) {
+        this.logDebug(`Actuator: device ${name} has no onoff capability, skipping`);
+        return;
+      }
+      try {
+        await device.setCapabilityValue('onoff', false);
+        this.log(`Actuator: turned off ${name} due to capacity`);
+        return;
+      } catch (error) {
+        this.error(`Failed to turn off ${name} via driver`, error);
+      }
+    }
+
+    if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
+      try {
+        await this.homeyApi.devices.setCapabilityValue({ id: deviceId, capabilityId: 'onoff' }, false);
+        this.log(`Actuator: turned off ${name} via HomeyAPI`);
+        return;
+      } catch (error) {
+        this.error(`Failed to turn off ${name} via HomeyAPI`, error);
+      }
+    }
+
+    this.logDebug(`Actuator: device ${name} not found for shedding (id lookup only)`);
+  }
+
+  private async applyPlanActions(plan: { devices: Array<{ id: string; name?: string; plannedState: string; currentState: string; plannedTarget: number | null; currentTarget: any; controllable?: boolean }> }): Promise<void> {
+    if (!plan || !Array.isArray(plan.devices)) return;
+    for (const dev of plan.devices) {
+      if (dev.controllable === false) continue;
+      // Apply on/off when shedding.
+      if (dev.plannedState === 'shed' && dev.currentState !== 'off') {
+        await this.applySheddingToDevice(dev.id, dev.name);
+      }
+
+      // Apply target temperature changes.
+      if (typeof dev.plannedTarget === 'number' && dev.plannedTarget !== dev.currentTarget) {
+        const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
+        const targetCap = snapshot?.targets?.[0]?.id;
+        if (!targetCap) continue;
+
+        // Try driver first.
+        const device = await this.findDeviceInstance(dev.id);
+        if (device) {
+          try {
+            await device.setCapabilityValue(targetCap, dev.plannedTarget);
+            this.log(`Set ${targetCap} for ${dev.name || dev.id} to ${dev.plannedTarget}`);
+            continue;
+          } catch (error) {
+            this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via driver`, error);
+          }
+        }
+
+        // Fallback to Homey API if available.
+        if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
+          try {
+            await this.homeyApi.devices.setCapabilityValue({ id: dev.id, capabilityId: targetCap }, dev.plannedTarget);
+            this.log(`Set ${targetCap} for ${dev.name || dev.id} to ${dev.plannedTarget} via HomeyAPI`);
+          } catch (error) {
+            this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via HomeyAPI`, error);
+          }
+        }
+      }
+    }
   }
 }
