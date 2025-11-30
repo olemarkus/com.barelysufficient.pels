@@ -39,6 +39,7 @@ module.exports = class PelsApp extends Homey.App {
     controllable?: boolean;
   }> = [];
   private lastPlanSignature = '';
+  private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
   // Set when remaining hourly energy budget has been fully consumed (remainingKWh <= 0)
   private hourlyBudgetExhausted = false;
 
@@ -151,6 +152,7 @@ module.exports = class PelsApp extends Homey.App {
     await this.applyDeviceTargetsForMode(this.capacityMode);
     this.registerFlowCards();
     this.loadPowerTracker();
+    this.startPeriodicSnapshotRefresh();
   }
 
   private logDebug(...args: any[]): void {
@@ -416,8 +418,16 @@ module.exports = class PelsApp extends Homey.App {
     }
   }
 
-  // TODO: Consider adding periodic refresh of device snapshot (e.g., every few minutes).
-  // Currently only refreshes on startup, mode change, or manual trigger - device states can get stale.
+  private startPeriodicSnapshotRefresh(): void {
+    // Refresh device snapshot every 5 minutes to keep states current
+    const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+    this.snapshotRefreshInterval = setInterval(() => {
+      this.refreshTargetDevicesSnapshot().catch((error: Error) => {
+        this.error('Periodic snapshot refresh failed', error);
+      });
+    }, REFRESH_INTERVAL_MS);
+  }
+
   private async refreshTargetDevicesSnapshot(): Promise<void> {
     this.logDebug('Refreshing target devices snapshot');
 
