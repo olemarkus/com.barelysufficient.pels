@@ -27,6 +27,7 @@ module.exports = class MyApp extends Homey.App {
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
   private controllableDevices: Record<string, boolean> = {};
   private sheddingShortfallActive = false;
+  private lastSetTargets: Record<string, number> = {};
   private latestTargetSnapshot: Array<{
     id: string;
     name: string;
@@ -1108,6 +1109,10 @@ module.exports = class MyApp extends Homey.App {
 
       // Apply target temperature changes.
       if (typeof dev.plannedTarget === 'number' && dev.plannedTarget !== dev.currentTarget) {
+        if (this.lastSetTargets[dev.id] === dev.plannedTarget) {
+          this.logDebug(`Skip setting ${dev.name || dev.id} target to ${dev.plannedTarget} (already set)`);
+          continue;
+        }
         const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
         const targetCap = snapshot?.targets?.[0]?.id;
         if (!targetCap) continue;
@@ -1117,8 +1122,13 @@ module.exports = class MyApp extends Homey.App {
         if (device) {
           try {
             await device.setCapabilityValue(targetCap, dev.plannedTarget);
-            this.log(`Set ${targetCap} for ${dev.name || dev.id} to ${dev.plannedTarget}`);
+            this.log(
+              `Set ${targetCap} for ${dev.name || dev.id} ${dev.currentTarget === undefined || dev.currentTarget === null ? '' : `from ${dev.currentTarget} `}to ${
+                dev.plannedTarget
+              }`,
+            );
             this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
+            this.lastSetTargets[dev.id] = dev.plannedTarget;
             continue;
           } catch (error) {
             this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via driver`, error);
@@ -1133,8 +1143,13 @@ module.exports = class MyApp extends Homey.App {
               capabilityId: targetCap,
               value: dev.plannedTarget,
             });
-            this.log(`Set ${targetCap} for ${dev.name || dev.id} to ${dev.plannedTarget} via HomeyAPI`);
+            this.log(
+              `Set ${targetCap} for ${dev.name || dev.id} ${dev.currentTarget === undefined || dev.currentTarget === null ? '' : `from ${dev.currentTarget} `}to ${
+                dev.plannedTarget
+              } via HomeyAPI`,
+            );
             this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
+            this.lastSetTargets[dev.id] = dev.plannedTarget;
           } catch (error) {
             this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via HomeyAPI`, error);
           }
