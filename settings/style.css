@@ -233,7 +233,7 @@ input[type="number"]:focus {
 
 .mode-row {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 56px 32px;
+  grid-template-columns: 20px minmax(0, 1fr) 72px 40px;
   align-items: center;
   gap: 6px;
 }
@@ -309,7 +309,7 @@ input[type="number"]:focus {
 }
 
 .mode-target-input {
-  width: 52px; /* fits two digits + spinner */
+  width: 64px; /* fits two digits + spinner comfortably */
   padding: 6px 8px;
   font-size: 14px;
   flex: 0 0 auto;
@@ -317,7 +317,7 @@ input[type="number"]:focus {
 
 .priority-badge {
   display: inline-block;
-  min-width: 28px; /* up to 3 digits */
+  min-width: 32px; /* up to 3 digits */
   text-align: center;
   margin-left: 4px;
   font-size: 12px;

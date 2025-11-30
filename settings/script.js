@@ -620,7 +620,10 @@ const boot = async () => {
     renderPriorities(latestDevices);
     renderDevices(latestDevices);
     modeSelect?.addEventListener('change', () => {
-      setCurrentMode(modeSelect.value || 'Home');
+      // Mode editor selection should not change the active mode dropdown; only update currentMode for editing.
+      currentMode = modeSelect.value || 'Home';
+      renderPriorities(latestDevices);
+      renderDevices(latestDevices);
     });
     activeModeForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
