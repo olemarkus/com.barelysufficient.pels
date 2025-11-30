@@ -242,4 +242,71 @@ describe('Device plan snapshot', () => {
     const nextState = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(nextState?.plannedState).toBe('shed');
   });
+
+  it('sheds a controllable device when overshooting with real power sample (non-dry-run)', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000); // 2 kW
+    await dev1.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Force soft limit to 1 kW so 2 kW total is an overshoot.
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    const shedSpy = jest.fn().mockResolvedValue(undefined);
+    (app as any).applySheddingToDevice = shedSpy;
+
+    await (app as any).recordPowerSample(2000);
+
+    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A');
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const planned = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(planned?.plannedState).toBe('shed');
+  });
+
+  it('sheds multiple lowest-priority devices until headroom is non-negative', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
+    const dev2 = new MockDevice('dev-2', 'Heater B', ['target_temperature', 'onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 1700); // 1.7 kW
+    await dev2.setCapabilityValue('measure_power', 1000); // 1.0 kW
+    await dev1.setCapabilityValue('onoff', true);
+    await dev2.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1, dev2]),
+    });
+
+    // Mark both devices controllable.
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Force soft limit to about 3.1 kW so total 5.63 kW is an overshoot of ~2.53 kW.
+    (app as any).computeDynamicSoftLimit = () => 3.1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 3.1);
+    }
+
+    const shedSpy = jest.spyOn(app as any, 'applySheddingToDevice').mockResolvedValue(undefined);
+
+    await (app as any).recordPowerSample(5630); // 5.63 kW total
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const shedIds = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
+    expect(shedIds).toEqual(expect.arrayContaining(['dev-1', 'dev-2']));
+    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A');
+    expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B');
+  });
 });
