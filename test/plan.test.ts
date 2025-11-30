@@ -309,4 +309,36 @@ describe('Device plan snapshot', () => {
     expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A');
     expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B');
   });
+
+  it('does not count already-off devices toward shedding need', async () => {
+    const devOn = new MockDevice('dev-on', 'On Device', ['target_temperature', 'onoff', 'measure_power']);
+    const devOff = new MockDevice('dev-off', 'Off Device', ['target_temperature', 'onoff', 'measure_power']);
+    await devOn.setCapabilityValue('measure_power', 1700); // 1.7 kW
+    await devOn.setCapabilityValue('onoff', true);
+    await devOff.setCapabilityValue('measure_power', 1000); // 1.0 kW but already off
+    await devOff.setCapabilityValue('onoff', false);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [devOn, devOff]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-on': true, 'dev-off': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Soft limit 3 kW, total 6.3 kW -> need ~3.3 kW. Off device should not be counted as shed.
+    (app as any).computeDynamicSoftLimit = () => 3;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 3);
+    }
+
+    const shedSpy = jest.spyOn(app as any, 'applySheddingToDevice').mockResolvedValue(undefined);
+
+    await (app as any).recordPowerSample(6300);
+
+    expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device');
+    expect(shedSpy).not.toHaveBeenCalledWith('dev-off', 'Off Device');
+  });
 });

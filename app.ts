@@ -792,7 +792,7 @@ module.exports = class MyApp extends Homey.App {
         )} total=${total === null ? 'unknown' : total.toFixed(3)}`,
       );
       const candidates = devices
-        .filter((d) => d.controllable !== false)
+        .filter((d) => d.controllable !== false && d.currentOn !== false)
         .map((d) => {
           const priority = this.getPriorityForDevice(d.id);
           const power = typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1; // fallback when unknown
@@ -985,6 +985,11 @@ module.exports = class MyApp extends Homey.App {
 
   private async applySheddingToDevice(deviceId: string, deviceName?: string): Promise<void> {
     if (this.capacityDryRun) return;
+    const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
+    if (snapshotState && snapshotState.currentOn === false) {
+      this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, already off in snapshot`);
+      return;
+    }
     const name = deviceName || deviceId;
     const device = await this.findDeviceInstance(deviceId);
     if (device) {
@@ -1033,11 +1038,16 @@ module.exports = class MyApp extends Homey.App {
         const name = dev.name || dev.id;
         // Skip turning back on unless we have some headroom to avoid flapping.
         const headroom = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
+        const sheddingActive = (this.capacityGuard as any)?.isSheddingActive?.() === true;
         const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
         const neededForDevice = ((dev as any).powerKw && (dev as any).powerKw > 0 ? (dev as any).powerKw : 1) + restoreMargin;
-        if (headroom !== null && headroom < neededForDevice) {
+        // Do not restore devices while shedding is active, when headroom is unknown,
+        // or when there is insufficient headroom for this device plus margin.
+        if (sheddingActive || headroom === null || headroom < neededForDevice) {
           this.logDebug(
-            `Capacity: keeping ${name} off (headroom ${headroom.toFixed(3)}kW < needed ${neededForDevice.toFixed(3)}kW including restore margin)`,
+            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
+              3,
+            )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)})`,
           );
           continue;
         }
