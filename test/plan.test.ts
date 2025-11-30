@@ -322,17 +322,23 @@ describe('Device plan snapshot', () => {
     const app = new MyApp();
     await app.onInit();
 
+    // Inject mock homeyApi for the test
+    const mockHomeyApi = {
+      devices: {
+        setCapabilityValue: jest.fn().mockResolvedValue(undefined),
+      },
+    };
+    (app as any).homeyApi = mockHomeyApi;
+
     // Clear snapshot so the second call would normally try again.
     (app as any).latestTargetSnapshot = [];
-
-    const setSpy = jest.spyOn(dev1, 'setCapabilityValue').mockResolvedValue(undefined as any);
 
     await (app as any).applySheddingToDevice('dev-1', 'Heater A');
     // Simulate plan still thinks it is on to force a second attempt.
     (app as any).latestTargetSnapshot = [];
     await (app as any).applySheddingToDevice('dev-1', 'Heater A');
 
-    expect(setSpy).toHaveBeenCalledTimes(1);
+    expect(mockHomeyApi.devices.setCapabilityValue).toHaveBeenCalledTimes(1);
   });
 
   it('does not repeatedly shed the same device across consecutive samples (flap guard)', async () => {
@@ -351,13 +357,19 @@ describe('Device plan snapshot', () => {
     const app = new MyApp();
     await app.onInit();
 
+    // Inject mock homeyApi for the test
+    const mockHomeyApi = {
+      devices: {
+        setCapabilityValue: jest.fn().mockResolvedValue(undefined),
+      },
+    };
+    (app as any).homeyApi = mockHomeyApi;
+
     // Force a low soft limit so the device must be shed.
     (app as any).computeDynamicSoftLimit = () => 1;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
-
-    const offSpy = jest.spyOn(dev1 as any, 'setCapabilityValue').mockResolvedValue(undefined);
 
     // First overshoot triggers shedding.
     await (app as any).recordPowerSample(5000);
@@ -367,7 +379,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(5000);
     await new Promise((r) => setTimeout(r, 100));
 
-    expect(offSpy).toHaveBeenCalledTimes(1);
+    expect(mockHomeyApi.devices.setCapabilityValue).toHaveBeenCalledTimes(1);
   });
 
   it('uses settings.load as power when measure_power is zero', async () => {

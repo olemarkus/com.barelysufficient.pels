@@ -83,11 +83,54 @@ export class MockDriver {
   }
 }
 
+// Helper to find a device instance by ID across all mock drivers
+const findMockDeviceById = (deviceId: string): MockDevice | null => {
+  const drivers = mockHomeyInstance.drivers.getDrivers();
+  for (const driver of Object.values(drivers)) {
+    for (const device of driver.getDevices()) {
+      if (device.idValue === deviceId) {
+        return device;
+      }
+    }
+  }
+  return null;
+};
+
 export const mockHomeyInstance = {
   settings: new MockSettings(),
   api: {
-    get: async () => {
+    get: async (path: string) => {
+      // Return devices from mock drivers when API is called
+      if (path === 'manager/devices' || path === 'devices') {
+        const drivers = mockHomeyInstance.drivers.getDrivers();
+        const devices: Record<string, any> = {};
+        for (const driver of Object.values(drivers)) {
+          for (const device of driver.getDevices()) {
+            const caps = device.getCapabilities();
+            const capabilitiesObj: Record<string, any> = {};
+            for (const cap of caps) {
+              capabilitiesObj[cap] = { value: await device.getCapabilityValue(cap) };
+            }
+            devices[device.idValue] = {
+              id: device.idValue,
+              name: device.getName(),
+              capabilities: caps,
+              capabilitiesObj,
+              settings: await device.getSettings(),
+            };
+          }
+        }
+        return devices;
+      }
       throw new Error('not implemented');
+    },
+    devices: {
+      setCapabilityValue: async ({ deviceId, capabilityId, value }: { deviceId: string; capabilityId: string; value: any }) => {
+        const device = findMockDeviceById(deviceId);
+        if (device) {
+          await device.setCapabilityValue(capabilityId, value);
+        }
+      },
     },
   },
   flow: {

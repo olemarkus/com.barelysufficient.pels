@@ -21,6 +21,8 @@ jest.mock('../capacityGuard', () => {
     public forceOff = jest.fn();
     public hasCapacity = jest.fn().mockReturnValue(true);
     public headroom = jest.fn().mockReturnValue(0);
+    public setControllables = jest.fn();
+    public isSheddingActive = jest.fn().mockReturnValue(false);
     constructor(opts: any = {}) {
       // Call setters once to mirror constructor usage.
       this.setLimit(opts.limitKw ?? 10);

@@ -28,22 +28,6 @@
     "name": "Ole Markus With",
     "email": "olemarkus@gmail.com"
   },
-  "settings": [
-    {
-      "id": "global_target_temperature",
-      "type": "number",
-      "title": {
-        "en": "Target temperature (°C)"
-      },
-      "hint": {
-        "en": "Applies the chosen target to every device that supports temperature control."
-      },
-      "value": 21,
-      "min": 5,
-      "max": 35,
-      "step": 0.5
-    }
-  ],
   "drivers": [
     "mode_indicator"
   ]
