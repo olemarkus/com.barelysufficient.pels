@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Capacity mode is..."
+  },
+  "titleFormatted": {
+    "en": "Capacity mode is [[mode]]"
+  },
+  "args": [
+    {
+      "name": "mode",
+      "type": "autocomplete",
+      "title": {
+        "en": "Mode"
+      },
+      "placeholder": {
+        "en": "Choose a mode"
+      },
+      "example": {
+        "en": "Home"
+      }
+    }
+  ]
+}

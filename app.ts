@@ -367,6 +367,21 @@ module.exports = class MyApp extends Homey.App {
       if (!this.capacityGuard) return false;
       return this.capacityGuard.headroomBand() === args.band;
     });
+
+    const isCapacityModeCond = this.homey.flow.getConditionCard('is_capacity_mode');
+    isCapacityModeCond.registerRunListener(async (args: { mode: string }) => {
+      const chosenMode = (args.mode || '').trim();
+      if (!chosenMode) return false;
+      return this.capacityMode.toLowerCase() === chosenMode.toLowerCase();
+    });
+    if (typeof (isCapacityModeCond as any).registerArgumentAutocompleteListener === 'function') {
+      isCapacityModeCond.registerArgumentAutocompleteListener('mode', async (query: string) => {
+        const q = (query || '').toLowerCase();
+        return Array.from(this.getAllModes())
+          .filter((m) => !q || m.toLowerCase().includes(q))
+          .map((m) => ({ id: m, name: m }));
+      });
+    }
   }
 
   private async applyGlobalTargetTemperature(targetTemperature: unknown): Promise<void> {
@@ -1007,8 +1022,6 @@ module.exports = class MyApp extends Homey.App {
 
   private getAllModes(): Set<string> {
     const modes = new Set<string>();
-    const defaults = ['Home', 'Away', 'Vacation', 'Home Office'];
-    defaults.forEach((m) => modes.add(m));
     if (this.capacityMode) modes.add(this.capacityMode);
     Object.keys(this.capacityPriorities || {}).forEach((m) => {
       if (m && m.trim()) modes.add(m);
@@ -1016,7 +1029,6 @@ module.exports = class MyApp extends Homey.App {
     Object.keys(this.modeDeviceTargets || {}).forEach((m) => {
       if (m && m.trim()) modes.add(m);
     });
-    if (!modes.size) modes.add('Home');
     return modes;
   }
 
