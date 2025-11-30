@@ -8,6 +8,27 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const MyApp = require('../app');
 
+// Factory for creating a Hoiax Connected 300 water heater mock
+function createHoiaxWaterHeater(id: string, name: string = 'Connected 300') {
+  const device = new MockDevice(id, name, [
+    'meter_power.in_tank',
+    'meter_power',
+    'measure_power',
+    'measure_humidity.fill_level',
+    'target_temperature',
+    'measure_temperature',
+    'onoff.hwBoost',
+    'onoff',
+    'max_power_3000',
+  ]);
+  // Set realistic default values
+  device.setCapabilityValue('measure_power', 0);
+  device.setCapabilityValue('target_temperature', 65);
+  device.setCapabilityValue('onoff', true);
+  device.setCapabilityValue('max_power_3000', '3'); // Max power by default
+  return device;
+}
+
 describe('Device plan snapshot', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
@@ -572,5 +593,121 @@ describe('Device plan snapshot', () => {
     const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
     const device = snapshot.find((d: any) => d.id === 'dev-1');
     expect(device.powerKw).toBeCloseTo(1.2, 3);
+  });
+
+  it('includes Hoiax water heater in device snapshot with target_temperature', async () => {
+    const hoiax = createHoiaxWaterHeater('hoiax-1', 'Connected 300');
+    await hoiax.setCapabilityValue('measure_power', 3000); // 3kW when heating
+    await hoiax.setCapabilityValue('target_temperature', 65);
+
+    setMockDrivers({
+      hoiaxDriver: new MockDriver('hoiaxDriver', [hoiax]),
+    });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0]).toMatchObject({
+      id: 'hoiax-1',
+      name: 'Connected 300',
+      powerKw: 3, // 3000W = 3kW
+    });
+    expect(snapshot[0].targets[0]).toMatchObject({
+      id: 'target_temperature',
+      value: 65,
+    });
+  });
+
+  it('can shed Hoiax water heater when over capacity', async () => {
+    const hoiax = createHoiaxWaterHeater('hoiax-1');
+    await hoiax.setCapabilityValue('measure_power', 3000);
+    await hoiax.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      hoiaxDriver: new MockDriver('hoiaxDriver', [hoiax]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'hoiax-1': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Inject mock homeyApi
+    const setSpy = jest.fn().mockResolvedValue(undefined);
+    (app as any).homeyApi = {
+      devices: {
+        setCapabilityValue: setSpy,
+      },
+    };
+
+    // Force very low soft limit
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    // Report high power - should trigger shedding
+    await (app as any).recordPowerSample(5000);
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Verify the device was turned off
+    expect(setSpy).toHaveBeenCalledWith({
+      deviceId: 'hoiax-1',
+      capabilityId: 'onoff',
+      value: false,
+    });
+  });
+
+  it('applies mode target temperature to Hoiax water heater', async () => {
+    const hoiax = createHoiaxWaterHeater('hoiax-1');
+    await hoiax.setCapabilityValue('target_temperature', 65);
+
+    setMockDrivers({
+      hoiaxDriver: new MockDriver('hoiaxDriver', [hoiax]),
+    });
+
+    // Configure Away mode with lower temp for water heater
+    mockHomeyInstance.settings.set('mode_device_targets', { 
+      Away: { 'hoiax-1': 45 },
+      Home: { 'hoiax-1': 65 },
+    });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Inject mock homeyApi
+    const setSpy = jest.fn().mockResolvedValue(undefined);
+    (app as any).homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'hoiax-1': {
+            id: 'hoiax-1',
+            name: 'Connected 300',
+            capabilities: ['target_temperature', 'onoff', 'max_power_3000'],
+            capabilitiesObj: { 
+              target_temperature: { value: 65 },
+              onoff: { value: true },
+            },
+            settings: {},
+          },
+        }),
+        setCapabilityValue: setSpy,
+      },
+    };
+
+    // Trigger mode change via flow card
+    const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
+    await setModeListener({ mode: 'Away' });
+
+    // Verify target temperature was set to 45°C
+    expect(setSpy).toHaveBeenCalledWith({
+      deviceId: 'hoiax-1',
+      capabilityId: 'target_temperature',
+      value: 45,
+    });
   });
 });
