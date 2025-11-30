@@ -25,6 +25,7 @@ export class MockDevice {
   ) {}
 
   private capabilityValues = new Map<string, any>();
+  private settings: Record<string, any> = {};
 
   get idValue() {
     return this.id;
@@ -56,6 +57,14 @@ export class MockDevice {
 
   getSetCapabilityValue(capabilityId: string) {
     return this.capabilityValues.get(capabilityId);
+  }
+
+  async getSettings(): Promise<Record<string, any>> {
+    return this.settings;
+  }
+
+  setSettings(settings: Record<string, any>): void {
+    this.settings = settings;
   }
 }
 

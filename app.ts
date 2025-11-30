@@ -28,6 +28,9 @@ module.exports = class MyApp extends Homey.App {
   private controllableDevices: Record<string, boolean> = {};
   private sheddingShortfallActive = false;
   private lastSetTargets: Record<string, number> = {};
+  private lastDeviceShedMs: Record<string, number> = {};
+  private lastSheddingMs: number | null = null;
+  private lastOvershootMs: number | null = null;
   private latestTargetSnapshot: Array<{
     id: string;
     name: string;
@@ -546,6 +549,9 @@ module.exports = class MyApp extends Homey.App {
         let powerKw: number | undefined;
         if (typeof powerRaw === 'number') {
           powerKw = powerRaw > 50 ? powerRaw / 1000 : powerRaw;
+        } else if (device.settings && typeof device.settings.load === 'number') {
+          const loadW = device.settings.load;
+          powerKw = loadW > 50 ? loadW / 1000 : loadW;
         }
 
         const targetCaps = capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
@@ -582,7 +588,6 @@ module.exports = class MyApp extends Homey.App {
     const results: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }> = [];
 
     const drivers = this.homey.drivers.getDrivers();
-    this.logDebug(`Found ${Object.keys(drivers).length} drivers`);
 
     for (const driver of Object.values(drivers)) {
       try {
@@ -593,7 +598,6 @@ module.exports = class MyApp extends Homey.App {
       }
 
       const devices = driver.getDevices();
-      this.logDebug(`Driver ${driver.id} has ${devices.length} devices`);
       for (const device of devices) {
         const deviceCaps = device.getCapabilities();
         const targetCapabilities = deviceCaps.filter((capability) => TARGET_CAPABILITY_PREFIXES.some((prefix) => capability.startsWith(prefix)));
@@ -610,6 +614,17 @@ module.exports = class MyApp extends Homey.App {
           }
         } catch (err) {
           // ignore
+        }
+        if (powerKw === undefined && typeof (device as any).getSettings === 'function') {
+          try {
+            const settings = await (device as any).getSettings();
+            if (settings && typeof settings.load === 'number') {
+              const loadW = settings.load;
+              powerKw = loadW > 50 ? loadW / 1000 : loadW;
+            }
+          } catch {
+            // ignore
+          }
         }
         try {
           const onoff = await device.getCapabilityValue('onoff');
@@ -717,8 +732,16 @@ module.exports = class MyApp extends Homey.App {
     );
     if (signature !== this.lastPlanSignature) {
       try {
-        const lines = [...plan.devices]
-          .filter((d) => d.controllable !== false)
+        const headroom = (plan as any).meta?.headroomKw;
+        const changes = [...plan.devices].filter((d) => {
+          if (d.controllable === false) return false;
+          const desiredPower = d.plannedState === 'shed' ? 'off' : 'on';
+          const samePower = desiredPower === d.currentState;
+          const normalizeTarget = (v: any) => (Number.isFinite(v) ? Number(v) : v ?? null);
+          const sameTarget = normalizeTarget(d.plannedTarget) === normalizeTarget(d.currentTarget);
+          return !(samePower && sameTarget);
+        });
+        const lines = changes
           .sort((a, b) => {
             const pa = a.priority ?? 999;
             const pb = b.priority ?? 999;
@@ -727,9 +750,21 @@ module.exports = class MyApp extends Homey.App {
           })
           .map((d) => {
             const temp = `${d.currentTarget ?? '–'}° -> ${d.plannedTarget ?? '–'}°`;
-            const nextPower = d.plannedState === 'shed' ? 'off' : d.currentState === 'off' ? 'off' : 'on';
+            const nextPower = d.plannedState === 'shed' ? 'off' : 'on';
             const power = `${d.currentState} -> ${nextPower}`;
-            return `${d.name}: temp ${temp}, power ${power}, reason: ${d.reason ?? 'n/a'}`;
+            const powerInfo =
+              typeof d.powerKw === 'number' ? `, est ${d.powerKw.toFixed(2)}kW` : '';
+            const headroomInfo =
+              typeof headroom === 'number' ? `, headroom ${headroom.toFixed(2)}kW` : '';
+            const restoringHint =
+              d.currentState === 'off' && nextPower === 'on'
+                ? ` (restoring, needs ~${(typeof d.powerKw === 'number' ? d.powerKw : 1).toFixed(2)}kW${
+                    typeof headroom === 'number' ? ` vs headroom ${headroom.toFixed(2)}kW` : ''
+                  })`
+                : '';
+            return `${d.name}: temp ${temp}, power ${power}${powerInfo}${headroomInfo}, reason: ${
+              d.reason ?? 'n/a'
+            }${restoringHint}`;
           });
         if (lines.length) {
           this.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
@@ -787,6 +822,7 @@ module.exports = class MyApp extends Homey.App {
     const shedReasons = new Map<string, string>();
     const restoreMarginPlanning = Math.max(0.1, this.capacitySettings.marginKw || 0);
     if (headroom !== null && headroom < 0) {
+      this.lastOvershootMs = Date.now();
       const needed = -headroom;
       this.logDebug(
         `Planning shed: soft=${softLimit.toFixed(3)} headroom=${headroom.toFixed(
@@ -853,6 +889,11 @@ module.exports = class MyApp extends Homey.App {
       const controllable = dev.controllable !== false;
       let plannedState = controllable ? (shedSet.has(dev.id) ? 'shed' : 'keep') : 'keep';
       let reason = controllable ? shedReasons.get(dev.id) || `keep (priority ${priority})` : 'not controllable by PELS';
+      if (controllable && plannedState !== 'shed' && currentState === 'off') {
+        const need = (dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1) + restoreMarginPlanning;
+        const hr = headroomRaw;
+        reason = `restore (need ${need.toFixed(2)}kW, headroom ${hr === null ? 'unknown' : hr.toFixed(2)}kW)`;
+      }
 
       // If hourly energy budget exhausted, proactively shed any controllable device that is currently on (or unknown state)
       if (this.hourlyBudgetExhausted && controllable && plannedState !== 'shed' && (currentState === 'on' || currentState === 'unknown')) {
@@ -1015,6 +1056,15 @@ module.exports = class MyApp extends Homey.App {
 
   private async applySheddingToDevice(deviceId: string, deviceName?: string): Promise<void> {
     if (this.capacityDryRun) return;
+    const now = Date.now();
+    const lastForDevice = this.lastDeviceShedMs[deviceId];
+    const throttleMs = 5000;
+    if (lastForDevice && now - lastForDevice < throttleMs) {
+      this.logDebug(
+        `Actuator: skip shedding ${deviceName || deviceId}, throttled (${now - lastForDevice}ms since last)`,
+      );
+      return;
+    }
     const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
     if (snapshotState && snapshotState.currentOn === false) {
       this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, already off in snapshot`);
@@ -1032,6 +1082,8 @@ module.exports = class MyApp extends Homey.App {
         await device.setCapabilityValue('onoff', false);
         this.log(`Actuator: turned off ${name} due to capacity`);
         this.updateLocalSnapshot(deviceId, { on: false });
+        this.lastSheddingMs = now;
+        this.lastDeviceShedMs[deviceId] = now;
         return;
       } catch (error) {
         this.error(`Failed to turn off ${name} via driver`, error);
@@ -1044,6 +1096,8 @@ module.exports = class MyApp extends Homey.App {
         await this.homeyApi.devices.setCapabilityValue({ deviceId, capabilityId: 'onoff', value: false });
         this.log(`Actuator: turned off ${name} via HomeyAPI`);
         this.updateLocalSnapshot(deviceId, { on: false });
+        this.lastSheddingMs = now;
+        this.lastDeviceShedMs[deviceId] = now;
         return;
       } catch (error) {
         this.error(`Failed to turn off ${name} via HomeyAPI`, error);
@@ -1070,14 +1124,20 @@ module.exports = class MyApp extends Homey.App {
         const headroom = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
         const sheddingActive = (this.capacityGuard as any)?.isSheddingActive?.() === true;
         const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
-        const neededForDevice = ((dev as any).powerKw && (dev as any).powerKw > 0 ? (dev as any).powerKw : 1) + restoreMargin;
-        // Do not restore devices while shedding is active, when headroom is unknown,
-        // or when there is insufficient headroom for this device plus margin.
-        if (sheddingActive || headroom === null || headroom < neededForDevice) {
+        const plannedPower = (dev as any).powerKw && (dev as any).powerKw > 0 ? (dev as any).powerKw : 1;
+        const extraBuffer = Math.max(0.2, restoreMargin); // add a little hysteresis for restores
+        const neededForDevice = plannedPower + restoreMargin + extraBuffer;
+        const cooldownMs = 12000;
+        const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
+        const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
+        const inCooldown = (sinceShedding !== null && sinceShedding < cooldownMs) || (sinceOvershoot !== null && sinceOvershoot < cooldownMs);
+        // Do not restore devices while shedding is active, during cooldown, when headroom is unknown or near zero,
+        // or when there is insufficient headroom for this device plus buffers.
+        if (sheddingActive || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice) {
           this.logDebug(
-            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
+            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : inCooldown ? 'cooldown' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
               3,
-            )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)})`,
+            )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)}, device ~${plannedPower.toFixed(2)}kW, cooldown ${inCooldown ? 'yes' : 'no'})`,
           );
           continue;
         }

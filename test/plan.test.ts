@@ -310,6 +310,83 @@ describe('Device plan snapshot', () => {
     expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B');
   });
 
+  it('throttles repeated shedding commands for the same device', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    await dev1.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Clear snapshot so the second call would normally try again.
+    (app as any).latestTargetSnapshot = [];
+
+    const setSpy = jest.spyOn(dev1, 'setCapabilityValue').mockResolvedValue(undefined as any);
+
+    await (app as any).applySheddingToDevice('dev-1', 'Heater A');
+    // Simulate plan still thinks it is on to force a second attempt.
+    (app as any).latestTargetSnapshot = [];
+    await (app as any).applySheddingToDevice('dev-1', 'Heater A');
+
+    expect(setSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not repeatedly shed the same device across consecutive samples (flap guard)', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000); // 2 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Force a low soft limit so the device must be shed.
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    const offSpy = jest.spyOn(dev1 as any, 'setCapabilityValue').mockResolvedValue(undefined);
+
+    // First overshoot triggers shedding.
+    await (app as any).recordPowerSample(5000);
+    // Second overshoot arrives before cooldown; should not call setCapabilityValue again.
+    await (app as any).recordPowerSample(5000);
+
+    expect(offSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses settings.load as power when measure_power is zero', async () => {
+    const app = new MyApp();
+    await app.onInit();
+
+    const sampleDevice = {
+      id: 'thermostat-1',
+      name: 'Room Thermostat',
+      capabilities: ['onoff', 'target_temperature', 'measure_power'],
+      capabilitiesObj: {
+        onoff: { value: false },
+        target_temperature: { value: 22, units: '°C' },
+        measure_power: { value: 0 },
+      },
+      settings: { load: 450 },
+    };
+
+    const parsed = (app as any).parseDeviceList([sampleDevice]);
+    expect(parsed[0].powerKw).toBeCloseTo(0.45, 2);
+    expect(parsed[0].targets[0].value).toBe(22);
+  });
+
   it('does not count already-off devices toward shedding need', async () => {
     const devOn = new MockDevice('dev-on', 'On Device', ['target_temperature', 'onoff', 'measure_power']);
     const devOff = new MockDevice('dev-off', 'Off Device', ['target_temperature', 'onoff', 'measure_power']);
@@ -416,5 +493,68 @@ describe('Device plan snapshot', () => {
     expect(triggerSpy).not.toHaveBeenCalled();
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
+  });
+
+  it('does not restore immediately after shedding (prevents flapping)', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 500);
+    await dev1.setCapabilityValue('onoff', false); // assumed off after a shed event
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Simulate recent shedding/overshoot.
+    (app as any).lastSheddingMs = Date.now();
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.getHeadroom = () => 5; // plenty of headroom
+      (app as any).capacityGuard.isSheddingActive = () => false;
+    }
+
+    const onSpy = jest.spyOn(dev1 as any, 'setCapabilityValue');
+
+    const plan = {
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater A',
+          plannedState: 'keep',
+          currentState: 'off',
+          plannedTarget: null,
+          currentTarget: null,
+          controllable: true,
+          powerKw: 0.5,
+        },
+      ],
+    };
+
+    await (app as any).applyPlanActions(plan);
+
+    expect(onSpy).not.toHaveBeenCalled();
+  });
+
+  it('uses settings.load as fallback power when device is off', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    dev1.setSettings({ load: 1200 }); // watts
+    await dev1.setCapabilityValue('onoff', false);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
+    const device = snapshot.find((d: any) => d.id === 'dev-1');
+    expect(device.powerKw).toBeCloseTo(1.2, 3);
   });
 });
