@@ -336,9 +336,10 @@ describe('Device plan snapshot', () => {
   });
 
   it('does not repeatedly shed the same device across consecutive samples (flap guard)', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power', 'target_temperature']);
     await dev1.setCapabilityValue('measure_power', 2000); // 2 kW
     await dev1.setCapabilityValue('onoff', true);
+    await dev1.setCapabilityValue('target_temperature', 20);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -360,8 +361,11 @@ describe('Device plan snapshot', () => {
 
     // First overshoot triggers shedding.
     await (app as any).recordPowerSample(5000);
+    // Wait for async applyPlanActions to complete before second sample.
+    await new Promise((r) => setTimeout(r, 100));
     // Second overshoot arrives before cooldown; should not call setCapabilityValue again.
     await (app as any).recordPowerSample(5000);
+    await new Promise((r) => setTimeout(r, 100));
 
     expect(offSpy).toHaveBeenCalledTimes(1);
   });

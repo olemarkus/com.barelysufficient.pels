@@ -29,6 +29,8 @@ module.exports = class MyApp extends Homey.App {
   private sheddingShortfallActive = false;
   private lastSetTargets: Record<string, number> = {};
   private lastDeviceShedMs: Record<string, number> = {};
+  private pendingSheds = new Set<string>(); // Devices currently being shed (in-flight)
+  private pendingRestores = new Set<string>(); // Devices currently being restored (in-flight)
   private lastSheddingMs: number | null = null;
   private lastOvershootMs: number | null = null;
   private latestTargetSnapshot: Array<{
@@ -547,7 +549,7 @@ module.exports = class MyApp extends Homey.App {
         const capabilityObj = device.capabilitiesObj || {};
         const powerRaw = capabilityObj.measure_power?.value;
         let powerKw: number | undefined;
-        if (typeof powerRaw === 'number') {
+        if (typeof powerRaw === 'number' && powerRaw > 0) {
           powerKw = powerRaw > 50 ? powerRaw / 1000 : powerRaw;
         } else if (device.settings && typeof device.settings.load === 'number') {
           const loadW = device.settings.load;
@@ -918,17 +920,36 @@ module.exports = class MyApp extends Homey.App {
 
     // Secondary guard: if a device is currently off and headroom is still below what it needs plus margin,
     // keep it shed to avoid on/off flapping.
+    // Also limit cumulative restore to 50% of available headroom to prevent oscillation.
+    // Also respect cooldown period after shedding to avoid rapid on/off cycles.
+    const cooldownMs = 12000;
+    const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
+    const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
+    const inCooldown = (sinceShedding !== null && sinceShedding < cooldownMs) || (sinceOvershoot !== null && sinceOvershoot < cooldownMs);
+
     if (headroomRaw !== null) {
-      for (const dev of planDevices) {
-        if (dev.controllable === false) continue;
-        if (dev.currentState !== 'off') continue;
-        if (dev.plannedState === 'shed') continue;
+      const maxRestoreBudget = Math.max(0, headroomRaw * 0.5); // Only use 50% of headroom for restores
+      let cumulativeRestorePower = 0;
+      // Sort off devices by priority (higher priority = restore first)
+      const offDevices = planDevices
+        .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed')
+        .sort((a, b) => (b.priority ?? 100) - (a.priority ?? 100)); // Higher priority first
+
+      for (const dev of offDevices) {
         const needed = (dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1) + restoreMarginPlanning;
-        if (headroomRaw < needed || sheddingActive) {
+        const wouldExceedBudget = cumulativeRestorePower + needed > maxRestoreBudget;
+        if (headroomRaw < needed || sheddingActive || wouldExceedBudget || inCooldown) {
           dev.plannedState = 'shed';
           dev.reason = sheddingActive
             ? 'stay off while shedding is active'
-            : `stay off until headroom >= ${needed.toFixed(2)}kW`;
+            : inCooldown
+              ? `stay off during cooldown (${Math.max(0, cooldownMs - (sinceShedding ?? sinceOvershoot ?? 0)) / 1000}s remaining)`
+              : wouldExceedBudget
+                ? `stay off to limit restore rate (budget ${maxRestoreBudget.toFixed(2)}kW, used ${cumulativeRestorePower.toFixed(2)}kW)`
+                : `stay off until headroom >= ${needed.toFixed(2)}kW`;
+        } else {
+          // This device will be restored; account for its power in the budget
+          cumulativeRestorePower += dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1;
         }
       }
     }
@@ -1065,50 +1086,66 @@ module.exports = class MyApp extends Homey.App {
       );
       return;
     }
+    // Check if this device is already being shed (in-flight)
+    if (this.pendingSheds.has(deviceId)) {
+      this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, already in progress`);
+      return;
+    }
     const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
     if (snapshotState && snapshotState.currentOn === false) {
       this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, already off in snapshot`);
       return;
     }
     const name = deviceName || deviceId;
-    const device = await this.findDeviceInstance(deviceId);
-    if (device) {
-      const caps = device.getCapabilities ? device.getCapabilities() : [];
-      if (!caps.includes('onoff')) {
-        this.logDebug(`Actuator: device ${name} has no onoff capability, skipping`);
-        return;
+    // Mark as pending before async operation
+    this.pendingSheds.add(deviceId);
+    try {
+      const device = await this.findDeviceInstance(deviceId);
+      if (device) {
+        const caps = device.getCapabilities ? device.getCapabilities() : [];
+        if (!caps.includes('onoff')) {
+          this.logDebug(`Actuator: device ${name} has no onoff capability, skipping`);
+          return;
+        }
+        try {
+          await device.setCapabilityValue('onoff', false);
+          this.log(`Actuator: turned off ${name} due to capacity`);
+          this.updateLocalSnapshot(deviceId, { on: false });
+          this.lastSheddingMs = now;
+          this.lastDeviceShedMs[deviceId] = now;
+          return;
+        } catch (error) {
+          this.error(`Failed to turn off ${name} via driver`, error);
+        }
       }
-      try {
-        await device.setCapabilityValue('onoff', false);
-        this.log(`Actuator: turned off ${name} due to capacity`);
-        this.updateLocalSnapshot(deviceId, { on: false });
-        this.lastSheddingMs = now;
-        this.lastDeviceShedMs[deviceId] = now;
-        return;
-      } catch (error) {
-        this.error(`Failed to turn off ${name} via driver`, error);
-      }
-    }
 
-    // Fallback to Homey API if driver lookup failed.
-    if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
-      try {
-        await this.homeyApi.devices.setCapabilityValue({ deviceId, capabilityId: 'onoff', value: false });
-        this.log(`Actuator: turned off ${name} via HomeyAPI`);
-        this.updateLocalSnapshot(deviceId, { on: false });
-        this.lastSheddingMs = now;
-        this.lastDeviceShedMs[deviceId] = now;
-        return;
-      } catch (error) {
-        this.error(`Failed to turn off ${name} via HomeyAPI`, error);
+      // Fallback to Homey API if driver lookup failed.
+      if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
+        try {
+          await this.homeyApi.devices.setCapabilityValue({ deviceId, capabilityId: 'onoff', value: false });
+          this.log(`Actuator: turned off ${name} via HomeyAPI`);
+          this.updateLocalSnapshot(deviceId, { on: false });
+          this.lastSheddingMs = now;
+          this.lastDeviceShedMs[deviceId] = now;
+          return;
+        } catch (error) {
+          this.error(`Failed to turn off ${name} via HomeyAPI`, error);
+        }
       }
-    }
 
-    this.logDebug(`Actuator: device ${name} not found for shedding (id lookup only)`);
+      this.logDebug(`Actuator: device ${name} not found for shedding (id lookup only)`);
+    } finally {
+      this.pendingSheds.delete(deviceId);
+    }
   }
 
   private async applyPlanActions(plan: { devices: Array<{ id: string; name?: string; plannedState: string; currentState: string; plannedTarget: number | null; currentTarget: any; controllable?: boolean }> }): Promise<void> {
     if (!plan || !Array.isArray(plan.devices)) return;
+    // Track cumulative restored power this cycle to limit restore rate
+    let restoredPowerThisCycle = 0;
+    const headroomAtStart = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
+    const maxRestoreBudget = headroomAtStart !== null ? Math.max(0, headroomAtStart * 0.5) : 0;
+
     for (const dev of plan.devices) {
       if (dev.controllable === false) continue;
       // Apply on/off when shedding.
@@ -1120,6 +1157,11 @@ module.exports = class MyApp extends Homey.App {
       // Restore power if the plan keeps it on and it was off.
       if (dev.plannedState !== 'shed' && dev.currentState === 'off') {
         const name = dev.name || dev.id;
+        // Check if this device is already being restored (in-flight)
+        if (this.pendingRestores.has(dev.id)) {
+          this.logDebug(`Capacity: skip restoring ${name}, already in progress`);
+          continue;
+        }
         // Skip turning back on unless we have some headroom to avoid flapping.
         const headroom = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
         const sheddingActive = (this.capacityGuard as any)?.isSheddingActive?.() === true;
@@ -1131,39 +1173,48 @@ module.exports = class MyApp extends Homey.App {
         const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
         const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
         const inCooldown = (sinceShedding !== null && sinceShedding < cooldownMs) || (sinceOvershoot !== null && sinceOvershoot < cooldownMs);
+        // Check if restoring this device would exceed our restore budget for this cycle
+        const wouldExceedRestoreBudget = restoredPowerThisCycle + plannedPower > maxRestoreBudget;
         // Do not restore devices while shedding is active, during cooldown, when headroom is unknown or near zero,
-        // or when there is insufficient headroom for this device plus buffers.
-        if (sheddingActive || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice) {
+        // when there is insufficient headroom for this device plus buffers, or when we've used up the restore budget.
+        if (sheddingActive || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice || wouldExceedRestoreBudget) {
           this.logDebug(
-            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : inCooldown ? 'cooldown' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
+            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : inCooldown ? 'cooldown' : wouldExceedRestoreBudget ? 'restore budget exceeded' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
               3,
-            )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)}, device ~${plannedPower.toFixed(2)}kW, cooldown ${inCooldown ? 'yes' : 'no'})`,
+            )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)}, device ~${plannedPower.toFixed(2)}kW, cooldown ${inCooldown ? 'yes' : 'no'}, restored ${restoredPowerThisCycle.toFixed(2)}/${maxRestoreBudget.toFixed(2)}kW)`,
           );
           continue;
         }
-        const device = await this.findDeviceInstance(dev.id);
-        if (device) {
-          const caps = device.getCapabilities ? device.getCapabilities() : [];
-          if (caps.includes('onoff')) {
-            try {
-              await device.setCapabilityValue('onoff', true);
-              this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
-              this.updateLocalSnapshot(dev.id, { on: true });
-              continue;
-            } catch (error) {
-              this.error(`Failed to turn on ${name} via driver`, error);
+        // Mark as pending before async operation
+        this.pendingRestores.add(dev.id);
+        restoredPowerThisCycle += plannedPower; // Track restored power upfront to prevent concurrent restores
+        try {
+          const device = await this.findDeviceInstance(dev.id);
+          if (device) {
+            const caps = device.getCapabilities ? device.getCapabilities() : [];
+            if (caps.includes('onoff')) {
+              try {
+                await device.setCapabilityValue('onoff', true);
+                this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
+                this.updateLocalSnapshot(dev.id, { on: true });
+                continue;
+              } catch (error) {
+                this.error(`Failed to turn on ${name} via driver`, error);
+              }
             }
           }
-        }
 
-        if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
-          try {
-            await this.homeyApi.devices.setCapabilityValue({ deviceId: dev.id, capabilityId: 'onoff', value: true });
-            this.log(`Capacity: turning on ${name} via HomeyAPI (restored from shed/off state)`);
-            this.updateLocalSnapshot(dev.id, { on: true });
-          } catch (error) {
-            this.error(`Failed to turn on ${name} via HomeyAPI`, error);
+          if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
+            try {
+              await this.homeyApi.devices.setCapabilityValue({ deviceId: dev.id, capabilityId: 'onoff', value: true });
+              this.log(`Capacity: turning on ${name} via HomeyAPI (restored from shed/off state)`);
+              this.updateLocalSnapshot(dev.id, { on: true });
+            } catch (error) {
+              this.error(`Failed to turn on ${name} via HomeyAPI`, error);
+            }
           }
+        } finally {
+          this.pendingRestores.delete(dev.id);
         }
       }
 
