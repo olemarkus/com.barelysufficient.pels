@@ -14,6 +14,7 @@
       <p class="lede">Device targets and hourly power usage.</p>
       <div class="tabs" role="tablist">
         <button class="tab active" data-tab="devices" role="tab" aria-selected="true">Devices</button>
+        <button class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</button>
         <button class="tab" data-tab="power" role="tab" aria-selected="false">Power usage</button>
         <button class="tab" data-tab="plan" role="tab" aria-selected="false">Plan</button>
       </div>
@@ -23,31 +24,63 @@
       <div class="card__header">
         <div>
           <p class="eyebrow">Devices</p>
-          <h2>Desired temperatures</h2>
+          <h2>Controllable devices</h2>
         </div>
         <div class="pill" id="status-badge">Loading…</div>
       </div>
       <div class="list__header">
         <p class="muted">Name</p>
-        <div class="muted">Desired (per mode)</div>
         <div class="muted">Controllable</div>
       </div>
-      <form id="targets-form" class="form-grid form-inline">
-        <label class="field">
-          <span class="field__label">Mode</span>
-          <select id="target-mode-select" name="target_mode"></select>
-        </label>
-        <div class="form__actions">
-          <button type="submit" class="btn secondary">Save targets</button>
-        </div>
-        <small class="field__hint">Set desired temperature per device per mode. Leave blank to leave it unchanged.</small>
-      </form>
       <div id="device-list" class="device-list" role="list"></div>
       <p id="empty-state" class="muted" hidden>No devices with target temperature capabilities were found.</p>
       <div class="list__footer">
         <button type="button" class="btn secondary" id="refresh-button">Refresh</button>
-        <p class="muted">Values show your desired setpoints for the selected mode.</p>
+        <p class="muted">Toggle which devices PELS may control. Temperature & priority live in the Modes tab.</p>
       </div>
+    </section>
+
+    <section class="card panel hidden" id="modes-panel" data-panel="modes">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Modes</p>
+          <h2>Per-mode priorities & temperatures</h2>
+        </div>
+      </div>
+      <form id="active-mode-form" class="form-grid form-inline">
+        <label class="field">
+          <span class="field__label">Active mode</span>
+          <select id="active-mode-select" name="active_mode"></select>
+        </label>
+        <div class="form__actions">
+          <button type="submit" class="btn secondary">Set active mode</button>
+        </div>
+        <small class="field__hint">Applies immediately to planning.</small>
+      </form>
+      <form id="priority-form" class="form-grid">
+        <label class="field">
+          <span class="field__label">Edit mode</span>
+          <select id="mode-select" name="mode"></select>
+          <div class="inline-actions">
+            <input id="mode-new" type="text" placeholder="New mode name">
+            <button type="button" class="btn secondary" id="add-mode-button">Add</button>
+            <button type="button" class="btn ghost" id="delete-mode-button">Delete</button>
+            <button type="button" class="btn ghost" id="rename-mode-button">Rename</button>
+          </div>
+          <small class="field__hint">Drag to reorder priorities (top = keep on longest). Set desired temps per mode.</small>
+        </label>
+        <div class="list__header">
+          <p class="muted">Device</p>
+          <div class="muted">Desired °C</div>
+          <div class="muted">Priority</div>
+        </div>
+        <div id="priority-list" class="device-list tight-list" role="list"></div>
+        <p id="priority-empty" class="muted" hidden>No controllable devices found. Refresh devices first.</p>
+        <div class="form__actions">
+          <button type="submit" class="btn secondary">Save mode settings</button>
+        </div>
+      </form>
+      <p class="muted">Tip: Priority applies per mode. Temperatures are per mode; leave blank to keep device default.</p>
     </section>
 
     <section class="card panel hidden" id="power-panel" data-panel="power">
@@ -73,41 +106,6 @@
         </label>
         <div class="form__actions">
           <button type="submit" class="btn primary">Save capacity settings</button>
-        </div>
-      </form>
-      <div class="card__header">
-        <div>
-          <p class="eyebrow">Priorities</p>
-          <h2>Mode &amp; device priorities</h2>
-        </div>
-      </div>
-      <form id="active-mode-form" class="form-grid form-inline">
-        <label class="field">
-          <span class="field__label">Active mode</span>
-          <select id="active-mode-select" name="active_mode"></select>
-        </label>
-        <div class="form__actions">
-          <button type="submit" class="btn secondary">Set active mode</button>
-        </div>
-        <small class="field__hint">Applies immediately; device targets stay dry-run for now.</small>
-      </form>
-      <form id="priority-form" class="form-grid">
-        <label class="field">
-          <span class="field__label">Mode</span>
-          <select id="mode-select" name="mode">
-          </select>
-          <div class="inline-actions">
-            <input id="mode-new" type="text" placeholder="New mode name">
-            <button type="button" class="btn secondary" id="add-mode-button">Add</button>
-            <button type="button" class="btn ghost" id="delete-mode-button">Delete</button>
-            <button type="button" class="btn ghost" id="rename-mode-button">Rename</button>
-          </div>
-          <small class="field__hint">Priorities are stored per mode. Drag to reorder; top is kept on longest.</small>
-        </label>
-        <div id="priority-list" class="device-list" role="list"></div>
-        <p id="priority-empty" class="muted" hidden>No controllable devices found. Refresh devices first.</p>
-        <div class="form__actions">
-          <button type="submit" class="btn secondary">Save priorities</button>
         </div>
       </form>
       <div class="list__header">

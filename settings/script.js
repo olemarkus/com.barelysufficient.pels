@@ -5,8 +5,6 @@ const statusBadge = qs('#status-badge');
 const deviceList = qs('#device-list');
 const emptyState = qs('#empty-state');
 const refreshButton = /** @type {HTMLButtonElement} */ (qs('#refresh-button'));
-const targetsForm = /** @type {HTMLFormElement} */ (document.querySelector('#targets-form'));
-const targetModeSelect = /** @type {HTMLSelectElement} */ (document.querySelector('#target-mode-select'));
 const powerList = qs('#power-list');
 const powerEmpty = qs('#power-empty');
 const tabs = Array.from(document.querySelectorAll('.tab'));
@@ -30,6 +28,7 @@ const activeModeSelect = /** @type {HTMLSelectElement} */ (document.querySelecto
 const priorityForm = /** @type {HTMLFormElement} */ (document.querySelector('#priority-form'));
 const priorityList = qs('#priority-list');
 const priorityEmpty = qs('#priority-empty');
+const modePanel = qs('#modes-panel');
 
 let isBusy = false;
 let homey = null;
@@ -110,31 +109,15 @@ const renderDevices = (devices) => {
 
   devices.forEach((device) => {
     const row = document.createElement('div');
-    row.className = 'device-row';
+    row.className = 'device-row control-row';
     row.setAttribute('role', 'listitem');
 
-    const name = document.createElement('div');
-    name.className = 'device-row__name';
-    name.textContent = device.name;
-
-    const targets = document.createElement('div');
-    targets.className = 'device-row__target';
-    const desired = getDesiredTarget(device);
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.step = '0.5';
-    input.inputMode = 'decimal';
-    input.placeholder = 'Desired °C';
-    input.value = desired === null ? '' : desired.toString();
-    input.dataset.deviceId = device.id;
-    input.className = 'target-input';
-    input.addEventListener('change', () => {
-      applyTargetChange(device.id, input.value);
-    });
-    targets.appendChild(input);
+    const nameWrap = document.createElement('div');
+    nameWrap.className = 'device-row__name';
+    nameWrap.textContent = device.name;
 
     const ctrlWrap = document.createElement('div');
-    ctrlWrap.className = 'device-row__target';
+    ctrlWrap.className = 'device-row__target control-row__inputs';
     const ctrlLabel = document.createElement('label');
     ctrlLabel.className = 'checkbox-field-inline';
     const ctrlInput = document.createElement('input');
@@ -149,7 +132,7 @@ const renderDevices = (devices) => {
     ctrlLabel.append(ctrlInput, ctrlText);
     ctrlWrap.append(ctrlLabel);
 
-    row.append(name, targets, ctrlWrap);
+    row.append(nameWrap, ctrlWrap);
     deviceList.appendChild(row);
   });
 };
@@ -253,7 +236,7 @@ const renderModeOptions = () => {
   Object.keys(capacityPriorities || {}).forEach((m) => modes.add(m));
   Object.keys(modeTargets || {}).forEach((m) => modes.add(m));
   if (modes.size === 0) modes.add('Home');
-  [modeSelect, targetModeSelect, activeModeSelect].forEach((selectEl) => {
+  [modeSelect, activeModeSelect].forEach((selectEl) => {
     if (!selectEl) return;
     selectEl.innerHTML = '';
     Array.from(modes).forEach((m) => {
@@ -279,24 +262,44 @@ const renderPriorities = (devices) => {
 
   sorted.forEach((device) => {
     const row = document.createElement('div');
-    row.className = 'device-row draggable';
+    row.className = 'device-row draggable mode-row';
     row.draggable = true;
     row.setAttribute('role', 'listitem');
     row.dataset.deviceId = device.id;
+
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.textContent = '↕';
 
     const name = document.createElement('div');
     name.className = 'device-row__name';
     name.textContent = device.name;
 
     const controls = document.createElement('div');
-    controls.className = 'device-row__target';
+    controls.className = 'device-row__target mode-row__inputs';
+    const desired = getDesiredTarget(device);
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.5';
+    input.inputMode = 'decimal';
+    input.placeholder = 'Desired °C';
+    input.value = desired === null ? '' : desired.toString();
+    input.dataset.deviceId = device.id;
+    input.className = 'mode-target-input';
+    input.addEventListener('change', () => {
+      applyTargetChange(device.id, input.value);
+    });
     const badge = document.createElement('span');
     badge.className = 'chip priority-badge';
     badge.textContent = '…';
-    controls.appendChild(badge);
+    controls.append(input, badge);
 
-    row.append(name, controls);
-    attachDragHandlers(row);
+    const badgeWrap = document.createElement('div');
+    badgeWrap.className = 'mode-row__inputs';
+    badgeWrap.appendChild(badge);
+
+    row.append(handle, name, input, badgeWrap);
+    attachDragHandlers(row, handle);
     priorityList.appendChild(row);
   });
 
@@ -372,7 +375,7 @@ const getDragAfterElement = (container, y) => {
   }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
 };
 
-const attachDragHandlers = (row) => {
+const attachDragHandlers = (row, handle) => {
   row.addEventListener('dragstart', () => {
     row.classList.add('dragging');
   });
@@ -380,6 +383,33 @@ const attachDragHandlers = (row) => {
     row.classList.remove('dragging');
     refreshPriorityBadges();
   });
+  const startPointer = (e) => {
+    if (handle && e.target !== handle && !handle.contains(e.target)) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    row.classList.add('dragging');
+    const move = (ev) => {
+      const afterElement = getDragAfterElement(priorityList, ev.clientY);
+      if (!afterElement) {
+        priorityList.appendChild(row);
+      } else {
+        priorityList.insertBefore(row, afterElement);
+      }
+    };
+    const end = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', end);
+      row.classList.remove('dragging');
+      refreshPriorityBadges();
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', end);
+  };
+  if (handle) {
+    handle.addEventListener('pointerdown', startPointer);
+  } else {
+    row.addEventListener('pointerdown', startPointer);
+  }
 };
 
 priorityList?.addEventListener('dragover', (e) => {
@@ -414,9 +444,9 @@ const savePriorities = async () => {
 };
 
 const saveTargets = async () => {
-  const mode = (targetModeSelect?.value || currentMode || 'Home').trim() || 'Home';
+  const mode = (modeSelect?.value || currentMode || 'Home').trim() || 'Home';
   currentMode = mode;
-  const inputs = deviceList?.querySelectorAll('.target-input') || [];
+  const inputs = priorityList?.querySelectorAll('.mode-target-input') || [];
   const modeMap = modeTargets[mode] || {};
   inputs.forEach((input) => {
     const id = input.dataset.deviceId;
@@ -434,7 +464,7 @@ const saveTargets = async () => {
 };
 
 const applyTargetChange = async (deviceId, rawValue) => {
-  const mode = (targetModeSelect?.value || currentMode || 'Home').trim() || 'Home';
+  const mode = (modeSelect?.value || currentMode || 'Home').trim() || 'Home';
   currentMode = mode;
   const val = parseFloat(rawValue);
   if (!Number.isFinite(val)) return;
@@ -592,9 +622,6 @@ const boot = async () => {
     modeSelect?.addEventListener('change', () => {
       setCurrentMode(modeSelect.value || 'Home');
     });
-    targetModeSelect?.addEventListener('change', () => {
-      setCurrentMode(targetModeSelect.value || 'Home');
-    });
     activeModeForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const mode = (activeModeSelect?.value || '').trim();
@@ -651,16 +678,9 @@ const boot = async () => {
       event.preventDefault();
       try {
         await savePriorities();
-      } catch (err) {
-        await showToast(err.message || 'Failed to save priorities.', 'warn');
-      }
-    });
-    targetsForm?.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      try {
         await saveTargets();
       } catch (err) {
-        await showToast(err.message || 'Failed to save targets.', 'warn');
+        await showToast(err.message || 'Failed to save mode settings.', 'warn');
       }
     });
     refreshButton.addEventListener('click', refreshDevices);

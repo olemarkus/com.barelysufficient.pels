@@ -214,6 +214,54 @@ input[type="number"]:focus {
   border-bottom: 1px solid var(--panel-border);
 }
 
+.tight-list .device-row {
+  padding: 6px 0;
+}
+
+.control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.control-row__inputs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mode-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 56px 32px;
+  align-items: center;
+  gap: 6px;
+}
+
+.mode-row__inputs {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.drag-handle {
+  cursor: grab;
+  padding: 3px 5px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  user-select: none;
+  font-weight: 700;
+}
+
+.dragging {
+  opacity: 0.7;
+}
+
 .device-list {
   display: grid;
 }
@@ -258,6 +306,30 @@ input[type="number"]:focus {
 
 .device-row__target {
   display: block;
+}
+
+.mode-target-input {
+  width: 52px; /* fits two digits + spinner */
+  padding: 6px 8px;
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+
+.priority-badge {
+  display: inline-block;
+  min-width: 28px; /* up to 3 digits */
+  text-align: center;
+  margin-left: 4px;
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+.mode-row .device-row__name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 1.2;
 }
 
 .panel.hidden {
