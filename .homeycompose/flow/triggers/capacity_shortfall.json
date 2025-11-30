@@ -1,31 +1,9 @@
 {
   "title": {
-    "en": "Capacity guard: insufficient controllable load"
+    "en": "Capacity guard: manual action needed"
   },
   "titleFormatted": {
-    "en": "Capacity guard shortfall: deficit [[deficit_kw]] kW (total [[total_kw]] kW, soft [[soft_limit_kw]] kW)"
+    "en": "Capacity guard cannot reduce load to the limit; manual action required"
   },
-  "args": [
-    {
-      "name": "deficit_kw",
-      "type": "number",
-      "title": {
-        "en": "Remaining deficit (kW)"
-      }
-    },
-    {
-      "name": "total_kw",
-      "type": "number",
-      "title": {
-        "en": "Total power (kW)"
-      }
-    },
-    {
-      "name": "soft_limit_kw",
-      "type": "number",
-      "title": {
-        "en": "Soft limit (kW)"
-      }
-    }
-  ]
+  "args": []
 }

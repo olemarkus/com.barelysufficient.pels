@@ -382,4 +382,39 @@ describe('Device plan snapshot', () => {
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
   });
+
+  it('does not trigger capacity_shortfall when controllables can cover the deficit', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    const dev2 = new MockDevice('dev-2', 'Heater B', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 1500); // 1.5 kW
+    await dev2.setCapabilityValue('measure_power', 1200); // 1.2 kW
+    await dev1.setCapabilityValue('onoff', true);
+    await dev2.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1, dev2]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+
+    const triggerSpy = jest.fn();
+    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
+    mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
+      if (id === 'capacity_shortfall') return { trigger: triggerSpy } as any;
+      return originalGetTrigger();
+    }) as any;
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Soft limit 3.2 kW, total 5.6 kW -> need 2.4 kW, controllables can cover ~2.7 kW so no shortfall.
+    (app as any).computeDynamicSoftLimit = () => 3.2;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 3.2);
+    }
+
+    await (app as any).recordPowerSample(5600);
+    expect(triggerSpy).not.toHaveBeenCalled();
+
+    mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
+  });
 });

@@ -808,6 +808,7 @@ module.exports = class MyApp extends Homey.App {
         });
 
       let remaining = needed;
+      const totalSheddable = candidates.reduce((sum, c) => sum + ((c as any).effectivePower as number), 0);
       for (const c of candidates) {
         if (remaining <= 0) break;
         shedSet.add(c.id);
@@ -815,7 +816,10 @@ module.exports = class MyApp extends Homey.App {
         remaining -= (c as any).effectivePower as number;
       }
 
-      if (remaining > 0) {
+      // Only raise a shortfall when we truly cannot shed enough controllable load to reach the soft limit.
+      // Add a small tolerance to avoid noisy triggers when we are only a few watts over.
+      const shortfallTolerance = 0.05;
+      if (remaining > shortfallTolerance && totalSheddable < needed - shortfallTolerance) {
         // Even after shedding all controllable ON devices we are still over budget.
         const deficitKw = remaining;
         const msg = `Capacity shortfall: cannot reach soft limit, deficit ~${deficitKw.toFixed(2)}kW (total ${
@@ -825,11 +829,7 @@ module.exports = class MyApp extends Homey.App {
           this.log(msg);
           const card = this.homey.flow?.getTriggerCard?.('capacity_shortfall');
           if (card && typeof card.trigger === 'function') {
-            const result = card.trigger({
-              deficit_kw: Number(deficitKw.toFixed(3)),
-              total_kw: total === null ? null : Number(total.toFixed(3)),
-              soft_limit_kw: Number(softLimit.toFixed(3)),
-            });
+            const result = card.trigger({});
             if (result && typeof (result as any).catch === 'function') {
               (result as any).catch((err: Error) => this.error('Failed to trigger capacity_shortfall', err));
             }
