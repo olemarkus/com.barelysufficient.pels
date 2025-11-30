@@ -1110,7 +1110,8 @@ module.exports = class MyApp extends Homey.App {
       // Apply target temperature changes.
       if (typeof dev.plannedTarget === 'number' && dev.plannedTarget !== dev.currentTarget) {
         if (this.lastSetTargets[dev.id] === dev.plannedTarget) {
-          this.logDebug(`Skip setting ${dev.name || dev.id} target to ${dev.plannedTarget} (already set)`);
+          // Treat as already set; sync snapshot so we stop retrying.
+          this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
           continue;
         }
         const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
