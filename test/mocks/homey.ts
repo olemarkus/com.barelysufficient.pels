@@ -134,12 +134,18 @@ export const mockHomeyInstance = {
     },
   },
   flow: {
-    getActionCard: () => ({
-      registerRunListener: () => {},
+    _actionCardListeners: {} as Record<string, (args: any) => Promise<any>>,
+    _conditionCardListeners: {} as Record<string, (args: any) => Promise<any>>,
+    getActionCard: (cardId: string) => ({
+      registerRunListener: (listener: (args: any) => Promise<any>) => {
+        mockHomeyInstance.flow._actionCardListeners[cardId] = listener;
+      },
       registerArgumentAutocompleteListener: () => {},
     }),
-    getConditionCard: () => ({
-      registerRunListener: () => {},
+    getConditionCard: (cardId: string) => ({
+      registerRunListener: (listener: (args: any) => Promise<any>) => {
+        mockHomeyInstance.flow._conditionCardListeners[cardId] = listener;
+      },
     }),
     getTriggerCard: () => ({
       trigger: () => {},
