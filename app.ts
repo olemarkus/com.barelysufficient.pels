@@ -715,8 +715,14 @@ module.exports = class MyApp extends Homey.App {
     );
     if (signature !== this.lastPlanSignature) {
       try {
-        const lines = plan.devices
+        const lines = [...plan.devices]
           .filter((d) => d.controllable !== false)
+          .sort((a, b) => {
+            const pa = a.priority ?? 999;
+            const pb = b.priority ?? 999;
+            if (pa !== pb) return pa - pb;
+            return (a.name || '').localeCompare(b.name || '');
+          })
           .map((d) => {
             const temp = `${d.currentTarget ?? '–'}° -> ${d.plannedTarget ?? '–'}°`;
             const nextPower = d.plannedState === 'shed' ? 'off' : d.currentState === 'off' ? 'off' : 'on';
