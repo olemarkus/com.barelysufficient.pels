@@ -26,6 +26,7 @@ module.exports = class MyApp extends Homey.App {
   private capacityPriorities: Record<string, Record<string, number>> = {};
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
   private controllableDevices: Record<string, boolean> = {};
+  private sheddingShortfallActive = false;
   private latestTargetSnapshot: Array<{
     id: string;
     name: string;
@@ -811,6 +812,34 @@ module.exports = class MyApp extends Homey.App {
         shedSet.add(c.id);
         shedReasons.set(c.id, `shed due to capacity (priority ${c.priority ?? 100}, est ${((c as any).effectivePower as number).toFixed(2)}kW)`);
         remaining -= (c as any).effectivePower as number;
+      }
+
+      if (remaining > 0) {
+        // Even after shedding all controllable ON devices we are still over budget.
+        const deficitKw = remaining;
+        const msg = `Capacity shortfall: cannot reach soft limit, deficit ~${deficitKw.toFixed(2)}kW (total ${
+          total === null ? 'unknown' : total.toFixed(2)
+        }kW, soft ${softLimit.toFixed(2)}kW)`;
+        if (!this.sheddingShortfallActive) {
+          this.log(msg);
+          const card = this.homey.flow?.getTriggerCard?.('capacity_shortfall');
+          if (card && typeof card.trigger === 'function') {
+            const result = card.trigger({
+              deficit_kw: Number(deficitKw.toFixed(3)),
+              total_kw: total === null ? null : Number(total.toFixed(3)),
+              soft_limit_kw: Number(softLimit.toFixed(3)),
+            });
+            if (result && typeof (result as any).catch === 'function') {
+              (result as any).catch((err: Error) => this.error('Failed to trigger capacity_shortfall', err));
+            }
+          }
+        } else {
+          this.logDebug(msg);
+        }
+        this.sheddingShortfallActive = true;
+      } else if (this.sheddingShortfallActive) {
+        // Clear shortfall flag once we have enough candidates to cover the deficit.
+        this.sheddingShortfallActive = false;
       }
     }
 

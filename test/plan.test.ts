@@ -341,4 +341,45 @@ describe('Device plan snapshot', () => {
     expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device');
     expect(shedSpy).not.toHaveBeenCalledWith('dev-off', 'Off Device');
   });
+
+  it('triggers capacity_shortfall when deficit remains after shedding all controllables', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
+    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
+    mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
+      if (id === 'capacity_shortfall') {
+        return { trigger: triggerSpy };
+      }
+      return originalGetTrigger();
+    }) as any;
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Only 1 kW available to shed but deficit is ~3 kW (4 kW total, 1 kW soft).
+    (app as any).latestTargetSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+      },
+    ];
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    await (app as any).recordPowerSample(4000);
+    expect(triggerSpy).toHaveBeenCalled();
+
+    mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
+  });
 });
