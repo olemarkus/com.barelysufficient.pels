@@ -608,6 +608,20 @@ const boot = async () => {
     }
 
     await homey.ready();
+
+    // Listen for setting changes to auto-update UI (if supported)
+    if (typeof homey.on === 'function') {
+      homey.on('settings.set', (key) => {
+        if (key === 'device_plan_snapshot') {
+          // Only auto-refresh if Plan tab is visible
+          const planPanel = document.querySelector('#plan-panel');
+          if (planPanel && !planPanel.classList.contains('hidden')) {
+            refreshPlan().catch(() => {});
+          }
+        }
+      });
+    }
+
     showTab('devices');
     tabs.forEach((tab) => {
       tab.addEventListener('click', () => showTab(tab.dataset.tab));
