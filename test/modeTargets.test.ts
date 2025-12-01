@@ -5,6 +5,9 @@ import {
   MockDriver,
 } from './mocks/homey';
 
+// Use fake timers for setInterval only to prevent resource leaks from periodic refresh
+jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const MyApp = require('../app');
 
@@ -12,6 +15,11 @@ describe('Mode device targets', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    jest.clearAllTimers();
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
   });
 
   it('applies device targets when capacity_mode or mode_device_targets changes', async () => {

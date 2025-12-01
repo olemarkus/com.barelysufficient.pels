@@ -155,6 +155,20 @@ module.exports = class PelsApp extends Homey.App {
     this.startPeriodicSnapshotRefresh();
   }
 
+  /**
+   * onUninit is called when the app is destroyed.
+   * Clean up intervals and timers.
+   */
+  async onUninit(): Promise<void> {
+    if (this.snapshotRefreshInterval) {
+      clearInterval(this.snapshotRefreshInterval);
+      this.snapshotRefreshInterval = undefined;
+    }
+    if (this.capacityGuard) {
+      this.capacityGuard.stop();
+    }
+  }
+
   private logDebug(...args: any[]): void {
     if (DEBUG_LOG) this.log(...args);
   }

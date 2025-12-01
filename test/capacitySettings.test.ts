@@ -5,6 +5,9 @@ import {
   MockDevice,
 } from './mocks/homey';
 
+// Use fake timers for setInterval only to prevent resource leaks from periodic refresh
+jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+
 // Mock CapacityGuard to capture limit updates.
 const capacityGuardInstances: any[] = [];
 jest.mock('../capacityGuard', () => {
@@ -43,6 +46,11 @@ describe('capacity settings propagation', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [new MockDevice('dev-1', 'Heater', ['target_temperature'])]),
     });
+    jest.clearAllTimers();
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
   });
 
   it('updates CapacityGuard when settings change', async () => {

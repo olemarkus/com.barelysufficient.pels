@@ -5,6 +5,9 @@ import {
   setMockDrivers,
 } from './mocks/homey';
 
+// Use fake timers for setInterval only to prevent resource leaks from periodic refresh
+jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const MyApp = require('../app');
 
@@ -15,6 +18,11 @@ describe('power tracker integration', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [new MockDevice('dev-1', 'Heater', ['onoff'])]),
     });
+    jest.clearAllTimers();
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
   });
 
   it('accumulates kWh from W samples correctly', async () => {

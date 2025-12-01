@@ -5,6 +5,9 @@ import {
   MockDriver,
 } from './mocks/homey';
 
+// Use fake timers for setInterval only to prevent resource leaks from periodic refresh
+jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const MyApp = require('../app');
 
@@ -33,6 +36,11 @@ describe('Device plan snapshot', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    jest.clearAllTimers();
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
   });
 
   it('marks lower-priority devices as shed when over soft limit', async () => {
