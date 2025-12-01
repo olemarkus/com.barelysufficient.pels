@@ -185,6 +185,11 @@ export default class CapacityGuard {
 
     if (headroom < 0) {
       this.log?.(`Guard: overshoot detected. total=${this.mainPowerKw.toFixed(2)}kW soft=${soft.toFixed(2)}kW headroom=${headroom.toFixed(2)}kW`);
+      // Ensure sheddingActive is set even if we can't shed anything (uncontrolled load exceeds limit)
+      if (!this.sheddingActive) {
+        this.sheddingActive = true;
+        await this.onSheddingStart?.();
+      }
       await this.shedUntilHealthy(headroom);
     } else if (this.sheddingActive && headroom >= this.restoreMarginKw) {
       this.sheddingActive = false;
@@ -198,6 +203,9 @@ export default class CapacityGuard {
     const toShed = Array.from(this.controllables.entries())
       .filter(([, c]) => c.desired === 'ON')
       .sort((a, b) => a[1].priority - b[1].priority);
+
+    // Log the shed order for debugging
+    this.log?.(`Guard: shed candidates (low→high priority): ${toShed.map(([, c]) => `${c.name}(p${c.priority})`).join(', ')}`);
 
     let shedThisTick = false;
     for (const [deviceId, device] of toShed) {
@@ -219,6 +227,8 @@ export default class CapacityGuard {
       await this.onSheddingStart?.();
     }
 
+    // Only end shedding if headroom is truly positive with margin
+    // Don't end shedding just because we ran out of things to shed
     if (this.sheddingActive && headroom >= this.restoreMarginKw) {
       this.sheddingActive = false;
       await this.onSheddingEnd?.();

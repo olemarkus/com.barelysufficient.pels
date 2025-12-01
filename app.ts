@@ -28,6 +28,13 @@ module.exports = class PelsApp extends Homey.App {
   private pendingRestores = new Set<string>(); // Devices currently being restored (in-flight)
   private lastSheddingMs: number | null = null;
   private lastOvershootMs: number | null = null;
+  private lastRestoreMs: number | null = null; // Track when we last restored a device
+  // Track devices that were swapped out: swappedOutDeviceId -> higherPriorityDeviceId
+  // These devices should not be restored until the higher-priority device they were swapped for is restored
+  private swappedOutFor: Record<string, string> = {};
+  // Track devices that are swap targets (higher-priority devices waiting to restore via swap)
+  // No device with lower priority than a pending swap target should restore first
+  private pendingSwapTargets: Set<string> = new Set();
   private latestTargetSnapshot: Array<{
     id: string;
     name: string;
@@ -321,7 +328,7 @@ module.exports = class PelsApp extends Homey.App {
       if (!chosen) throw new Error('Mode must be provided');
       this.capacityMode = chosen;
       this.homey.settings.set('capacity_mode', chosen);
-      this.rebuildPlanFromCache();
+      // rebuildPlanFromCache() is triggered by the settings listener, no need to call it twice
       if (this.capacityDryRun) {
         this.previewDeviceTargetsForMode(chosen);
       } else {
@@ -661,6 +668,7 @@ module.exports = class PelsApp extends Homey.App {
 
       let remaining = needed;
       const totalSheddable = candidates.reduce((sum, c) => sum + ((c as any).effectivePower as number), 0);
+      this.log(`Plan: overshoot=${needed.toFixed(2)}kW, candidates=${candidates.length}, totalSheddable=${totalSheddable.toFixed(2)}kW`);
       for (const c of candidates) {
         if (remaining <= 0) break;
         shedSet.add(c.id);
@@ -727,35 +735,164 @@ module.exports = class PelsApp extends Homey.App {
     // keep it shed to avoid on/off flapping.
     // Also limit cumulative restore to 50% of available headroom to prevent oscillation.
     // Also respect cooldown period after shedding to avoid rapid on/off cycles.
+    // Also wait after restoring a device to let the power measurement stabilize before restoring more.
     const cooldownMs = 12000;
+    const restoreCooldownMs = 6000; // Wait 6 seconds after restoring before considering more restores
     const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
     const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
+    const sinceRestore = this.lastRestoreMs ? Date.now() - this.lastRestoreMs : null;
     const inCooldown = (sinceShedding !== null && sinceShedding < cooldownMs) || (sinceOvershoot !== null && sinceOvershoot < cooldownMs);
+    const inRestoreCooldown = sinceRestore !== null && sinceRestore < restoreCooldownMs;
 
-    if (headroomRaw !== null) {
-      const maxRestoreBudget = Math.max(0, headroomRaw * 0.5); // Only use 50% of headroom for restores
-      let cumulativeRestorePower = 0;
+    if (headroomRaw !== null && !sheddingActive && !inCooldown && !inRestoreCooldown) {
+      let availableHeadroom = headroomRaw;
+      const restoredThisCycle = new Set<string>(); // Track devices restored in this planning cycle
+
       // Sort off devices by priority (higher priority = restore first)
       const offDevices = planDevices
         .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed')
         .sort((a, b) => (b.priority ?? 100) - (a.priority ?? 100)); // Higher priority first
 
+      // Get ON devices sorted by priority (lower priority = shed first for swaps)
+      const onDevices = planDevices
+        .filter((d) => d.controllable !== false && d.currentState === 'on' && d.plannedState !== 'shed')
+        .sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100)); // Lower priority first
+
+      // Restore safety buffer: require headroom to stay positive by this much AFTER restore
+      // This prevents oscillation from measurement variance/latency
+      const restoreHysteresis = Math.max(0.2, restoreMarginPlanning * 2);
+
+      // Only restore ONE device per cycle, then wait for new measurements.
+      // This avoids relying on potentially inaccurate power estimates (settings.load, etc.)
+      // and lets us observe the actual impact before restoring more.
+      let restoredOneThisCycle = false;
+
       for (const dev of offDevices) {
-        const needed = (dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1) + restoreMarginPlanning;
-        const wouldExceedBudget = cumulativeRestorePower + needed > maxRestoreBudget;
-        if (headroomRaw < needed || sheddingActive || wouldExceedBudget || inCooldown) {
+        // Skip if we already restored one device this cycle
+        if (restoredOneThisCycle) {
           dev.plannedState = 'shed';
-          dev.reason = sheddingActive
-            ? 'stay off while shedding is active'
-            : inCooldown
-              ? `stay off during cooldown (${Math.max(0, cooldownMs - (sinceShedding ?? sinceOvershoot ?? 0)) / 1000}s remaining)`
-              : wouldExceedBudget
-                ? `stay off to limit restore rate (budget ${maxRestoreBudget.toFixed(2)}kW, used ${cumulativeRestorePower.toFixed(2)}kW)`
-                : `stay off until headroom >= ${needed.toFixed(2)}kW`;
-        } else {
-          // This device will be restored; account for its power in the budget
-          cumulativeRestorePower += dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1;
+          dev.reason = 'stay off (waiting for measurement after previous restore)';
+          continue;
         }
+
+        // Check if this device was swapped out for a higher-priority device
+        // Don't restore it until that higher-priority device is restored first
+        const swappedFor = this.swappedOutFor[dev.id];
+        if (swappedFor) {
+          const higherPriDev = planDevices.find(d => d.id === swappedFor);
+          // If the higher-priority device is still off, don't restore this one
+          if (higherPriDev && higherPriDev.currentState === 'off') {
+            dev.plannedState = 'shed';
+            dev.reason = `stay off (swapped out for ${higherPriDev.name}, waiting for it to restore first)`;
+            this.logDebug(`Plan: blocking restore of ${dev.name} - was swapped out for ${higherPriDev.name} which is still off`);
+            continue;
+          } else {
+            // Higher-priority device is now on, clear the swap tracking
+            delete this.swappedOutFor[dev.id];
+            this.pendingSwapTargets.delete(swappedFor);
+            this.logDebug(`Plan: ${dev.name} can now be considered for restore - ${higherPriDev?.name ?? swappedFor} is restored`);
+          }
+        }
+
+        // Check if there are pending swap targets with higher priority than this device
+        // If so, don't restore this device - let the swap targets get restored first
+        // But if THIS device is a swap target, it should be allowed to restore
+        if (this.pendingSwapTargets.size > 0 && !this.pendingSwapTargets.has(dev.id)) {
+          const devPriority = dev.priority ?? 100;
+          let blockedBySwapTarget: { id: string; name: string; priority: number } | null = null;
+          for (const swapTargetId of this.pendingSwapTargets) {
+            if (swapTargetId === dev.id) continue; // Don't block ourselves
+            const swapTargetDev = planDevices.find(d => d.id === swapTargetId);
+            if (swapTargetDev) {
+              const swapTargetPriority = swapTargetDev.priority ?? 100;
+              // If swap target has higher or equal priority, it should restore first
+              if (swapTargetPriority >= devPriority && swapTargetDev.currentState === 'off') {
+                blockedBySwapTarget = { id: swapTargetId, name: swapTargetDev.name, priority: swapTargetPriority };
+                break;
+              }
+              // If swap target is now on, it's no longer pending
+              if (swapTargetDev.currentState === 'on') {
+                this.pendingSwapTargets.delete(swapTargetId);
+              }
+            } else {
+              // Device no longer exists, clean up
+              this.pendingSwapTargets.delete(swapTargetId);
+            }
+          }
+          if (blockedBySwapTarget) {
+            dev.plannedState = 'shed';
+            dev.reason = `stay off (pending swap target ${blockedBySwapTarget.name} p${blockedBySwapTarget.priority} should restore first)`;
+            this.logDebug(`Plan: blocking restore of ${dev.name} (p${devPriority}) - swap target ${blockedBySwapTarget.name} (p${blockedBySwapTarget.priority}) should restore first`);
+            continue;
+          }
+        }
+
+        const devPower = dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1;
+        // Need enough headroom to restore AND keep a safety buffer afterward
+        const needed = devPower + restoreHysteresis;
+        
+        if (availableHeadroom >= needed) {
+          // Enough headroom - restore this device
+          availableHeadroom -= devPower + restoreHysteresis; // Reserve the hysteresis buffer
+          restoredThisCycle.add(dev.id);
+          restoredOneThisCycle = true; // Only restore one device per cycle
+        } else {
+          // Not enough headroom or budget - try to swap with lower priority ON devices
+          const devPriority = dev.priority ?? 100;
+          let potentialHeadroom = availableHeadroom;
+          const toShed: typeof onDevices = [];
+
+          for (const onDev of onDevices) {
+            if ((onDev.priority ?? 100) >= devPriority) break; // Don't shed equal or higher priority
+            if (onDev.plannedState === 'shed') continue; // Already being shed
+            if (restoredThisCycle.has(onDev.id)) continue; // Don't swap out something we just decided to restore
+            
+            const onDevPower = onDev.powerKw && onDev.powerKw > 0 ? onDev.powerKw : 1;
+            toShed.push(onDev);
+            potentialHeadroom += onDevPower;
+            
+            if (potentialHeadroom >= needed) break; // Enough room now
+          }
+
+          if (potentialHeadroom >= needed && toShed.length > 0) {
+            // Swap: shed the low-priority devices and restore the high-priority one
+            // Swaps are budget-neutral (shedding creates headroom), so don't count against restore budget
+            this.log(`Plan: swap approved for ${dev.name} - shedding ${toShed.map(d => d.name).join(', ')} (${toShed.reduce((sum, d) => sum + (d.powerKw ?? 1), 0).toFixed(2)}kW) to get ${potentialHeadroom.toFixed(2)}kW >= ${needed.toFixed(2)}kW needed`);
+            // Track this device as a pending swap target - no lower-priority device should restore first
+            this.pendingSwapTargets.add(dev.id);
+            for (const shedDev of toShed) {
+              shedDev.plannedState = 'shed';
+              shedDev.reason = `swapped out for higher priority ${dev.name} (p${devPriority})`;
+              this.log(`Plan: swapping out ${shedDev.name} (p${shedDev.priority ?? 100}, ~${(shedDev.powerKw ?? 1).toFixed(2)}kW) to restore ${dev.name} (p${devPriority})`);
+              availableHeadroom += shedDev.powerKw && shedDev.powerKw > 0 ? shedDev.powerKw : 1;
+              // Track that this device was swapped out for the higher-priority device
+              // It should not be restored until the higher-priority device is restored first
+              this.swappedOutFor[shedDev.id] = dev.id;
+            }
+            availableHeadroom -= devPower + restoreHysteresis; // Reserve the hysteresis buffer for swaps too
+            restoredThisCycle.add(dev.id);
+            restoredOneThisCycle = true; // Swap counts as a restore - wait for measurement
+            // Note: we don't add to cumulativeRestorePower for swaps since it's net-neutral
+          } else {
+            // Cannot restore - not enough headroom even with swaps
+            dev.plannedState = 'shed';
+            dev.reason = `stay off (insufficient headroom ${availableHeadroom.toFixed(2)}kW < ${needed.toFixed(2)}kW needed, no lower-priority devices to swap)`;
+            this.logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${devPower.toFixed(2)}kW) - ${dev.reason}`);
+          }
+        }
+      }
+    } else if (headroomRaw !== null && (sheddingActive || inCooldown || inRestoreCooldown)) {
+      // Shedding active, in cooldown, or waiting for power to stabilize - mark all off devices to stay off
+      const offDevices = planDevices
+        .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed');
+      for (const dev of offDevices) {
+        dev.plannedState = 'shed';
+        dev.reason = sheddingActive
+          ? 'stay off while shedding is active'
+          : inCooldown
+            ? `stay off during cooldown (${Math.max(0, cooldownMs - (sinceShedding ?? sinceOvershoot ?? 0)) / 1000}s remaining)`
+            : `stay off (waiting for power to stabilize after last restore, ${Math.max(0, restoreCooldownMs - (sinceRestore ?? 0)) / 1000}s remaining)`;
+        this.logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) - ${dev.reason}`);
       }
     }
 
@@ -927,6 +1064,9 @@ module.exports = class PelsApp extends Homey.App {
               await this.homeyApi.devices.setCapabilityValue({ deviceId: dev.id, capabilityId: 'onoff', value: true });
               this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
               this.updateLocalSnapshot(dev.id, { on: true });
+              this.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
+              // Clear this device from pending swap targets if it was one
+              this.pendingSwapTargets.delete(dev.id);
             } catch (error) {
               this.error(`Failed to turn on ${name} via HomeyAPI`, error);
             }

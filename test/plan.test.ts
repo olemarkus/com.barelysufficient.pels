@@ -718,4 +718,270 @@ describe('Device plan snapshot', () => {
       value: 45,
     });
   });
+
+  it('swaps low-priority ON device with high-priority OFF device when headroom is insufficient', async () => {
+    // High priority device (OFF, needs restoration)
+    const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await highPri.setCapabilityValue('measure_power', 1500); // 1.5 kW
+    await highPri.setCapabilityValue('onoff', false); // Currently OFF
+
+    // Low priority device (ON, can be swapped out)
+    const lowPri = new MockDevice('dev-low', 'Low Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await lowPri.setCapabilityValue('measure_power', 1200); // 1.2 kW (increased for hysteresis margin)
+    await lowPri.setCapabilityValue('onoff', true); // Currently ON
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [highPri, lowPri]),
+    });
+
+    // Set priorities: dev-high has higher priority (10) than dev-low (5)
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 10, 'dev-low': 5 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // With hysteresis: restoreHysteresis = max(0.2, marginKw * 2) = max(0.2, 0.4) = 0.4 kW
+    // High-pri device needs 1.5 + 0.4 = 1.9 kW
+    // Soft limit = 4 kW, total = 3 kW, headroom = 1 kW
+    // Shedding low-pri (1.2 kW) gives us 1.0 + 1.2 = 2.2 kW >= 1.9 kW - enough!
+    (app as any).computeDynamicSoftLimit = () => 4;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+    }
+
+    // Clear any shedding/overshoot timestamps to avoid cooldown
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+    if ((app as any).capacityGuard) {
+      // Ensure shedding is not active
+      (app as any).capacityGuard.sheddingActive = false;
+    }
+
+    await (app as any).recordPowerSample(3000); // 3 kW total
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
+    const lowPriPlan = plan.devices.find((d: any) => d.id === 'dev-low');
+
+    // High priority device should be planned for restoration (keep)
+    // Low priority device should be planned for shedding (swap)
+    expect(lowPriPlan?.plannedState).toBe('shed');
+    expect(lowPriPlan?.reason).toContain('swapped out');
+    expect(highPriPlan?.plannedState).toBe('keep');
+  });
+
+  it('does not swap when there are no lower-priority devices to shed', async () => {
+    // High priority device (OFF, needs restoration)
+    const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await highPri.setCapabilityValue('measure_power', 1500);
+    await highPri.setCapabilityValue('onoff', false);
+
+    // Another high priority device (ON)
+    const anotherHigh = new MockDevice('dev-high2', 'Another High Pri', ['target_temperature', 'onoff', 'measure_power']);
+    await anotherHigh.setCapabilityValue('measure_power', 800);
+    await anotherHigh.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [highPri, anotherHigh]),
+    });
+
+    // Both devices have equal or higher priority - no swap possible
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 10, 'dev-high2': 10 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-high2': true });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Headroom 0.5 kW, not enough for dev-high (1.5 kW + margin)
+    (app as any).computeDynamicSoftLimit = () => 3;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 3);
+    }
+
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+
+    await (app as any).recordPowerSample(2500);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
+    const high2Plan = plan.devices.find((d: any) => d.id === 'dev-high2');
+
+    // dev-high should stay off (not enough headroom, no lower-pri to swap)
+    expect(highPriPlan?.plannedState).toBe('shed');
+    // dev-high2 should stay on (same priority, not swapped)
+    expect(high2Plan?.plannedState).toBe('keep');
+  });
+
+  it('does not swap when shedding lower-priority devices would still not provide enough headroom', async () => {
+    // High priority device (OFF, needs 2kW to restore)
+    const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await highPri.setCapabilityValue('measure_power', 2000); // 2 kW - large device
+    await highPri.setCapabilityValue('onoff', false);
+
+    // Low priority device (ON, but only 0.3kW - not enough to swap)
+    const lowPri = new MockDevice('dev-low', 'Low Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await lowPri.setCapabilityValue('measure_power', 300); // 0.3 kW - small device
+    await lowPri.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [highPri, lowPri]),
+    });
+
+    // High priority (10) > Low priority (5)
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 10, 'dev-low': 5 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Soft limit = 3.5 kW, total = 3 kW, headroom = 0.5 kW
+    // High-pri needs 2 + 0.2 margin = 2.2 kW
+    // Even with shedding low-pri (0.3 kW), we'd only get 0.5 + 0.3 = 0.8 kW
+    // 0.8 < 2.2, so swap should NOT happen
+    (app as any).computeDynamicSoftLimit = () => 3.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 3.5);
+    }
+
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+
+    await (app as any).recordPowerSample(3000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
+    const lowPriPlan = plan.devices.find((d: any) => d.id === 'dev-low');
+
+    // High priority should stay off - not enough headroom even with swap
+    expect(highPriPlan?.plannedState).toBe('shed');
+    expect(highPriPlan?.reason).toContain('no lower-priority devices to swap');
+    
+    // Low priority should stay ON - it wasn't swapped out because swap wouldn't help
+    expect(lowPriPlan?.plannedState).toBe('keep');
+  });
+
+  it('swaps multiple low-priority devices when needed to restore a high-priority device', async () => {
+    // High priority device (OFF, needs 1.5kW)
+    const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await highPri.setCapabilityValue('measure_power', 1500);
+    await highPri.setCapabilityValue('onoff', false);
+
+    // Two low priority devices (ON, 0.5kW each = 1kW total)
+    const lowPri1 = new MockDevice('dev-low1', 'Low Pri 1', ['target_temperature', 'onoff', 'measure_power']);
+    await lowPri1.setCapabilityValue('measure_power', 500);
+    await lowPri1.setCapabilityValue('onoff', true);
+
+    const lowPri2 = new MockDevice('dev-low2', 'Low Pri 2', ['target_temperature', 'onoff', 'measure_power']);
+    await lowPri2.setCapabilityValue('measure_power', 500);
+    await lowPri2.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [highPri, lowPri1, lowPri2]),
+    });
+
+    // High (10) > Low1 (3) > Low2 (2)
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 10, 'dev-low1': 3, 'dev-low2': 2 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low1': true, 'dev-low2': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Soft limit = 4 kW, total = 3 kW, headroom = 1 kW
+    // High-pri needs 1.5 + 0.2 = 1.7 kW
+    // Shedding low1 (0.5) + low2 (0.5) = 1kW, total headroom = 1 + 1 = 2 kW >= 1.7kW
+    (app as any).computeDynamicSoftLimit = () => 4;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+    }
+
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+
+    await (app as any).recordPowerSample(3000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
+    const low1Plan = plan.devices.find((d: any) => d.id === 'dev-low1');
+    const low2Plan = plan.devices.find((d: any) => d.id === 'dev-low2');
+
+    // High priority should be restored (swap successful)
+    expect(highPriPlan?.plannedState).toBe('keep');
+    
+    // Both low priority devices should be shed for the swap
+    expect(low1Plan?.plannedState).toBe('shed');
+    expect(low1Plan?.reason).toContain('swapped out');
+    expect(low2Plan?.plannedState).toBe('shed');
+    expect(low2Plan?.reason).toContain('swapped out');
+  });
+
+  it('blocks lower-priority devices from restoring before pending swap targets', async () => {
+    // Scenario: A swap was initiated but the swap target hasn't restored yet
+    // A lower-priority OFF device should NOT restore before the swap target
+    
+    // High priority swap target (OFF, pending restore via swap)
+    const swapTarget = new MockDevice('dev-swap-target', 'Swap Target', ['target_temperature', 'onoff', 'measure_power']);
+    await swapTarget.setCapabilityValue('measure_power', 1000); // 1 kW
+    await swapTarget.setCapabilityValue('onoff', false);
+
+    // Lower priority device (OFF, wants to restore but should be blocked)
+    const lowerPriDev = new MockDevice('dev-lower', 'Lower Priority', ['target_temperature', 'onoff', 'measure_power']);
+    await lowerPriDev.setCapabilityValue('measure_power', 300); // 0.3 kW
+    await lowerPriDev.setCapabilityValue('onoff', false);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [swapTarget, lowerPriDev]),
+    });
+
+    // Swap target (10) > Lower priority (8)
+    mockHomeyInstance.settings.set('capacity_priorities', { 
+      Home: { 'dev-swap-target': 10, 'dev-lower': 8 } 
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 
+      'dev-swap-target': true, 'dev-lower': true 
+    });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Setup: enough headroom to restore the lower priority device (0.3 + 0.4 = 0.7 kW)
+    // but not enough for the swap target (1.0 + 0.4 = 1.4 kW)
+    // Soft limit = 2 kW, total power = 0 (both devices OFF), headroom = 2.0 kW
+    // But with NO on devices, swap target can restore normally with 1.4 kW needed
+    // To test the blocking, we need to manually set up the pendingSwapTargets
+    
+    (app as any).computeDynamicSoftLimit = () => 2;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+    }
+
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+    (app as any).lastRestoreMs = null;
+    
+    // Simulate that a swap was initiated: swap target is in pendingSwapTargets
+    // This mimics the state after a swap where the target hasn't been restored yet
+    (app as any).pendingSwapTargets = new Set(['dev-swap-target']);
+
+    // Record power - only 0.8 kW headroom (not enough for swap target with 1.4 kW needed)
+    // But enough for lower priority (0.7 kW needed)
+    await (app as any).recordPowerSample(1200); // 1.2 kW total
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const swapTargetPlan = plan.devices.find((d: any) => d.id === 'dev-swap-target');
+    const lowerPriPlan = plan.devices.find((d: any) => d.id === 'dev-lower');
+
+    // Swap target doesn't have enough headroom, should stay shed
+    expect(swapTargetPlan?.plannedState).toBe('shed');
+    
+    // Lower priority device COULD restore (has enough headroom)
+    // But should be blocked because swap target is pending
+    expect(lowerPriPlan?.plannedState).toBe('shed');
+    expect(lowerPriPlan?.reason).toContain('swap target');
+  });
 });
