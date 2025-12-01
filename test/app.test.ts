@@ -73,6 +73,25 @@ describe('MyApp initialization', () => {
     await expect(setModeListener({ mode: '   ' })).rejects.toThrow('Mode must be provided');
   });
 
+  it('set_capacity_mode flow card handles autocomplete object format', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
+
+    // Autocomplete returns an object with id and name, not a plain string
+    const result = await setModeListener({ mode: { id: 'Away', name: 'Away' } });
+    expect(result).toBe(true);
+
+    expect(mockHomeyInstance.settings.get('capacity_mode')).toBe('Away');
+    expect((app as any).capacityMode).toBe('Away');
+  });
+
   it('set_capacity_mode applies device targets when not in dry run', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({

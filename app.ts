@@ -300,14 +300,16 @@ module.exports = class PelsApp extends Homey.App {
     });
 
     const setCapacityMode = this.homey.flow.getActionCard('set_capacity_mode');
-    setCapacityMode.registerRunListener(async (args: { mode: string }) => {
-      const chosen = (args.mode || '').trim();
+    setCapacityMode.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
+      // Handle both string (manual input) and object (autocomplete selection) formats
+      const modeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
+      const chosen = (modeValue || '').trim();
       if (!chosen) throw new Error('Mode must be provided');
       this.capacityMode = chosen;
       this.homey.settings.set('capacity_mode', chosen);
       this.rebuildPlanFromCache();
       if (this.capacityDryRun) {
-        await this.previewDeviceTargetsForMode(chosen);
+        this.previewDeviceTargetsForMode(chosen);
       } else {
         await this.applyDeviceTargetsForMode(chosen);
       }
