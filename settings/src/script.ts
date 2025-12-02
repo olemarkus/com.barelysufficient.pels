@@ -362,6 +362,16 @@ const loadModeAndPriorities = async () => {
   renderModeOptions();
 };
 
+// Refresh only the active mode (when changed externally), preserving editing mode
+const refreshActiveMode = async () => {
+  const mode = await getSetting('capacity_mode');
+  activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
+  // Only update the active mode dropdown, not the editing mode dropdown
+  if (activeModeSelect) {
+    activeModeSelect.value = activeMode;
+  }
+};
+
 const renderModeOptions = () => {
   const modes = new Set([activeMode]);
   Object.keys(capacityPriorities || {}).forEach((m) => modes.add(m));
@@ -1133,6 +1143,10 @@ const boot = async () => {
           if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
             refreshPrices().catch(() => {});
           }
+        }
+        if (key === 'capacity_mode') {
+          // Mode changed externally (e.g., via Flow) - refresh only active mode dropdown
+          refreshActiveMode().catch(() => {});
         }
       });
     }
