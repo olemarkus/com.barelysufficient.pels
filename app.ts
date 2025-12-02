@@ -1646,10 +1646,19 @@ module.exports = class PelsApp extends Homey.App {
     const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
     this.hourlyBudgetExhausted = remainingKWh <= 0;
 
-    // Allow higher instantaneous draw if budget remaining and time is short.
-    const allowedKw = remainingKWh / remainingHours;
+    // Calculate instantaneous rate needed to use remaining budget
+    const burstRateKw = remainingKWh / remainingHours;
+
+    // Cap the soft limit to the base sustainable rate (netBudgetKWh kW).
+    // This prevents the "end of hour burst" problem where devices ramp up
+    // to use remaining budget, then immediately overshoot the next hour.
+    // By never allowing more than the sustainable rate, devices won't be
+    // turned on at the end of hour N if they'd overshoot hour N+1.
+    const sustainableRateKw = netBudgetKWh; // kWh/h = kW at steady state
+    const allowedKw = Math.min(burstRateKw, sustainableRateKw);
+
     this.logDebug(
-      `Soft limit calc: budget=${netBudgetKWh.toFixed(3)}kWh used=${usedKWh.toFixed(3)}kWh remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h soft=${allowedKw.toFixed(3)}kW`,
+      `Soft limit calc: budget=${netBudgetKWh.toFixed(3)}kWh used=${usedKWh.toFixed(3)}kWh remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h burst=${burstRateKw.toFixed(3)}kW capped=${allowedKw.toFixed(3)}kW`,
     );
     return allowedKw;
   }

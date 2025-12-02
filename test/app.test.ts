@@ -141,3 +141,116 @@ describe('MyApp initialization', () => {
     });
   });
 });
+
+describe('computeDynamicSoftLimit', () => {
+  beforeEach(() => {
+    mockHomeyInstance.settings.removeAllListeners();
+    mockHomeyInstance.settings.clear();
+    mockHomeyInstance.flow._actionCardListeners = {};
+    mockHomeyInstance.flow._conditionCardListeners = {};
+    jest.clearAllTimers();
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+  });
+
+  it('caps soft limit to sustainable rate even when burst rate is higher', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Set capacity limit to 5 kW with 0 margin -> sustainable rate = 5 kW
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Simulate end of hour scenario where burst rate would be very high:
+    // If 1 minute left in hour and only 0.5 kWh used, remaining = 4.5 kWh
+    // burstRate = 4.5 / (1/60) = 270 kW (way over sustainable!)
+    // But with capping, it should never exceed 5 kW (sustainable rate)
+
+    // Mock the power tracker to simulate some usage
+    (app as any).powerTracker = {
+      buckets: {},
+    };
+
+    // Set the bucket to have 0.5 kWh used this hour
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    const bucketKey = now.toISOString();
+    (app as any).powerTracker.buckets[bucketKey] = 0.5;
+
+    // Call computeDynamicSoftLimit
+    const softLimit = (app as any).computeDynamicSoftLimit();
+
+    // With 5 kWh budget, 0.5 used, 4.5 remaining:
+    // - burstRate could be very high depending on time remaining
+    // - but it should be capped to sustainableRate = 5 kW
+    expect(softLimit).toBeLessThanOrEqual(5);
+    expect(softLimit).toBeGreaterThan(0);
+  });
+
+  it('allows lower soft limit when budget is exhausted', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Set capacity limit to 5 kW with 0 margin -> sustainable rate = 5 kW
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Mock the power tracker
+    (app as any).powerTracker = {
+      buckets: {},
+    };
+
+    // Set the bucket to have 4.9 kWh used (almost exhausted budget)
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    const bucketKey = now.toISOString();
+    (app as any).powerTracker.buckets[bucketKey] = 4.9;
+
+    const softLimit = (app as any).computeDynamicSoftLimit();
+
+    // With 5 kWh budget, 4.9 used, only 0.1 kWh remaining
+    // The burst rate will be low (0.1 / remaining hours)
+    // The cap (5 kW) doesn't apply because burst rate is already lower
+    expect(softLimit).toBeLessThan(5);
+    expect(softLimit).toBeGreaterThanOrEqual(0);
+  });
+
+  it('returns sustainable rate at start of hour with full budget', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Set capacity limit to 5 kW with 0 margin -> sustainable rate = 5 kW
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Mock the power tracker with empty bucket (start of hour)
+    (app as any).powerTracker = {
+      buckets: {},
+    };
+
+    const softLimit = (app as any).computeDynamicSoftLimit();
+
+    // At start of hour with full budget:
+    // burstRate = 5 kWh / 1 hour = 5 kW
+    // sustainableRate = 5 kW
+    // Result should be 5 kW (min of equal values)
+    expect(softLimit).toBe(5);
+  });
+});
