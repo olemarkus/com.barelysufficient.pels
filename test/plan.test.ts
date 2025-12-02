@@ -105,7 +105,7 @@ describe('Device plan snapshot', () => {
     };
 
     await (app as any).applyPlanActions(plan);
-    expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A');
+    expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
   });
 
   it('ignores non-controllable devices when planning shedding', async () => {
@@ -297,7 +297,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(2000);
 
-    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A');
+    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const planned = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(planned?.plannedState).toBe('shed');
@@ -335,8 +335,8 @@ describe('Device plan snapshot', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const shedIds = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
     expect(shedIds).toEqual(expect.arrayContaining(['dev-1', 'dev-2']));
-    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A');
-    expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B');
+    expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
+    expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B', undefined);
   });
 
   it('throttles repeated shedding commands for the same device', async () => {
@@ -460,7 +460,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(6300);
 
-    expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device');
+    expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device', undefined);
     expect(shedSpy).not.toHaveBeenCalledWith('dev-off', 'Off Device');
   });
 

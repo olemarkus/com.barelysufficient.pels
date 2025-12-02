@@ -227,8 +227,8 @@ module.exports = class PelsApp extends Homey.App {
       state.lastTimestamp = nowMs;
       state.lastPowerW = currentPowerW;
       if (this.capacityGuard) this.capacityGuard.reportTotalPower(currentPowerW / 1000);
-      this.rebuildPlanFromCache();
       this.savePowerTracker();
+      this.rebuildPlanFromCache();
       return;
     }
 
@@ -1010,7 +1010,7 @@ module.exports = class PelsApp extends Homey.App {
     return allowedKw;
   }
 
-  private async applySheddingToDevice(deviceId: string, deviceName?: string): Promise<void> {
+  private async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
     if (this.capacityDryRun) return;
     const now = Date.now();
     const lastForDevice = this.lastDeviceShedMs[deviceId];
@@ -1038,7 +1038,7 @@ module.exports = class PelsApp extends Homey.App {
       if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
         try {
           await this.homeyApi.devices.setCapabilityValue({ deviceId, capabilityId: 'onoff', value: false });
-          this.log(`Actuator: turned off ${name} due to capacity`);
+          this.log(`Capacity: turned off ${name} (${reason || 'shedding'})`);
           this.updateLocalSnapshot(deviceId, { on: false });
           this.lastSheddingMs = now;
           this.lastDeviceShedMs[deviceId] = now;
@@ -1065,8 +1065,9 @@ module.exports = class PelsApp extends Homey.App {
       if (dev.controllable === false) continue;
       // Apply on/off when shedding.
       if (dev.plannedState === 'shed' && dev.currentState !== 'off') {
-        this.log(`Capacity: turning off ${dev.name || dev.id} due to shedding`);
-        await this.applySheddingToDevice(dev.id, dev.name);
+        const reason = (dev as any).reason;
+        const isSwap = reason && reason.includes('swapped out for');
+        await this.applySheddingToDevice(dev.id, dev.name, isSwap ? reason : undefined);
         continue;
       }
       // Restore power if the plan keeps it on and it was off.
@@ -1135,7 +1136,7 @@ module.exports = class PelsApp extends Homey.App {
               value: dev.plannedTarget,
             });
             this.log(
-              `Set ${targetCap} for ${dev.name || dev.id} ${dev.currentTarget === undefined || dev.currentTarget === null ? '' : `from ${dev.currentTarget} `}to ${dev.plannedTarget}`,
+              `Set ${targetCap} for ${dev.name || dev.id} ${dev.currentTarget === undefined || dev.currentTarget === null ? '' : `from ${dev.currentTarget} `}to ${dev.plannedTarget} (mode: ${this.capacityMode})`,
             );
             this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
           } catch (error) {

@@ -37,7 +37,8 @@ const modePanel = qs('#modes-panel');
 let isBusy = false;
 let homey: any = null;
 let capacityPriorities: Record<string, Record<string, number>> = {};
-let currentMode = 'Home';
+let activeMode = 'Home'; // The mode currently active on Homey
+let editingMode = 'Home'; // The mode currently being edited in the UI
 let latestDevices: any[] = [];
 let modeTargets: Record<string, Record<string, number>> = {};
 let controllableMap: Record<string, boolean> = {};
@@ -228,7 +229,8 @@ const loadModeAndPriorities = async () => {
   const priorities = await getSetting('capacity_priorities');
   const targets = await getSetting('mode_device_targets');
   const controllables = await getSetting('controllable_devices');
-  currentMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
+  activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
+  editingMode = activeMode; // Start editing the active mode
   capacityPriorities = priorities && typeof priorities === 'object' ? priorities : {};
   modeTargets = targets && typeof targets === 'object' ? targets : {};
   controllableMap = controllables && typeof controllables === 'object' ? controllables : {};
@@ -236,21 +238,34 @@ const loadModeAndPriorities = async () => {
 };
 
 const renderModeOptions = () => {
-  const modes = new Set([currentMode]);
+  const modes = new Set([activeMode]);
   Object.keys(capacityPriorities || {}).forEach((m) => modes.add(m));
   Object.keys(modeTargets || {}).forEach((m) => modes.add(m));
   if (modes.size === 0) modes.add('Home');
-  [modeSelect, activeModeSelect].forEach((selectEl) => {
-    if (!selectEl) return;
-    selectEl.innerHTML = '';
+  
+  // Mode editor dropdown - shows editingMode as selected
+  if (modeSelect) {
+    modeSelect.innerHTML = '';
     Array.from(modes).forEach((m) => {
       const opt = document.createElement('option');
       opt.value = m;
       opt.textContent = m;
-      if (m === currentMode) opt.selected = true;
-      selectEl.appendChild(opt);
+      if (m === editingMode) opt.selected = true;
+      modeSelect.appendChild(opt);
     });
-  });
+  }
+  
+  // Active mode dropdown - shows activeMode as selected
+  if (activeModeSelect) {
+    activeModeSelect.innerHTML = '';
+    Array.from(modes).forEach((m) => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      if (m === activeMode) opt.selected = true;
+      activeModeSelect.appendChild(opt);
+    });
+  }
 };
 
 const renderPriorities = (devices) => {
@@ -311,12 +326,12 @@ const renderPriorities = (devices) => {
 };
 
 const getPriority = (deviceId) => {
-  const mode = currentMode || 'Home';
+  const mode = editingMode || 'Home';
   return capacityPriorities[mode]?.[deviceId] ?? 100;
 };
 
 const getDesiredTarget = (device) => {
-  const mode = currentMode || 'Home';
+  const mode = editingMode || 'Home';
   const value = modeTargets[mode]?.[device.id];
   if (typeof value === 'number') return value;
   const firstTarget = device.targets?.find?.(() => true);
@@ -324,13 +339,18 @@ const getDesiredTarget = (device) => {
   return null;
 };
 
-const setCurrentMode = (mode) => {
+const setActiveMode = (mode) => {
   const next = (mode || '').trim() || 'Home';
-  currentMode = next;
+  activeMode = next;
+  renderModeOptions();
+  setSetting('capacity_mode', activeMode).catch(() => {});
+};
+
+const setEditingMode = (mode) => {
+  const next = (mode || '').trim() || 'Home';
+  editingMode = next;
   renderModeOptions();
   renderPriorities(latestDevices);
-  renderDevices(latestDevices);
-  setSetting('capacity_mode', currentMode).catch(() => {});
 };
 
 const renameMode = async (oldName, newName) => {
@@ -349,13 +369,17 @@ const renameMode = async (oldName, newName) => {
     modeTargets[newKey] = modeTargets[oldKey];
     delete modeTargets[oldKey];
   }
-  if (currentMode === oldKey) currentMode = newKey;
+  // If we're renaming the active mode, update it
+  if (activeMode === oldKey) {
+    activeMode = newKey;
+    await setSetting('capacity_mode', activeMode);
+  }
+  // If we're renaming the mode we're editing, update it
+  if (editingMode === oldKey) editingMode = newKey;
   await setSetting('capacity_priorities', capacityPriorities);
   await setSetting('mode_device_targets', modeTargets);
-  await setSetting('capacity_mode', currentMode);
   renderModeOptions();
   renderPriorities(latestDevices);
-  renderDevices(latestDevices);
   await showToast(`Renamed mode to ${newKey}`, 'ok');
 };
 
@@ -392,7 +416,7 @@ const initSortable = () => {
 
 const savePriorities = async () => {
   const mode = (modeSelect?.value || '').trim() || 'Home';
-  currentMode = mode;
+  editingMode = mode;
   const rows = priorityList?.querySelectorAll('.device-row') || [];
   const modeMap = capacityPriorities[mode] || {};
   const total = rows.length;
@@ -404,14 +428,14 @@ const savePriorities = async () => {
     }
   });
   capacityPriorities[mode] = modeMap;
-  await setSetting('capacity_mode', mode);
+  // Only save priorities, don't change active mode
   await setSetting('capacity_priorities', capacityPriorities);
-  await showToast('Priorities saved.', 'ok');
+  await showToast(`Priorities saved for ${mode}.`, 'ok');
 };
 
 const saveTargets = async () => {
-  const mode = (modeSelect?.value || currentMode || 'Home').trim() || 'Home';
-  currentMode = mode;
+  const mode = (modeSelect?.value || editingMode || 'Home').trim() || 'Home';
+  editingMode = mode;
   const inputs = priorityList?.querySelectorAll('.mode-target-input') || [];
   const modeMap = modeTargets[mode] || {};
   inputs.forEach((input) => {
@@ -424,19 +448,19 @@ const saveTargets = async () => {
     }
   });
   modeTargets[mode] = modeMap;
-  await setSetting('capacity_mode', mode);
+  // Only save targets, don't change active mode
   await setSetting('mode_device_targets', modeTargets);
-  await showToast('Targets saved.', 'ok');
+  await showToast(`Targets saved for ${mode}.`, 'ok');
 };
 
 const applyTargetChange = async (deviceId, rawValue) => {
-  const mode = (modeSelect?.value || currentMode || 'Home').trim() || 'Home';
-  currentMode = mode;
+  const mode = (modeSelect?.value || editingMode || 'Home').trim() || 'Home';
+  editingMode = mode;
   const val = parseFloat(rawValue);
   if (!Number.isFinite(val)) return;
   if (!modeTargets[mode]) modeTargets[mode] = {};
   modeTargets[mode][deviceId] = val;
-  await setSetting('capacity_mode', mode);
+  // Only save targets, don't change active mode
   await setSetting('mode_device_targets', modeTargets);
 };
 
@@ -612,16 +636,14 @@ const boot = async () => {
     renderPriorities(latestDevices);
     renderDevices(latestDevices);
     modeSelect?.addEventListener('change', () => {
-      // Mode editor selection should not change the active mode dropdown; only update currentMode for editing.
-      currentMode = modeSelect.value || 'Home';
-      renderPriorities(latestDevices);
-      renderDevices(latestDevices);
+      // Mode editor selection changes which mode we're editing, not the active mode
+      setEditingMode(modeSelect.value || 'Home');
     });
     activeModeForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const mode = (activeModeSelect?.value || '').trim();
       if (!mode) return;
-      setCurrentMode(mode);
+      setActiveMode(mode);
       await showToast(`Active mode set to ${mode}`, 'ok');
     });
     addModeButton?.addEventListener('click', async () => {
@@ -629,33 +651,34 @@ const boot = async () => {
       if (!mode) return;
       if (!capacityPriorities[mode]) capacityPriorities[mode] = {};
       if (!modeTargets[mode]) modeTargets[mode] = {};
-      currentMode = mode;
+      editingMode = mode;
       renderModeOptions();
       renderPriorities(latestDevices);
-      renderDevices(latestDevices);
       await setSetting('capacity_priorities', capacityPriorities);
       await setSetting('mode_device_targets', modeTargets);
-      await setSetting('capacity_mode', currentMode);
       modeNewInput.value = '';
       await showToast(`Added mode ${mode}`, 'ok');
     });
     deleteModeButton?.addEventListener('click', async () => {
-      const mode = modeSelect?.value || currentMode;
+      const mode = modeSelect?.value || editingMode;
       if (mode && capacityPriorities[mode]) {
         delete capacityPriorities[mode];
         if (modeTargets[mode]) delete modeTargets[mode];
-        currentMode = 'Home';
+        // If we deleted the active mode, reset to Home
+        if (activeMode === mode) {
+          activeMode = 'Home';
+          await setSetting('capacity_mode', activeMode);
+        }
+        editingMode = 'Home';
         renderModeOptions();
         renderPriorities(latestDevices);
-        renderDevices(latestDevices);
         await setSetting('capacity_priorities', capacityPriorities);
         await setSetting('mode_device_targets', modeTargets);
-        await setSetting('capacity_mode', currentMode);
         await showToast(`Deleted mode ${mode}`, 'warn');
       }
     });
     renameModeButton?.addEventListener('click', async () => {
-      const oldMode = modeSelect?.value || currentMode;
+      const oldMode = modeSelect?.value || editingMode;
       const newMode = (modeNewInput?.value || '').trim();
       if (!newMode) return;
       await renameMode(oldMode, newMode);
