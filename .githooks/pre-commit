@@ -1,0 +1,21 @@
+#!/bin/sh
+# Pre-commit hook to run tests before committing
+
+echo "Running tests..."
+
+# Run build first (compiles TypeScript and settings)
+npm run build
+if [ $? -ne 0 ]; then
+  echo "❌ Build failed. Commit aborted."
+  exit 1
+fi
+
+# Run unit tests
+npm test
+if [ $? -ne 0 ]; then
+  echo "❌ Tests failed. Commit aborted."
+  exit 1
+fi
+
+echo "✅ All checks passed!"
+exit 0
