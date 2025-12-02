@@ -213,8 +213,8 @@
             </label>
             <label class="field">
               <span class="field__label">Provider surcharge (øre/kWh)</span>
-              <input type="number" id="provider-surcharge" name="provider_surcharge" step="0.1" min="0" max="100" value="0">
-              <small class="field__hint">Your electricity provider's surcharge on top of the spot price (check your contract).</small>
+              <input type="number" id="provider-surcharge" name="provider_surcharge" step="0.1" min="-100" max="100" value="0">
+              <small class="field__hint">Your electricity provider's surcharge on top of the spot price. Can be negative if you have a discount (check your contract).</small>
             </label>
             <label class="field">
               <span class="field__label">Price threshold (%)</span>
