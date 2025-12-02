@@ -485,10 +485,15 @@ const renderPlan = (plan) => {
 
   const meta = plan.meta || {};
   if (typeof meta.totalKw === 'number' && typeof meta.softLimitKw === 'number' && typeof meta.headroomKw === 'number') {
-    const headroomText = meta.headroomKw >= 0 ? `Headroom: +${meta.headroomKw.toFixed(2)} kW` : `Over: ${meta.headroomKw.toFixed(2)} kW`;
-    planMeta.textContent = `${headroomText} · Total ${meta.totalKw.toFixed(2)} / Soft ${meta.softLimitKw.toFixed(2)} kW`;
+    const headroomAbs = Math.abs(meta.headroomKw).toFixed(1);
+    const headroomText = meta.headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
+    const powerText = `Now ${meta.totalKw.toFixed(1)}kW / Limit ${meta.softLimitKw.toFixed(1)}kW`;
+    const budgetText = typeof meta.usedKWh === 'number' && typeof meta.budgetKWh === 'number'
+      ? ` · This hour: ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)}kWh`
+      : '';
+    planMeta.innerHTML = `<div>${powerText}</div><div>${headroomText}${budgetText}</div>`;
   } else {
-    planMeta.textContent = 'Planning based on latest data';
+    planMeta.textContent = 'Awaiting data';
   }
 
   const grouped = plan.devices.reduce((acc, dev) => {

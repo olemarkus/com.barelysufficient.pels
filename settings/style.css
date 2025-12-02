@@ -188,6 +188,14 @@ input[type="number"]:focus {
   white-space: nowrap;
 }
 
+#plan-meta {
+  white-space: normal;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
+
 .pill.ok {
   color: #0d1117;
   background: var(--accent);

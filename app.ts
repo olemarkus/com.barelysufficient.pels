@@ -638,7 +638,7 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private buildDevicePlanSnapshot(devices: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }>): {
-    meta: { totalKw: number | null; softLimitKw: number; headroomKw: number | null; hourlyBudgetExhausted?: boolean };
+    meta: { totalKw: number | null; softLimitKw: number; headroomKw: number | null; hourlyBudgetExhausted?: boolean; usedKWh?: number; budgetKWh?: number };
     devices: Array<{
       id: string;
       name: string;
@@ -656,6 +656,15 @@ module.exports = class PelsApp extends Homey.App {
     const desiredForMode = this.modeDeviceTargets[this.capacityMode] || {};
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
     const softLimit = this.computeDynamicSoftLimit();
+
+    // Compute used/budget kWh for this hour
+    const budgetKWh = Math.max(0, this.capacitySettings.limitKw - this.capacitySettings.marginKw);
+    const now = Date.now();
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0, 0, 0);
+    const bucketKey = hourStart.toISOString();
+    const usedKWh = this.powerTracker.buckets?.[bucketKey] || 0;
+
     const headroomRaw = total === null ? null : softLimit - total;
     let headroom = headroomRaw === null && softLimit <= 0 ? -1 : headroomRaw;
     // Hysteresis: require some positive margin before we start turning things back on.
@@ -932,6 +941,8 @@ module.exports = class PelsApp extends Homey.App {
         softLimitKw: softLimit,
         headroomKw: headroom,
         hourlyBudgetExhausted: this.hourlyBudgetExhausted,
+        usedKWh,
+        budgetKWh,
       },
       devices: planDevices,
     };
