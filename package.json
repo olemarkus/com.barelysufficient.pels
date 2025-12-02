@@ -8,9 +8,11 @@
     "start": "npm run build:settings && homey app run",
     "install-app": "npm run build:settings && homey app install",
     "lint": "eslint --ext .js,.ts --ignore-path .gitignore .",
-    "test": "jest && npm run validate",
+    "test": "jest --testPathIgnorePatterns=settings-ui && npm run validate",
+    "test:ui": "jest --config jest.config.ui.cjs",
+    "test:all": "npm run test:ui && npm test",
     "validate": "npm run build:settings && homey app validate",
-    "check": "npm test"
+    "check": "npm run test:ui && npm test"
   },
   "dependencies": {
     "homey-api": "^3.14.21",
@@ -21,11 +23,13 @@
     "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
     "@types/jest": "^29.5.14",
     "@types/node": "^24.10.1",
+    "@types/puppeteer": "^7.0.4",
     "esbuild": "^0.27.0",
     "eslint": "^7.32.0",
     "eslint-config-athom": "^3.1.5",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
+    "puppeteer": "^24.31.0",
     "ts-jest": "^29.2.5",
     "typescript": "^5.9.3"
   }
