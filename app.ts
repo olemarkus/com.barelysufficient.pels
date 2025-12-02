@@ -49,6 +49,9 @@ module.exports = class PelsApp extends Homey.App {
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
   // Set when remaining hourly energy budget has been fully consumed (remainingKWh <= 0)
   private hourlyBudgetExhausted = false;
+  // Track last known power draw (kW) for each device when it was ON and drawing power > 0
+  // Used as a fallback estimate when settings.load is not available
+  private lastKnownPowerKw: Record<string, number> = {};
 
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     const snap = this.latestTargetSnapshot.find((d) => d.id === deviceId);
@@ -502,12 +505,26 @@ module.exports = class PelsApp extends Homey.App {
         const capabilities: string[] = device.capabilities || [];
         const capabilityObj = device.capabilitiesObj || {};
         const powerRaw = capabilityObj.measure_power?.value;
+        const deviceId = device.id || device.data?.id || device.name;
+        const isOn = capabilityObj.onoff?.value === true;
         let powerKw: number | undefined;
+        
+        // Priority for power estimates:
+        // 1. measure_power (real-time, when device is actively drawing)
+        // 2. settings.load (configured expected load)
+        // 3. lastKnownPowerKw (last observed power when device was on)
         if (typeof powerRaw === 'number' && powerRaw > 0) {
           powerKw = powerRaw > 50 ? powerRaw / 1000 : powerRaw;
+          // Track this as the last known power for this device (when on and drawing)
+          if (isOn && powerKw > 0.05) { // Only track meaningful power draws (>50W)
+            this.lastKnownPowerKw[deviceId] = powerKw;
+          }
         } else if (device.settings && typeof device.settings.load === 'number') {
           const loadW = device.settings.load;
           powerKw = loadW > 50 ? loadW / 1000 : loadW;
+        } else if (this.lastKnownPowerKw[deviceId]) {
+          // Use last known power as fallback
+          powerKw = this.lastKnownPowerKw[deviceId];
         }
 
         const targetCaps = capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
