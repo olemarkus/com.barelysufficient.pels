@@ -563,7 +563,7 @@ module.exports = class PelsApp extends Homey.App {
 
     // Check if we already have today's nettleie data (cached)
     if (!forceRefresh) {
-      const existingData = this.homey.settings.get('nettleie_data') as any[];
+      const existingData = this.homey.settings.get('nettleie_data') as Array<{ datoId?: string }> | null;
       if (existingData && Array.isArray(existingData) && existingData.length > 0) {
         // Check if the data is from today by looking at the first entry's datoId
         const firstEntry = existingData[0];
@@ -599,7 +599,8 @@ module.exports = class PelsApp extends Homey.App {
       }
 
       // Transform and store the data
-      const nettleieData = data.map((entry: any) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- NVE API response type
+      const nettleieData = data.map((entry: Record<string, unknown>) => ({
         time: entry.time,
         energileddEks: entry.energileddEks,
         energileddInk: entry.energileddInk,
@@ -623,7 +624,9 @@ module.exports = class PelsApp extends Homey.App {
   private updateCombinedPrices(): void {
     const combined = this.getCombinedHourlyPrices();
     if (combined.length === 0) {
-      this.homey.settings.set('combined_prices', { prices: [], avgPrice: 0, lowThreshold: 0, highThreshold: 0 });
+      this.homey.settings.set('combined_prices', {
+        prices: [], avgPrice: 0, lowThreshold: 0, highThreshold: 0,
+      });
       return;
     }
 
@@ -668,26 +671,26 @@ module.exports = class PelsApp extends Homey.App {
 
     // Check if we already have today's prices (cached)
     if (!forceRefresh) {
-      const existingPrices = this.homey.settings.get('electricity_prices') as any[];
+      const existingPrices = this.homey.settings.get('electricity_prices') as Array<{ startsAt?: string }> | null;
       if (existingPrices && Array.isArray(existingPrices) && existingPrices.length > 0) {
         // Check if we have prices for today
         const hasTodayPrices = existingPrices.some((p) => p.startsAt?.startsWith(todayStr));
         const hasTomorrowPrices = existingPrices.some((p) => p.startsAt?.startsWith(tomorrowStr));
-        
+
         // Tomorrow's prices are typically available after 13:00 CET
         // Refresh if it's after 13:15 and we don't have tomorrow's prices yet
         const currentHour = today.getHours();
         const currentMinute = today.getMinutes();
         const isAfter1315 = currentHour > 13 || (currentHour === 13 && currentMinute >= 15);
         const shouldFetchTomorrow = isAfter1315 && !hasTomorrowPrices;
-        
+
         if (hasTodayPrices && !shouldFetchTomorrow) {
           this.logDebug(`Spot prices: Using cached data (${existingPrices.length} entries including today)`);
           // Still update combined prices in case nettleie changed
           this.updateCombinedPrices();
           return;
         }
-        
+
         if (shouldFetchTomorrow) {
           this.logDebug('Spot prices: Refreshing to fetch tomorrow\'s prices (after 13:15)');
         }
@@ -736,14 +739,14 @@ module.exports = class PelsApp extends Homey.App {
       // We add 25% VAT for all areas except NO4 (Nord-Norge)
       const vatMultiplier = priceArea === 'NO4' ? 1.0 : 1.25;
 
-      return data.map((entry: any) => ({
-        startsAt: entry.time_start,
+      return data.map((entry: Record<string, unknown>) => ({
+        startsAt: entry.time_start as string,
         // Convert from NOK/kWh to øre/kWh and add VAT
-        total: entry.NOK_per_kWh * 100 * vatMultiplier,
+        total: (entry.NOK_per_kWh as number) * 100 * vatMultiplier,
         currency: 'NOK',
       }));
-    } catch (error: any) {
-      if (error?.statusCode === 404) {
+    } catch (error: unknown) {
+      if ((error as { statusCode?: number })?.statusCode === 404) {
         // Prices not yet available (e.g., tomorrow's prices before 13:00)
         this.logDebug(`Spot prices: No data for ${year}-${month}-${day} (not yet available)`);
         return [];
@@ -757,7 +760,7 @@ module.exports = class PelsApp extends Homey.App {
    * Make an HTTPS GET request and parse JSON response.
    * Uses rejectUnauthorized: false to work around certificate issues on Homey.
    */
-  private httpsGetJson(url: string): Promise<any> {
+  private httpsGetJson(url: string): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const req = https.get(
         url,
@@ -767,7 +770,9 @@ module.exports = class PelsApp extends Homey.App {
         },
         (res) => {
           if (res.statusCode === 404) {
-            reject({ statusCode: 404, message: 'Not found' });
+            const err = new Error('Not found') as Error & { statusCode: number };
+            err.statusCode = 404;
+            reject(err);
             return;
           }
           if (res.statusCode !== 200) {
@@ -928,7 +933,7 @@ module.exports = class PelsApp extends Homey.App {
 
     const isCheap = this.isCurrentHourCheap();
     const isExpensive = this.isCurrentHourExpensive();
-    
+
     // Debug: log current price info
     const prices = this.getCombinedHourlyPrices();
     const now = new Date();
@@ -941,6 +946,7 @@ module.exports = class PelsApp extends Homey.App {
     this.log(`Price optimization: current=${currentPrice?.totalPrice?.toFixed(1) ?? 'N/A'} øre, avg=${avgPrice.toFixed(1)} øre, threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`);
 
     // If price is normal (not cheap or expensive), use the mode's base temperature
+    // eslint-disable-next-line no-nested-ternary -- Clear price state mapping
     const priceState = isCheap ? 'cheap' : isExpensive ? 'expensive' : 'normal';
 
     for (const [deviceId, config] of Object.entries(settings)) {
@@ -987,6 +993,7 @@ module.exports = class PelsApp extends Homey.App {
           value: targetTemp,
         });
         const priceInfo = this.getCurrentHourPriceInfo();
+        // eslint-disable-next-line no-nested-ternary -- Clear delta info mapping
         const deltaInfo = isCheap ? `+${config.cheapDelta}` : isExpensive ? `${config.expensiveDelta}` : '0';
         this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${priceState} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
         this.updateLocalSnapshot(deviceId, { target: targetTemp });
@@ -1361,19 +1368,19 @@ module.exports = class PelsApp extends Homey.App {
       const priority = this.getPriorityForDevice(dev.id);
       const desired = desiredForMode[dev.id];
       let plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
-      
+
       // Apply price optimization delta if configured for this device
       const priceOptConfig = this.priceOptimizationSettings[dev.id];
       if (plannedTarget !== null && priceOptConfig?.enabled) {
         const isCheap = this.isCurrentHourCheap();
         const isExpensive = this.isCurrentHourExpensive();
         if (isCheap && priceOptConfig.cheapDelta) {
-          plannedTarget = plannedTarget + priceOptConfig.cheapDelta;
+          plannedTarget += priceOptConfig.cheapDelta;
         } else if (isExpensive && priceOptConfig.expensiveDelta) {
-          plannedTarget = plannedTarget + priceOptConfig.expensiveDelta;
+          plannedTarget += priceOptConfig.expensiveDelta;
         }
       }
-      
+
       const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
       // eslint-disable-next-line no-nested-ternary -- Clear boolean-to-state mapping
       const currentState = typeof dev.currentOn === 'boolean' ? (dev.currentOn ? 'on' : 'off') : 'unknown';
