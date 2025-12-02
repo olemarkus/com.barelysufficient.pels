@@ -32,7 +32,6 @@ const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSe
 const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 const priorityList = qs('#priority-list');
 const priorityEmpty = qs('#priority-empty');
-const modePanel = qs('#modes-panel');
 
 let isBusy = false;
 let homey: any = null;

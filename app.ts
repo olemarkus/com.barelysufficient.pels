@@ -2,6 +2,16 @@ import Homey from 'homey';
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
 const DEBUG_LOG = false;
+
+// Timing constants for shedding/restore behavior
+const SHED_COOLDOWN_MS = 12000; // Wait 12s after shedding before considering restores
+const RESTORE_COOLDOWN_MS = 6000; // Wait 6s after restore for power to stabilize
+const SHED_THROTTLE_MS = 5000; // Minimum time between shed attempts for same device
+const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot every 5 minutes
+
+// Power thresholds
+const MIN_SIGNIFICANT_POWER_W = 50; // Minimum power draw to consider "on" or worth tracking
+
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { HomeyAPI } = require('homey-api');
 import CapacityGuard from './capacityGuard';
@@ -448,12 +458,11 @@ module.exports = class PelsApp extends Homey.App {
 
   private startPeriodicSnapshotRefresh(): void {
     // Refresh device snapshot every 5 minutes to keep states current
-    const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
     this.snapshotRefreshInterval = setInterval(() => {
       this.refreshTargetDevicesSnapshot().catch((error: Error) => {
         this.error('Periodic snapshot refresh failed', error);
       });
-    }, REFRESH_INTERVAL_MS);
+    }, SNAPSHOT_REFRESH_INTERVAL_MS);
   }
 
   private async refreshTargetDevicesSnapshot(): Promise<void> {
@@ -517,14 +526,14 @@ module.exports = class PelsApp extends Homey.App {
         // 2. settings.load (configured expected load)
         // 3. lastKnownPowerKw (last observed power when device was on)
         if (typeof powerRaw === 'number' && powerRaw > 0) {
-          powerKw = powerRaw > 50 ? powerRaw / 1000 : powerRaw;
+          powerKw = powerRaw > MIN_SIGNIFICANT_POWER_W ? powerRaw / 1000 : powerRaw;
           // Track this as the last known power for this device (when on and drawing)
-          if (isOn && powerKw > 0.05) { // Only track meaningful power draws (>50W)
+          if (isOn && powerKw > MIN_SIGNIFICANT_POWER_W / 1000) {
             this.lastKnownPowerKw[deviceId] = powerKw;
           }
         } else if (device.settings && typeof device.settings.load === 'number') {
           const loadW = device.settings.load;
-          powerKw = loadW > 50 ? loadW / 1000 : loadW;
+          powerKw = loadW > MIN_SIGNIFICANT_POWER_W ? loadW / 1000 : loadW;
         } else if (this.lastKnownPowerKw[deviceId]) {
           // Use last known power as fallback
           powerKw = this.lastKnownPowerKw[deviceId];
@@ -779,13 +788,11 @@ module.exports = class PelsApp extends Homey.App {
     // Also limit cumulative restore to 50% of available headroom to prevent oscillation.
     // Also respect cooldown period after shedding to avoid rapid on/off cycles.
     // Also wait after restoring a device to let the power measurement stabilize before restoring more.
-    const cooldownMs = 12000;
-    const restoreCooldownMs = 6000; // Wait 6 seconds after restoring before considering more restores
     const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
     const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
     const sinceRestore = this.lastRestoreMs ? Date.now() - this.lastRestoreMs : null;
-    const inCooldown = (sinceShedding !== null && sinceShedding < cooldownMs) || (sinceOvershoot !== null && sinceOvershoot < cooldownMs);
-    const inRestoreCooldown = sinceRestore !== null && sinceRestore < restoreCooldownMs;
+    const inCooldown = (sinceShedding !== null && sinceShedding < SHED_COOLDOWN_MS) || (sinceOvershoot !== null && sinceOvershoot < SHED_COOLDOWN_MS);
+    const inRestoreCooldown = sinceRestore !== null && sinceRestore < RESTORE_COOLDOWN_MS;
 
     if (headroomRaw !== null && !sheddingActive && !inCooldown && !inRestoreCooldown) {
       let availableHeadroom = headroomRaw;
@@ -933,8 +940,8 @@ module.exports = class PelsApp extends Homey.App {
         dev.reason = sheddingActive
           ? 'stay off while shedding is active'
           : inCooldown
-            ? `stay off during cooldown (${Math.max(0, cooldownMs - (sinceShedding ?? sinceOvershoot ?? 0)) / 1000}s remaining)`
-            : `stay off (waiting for power to stabilize after last restore, ${Math.max(0, restoreCooldownMs - (sinceRestore ?? 0)) / 1000}s remaining)`;
+            ? `stay off during cooldown (${Math.max(0, SHED_COOLDOWN_MS - (sinceShedding ?? sinceOvershoot ?? 0)) / 1000}s remaining)`
+            : `stay off (waiting for power to stabilize after last restore, ${Math.max(0, RESTORE_COOLDOWN_MS - (sinceRestore ?? 0)) / 1000}s remaining)`;
         this.logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) - ${dev.reason}`);
       }
     }
@@ -1085,10 +1092,9 @@ module.exports = class PelsApp extends Homey.App {
         const plannedPower = (dev as any).powerKw && (dev as any).powerKw > 0 ? (dev as any).powerKw : 1;
         const extraBuffer = Math.max(0.2, restoreMargin); // add a little hysteresis for restores
         const neededForDevice = plannedPower + restoreMargin + extraBuffer;
-        const cooldownMs = 12000;
         const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
         const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
-        const inCooldown = (sinceShedding !== null && sinceShedding < cooldownMs) || (sinceOvershoot !== null && sinceOvershoot < cooldownMs);
+        const inCooldown = (sinceShedding !== null && sinceShedding < SHED_COOLDOWN_MS) || (sinceOvershoot !== null && sinceOvershoot < SHED_COOLDOWN_MS);
         // Check if restoring this device would exceed our restore budget for this cycle
         const wouldExceedRestoreBudget = restoredPowerThisCycle + plannedPower > maxRestoreBudget;
         // Do not restore devices while shedding is active, during cooldown, when headroom is unknown or near zero,
