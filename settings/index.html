@@ -262,6 +262,66 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+  <!-- Device Detail Panel (slide-over) -->
+  <div id="device-detail-overlay" class="overlay" hidden>
+    <div id="device-detail-panel" class="slide-panel">
+      <div class="slide-panel__header">
+        <h2 id="device-detail-title">Device</h2>
+        <button type="button" class="btn icon-btn" id="device-detail-close" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="slide-panel__content">
+        <section class="detail-section">
+          <h3>Controls</h3>
+          <div class="detail-controls">
+            <label class="checkbox-field">
+              <input type="checkbox" id="device-detail-controllable">
+              <span>Capacity-based control</span>
+            </label>
+            <p class="muted">Allow PELS to adjust this device based on power capacity limits.</p>
+            
+            <label class="checkbox-field">
+              <input type="checkbox" id="device-detail-price-opt">
+              <span>Price-based control</span>
+            </label>
+            <p class="muted">Adjust temperature based on electricity price fluctuations.</p>
+          </div>
+        </section>
+        
+        <section class="detail-section">
+          <h3>Temperature per mode</h3>
+          <p class="muted">Set the target temperature for each mode. PELS will set this when the mode is active.</p>
+          <div id="device-detail-modes" class="detail-mode-list"></div>
+        </section>
+        
+        <section class="detail-section" id="device-detail-delta-section">
+          <h3>Price optimization deltas</h3>
+          <p class="muted">Temperature adjustments applied during cheap/expensive electricity hours.</p>
+          <div class="detail-deltas">
+            <label class="field">
+              <span class="field__label">🟢 Cheap hours delta (°C)</span>
+              <input type="number" id="device-detail-cheap-delta" step="0.5" value="5">
+              <small class="field__hint">Added to target during cheap hours (e.g. +5)</small>
+            </label>
+            <label class="field">
+              <span class="field__label">🔴 Expensive hours delta (°C)</span>
+              <input type="number" id="device-detail-expensive-delta" step="0.5" value="-5">
+              <small class="field__hint">Added to target during expensive hours (e.g. -5)</small>
+            </label>
+          </div>
+        </section>
+      </div>
+      
+      <div class="slide-panel__footer">
+        <button type="button" class="btn primary" id="device-detail-save">Save changes</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/homey.js" data-origin="settings"></script>
   <script src="./script.js"></script>
 </body>

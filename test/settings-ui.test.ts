@@ -822,4 +822,247 @@ describe('Settings UI', () => {
       expect(rowContent.hasCheckbox).toBe(false);
     });
   });
+
+  describe('Device detail panel', () => {
+    const setupPageWithDeviceDetail = async () => {
+      const mockScript = `
+        // Helper functions for device detail
+        function openDeviceDetail(deviceId, deviceName) {
+          const overlay = document.getElementById('device-detail-overlay');
+          const title = document.getElementById('device-detail-title');
+          if (overlay && title) {
+            title.textContent = deviceName;
+            overlay.hidden = false;
+            overlay.dataset.deviceId = deviceId;
+            
+            // Populate mode temperatures
+            const modeList = document.getElementById('device-detail-modes');
+            if (modeList) {
+              modeList.innerHTML = '';
+              ['Home', 'Away', 'Night'].forEach(mode => {
+                const card = document.createElement('div');
+                card.className = 'mode-card';
+                card.innerHTML = '<span class="mode-card__name">' + mode + '</span>' +
+                  '<input type="number" class="mode-target-input" value="21" step="0.5">';
+                modeList.appendChild(card);
+              });
+            }
+          }
+        }
+        
+        function closeDeviceDetail() {
+          const overlay = document.getElementById('device-detail-overlay');
+          if (overlay) overlay.hidden = true;
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+          const deviceList = document.getElementById('device-list');
+          const emptyState = document.getElementById('empty-state');
+          if (emptyState) emptyState.hidden = true;
+          
+          // Add test devices
+          ['Test Device 1', 'Test Device 2', 'Test Device 3'].forEach((name, index) => {
+            const row = document.createElement('div');
+            row.className = 'device-row';
+            row.setAttribute('role', 'listitem');
+            row.dataset.deviceId = 'device-' + (index + 1);
+            
+            const nameWrap = document.createElement('div');
+            nameWrap.className = 'device-row__name';
+            nameWrap.textContent = name;
+            nameWrap.style.cursor = 'pointer';
+            nameWrap.addEventListener('click', () => openDeviceDetail('device-' + (index + 1), name));
+            
+            const ctrlLabel = document.createElement('label');
+            ctrlLabel.className = 'checkbox-icon';
+            const ctrlInput = document.createElement('input');
+            ctrlInput.type = 'checkbox';
+            ctrlInput.checked = true;
+            ctrlLabel.appendChild(ctrlInput);
+            
+            const priceLabel = document.createElement('label');
+            priceLabel.className = 'checkbox-icon';
+            const priceInput = document.createElement('input');
+            priceInput.type = 'checkbox';
+            priceInput.checked = index < 2;
+            priceLabel.appendChild(priceInput);
+            
+            row.append(nameWrap, ctrlLabel, priceLabel);
+            deviceList.appendChild(row);
+          });
+          
+          // Close button listener
+          const closeBtn = document.getElementById('device-detail-close');
+          if (closeBtn) {
+            closeBtn.addEventListener('click', closeDeviceDetail);
+          }
+          
+          // Close on overlay click (but not panel content)
+          const overlay = document.getElementById('device-detail-overlay');
+          if (overlay) {
+            overlay.addEventListener('click', (e) => {
+              if (e.target === overlay) closeDeviceDetail();
+            });
+          }
+          
+          // Tab switching
+          const tabs = document.querySelectorAll('.tab');
+          const panels = document.querySelectorAll('.panel');
+          tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+              tabs.forEach(t => {
+                t.classList.toggle('active', t === tab);
+                t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+              });
+              panels.forEach(p => {
+                p.classList.toggle('hidden', p.dataset.panel !== tab.dataset.tab);
+              });
+            });
+          });
+        });
+      `;
+      
+      await page.emulate({
+        viewport: { width: 480, height: 800, deviceScaleFactor: 2, isMobile: false, hasTouch: false },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      });
+      
+      const html = prepareHtml(mockScript);
+      await page.setContent(html, { waitUntil: 'domcontentloaded' });
+      await sleep(50);
+    };
+
+    beforeAll(async () => {
+      await setupPageWithDeviceDetail();
+    });
+
+    test('device detail overlay is hidden by default', async () => {
+      const overlay = await page.$('#device-detail-overlay');
+      expect(overlay).toBeTruthy();
+      
+      const isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      expect(isHidden).toBe(true);
+    });
+
+    test('clicking device name opens detail panel', async () => {
+      // Click on first device name
+      await page.click('.device-row__name');
+      
+      const isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      expect(isHidden).toBe(false);
+    });
+
+    test('device detail shows correct device name', async () => {
+      // Panel should already be open from previous test, but make sure
+      const isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      if (isHidden) await page.click('.device-row__name');
+      
+      const title = await page.$eval('#device-detail-title', el => el.textContent);
+      expect(title).toBe('Test Device 1');
+    });
+
+    test('close button closes detail panel', async () => {
+      // Ensure panel is open
+      let isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      if (isHidden) await page.click('.device-row__name');
+      
+      // Click close button
+      await page.click('#device-detail-close');
+      
+      // Verify panel is closed
+      isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      expect(isHidden).toBe(true);
+    });
+
+    test('clicking overlay backdrop closes detail panel', async () => {
+      // Open panel
+      await page.click('.device-row__name');
+      
+      // Verify panel is open
+      let isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      expect(isHidden).toBe(false);
+      
+      // Click on overlay backdrop (outside panel content) using evaluate for more control
+      await page.evaluate(() => {
+        const overlay = document.getElementById('device-detail-overlay');
+        if (overlay) {
+          // Dispatch a click event directly on the overlay (not its children)
+          const event = new MouseEvent('click', { bubbles: true });
+          Object.defineProperty(event, 'target', { value: overlay, writable: false });
+          overlay.dispatchEvent(event);
+        }
+      });
+      
+      // Verify panel is closed
+      isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      expect(isHidden).toBe(true);
+    });
+
+    test('device detail has control checkboxes', async () => {
+      await page.click('.device-row__name');
+      
+      const controllableCheckbox = await page.$('#device-detail-controllable');
+      const priceOptCheckbox = await page.$('#device-detail-price-opt');
+      
+      expect(controllableCheckbox).toBeTruthy();
+      expect(priceOptCheckbox).toBeTruthy();
+    });
+
+    test('device detail shows mode temperatures section', async () => {
+      // Panel should be open from previous test
+      let isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      if (isHidden) await page.click('.device-row__name');
+      
+      const modeList = await page.$('#device-detail-modes');
+      expect(modeList).toBeTruthy();
+      
+      // Check that modes are populated
+      const modeCards = await page.$$('#device-detail-modes .mode-card');
+      expect(modeCards.length).toBeGreaterThan(0);
+    });
+
+    test('device detail shows delta inputs section', async () => {
+      // Panel should be open
+      let isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      if (isHidden) await page.click('.device-row__name');
+      
+      const cheapDelta = await page.$('#device-detail-cheap-delta');
+      const expensiveDelta = await page.$('#device-detail-expensive-delta');
+      
+      expect(cheapDelta).toBeTruthy();
+      expect(expensiveDelta).toBeTruthy();
+    });
+
+    test('device detail panel fits within viewport', async () => {
+      // Ensure panel is open
+      let isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      if (isHidden) await page.click('.device-row__name');
+      
+      const panelBox = await page.$eval('#device-detail-panel', el => {
+        const rect = el.getBoundingClientRect();
+        return { right: rect.right, bottom: rect.bottom };
+      });
+      
+      // Panel should fit within 480px width viewport
+      expect(panelBox.right).toBeLessThanOrEqual(480);
+    });
+
+    test('device detail header has close button and title', async () => {
+      // Ensure panel is open
+      let isHidden = await page.$eval('#device-detail-overlay', el => (el as HTMLElement).hidden);
+      if (isHidden) await page.click('.device-row__name');
+      
+      const headerContent = await page.$eval('#device-detail-panel .slide-panel__header', el => {
+        const closeBtn = el.querySelector('#device-detail-close');
+        const title = el.querySelector('#device-detail-title');
+        return {
+          hasCloseBtn: !!closeBtn,
+          hasTitle: !!title,
+        };
+      });
+      
+      expect(headerContent.hasCloseBtn).toBe(true);
+      expect(headerContent.hasTitle).toBe(true);
+    });
+  });
 });

@@ -50,6 +50,21 @@ const priceOptimizationList = qs('#price-optimization-list');
 const priceOptimizationEmpty = qs('#price-optimization-empty');
 const priceOptimizationSection = qs('#price-optimization-section');
 
+// Device detail panel elements
+const deviceDetailOverlay = qs('#device-detail-overlay');
+const deviceDetailPanel = qs('#device-detail-panel');
+const deviceDetailTitle = qs('#device-detail-title');
+const deviceDetailClose = qs('#device-detail-close') as HTMLButtonElement;
+const deviceDetailControllable = document.querySelector('#device-detail-controllable') as HTMLInputElement;
+const deviceDetailPriceOpt = document.querySelector('#device-detail-price-opt') as HTMLInputElement;
+const deviceDetailModes = qs('#device-detail-modes');
+const deviceDetailDeltaSection = qs('#device-detail-delta-section');
+const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement;
+const deviceDetailExpensiveDelta = document.querySelector('#device-detail-expensive-delta') as HTMLInputElement;
+const deviceDetailSave = qs('#device-detail-save') as HTMLButtonElement;
+
+let currentDetailDeviceId: string | null = null;
+
 // Norwegian grid companies with organization numbers and counties
 // Data from NVE nettleietariffer API
 interface GridCompany {
@@ -258,6 +273,12 @@ const renderDevices = (devices) => {
       renderPriceOptimization(latestDevices);
     });
     priceOptLabel.append(priceOptInput);
+
+    // Make the name clickable to open device detail
+    nameWrap.style.cursor = 'pointer';
+    nameWrap.addEventListener('click', () => {
+      openDeviceDetail(device.id);
+    });
 
     row.append(nameWrap, ctrlLabel, priceOptLabel);
     deviceList.appendChild(row);
@@ -1068,6 +1089,192 @@ const renderPriceOptimization = (devices: any[]) => {
   });
 };
 
+// ========================================
+// Device Detail Panel Functions
+// ========================================
+
+const openDeviceDetail = (deviceId: string) => {
+  const device = latestDevices.find(d => d.id === deviceId);
+  if (!device) return;
+  
+  currentDetailDeviceId = deviceId;
+  
+  // Set title
+  if (deviceDetailTitle) {
+    deviceDetailTitle.textContent = device.name;
+  }
+  
+  // Set control checkboxes
+  if (deviceDetailControllable) {
+    deviceDetailControllable.checked = controllableMap[deviceId] !== false;
+  }
+  
+  const priceConfig = priceOptimizationSettings[deviceId];
+  if (deviceDetailPriceOpt) {
+    deviceDetailPriceOpt.checked = priceConfig?.enabled || false;
+  }
+  
+  // Populate mode list
+  renderDeviceDetailModes(device);
+  
+  // Set delta values
+  if (deviceDetailCheapDelta) {
+    deviceDetailCheapDelta.value = (priceConfig?.cheapDelta ?? 5).toString();
+  }
+  if (deviceDetailExpensiveDelta) {
+    deviceDetailExpensiveDelta.value = (priceConfig?.expensiveDelta ?? -5).toString();
+  }
+  
+  // Show/hide delta section based on price optimization enabled
+  updateDeltaSectionVisibility();
+  
+  // Show panel
+  if (deviceDetailOverlay) {
+    deviceDetailOverlay.hidden = false;
+  }
+};
+
+const closeDeviceDetail = () => {
+  currentDetailDeviceId = null;
+  if (deviceDetailOverlay) {
+    deviceDetailOverlay.hidden = true;
+  }
+};
+
+const updateDeltaSectionVisibility = () => {
+  if (deviceDetailDeltaSection && deviceDetailPriceOpt) {
+    deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.checked ? 'block' : 'none';
+  }
+};
+
+const renderDeviceDetailModes = (device: any) => {
+  if (!deviceDetailModes) return;
+  deviceDetailModes.innerHTML = '';
+  
+  // Collect all modes
+  const modes = new Set([activeMode]);
+  Object.keys(capacityPriorities || {}).forEach(m => modes.add(m));
+  Object.keys(modeTargets || {}).forEach(m => modes.add(m));
+  if (modes.size === 0) modes.add('Home');
+  
+  Array.from(modes).sort().forEach(mode => {
+    const row = document.createElement('div');
+    row.className = 'detail-mode-row';
+    row.dataset.mode = mode;
+    
+    const nameWrap = document.createElement('div');
+    nameWrap.className = 'detail-mode-row__name';
+    
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = mode;
+    nameWrap.appendChild(nameSpan);
+    
+    if (mode === activeMode) {
+      const badge = document.createElement('span');
+      badge.className = 'active-badge';
+      badge.textContent = 'Active';
+      nameWrap.appendChild(badge);
+    }
+    
+    // Get priority for this device in this mode
+    const priority = capacityPriorities[mode]?.[device.id] ?? 100;
+    const prioritySpan = document.createElement('div');
+    prioritySpan.className = 'detail-mode-row__priority';
+    prioritySpan.textContent = `Priority: #${priority <= 100 ? priority : '—'}`;
+    nameWrap.appendChild(prioritySpan);
+    
+    // Temperature input
+    const tempInput = document.createElement('input');
+    tempInput.type = 'number';
+    tempInput.step = '0.5';
+    tempInput.inputMode = 'decimal';
+    tempInput.placeholder = '°C';
+    tempInput.className = 'detail-mode-temp';
+    tempInput.dataset.mode = mode;
+    
+    // Get current target for this mode
+    const currentTarget = modeTargets[mode]?.[device.id];
+    const defaultTarget = device.targets?.[0]?.value;
+    tempInput.value = typeof currentTarget === 'number' ? currentTarget.toString() : 
+                      (typeof defaultTarget === 'number' ? defaultTarget.toString() : '');
+    
+    row.append(nameWrap, tempInput);
+    deviceDetailModes.appendChild(row);
+  });
+};
+
+const saveDeviceDetail = async () => {
+  if (!currentDetailDeviceId) return;
+  
+  const deviceId = currentDetailDeviceId;
+  
+  // Save controllable setting
+  if (deviceDetailControllable) {
+    controllableMap[deviceId] = deviceDetailControllable.checked;
+    await setSetting('controllable_devices', controllableMap);
+  }
+  
+  // Save price optimization settings
+  const priceOptEnabled = deviceDetailPriceOpt?.checked || false;
+  const cheapDelta = parseFloat(deviceDetailCheapDelta?.value || '5');
+  const expensiveDelta = parseFloat(deviceDetailExpensiveDelta?.value || '-5');
+  
+  if (!priceOptimizationSettings[deviceId]) {
+    priceOptimizationSettings[deviceId] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
+  }
+  priceOptimizationSettings[deviceId].enabled = priceOptEnabled;
+  priceOptimizationSettings[deviceId].cheapDelta = isNaN(cheapDelta) ? 5 : cheapDelta;
+  priceOptimizationSettings[deviceId].expensiveDelta = isNaN(expensiveDelta) ? -5 : expensiveDelta;
+  await savePriceOptimizationSettings();
+  
+  // Save mode temperatures
+  const tempInputs = deviceDetailModes?.querySelectorAll('.detail-mode-temp') as NodeListOf<HTMLInputElement>;
+  tempInputs?.forEach(input => {
+    const mode = input.dataset.mode;
+    if (!mode) return;
+    
+    const value = parseFloat(input.value);
+    if (!isNaN(value)) {
+      if (!modeTargets[mode]) modeTargets[mode] = {};
+      modeTargets[mode][deviceId] = value;
+    }
+  });
+  await setSetting('mode_device_targets', modeTargets);
+  
+  // Refresh device list and close
+  renderDevices(latestDevices);
+  renderPriorities(latestDevices);
+  renderPriceOptimization(latestDevices);
+  
+  closeDeviceDetail();
+  await showToast('Device settings saved.', 'ok');
+};
+
+const initDeviceDetailHandlers = () => {
+  // Close button
+  deviceDetailClose?.addEventListener('click', closeDeviceDetail);
+  
+  // Overlay click (close on background click)
+  deviceDetailOverlay?.addEventListener('click', (e) => {
+    if (e.target === deviceDetailOverlay) {
+      closeDeviceDetail();
+    }
+  });
+  
+  // Save button
+  deviceDetailSave?.addEventListener('click', saveDeviceDetail);
+  
+  // Toggle delta section visibility when price opt changes
+  deviceDetailPriceOpt?.addEventListener('change', updateDeltaSectionVisibility);
+  
+  // Escape key to close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && deviceDetailOverlay && !deviceDetailOverlay.hidden) {
+      closeDeviceDetail();
+    }
+  });
+};
+
 const refreshDevices = async () => {
   if (isBusy) return;
   setBusy(true);
@@ -1173,6 +1380,7 @@ const boot = async () => {
     await loadCapacitySettings();
     await loadModeAndPriorities();
     await loadPriceOptimizationSettings(); // Load before rendering devices
+    initDeviceDetailHandlers();
     renderPriorities(latestDevices);
     renderDevices(latestDevices);
     renderPriceOptimization(latestDevices);
