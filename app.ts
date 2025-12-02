@@ -629,24 +629,34 @@ module.exports = class PelsApp extends Homey.App {
 
     // Calculate average and thresholds (same logic used by isCurrentHourCheap/Expensive)
     const avgPrice = combined.reduce((sum, p) => sum + p.totalPrice, 0) / combined.length;
-    const lowThreshold = avgPrice * 0.75;  // 25% below average
-    const highThreshold = avgPrice * 1.25; // 25% above average
+    const thresholdPercent = this.homey.settings.get('price_threshold_percent') ?? 25;
+    const minDiffOre = this.homey.settings.get('price_min_diff_ore') ?? 0;
+    const thresholdMultiplier = thresholdPercent / 100;
+    const lowThreshold = avgPrice * (1 - thresholdMultiplier);
+    const highThreshold = avgPrice * (1 + thresholdMultiplier);
 
     // Store prices with cheap/expensive flags
-    const prices = combined.map((p) => ({
-      startsAt: p.startsAt,
-      total: p.totalPrice,
-      spotPrice: p.spotPrice,
-      nettleie: p.nettleie,
-      isCheap: p.totalPrice <= lowThreshold,
-      isExpensive: p.totalPrice >= highThreshold,
-    }));
+    // Also check minimum price difference from average (comfort vs savings trade-off)
+    const prices = combined.map((p) => {
+      const diffFromAvg = Math.abs(p.totalPrice - avgPrice);
+      const meetsMinDiff = diffFromAvg >= minDiffOre;
+      return {
+        startsAt: p.startsAt,
+        total: p.totalPrice,
+        spotPrice: p.spotPrice,
+        nettleie: p.nettleie,
+        isCheap: p.totalPrice <= lowThreshold && meetsMinDiff,
+        isExpensive: p.totalPrice >= highThreshold && meetsMinDiff,
+      };
+    });
 
     this.homey.settings.set('combined_prices', {
       prices,
       avgPrice,
       lowThreshold,
       highThreshold,
+      thresholdPercent,
+      minDiffOre,
     });
   }
 
@@ -852,8 +862,11 @@ module.exports = class PelsApp extends Homey.App {
     if (!currentPrice) return false;
 
     const avgPrice = prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length;
-    const threshold = avgPrice * 0.75; // 25% below average
-    return currentPrice.totalPrice <= threshold;
+    const thresholdPercent = this.homey.settings.get('price_threshold_percent') ?? 25;
+    const minDiffOre = this.homey.settings.get('price_min_diff_ore') ?? 0;
+    const threshold = avgPrice * (1 - thresholdPercent / 100);
+    const diffFromAvg = avgPrice - currentPrice.totalPrice;
+    return currentPrice.totalPrice <= threshold && diffFromAvg >= minDiffOre;
   }
 
   /**
@@ -875,8 +888,11 @@ module.exports = class PelsApp extends Homey.App {
     if (!currentPrice) return false;
 
     const avgPrice = prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length;
-    const threshold = avgPrice * 1.25; // 25% above average
-    return currentPrice.totalPrice >= threshold;
+    const thresholdPercent = this.homey.settings.get('price_threshold_percent') ?? 25;
+    const minDiffOre = this.homey.settings.get('price_min_diff_ore') ?? 0;
+    const threshold = avgPrice * (1 + thresholdPercent / 100);
+    const diffFromAvg = currentPrice.totalPrice - avgPrice;
+    return currentPrice.totalPrice >= threshold && diffFromAvg >= minDiffOre;
   }
 
   /**
@@ -906,7 +922,9 @@ module.exports = class PelsApp extends Homey.App {
     currentHourStart.setMinutes(0, 0, 0);
     const currentPrice = prices.find((p) => new Date(p.startsAt).getTime() === currentHourStart.getTime());
     const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
-    this.log(`Price optimization: current=${currentPrice?.totalPrice?.toFixed(1) ?? 'N/A'} øre, avg=${avgPrice.toFixed(1)} øre, threshold=${(avgPrice * 1.25).toFixed(1)} øre, isCheap=${isCheap}, isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`);
+    const thresholdPercent = this.homey.settings.get('price_threshold_percent') ?? 25;
+    const minDiffOre = this.homey.settings.get('price_min_diff_ore') ?? 0;
+    this.log(`Price optimization: current=${currentPrice?.totalPrice?.toFixed(1) ?? 'N/A'} øre, avg=${avgPrice.toFixed(1)} øre, threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`);
 
     // If price is normal (not cheap or expensive), use the mode's base temperature
     const priceState = isCheap ? 'cheap' : isExpensive ? 'expensive' : 'normal';

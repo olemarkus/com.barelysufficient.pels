@@ -1488,4 +1488,135 @@ describe('Price optimization', () => {
       global.Date = originalDate;
     }
   });
+
+  it('respects configurable threshold percent', async () => {
+    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [waterHeater]),
+    });
+
+    const now = new Date();
+    now.setHours(3, 30, 0, 0);
+    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Hour 3 at 40 is 20% below average of 50 - NOT cheap with 25% threshold, but IS cheap with 15% threshold
+    const spotPrices: any[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const date = new Date(baseDate);
+      date.setHours(hour, 0, 0, 0);
+      const total = hour === 3 ? 40 : 50; // 20% below average
+      spotPrices.push({
+        startsAt: date.toISOString(),
+        total,
+        currency: 'NOK',
+      });
+    }
+
+    mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+    mockHomeyInstance.settings.set('nettleie_data', []);
+
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      const response = createMockHttpsResponse(200, []);
+      callback(response);
+      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+    });
+
+    const app = new MyApp();
+    
+    const MockDate = class extends Date {
+      constructor(...args: any[]) {
+        if (args.length === 0) {
+          super(now.getTime());
+        } else {
+          // @ts-ignore
+          super(...args);
+        }
+      }
+      static now() { return now.getTime(); }
+    } as DateConstructor;
+    const originalDate = global.Date;
+    global.Date = MockDate;
+    
+    try {
+      // With default 25% threshold, 20% deviation is NOT cheap
+      await app.onInit();
+      await flushPromises();
+      expect(app['isCurrentHourCheap']()).toBe(false);
+
+      // Set threshold to 15% - now 20% deviation IS cheap
+      mockHomeyInstance.settings.set('price_threshold_percent', 15);
+      expect(app['isCurrentHourCheap']()).toBe(true);
+    } finally {
+      global.Date = originalDate;
+    }
+  });
+
+  it('respects minimum price difference setting', async () => {
+    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [waterHeater]),
+    });
+
+    const now = new Date();
+    now.setHours(3, 30, 0, 0);
+    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Hour 3 at 35 is 30% below average of 50, so definitely cheap by threshold
+    // But absolute difference is only 15 øre
+    const spotPrices: any[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const date = new Date(baseDate);
+      date.setHours(hour, 0, 0, 0);
+      const total = hour === 3 ? 35 : 50;
+      spotPrices.push({
+        startsAt: date.toISOString(),
+        total,
+        currency: 'NOK',
+      });
+    }
+
+    mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+    mockHomeyInstance.settings.set('nettleie_data', []);
+    mockHomeyInstance.settings.set('price_threshold_percent', 25);
+
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      const response = createMockHttpsResponse(200, []);
+      callback(response);
+      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+    });
+
+    const app = new MyApp();
+    
+    const MockDate = class extends Date {
+      constructor(...args: any[]) {
+        if (args.length === 0) {
+          super(now.getTime());
+        } else {
+          // @ts-ignore
+          super(...args);
+        }
+      }
+      static now() { return now.getTime(); }
+    } as DateConstructor;
+    const originalDate = global.Date;
+    global.Date = MockDate;
+    
+    try {
+      // With no min diff, hour 3 is cheap (15 øre below average)
+      mockHomeyInstance.settings.set('price_min_diff_ore', 0);
+      await app.onInit();
+      await flushPromises();
+      expect(app['isCurrentHourCheap']()).toBe(true);
+
+      // With 20 øre min diff, 15 øre difference is NOT enough to be cheap
+      mockHomeyInstance.settings.set('price_min_diff_ore', 20);
+      expect(app['isCurrentHourCheap']()).toBe(false);
+
+      // With 10 øre min diff, 15 øre difference IS enough
+      mockHomeyInstance.settings.set('price_min_diff_ore', 10);
+      expect(app['isCurrentHourCheap']()).toBe(true);
+    } finally {
+      global.Date = originalDate;
+    }
+  });
 });

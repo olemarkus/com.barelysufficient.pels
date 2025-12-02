@@ -219,6 +219,16 @@
               <input type="number" id="provider-surcharge" name="provider_surcharge" step="0.1" min="0" max="100" value="0">
               <small class="field__hint">Your electricity provider's surcharge on top of the spot price (check your contract).</small>
             </label>
+            <label class="field">
+              <span class="field__label">Price threshold (%)</span>
+              <input type="number" id="price-threshold-percent" name="price_threshold_percent" step="1" min="5" max="50" value="25">
+              <small class="field__hint">Hours below/above this % from average are considered cheap/expensive.</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Minimum price difference (øre/kWh)</span>
+              <input type="number" id="price-min-diff-ore" name="price_min_diff_ore" step="1" min="0" max="100" value="0">
+              <small class="field__hint">Skip optimization if savings are less than this. Avoids sacrificing comfort for minimal savings.</small>
+            </label>
             <div class="form__actions">
               <button type="submit" class="btn primary">Save price settings</button>
             </div>

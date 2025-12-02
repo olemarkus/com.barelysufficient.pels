@@ -49,6 +49,8 @@ const buildDom = () => {
       <form id="price-settings-form">
         <select id="price-area"></select>
         <input id="provider-surcharge" type="number">
+        <input id="price-threshold-percent" type="number">
+        <input id="price-min-diff-ore" type="number">
       </form>
       <div id="price-list" class="device-list" role="list"></div>
       <p id="price-empty">No spot price data available.</p>

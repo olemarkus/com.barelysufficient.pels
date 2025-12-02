@@ -38,6 +38,8 @@ const priceStatusBadge = qs('#price-status-badge');
 const priceSettingsForm = document.querySelector('#price-settings-form') as HTMLFormElement;
 const priceAreaSelect = document.querySelector('#price-area') as HTMLSelectElement;
 const providerSurchargeInput = document.querySelector('#provider-surcharge') as HTMLInputElement;
+const priceThresholdInput = document.querySelector('#price-threshold-percent') as HTMLInputElement;
+const priceMinDiffInput = document.querySelector('#price-min-diff-ore') as HTMLInputElement;
 const priceRefreshButton = document.querySelector('#price-refresh-button') as HTMLButtonElement;
 const nettleieSettingsForm = document.querySelector('#nettleie-settings-form') as HTMLFormElement;
 const nettleieFylkeSelect = document.querySelector('#nettleie-fylke') as HTMLSelectElement;
@@ -694,11 +696,15 @@ interface CombinedPriceData {
   avgPrice: number;
   lowThreshold: number;
   highThreshold: number;
+  thresholdPercent?: number;
+  minDiffOre?: number;
 }
 
 const loadPriceSettings = async () => {
   const priceArea = await getSetting('price_area');
   const providerSurcharge = await getSetting('provider_surcharge');
+  const thresholdPercent = await getSetting('price_threshold_percent');
+  const minDiffOre = await getSetting('price_min_diff_ore');
 
   if (priceAreaSelect) {
     priceAreaSelect.value = typeof priceArea === 'string' ? priceArea : 'NO1';
@@ -706,14 +712,24 @@ const loadPriceSettings = async () => {
   if (providerSurchargeInput) {
     providerSurchargeInput.value = typeof providerSurcharge === 'number' ? providerSurcharge.toString() : '0';
   }
+  if (priceThresholdInput) {
+    priceThresholdInput.value = typeof thresholdPercent === 'number' ? thresholdPercent.toString() : '25';
+  }
+  if (priceMinDiffInput) {
+    priceMinDiffInput.value = typeof minDiffOre === 'number' ? minDiffOre.toString() : '0';
+  }
 };
 
 const savePriceSettings = async () => {
   const priceArea = priceAreaSelect?.value || 'NO1';
   const providerSurcharge = parseFloat(providerSurchargeInput?.value || '0') || 0;
+  const thresholdPercent = parseInt(priceThresholdInput?.value || '25', 10) || 25;
+  const minDiffOre = parseInt(priceMinDiffInput?.value || '0', 10) || 0;
 
   await setSetting('price_area', priceArea);
   await setSetting('provider_surcharge', providerSurcharge);
+  await setSetting('price_threshold_percent', thresholdPercent);
+  await setSetting('price_min_diff_ore', minDiffOre);
   await showToast('Price settings saved.', 'ok');
   
   // Trigger refresh of spot prices
@@ -819,7 +835,13 @@ const renderPrices = (data: CombinedPriceData | null) => {
   if (cheapHours.length === 0 && expensiveHours.length === 0) {
     const notice = document.createElement('div');
     notice.className = 'price-notice';
-    notice.textContent = `All prices are within 25% of average (${avgPrice.toFixed(0)} øre/kWh)`;
+    const thresholdPct = data.thresholdPercent ?? 25;
+    const minDiff = data.minDiffOre ?? 0;
+    let noticeText = `All prices are within ${thresholdPct}% of average (${avgPrice.toFixed(0)} øre/kWh)`;
+    if (minDiff > 0) {
+      noticeText += ` or below ${minDiff} øre difference`;
+    }
+    notice.textContent = noticeText;
     priceList.appendChild(notice);
   }
 };
