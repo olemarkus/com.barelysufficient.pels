@@ -3,6 +3,9 @@
  * 
  * These tests use Puppeteer to validate the settings UI renders correctly
  * and handles touch interactions properly in a 480px iframe (Homey's settings width).
+ * 
+ * Optimized for speed: reuses browser page between tests, caches file reads,
+ * and uses domcontentloaded instead of networkidle0.
  */
 
 import puppeteer, { Browser, Page } from 'puppeteer';
@@ -11,12 +14,131 @@ import * as fs from 'fs';
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// Cache file contents at module level - read once
+const htmlPath = path.resolve(__dirname, '../settings/index.html');
+const cssPath = path.resolve(__dirname, '../settings/style.css');
+const baseHtml = fs.readFileSync(htmlPath, 'utf-8');
+const baseCss = fs.readFileSync(cssPath, 'utf-8');
+
 describe('Settings UI', () => {
   let browser: Browser;
   let page: Page;
-  let html: string;
 
-  // Helper to set up page with mock data
+  // Prepare HTML with inlined CSS (cached)
+  const prepareHtml = (mockScript: string): string => {
+    let html = baseHtml
+      .replace('<link rel="stylesheet" href="./style.css">', `<style>${baseCss}</style>`)
+      .replace('<script src="/homey.js" data-origin="settings"></script>', '')
+      .replace('<script src="./script.js"></script>', `<script>${mockScript}</script>`);
+    return html;
+  };
+
+  // Default mock script for standard page setup
+  const getDefaultMockScript = (mockDeviceCount: number = 5): string => `
+    document.addEventListener('DOMContentLoaded', () => {
+      // Status badge
+      const statusBadge = document.getElementById('status-badge');
+      if (statusBadge) {
+        statusBadge.textContent = 'Live';
+        statusBadge.classList.add('ok');
+      }
+      
+      // Mock devices
+      const deviceList = document.getElementById('device-list');
+      if (deviceList) {
+        for (let i = 1; i <= ${mockDeviceCount}; i++) {
+          const row = document.createElement('div');
+          row.className = 'device-row control-row';
+          row.innerHTML = '<div class="device-row__name">Test Device ' + i + '</div>' +
+            '<div class="device-row__target control-row__inputs">' +
+            '<label class="checkbox-field-inline"><input type="checkbox" checked><span>Controllable</span></label></div>';
+          deviceList.appendChild(row);
+        }
+      }
+      
+      // Mock priorities (for modes tab)
+      const priorityList = document.getElementById('priority-list');
+      if (priorityList) {
+        for (let i = 1; i <= ${mockDeviceCount}; i++) {
+          const row = document.createElement('div');
+          row.className = 'device-row draggable mode-row';
+          row.innerHTML = '<span class="drag-handle">↕</span>' +
+            '<div class="device-row__name">Test Device ' + i + '</div>' +
+            '<input type="number" class="mode-target-input" value="' + (18 + i) + '" step="0.5">' +
+            '<div class="mode-row__inputs"><span class="chip priority-badge">#' + i + '</span></div>';
+          priorityList.appendChild(row);
+        }
+      }
+      
+      // Mock mode options
+      ['Home', 'Away', 'Night'].forEach(mode => {
+        ['mode-select', 'active-mode-select'].forEach(id => {
+          const sel = document.getElementById(id);
+          if (sel) {
+            const opt = document.createElement('option');
+            opt.value = mode;
+            opt.textContent = mode;
+            sel.appendChild(opt);
+          }
+        });
+      });
+      
+      // Tab switching
+      const tabs = document.querySelectorAll('.tab');
+      const panels = document.querySelectorAll('.panel');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => {
+            t.classList.toggle('active', t === tab);
+            t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+          });
+          panels.forEach(p => {
+            p.classList.toggle('hidden', p.dataset.panel !== tab.dataset.tab);
+          });
+        });
+      });
+      
+      // Fill capacity inputs
+      const limitInput = document.getElementById('capacity-limit');
+      const marginInput = document.getElementById('capacity-margin');
+      if (limitInput) limitInput.value = '10';
+      if (marginInput) marginInput.value = '0.5';
+      
+      // Mock price optimization list
+      const priceOptList = document.getElementById('price-optimization-list');
+      if (priceOptList) {
+        for (let i = 1; i <= 3; i++) {
+          const row = document.createElement('div');
+          row.className = 'device-row price-optimization-row';
+          row.setAttribute('role', 'listitem');
+          
+          const nameWrap = document.createElement('div');
+          nameWrap.className = 'device-row__name';
+          nameWrap.textContent = 'Water Heater ' + i;
+          
+          const normalInput = document.createElement('input');
+          normalInput.type = 'number';
+          normalInput.className = 'price-opt-input';
+          normalInput.value = '55';
+          
+          const boostInput = document.createElement('input');
+          boostInput.type = 'number';
+          boostInput.className = 'price-opt-input';
+          boostInput.value = '75';
+          
+          const hoursInput = document.createElement('input');
+          hoursInput.type = 'number';
+          hoursInput.className = 'price-opt-input price-opt-hours';
+          hoursInput.value = '4';
+          
+          row.append(nameWrap, normalInput, boostInput, hoursInput);
+          priceOptList.appendChild(row);
+        }
+      }
+    });
+  `;
+
+  // Helper to set up page with mock data - reuses existing page
   const setupPage = async (options: { 
     viewport?: { width: number; height: number };
     isMobile?: boolean;
@@ -31,136 +153,15 @@ describe('Settings UI', () => {
     } = options;
 
     await page.emulate({
-      viewport: {
-        ...viewport,
-        deviceScaleFactor: 2,
-        isMobile,
-        hasTouch,
-      },
+      viewport: { ...viewport, deviceScaleFactor: 2, isMobile, hasTouch },
       userAgent: isMobile 
         ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
         : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     });
 
-    const htmlPath = path.resolve(__dirname, '../settings/index.html');
-    const cssPath = path.resolve(__dirname, '../settings/style.css');
-    
-    let htmlContent = fs.readFileSync(htmlPath, 'utf-8');
-    const css = fs.readFileSync(cssPath, 'utf-8');
-    
-    // Inline CSS
-    htmlContent = htmlContent.replace('<link rel="stylesheet" href="./style.css">', `<style>${css}</style>`);
-    
-    // Remove Homey SDK and add mock script
-    htmlContent = htmlContent.replace('<script src="/homey.js" data-origin="settings"></script>', '');
-    htmlContent = htmlContent.replace('<script src="./script.js"></script>', `
-      <script>
-        document.addEventListener('DOMContentLoaded', () => {
-          // Status badge
-          const statusBadge = document.getElementById('status-badge');
-          if (statusBadge) {
-            statusBadge.textContent = 'Live';
-            statusBadge.classList.add('ok');
-          }
-          
-          // Mock devices
-          const deviceList = document.getElementById('device-list');
-          if (deviceList) {
-            for (let i = 1; i <= ${mockDeviceCount}; i++) {
-              const row = document.createElement('div');
-              row.className = 'device-row control-row';
-              row.innerHTML = '<div class="device-row__name">Test Device ' + i + '</div>' +
-                '<div class="device-row__target control-row__inputs">' +
-                '<label class="checkbox-field-inline"><input type="checkbox" checked><span>Controllable</span></label></div>';
-              deviceList.appendChild(row);
-            }
-          }
-          
-          // Mock priorities (for modes tab)
-          const priorityList = document.getElementById('priority-list');
-          if (priorityList) {
-            for (let i = 1; i <= ${mockDeviceCount}; i++) {
-              const row = document.createElement('div');
-              row.className = 'device-row draggable mode-row';
-              row.innerHTML = '<span class="drag-handle">↕</span>' +
-                '<div class="device-row__name">Test Device ' + i + '</div>' +
-                '<input type="number" class="mode-target-input" value="' + (18 + i) + '" step="0.5">' +
-                '<div class="mode-row__inputs"><span class="chip priority-badge">#' + i + '</span></div>';
-              priorityList.appendChild(row);
-            }
-          }
-          
-          // Mock mode options
-          ['Home', 'Away', 'Night'].forEach(mode => {
-            ['mode-select', 'active-mode-select'].forEach(id => {
-              const sel = document.getElementById(id);
-              if (sel) {
-                const opt = document.createElement('option');
-                opt.value = mode;
-                opt.textContent = mode;
-                sel.appendChild(opt);
-              }
-            });
-          });
-          
-          // Tab switching
-          const tabs = document.querySelectorAll('.tab');
-          const panels = document.querySelectorAll('.panel');
-          tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-              tabs.forEach(t => {
-                t.classList.toggle('active', t === tab);
-                t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
-              });
-              panels.forEach(p => {
-                p.classList.toggle('hidden', p.dataset.panel !== tab.dataset.tab);
-              });
-            });
-          });
-          
-          // Fill capacity inputs
-          const limitInput = document.getElementById('capacity-limit');
-          const marginInput = document.getElementById('capacity-margin');
-          if (limitInput) limitInput.value = '10';
-          if (marginInput) marginInput.value = '0.5';
-          
-          // Mock price optimization list (only shows enabled devices, no checkbox here)
-          const priceOptList = document.getElementById('price-optimization-list');
-          if (priceOptList) {
-            for (let i = 1; i <= 3; i++) {
-              const row = document.createElement('div');
-              row.className = 'device-row price-optimization-row';
-              row.setAttribute('role', 'listitem');
-              
-              const nameWrap = document.createElement('div');
-              nameWrap.className = 'device-row__name';
-              nameWrap.textContent = 'Water Heater ' + i;
-              
-              const normalInput = document.createElement('input');
-              normalInput.type = 'number';
-              normalInput.className = 'price-opt-input';
-              normalInput.value = '55';
-              
-              const boostInput = document.createElement('input');
-              boostInput.type = 'number';
-              boostInput.className = 'price-opt-input';
-              boostInput.value = '75';
-              
-              const hoursInput = document.createElement('input');
-              hoursInput.type = 'number';
-              hoursInput.className = 'price-opt-input price-opt-hours';
-              hoursInput.value = '4';
-              
-              row.append(nameWrap, normalInput, boostInput, hoursInput);
-              priceOptList.appendChild(row);
-            }
-          }
-        });
-      </script>
-    `);
-    
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-    await sleep(300);
+    const html = prepareHtml(getDefaultMockScript(mockDeviceCount));
+    await page.setContent(html, { waitUntil: 'domcontentloaded' });
+    await sleep(50); // Minimal wait for DOM to settle
   };
 
   beforeAll(async () => {
@@ -168,45 +169,35 @@ describe('Settings UI', () => {
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-  });
-
-  afterAll(async () => {
-    await browser.close();
-  });
-
-  beforeEach(async () => {
     page = await browser.newPage();
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await page.close();
+    await browser.close();
   });
 
   describe('Layout at 480px (Homey iframe width)', () => {
-    beforeEach(async () => {
+    beforeAll(async () => {
       await setupPage({ viewport: { width: 480, height: 800 } });
     });
 
     test('tab bar fits within viewport without horizontal overflow', async () => {
       const tabsContainer = await page.$('.tabs');
-      const viewportWidth = 480;
-      
       const tabsBox = await tabsContainer?.boundingBox();
       expect(tabsBox).toBeTruthy();
-      expect(tabsBox!.width).toBeLessThanOrEqual(viewportWidth);
+      expect(tabsBox!.width).toBeLessThanOrEqual(480);
     });
 
     test('main tabs are visible (with overflow menu for less-used tabs)', async () => {
-      // Main visible tabs (not in overflow menu)
       const mainTabs = await page.$$('.tabs > .tab');
-      expect(mainTabs.length).toBeGreaterThanOrEqual(3); // Devices, Modes, Price are always visible
+      expect(mainTabs.length).toBeGreaterThanOrEqual(3);
       
       const tabTexts = await page.$$eval('.tabs > .tab', els => els.map(el => el.textContent?.trim()));
       expect(tabTexts).toContain('Devices');
       expect(tabTexts).toContain('Modes');
       expect(tabTexts).toContain('Price');
       
-      // Overflow toggle should exist for less-used tabs
       const overflowToggle = await page.$('.tab-overflow-toggle');
       expect(overflowToggle).toBeTruthy();
     });
@@ -215,7 +206,6 @@ describe('Settings UI', () => {
       const overflow = await page.evaluate(() => {
         return document.body.scrollWidth - document.documentElement.clientWidth;
       });
-      // Allow up to 15px for rounding/scrollbar/minor overflow
       expect(overflow).toBeLessThanOrEqual(15);
     });
 
@@ -224,26 +214,21 @@ describe('Settings UI', () => {
         const rect = el.getBoundingClientRect();
         return { right: rect.right, width: rect.width };
       });
-      
-      // Card should not extend beyond viewport (with some margin for padding)
       expect(cardBox.right).toBeLessThanOrEqual(480);
     });
   });
 
   describe('Layout at 320px (narrow viewport)', () => {
-    beforeEach(async () => {
+    beforeAll(async () => {
       await setupPage({ viewport: { width: 320, height: 600 } });
     });
 
     test('page content is contained (overflow menu handles extra tabs)', async () => {
-      // With overflow menu, tabs should fit without needing scroll
       const overflow = await page.evaluate(() => {
         return document.body.scrollWidth - document.documentElement.clientWidth;
       });
-      // Allow small rounding differences
       expect(overflow).toBeLessThanOrEqual(10);
       
-      // Overflow toggle should be present for less-used tabs
       const overflowToggle = await page.$('.tab-overflow-toggle');
       expect(overflowToggle).toBeTruthy();
     });
@@ -251,16 +236,13 @@ describe('Settings UI', () => {
     test('tab bar wraps or remains usable', async () => {
       const tabsContainer = await page.$('.tabs');
       const tabsBox = await tabsContainer?.boundingBox();
-      
-      // At 320px, tabs might wrap but should still be contained
       expect(tabsBox).toBeTruthy();
-      // Allow for wrapping - just ensure it doesn't overflow
       expect(tabsBox!.x).toBeGreaterThanOrEqual(0);
     });
   });
 
   describe('Tab navigation', () => {
-    beforeEach(async () => {
+    beforeAll(async () => {
       await setupPage();
     });
 
@@ -275,7 +257,7 @@ describe('Settings UI', () => {
 
     test('clicking modes tab switches panels', async () => {
       await page.click('[data-tab="modes"]');
-      await sleep(100);
+      await sleep(50);
       
       const activeTab = await page.$eval('.tab.active', el => (el as HTMLElement).dataset.tab);
       expect(activeTab).toBe('modes');
@@ -290,12 +272,11 @@ describe('Settings UI', () => {
     });
 
     test('main tabs can be activated', async () => {
-      // Test main visible tabs (not in hamburger menu)
       const mainTabIds = ['devices', 'modes', 'price'];
       
       for (const tabId of mainTabIds) {
         await page.click(`[data-tab="${tabId}"]`);
-        await sleep(100);
+        await sleep(30);
         
         const activeTab = await page.$eval('.tab.active', el => (el as HTMLElement).dataset.tab);
         expect(activeTab).toBe(tabId);
@@ -304,8 +285,7 @@ describe('Settings UI', () => {
   });
 
   describe('Touch scrolling (mobile)', () => {
-    beforeEach(async () => {
-      // Use more devices to ensure scrollable content
+    beforeAll(async () => {
       await setupPage({ 
         viewport: { width: 480, height: 800 },
         isMobile: true, 
@@ -316,7 +296,7 @@ describe('Settings UI', () => {
 
     test('page is scrollable when content exceeds viewport', async () => {
       await page.click('[data-tab="modes"]');
-      await sleep(200);
+      await sleep(50);
       
       const dimensions = await page.evaluate(() => ({
         bodyHeight: document.body.scrollHeight,
@@ -329,11 +309,10 @@ describe('Settings UI', () => {
 
     test('touch scroll works on modes page', async () => {
       await page.click('[data-tab="modes"]');
-      await sleep(200);
+      await sleep(50);
       
       const scrollBefore = await page.evaluate(() => window.scrollY);
       
-      // Perform touch scroll via CDP
       const client = await page.target().createCDPSession();
       const startX = 240;
       const startY = 600;
@@ -344,14 +323,13 @@ describe('Settings UI', () => {
         touchPoints: [{ x: startX, y: startY }]
       });
       
-      // Move in steps
-      for (let i = 1; i <= 10; i++) {
-        const currentY = startY - (startY - endY) * (i / 10);
+      for (let i = 1; i <= 5; i++) {
+        const currentY = startY - (startY - endY) * (i / 5);
         await client.send('Input.dispatchTouchEvent', {
           type: 'touchMove',
           touchPoints: [{ x: startX, y: currentY }]
         });
-        await sleep(20);
+        await sleep(10);
       }
       
       await client.send('Input.dispatchTouchEvent', {
@@ -359,29 +337,24 @@ describe('Settings UI', () => {
         touchPoints: []
       });
       
-      await sleep(300);
+      await sleep(100);
       
       const scrollAfter = await page.evaluate(() => window.scrollY);
-      const scrollDelta = scrollAfter - scrollBefore;
-      
-      expect(scrollDelta).toBeGreaterThan(50);
+      expect(scrollAfter - scrollBefore).toBeGreaterThan(50);
     });
 
     test('only drag-handle has touch-action: none (not entire rows)', async () => {
       await page.click('[data-tab="modes"]');
-      await sleep(200);
+      await sleep(50);
       
       const touchActionIssues = await page.evaluate(() => {
         const issues: string[] = [];
         const draggableRows = document.querySelectorAll('.draggable');
-        
         draggableRows.forEach(row => {
-          const style = getComputedStyle(row);
-          if (style.touchAction === 'none') {
+          if (getComputedStyle(row).touchAction === 'none') {
             issues.push('draggable row has touch-action: none');
           }
         });
-        
         return issues;
       });
       
@@ -390,7 +363,7 @@ describe('Settings UI', () => {
 
     test('drag-handle has touch-action: none for proper drag behavior', async () => {
       await page.click('[data-tab="modes"]');
-      await sleep(200);
+      await sleep(50);
       
       const handleTouchAction = await page.$eval('.drag-handle', el => {
         return getComputedStyle(el).touchAction;
@@ -401,18 +374,16 @@ describe('Settings UI', () => {
   });
 
   describe('Form inputs', () => {
-    beforeEach(async () => {
+    beforeAll(async () => {
       await setupPage();
     });
 
     test('capacity limit input accepts numeric values', async () => {
-      // Power tab is in overflow menu - open it first
       const toggleButton = await page.$('.tab-overflow-toggle');
       if (toggleButton) {
         await toggleButton.click();
-        await sleep(150);
+        await sleep(50);
         
-        // The menu should now be visible - click the power tab
         await page.evaluate(() => {
           const menu = document.querySelector('.tab-overflow-menu');
           if (menu) {
@@ -421,13 +392,13 @@ describe('Settings UI', () => {
             if (powerItem) powerItem.click();
           }
         });
-        await sleep(150);
+        await sleep(50);
       }
       
       const input = await page.$('#capacity-limit');
       expect(input).toBeTruthy();
       
-      await input?.click({ clickCount: 3 }); // Select all
+      await input?.click({ clickCount: 3 });
       await input?.type('15.5');
       
       const value = await page.$eval('#capacity-limit', el => (el as HTMLInputElement).value);
@@ -436,80 +407,63 @@ describe('Settings UI', () => {
 
     test('mode target inputs are present in modes tab', async () => {
       await page.click('[data-tab="modes"]');
-      await sleep(100);
+      await sleep(50);
       
       const inputs = await page.$$('.mode-target-input');
       expect(inputs.length).toBeGreaterThan(0);
     });
 
     test('mode target inputs fit 0.5 increment values without overflow', async () => {
-      // Close existing page and create fresh one for this specific test
-      await page.close();
-      page = await browser.newPage();
+      const mockScript = `
+        document.addEventListener('DOMContentLoaded', () => {
+          document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
+          document.getElementById('modes-panel').classList.remove('hidden');
+          document.getElementById('priority-empty').hidden = true;
+          
+          ['Home'].forEach(mode => {
+            ['mode-select', 'active-mode-select'].forEach(id => {
+              const sel = document.getElementById(id);
+              if (sel) {
+                const opt = document.createElement('option');
+                opt.value = mode;
+                opt.textContent = mode;
+                sel.appendChild(opt);
+              }
+            });
+          });
+          
+          const priorityList = document.getElementById('priority-list');
+          [
+            { name: 'Varmepumpe stue', temp: 22.5 },
+            { name: 'Gulvvarme bad', temp: 24.5 },
+            { name: 'Panelovn', temp: 19.5 },
+          ].forEach((dev, i) => {
+            const row = document.createElement('div');
+            row.className = 'device-row draggable mode-row';
+            row.innerHTML = 
+              '<span class="drag-handle">↕</span>' +
+              '<div class="device-row__name">' + dev.name + '</div>' +
+              '<input type="number" class="mode-target-input" value="' + dev.temp + '" step="0.5">' +
+              '<div class="mode-row__inputs"><span class="chip priority-badge">#' + (i+1) + '</span></div>';
+            priorityList.appendChild(row);
+          });
+        });
+      `;
       
       await page.emulate({
         viewport: { width: 480, height: 800, deviceScaleFactor: 2, isMobile: false, hasTouch: false },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       });
-
-      const htmlPath = path.resolve(__dirname, '../settings/index.html');
-      const cssPath = path.resolve(__dirname, '../settings/style.css');
       
-      let htmlContent = fs.readFileSync(htmlPath, 'utf-8');
-      const css = fs.readFileSync(cssPath, 'utf-8');
+      const html = prepareHtml(mockScript);
+      await page.setContent(html, { waitUntil: 'domcontentloaded' });
+      await sleep(50);
       
-      htmlContent = htmlContent.replace('<link rel="stylesheet" href="./style.css">', `<style>${css}</style>`);
-      htmlContent = htmlContent.replace('<script src="/homey.js" data-origin="settings"></script>', '');
-      htmlContent = htmlContent.replace('<script src="./script.js"></script>', `
-        <script>
-          document.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
-            document.getElementById('modes-panel').classList.remove('hidden');
-            document.getElementById('priority-empty').hidden = true;
-            
-            ['Home'].forEach(mode => {
-              ['mode-select', 'active-mode-select'].forEach(id => {
-                const sel = document.getElementById(id);
-                if (sel) {
-                  const opt = document.createElement('option');
-                  opt.value = mode;
-                  opt.textContent = mode;
-                  sel.appendChild(opt);
-                }
-              });
-            });
-            
-            const priorityList = document.getElementById('priority-list');
-            const devices = [
-              { name: 'Varmepumpe stue', temp: 22.5 },
-              { name: 'Gulvvarme bad', temp: 24.5 },
-              { name: 'Panelovn', temp: 19.5 },
-            ];
-            
-            devices.forEach((dev, i) => {
-              const row = document.createElement('div');
-              row.className = 'device-row draggable mode-row';
-              row.innerHTML = 
-                '<span class="drag-handle">↕</span>' +
-                '<div class="device-row__name">' + dev.name + '</div>' +
-                '<input type="number" class="mode-target-input" value="' + dev.temp + '" step="0.5">' +
-                '<div class="mode-row__inputs"><span class="chip priority-badge">#' + (i+1) + '</span></div>';
-              priorityList.appendChild(row);
-            });
-          });
-        </script>
-      `);
-      
-      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-      await sleep(300);
-      
-      // Check no horizontal overflow
       const hasOverflow = await page.evaluate(() => {
         return document.body.scrollWidth > document.documentElement.clientWidth;
       });
       expect(hasOverflow).toBe(false);
       
-      // Verify input values display correctly
       const inputValues = await page.$$eval('.mode-target-input', els => 
         els.map(el => (el as HTMLInputElement).value)
       );
@@ -520,7 +474,7 @@ describe('Settings UI', () => {
   });
 
   describe('Accessibility', () => {
-    beforeEach(async () => {
+    beforeAll(async () => {
       await setupPage();
     });
 
@@ -548,7 +502,7 @@ describe('Settings UI', () => {
   });
 
   describe('Visual styling', () => {
-    beforeEach(async () => {
+    beforeAll(async () => {
       await setupPage();
     });
 
@@ -556,8 +510,6 @@ describe('Settings UI', () => {
       const activeTabBg = await page.$eval('.tab.active', el => {
         return getComputedStyle(el).background;
       });
-      
-      // Should have gradient background
       expect(activeTabBg).toContain('linear-gradient');
     });
 
@@ -565,26 +517,22 @@ describe('Settings UI', () => {
       const backdropFilter = await page.$eval('.card', el => {
         return getComputedStyle(el).backdropFilter;
       });
-      
       expect(backdropFilter).toContain('blur');
     });
 
     test('price status badge shows state when on price tab', async () => {
-      // Navigate to price tab
       await page.click('[data-tab="price"]');
-      await sleep(100);
+      await sleep(50);
       
       const badge = await page.$('#price-status-badge');
       expect(badge).toBeTruthy();
       
       const text = await badge?.evaluate(el => el.textContent);
-      // Badge should have some text ("No data" initially)
       expect(text).toBeTruthy();
     });
   });
 
   describe('Plan view temperature display', () => {
-    // Helper to set up page with plan data
     const setupPlanPage = async (devices: Array<{
       name: string;
       zone: string;
@@ -592,109 +540,94 @@ describe('Settings UI', () => {
       currentTarget: number;
       plannedTarget?: number;
     }>) => {
+      const devicesJson = JSON.stringify(devices);
+      const mockScript = `
+        document.addEventListener('DOMContentLoaded', () => {
+          const tabs = document.querySelectorAll('.tab');
+          const panels = document.querySelectorAll('.panel');
+          tabs.forEach(tab => {
+            const isPlan = tab.dataset.tab === 'plan';
+            tab.classList.toggle('active', isPlan);
+            tab.setAttribute('aria-selected', isPlan ? 'true' : 'false');
+          });
+          panels.forEach(p => {
+            p.classList.toggle('hidden', p.dataset.panel !== 'plan');
+          });
+          
+          const planList = document.getElementById('plan-list');
+          const planMeta = document.getElementById('plan-meta');
+          const planEmpty = document.getElementById('plan-empty');
+          
+          if (planEmpty) planEmpty.hidden = true;
+          if (planMeta) {
+            planMeta.innerHTML = '<div>Now 4.2kW / Limit 9.5kW</div><div>5.3kW available</div>';
+          }
+          
+          const devices = ${devicesJson};
+          const grouped = devices.reduce((acc, dev) => {
+            const zone = dev.zone || 'Unknown';
+            if (!acc[zone]) acc[zone] = [];
+            acc[zone].push(dev);
+            return acc;
+          }, {});
+          
+          Object.keys(grouped).sort().forEach(zone => {
+            const header = document.createElement('div');
+            header.className = 'zone-header';
+            header.textContent = zone;
+            planList.appendChild(header);
+            
+            grouped[zone].forEach(dev => {
+              const row = document.createElement('div');
+              row.className = 'device-row';
+              row.dataset.deviceId = dev.name.replace(/\\s+/g, '-').toLowerCase();
+              
+              const metaWrap = document.createElement('div');
+              metaWrap.className = 'device-row__target plan-row__meta';
+              
+              const name = document.createElement('div');
+              name.className = 'device-row__name';
+              name.textContent = dev.name;
+              
+              const tempLine = document.createElement('div');
+              tempLine.className = 'plan-meta-line';
+              
+              const currentTemp = typeof dev.currentTemperature === 'number' 
+                ? dev.currentTemperature.toFixed(1) + '°' 
+                : '–';
+              const targetTemp = dev.currentTarget ?? '–';
+              const plannedTemp = dev.plannedTarget ?? dev.currentTarget;
+              const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
+              const targetText = targetChanging 
+                ? targetTemp + '° → ' + plannedTemp + '°' 
+                : targetTemp + '°';
+              
+              tempLine.innerHTML = '<span class="plan-label">Temperature</span><span class="temp-value">' + currentTemp + ' / target ' + targetText + '</span>';
+              
+              const powerLine = document.createElement('div');
+              powerLine.className = 'plan-meta-line';
+              powerLine.innerHTML = '<span class="plan-label">Power</span><span>heating</span>';
+              
+              const reasonLine = document.createElement('div');
+              reasonLine.className = 'plan-meta-line';
+              reasonLine.innerHTML = '<span class="plan-label">Reason</span><span>Test reason</span>';
+              
+              metaWrap.append(name, tempLine, powerLine, reasonLine);
+              row.appendChild(metaWrap);
+              planList.appendChild(row);
+            });
+          });
+        });
+      `;
+      
       await page.emulate({
         viewport: { width: 480, height: 800, deviceScaleFactor: 2, isMobile: false, hasTouch: false },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       });
-
-      const htmlPath = path.resolve(__dirname, '../settings/index.html');
-      const cssPath = path.resolve(__dirname, '../settings/style.css');
       
-      let htmlContent = fs.readFileSync(htmlPath, 'utf-8');
-      const css = fs.readFileSync(cssPath, 'utf-8');
-      
-      htmlContent = htmlContent.replace('<link rel="stylesheet" href="./style.css">', `<style>${css}</style>`);
-      htmlContent = htmlContent.replace('<script src="/homey.js" data-origin="settings"></script>', '');
-      
-      const devicesJson = JSON.stringify(devices);
-      
-      htmlContent = htmlContent.replace('<script src="./script.js"></script>', `
-        <script>
-          document.addEventListener('DOMContentLoaded', () => {
-            // Switch to plan tab
-            const tabs = document.querySelectorAll('.tab');
-            const panels = document.querySelectorAll('.panel');
-            tabs.forEach(tab => {
-              const isPlan = tab.dataset.tab === 'plan';
-              tab.classList.toggle('active', isPlan);
-              tab.setAttribute('aria-selected', isPlan ? 'true' : 'false');
-            });
-            panels.forEach(p => {
-              p.classList.toggle('hidden', p.dataset.panel !== 'plan');
-            });
-            
-            // Populate plan list with test data
-            const planList = document.getElementById('plan-list');
-            const planMeta = document.getElementById('plan-meta');
-            const planEmpty = document.getElementById('plan-empty');
-            
-            if (planEmpty) planEmpty.hidden = true;
-            if (planMeta) {
-              planMeta.innerHTML = '<div>Now 4.2kW / Limit 9.5kW</div><div>5.3kW available</div>';
-            }
-            
-            const devices = ${devicesJson};
-            
-            // Group by zone
-            const grouped = devices.reduce((acc, dev) => {
-              const zone = dev.zone || 'Unknown';
-              if (!acc[zone]) acc[zone] = [];
-              acc[zone].push(dev);
-              return acc;
-            }, {});
-            
-            Object.keys(grouped).sort().forEach(zone => {
-              const header = document.createElement('div');
-              header.className = 'zone-header';
-              header.textContent = zone;
-              planList.appendChild(header);
-              
-              grouped[zone].forEach(dev => {
-                const row = document.createElement('div');
-                row.className = 'device-row';
-                row.dataset.deviceId = dev.name.replace(/\\s+/g, '-').toLowerCase();
-                
-                const metaWrap = document.createElement('div');
-                metaWrap.className = 'device-row__target plan-row__meta';
-                
-                const name = document.createElement('div');
-                name.className = 'device-row__name';
-                name.textContent = dev.name;
-                
-                const tempLine = document.createElement('div');
-                tempLine.className = 'plan-meta-line';
-                
-                const currentTemp = typeof dev.currentTemperature === 'number' 
-                  ? dev.currentTemperature.toFixed(1) + '°' 
-                  : '–';
-                const targetTemp = dev.currentTarget ?? '–';
-                const plannedTemp = dev.plannedTarget ?? dev.currentTarget;
-                const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
-                const targetText = targetChanging 
-                  ? targetTemp + '° → ' + plannedTemp + '°' 
-                  : targetTemp + '°';
-                
-                tempLine.innerHTML = '<span class="plan-label">Temperature</span><span class="temp-value">' + currentTemp + ' / target ' + targetText + '</span>';
-                
-                const powerLine = document.createElement('div');
-                powerLine.className = 'plan-meta-line';
-                powerLine.innerHTML = '<span class="plan-label">Power</span><span>heating</span>';
-                
-                const reasonLine = document.createElement('div');
-                reasonLine.className = 'plan-meta-line';
-                reasonLine.innerHTML = '<span class="plan-label">Reason</span><span>Test reason</span>';
-                
-                metaWrap.append(name, tempLine, powerLine, reasonLine);
-                row.appendChild(metaWrap);
-                planList.appendChild(row);
-              });
-            });
-          });
-        </script>
-      `);
-      
-      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-      await sleep(300);
+      const html = prepareHtml(mockScript);
+      await page.setContent(html, { waitUntil: 'domcontentloaded' });
+      await sleep(50);
     };
 
     test('displays 2-digit temperatures with 0.5 increments correctly', async () => {
@@ -708,8 +641,6 @@ describe('Settings UI', () => {
         els.map(el => el.textContent?.trim())
       );
       
-      // Current temperature always shows .0 (via toFixed(1))
-      // Target temperatures show decimal only if not whole number
       expect(tempTexts).toContain('21.5° / target 22.5°');
       expect(tempTexts).toContain('19.0° / target 20.5°');
       expect(tempTexts).toContain('18.5° / target 19.5°');
@@ -721,7 +652,6 @@ describe('Settings UI', () => {
       ]);
       
       const tempText = await page.$eval('.plan-meta-line .temp-value', el => el.textContent?.trim());
-      
       expect(tempText).toContain('22° → 18.5°');
     });
 
@@ -734,9 +664,7 @@ describe('Settings UI', () => {
         const metaLines = document.querySelectorAll('.plan-meta-line');
         let overflow = false;
         metaLines.forEach(line => {
-          if (line.scrollWidth > line.clientWidth) {
-            overflow = true;
-          }
+          if (line.scrollWidth > line.clientWidth) overflow = true;
         });
         return overflow;
       });
@@ -752,22 +680,17 @@ describe('Settings UI', () => {
       ]);
       
       const overflowInfo = await page.evaluate(() => {
-        const container = document.querySelector('.plan-row__meta');
         const viewportWidth = document.documentElement.clientWidth;
         const metaLines = document.querySelectorAll('.plan-meta-line');
         
         let lineOverflow = false;
         metaLines.forEach(line => {
           const rect = (line as HTMLElement).getBoundingClientRect();
-          if (rect.right > viewportWidth) {
-            lineOverflow = true;
-          }
+          if (rect.right > viewportWidth) lineOverflow = true;
         });
         
         return {
           lineOverflow,
-          bodyScrollWidth: document.body.scrollWidth,
-          clientWidth: viewportWidth,
           hasHorizontalScroll: document.body.scrollWidth > viewportWidth
         };
       });
@@ -802,11 +725,9 @@ describe('Settings UI', () => {
         els.map(el => (el as HTMLElement).getBoundingClientRect().width)
       );
       
-      // All labels should have similar width (allow small variance from font rendering)
       if (labelWidths.length > 1) {
         const minWidth = Math.min(...labelWidths);
         const maxWidth = Math.max(...labelWidths);
-        // Allow up to 5px variance due to font rendering differences
         expect(maxWidth - minWidth).toBeLessThanOrEqual(5);
       }
     });
@@ -820,17 +741,15 @@ describe('Settings UI', () => {
         return parseInt(getComputedStyle(el).fontSize);
       });
       
-      // Font should be at least 12px for readability
       expect(fontSize).toBeGreaterThanOrEqual(12);
     });
   });
 
   describe('Price optimization section', () => {
-    beforeEach(async () => {
+    beforeAll(async () => {
       await setupPage({ viewport: { width: 480, height: 800 } });
-      // Navigate to Price tab
       await page.click('.tab[data-tab="price"]');
-      await sleep(200);
+      await sleep(50);
     });
 
     test('price optimization header aligns with row columns', async () => {
@@ -839,10 +758,7 @@ describe('Settings UI', () => {
       
       const headerStyle = await page.$eval('.price-optimization-header', el => {
         const style = getComputedStyle(el);
-        return {
-          display: style.display,
-          gridTemplateColumns: style.gridTemplateColumns,
-        };
+        return { display: style.display, gridTemplateColumns: style.gridTemplateColumns };
       });
       
       expect(headerStyle.display).toBe('grid');
@@ -854,10 +770,7 @@ describe('Settings UI', () => {
       
       const rowStyle = await page.$eval('.price-optimization-row', el => {
         const style = getComputedStyle(el);
-        return {
-          display: style.display,
-          gridTemplateColumns: style.gridTemplateColumns,
-        };
+        return { display: style.display, gridTemplateColumns: style.gridTemplateColumns };
       });
       
       expect(rowStyle.display).toBe('grid');
@@ -867,7 +780,6 @@ describe('Settings UI', () => {
       const row = await page.$('.price-optimization-row');
       expect(row).toBeTruthy();
       
-      const rowBox = await row!.boundingBox();
       const nameBox = await page.$eval('.price-optimization-row .device-row__name', el => {
         const rect = el.getBoundingClientRect();
         return { top: rect.top, bottom: rect.bottom };
@@ -877,20 +789,17 @@ describe('Settings UI', () => {
         return { top: rect.top, bottom: rect.bottom };
       });
       
-      // Name and input should be on the same visual row (overlapping Y coordinates)
       expect(nameBox.bottom).toBeGreaterThanOrEqual(inputBox.top);
       expect(inputBox.bottom).toBeGreaterThanOrEqual(nameBox.top);
     });
 
     test('inputs fit within viewport at 480px', async () => {
-      const viewportWidth = 480;
-      
       const inputRights = await page.$$eval('.price-optimization-row .price-opt-input', els => 
         els.map(el => el.getBoundingClientRect().right)
       );
       
       for (const right of inputRights) {
-        expect(right).toBeLessThanOrEqual(viewportWidth);
+        expect(right).toBeLessThanOrEqual(480);
       }
     });
 
@@ -910,7 +819,7 @@ describe('Settings UI', () => {
       expect(rowContent.hasName).toBe(true);
       expect(rowContent.nameText).toBeTruthy();
       expect(rowContent.inputCount).toBe(3);
-      expect(rowContent.hasCheckbox).toBe(false); // Checkbox moved to devices page
+      expect(rowContent.hasCheckbox).toBe(false);
     });
   });
 });
