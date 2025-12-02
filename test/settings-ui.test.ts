@@ -124,7 +124,7 @@ describe('Settings UI', () => {
           if (limitInput) limitInput.value = '10';
           if (marginInput) marginInput.value = '0.5';
           
-          // Mock price optimization list
+          // Mock price optimization list (only shows enabled devices, no checkbox here)
           const priceOptList = document.getElementById('price-optimization-list');
           if (priceOptList) {
             for (let i = 1; i <= 3; i++) {
@@ -151,14 +151,7 @@ describe('Settings UI', () => {
               hoursInput.className = 'price-opt-input price-opt-hours';
               hoursInput.value = '4';
               
-              const enabledLabel = document.createElement('label');
-              enabledLabel.className = 'checkbox-field-inline';
-              const enabledInput = document.createElement('input');
-              enabledInput.type = 'checkbox';
-              enabledInput.checked = i === 1;
-              enabledLabel.appendChild(enabledInput);
-              
-              row.append(nameWrap, normalInput, boostInput, hoursInput, enabledLabel);
+              row.append(nameWrap, normalInput, boostInput, hoursInput);
               priceOptList.appendChild(row);
             }
           }
@@ -813,9 +806,6 @@ describe('Settings UI', () => {
     });
 
     test('price optimization header aligns with row columns', async () => {
-      // Capture screenshot for debugging
-      await page.screenshot({ path: 'test/screenshots/price-optimization.png', fullPage: true });
-      
       const header = await page.$('.price-optimization-header');
       expect(header).toBeTruthy();
       
@@ -876,7 +866,7 @@ describe('Settings UI', () => {
       }
     });
 
-    test('each row has device name, 3 inputs, and checkbox', async () => {
+    test('each row has device name and 3 inputs (no checkbox)', async () => {
       const rowContent = await page.$eval('.price-optimization-row', row => {
         const name = row.querySelector('.device-row__name');
         const inputs = row.querySelectorAll('input[type="number"]');
@@ -892,7 +882,7 @@ describe('Settings UI', () => {
       expect(rowContent.hasName).toBe(true);
       expect(rowContent.nameText).toBeTruthy();
       expect(rowContent.inputCount).toBe(3);
-      expect(rowContent.hasCheckbox).toBe(true);
+      expect(rowContent.hasCheckbox).toBe(false); // Checkbox moved to devices page
     });
   });
 });

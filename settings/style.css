@@ -551,17 +551,46 @@ input[type="text"]:focus {
   color: var(--text);
 }
 
+/* Price section headers for outlier display */
+.price-section-header {
+  padding: 8px 0;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.price-section-header:first-child {
+  margin-top: 0;
+}
+
+.price-section-header.cheap {
+  color: #7fd1ae;
+}
+
+.price-section-header.expensive {
+  color: #e57373;
+}
+
+.price-notice {
+  padding: 16px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* Price optimization inputs */
 .device-row.price-optimization-row {
   display: grid;
-  grid-template-columns: 1fr auto auto auto auto;
+  grid-template-columns: 1fr auto auto;
   gap: 8px;
   align-items: center;
 }
 
 .price-optimization-header {
   display: grid;
-  grid-template-columns: 1fr auto auto auto auto;
+  grid-template-columns: 1fr auto auto;
   gap: 8px;
   align-items: center;
   padding: 10px 0;
@@ -574,19 +603,8 @@ input[type="text"]:focus {
   letter-spacing: 0.5px;
 }
 
-.price-optimization-header .header-normal,
-.price-optimization-header .header-boost {
+.price-optimization-header .header-delta {
   width: 70px;
-  text-align: center;
-}
-
-.price-optimization-header .header-hours {
-  width: 50px;
-  text-align: center;
-}
-
-.price-optimization-header .header-enabled {
-  width: 24px;
   text-align: center;
 }
 
@@ -610,10 +628,66 @@ input[type="text"]:focus {
   width: 50px;
 }
 
-/* Make checkbox wrapper match other column widths */
-.price-optimization-row .checkbox-field-inline {
-  width: 24px;
-  justify-content: center;
+/* Collapsible settings sections */
+.settings-collapse {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+}
+
+.settings-collapse summary {
+  cursor: pointer;
+  padding: 12px 16px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-collapse summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-collapse summary h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-collapse summary .collapse-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-collapse summary::after {
+  content: "▸";
+  color: var(--muted);
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.settings-collapse[open] summary::after {
+  transform: rotate(90deg);
+}
+
+.settings-collapse .collapse-content {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.settings-collapse .collapse-content h4 {
+  margin: 16px 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-collapse .collapse-content h4:first-child {
+  margin-top: 12px;
 }
 
 @media (max-width: 360px) {

@@ -69,12 +69,11 @@ module.exports = class PelsApp extends Homey.App {
   // Track last known power draw (kW) for each device when it was ON and drawing power > 0
   // Used as a fallback estimate when settings.load is not available
   private lastKnownPowerKw: Record<string, number> = {};
-  // Price optimization settings per device: { deviceId: { enabled, normalTemp, boostTemp, cheapHours } }
+  // Price optimization settings per device: { deviceId: { enabled, cheapDelta, expensiveDelta } }
   private priceOptimizationSettings: Record<string, {
     enabled: boolean;
-    normalTemp: number;
-    boostTemp: number;
-    cheapHours: number;
+    cheapDelta: number;
+    expensiveDelta: number;
   }> = {};
 
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
@@ -158,19 +157,22 @@ module.exports = class PelsApp extends Homey.App {
       }
 
       if (key === 'refresh_nettleie') {
-        this.refreshNettleieData().catch((error: Error) => {
+        this.refreshNettleieData(true).catch((error: Error) => {
           this.error('Failed to refresh nettleie data', error);
         });
       }
 
       if (key === 'refresh_spot_prices') {
-        this.refreshSpotPrices().catch((error: Error) => {
+        this.refreshSpotPrices(true).catch((error: Error) => {
           this.error('Failed to refresh spot prices', error);
         });
       }
 
       if (key === 'price_optimization_settings') {
         this.loadPriceOptimizationSettings();
+        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
+          this.error('Failed to refresh plan after price optimization settings change', error);
+        });
       }
     });
 
@@ -200,14 +202,17 @@ module.exports = class PelsApp extends Homey.App {
     });
     this.capacityGuard.setSoftLimitProvider(() => this.computeDynamicSoftLimit());
     this.capacityGuard.start();
+    this.loadPowerTracker();
+    this.loadPriceOptimizationSettings();
     await this.refreshTargetDevicesSnapshot();
     await this.applyDeviceTargetsForMode(this.capacityMode);
     this.registerFlowCards();
-    this.loadPowerTracker();
-    this.loadPriceOptimizationSettings();
     this.startPeriodicSnapshotRefresh();
+    // Refresh prices (will use cache if we have today's data, and update combined_prices)
+    await this.refreshSpotPrices();
+    await this.refreshNettleieData();
     this.startPriceRefresh();
-    this.startPriceOptimization();
+    await this.startPriceOptimization();
   }
 
   /**
@@ -266,9 +271,8 @@ module.exports = class PelsApp extends Homey.App {
     if (settings && typeof settings === 'object') {
       this.priceOptimizationSettings = settings as Record<string, {
         enabled: boolean;
-        normalTemp: number;
-        boostTemp: number;
-        cheapHours: number;
+        cheapDelta: number;
+        expensiveDelta: number;
       }>;
     }
   }
@@ -545,7 +549,7 @@ module.exports = class PelsApp extends Homey.App {
     this.homey.settings.set('device_plan_snapshot', plan);
   }
 
-  private async refreshNettleieData(): Promise<void> {
+  private async refreshNettleieData(forceRefresh = false): Promise<void> {
     const fylke = this.homey.settings.get('nettleie_fylke') || '03';
     const orgnr = this.homey.settings.get('nettleie_orgnr');
     const tariffgruppe = this.homey.settings.get('nettleie_tariffgruppe') || 'Husholdning';
@@ -556,6 +560,21 @@ module.exports = class PelsApp extends Homey.App {
     }
 
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
+    // Check if we already have today's nettleie data (cached)
+    if (!forceRefresh) {
+      const existingData = this.homey.settings.get('nettleie_data') as any[];
+      if (existingData && Array.isArray(existingData) && existingData.length > 0) {
+        // Check if the data is from today by looking at the first entry's datoId
+        const firstEntry = existingData[0];
+        if (firstEntry?.datoId?.startsWith(today)) {
+          this.logDebug(`Nettleie: Using cached data for ${today} (${existingData.length} entries)`);
+          // Update combined prices in case spot prices changed
+          this.updateCombinedPrices();
+          return;
+        }
+      }
+    }
 
     const url = `https://nettleietariffer.dataplattform.nve.no/v1/NettleiePerOmradePrTimeHusholdningFritidEffekttariffer?ValgtDato=${today}&Tariffgruppe=${encodeURIComponent(tariffgruppe)}&FylkeNr=${fylke}&OrganisasjonsNr=${orgnr}`;
 
@@ -591,16 +610,67 @@ module.exports = class PelsApp extends Homey.App {
 
       this.homey.settings.set('nettleie_data', nettleieData);
       this.log(`Nettleie: Stored ${nettleieData.length} hourly tariff entries`);
+      this.updateCombinedPrices();
     } catch (error) {
       this.error('Nettleie: Failed to fetch grid tariffs from NVE API', error);
     }
   }
 
-  private async refreshSpotPrices(): Promise<void> {
+  /**
+   * Update the combined_prices setting with spot + nettleie + surcharge.
+   * Includes pre-calculated thresholds and cheap/expensive flags for UI consistency.
+   */
+  private updateCombinedPrices(): void {
+    const combined = this.getCombinedHourlyPrices();
+    if (combined.length === 0) {
+      this.homey.settings.set('combined_prices', { prices: [], avgPrice: 0, lowThreshold: 0, highThreshold: 0 });
+      return;
+    }
+
+    // Calculate average and thresholds (same logic used by isCurrentHourCheap/Expensive)
+    const avgPrice = combined.reduce((sum, p) => sum + p.totalPrice, 0) / combined.length;
+    const lowThreshold = avgPrice * 0.75;  // 25% below average
+    const highThreshold = avgPrice * 1.25; // 25% above average
+
+    // Store prices with cheap/expensive flags
+    const prices = combined.map((p) => ({
+      startsAt: p.startsAt,
+      total: p.totalPrice,
+      spotPrice: p.spotPrice,
+      nettleie: p.nettleie,
+      isCheap: p.totalPrice <= lowThreshold,
+      isExpensive: p.totalPrice >= highThreshold,
+    }));
+
+    this.homey.settings.set('combined_prices', {
+      prices,
+      avgPrice,
+      lowThreshold,
+      highThreshold,
+    });
+  }
+
+  private async refreshSpotPrices(forceRefresh = false): Promise<void> {
     const priceArea = this.homey.settings.get('price_area') || 'NO1';
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Check if we already have today's prices (cached)
+    if (!forceRefresh) {
+      const existingPrices = this.homey.settings.get('electricity_prices') as any[];
+      if (existingPrices && Array.isArray(existingPrices) && existingPrices.length > 0) {
+        // Check if we have prices for today
+        const hasTodayPrices = existingPrices.some((p) => p.startsAt?.startsWith(todayStr));
+        if (hasTodayPrices) {
+          this.logDebug(`Spot prices: Using cached data (${existingPrices.length} entries including today)`);
+          // Still update combined prices in case nettleie changed
+          this.updateCombinedPrices();
+          return;
+        }
+      }
+    }
 
     // Fetch today's prices
-    const today = new Date();
     const todayPrices = await this.fetchSpotPricesForDate(today, priceArea);
 
     // Try to fetch tomorrow's prices (available after 13:00)
@@ -614,6 +684,7 @@ module.exports = class PelsApp extends Homey.App {
     if (allPrices.length > 0) {
       this.homey.settings.set('electricity_prices', allPrices);
       this.log(`Spot prices: Stored ${allPrices.length} hourly prices for ${priceArea}`);
+      this.updateCombinedPrices();
     } else {
       this.log('Spot prices: No price data available');
     }
@@ -706,12 +777,13 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   /**
-   * Get combined hourly prices (spot + nettleie) for all available hours.
+   * Get combined hourly prices (spot + nettleie + provider surcharge) for all available hours.
    * Returns an array sorted by time, with total price in øre/kWh including VAT.
    */
-  private getCombinedHourlyPrices(): Array<{ startsAt: string; spotPrice: number; nettleie: number; totalPrice: number }> {
+  private getCombinedHourlyPrices(): Array<{ startsAt: string; spotPrice: number; nettleie: number; providerSurcharge: number; totalPrice: number }> {
     const spotPrices: Array<{ startsAt: string; total: number }> = this.homey.settings.get('electricity_prices') || [];
     const nettleieData: Array<{ time: string; energileddInk: number }> = this.homey.settings.get('nettleie_data') || [];
+    const providerSurcharge: number = this.homey.settings.get('provider_surcharge') || 0;
 
     // Create a map of nettleie by hour (0-23)
     const nettleieByHour = new Map<number, number>();
@@ -723,7 +795,7 @@ module.exports = class PelsApp extends Homey.App {
       }
     }
 
-    // Combine spot prices with nettleie
+    // Combine spot prices with nettleie and provider surcharge
     return spotPrices.map((spot) => {
       const date = new Date(spot.startsAt);
       const hour = date.getHours();
@@ -732,7 +804,8 @@ module.exports = class PelsApp extends Homey.App {
         startsAt: spot.startsAt,
         spotPrice: spot.total,
         nettleie,
-        totalPrice: spot.total + nettleie,
+        providerSurcharge,
+        totalPrice: spot.total + nettleie + providerSurcharge,
       };
     }).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
   }
@@ -761,47 +834,109 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   /**
-   * Check if the current hour is one of the cheapest hours for a device.
+   * Check if the current hour is cheap (25% below average).
    */
-  private isCurrentHourCheap(cheapHours: number): boolean {
-    const cheapestHours = this.findCheapestHours(cheapHours);
+  private isCurrentHourCheap(): boolean {
+    const prices = this.getCombinedHourlyPrices();
+    if (prices.length === 0) return false;
+
     const now = new Date();
     const currentHourStart = new Date(now);
     currentHourStart.setMinutes(0, 0, 0);
 
-    return cheapestHours.some((h) => {
-      const hourStart = new Date(h);
+    const currentPrice = prices.find((p) => {
+      const hourStart = new Date(p.startsAt);
       return hourStart.getTime() === currentHourStart.getTime();
     });
+
+    if (!currentPrice) return false;
+
+    const avgPrice = prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length;
+    const threshold = avgPrice * 0.75; // 25% below average
+    return currentPrice.totalPrice <= threshold;
+  }
+
+  /**
+   * Check if the current hour is expensive (25% above average).
+   */
+  private isCurrentHourExpensive(): boolean {
+    const prices = this.getCombinedHourlyPrices();
+    if (prices.length === 0) return false;
+
+    const now = new Date();
+    const currentHourStart = new Date(now);
+    currentHourStart.setMinutes(0, 0, 0);
+
+    const currentPrice = prices.find((p) => {
+      const hourStart = new Date(p.startsAt);
+      return hourStart.getTime() === currentHourStart.getTime();
+    });
+
+    if (!currentPrice) return false;
+
+    const avgPrice = prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length;
+    const threshold = avgPrice * 1.25; // 25% above average
+    return currentPrice.totalPrice >= threshold;
   }
 
   /**
    * Apply price optimization to all configured devices.
    * Called periodically (at start of each hour) to adjust temperatures.
+   * Uses delta values relative to the mode's target temperature.
    */
   private async applyPriceOptimization(): Promise<void> {
     if (!this.homeyApi || !this.homeyApi.devices) {
-      this.logDebug('Price optimization: HomeyAPI not available');
+      this.log('Price optimization: HomeyAPI not available, skipping');
       return;
     }
 
     const settings = this.priceOptimizationSettings;
     if (!settings || Object.keys(settings).length === 0) {
-      this.logDebug('Price optimization: No devices configured');
+      this.log('Price optimization: No devices configured');
       return;
     }
+
+    const isCheap = this.isCurrentHourCheap();
+    const isExpensive = this.isCurrentHourExpensive();
+    
+    // Debug: log current price info
+    const prices = this.getCombinedHourlyPrices();
+    const now = new Date();
+    const currentHourStart = new Date(now);
+    currentHourStart.setMinutes(0, 0, 0);
+    const currentPrice = prices.find((p) => new Date(p.startsAt).getTime() === currentHourStart.getTime());
+    const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
+    this.log(`Price optimization: current=${currentPrice?.totalPrice?.toFixed(1) ?? 'N/A'} øre, avg=${avgPrice.toFixed(1)} øre, threshold=${(avgPrice * 1.25).toFixed(1)} øre, isCheap=${isCheap}, isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`);
+
+    // If price is normal (not cheap or expensive), use the mode's base temperature
+    const priceState = isCheap ? 'cheap' : isExpensive ? 'expensive' : 'normal';
 
     for (const [deviceId, config] of Object.entries(settings)) {
       if (!config.enabled) continue;
 
-      const isCheap = this.isCurrentHourCheap(config.cheapHours);
-      const targetTemp = isCheap ? config.boostTemp : config.normalTemp;
-
-      // Find the device in snapshot to get its target capability
+      // Find the device in snapshot to get its current capability
       const device = this.latestTargetSnapshot.find((d) => d.id === deviceId);
       if (!device || !device.targets || device.targets.length === 0) {
         this.logDebug(`Price optimization: Device ${deviceId} not found or has no target capability`);
         continue;
+      }
+
+      // Get the mode's base target temperature for this device
+      const modeTargets = this.homey.settings.get('mode_device_targets') || {};
+      const currentMode = this.homey.settings.get('capacity_mode') || 'Home';
+      const baseTemp = modeTargets[currentMode]?.[deviceId];
+
+      if (baseTemp === undefined) {
+        this.logDebug(`Price optimization: No mode target for ${device.name} in mode ${currentMode}`);
+        continue;
+      }
+
+      // Calculate the target temperature based on price state
+      let targetTemp = baseTemp;
+      if (isCheap && config.cheapDelta) {
+        targetTemp = baseTemp + config.cheapDelta;
+      } else if (isExpensive && config.expensiveDelta) {
+        targetTemp = baseTemp + config.expensiveDelta;
       }
 
       const targetCap = device.targets[0].id;
@@ -820,7 +955,8 @@ module.exports = class PelsApp extends Homey.App {
           value: targetTemp,
         });
         const priceInfo = this.getCurrentHourPriceInfo();
-        this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${isCheap ? 'cheap hour' : 'normal hour'}, ${priceInfo})`);
+        const deltaInfo = isCheap ? `+${config.cheapDelta}` : isExpensive ? `${config.expensiveDelta}` : '0';
+        this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${priceState} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
         this.updateLocalSnapshot(deviceId, { target: targetTemp });
       } catch (error) {
         this.error(`Price optimization: Failed to set ${device.name} to ${targetTemp}°C`, error);
@@ -850,17 +986,15 @@ module.exports = class PelsApp extends Homey.App {
    * Start periodic price optimization checks.
    * Runs at the start of each hour.
    */
-  private startPriceOptimization(): void {
+  private async startPriceOptimization(): Promise<void> {
     // Calculate ms until the next hour
     const now = new Date();
     const nextHour = new Date(now);
     nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
     const msUntilNextHour = nextHour.getTime() - now.getTime();
 
-    // Run once now
-    this.applyPriceOptimization().catch((error: Error) => {
-      this.error('Price optimization failed', error);
-    });
+    // Run once now (await to ensure initial price optimization is applied before onInit completes)
+    await this.applyPriceOptimization();
 
     // Schedule to run at the start of each hour
     setTimeout(() => {
@@ -881,6 +1015,7 @@ module.exports = class PelsApp extends Homey.App {
   /**
    * Start periodic price data refresh.
    * Refreshes spot prices and nettleie data periodically.
+   * Note: Initial fetch is done in onInit before this is called.
    */
   private startPriceRefresh(): void {
     // Refresh prices every 3 hours
@@ -895,14 +1030,6 @@ module.exports = class PelsApp extends Homey.App {
         this.error('Failed to refresh nettleie data', error);
       });
     }, refreshIntervalMs);
-
-    // Also refresh now
-    this.refreshSpotPrices().catch((error: Error) => {
-      this.error('Failed to refresh spot prices', error);
-    });
-    this.refreshNettleieData().catch((error: Error) => {
-      this.error('Failed to refresh nettleie data', error);
-    });
   }
 
   private async fetchDevicesViaApi(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number }>> {
@@ -1199,7 +1326,20 @@ module.exports = class PelsApp extends Homey.App {
     const planDevices = devices.map((dev) => {
       const priority = this.getPriorityForDevice(dev.id);
       const desired = desiredForMode[dev.id];
-      const plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
+      let plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
+      
+      // Apply price optimization delta if configured for this device
+      const priceOptConfig = this.priceOptimizationSettings[dev.id];
+      if (plannedTarget !== null && priceOptConfig?.enabled) {
+        const isCheap = this.isCurrentHourCheap();
+        const isExpensive = this.isCurrentHourExpensive();
+        if (isCheap && priceOptConfig.cheapDelta) {
+          plannedTarget = plannedTarget + priceOptConfig.cheapDelta;
+        } else if (isExpensive && priceOptConfig.expensiveDelta) {
+          plannedTarget = plannedTarget + priceOptConfig.expensiveDelta;
+        }
+      }
+      
       const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
       // eslint-disable-next-line no-nested-ternary -- Clear boolean-to-state mapping
       const currentState = typeof dev.currentOn === 'boolean' ? (dev.currentOn ? 'on' : 'off') : 'unknown';

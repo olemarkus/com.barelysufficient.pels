@@ -99,6 +99,7 @@ const findMockDeviceById = (deviceId: string): MockDevice | null => {
 export const mockHomeyInstance = {
   settings: new MockSettings(),
   api: {
+    getOwnerApiToken: async () => 'mock-token',
     get: async (path: string) => {
       // Return devices from mock drivers when API is called
       if (path === 'manager/devices' || path === 'devices') {
@@ -183,6 +184,18 @@ const homeyModule = {
     MockDevice,
     MockDriver,
     setMockDrivers,
+  },
+};
+
+// Mock for homey-api module - HomeyAPI.createAppAPI
+export const mockHomeyApiInstance = {
+  devices: {
+    setCapabilityValue: async ({ deviceId, capabilityId, value }: { deviceId: string; capabilityId: string; value: any }) => {
+      const device = findMockDeviceById(deviceId);
+      if (device) {
+        await device.setCapabilityValue(capabilityId, value);
+      }
+    },
   },
 };
 

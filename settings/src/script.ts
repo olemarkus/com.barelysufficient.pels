@@ -37,6 +37,7 @@ const priceEmpty = qs('#price-empty');
 const priceStatusBadge = qs('#price-status-badge');
 const priceSettingsForm = document.querySelector('#price-settings-form') as HTMLFormElement;
 const priceAreaSelect = document.querySelector('#price-area') as HTMLSelectElement;
+const providerSurchargeInput = document.querySelector('#provider-surcharge') as HTMLInputElement;
 const priceRefreshButton = document.querySelector('#price-refresh-button') as HTMLButtonElement;
 const nettleieSettingsForm = document.querySelector('#nettleie-settings-form') as HTMLFormElement;
 const nettleieFylkeSelect = document.querySelector('#nettleie-fylke') as HTMLSelectElement;
@@ -44,8 +45,6 @@ const nettleieCompanySelect = document.querySelector('#nettleie-company') as HTM
 const nettleieOrgnrInput = document.querySelector('#nettleie-orgnr') as HTMLInputElement;
 const nettleieTariffgruppeSelect = document.querySelector('#nettleie-tariffgruppe') as HTMLSelectElement;
 const nettleieRefreshButton = document.querySelector('#nettleie-refresh-button') as HTMLButtonElement;
-const nettleieList = qs('#nettleie-list');
-const nettleieEmpty = qs('#nettleie-empty');
 const priceOptimizationList = qs('#price-optimization-list');
 const priceOptimizationEmpty = qs('#price-optimization-empty');
 
@@ -184,6 +183,9 @@ const showTab = (tabId) => {
   if (tabId === 'plan') {
     refreshPlan().catch(() => {});
   }
+  if (tabId === 'price') {
+    refreshPrices().catch(() => {});
+  }
 };
 
 const showToast = async (message, tone = 'default') => {
@@ -222,6 +224,8 @@ const renderDevices = (devices) => {
 
     const ctrlWrap = document.createElement('div');
     ctrlWrap.className = 'device-row__target control-row__inputs';
+    
+    // Controllable checkbox
     const ctrlLabel = document.createElement('label');
     ctrlLabel.className = 'checkbox-field-inline';
     const ctrlInput = document.createElement('input');
@@ -234,7 +238,27 @@ const renderDevices = (devices) => {
     const ctrlText = document.createElement('span');
     ctrlText.textContent = 'Controllable';
     ctrlLabel.append(ctrlInput, ctrlText);
-    ctrlWrap.append(ctrlLabel);
+    
+    // Price optimization checkbox
+    const priceOptLabel = document.createElement('label');
+    priceOptLabel.className = 'checkbox-field-inline';
+    const priceOptInput = document.createElement('input');
+    priceOptInput.type = 'checkbox';
+    const config = priceOptimizationSettings[device.id];
+    priceOptInput.checked = config?.enabled || false;
+    priceOptInput.addEventListener('change', async () => {
+      if (!priceOptimizationSettings[device.id]) {
+        priceOptimizationSettings[device.id] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
+      }
+      priceOptimizationSettings[device.id].enabled = priceOptInput.checked;
+      await savePriceOptimizationSettings();
+      renderPriceOptimization(latestDevices);
+    });
+    const priceOptText = document.createElement('span');
+    priceOptText.textContent = 'Price opt';
+    priceOptLabel.append(priceOptInput, priceOptText);
+    
+    ctrlWrap.append(ctrlLabel, priceOptLabel);
 
     row.append(nameWrap, ctrlWrap);
     deviceList.appendChild(row);
@@ -659,21 +683,37 @@ const refreshPlan = async () => {
 interface PriceEntry {
   startsAt: string;
   total: number;
-  currency: string;
+  spotPrice?: number;
+  nettleie?: number;
+  isCheap?: boolean;
+  isExpensive?: boolean;
+}
+
+interface CombinedPriceData {
+  prices: PriceEntry[];
+  avgPrice: number;
+  lowThreshold: number;
+  highThreshold: number;
 }
 
 const loadPriceSettings = async () => {
   const priceArea = await getSetting('price_area');
+  const providerSurcharge = await getSetting('provider_surcharge');
 
   if (priceAreaSelect) {
     priceAreaSelect.value = typeof priceArea === 'string' ? priceArea : 'NO1';
+  }
+  if (providerSurchargeInput) {
+    providerSurchargeInput.value = typeof providerSurcharge === 'number' ? providerSurcharge.toString() : '0';
   }
 };
 
 const savePriceSettings = async () => {
   const priceArea = priceAreaSelect?.value || 'NO1';
+  const providerSurcharge = parseFloat(providerSurchargeInput?.value || '0') || 0;
 
   await setSetting('price_area', priceArea);
+  await setSetting('provider_surcharge', providerSurcharge);
   await showToast('Price settings saved.', 'ok');
   
   // Trigger refresh of spot prices
@@ -681,17 +721,40 @@ const savePriceSettings = async () => {
   await refreshPrices();
 };
 
-const getPriceData = async (): Promise<PriceEntry[]> => {
+const getPriceData = async (): Promise<CombinedPriceData | null> => {
+  // Get combined_prices with pre-calculated thresholds from backend
+  const combinedData = await getSetting('combined_prices');
+  if (combinedData && typeof combinedData === 'object' && 'prices' in combinedData) {
+    return combinedData as CombinedPriceData;
+  }
+  // Fall back to spot-only prices if combined not available (legacy format)
+  if (combinedData && Array.isArray(combinedData) && combinedData.length > 0) {
+    const prices = combinedData as PriceEntry[];
+    const avgPrice = prices.reduce((sum, p) => sum + p.total, 0) / prices.length;
+    return {
+      prices,
+      avgPrice,
+      lowThreshold: avgPrice * 0.75,
+      highThreshold: avgPrice * 1.25,
+    };
+  }
   const priceData = await getSetting('electricity_prices');
-  if (!priceData || !Array.isArray(priceData)) return [];
-  return priceData as PriceEntry[];
+  if (!priceData || !Array.isArray(priceData) || priceData.length === 0) return null;
+  const prices = priceData as PriceEntry[];
+  const avgPrice = prices.reduce((sum, p) => sum + p.total, 0) / prices.length;
+  return {
+    prices,
+    avgPrice,
+    lowThreshold: avgPrice * 0.75,
+    highThreshold: avgPrice * 1.25,
+  };
 };
 
-const renderPrices = (prices: PriceEntry[]) => {
+const renderPrices = (data: CombinedPriceData | null) => {
   if (!priceList) return;
   priceList.innerHTML = '';
 
-  if (!prices || prices.length === 0) {
+  if (!data || !data.prices || data.prices.length === 0) {
     if (priceEmpty) priceEmpty.hidden = false;
     if (priceStatusBadge) {
       priceStatusBadge.textContent = 'No data';
@@ -702,18 +765,22 @@ const renderPrices = (prices: PriceEntry[]) => {
 
   if (priceEmpty) priceEmpty.hidden = true;
 
+  const { prices, avgPrice, lowThreshold, highThreshold } = data;
+
   const now = new Date();
   const currentHour = new Date(now);
   currentHour.setMinutes(0, 0, 0);
 
-  // Find min and max prices for color coding
-  const priceValues = prices.map(p => p.total);
-  const minPrice = Math.min(...priceValues);
-  const maxPrice = Math.max(...priceValues);
-  const priceRange = maxPrice - minPrice || 1;
+  // Show prices starting from current hour in the list
+  const futurePrices = prices.filter(p => new Date(p.startsAt) >= currentHour);
+  
+  if (futurePrices.length === 0) {
+    if (priceEmpty) priceEmpty.hidden = false;
+    return;
+  }
 
   // Find current price
-  const currentEntry = prices.find(p => {
+  const currentEntry = futurePrices.find(p => {
     const entryTime = new Date(p.startsAt);
     return entryTime.getTime() === currentHour.getTime();
   });
@@ -723,43 +790,67 @@ const renderPrices = (prices: PriceEntry[]) => {
     priceStatusBadge.classList.add('ok');
   }
 
-  // Show prices starting from current hour
-  const futurePrices = prices.filter(p => new Date(p.startsAt) >= currentHour);
+  // Use pre-calculated cheap/expensive flags from backend
+  const cheapHours = futurePrices.filter(p => p.isCheap).sort((a, b) => a.total - b.total);
+  const expensiveHours = futurePrices.filter(p => p.isExpensive).sort((a, b) => b.total - a.total);
 
-  futurePrices.forEach((entry) => {
-    const row = document.createElement('div');
-    row.className = 'device-row price-row';
-    row.setAttribute('role', 'listitem');
+  if (cheapHours.length > 0) {
+    const header = document.createElement('div');
+    header.className = 'price-section-header cheap';
+    header.textContent = `🟢 Cheap hours (< ${lowThreshold.toFixed(0)} øre)`;
+    priceList.appendChild(header);
 
-    const entryTime = new Date(entry.startsAt);
-    const isCurrentHour = entryTime.getTime() === currentHour.getTime();
-    if (isCurrentHour) row.classList.add('current-hour');
+    cheapHours.forEach((entry) => {
+      priceList.appendChild(createPriceRow(entry, currentHour, now, 'price-low'));
+    });
+  }
 
-    const timeWrap = document.createElement('div');
-    timeWrap.className = 'device-row__name';
-    const timeStr = entryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const dateStr = entryTime.toDateString() !== now.toDateString()
-      ? ` (${entryTime.toLocaleDateString([], { weekday: 'short' })})`
-      : '';
-    timeWrap.textContent = `${timeStr}${dateStr}${isCurrentHour ? ' ← now' : ''}`;
+  if (expensiveHours.length > 0) {
+    const header = document.createElement('div');
+    header.className = 'price-section-header expensive';
+    header.textContent = `🔴 Expensive hours (> ${highThreshold.toFixed(0)} øre)`;
+    priceList.appendChild(header);
 
-    const priceWrap = document.createElement('div');
-    priceWrap.className = 'device-row__target';
+    expensiveHours.forEach((entry) => {
+      priceList.appendChild(createPriceRow(entry, currentHour, now, 'price-high'));
+    });
+  }
 
-    // Calculate price level for color coding
-    const normalized = (entry.total - minPrice) / priceRange;
-    let priceClass = 'price-low';
-    if (normalized > 0.66) priceClass = 'price-high';
-    else if (normalized > 0.33) priceClass = 'price-medium';
+  if (cheapHours.length === 0 && expensiveHours.length === 0) {
+    const notice = document.createElement('div');
+    notice.className = 'price-notice';
+    notice.textContent = `All prices are within 25% of average (${avgPrice.toFixed(0)} øre/kWh)`;
+    priceList.appendChild(notice);
+  }
+};
 
-    const chip = document.createElement('span');
-    chip.className = `chip ${priceClass}`;
-    chip.innerHTML = `<strong>${entry.total.toFixed(1)}</strong><span>øre/kWh</span>`;
-    priceWrap.appendChild(chip);
+const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceClass: string) => {
+  const row = document.createElement('div');
+  row.className = 'device-row price-row';
+  row.setAttribute('role', 'listitem');
 
-    row.append(timeWrap, priceWrap);
-    priceList.appendChild(row);
-  });
+  const entryTime = new Date(entry.startsAt);
+  const isCurrentHour = entryTime.getTime() === currentHour.getTime();
+  if (isCurrentHour) row.classList.add('current-hour');
+
+  const timeWrap = document.createElement('div');
+  timeWrap.className = 'device-row__name';
+  const timeStr = entryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateStr = entryTime.toDateString() !== now.toDateString()
+    ? ` (${entryTime.toLocaleDateString([], { weekday: 'short' })})`
+    : '';
+  timeWrap.textContent = `${timeStr}${dateStr}${isCurrentHour ? ' ← now' : ''}`;
+
+  const priceWrap = document.createElement('div');
+  priceWrap.className = 'device-row__target';
+
+  const chip = document.createElement('span');
+  chip.className = `chip ${priceClass}`;
+  chip.innerHTML = `<strong>${entry.total.toFixed(1)}</strong><span>øre/kWh</span>`;
+  priceWrap.appendChild(chip);
+
+  row.append(timeWrap, priceWrap);
+  return row;
 };
 
 const refreshPrices = async () => {
@@ -853,67 +944,10 @@ const getNettleieData = async (): Promise<NettleieEntry[]> => {
   return data as NettleieEntry[];
 };
 
-const renderNettleie = (entries: NettleieEntry[]) => {
-  if (!nettleieList) return;
-  nettleieList.innerHTML = '';
-
-  if (!entries || entries.length === 0) {
-    if (nettleieEmpty) nettleieEmpty.hidden = false;
-    return;
-  }
-
-  if (nettleieEmpty) nettleieEmpty.hidden = true;
-
-  const now = new Date();
-  const currentHour = now.getHours();
-
-  // Find min and max for color coding
-  const priceValues = entries.map(e => e.energileddInk ?? e.energileddEks ?? 0).filter(v => v > 0);
-  const minPrice = Math.min(...priceValues);
-  const maxPrice = Math.max(...priceValues);
-  const priceRange = maxPrice - minPrice || 1;
-
-  // Sort by hour
-  const sorted = [...entries].sort((a, b) => a.time - b.time);
-
-  sorted.forEach((entry) => {
-    const row = document.createElement('div');
-    row.className = 'device-row price-row';
-    row.setAttribute('role', 'listitem');
-
-    const isCurrentHour = entry.time === currentHour;
-    if (isCurrentHour) row.classList.add('current-hour');
-
-    const timeWrap = document.createElement('div');
-    timeWrap.className = 'device-row__name';
-    const timeStr = `${entry.time.toString().padStart(2, '0')}:00 - ${((entry.time + 1) % 24).toString().padStart(2, '0')}:00`;
-    timeWrap.textContent = `${timeStr}${isCurrentHour ? ' ← now' : ''}`;
-
-    const priceWrap = document.createElement('div');
-    priceWrap.className = 'device-row__target';
-
-    const priceValue = entry.energileddInk ?? entry.energileddEks ?? 0;
-    
-    // Calculate price level for color coding
-    const normalized = priceRange > 0 ? (priceValue - minPrice) / priceRange : 0.5;
-    let priceClass = 'price-low';
-    if (normalized > 0.66) priceClass = 'price-high';
-    else if (normalized > 0.33) priceClass = 'price-medium';
-
-    const chip = document.createElement('span');
-    chip.className = `chip ${priceClass}`;
-    chip.innerHTML = `<strong>${priceValue.toFixed(2)}</strong><span>øre/kWh</span>`;
-    priceWrap.appendChild(chip);
-
-    row.append(timeWrap, priceWrap);
-    nettleieList.appendChild(row);
-  });
-};
-
 const refreshNettleie = async () => {
   try {
-    const data = await getNettleieData();
-    renderNettleie(data);
+    // Just trigger a data refresh - the data is used by the backend for total price calculation
+    await getNettleieData();
   } catch (error) {
     console.error('Failed to load nettleie:', error);
   }
@@ -922,9 +956,8 @@ const refreshNettleie = async () => {
 // Price optimization settings
 interface PriceOptimizationConfig {
   enabled: boolean;
-  normalTemp: number;
-  boostTemp: number;
-  cheapHours: number;
+  cheapDelta: number;    // Temperature increase during cheap hours (e.g., +5)
+  expensiveDelta: number; // Temperature decrease during expensive hours (e.g., -5)
 }
 
 let priceOptimizationSettings: Record<string, PriceOptimizationConfig> = {};
@@ -944,19 +977,24 @@ const renderPriceOptimization = (devices: any[]) => {
   if (!priceOptimizationList) return;
   priceOptimizationList.innerHTML = '';
 
-  if (!devices || devices.length === 0) {
+  // Filter to only show devices with price optimization enabled
+  const enabledDevices = (devices || []).filter((device) => {
+    const config = priceOptimizationSettings[device.id];
+    return config?.enabled === true;
+  });
+
+  if (enabledDevices.length === 0) {
     if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = false;
     return;
   }
 
   if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = true;
 
-  devices.forEach((device) => {
+  enabledDevices.forEach((device) => {
     const config = priceOptimizationSettings[device.id] || {
-      enabled: false,
-      normalTemp: 55,
-      boostTemp: 75,
-      cheapHours: 4,
+      enabled: true,
+      cheapDelta: 5,
+      expensiveDelta: -5,
     };
 
     const row = document.createElement('div');
@@ -968,83 +1006,47 @@ const renderPriceOptimization = (devices: any[]) => {
     nameWrap.className = 'device-row__name';
     nameWrap.textContent = device.name;
 
-    // Normal temp input
-    const normalInput = document.createElement('input');
-    normalInput.type = 'number';
-    normalInput.step = '0.5';
-    normalInput.min = '0';
-    normalInput.max = '100';
-    normalInput.className = 'price-opt-input';
-    normalInput.value = config.normalTemp.toString();
-    normalInput.title = 'Normal temperature';
-    normalInput.addEventListener('change', async () => {
-      const val = parseFloat(normalInput.value);
+    // Cheap delta input (positive = increase temp during cheap hours)
+    const cheapInput = document.createElement('input');
+    cheapInput.type = 'number';
+    cheapInput.step = '0.5';
+    cheapInput.min = '-20';
+    cheapInput.max = '20';
+    cheapInput.className = 'price-opt-input';
+    cheapInput.value = (config.cheapDelta ?? 5).toString();
+    cheapInput.title = 'Temperature adjustment during cheap hours (e.g., +5 to boost)';
+    cheapInput.addEventListener('change', async () => {
+      const val = parseFloat(cheapInput.value);
       if (Number.isFinite(val)) {
         if (!priceOptimizationSettings[device.id]) {
-          priceOptimizationSettings[device.id] = { enabled: false, normalTemp: 55, boostTemp: 75, cheapHours: 4 };
+          priceOptimizationSettings[device.id] = { enabled: true, cheapDelta: 5, expensiveDelta: -5 };
         }
-        priceOptimizationSettings[device.id].normalTemp = val;
+        priceOptimizationSettings[device.id].cheapDelta = val;
         await savePriceOptimizationSettings();
       }
     });
 
-    // Boost temp input
-    const boostInput = document.createElement('input');
-    boostInput.type = 'number';
-    boostInput.step = '0.5';
-    boostInput.min = '0';
-    boostInput.max = '100';
-    boostInput.className = 'price-opt-input';
-    boostInput.value = config.boostTemp.toString();
-    boostInput.title = 'Boost temperature (during cheap hours)';
-    boostInput.addEventListener('change', async () => {
-      const val = parseFloat(boostInput.value);
+    // Expensive delta input (negative = decrease temp during expensive hours)
+    const expensiveInput = document.createElement('input');
+    expensiveInput.type = 'number';
+    expensiveInput.step = '0.5';
+    expensiveInput.min = '-20';
+    expensiveInput.max = '20';
+    expensiveInput.className = 'price-opt-input';
+    expensiveInput.value = (config.expensiveDelta ?? -5).toString();
+    expensiveInput.title = 'Temperature adjustment during expensive hours (e.g., -5 to reduce)';
+    expensiveInput.addEventListener('change', async () => {
+      const val = parseFloat(expensiveInput.value);
       if (Number.isFinite(val)) {
         if (!priceOptimizationSettings[device.id]) {
-          priceOptimizationSettings[device.id] = { enabled: false, normalTemp: 55, boostTemp: 75, cheapHours: 4 };
+          priceOptimizationSettings[device.id] = { enabled: true, cheapDelta: 5, expensiveDelta: -5 };
         }
-        priceOptimizationSettings[device.id].boostTemp = val;
+        priceOptimizationSettings[device.id].expensiveDelta = val;
         await savePriceOptimizationSettings();
       }
     });
 
-    // Cheap hours input
-    const hoursInput = document.createElement('input');
-    hoursInput.type = 'number';
-    hoursInput.step = '1';
-    hoursInput.min = '1';
-    hoursInput.max = '12';
-    hoursInput.className = 'price-opt-input price-opt-hours';
-    hoursInput.value = config.cheapHours.toString();
-    hoursInput.title = 'Number of cheap hours per day to boost';
-    hoursInput.addEventListener('change', async () => {
-      const val = parseInt(hoursInput.value, 10);
-      if (Number.isFinite(val) && val >= 1) {
-        if (!priceOptimizationSettings[device.id]) {
-          priceOptimizationSettings[device.id] = { enabled: false, normalTemp: 55, boostTemp: 75, cheapHours: 4 };
-        }
-        priceOptimizationSettings[device.id].cheapHours = val;
-        await savePriceOptimizationSettings();
-      }
-    });
-
-    // Enabled checkbox
-    const enabledLabel = document.createElement('label');
-    enabledLabel.className = 'checkbox-field-inline';
-    const enabledInput = document.createElement('input');
-    enabledInput.type = 'checkbox';
-    enabledInput.checked = config.enabled;
-    enabledInput.addEventListener('change', async () => {
-      if (!priceOptimizationSettings[device.id]) {
-        priceOptimizationSettings[device.id] = { enabled: false, normalTemp: 55, boostTemp: 75, cheapHours: 4 };
-      }
-      priceOptimizationSettings[device.id].enabled = enabledInput.checked;
-      await savePriceOptimizationSettings();
-      await showToast(enabledInput.checked ? `Price optimization enabled for ${device.name}` : `Price optimization disabled for ${device.name}`, 'ok');
-    });
-    enabledLabel.appendChild(enabledInput);
-
-    row.append(nameWrap, normalInput, boostInput, hoursInput, enabledLabel);
+    row.append(nameWrap, cheapInput, expensiveInput);
     priceOptimizationList.appendChild(row);
   });
 };
@@ -1115,6 +1117,13 @@ const boot = async () => {
           const planPanel = document.querySelector('#plan-panel');
           if (planPanel && !planPanel.classList.contains('hidden')) {
             refreshPlan().catch(() => {});
+          }
+        }
+        if (key === 'combined_prices' || key === 'electricity_prices') {
+          // Only auto-refresh if Prices tab is visible
+          const pricesPanel = document.querySelector('#price-panel');
+          if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
+            refreshPrices().catch(() => {});
           }
         }
       });

@@ -9,6 +9,7 @@ const buildDom = () => {
       <button class="tab active" data-tab="devices"></button>
       <button class="tab" data-tab="power"></button>
       <button class="tab" data-tab="plan"></button>
+      <button class="tab" data-tab="price"></button>
     </div>
     <section class="panel" data-panel="devices">
       <form id="targets-form">
@@ -37,7 +38,27 @@ const buildDom = () => {
       <div id="plan-meta"></div>
       <button id="plan-refresh-button"></button>
     </section>
+    <section class="panel hidden" id="price-panel" data-panel="price">
+      <div id="price-status-badge">No data</div>
+      <form id="nettleie-settings-form">
+        <select id="nettleie-fylke"></select>
+        <select id="nettleie-company"></select>
+        <input id="nettleie-orgnr" type="hidden">
+        <select id="nettleie-tariffgruppe"></select>
+      </form>
+      <form id="price-settings-form">
+        <select id="price-area"></select>
+        <input id="provider-surcharge" type="number">
+      </form>
+      <div id="price-list" class="device-list" role="list"></div>
+      <p id="price-empty">No spot price data available.</p>
+      <button id="price-refresh-button"></button>
+      <button id="nettleie-refresh-button"></button>
+      <div id="price-optimization-list"></div>
+      <p id="price-optimization-empty" hidden></p>
+    </section>
     <button id="refresh-button"></button>
+    <button id="reset-stats-button"></button>
   `;
 };
 
@@ -286,5 +307,209 @@ describe('settings script', () => {
     
     // Active mode should have been updated to 'Cozy'
     expect(setSpy).toHaveBeenCalledWith('capacity_mode', 'Cozy', expect.any(Function));
+  });
+
+  it('displays cheap and expensive hours when combined_prices are available', async () => {
+    // Create price data with some cheap and expensive hours
+    const now = new Date();
+    const currentHour = now.getHours();
+    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // Create 24 hours of prices with average around 100 øre
+    // Make cheap hours in the future relative to current hour
+    const prices: any[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const date = new Date(baseDate);
+      date.setHours(hour, 0, 0, 0);
+      let total = 100; // Normal price
+      // Make hours relative to current: current+1 to +3 cheap, current+6 to +8 expensive
+      const hoursFromNow = hour - currentHour;
+      if (hoursFromNow >= 1 && hoursFromNow <= 3) total = 50; // Cheap hours
+      if (hoursFromNow >= 6 && hoursFromNow <= 8) total = 150; // Expensive hours
+      prices.push({
+        startsAt: date.toISOString(),
+        total,
+        spotPrice: total * 0.7,
+        nettleie: total * 0.3,
+        isCheap: total <= 75,  // 25% below 100
+        isExpensive: total >= 125, // 25% above 100
+      });
+    }
+
+    // Use new format with pre-calculated thresholds
+    const combinedPrices = {
+      prices,
+      avgPrice: 100,
+      lowThreshold: 75,
+      highThreshold: 125,
+    };
+
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'combined_prices') return cb(null, combinedPrices);
+      if (key === 'electricity_prices') return cb(null, []);
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+
+    // @ts-ignore settings script is plain JS
+    await import('../settings/script.js');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // Check that the price panel exists and make it visible first
+    const pricePanel = document.querySelector('#price-panel');
+    expect(pricePanel).not.toBeNull();
+    pricePanel?.classList.remove('hidden');
+
+    // Switch to price tab to trigger refresh
+    const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
+    priceTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const priceList = document.querySelector('#price-list');
+    const priceStatusBadge = document.querySelector('#price-status-badge');
+    
+    // Verify price list has content
+    expect(priceList?.innerHTML).not.toBe('');
+    
+    // Verify cheap hours section is shown
+    const cheapHeader = priceList?.querySelector('.price-section-header.cheap');
+    expect(cheapHeader).not.toBeNull();
+    expect(cheapHeader?.textContent).toContain('Cheap hours');
+    
+    // Verify expensive hours section is shown  
+    const expensiveHeader = priceList?.querySelector('.price-section-header.expensive');
+    expect(expensiveHeader).not.toBeNull();
+    expect(expensiveHeader?.textContent).toContain('Expensive hours');
+    
+    // Verify price rows are rendered
+    const priceRows = priceList?.querySelectorAll('.price-row');
+    expect(priceRows?.length).toBeGreaterThan(0);
+    
+    // Verify status badge shows current price
+    expect(priceStatusBadge?.textContent).toContain('Now:');
+    expect(priceStatusBadge?.textContent).toContain('øre/kWh');
+  });
+
+  it('shows notice when all prices are within threshold', async () => {
+    // Create price data where all prices are within 25% of average
+    const now = new Date();
+    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // All prices around 100 øre (within 25% threshold)
+    const prices: any[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const date = new Date(baseDate);
+      date.setHours(hour, 0, 0, 0);
+      // Vary between 85-115 øre (within 25% of 100 average)
+      const total = 90 + (hour % 5) * 5;
+      prices.push({
+        startsAt: date.toISOString(),
+        total,
+        spotPrice: total * 0.7,
+        nettleie: total * 0.3,
+        isCheap: false,  // All within threshold
+        isExpensive: false,
+      });
+    }
+
+    // Use new format with pre-calculated thresholds
+    const combinedPrices = {
+      prices,
+      avgPrice: 100,
+      lowThreshold: 75,
+      highThreshold: 125,
+    };
+
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'combined_prices') return cb(null, combinedPrices);
+      if (key === 'electricity_prices') return cb(null, []);
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+
+    // @ts-ignore settings script is plain JS
+    await import('../settings/script.js');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // Switch to price tab to trigger refresh
+    const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
+    priceTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const priceList = document.querySelector('#price-list');
+    
+    // Verify notice is shown instead of cheap/expensive sections
+    const notice = priceList?.querySelector('.price-notice');
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain('within 25% of average');
+    
+    // Verify no cheap/expensive headers
+    const cheapHeader = priceList?.querySelector('.price-section-header.cheap');
+    const expensiveHeader = priceList?.querySelector('.price-section-header.expensive');
+    expect(cheapHeader).toBeNull();
+    expect(expensiveHeader).toBeNull();
+  });
+
+  it('falls back to electricity_prices when combined_prices not available', async () => {
+    // Create spot-only price data
+    const now = new Date();
+    const currentHour = now.getHours();
+    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const spotPrices: any[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const date = new Date(baseDate);
+      date.setHours(hour, 0, 0, 0);
+      let total = 80;
+      // Make cheap/expensive hours relative to current hour
+      const hoursFromNow = hour - currentHour;
+      if (hoursFromNow >= 1 && hoursFromNow <= 3) total = 40; // Cheap
+      if (hoursFromNow >= 6 && hoursFromNow <= 8) total = 120; // Expensive
+      spotPrices.push({
+        startsAt: date.toISOString(),
+        total,
+        currency: 'NOK',
+      });
+    }
+
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'combined_prices') return cb(null, null); // No combined prices
+      if (key === 'electricity_prices') return cb(null, spotPrices);
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+
+    // @ts-ignore settings script is plain JS
+    await import('../settings/script.js');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // Switch to price tab to trigger refresh
+    const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
+    priceTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const priceList = document.querySelector('#price-list');
+    const priceStatusBadge = document.querySelector('#price-status-badge');
+    
+    // Verify price list has content (using fallback data)
+    expect(priceList?.innerHTML).not.toBe('');
+    
+    // Verify status badge shows current price
+    expect(priceStatusBadge?.textContent).toContain('Now:');
   });
 });

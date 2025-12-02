@@ -151,81 +151,83 @@
         <p class="muted">Price-based optimization uses electricity spot prices and grid tariffs to shift energy-intensive tasks to cheaper hours.</p>
       </div>
       
-      <div class="section-header">
-        <h3>Grid tariff (Nettleie)</h3>
-      </div>
-      <form id="nettleie-settings-form" class="form-grid">
-        <label class="field">
-          <span class="field__label">County (Fylke)</span>
-          <select id="nettleie-fylke" name="nettleie_fylke">
-            <option value="03">Oslo</option>
-            <option value="11">Rogaland</option>
-            <option value="15">Møre og Romsdal</option>
-            <option value="18">Nordland</option>
-            <option value="31">Østfold</option>
-            <option value="32">Akershus</option>
-            <option value="33">Buskerud</option>
-            <option value="34">Innlandet</option>
-            <option value="39">Vestfold</option>
-            <option value="40">Telemark</option>
-            <option value="42">Agder</option>
-            <option value="46">Vestland</option>
-            <option value="50">Trøndelag</option>
-            <option value="55">Troms</option>
-            <option value="56">Finnmark</option>
-          </select>
-          <small class="field__hint">Your county for grid tariff lookup.</small>
-        </label>
-        <label class="field">
-          <span class="field__label">Grid company (Nettselskap)</span>
-          <select id="nettleie-company" name="nettleie_company">
-            <option value="">-- Select grid company --</option>
-          </select>
-          <input id="nettleie-orgnr" name="nettleie_orgnr" type="hidden">
-          <small class="field__hint">Select your grid company. List filtered by county.</small>
-        </label>
-        <label class="field">
-          <span class="field__label">Tariff group</span>
-          <select id="nettleie-tariffgruppe" name="nettleie_tariffgruppe">
-            <option value="Husholdning">Husholdning (Household)</option>
-            <option value="Hytter og fritidshus">Hytter og fritidshus (Cabin)</option>
-          </select>
-        </label>
-        <div class="form__actions">
-          <button type="submit" class="btn secondary">Save grid tariff settings</button>
-          <button type="button" class="btn ghost" id="nettleie-refresh-button">Refresh tariffs</button>
+      <details class="settings-collapse">
+        <summary class="section-header clickable">
+          <h3>⚙️ Price settings</h3>
+          <span class="collapse-hint">Grid tariff & spot price configuration</span>
+        </summary>
+        <div class="collapse-content">
+          <h4>Grid tariff (Nettleie)</h4>
+          <form id="nettleie-settings-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">County (Fylke)</span>
+              <select id="nettleie-fylke" name="nettleie_fylke">
+                <option value="03">Oslo</option>
+                <option value="11">Rogaland</option>
+                <option value="15">Møre og Romsdal</option>
+                <option value="18">Nordland</option>
+                <option value="31">Østfold</option>
+                <option value="32">Akershus</option>
+                <option value="33">Buskerud</option>
+                <option value="34">Innlandet</option>
+                <option value="39">Vestfold</option>
+                <option value="40">Telemark</option>
+                <option value="42">Agder</option>
+                <option value="46">Vestland</option>
+                <option value="50">Trøndelag</option>
+                <option value="55">Troms</option>
+                <option value="56">Finnmark</option>
+              </select>
+              <small class="field__hint">Your county for grid tariff lookup.</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Grid company (Nettselskap)</span>
+              <select id="nettleie-company" name="nettleie_company">
+                <option value="">-- Select grid company --</option>
+              </select>
+              <input id="nettleie-orgnr" name="nettleie_orgnr" type="hidden">
+              <small class="field__hint">Select your grid company. List filtered by county.</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Tariff group</span>
+              <select id="nettleie-tariffgruppe" name="nettleie_tariffgruppe">
+                <option value="Husholdning">Husholdning (Household)</option>
+                <option value="Hytter og fritidshus">Hytter og fritidshus (Cabin)</option>
+              </select>
+            </label>
+            <div class="form__actions">
+              <button type="submit" class="btn secondary">Save grid tariff settings</button>
+              <button type="button" class="btn ghost" id="nettleie-refresh-button">Refresh tariffs</button>
+            </div>
+          </form>
+          
+          <h4>Spot price</h4>
+          <form id="price-settings-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">Price area</span>
+              <select id="price-area" name="price_area">
+                <option value="NO1">NO1 - Oslo / Øst-Norge</option>
+                <option value="NO2">NO2 - Kristiansand / Sør-Norge</option>
+                <option value="NO3">NO3 - Trondheim / Midt-Norge</option>
+                <option value="NO4">NO4 - Tromsø / Nord-Norge (no VAT)</option>
+                <option value="NO5">NO5 - Bergen / Vest-Norge</option>
+              </select>
+              <small class="field__hint">Your electricity price area. Prices from <a href="https://www.hvakosterstrommen.no" target="_blank" rel="noopener">hvakosterstrommen.no</a></small>
+            </label>
+            <label class="field">
+              <span class="field__label">Provider surcharge (øre/kWh)</span>
+              <input type="number" id="provider-surcharge" name="provider_surcharge" step="0.1" min="0" max="100" value="0">
+              <small class="field__hint">Your electricity provider's surcharge on top of the spot price (check your contract).</small>
+            </label>
+            <div class="form__actions">
+              <button type="submit" class="btn primary">Save price settings</button>
+            </div>
+          </form>
         </div>
-      </form>
-
-      <div class="list__header">
-        <p class="muted">Hour</p>
-        <div class="muted">Grid tariff (øre/kWh)</div>
-      </div>
-      <div id="nettleie-list" class="device-list" role="list"></div>
-      <p id="nettleie-empty" class="muted">No grid tariff data available. Configure your grid company above.</p>
-      
-      <div class="section-header">
-        <h3>Spot price</h3>
-      </div>
-      <form id="price-settings-form" class="form-grid">
-        <label class="field">
-          <span class="field__label">Price area</span>
-          <select id="price-area" name="price_area">
-            <option value="NO1">NO1 - Oslo / Øst-Norge</option>
-            <option value="NO2">NO2 - Kristiansand / Sør-Norge</option>
-            <option value="NO3">NO3 - Trondheim / Midt-Norge</option>
-            <option value="NO4">NO4 - Tromsø / Nord-Norge (no VAT)</option>
-            <option value="NO5">NO5 - Bergen / Vest-Norge</option>
-          </select>
-          <small class="field__hint">Your electricity price area. Prices from <a href="https://www.hvakosterstrommen.no" target="_blank" rel="noopener">hvakosterstrommen.no</a></small>
-        </label>
-        <div class="form__actions">
-          <button type="submit" class="btn primary">Save price settings</button>
-        </div>
-      </form>
+      </details>
       <div class="list__header">
         <p class="muted">Upcoming hours</p>
-        <div class="muted">Spot price</div>
+        <div class="muted">Total price</div>
       </div>
       <div id="price-list" class="device-list" role="list"></div>
       <p id="price-empty" class="muted">No spot price data available. Configure a price source above to see electricity prices.</p>
@@ -238,19 +240,17 @@
         <h3>Price optimization</h3>
       </div>
       <div class="price-info">
-        <p class="muted">Configure devices to boost during the cheapest hours. The app combines spot price + grid tariff to find the truly cheapest hours.</p>
+        <p class="muted">Adjust temperature based on electricity price. Deltas are applied to the current mode's target temperature.</p>
       </div>
       <div class="price-optimization-header">
         <p class="muted">Device</p>
-        <div class="muted header-normal">Normal °C</div>
-        <div class="muted header-boost">Boost °C</div>
-        <div class="muted header-hours">Hours</div>
-        <div class="muted header-enabled">On</div>
+        <div class="muted header-delta">🟢 Cheap Δ</div>
+        <div class="muted header-delta">🔴 Expensive Δ</div>
       </div>
       <div id="price-optimization-list" class="device-list" role="list"></div>
-      <p id="price-optimization-empty" class="muted" hidden>No devices with target temperature found. Refresh devices first.</p>
+      <p id="price-optimization-empty" class="muted" hidden>No devices with price optimization enabled. Enable it on the Devices tab.</p>
       <div class="list__footer">
-        <p class="muted">Devices boost to the higher temperature during the cheapest N hours in the next 24h.</p>
+        <p class="muted">e.g., +5 during cheap hours boosts temp, -5 during expensive hours reduces it.</p>
       </div>
     </section>
   </main>
