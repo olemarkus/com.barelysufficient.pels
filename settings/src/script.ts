@@ -629,7 +629,7 @@ const renderPlan = (plan) => {
       planList.appendChild(header);
 
       grouped[zone]
-        .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
+        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)) // Higher priority first
         .forEach((dev) => {
           const row = document.createElement('div');
           row.className = 'device-row';
