@@ -164,12 +164,12 @@ describe('Settings UI', () => {
       expect(tabsBox!.width).toBeLessThanOrEqual(viewportWidth);
     });
 
-    test('all four tabs are visible', async () => {
+    test('all five tabs are visible', async () => {
       const tabs = await page.$$('.tab');
-      expect(tabs.length).toBe(4);
+      expect(tabs.length).toBe(5);
       
       const tabTexts = await page.$$eval('.tab', els => els.map(el => el.textContent?.trim()));
-      expect(tabTexts).toEqual(['Devices', 'Modes', 'Power usage', 'Plan']);
+      expect(tabTexts).toEqual(['Devices', 'Modes', 'Power usage', 'Plan', 'Price']);
     });
 
     test('page has no horizontal overflow', async () => {

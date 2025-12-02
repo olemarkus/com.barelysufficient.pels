@@ -1,10 +1,10 @@
 import Homey from 'homey';
+import https from 'https';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 // eslint-disable-next-line import/no-unresolved, import/extensions, node/no-missing-import
 import CapacityGuard from './capacityGuard';
 
 const { HomeyAPI } = require('homey-api');
-// eslint-disable-next-line import/first
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
 const DEBUG_LOG = false;
@@ -145,6 +145,18 @@ module.exports = class PelsApp extends Homey.App {
       if (key === 'refresh_target_devices_snapshot') {
         this.refreshTargetDevicesSnapshot().catch((error: Error) => {
           this.error('Failed to refresh target devices snapshot', error);
+        });
+      }
+
+      if (key === 'refresh_nettleie') {
+        this.refreshNettleieData().catch((error: Error) => {
+          this.error('Failed to refresh nettleie data', error);
+        });
+      }
+
+      if (key === 'refresh_spot_prices') {
+        this.refreshSpotPrices().catch((error: Error) => {
+          this.error('Failed to refresh spot prices', error);
         });
       }
     });
@@ -495,6 +507,166 @@ module.exports = class PelsApp extends Homey.App {
     this.logDebug(`Stored snapshot with ${snapshot.length} devices`);
     const plan = this.buildDevicePlanSnapshot(snapshot);
     this.homey.settings.set('device_plan_snapshot', plan);
+  }
+
+  private async refreshNettleieData(): Promise<void> {
+    const fylke = this.homey.settings.get('nettleie_fylke') || '03';
+    const orgnr = this.homey.settings.get('nettleie_orgnr');
+    const tariffgruppe = this.homey.settings.get('nettleie_tariffgruppe') || 'Husholdning';
+
+    if (!orgnr) {
+      this.log('Nettleie: No organization number configured, skipping fetch');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
+    const url = `https://nettleietariffer.dataplattform.nve.no/v1/NettleiePerOmradePrTimeHusholdningFritidEffekttariffer?ValgtDato=${today}&Tariffgruppe=${encodeURIComponent(tariffgruppe)}&FylkeNr=${fylke}&OrganisasjonsNr=${orgnr}`;
+
+    this.log(`Nettleie: Fetching grid tariffs from NVE API for ${today}, fylke=${fylke}, org=${orgnr}`);
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`NVE API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (!Array.isArray(data)) {
+        this.log('Nettleie: Unexpected response format from NVE API');
+        return;
+      }
+
+      // Transform and store the data
+      const nettleieData = data.map((entry: any) => ({
+        time: entry.time,
+        energileddEks: entry.energileddEks,
+        energileddInk: entry.energileddInk,
+        fastleddEks: entry.fastleddEks,
+        fastleddInk: entry.fastleddInk,
+        datoId: entry.datoId,
+      }));
+
+      this.homey.settings.set('nettleie_data', nettleieData);
+      this.log(`Nettleie: Stored ${nettleieData.length} hourly tariff entries`);
+    } catch (error) {
+      this.error('Nettleie: Failed to fetch grid tariffs from NVE API', error);
+    }
+  }
+
+  private async refreshSpotPrices(): Promise<void> {
+    const priceArea = this.homey.settings.get('price_area') || 'NO1';
+
+    // Fetch today's prices
+    const today = new Date();
+    const todayPrices = await this.fetchSpotPricesForDate(today, priceArea);
+
+    // Try to fetch tomorrow's prices (available after 13:00)
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowPrices = await this.fetchSpotPricesForDate(tomorrow, priceArea);
+
+    // Combine prices
+    const allPrices = [...todayPrices, ...tomorrowPrices];
+
+    if (allPrices.length > 0) {
+      this.homey.settings.set('electricity_prices', allPrices);
+      this.log(`Spot prices: Stored ${allPrices.length} hourly prices for ${priceArea}`);
+    } else {
+      this.log('Spot prices: No price data available');
+    }
+  }
+
+  private async fetchSpotPricesForDate(date: Date, priceArea: string): Promise<Array<{ startsAt: string; total: number; currency: string }>> {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    const url = `https://www.hvakosterstrommen.no/api/v1/prices/${year}/${month}-${day}_${priceArea}.json`;
+
+    this.logDebug(`Spot prices: Fetching from ${url}`);
+
+    try {
+      const data = await this.httpsGetJson(url);
+
+      if (!Array.isArray(data)) {
+        this.log('Spot prices: Unexpected response format');
+        return [];
+      }
+
+      // Transform to our format
+      // Note: prices from hvakosterstrommen.no are without VAT
+      // We add 25% VAT for all areas except NO4 (Nord-Norge)
+      const vatMultiplier = priceArea === 'NO4' ? 1.0 : 1.25;
+
+      return data.map((entry: any) => ({
+        startsAt: entry.time_start,
+        // Convert from NOK/kWh to øre/kWh and add VAT
+        total: entry.NOK_per_kWh * 100 * vatMultiplier,
+        currency: 'NOK',
+      }));
+    } catch (error: any) {
+      if (error?.statusCode === 404) {
+        // Prices not yet available (e.g., tomorrow's prices before 13:00)
+        this.logDebug(`Spot prices: No data for ${year}-${month}-${day} (not yet available)`);
+        return [];
+      }
+      this.error(`Spot prices: Failed to fetch prices for ${year}-${month}-${day}`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Make an HTTPS GET request and parse JSON response.
+   * Uses rejectUnauthorized: false to work around certificate issues on Homey.
+   */
+  private httpsGetJson(url: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const req = https.get(
+        url,
+        {
+          headers: { Accept: 'application/json' },
+          rejectUnauthorized: false, // Workaround for Homey certificate issues
+        },
+        (res) => {
+          if (res.statusCode === 404) {
+            reject({ statusCode: 404, message: 'Not found' });
+            return;
+          }
+          if (res.statusCode !== 200) {
+            reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+            return;
+          }
+
+          let data = '';
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
+          res.on('end', () => {
+            try {
+              resolve(JSON.parse(data));
+            } catch (e) {
+              reject(new Error('Failed to parse JSON response'));
+            }
+          });
+        },
+      );
+
+      req.on('error', (err) => {
+        reject(err);
+      });
+
+      req.setTimeout(10000, () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+    });
   }
 
   private async fetchDevicesViaApi(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number }>> {

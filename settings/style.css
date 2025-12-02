@@ -427,3 +427,118 @@ input[type="number"]:focus {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Price tab styles */
+.price-info {
+  margin-bottom: 16px;
+}
+
+.price-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.price-row.current-hour {
+  background: rgba(127, 209, 174, 0.1);
+  border-radius: 8px;
+  margin: -4px -8px;
+  padding: 8px;
+}
+
+.price-low {
+  background: rgba(127, 209, 174, 0.15);
+  border-color: rgba(127, 209, 174, 0.4);
+  color: #7fd1ae;
+}
+
+.price-medium {
+  background: rgba(255, 193, 7, 0.15);
+  border-color: rgba(255, 193, 7, 0.4);
+  color: #ffc107;
+}
+
+.price-high {
+  background: rgba(242, 107, 107, 0.15);
+  border-color: rgba(242, 107, 107, 0.4);
+  color: #f26b6b;
+}
+
+#tibber-token-field a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+#tibber-token-field a:hover {
+  text-decoration: underline;
+}
+
+select {
+  width: 100%;
+  border-radius: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 16px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  cursor: pointer;
+}
+
+select:focus {
+  outline: 2px solid rgba(127, 209, 174, 0.6);
+  border-color: transparent;
+}
+
+input[type="password"] {
+  width: 100%;
+  border-radius: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 16px;
+}
+
+input[type="password"]:focus {
+  outline: 2px solid rgba(127, 209, 174, 0.6);
+  border-color: transparent;
+}
+
+input[type="text"] {
+  width: 100%;
+  border-radius: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 16px;
+}
+
+input[type="text"]:focus {
+  outline: 2px solid rgba(127, 209, 174, 0.6);
+  border-color: transparent;
+}
+
+.section-header {
+  margin: 24px 0 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.section-header:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}

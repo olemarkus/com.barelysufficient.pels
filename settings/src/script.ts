@@ -32,6 +32,104 @@ const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSe
 const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 const priorityList = qs('#priority-list');
 const priorityEmpty = qs('#priority-empty');
+const priceList = qs('#price-list');
+const priceEmpty = qs('#price-empty');
+const priceStatusBadge = qs('#price-status-badge');
+const priceSettingsForm = document.querySelector('#price-settings-form') as HTMLFormElement;
+const priceAreaSelect = document.querySelector('#price-area') as HTMLSelectElement;
+const priceRefreshButton = document.querySelector('#price-refresh-button') as HTMLButtonElement;
+const nettleieSettingsForm = document.querySelector('#nettleie-settings-form') as HTMLFormElement;
+const nettleieFylkeSelect = document.querySelector('#nettleie-fylke') as HTMLSelectElement;
+const nettleieCompanySelect = document.querySelector('#nettleie-company') as HTMLSelectElement;
+const nettleieOrgnrInput = document.querySelector('#nettleie-orgnr') as HTMLInputElement;
+const nettleieTariffgruppeSelect = document.querySelector('#nettleie-tariffgruppe') as HTMLSelectElement;
+const nettleieRefreshButton = document.querySelector('#nettleie-refresh-button') as HTMLButtonElement;
+const nettleieList = qs('#nettleie-list');
+const nettleieEmpty = qs('#nettleie-empty');
+
+// Norwegian grid companies with organization numbers and counties
+// Data from NVE nettleietariffer API
+interface GridCompany {
+  name: string;
+  orgnr: string;
+  fylker: string[]; // Company may operate in multiple counties
+}
+
+const gridCompanies: GridCompany[] = [
+  { name: "ALUT AS", orgnr: "925336637", fylker: ["55", "56"] },
+  { name: "AREA NETT AS", orgnr: "923993355", fylker: ["56"] },
+  { name: "ARVA AS", orgnr: "979151950", fylker: ["18", "55"] },
+  { name: "ASKER NETT AS", orgnr: "917743193", fylker: ["32"] },
+  { name: "BARENTS NETT AS", orgnr: "971058854", fylker: ["56"] },
+  { name: "BINDAL KRAFTLAG SA", orgnr: "953181606", fylker: ["18"] },
+  { name: "BKK AS", orgnr: "976944801", fylker: ["46"] },
+  { name: "BREHEIM NETT AS", orgnr: "924527994", fylker: ["46"] },
+  { name: "BØMLO KRAFTNETT AS", orgnr: "923934138", fylker: ["46"] },
+  { name: "DE NETT AS", orgnr: "924862602", fylker: ["40"] },
+  { name: "ELINETT AS", orgnr: "979379455", fylker: ["15"] },
+  { name: "ELMEA AS", orgnr: "986347801", fylker: ["18"] },
+  { name: "ELVENETT AS", orgnr: "979497482", fylker: ["33"] },
+  { name: "ELVIA AS", orgnr: "980489698", fylker: ["03", "31", "32", "33", "34"] },
+  { name: "ENIDA AS", orgnr: "918312730", fylker: ["11", "42"] },
+  { name: "ETNA NETT AS", orgnr: "882783022", fylker: ["34"] },
+  { name: "EVERKET AS", orgnr: "966731508", fylker: ["40"] },
+  { name: "FAGNE AS", orgnr: "915635857", fylker: ["11", "46"] },
+  { name: "FØIE AS (Akershus)", orgnr: "987626844", fylker: ["32", "33"] },
+  { name: "FØIE AS (Buskerud)", orgnr: "971589752", fylker: ["33"] },
+  { name: "FØRE AS", orgnr: "925549738", fylker: ["40"] },
+  { name: "GLITRE NETT AS", orgnr: "982974011", fylker: ["03", "11", "32", "33", "34", "40", "42", "46"] },
+  { name: "GRIUG AS", orgnr: "953681781", fylker: ["34"] },
+  { name: "HAVNETT AS", orgnr: "924004150", fylker: ["46"] },
+  { name: "HEMSIL NETT AS", orgnr: "923050612", fylker: ["33"] },
+  { name: "HØLAND OG SETSKOG ELVERK AS", orgnr: "923488960", fylker: ["32"] },
+  { name: "INDRE HORDALAND KRAFTNETT AS", orgnr: "919415096", fylker: ["46"] },
+  { name: "JÆREN EVERK AS", orgnr: "824914982", fylker: ["11"] },
+  { name: "KE NETT AS", orgnr: "977285712", fylker: ["11"] },
+  { name: "KVAM ENERGI NETT AS", orgnr: "923789324", fylker: ["46"] },
+  { name: "KYSTNETT AS", orgnr: "923152601", fylker: ["18"] },
+  { name: "LEDE AS", orgnr: "979422679", fylker: ["33", "39", "40"] },
+  { name: "LEGA NETT AS", orgnr: "924868759", fylker: ["56"] },
+  { name: "LINEA AS", orgnr: "917424799", fylker: ["18"] },
+  { name: "LINJA AS", orgnr: "912631532", fylker: ["15", "46"] },
+  { name: "LNETT AS", orgnr: "980038408", fylker: ["11"] },
+  { name: "LUCERNA AS", orgnr: "982897327", fylker: ["56"] },
+  { name: "LUOSTEJOK NETT AS", orgnr: "924934867", fylker: ["56"] },
+  { name: "MELLOM AS", orgnr: "925668389", fylker: ["15"] },
+  { name: "MELØY ENERGI AS", orgnr: "919173122", fylker: ["18"] },
+  { name: "MIDTNETT AS", orgnr: "917856222", fylker: ["33"] },
+  { name: "MODALEN KRAFTLAG SA", orgnr: "877051412", fylker: ["46"] },
+  { name: "NETTSELSKAPET AS", orgnr: "921688679", fylker: ["50"] },
+  { name: "NORANETT ANDØY AS", orgnr: "921680554", fylker: ["18", "55"] },
+  { name: "NORANETT AS", orgnr: "985411131", fylker: ["18", "55"] },
+  { name: "NORANETT HADSEL AS", orgnr: "917983550", fylker: ["18"] },
+  { name: "NORDVEST NETT AS", orgnr: "980824586", fylker: ["15"] },
+  { name: "NOREFJELL NETT AS", orgnr: "824701482", fylker: ["33"] },
+  { name: "NORGESNETT AS", orgnr: "980234088", fylker: ["31", "32", "46"] },
+  { name: "R-NETT AS", orgnr: "925067911", fylker: ["33"] },
+  { name: "RAKKESTAD ENERGI AS", orgnr: "968398083", fylker: ["31"] },
+  { name: "RK NETT AS", orgnr: "925017809", fylker: ["40"] },
+  { name: "ROMSDALSNETT AS", orgnr: "926377841", fylker: ["15"] },
+  { name: "RØROS E-VERK NETT AS", orgnr: "919884452", fylker: ["34", "50"] },
+  { name: "S-NETT AS", orgnr: "923819177", fylker: ["15", "50"] },
+  { name: "STANNUM AS", orgnr: "924940379", fylker: ["40"] },
+  { name: "STRAM AS", orgnr: "914385261", fylker: ["18"] },
+  { name: "STRAUMEN NETT AS", orgnr: "925354813", fylker: ["15"] },
+  { name: "STRAUMNETT AS", orgnr: "922694435", fylker: ["46"] },
+  { name: "SUNETT AS", orgnr: "924330678", fylker: ["15"] },
+  { name: "SYGNIR AS", orgnr: "924619260", fylker: ["34", "46"] },
+  { name: "SØR AURDAL ENERGI AS", orgnr: "997712099", fylker: ["34"] },
+  { name: "TELEMARK NETT AS", orgnr: "925803375", fylker: ["40"] },
+  { name: "TENDRANETT AS", orgnr: "918999361", fylker: ["46"] },
+  { name: "TENSIO TN AS", orgnr: "988807648", fylker: ["18", "50"] },
+  { name: "TENSIO TS AS", orgnr: "978631029", fylker: ["34", "50"] },
+  { name: "TINFOS AS", orgnr: "916763476", fylker: ["40", "42", "56"] },
+  { name: "UVDAL KRAFTFORSYNING SA", orgnr: "967670170", fylker: ["33"] },
+  { name: "VANG ENERGIVERK AS", orgnr: "824368082", fylker: ["34", "46"] },
+  { name: "VESTALL AS", orgnr: "968168134", fylker: ["18", "55"] },
+  { name: "VESTMAR NETT AS", orgnr: "979399901", fylker: ["40"] },
+  { name: "VEVIG AS", orgnr: "916319908", fylker: ["34"] },
+  { name: "VISSI AS", orgnr: "921683057", fylker: ["55", "56"] },
+];
 
 let isBusy = false;
 let homey: any = null;
@@ -555,6 +653,270 @@ const refreshPlan = async () => {
   renderPlan(plan);
 };
 
+// Price settings and data
+interface PriceEntry {
+  startsAt: string;
+  total: number;
+  currency: string;
+}
+
+const loadPriceSettings = async () => {
+  const priceArea = await getSetting('price_area');
+
+  if (priceAreaSelect) {
+    priceAreaSelect.value = typeof priceArea === 'string' ? priceArea : 'NO1';
+  }
+};
+
+const savePriceSettings = async () => {
+  const priceArea = priceAreaSelect?.value || 'NO1';
+
+  await setSetting('price_area', priceArea);
+  await showToast('Price settings saved.', 'ok');
+  
+  // Trigger refresh of spot prices
+  await setSetting('refresh_spot_prices', Date.now());
+  await refreshPrices();
+};
+
+const getPriceData = async (): Promise<PriceEntry[]> => {
+  const priceData = await getSetting('electricity_prices');
+  if (!priceData || !Array.isArray(priceData)) return [];
+  return priceData as PriceEntry[];
+};
+
+const renderPrices = (prices: PriceEntry[]) => {
+  if (!priceList) return;
+  priceList.innerHTML = '';
+
+  if (!prices || prices.length === 0) {
+    if (priceEmpty) priceEmpty.hidden = false;
+    if (priceStatusBadge) {
+      priceStatusBadge.textContent = 'No data';
+      priceStatusBadge.classList.remove('ok');
+    }
+    return;
+  }
+
+  if (priceEmpty) priceEmpty.hidden = true;
+
+  const now = new Date();
+  const currentHour = new Date(now);
+  currentHour.setMinutes(0, 0, 0);
+
+  // Find min and max prices for color coding
+  const priceValues = prices.map(p => p.total);
+  const minPrice = Math.min(...priceValues);
+  const maxPrice = Math.max(...priceValues);
+  const priceRange = maxPrice - minPrice || 1;
+
+  // Find current price
+  const currentEntry = prices.find(p => {
+    const entryTime = new Date(p.startsAt);
+    return entryTime.getTime() === currentHour.getTime();
+  });
+
+  if (priceStatusBadge && currentEntry) {
+    priceStatusBadge.textContent = `Now: ${currentEntry.total.toFixed(1)} øre/kWh`;
+    priceStatusBadge.classList.add('ok');
+  }
+
+  // Show prices starting from current hour
+  const futurePrices = prices.filter(p => new Date(p.startsAt) >= currentHour);
+
+  futurePrices.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'device-row price-row';
+    row.setAttribute('role', 'listitem');
+
+    const entryTime = new Date(entry.startsAt);
+    const isCurrentHour = entryTime.getTime() === currentHour.getTime();
+    if (isCurrentHour) row.classList.add('current-hour');
+
+    const timeWrap = document.createElement('div');
+    timeWrap.className = 'device-row__name';
+    const timeStr = entryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = entryTime.toDateString() !== now.toDateString()
+      ? ` (${entryTime.toLocaleDateString([], { weekday: 'short' })})`
+      : '';
+    timeWrap.textContent = `${timeStr}${dateStr}${isCurrentHour ? ' ← now' : ''}`;
+
+    const priceWrap = document.createElement('div');
+    priceWrap.className = 'device-row__target';
+
+    // Calculate price level for color coding
+    const normalized = (entry.total - minPrice) / priceRange;
+    let priceClass = 'price-low';
+    if (normalized > 0.66) priceClass = 'price-high';
+    else if (normalized > 0.33) priceClass = 'price-medium';
+
+    const chip = document.createElement('span');
+    chip.className = `chip ${priceClass}`;
+    chip.innerHTML = `<strong>${entry.total.toFixed(1)}</strong><span>øre/kWh</span>`;
+    priceWrap.appendChild(chip);
+
+    row.append(timeWrap, priceWrap);
+    priceList.appendChild(row);
+  });
+};
+
+const refreshPrices = async () => {
+  try {
+    const prices = await getPriceData();
+    renderPrices(prices);
+  } catch (error) {
+    console.error('Failed to load prices:', error);
+    if (priceStatusBadge) {
+      priceStatusBadge.textContent = 'Error';
+      priceStatusBadge.classList.add('warn');
+    }
+  }
+};
+
+// Nettleie (Grid tariff) settings and data
+interface NettleieEntry {
+  time: number;
+  energileddEks: number | null;
+  energileddInk: number | null;
+  fastleddEks: number | null;
+  fastleddInk: number | null;
+  datoId: string;
+}
+
+const loadNettleieSettings = async () => {
+  const fylke = await getSetting('nettleie_fylke');
+  const orgnr = await getSetting('nettleie_orgnr');
+  const tariffgruppe = await getSetting('nettleie_tariffgruppe');
+
+  if (nettleieFylkeSelect && typeof fylke === 'string') {
+    nettleieFylkeSelect.value = fylke;
+  }
+  
+  // Populate company dropdown based on fylke
+  updateGridCompanyOptions(typeof fylke === 'string' ? fylke : '03');
+  
+  if (nettleieOrgnrInput && typeof orgnr === 'string') {
+    nettleieOrgnrInput.value = orgnr;
+    // Select the matching company in dropdown
+    if (nettleieCompanySelect) {
+      nettleieCompanySelect.value = orgnr;
+    }
+  }
+  if (nettleieTariffgruppeSelect && typeof tariffgruppe === 'string') {
+    nettleieTariffgruppeSelect.value = tariffgruppe;
+  }
+};
+
+const updateGridCompanyOptions = (fylkeNr: string) => {
+  if (!nettleieCompanySelect) return;
+  
+  const currentValue = nettleieOrgnrInput?.value || '';
+  nettleieCompanySelect.innerHTML = '<option value="">-- Select grid company --</option>';
+  
+  // Filter companies that operate in the selected fylke
+  const filteredCompanies = gridCompanies
+    .filter(c => c.fylker.includes(fylkeNr))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  
+  filteredCompanies.forEach(company => {
+    const opt = document.createElement('option');
+    opt.value = company.orgnr;
+    opt.textContent = company.name;
+    if (company.orgnr === currentValue) opt.selected = true;
+    nettleieCompanySelect.appendChild(opt);
+  });
+};
+
+const saveNettleieSettings = async () => {
+  const fylke = nettleieFylkeSelect?.value || '03';
+  const orgnr = nettleieCompanySelect?.value || '';
+  const tariffgruppe = nettleieTariffgruppeSelect?.value || 'Husholdning';
+
+  // Also update hidden input for consistency
+  if (nettleieOrgnrInput) nettleieOrgnrInput.value = orgnr;
+
+  await setSetting('nettleie_fylke', fylke);
+  await setSetting('nettleie_orgnr', orgnr);
+  await setSetting('nettleie_tariffgruppe', tariffgruppe);
+  await showToast('Grid tariff settings saved.', 'ok');
+  
+  // Trigger refresh of nettleie data
+  await setSetting('refresh_nettleie', Date.now());
+  await refreshNettleie();
+};
+
+const getNettleieData = async (): Promise<NettleieEntry[]> => {
+  const data = await getSetting('nettleie_data');
+  if (!data || !Array.isArray(data)) return [];
+  return data as NettleieEntry[];
+};
+
+const renderNettleie = (entries: NettleieEntry[]) => {
+  if (!nettleieList) return;
+  nettleieList.innerHTML = '';
+
+  if (!entries || entries.length === 0) {
+    if (nettleieEmpty) nettleieEmpty.hidden = false;
+    return;
+  }
+
+  if (nettleieEmpty) nettleieEmpty.hidden = true;
+
+  const now = new Date();
+  const currentHour = now.getHours();
+
+  // Find min and max for color coding
+  const priceValues = entries.map(e => e.energileddInk ?? e.energileddEks ?? 0).filter(v => v > 0);
+  const minPrice = Math.min(...priceValues);
+  const maxPrice = Math.max(...priceValues);
+  const priceRange = maxPrice - minPrice || 1;
+
+  // Sort by hour
+  const sorted = [...entries].sort((a, b) => a.time - b.time);
+
+  sorted.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'device-row price-row';
+    row.setAttribute('role', 'listitem');
+
+    const isCurrentHour = entry.time === currentHour;
+    if (isCurrentHour) row.classList.add('current-hour');
+
+    const timeWrap = document.createElement('div');
+    timeWrap.className = 'device-row__name';
+    const timeStr = `${entry.time.toString().padStart(2, '0')}:00 - ${((entry.time + 1) % 24).toString().padStart(2, '0')}:00`;
+    timeWrap.textContent = `${timeStr}${isCurrentHour ? ' ← now' : ''}`;
+
+    const priceWrap = document.createElement('div');
+    priceWrap.className = 'device-row__target';
+
+    const priceValue = entry.energileddInk ?? entry.energileddEks ?? 0;
+    
+    // Calculate price level for color coding
+    const normalized = priceRange > 0 ? (priceValue - minPrice) / priceRange : 0.5;
+    let priceClass = 'price-low';
+    if (normalized > 0.66) priceClass = 'price-high';
+    else if (normalized > 0.33) priceClass = 'price-medium';
+
+    const chip = document.createElement('span');
+    chip.className = `chip ${priceClass}`;
+    chip.innerHTML = `<strong>${priceValue.toFixed(2)}</strong><span>øre/kWh</span>`;
+    priceWrap.appendChild(chip);
+
+    row.append(timeWrap, priceWrap);
+    nettleieList.appendChild(row);
+  });
+};
+
+const refreshNettleie = async () => {
+  try {
+    const data = await getNettleieData();
+    renderNettleie(data);
+  } catch (error) {
+    console.error('Failed to load nettleie:', error);
+  }
+};
+
 const refreshDevices = async () => {
   if (isBusy) return;
   setBusy(true);
@@ -708,6 +1070,40 @@ const boot = async () => {
         await showToast(err.message || 'Failed to reset stats.', 'warn');
       }
     });
+
+    // Price tab handlers
+    await loadPriceSettings();
+    await refreshPrices();
+    await loadNettleieSettings();
+    await refreshNettleie();
+    priceSettingsForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await savePriceSettings();
+      } catch (err) {
+        await showToast(err.message || 'Failed to save price settings.', 'warn');
+      }
+    });
+    priceRefreshButton?.addEventListener('click', async () => {
+      await setSetting('refresh_spot_prices', Date.now());
+      await refreshPrices();
+    });
+    nettleieSettingsForm?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await saveNettleieSettings();
+      } catch (err) {
+        await showToast(err.message || 'Failed to save grid tariff settings.', 'warn');
+      }
+    });
+    nettleieFylkeSelect?.addEventListener('change', () => {
+      updateGridCompanyOptions(nettleieFylkeSelect.value);
+    });
+    nettleieRefreshButton?.addEventListener('click', async () => {
+      await setSetting('refresh_nettleie', Date.now());
+      await refreshNettleie();
+    });
+
     statusBadge.classList.add('ok');
   } catch (error) {
     console.error(error);
