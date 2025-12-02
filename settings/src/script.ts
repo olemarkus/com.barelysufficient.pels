@@ -900,7 +900,7 @@ const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceCl
     }
   }
   tooltipLines.push(`Total: ${entry.total.toFixed(1)} øre/kWh`);
-  chip.title = tooltipLines.join('\n');
+  chip.dataset.tooltip = tooltipLines.join('\n');
   
   priceWrap.appendChild(chip);
 

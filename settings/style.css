@@ -169,11 +169,11 @@ body {
   top: calc(100% + 8px);
   right: 0;
   min-width: 140px;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
   padding: 6px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   z-index: 100;
   display: flex;
   flex-direction: column;
@@ -619,6 +619,31 @@ input:focus-visible {
   border: 1px solid var(--panel-border);
   font-size: 14px;
   color: var(--text);
+  position: relative;
+  cursor: default;
+}
+
+.chip[data-tooltip] {
+  cursor: help;
+}
+
+.chip[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: #1a1a1a;
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  white-space: pre-line;
+  line-height: 1.5;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  min-width: 160px;
+  pointer-events: none;
 }
 
 .chip strong {
