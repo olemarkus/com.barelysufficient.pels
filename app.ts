@@ -401,8 +401,10 @@ module.exports = class PelsApp extends Homey.App {
     });
 
     const isCapacityModeCond = this.homey.flow.getConditionCard('is_capacity_mode');
-    isCapacityModeCond.registerRunListener(async (args: { mode: string }) => {
-      const chosenMode = (args.mode || '').trim();
+    isCapacityModeCond.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
+      // Handle both string (manual input) and object (autocomplete selection) formats
+      const modeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
+      const chosenMode = (modeValue || '').trim();
       if (!chosenMode) return false;
       return this.capacityMode.toLowerCase() === chosenMode.toLowerCase();
     });
