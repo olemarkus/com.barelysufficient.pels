@@ -501,11 +501,12 @@ module.exports = class PelsApp extends Homey.App {
     return this.parseDeviceList(list);
   }
 
-  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }> {
+  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }> {
     return list
       .map((device: any) => {
         const capabilities: string[] = device.capabilities || [];
         const capabilityObj = device.capabilitiesObj || {};
+        const currentTemperature = typeof capabilityObj.measure_temperature?.value === 'number' ? capabilityObj.measure_temperature.value : undefined;
         const powerRaw = capabilityObj.measure_power?.value;
         const deviceId = device.id || device.data?.id || device.name;
         const isOn = capabilityObj.onoff?.value === true;
@@ -558,6 +559,7 @@ module.exports = class PelsApp extends Homey.App {
           powerKw,
           priority: this.getPriorityForDevice(deviceId),
           currentOn,
+          currentTemperature,
           // Prefer modern zone structure; fall back to legacy to avoid deprecation warning.
           zone:
             device.zone?.name ||
@@ -567,7 +569,7 @@ module.exports = class PelsApp extends Homey.App {
           controllable: this.controllableDevices[deviceId] ?? true,
         };
       })
-      .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }>;
+      .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }>
   }
 
   private rebuildPlanFromCache(): void {
@@ -637,7 +639,7 @@ module.exports = class PelsApp extends Homey.App {
     }
   }
 
-  private buildDevicePlanSnapshot(devices: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }>): {
+  private buildDevicePlanSnapshot(devices: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }>): {
     meta: { totalKw: number | null; softLimitKw: number; headroomKw: number | null; hourlyBudgetExhausted?: boolean; usedKWh?: number; budgetKWh?: number };
     devices: Array<{
       id: string;
@@ -651,6 +653,7 @@ module.exports = class PelsApp extends Homey.App {
       reason?: string;
       zone?: string;
       controllable?: boolean;
+      currentTemperature?: number;
     }>;
   } {
     const desiredForMode = this.modeDeviceTargets[this.capacityMode] || {};
@@ -767,6 +770,7 @@ module.exports = class PelsApp extends Homey.App {
         reason,
         zone: dev.zone || 'Unknown',
         controllable,
+        currentTemperature: dev.currentTemperature,
       };
     });
 

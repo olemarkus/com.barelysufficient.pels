@@ -264,10 +264,28 @@ input[type="number"]:focus {
   background: rgba(255, 255, 255, 0.04);
   user-select: none;
   font-weight: 700;
+  touch-action: none;
+  -webkit-user-select: none;
 }
 
-.dragging {
-  opacity: 0.7;
+.draggable {
+  touch-action: none;
+}
+
+/* SortableJS styles */
+.sortable-ghost {
+  opacity: 0.4;
+  background: rgba(78, 210, 204, 0.1);
+}
+
+.sortable-chosen {
+  background: rgba(78, 210, 204, 0.15);
+}
+
+.sortable-drag {
+  opacity: 0.9;
+  background: var(--panel);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .device-list {

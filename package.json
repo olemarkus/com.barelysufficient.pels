@@ -2,20 +2,24 @@
   "name": "com.barelysufficient.pels",
   "version": "1.0.0",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:settings",
+    "build:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --minify",
+    "watch:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
     "lint": "eslint --ext .js,.ts --ignore-path .gitignore .",
     "test": "jest && npm run validate",
-    "validate": "homey app validate",
+    "validate": "npm run build:settings && homey app validate",
     "check": "npm test"
   },
   "dependencies": {
-    "homey-api": "^3.14.21"
+    "homey-api": "^3.14.21",
+    "sortablejs": "^1.15.6"
   },
   "devDependencies": {
     "@tsconfig/node16": "^16.1.8",
     "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
     "@types/jest": "^29.5.14",
     "@types/node": "^24.10.1",
+    "esbuild": "^0.27.0",
     "eslint": "^7.32.0",
     "eslint-config-athom": "^3.1.5",
     "jest": "^29.7.0",

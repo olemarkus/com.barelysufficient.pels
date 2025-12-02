@@ -1,0 +1,7 @@
+settings/src/
+test/
+jest.config.cjs
+tsconfig.json
+.eslintrc.json
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md

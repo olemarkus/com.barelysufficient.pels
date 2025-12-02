@@ -1,44 +1,48 @@
-const qs = (selector) => /** @type {HTMLElement} */ (document.querySelector(selector));
+import Sortable from 'sortablejs';
+
+declare const Homey: any;
+
+const qs = (selector: string) => document.querySelector(selector) as HTMLElement;
 
 const toastEl = qs('#toast');
 const statusBadge = qs('#status-badge');
 const deviceList = qs('#device-list');
 const emptyState = qs('#empty-state');
-const refreshButton = /** @type {HTMLButtonElement} */ (qs('#refresh-button'));
+const refreshButton = qs('#refresh-button') as HTMLButtonElement;
 const powerList = qs('#power-list');
 const powerEmpty = qs('#power-empty');
 const tabs = Array.from(document.querySelectorAll('.tab'));
 const panels = Array.from(document.querySelectorAll('.panel'));
-const capacityForm = /** @type {HTMLFormElement} */ (document.querySelector('#capacity-form'));
-const capacityLimitInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-limit'));
-const capacityMarginInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-margin'));
-const capacityDryRunInput = /** @type {HTMLInputElement} */ (document.querySelector('#capacity-dry-run'));
+const capacityForm = document.querySelector('#capacity-form') as HTMLFormElement;
+const capacityLimitInput = document.querySelector('#capacity-limit') as HTMLInputElement;
+const capacityMarginInput = document.querySelector('#capacity-margin') as HTMLInputElement;
+const capacityDryRunInput = document.querySelector('#capacity-dry-run') as HTMLInputElement;
 const planList = qs('#plan-list');
 const planEmpty = qs('#plan-empty');
 const planMeta = qs('#plan-meta');
-const planRefreshButton = /** @type {HTMLButtonElement} */ (document.querySelector('#plan-refresh-button'));
-const resetStatsButton = /** @type {HTMLButtonElement} */ (document.querySelector('#reset-stats-button'));
-const modeSelect = /** @type {HTMLSelectElement} */ (document.querySelector('#mode-select'));
-const modeNewInput = /** @type {HTMLInputElement} */ (document.querySelector('#mode-new'));
-const addModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#add-mode-button'));
-const deleteModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#delete-mode-button'));
-const renameModeButton = /** @type {HTMLButtonElement} */ (document.querySelector('#rename-mode-button'));
-const activeModeForm = /** @type {HTMLFormElement} */ (document.querySelector('#active-mode-form'));
-const activeModeSelect = /** @type {HTMLSelectElement} */ (document.querySelector('#active-mode-select'));
-const priorityForm = /** @type {HTMLFormElement} */ (document.querySelector('#priority-form'));
+const planRefreshButton = document.querySelector('#plan-refresh-button') as HTMLButtonElement;
+const resetStatsButton = document.querySelector('#reset-stats-button') as HTMLButtonElement;
+const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
+const modeNewInput = document.querySelector('#mode-new') as HTMLInputElement;
+const addModeButton = document.querySelector('#add-mode-button') as HTMLButtonElement;
+const deleteModeButton = document.querySelector('#delete-mode-button') as HTMLButtonElement;
+const renameModeButton = document.querySelector('#rename-mode-button') as HTMLButtonElement;
+const activeModeForm = document.querySelector('#active-mode-form') as HTMLFormElement;
+const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
+const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 const priorityList = qs('#priority-list');
 const priorityEmpty = qs('#priority-empty');
 const modePanel = qs('#modes-panel');
 
 let isBusy = false;
-let homey = null;
-let capacityPriorities = {};
+let homey: any = null;
+let capacityPriorities: Record<string, Record<string, number>> = {};
 let currentMode = 'Home';
-let latestDevices = [];
-let modeTargets = {};
-let controllableMap = {};
+let latestDevices: any[] = [];
+let modeTargets: Record<string, Record<string, number>> = {};
+let controllableMap: Record<string, boolean> = {};
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const withTimeout = (promise, ms, message) => Promise.race([
   promise,
@@ -299,10 +303,10 @@ const renderPriorities = (devices) => {
     badgeWrap.appendChild(badge);
 
     row.append(handle, name, input, badgeWrap);
-    attachDragHandlers(row, handle);
     priorityList.appendChild(row);
   });
 
+  initSortable();
   refreshPriorityBadges();
 };
 
@@ -363,66 +367,28 @@ const refreshPriorityBadges = () => {
   });
 };
 
-const getDragAfterElement = (container, y) => {
-  const elements = [...container.querySelectorAll('.draggable:not(.dragging)')];
-  return elements.reduce((closest, child) => {
-    const box = child.getBoundingClientRect();
-    const offset = y - box.top - box.height / 2;
-    if (offset < 0 && offset > closest.offset) {
-      return { offset, element: child };
-    }
-    return closest;
-  }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
-};
+let sortableInstance: Sortable | null = null;
 
-const attachDragHandlers = (row, handle) => {
-  row.addEventListener('dragstart', () => {
-    row.classList.add('dragging');
-  });
-  row.addEventListener('dragend', () => {
-    row.classList.remove('dragging');
-    refreshPriorityBadges();
-  });
-  const startPointer = (e) => {
-    if (handle && e.target !== handle && !handle.contains(e.target)) return;
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    e.preventDefault();
-    row.classList.add('dragging');
-    const move = (ev) => {
-      const afterElement = getDragAfterElement(priorityList, ev.clientY);
-      if (!afterElement) {
-        priorityList.appendChild(row);
-      } else {
-        priorityList.insertBefore(row, afterElement);
-      }
-    };
-    const end = () => {
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerup', end);
-      row.classList.remove('dragging');
+const initSortable = () => {
+  if (sortableInstance) {
+    sortableInstance.destroy();
+  }
+  if (!priorityList) return;
+  
+  sortableInstance = new Sortable(priorityList, {
+    animation: 150,
+    handle: '.drag-handle',
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    dragClass: 'sortable-drag',
+    delay: 150,
+    delayOnTouchOnly: true,
+    touchStartThreshold: 5,
+    onEnd: () => {
       refreshPriorityBadges();
-    };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', end);
-  };
-  if (handle) {
-    handle.addEventListener('pointerdown', startPointer);
-  } else {
-    row.addEventListener('pointerdown', startPointer);
-  }
+    },
+  });
 };
-
-priorityList?.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  const afterElement = getDragAfterElement(priorityList, e.clientY);
-  const dragging = priorityList.querySelector('.dragging');
-  if (!dragging) return;
-  if (afterElement == null) {
-    priorityList.appendChild(dragging);
-  } else {
-    priorityList.insertBefore(dragging, afterElement);
-  }
-});
 
 const savePriorities = async () => {
   const mode = (modeSelect?.value || '').trim() || 'Home';
@@ -527,7 +493,12 @@ const renderPlan = (plan) => {
 
           const tempLine = document.createElement('div');
           tempLine.className = 'plan-meta-line';
-          tempLine.innerHTML = `<span class="plan-label">Temperature</span><span>${dev.currentTarget ?? '–'}° → ${dev.plannedTarget ?? '–'}°</span>`;
+          const currentTemp = typeof dev.currentTemperature === 'number' ? `${dev.currentTemperature.toFixed(1)}°` : '–';
+          const targetTemp = dev.currentTarget ?? '–';
+          const plannedTemp = dev.plannedTarget ?? '–';
+          const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
+          const targetText = targetChanging ? `${targetTemp}° → ${plannedTemp}°` : `${targetTemp}°`;
+          tempLine.innerHTML = `<span class="plan-label">Temperature</span><span>${currentTemp} / target ${targetText}</span>`;
 
           const powerLine = document.createElement('div');
           powerLine.className = 'plan-meta-line';
@@ -538,7 +509,9 @@ const renderPlan = (plan) => {
               : dev.plannedState === 'keep'
                 ? currentPower
                 : dev.plannedState || 'keep';
-          powerLine.innerHTML = `<span class="plan-label">Power</span><span>${currentPower} → ${plannedPower}</span>`;
+          const powerChanging = currentPower !== plannedPower;
+          const powerText = powerChanging ? `${currentPower} → ${plannedPower}` : currentPower;
+          powerLine.innerHTML = `<span class="plan-label">Power</span><span>${powerText}</span>`;
 
           const reasonLine = document.createElement('div');
           reasonLine.className = 'plan-meta-line';
