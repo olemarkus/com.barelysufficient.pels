@@ -664,6 +664,7 @@ module.exports = class PelsApp extends Homey.App {
     const priceArea = this.homey.settings.get('price_area') || 'NO1';
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
+    const tomorrowStr = new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     // Check if we already have today's prices (cached)
     if (!forceRefresh) {
@@ -671,11 +672,24 @@ module.exports = class PelsApp extends Homey.App {
       if (existingPrices && Array.isArray(existingPrices) && existingPrices.length > 0) {
         // Check if we have prices for today
         const hasTodayPrices = existingPrices.some((p) => p.startsAt?.startsWith(todayStr));
-        if (hasTodayPrices) {
+        const hasTomorrowPrices = existingPrices.some((p) => p.startsAt?.startsWith(tomorrowStr));
+        
+        // Tomorrow's prices are typically available after 13:00 CET
+        // Refresh if it's after 13:15 and we don't have tomorrow's prices yet
+        const currentHour = today.getHours();
+        const currentMinute = today.getMinutes();
+        const isAfter1315 = currentHour > 13 || (currentHour === 13 && currentMinute >= 15);
+        const shouldFetchTomorrow = isAfter1315 && !hasTomorrowPrices;
+        
+        if (hasTodayPrices && !shouldFetchTomorrow) {
           this.logDebug(`Spot prices: Using cached data (${existingPrices.length} entries including today)`);
           // Still update combined prices in case nettleie changed
           this.updateCombinedPrices();
           return;
+        }
+        
+        if (shouldFetchTomorrow) {
+          this.logDebug('Spot prices: Refreshing to fetch tomorrow\'s prices (after 13:15)');
         }
       }
     }

@@ -326,6 +326,190 @@ describe('Spot price fetching', () => {
     // Should use NO1 as default
     expect(capturedUrl).toContain('_NO1.json');
   });
+
+  it('refreshes prices after 13:15 if tomorrow prices are missing', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Set time to 14:00 (after 13:15)
+    const now = new Date();
+    now.setHours(14, 0, 0, 0);
+    const todayStr = now.toISOString().split('T')[0];
+
+    // Pre-populate with only today's prices (no tomorrow)
+    const todayPrices = mockHvakosterStrommenResponse.map((p) => ({
+      startsAt: p.time_start.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
+      total: p.NOK_per_kWh * 100 * 1.25,
+      currency: 'NOK',
+    }));
+    mockHomeyInstance.settings.set('electricity_prices', todayPrices);
+    mockHomeyInstance.settings.set('price_area', 'NO1');
+
+    let fetchCount = 0;
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      fetchCount++;
+      const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
+      callback(response);
+      return {
+        on: jest.fn(),
+        setTimeout: jest.fn(),
+        destroy: jest.fn(),
+      };
+    });
+
+    // Mock Date to return 14:00
+    const MockDate = class extends Date {
+      constructor(...args: any[]) {
+        if (args.length === 0) {
+          super(now.getTime());
+        } else {
+          // @ts-ignore
+          super(...args);
+        }
+      }
+      static now() { return now.getTime(); }
+    } as DateConstructor;
+    const originalDate = global.Date;
+    global.Date = MockDate;
+
+    try {
+      const app = new MyApp();
+      await app.onInit();
+      await flushPromises();
+
+      // Should have fetched prices because it's after 13:15 and tomorrow's prices are missing
+      expect(fetchCount).toBeGreaterThan(0);
+    } finally {
+      global.Date = originalDate;
+    }
+  });
+
+  it('uses cache if tomorrow prices already exist after 13:15', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Set time to 14:00 (after 13:15)
+    const now = new Date();
+    now.setHours(14, 0, 0, 0);
+    const todayStr = now.toISOString().split('T')[0];
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    // Pre-populate with today's AND tomorrow's prices
+    const todayPrices = mockHvakosterStrommenResponse.map((p) => ({
+      startsAt: p.time_start.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
+      total: p.NOK_per_kWh * 100 * 1.25,
+      currency: 'NOK',
+    }));
+    const tomorrowPrices = mockHvakosterStrommenResponse.map((p) => ({
+      startsAt: p.time_start.replace(/\d{4}-\d{2}-\d{2}/, tomorrowStr),
+      total: p.NOK_per_kWh * 100 * 1.25,
+      currency: 'NOK',
+    }));
+    mockHomeyInstance.settings.set('electricity_prices', [...todayPrices, ...tomorrowPrices]);
+    mockHomeyInstance.settings.set('price_area', 'NO1');
+
+    let fetchCount = 0;
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      fetchCount++;
+      const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
+      callback(response);
+      return {
+        on: jest.fn(),
+        setTimeout: jest.fn(),
+        destroy: jest.fn(),
+      };
+    });
+
+    // Mock Date to return 14:00
+    const MockDate = class extends Date {
+      constructor(...args: any[]) {
+        if (args.length === 0) {
+          super(now.getTime());
+        } else {
+          // @ts-ignore
+          super(...args);
+        }
+      }
+      static now() { return now.getTime(); }
+    } as DateConstructor;
+    const originalDate = global.Date;
+    global.Date = MockDate;
+
+    try {
+      const app = new MyApp();
+      await app.onInit();
+      await flushPromises();
+
+      // Should NOT have fetched prices because we already have tomorrow's prices
+      expect(fetchCount).toBe(0);
+    } finally {
+      global.Date = originalDate;
+    }
+  });
+
+  it('uses cache before 13:15 even without tomorrow prices', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Set time to 10:00 (before 13:15)
+    const now = new Date();
+    now.setHours(10, 0, 0, 0);
+    const todayStr = now.toISOString().split('T')[0];
+
+    // Pre-populate with only today's prices (no tomorrow)
+    const todayPrices = mockHvakosterStrommenResponse.map((p) => ({
+      startsAt: p.time_start.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
+      total: p.NOK_per_kWh * 100 * 1.25,
+      currency: 'NOK',
+    }));
+    mockHomeyInstance.settings.set('electricity_prices', todayPrices);
+    mockHomeyInstance.settings.set('price_area', 'NO1');
+
+    let fetchCount = 0;
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      fetchCount++;
+      const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
+      callback(response);
+      return {
+        on: jest.fn(),
+        setTimeout: jest.fn(),
+        destroy: jest.fn(),
+      };
+    });
+
+    // Mock Date to return 10:00
+    const MockDate = class extends Date {
+      constructor(...args: any[]) {
+        if (args.length === 0) {
+          super(now.getTime());
+        } else {
+          // @ts-ignore
+          super(...args);
+        }
+      }
+      static now() { return now.getTime(); }
+    } as DateConstructor;
+    const originalDate = global.Date;
+    global.Date = MockDate;
+
+    try {
+      const app = new MyApp();
+      await app.onInit();
+      await flushPromises();
+
+      // Should NOT have fetched because it's before 13:15 (tomorrow's prices not expected yet)
+      expect(fetchCount).toBe(0);
+    } finally {
+      global.Date = originalDate;
+    }
+  });
 });
 
 describe('Nettleie (grid tariff) fetching', () => {
