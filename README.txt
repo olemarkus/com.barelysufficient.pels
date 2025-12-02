@@ -1,5 +1,3 @@
-Price and power controlled energy storage system
+PELS helps you stay within your home's electrical capacity limits by intelligently managing which devices run and when. If you have a limited power budget from your utility or simply want to avoid overloading your electrical system, PELS automatically prioritizes your most important devices and temporarily reduces power to lower-priority ones when needed.
 
-## App settings UI
-
-The app exposes a Homey settings page (`settings/index.html`) with a custom layout. It currently lets you edit the global target temperature and contains placeholders for wiring additional actions via the Homey API (for arbitrary configuration logic).
+Set your capacity limit, assign priorities to your thermostats and heaters, and let PELS handle the rest. When power consumption approaches your limit, it will shed load from the lowest priority devices first, restoring them automatically when headroom becomes available. You can also define different modes like Home, Away, or Night, each with their own temperature targets and priorities, and switch between them manually or through Flows.
