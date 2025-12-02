@@ -407,8 +407,10 @@ const initSortable = () => {
     delay: 150,
     delayOnTouchOnly: true,
     touchStartThreshold: 5,
-    onEnd: () => {
+    onEnd: async () => {
       refreshPriorityBadges();
+      // Auto-save priorities after reordering
+      await savePriorities();
     },
   });
 };
@@ -691,14 +693,9 @@ const boot = async () => {
         await showToast(err.message || 'Failed to save capacity settings.', 'warn');
       }
     });
-    priorityForm?.addEventListener('submit', async (event) => {
+    // Priority form submit no longer needed - priorities auto-save on drag, temps auto-save on change
+    priorityForm?.addEventListener('submit', (event) => {
       event.preventDefault();
-      try {
-        await savePriorities();
-        await saveTargets();
-      } catch (err) {
-        await showToast(err.message || 'Failed to save mode settings.', 'warn');
-      }
     });
     refreshButton.addEventListener('click', refreshDevices);
     planRefreshButton?.addEventListener('click', refreshPlan);
