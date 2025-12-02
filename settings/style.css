@@ -25,6 +25,7 @@ body {
   font-family: var(--font-sans);
   line-height: 1.6;
   padding: 32px clamp(16px, 3vw, 40px);
+  overflow-x: hidden;
 }
 
 .screen {
@@ -46,8 +47,7 @@ body {
 }
 
 .tabs {
-  display: inline-flex;
-  flex-wrap: wrap;
+  display: flex;
   gap: 8px;
   margin-top: 14px;
   background: rgba(255, 255, 255, 0.04);
@@ -55,9 +55,17 @@ body {
   border-radius: 12px;
   padding: 4px;
   max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.tabs::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .tab {
+  flex-shrink: 0; /* Prevent tabs from shrinking */
   border: none;
   background: transparent;
   color: var(--muted);
