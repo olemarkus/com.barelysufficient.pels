@@ -30,8 +30,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run tests
+      - name: Run unit tests
         run: npm test
+
+      - name: Run UI tests
+        run: npx jest --config jest.config.ui.cjs
 
       - name: Run linter
         run: npm run lint --if-present

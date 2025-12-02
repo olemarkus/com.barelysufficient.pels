@@ -13,7 +13,15 @@ fi
 # Run unit tests
 npm test
 if [ $? -ne 0 ]; then
-  echo "❌ Tests failed. Commit aborted."
+  echo "❌ Unit tests failed. Commit aborted."
+  exit 1
+fi
+
+# Run UI tests (Puppeteer)
+echo "Running UI tests..."
+npx jest --config jest.config.ui.cjs
+if [ $? -ne 0 ]; then
+  echo "❌ UI tests failed. Commit aborted."
   exit 1
 fi
 
