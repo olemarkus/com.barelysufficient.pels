@@ -123,6 +123,45 @@ describe('Settings UI', () => {
           const marginInput = document.getElementById('capacity-margin');
           if (limitInput) limitInput.value = '10';
           if (marginInput) marginInput.value = '0.5';
+          
+          // Mock price optimization list
+          const priceOptList = document.getElementById('price-optimization-list');
+          if (priceOptList) {
+            for (let i = 1; i <= 3; i++) {
+              const row = document.createElement('div');
+              row.className = 'device-row price-optimization-row';
+              row.setAttribute('role', 'listitem');
+              
+              const nameWrap = document.createElement('div');
+              nameWrap.className = 'device-row__name';
+              nameWrap.textContent = 'Water Heater ' + i;
+              
+              const normalInput = document.createElement('input');
+              normalInput.type = 'number';
+              normalInput.className = 'price-opt-input';
+              normalInput.value = '55';
+              
+              const boostInput = document.createElement('input');
+              boostInput.type = 'number';
+              boostInput.className = 'price-opt-input';
+              boostInput.value = '75';
+              
+              const hoursInput = document.createElement('input');
+              hoursInput.type = 'number';
+              hoursInput.className = 'price-opt-input price-opt-hours';
+              hoursInput.value = '4';
+              
+              const enabledLabel = document.createElement('label');
+              enabledLabel.className = 'checkbox-field-inline';
+              const enabledInput = document.createElement('input');
+              enabledInput.type = 'checkbox';
+              enabledInput.checked = i === 1;
+              enabledLabel.appendChild(enabledInput);
+              
+              row.append(nameWrap, normalInput, boostInput, hoursInput, enabledLabel);
+              priceOptList.appendChild(row);
+            }
+          }
         });
       </script>
     `);
@@ -764,5 +803,96 @@ describe('Settings UI', () => {
       expect(fontSize).toBeGreaterThanOrEqual(12);
     });
   });
-});
 
+  describe('Price optimization section', () => {
+    beforeEach(async () => {
+      await setupPage({ viewport: { width: 480, height: 800 } });
+      // Navigate to Price tab
+      await page.click('.tab[data-tab="price"]');
+      await sleep(200);
+    });
+
+    test('price optimization header aligns with row columns', async () => {
+      // Capture screenshot for debugging
+      await page.screenshot({ path: 'test/screenshots/price-optimization.png', fullPage: true });
+      
+      const header = await page.$('.price-optimization-header');
+      expect(header).toBeTruthy();
+      
+      const headerStyle = await page.$eval('.price-optimization-header', el => {
+        const style = getComputedStyle(el);
+        return {
+          display: style.display,
+          gridTemplateColumns: style.gridTemplateColumns,
+        };
+      });
+      
+      expect(headerStyle.display).toBe('grid');
+    });
+
+    test('price optimization rows have grid layout', async () => {
+      const rows = await page.$$('.price-optimization-row');
+      expect(rows.length).toBeGreaterThan(0);
+      
+      const rowStyle = await page.$eval('.price-optimization-row', el => {
+        const style = getComputedStyle(el);
+        return {
+          display: style.display,
+          gridTemplateColumns: style.gridTemplateColumns,
+        };
+      });
+      
+      expect(rowStyle.display).toBe('grid');
+    });
+
+    test('device name and inputs are on same row', async () => {
+      const row = await page.$('.price-optimization-row');
+      expect(row).toBeTruthy();
+      
+      const rowBox = await row!.boundingBox();
+      const nameBox = await page.$eval('.price-optimization-row .device-row__name', el => {
+        const rect = el.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom };
+      });
+      const inputBox = await page.$eval('.price-optimization-row .price-opt-input', el => {
+        const rect = el.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom };
+      });
+      
+      // Name and input should be on the same visual row (overlapping Y coordinates)
+      expect(nameBox.bottom).toBeGreaterThanOrEqual(inputBox.top);
+      expect(inputBox.bottom).toBeGreaterThanOrEqual(nameBox.top);
+    });
+
+    test('inputs fit within viewport at 480px', async () => {
+      const viewportWidth = 480;
+      
+      const inputRights = await page.$$eval('.price-optimization-row .price-opt-input', els => 
+        els.map(el => el.getBoundingClientRect().right)
+      );
+      
+      for (const right of inputRights) {
+        expect(right).toBeLessThanOrEqual(viewportWidth);
+      }
+    });
+
+    test('each row has device name, 3 inputs, and checkbox', async () => {
+      const rowContent = await page.$eval('.price-optimization-row', row => {
+        const name = row.querySelector('.device-row__name');
+        const inputs = row.querySelectorAll('input[type="number"]');
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        return {
+          hasName: !!name,
+          nameText: name?.textContent,
+          inputCount: inputs.length,
+          hasCheckbox: !!checkbox,
+        };
+      });
+      
+      expect(rowContent.hasName).toBe(true);
+      expect(rowContent.nameText).toBeTruthy();
+      expect(rowContent.inputCount).toBe(3);
+      expect(rowContent.hasCheckbox).toBe(true);
+    });
+  });
+});

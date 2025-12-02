@@ -46,6 +46,8 @@ const nettleieTariffgruppeSelect = document.querySelector('#nettleie-tariffgrupp
 const nettleieRefreshButton = document.querySelector('#nettleie-refresh-button') as HTMLButtonElement;
 const nettleieList = qs('#nettleie-list');
 const nettleieEmpty = qs('#nettleie-empty');
+const priceOptimizationList = qs('#price-optimization-list');
+const priceOptimizationEmpty = qs('#price-optimization-empty');
 
 // Norwegian grid companies with organization numbers and counties
 // Data from NVE nettleietariffer API
@@ -917,6 +919,136 @@ const refreshNettleie = async () => {
   }
 };
 
+// Price optimization settings
+interface PriceOptimizationConfig {
+  enabled: boolean;
+  normalTemp: number;
+  boostTemp: number;
+  cheapHours: number;
+}
+
+let priceOptimizationSettings: Record<string, PriceOptimizationConfig> = {};
+
+const loadPriceOptimizationSettings = async () => {
+  const settings = await getSetting('price_optimization_settings');
+  if (settings && typeof settings === 'object') {
+    priceOptimizationSettings = settings as Record<string, PriceOptimizationConfig>;
+  }
+};
+
+const savePriceOptimizationSettings = async () => {
+  await setSetting('price_optimization_settings', priceOptimizationSettings);
+};
+
+const renderPriceOptimization = (devices: any[]) => {
+  if (!priceOptimizationList) return;
+  priceOptimizationList.innerHTML = '';
+
+  if (!devices || devices.length === 0) {
+    if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = false;
+    return;
+  }
+
+  if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = true;
+
+  devices.forEach((device) => {
+    const config = priceOptimizationSettings[device.id] || {
+      enabled: false,
+      normalTemp: 55,
+      boostTemp: 75,
+      cheapHours: 4,
+    };
+
+    const row = document.createElement('div');
+    row.className = 'device-row price-optimization-row';
+    row.setAttribute('role', 'listitem');
+    row.dataset.deviceId = device.id;
+
+    const nameWrap = document.createElement('div');
+    nameWrap.className = 'device-row__name';
+    nameWrap.textContent = device.name;
+
+    // Normal temp input
+    const normalInput = document.createElement('input');
+    normalInput.type = 'number';
+    normalInput.step = '0.5';
+    normalInput.min = '0';
+    normalInput.max = '100';
+    normalInput.className = 'price-opt-input';
+    normalInput.value = config.normalTemp.toString();
+    normalInput.title = 'Normal temperature';
+    normalInput.addEventListener('change', async () => {
+      const val = parseFloat(normalInput.value);
+      if (Number.isFinite(val)) {
+        if (!priceOptimizationSettings[device.id]) {
+          priceOptimizationSettings[device.id] = { enabled: false, normalTemp: 55, boostTemp: 75, cheapHours: 4 };
+        }
+        priceOptimizationSettings[device.id].normalTemp = val;
+        await savePriceOptimizationSettings();
+      }
+    });
+
+    // Boost temp input
+    const boostInput = document.createElement('input');
+    boostInput.type = 'number';
+    boostInput.step = '0.5';
+    boostInput.min = '0';
+    boostInput.max = '100';
+    boostInput.className = 'price-opt-input';
+    boostInput.value = config.boostTemp.toString();
+    boostInput.title = 'Boost temperature (during cheap hours)';
+    boostInput.addEventListener('change', async () => {
+      const val = parseFloat(boostInput.value);
+      if (Number.isFinite(val)) {
+        if (!priceOptimizationSettings[device.id]) {
+          priceOptimizationSettings[device.id] = { enabled: false, normalTemp: 55, boostTemp: 75, cheapHours: 4 };
+        }
+        priceOptimizationSettings[device.id].boostTemp = val;
+        await savePriceOptimizationSettings();
+      }
+    });
+
+    // Cheap hours input
+    const hoursInput = document.createElement('input');
+    hoursInput.type = 'number';
+    hoursInput.step = '1';
+    hoursInput.min = '1';
+    hoursInput.max = '12';
+    hoursInput.className = 'price-opt-input price-opt-hours';
+    hoursInput.value = config.cheapHours.toString();
+    hoursInput.title = 'Number of cheap hours per day to boost';
+    hoursInput.addEventListener('change', async () => {
+      const val = parseInt(hoursInput.value, 10);
+      if (Number.isFinite(val) && val >= 1) {
+        if (!priceOptimizationSettings[device.id]) {
+          priceOptimizationSettings[device.id] = { enabled: false, normalTemp: 55, boostTemp: 75, cheapHours: 4 };
+        }
+        priceOptimizationSettings[device.id].cheapHours = val;
+        await savePriceOptimizationSettings();
+      }
+    });
+
+    // Enabled checkbox
+    const enabledLabel = document.createElement('label');
+    enabledLabel.className = 'checkbox-field-inline';
+    const enabledInput = document.createElement('input');
+    enabledInput.type = 'checkbox';
+    enabledInput.checked = config.enabled;
+    enabledInput.addEventListener('change', async () => {
+      if (!priceOptimizationSettings[device.id]) {
+        priceOptimizationSettings[device.id] = { enabled: false, normalTemp: 55, boostTemp: 75, cheapHours: 4 };
+      }
+      priceOptimizationSettings[device.id].enabled = enabledInput.checked;
+      await savePriceOptimizationSettings();
+      await showToast(enabledInput.checked ? `Price optimization enabled for ${device.name}` : `Price optimization disabled for ${device.name}`, 'ok');
+    });
+    enabledLabel.appendChild(enabledInput);
+
+    row.append(nameWrap, normalInput, boostInput, hoursInput, enabledLabel);
+    priceOptimizationList.appendChild(row);
+  });
+};
+
 const refreshDevices = async () => {
   if (isBusy) return;
   setBusy(true);
@@ -930,6 +1062,7 @@ const refreshDevices = async () => {
     latestDevices = devices;
     renderDevices(devices);
     renderPriorities(devices);
+    renderPriceOptimization(devices);
     await refreshPlan();
     statusBadge.textContent = 'Live';
   } catch (error) {
@@ -1076,6 +1209,8 @@ const boot = async () => {
     await refreshPrices();
     await loadNettleieSettings();
     await refreshNettleie();
+    await loadPriceOptimizationSettings();
+    renderPriceOptimization(latestDevices);
     priceSettingsForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
       try {

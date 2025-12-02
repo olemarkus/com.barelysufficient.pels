@@ -62,11 +62,20 @@ module.exports = class PelsApp extends Homey.App {
 
   private lastPlanSignature = '';
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
+  private priceRefreshInterval?: ReturnType<typeof setInterval>;
+  private priceOptimizationInterval?: ReturnType<typeof setInterval>;
   // Set when remaining hourly energy budget has been fully consumed (remainingKWh <= 0)
   private hourlyBudgetExhausted = false;
   // Track last known power draw (kW) for each device when it was ON and drawing power > 0
   // Used as a fallback estimate when settings.load is not available
   private lastKnownPowerKw: Record<string, number> = {};
+  // Price optimization settings per device: { deviceId: { enabled, normalTemp, boostTemp, cheapHours } }
+  private priceOptimizationSettings: Record<string, {
+    enabled: boolean;
+    normalTemp: number;
+    boostTemp: number;
+    cheapHours: number;
+  }> = {};
 
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     const snap = this.latestTargetSnapshot.find((d) => d.id === deviceId);
@@ -159,6 +168,10 @@ module.exports = class PelsApp extends Homey.App {
           this.error('Failed to refresh spot prices', error);
         });
       }
+
+      if (key === 'price_optimization_settings') {
+        this.loadPriceOptimizationSettings();
+      }
     });
 
     this.loadCapacitySettings();
@@ -191,7 +204,10 @@ module.exports = class PelsApp extends Homey.App {
     await this.applyDeviceTargetsForMode(this.capacityMode);
     this.registerFlowCards();
     this.loadPowerTracker();
+    this.loadPriceOptimizationSettings();
     this.startPeriodicSnapshotRefresh();
+    this.startPriceRefresh();
+    this.startPriceOptimization();
   }
 
   /**
@@ -202,6 +218,14 @@ module.exports = class PelsApp extends Homey.App {
     if (this.snapshotRefreshInterval) {
       clearInterval(this.snapshotRefreshInterval);
       this.snapshotRefreshInterval = undefined;
+    }
+    if (this.priceRefreshInterval) {
+      clearInterval(this.priceRefreshInterval);
+      this.priceRefreshInterval = undefined;
+    }
+    if (this.priceOptimizationInterval) {
+      clearInterval(this.priceOptimizationInterval);
+      this.priceOptimizationInterval = undefined;
     }
     if (this.capacityGuard) {
       this.capacityGuard.stop();
@@ -235,6 +259,18 @@ module.exports = class PelsApp extends Homey.App {
     if (modeTargets && typeof modeTargets === 'object') this.modeDeviceTargets = modeTargets as Record<string, Record<string, number>>;
     if (typeof dryRun === 'boolean') this.capacityDryRun = dryRun;
     if (controllables && typeof controllables === 'object') this.controllableDevices = controllables as Record<string, boolean>;
+  }
+
+  private loadPriceOptimizationSettings(): void {
+    const settings = this.homey.settings.get('price_optimization_settings');
+    if (settings && typeof settings === 'object') {
+      this.priceOptimizationSettings = settings as Record<string, {
+        enabled: boolean;
+        normalTemp: number;
+        boostTemp: number;
+        cheapHours: number;
+      }>;
+    }
   }
 
   private savePowerTracker(): void {
@@ -666,6 +702,206 @@ module.exports = class PelsApp extends Homey.App {
         req.destroy();
         reject(new Error('Request timeout'));
       });
+    });
+  }
+
+  /**
+   * Get combined hourly prices (spot + nettleie) for all available hours.
+   * Returns an array sorted by time, with total price in øre/kWh including VAT.
+   */
+  private getCombinedHourlyPrices(): Array<{ startsAt: string; spotPrice: number; nettleie: number; totalPrice: number }> {
+    const spotPrices: Array<{ startsAt: string; total: number }> = this.homey.settings.get('electricity_prices') || [];
+    const nettleieData: Array<{ time: string; energileddInk: number }> = this.homey.settings.get('nettleie_data') || [];
+
+    // Create a map of nettleie by hour (0-23)
+    const nettleieByHour = new Map<number, number>();
+    for (const entry of nettleieData) {
+      // NVE API returns time as hour number (0-23)
+      const hour = typeof entry.time === 'number' ? entry.time : parseInt(entry.time, 10);
+      if (!Number.isNaN(hour) && typeof entry.energileddInk === 'number') {
+        nettleieByHour.set(hour, entry.energileddInk);
+      }
+    }
+
+    // Combine spot prices with nettleie
+    return spotPrices.map((spot) => {
+      const date = new Date(spot.startsAt);
+      const hour = date.getHours();
+      const nettleie = nettleieByHour.get(hour) || 0;
+      return {
+        startsAt: spot.startsAt,
+        spotPrice: spot.total,
+        nettleie,
+        totalPrice: spot.total + nettleie,
+      };
+    }).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  }
+
+  /**
+   * Find the cheapest N hours from now within the next 24 hours.
+   * Returns the start times of the cheapest hours.
+   */
+  private findCheapestHours(count: number): string[] {
+    const now = new Date();
+    const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    const prices = this.getCombinedHourlyPrices()
+      .filter((p) => {
+        const time = new Date(p.startsAt);
+        return time >= now && time < in24Hours;
+      });
+
+    if (prices.length === 0) return [];
+
+    // Sort by total price and take the cheapest N
+    return prices
+      .sort((a, b) => a.totalPrice - b.totalPrice)
+      .slice(0, count)
+      .map((p) => p.startsAt);
+  }
+
+  /**
+   * Check if the current hour is one of the cheapest hours for a device.
+   */
+  private isCurrentHourCheap(cheapHours: number): boolean {
+    const cheapestHours = this.findCheapestHours(cheapHours);
+    const now = new Date();
+    const currentHourStart = new Date(now);
+    currentHourStart.setMinutes(0, 0, 0);
+
+    return cheapestHours.some((h) => {
+      const hourStart = new Date(h);
+      return hourStart.getTime() === currentHourStart.getTime();
+    });
+  }
+
+  /**
+   * Apply price optimization to all configured devices.
+   * Called periodically (at start of each hour) to adjust temperatures.
+   */
+  private async applyPriceOptimization(): Promise<void> {
+    if (!this.homeyApi || !this.homeyApi.devices) {
+      this.logDebug('Price optimization: HomeyAPI not available');
+      return;
+    }
+
+    const settings = this.priceOptimizationSettings;
+    if (!settings || Object.keys(settings).length === 0) {
+      this.logDebug('Price optimization: No devices configured');
+      return;
+    }
+
+    for (const [deviceId, config] of Object.entries(settings)) {
+      if (!config.enabled) continue;
+
+      const isCheap = this.isCurrentHourCheap(config.cheapHours);
+      const targetTemp = isCheap ? config.boostTemp : config.normalTemp;
+
+      // Find the device in snapshot to get its target capability
+      const device = this.latestTargetSnapshot.find((d) => d.id === deviceId);
+      if (!device || !device.targets || device.targets.length === 0) {
+        this.logDebug(`Price optimization: Device ${deviceId} not found or has no target capability`);
+        continue;
+      }
+
+      const targetCap = device.targets[0].id;
+      const currentTarget = device.targets[0].value;
+
+      // Only update if different
+      if (currentTarget === targetTemp) {
+        this.logDebug(`Price optimization: ${device.name} already at ${targetTemp}°C`);
+        continue;
+      }
+
+      try {
+        await this.homeyApi.devices.setCapabilityValue({
+          deviceId,
+          capabilityId: targetCap,
+          value: targetTemp,
+        });
+        const priceInfo = this.getCurrentHourPriceInfo();
+        this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${isCheap ? 'cheap hour' : 'normal hour'}, ${priceInfo})`);
+        this.updateLocalSnapshot(deviceId, { target: targetTemp });
+      } catch (error) {
+        this.error(`Price optimization: Failed to set ${device.name} to ${targetTemp}°C`, error);
+      }
+    }
+  }
+
+  /**
+   * Get a human-readable price info for the current hour.
+   */
+  private getCurrentHourPriceInfo(): string {
+    const prices = this.getCombinedHourlyPrices();
+    const now = new Date();
+    const currentHourStart = new Date(now);
+    currentHourStart.setMinutes(0, 0, 0);
+
+    const current = prices.find((p) => {
+      const hourStart = new Date(p.startsAt);
+      return hourStart.getTime() === currentHourStart.getTime();
+    });
+
+    if (!current) return 'price unknown';
+    return `${current.totalPrice.toFixed(1)} øre/kWh (spot ${current.spotPrice.toFixed(1)} + nettleie ${current.nettleie.toFixed(1)})`;
+  }
+
+  /**
+   * Start periodic price optimization checks.
+   * Runs at the start of each hour.
+   */
+  private startPriceOptimization(): void {
+    // Calculate ms until the next hour
+    const now = new Date();
+    const nextHour = new Date(now);
+    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
+    const msUntilNextHour = nextHour.getTime() - now.getTime();
+
+    // Run once now
+    this.applyPriceOptimization().catch((error: Error) => {
+      this.error('Price optimization failed', error);
+    });
+
+    // Schedule to run at the start of each hour
+    setTimeout(() => {
+      this.applyPriceOptimization().catch((error: Error) => {
+        this.error('Price optimization failed', error);
+      });
+
+      // Then run every hour
+      // eslint-disable-next-line homey-app/global-timers -- Cleared in onUninit
+      this.priceOptimizationInterval = setInterval(() => {
+        this.applyPriceOptimization().catch((error: Error) => {
+          this.error('Price optimization failed', error);
+        });
+      }, 60 * 60 * 1000);
+    }, msUntilNextHour);
+  }
+
+  /**
+   * Start periodic price data refresh.
+   * Refreshes spot prices and nettleie data periodically.
+   */
+  private startPriceRefresh(): void {
+    // Refresh prices every 3 hours
+    const refreshIntervalMs = 3 * 60 * 60 * 1000;
+
+    // eslint-disable-next-line homey-app/global-timers -- Cleared in onUninit
+    this.priceRefreshInterval = setInterval(() => {
+      this.refreshSpotPrices().catch((error: Error) => {
+        this.error('Failed to refresh spot prices', error);
+      });
+      this.refreshNettleieData().catch((error: Error) => {
+        this.error('Failed to refresh nettleie data', error);
+      });
+    }, refreshIntervalMs);
+
+    // Also refresh now
+    this.refreshSpotPrices().catch((error: Error) => {
+      this.error('Failed to refresh spot prices', error);
+    });
+    this.refreshNettleieData().catch((error: Error) => {
+      this.error('Failed to refresh nettleie data', error);
     });
   }
 

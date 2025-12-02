@@ -550,3 +550,88 @@ input[type="text"]:focus {
   font-weight: 700;
   color: var(--text);
 }
+
+/* Price optimization inputs */
+.device-row.price-optimization-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.price-optimization-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.price-optimization-header > * {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.price-optimization-header .header-normal,
+.price-optimization-header .header-boost {
+  width: 70px;
+  text-align: center;
+}
+
+.price-optimization-header .header-hours {
+  width: 50px;
+  text-align: center;
+}
+
+.price-optimization-header .header-enabled {
+  width: 24px;
+  text-align: center;
+}
+
+.price-opt-input {
+  width: 70px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 14px;
+  text-align: center;
+}
+
+.price-opt-input:focus {
+  outline: 2px solid rgba(127, 209, 174, 0.6);
+  border-color: transparent;
+}
+
+.price-opt-hours {
+  width: 50px;
+}
+
+/* Make checkbox wrapper match other column widths */
+.price-optimization-row .checkbox-field-inline {
+  width: 24px;
+  justify-content: center;
+}
+
+@media (max-width: 360px) {
+  .device-row.price-optimization-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  
+  .price-optimization-header {
+    display: none;
+  }
+  
+  .device-row.price-optimization-row .device-row__name {
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  
+  .price-opt-input {
+    width: 100%;
+  }
+}

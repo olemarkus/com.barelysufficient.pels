@@ -233,6 +233,25 @@
         <button type="button" class="btn secondary" id="price-refresh-button">Refresh prices</button>
         <p class="muted">Prices are typically available for today and tomorrow (after 13:00).</p>
       </div>
+
+      <div class="section-header">
+        <h3>Price optimization</h3>
+      </div>
+      <div class="price-info">
+        <p class="muted">Configure devices to boost during the cheapest hours. The app combines spot price + grid tariff to find the truly cheapest hours.</p>
+      </div>
+      <div class="price-optimization-header">
+        <p class="muted">Device</p>
+        <div class="muted header-normal">Normal °C</div>
+        <div class="muted header-boost">Boost °C</div>
+        <div class="muted header-hours">Hours</div>
+        <div class="muted header-enabled">On</div>
+      </div>
+      <div id="price-optimization-list" class="device-list" role="list"></div>
+      <p id="price-optimization-empty" class="muted" hidden>No devices with target temperature found. Refresh devices first.</p>
+      <div class="list__footer">
+        <p class="muted">Devices boost to the higher temperature during the cheapest N hours in the next 24h.</p>
+      </div>
     </section>
   </main>
 
