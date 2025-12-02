@@ -63,6 +63,8 @@ module.exports = class PelsApp extends Homey.App {
     }
     if (typeof updates.on === 'boolean') {
       snap.currentOn = updates.on;
+      // Keep Guard in sync with on/off state changes
+      this.syncGuardFromSnapshot(this.latestTargetSnapshot);
     }
   }
 
@@ -538,20 +540,31 @@ module.exports = class PelsApp extends Homey.App {
           unit: capabilityObj[capId]?.units || '°C',
         }));
 
+        // Determine if device is ON:
+        // 1. Check explicit onoff capability
+        // 2. Fall back to checking if device is drawing significant power (>50W)
+        let currentOn: boolean | undefined;
+        if (typeof capabilityObj.onoff?.value === 'boolean') {
+          currentOn = capabilityObj.onoff.value;
+        } else if (typeof powerRaw === 'number' && powerRaw > 50) {
+          // Device is drawing power, consider it ON even without onoff capability
+          currentOn = true;
+        }
+
         return {
-          id: device.id || device.data?.id || device.name,
+          id: deviceId,
           name: device.name,
           targets,
           powerKw,
-          priority: this.getPriorityForDevice(device.id || device.data?.id || device.name),
-          currentOn: typeof capabilityObj.onoff?.value === 'boolean' ? capabilityObj.onoff.value : undefined,
+          priority: this.getPriorityForDevice(deviceId),
+          currentOn,
           // Prefer modern zone structure; fall back to legacy to avoid deprecation warning.
           zone:
             device.zone?.name ||
             (typeof device.zone === 'string' ? device.zone : undefined) ||
             device.zoneName ||
             'Unknown',
-          controllable: this.controllableDevices[device.id || device.data?.id || device.name] ?? true,
+          controllable: this.controllableDevices[deviceId] ?? true,
         };
       })
       .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean }>;

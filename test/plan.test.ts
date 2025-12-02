@@ -984,4 +984,44 @@ describe('Device plan snapshot', () => {
     expect(lowerPriPlan?.plannedState).toBe('shed');
     expect(lowerPriPlan?.reason).toContain('swap target');
   });
+
+  it('syncs Guard controllables when updateLocalSnapshot changes on/off state', async () => {
+    // Scenario: A device is restored (on=true) via updateLocalSnapshot
+    // The Guard should immediately see this device as desired='ON' so it can be shed if needed
+    
+    const dev = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await dev.setCapabilityValue('measure_power', 2000); // 2 kW
+    await dev.setCapabilityValue('onoff', false); // Currently OFF
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 10 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Initially, device is OFF, so Guard should have desired='OFF'
+    const guard = (app as any).capacityGuard;
+    expect(guard).toBeTruthy();
+    
+    let controllable = guard.controllables.get('dev-1');
+    expect(controllable?.desired).toBe('OFF');
+
+    // Simulate restoring the device via updateLocalSnapshot
+    (app as any).updateLocalSnapshot('dev-1', { on: true });
+
+    // Guard should now see desired='ON'
+    controllable = guard.controllables.get('dev-1');
+    expect(controllable?.desired).toBe('ON');
+
+    // Simulate shedding the device via updateLocalSnapshot
+    (app as any).updateLocalSnapshot('dev-1', { on: false });
+
+    // Guard should now see desired='OFF'
+    controllable = guard.controllables.get('dev-1');
+    expect(controllable?.desired).toBe('OFF');
+  });
 });
