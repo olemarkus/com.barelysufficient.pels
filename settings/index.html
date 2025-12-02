@@ -15,9 +15,20 @@
       <div class="tabs" role="tablist">
         <button class="tab active" data-tab="devices" role="tab" aria-selected="true">Devices</button>
         <button class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</button>
-        <button class="tab" data-tab="power" role="tab" aria-selected="false">Power usage</button>
-        <button class="tab" data-tab="plan" role="tab" aria-selected="false">Plan</button>
         <button class="tab" data-tab="price" role="tab" aria-selected="false">Price</button>
+        <div class="tab-overflow">
+          <button class="tab-overflow-toggle" aria-label="More tabs" aria-expanded="false">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+              <circle cx="4" cy="10" r="2"/>
+              <circle cx="10" cy="10" r="2"/>
+              <circle cx="16" cy="10" r="2"/>
+            </svg>
+          </button>
+          <div class="tab-overflow-menu" hidden>
+            <button class="tab" data-tab="power" role="tab" aria-selected="false">Power usage</button>
+            <button class="tab" data-tab="plan" role="tab" aria-selected="false">Plan</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -27,11 +38,11 @@
           <p class="eyebrow">Devices</p>
           <h2>Controllable devices</h2>
         </div>
-        <div class="pill" id="status-badge">Loading…</div>
       </div>
-      <div class="list__header">
-        <p class="muted">Name</p>
-        <div class="muted">Controllable</div>
+      <div class="device-table-header">
+        <span>Device</span>
+        <span title="Capacity-based control">Cap</span>
+        <span title="Price-based control">Price</span>
       </div>
       <div id="device-list" class="device-list" role="list"></div>
       <p id="empty-state" class="muted" hidden>No devices with target temperature capabilities were found.</p>
@@ -70,11 +81,6 @@
           </div>
           <small class="field__hint">Drag to reorder priorities (top = keep on longest). Set desired temps per mode.</small>
         </label>
-        <div class="list__header">
-          <p class="muted">Device</p>
-          <div class="muted">Desired °C</div>
-          <div class="muted">Priority</div>
-        </div>
         <div id="priority-list" class="device-list tight-list" role="list"></div>
         <p id="priority-empty" class="muted" hidden>No controllable devices found. Refresh devices first.</p>
       </form>
@@ -106,10 +112,6 @@
           <button type="submit" class="btn primary">Save capacity settings</button>
         </div>
       </form>
-      <div class="list__header">
-        <p class="muted">Hour (local)</p>
-        <div class="muted">Energy (kWh)</div>
-      </div>
       <div id="power-list" class="device-list" role="list"></div>
       <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the “Report power usage” Flow action.</p>
       <div class="list__footer">
@@ -125,11 +127,6 @@
           <h2>Planned device states</h2>
         </div>
         <div class="pill" id="plan-meta">Awaiting data…</div>
-      </div>
-      <div class="list__header">
-        <p class="muted">Device</p>
-        <div class="muted">Current</div>
-        <div class="muted">Planned</div>
       </div>
       <div id="plan-list" class="device-list" role="list"></div>
       <p id="plan-empty" class="muted" hidden>No plan available yet. Send power data or refresh devices.</p>
@@ -235,10 +232,6 @@
           </form>
         </div>
       </details>
-      <div class="list__header">
-        <p class="muted">Upcoming hours</p>
-        <div class="muted">Total price</div>
-      </div>
       <div id="price-list" class="device-list" role="list"></div>
       <p id="price-empty" class="muted">No spot price data available. Configure a price source above to see electricity prices.</p>
       <div class="list__footer">
@@ -246,22 +239,24 @@
         <p class="muted">Prices are typically available for today and tomorrow (after 13:00).</p>
       </div>
 
-      <div class="section-header">
-        <h3>Price optimization</h3>
+      <div id="price-optimization-section">
+        <div class="section-header">
+          <h3>Price optimization</h3>
+        </div>
+        <div class="price-info">
+          <p class="muted">Adjust temperature based on electricity price. Deltas are applied to the current mode's target temperature.</p>
+        </div>
+        <div class="price-optimization-header">
+          <p class="muted">Device</p>
+          <div class="muted header-delta">🟢 Cheap Δ</div>
+          <div class="muted header-delta">🔴 Expensive Δ</div>
+        </div>
+        <div id="price-optimization-list" class="device-list" role="list"></div>
+        <div class="list__footer">
+          <p class="muted">e.g., +5 during cheap hours boosts temp, -5 during expensive hours reduces it.</p>
+        </div>
       </div>
-      <div class="price-info">
-        <p class="muted">Adjust temperature based on electricity price. Deltas are applied to the current mode's target temperature.</p>
-      </div>
-      <div class="price-optimization-header">
-        <p class="muted">Device</p>
-        <div class="muted header-delta">🟢 Cheap Δ</div>
-        <div class="muted header-delta">🔴 Expensive Δ</div>
-      </div>
-      <div id="price-optimization-list" class="device-list" role="list"></div>
       <p id="price-optimization-empty" class="muted" hidden>No devices with price optimization enabled. Enable it on the Devices tab.</p>
-      <div class="list__footer">
-        <p class="muted">e.g., +5 during cheap hours boosts temp, -5 during expensive hours reduces it.</p>
-      </div>
     </section>
   </main>
 

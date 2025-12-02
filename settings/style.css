@@ -1,11 +1,88 @@
+/**
+ * Homey injects _base.css which sets light theme defaults.
+ * These overrides ensure our dark theme works properly.
+ */
+
+/* Override Homey's light background */
+html {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+/* Override Homey's body padding (we handle our own) */
+html > body {
+  padding: 0 !important;
+}
+
+/* Override Homey's font */
+body, input {
+  font-family: var(--font-sans) !important;
+}
+
+/* Override Homey's label uppercase styling */
+label {
+  text-transform: none !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+}
+
+/* Override Homey's input styling */
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="email"] {
+  border: 1px solid var(--panel-border) !important;
+  border-bottom: 1px solid var(--panel-border) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text) !important;
+  padding: 12px 14px !important;
+  border-radius: 10px !important;
+}
+
+/* Override Homey's checkbox styling */
+input[type="checkbox"] {
+  -webkit-appearance: auto !important;
+  appearance: auto !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  background-color: transparent !important;
+  width: auto !important;
+  height: auto !important;
+  accent-color: var(--accent);
+}
+
+/* Override Homey's button styling */
+button {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text) !important;
+  border-radius: 10px !important;
+}
+
+/* Override Homey's fieldset styling */
+fieldset {
+  border-color: var(--panel-border) !important;
+  background: transparent !important;
+}
+
+fieldset legend {
+  color: var(--muted) !important;
+}
+
+/* Override Homey's hr styling */
+hr {
+  background: var(--panel-border) !important;
+}
+
 :root {
   --bg: #0c111b;
-  --panel: rgba(255, 255, 255, 0.04);
-  --panel-border: rgba(255, 255, 255, 0.08);
+  --panel: rgba(255, 255, 255, 0.05);
+  --panel-border: rgba(255, 255, 255, 0.12);
   --accent: #7fd1ae;
   --accent-strong: #6ab894;
   --text: #e6ecf5;
-  --muted: #94a3b8;
+  --muted: #a8b8c8;
+  --text-secondary: #cdd6e1;
   --danger: #f26b6b;
   --radius: 14px;
   --font-sans: "Space Grotesk", "Segoe UI", "Helvetica Neue", sans-serif;
@@ -48,31 +125,115 @@ body {
 
 .tabs {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   margin-top: 14px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--panel-border);
   border-radius: 12px;
-  padding: 4px;
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
+  padding: 6px;
 }
 
-.tabs::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+/* Overflow menu for additional tabs */
+.tab-overflow {
+  position: relative;
+  margin-left: auto;
 }
 
-.tab {
-  flex-shrink: 0; /* Prevent tabs from shrinking */
+.tab-overflow-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border: none;
   background: transparent;
   color: var(--muted);
-  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.tab-overflow-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.tab-overflow-toggle[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.tab-overflow-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 140px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tab-overflow-menu[hidden] {
+  display: none;
+}
+
+.tab-overflow-menu .tab {
+  width: 100%;
+  text-align: left;
+}
+
+/* Table header for device lists */
+.device-table-header {
+  display: grid;
+  grid-template-columns: 1fr 40px 40px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.device-table-header span {
+  text-align: center;
+}
+
+.device-table-header span:first-child {
+  text-align: left;
+}
+
+.tab {
+  flex-shrink: 1;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 12px;
   border-radius: 10px;
   font-weight: 700;
+  font-size: 13px;
   cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+  white-space: nowrap;
+}
+
+.tab:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .tab.active {
@@ -129,8 +290,8 @@ input[type="number"] {
   width: 100%;
   border-radius: 10px;
   padding: 12px 14px;
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   font-size: 16px;
 }
@@ -149,6 +310,51 @@ input[type="number"]:focus {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+/* Checkbox styling */
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.checkbox-field-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.checkbox-field-inline input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Icon-only checkbox for table columns */
+.checkbox-icon {
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.checkbox-icon input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .btn {
@@ -185,6 +391,17 @@ input[type="number"]:focus {
 
 .btn:not(:disabled):hover {
   transform: translateY(-1px);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .pill {
@@ -238,15 +455,19 @@ input[type="number"]:focus {
 
 .control-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr 40px 40px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .control-row__inputs {
-  display: inline-flex;
+  display: contents;
+}
+
+.control-row__inputs .checkbox-icon {
+  display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 6px;
 }
 
 .mode-row {
@@ -270,12 +491,19 @@ input[type="number"]:focus {
   cursor: grab;
   padding: 3px 5px;
   border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
   user-select: none;
   font-weight: 700;
   touch-action: none;
   -webkit-user-select: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.drag-handle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
 }
 
 .draggable {
@@ -306,9 +534,9 @@ input[type="number"]:focus {
 .zone-header {
   margin: 12px 0 4px;
   font-weight: 700;
-  color: #9fb2c8;
+  color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   font-size: 12px;
 }
 
@@ -316,8 +544,8 @@ input[type="number"]:focus {
   display: grid;
   grid-template-columns: 1fr;
   gap: 4px;
-  color: #cdd6e1;
-  font-size: 12px;
+  color: var(--text);
+  font-size: 13px;
 }
 
 .plan-meta-line {
@@ -327,7 +555,7 @@ input[type="number"]:focus {
 }
 
 .plan-label {
-  color: #9fb2c8;
+  color: var(--text-secondary);
   min-width: 78px;
   font-weight: 600;
 }
@@ -353,12 +581,20 @@ input[type="number"]:focus {
 }
 
 .priority-badge {
-  display: inline-block;
-  min-width: 32px; /* up to 3 digits */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  padding: 4px 8px;
   text-align: center;
   margin-left: 4px;
   font-size: 12px;
+  font-weight: 700;
   flex: 0 0 auto;
+  background: rgba(127, 209, 174, 0.25);
+  color: #9ee8c8;
+  border: 1px solid rgba(127, 209, 174, 0.4);
+  border-radius: 6px;
 }
 
 .mode-row .device-row__name {
@@ -379,13 +615,14 @@ input[type="number"]:focus {
   align-items: center;
   padding: 8px 10px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--panel-border);
   font-size: 14px;
+  color: var(--text);
 }
 
 .chip strong {
-  color: var(--muted);
+  color: var(--text);
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -401,8 +638,8 @@ input[type="number"]:focus {
   min-width: 140px;
   border-radius: 10px;
   padding: 8px 10px;
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
 }
 
@@ -486,12 +723,12 @@ select {
   width: 100%;
   border-radius: 10px;
   padding: 12px 14px;
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   font-size: 16px;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a8b8c8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 14px center;
   cursor: pointer;
@@ -507,7 +744,7 @@ input[type="password"] {
   border-radius: 10px;
   padding: 12px 14px;
   border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
   font-size: 16px;
 }
@@ -521,8 +758,8 @@ input[type="text"] {
   width: 100%;
   border-radius: 10px;
   padding: 12px 14px;
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   font-size: 16px;
 }
@@ -557,7 +794,7 @@ input[type="text"]:focus {
   margin-top: 12px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--muted);
   border-bottom: 1px solid var(--panel-border);
 }
 
@@ -576,7 +813,7 @@ input[type="text"]:focus {
 .price-notice {
   padding: 16px 0;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--muted);
   font-style: italic;
 }
 
@@ -612,8 +849,8 @@ input[type="text"]:focus {
   width: 70px;
   padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   font-size: 14px;
   text-align: center;

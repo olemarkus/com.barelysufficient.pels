@@ -5,7 +5,6 @@ declare const Homey: any;
 const qs = (selector: string) => document.querySelector(selector) as HTMLElement;
 
 const toastEl = qs('#toast');
-const statusBadge = qs('#status-badge');
 const deviceList = qs('#device-list');
 const emptyState = qs('#empty-state');
 const refreshButton = qs('#refresh-button') as HTMLButtonElement;
@@ -49,6 +48,7 @@ const nettleieTariffgruppeSelect = document.querySelector('#nettleie-tariffgrupp
 const nettleieRefreshButton = document.querySelector('#nettleie-refresh-button') as HTMLButtonElement;
 const priceOptimizationList = qs('#price-optimization-list');
 const priceOptimizationEmpty = qs('#price-optimization-empty');
+const priceOptimizationSection = qs('#price-optimization-section');
 
 // Norwegian grid companies with organization numbers and counties
 // Data from NVE nettleietariffer API
@@ -174,6 +174,12 @@ const setSetting = (key, value) => new Promise((resolve, reject) => {
 });
 
 const showTab = (tabId) => {
+  // Close overflow menu when switching tabs
+  const overflowMenu = document.querySelector('.tab-overflow-menu') as HTMLElement;
+  const overflowToggle = document.querySelector('.tab-overflow-toggle') as HTMLButtonElement;
+  if (overflowMenu) overflowMenu.hidden = true;
+  if (overflowToggle) overflowToggle.setAttribute('aria-expanded', 'false');
+  
   tabs.forEach((tab) => {
     const isActive = tab.dataset.tab === tabId;
     tab.classList.toggle('active', isActive);
@@ -200,8 +206,6 @@ const showToast = async (message, tone = 'default') => {
 
 const setBusy = (busy) => {
   isBusy = busy;
-  statusBadge.textContent = busy ? 'Loading…' : 'Live';
-  statusBadge.classList.toggle('ok', !busy);
   refreshButton.disabled = busy;
 };
 
@@ -223,13 +227,11 @@ const renderDevices = (devices) => {
     const nameWrap = document.createElement('div');
     nameWrap.className = 'device-row__name';
     nameWrap.textContent = device.name;
-
-    const ctrlWrap = document.createElement('div');
-    ctrlWrap.className = 'device-row__target control-row__inputs';
     
-    // Controllable checkbox
+    // Controllable checkbox (icon only)
     const ctrlLabel = document.createElement('label');
-    ctrlLabel.className = 'checkbox-field-inline';
+    ctrlLabel.className = 'checkbox-icon';
+    ctrlLabel.title = 'Capacity-based control';
     const ctrlInput = document.createElement('input');
     ctrlInput.type = 'checkbox';
     ctrlInput.checked = controllableMap[device.id] !== false;
@@ -237,13 +239,12 @@ const renderDevices = (devices) => {
       controllableMap[device.id] = ctrlInput.checked;
       await setSetting('controllable_devices', controllableMap);
     });
-    const ctrlText = document.createElement('span');
-    ctrlText.textContent = 'Controllable';
-    ctrlLabel.append(ctrlInput, ctrlText);
+    ctrlLabel.append(ctrlInput);
     
-    // Price optimization checkbox
+    // Price optimization checkbox (icon only)
     const priceOptLabel = document.createElement('label');
-    priceOptLabel.className = 'checkbox-field-inline';
+    priceOptLabel.className = 'checkbox-icon';
+    priceOptLabel.title = 'Price-based control';
     const priceOptInput = document.createElement('input');
     priceOptInput.type = 'checkbox';
     const config = priceOptimizationSettings[device.id];
@@ -256,13 +257,9 @@ const renderDevices = (devices) => {
       await savePriceOptimizationSettings();
       renderPriceOptimization(latestDevices);
     });
-    const priceOptText = document.createElement('span');
-    priceOptText.textContent = 'Price opt';
-    priceOptLabel.append(priceOptInput, priceOptText);
-    
-    ctrlWrap.append(ctrlLabel, priceOptLabel);
+    priceOptLabel.append(priceOptInput);
 
-    row.append(nameWrap, ctrlWrap);
+    row.append(nameWrap, ctrlLabel, priceOptLabel);
     deviceList.appendChild(row);
   });
 };
@@ -1002,10 +999,12 @@ const renderPriceOptimization = (devices: any[]) => {
   });
 
   if (enabledDevices.length === 0) {
+    if (priceOptimizationSection) priceOptimizationSection.hidden = true;
     if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = false;
     return;
   }
 
+  if (priceOptimizationSection) priceOptimizationSection.hidden = false;
   if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = true;
 
   enabledDevices.forEach((device) => {
@@ -1084,11 +1083,8 @@ const refreshDevices = async () => {
     renderPriorities(devices);
     renderPriceOptimization(devices);
     await refreshPlan();
-    statusBadge.textContent = 'Live';
   } catch (error) {
     console.error(error);
-    statusBadge.textContent = 'Failed';
-    statusBadge.classList.add('warn');
     await showToast(error.message || 'Unable to load devices. Check the console for details.', 'warn');
   } finally {
     setBusy(false);
@@ -1117,8 +1113,6 @@ const boot = async () => {
   try {
     const found = await waitForHomey(200, 100); // wait up to ~20s for embedded Homey SDK
     if (!found) {
-      statusBadge.textContent = 'Unavailable';
-      statusBadge.classList.add('warn');
       emptyState.hidden = false;
       emptyState.textContent = 'Homey SDK not available. Make sure you are logged in and opened the settings from Homey.';
       await showToast('Homey SDK not available. Check your Homey session/connection.', 'warn');
@@ -1152,6 +1146,24 @@ const boot = async () => {
     }
 
     showTab('devices');
+    
+    // Initialize overflow menu toggle
+    const overflowToggle = document.querySelector('.tab-overflow-toggle') as HTMLButtonElement;
+    const overflowMenu = document.querySelector('.tab-overflow-menu') as HTMLElement;
+    if (overflowToggle && overflowMenu) {
+      overflowToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isExpanded = overflowToggle.getAttribute('aria-expanded') === 'true';
+        overflowToggle.setAttribute('aria-expanded', String(!isExpanded));
+        overflowMenu.hidden = isExpanded;
+      });
+      // Close menu when clicking outside
+      document.addEventListener('click', () => {
+        overflowToggle.setAttribute('aria-expanded', 'false');
+        overflowMenu.hidden = true;
+      });
+    }
+    
     tabs.forEach((tab) => {
       tab.addEventListener('click', () => showTab(tab.dataset.tab));
     });
@@ -1160,8 +1172,10 @@ const boot = async () => {
     renderPowerUsage(usage);
     await loadCapacitySettings();
     await loadModeAndPriorities();
+    await loadPriceOptimizationSettings(); // Load before rendering devices
     renderPriorities(latestDevices);
     renderDevices(latestDevices);
+    renderPriceOptimization(latestDevices);
     modeSelect?.addEventListener('change', () => {
       // Mode editor selection changes which mode we're editing, not the active mode
       setEditingMode(modeSelect.value || 'Home');
@@ -1240,8 +1254,6 @@ const boot = async () => {
     await refreshPrices();
     await loadNettleieSettings();
     await refreshNettleie();
-    await loadPriceOptimizationSettings();
-    renderPriceOptimization(latestDevices);
     priceSettingsForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
       try {
@@ -1269,12 +1281,8 @@ const boot = async () => {
       await setSetting('refresh_nettleie', Date.now());
       await refreshNettleie();
     });
-
-    statusBadge.classList.add('ok');
   } catch (error) {
     console.error(error);
-    statusBadge.textContent = 'Failed';
-    statusBadge.classList.add('warn');
     await showToast('Unable to load settings. Check the console for details.', 'warn');
   }
 };
