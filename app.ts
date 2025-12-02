@@ -1,4 +1,10 @@
 import Homey from 'homey';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line import/no-unresolved, import/extensions, node/no-missing-import
+import CapacityGuard from './capacityGuard';
+
+const { HomeyAPI } = require('homey-api');
+// eslint-disable-next-line import/first
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
 const DEBUG_LOG = false;
@@ -6,28 +12,26 @@ const DEBUG_LOG = false;
 // Timing constants for shedding/restore behavior
 const SHED_COOLDOWN_MS = 12000; // Wait 12s after shedding before considering restores
 const RESTORE_COOLDOWN_MS = 6000; // Wait 6s after restore for power to stabilize
-const SHED_THROTTLE_MS = 5000; // Minimum time between shed attempts for same device
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot every 5 minutes
 
 // Power thresholds
 const MIN_SIGNIFICANT_POWER_W = 50; // Minimum power draw to consider "on" or worth tracking
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { HomeyAPI } = require('homey-api');
-import CapacityGuard from './capacityGuard';
-
 module.exports = class PelsApp extends Homey.App {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey API has no TypeScript definitions
   private homeyApi?: any;
   private powerTracker: {
     lastPowerW?: number;
     lastTimestamp?: number;
     buckets?: Record<string, number>;
   } = {};
+
   private capacityGuard?: CapacityGuard;
   private capacitySettings = {
     limitKw: 10,
     marginKw: 0.2,
   };
+
   private capacityDryRun = true;
   private capacityMode = 'Home';
   private capacityPriorities: Record<string, Record<string, number>> = {};
@@ -55,6 +59,7 @@ module.exports = class PelsApp extends Homey.App {
     zone?: string;
     controllable?: boolean;
   }> = [];
+
   private lastPlanSignature = '';
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
   // Set when remaining hourly energy budget has been fully consumed (remainingKWh <= 0)
@@ -191,6 +196,7 @@ module.exports = class PelsApp extends Homey.App {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug logging accepts any arguments
   private logDebug(...args: any[]): void {
     if (DEBUG_LOG) this.log(...args);
   }
@@ -242,21 +248,22 @@ module.exports = class PelsApp extends Homey.App {
       return;
     }
 
-    let previousTs = state.lastTimestamp;
-    let previousPower = state.lastPowerW;
+    const previousTs = state.lastTimestamp;
+    const previousPower = state.lastPowerW;
     let remainingMs = nowMs - previousTs;
+    let currentTs = previousTs;
 
     while (remainingMs > 0) {
-      const hourStart = this.truncateToHour(previousTs);
+      const hourStart = this.truncateToHour(currentTs);
       const hourEnd = hourStart + 60 * 60 * 1000;
-      const segmentMs = Math.min(remainingMs, hourEnd - previousTs);
+      const segmentMs = Math.min(remainingMs, hourEnd - currentTs);
       // previousPower is in W; convert to kWh for the elapsed segment.
       const energyKWh = (previousPower / 1000) * (segmentMs / 3600000);
       const bucketKey = new Date(hourStart).toISOString();
       state.buckets[bucketKey] = (state.buckets[bucketKey] || 0) + energyKWh;
 
       remainingMs -= segmentMs;
-      previousTs += segmentMs;
+      currentTs += segmentMs;
     }
 
     state.lastTimestamp = nowMs;
@@ -267,6 +274,7 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private async initHomeyApi(): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey API has no TypeScript definitions
     if (!this.homey.api || typeof (this.homey.api as any).getOwnerApiToken !== 'function') {
       this.logDebug('Homey API token unavailable, skipping HomeyAPI client init');
       return;
@@ -293,6 +301,7 @@ module.exports = class PelsApp extends Homey.App {
     });
 
     const setLimitCard = this.homey.flow.getActionCard('set_capacity_limit');
+    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
     setLimitCard.registerRunListener(async (args: { limit_kw: number }) => {
       if (!this.capacityGuard) return false;
       const limit = Number(args.limit_kw);
@@ -304,6 +313,7 @@ module.exports = class PelsApp extends Homey.App {
     });
 
     const requestOnCard = this.homey.flow.getActionCard('request_on_capacity');
+    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
     requestOnCard.registerRunListener(async (args: { device_id: string; device_name: string; power_kw: number; priority: number }) => {
       if (!this.capacityGuard) return false;
       const ok = this.capacityGuard.requestOn(args.device_id, args.device_name, Number(args.power_kw), Number(args.priority) || 100);
@@ -312,6 +322,7 @@ module.exports = class PelsApp extends Homey.App {
     });
 
     const forceOffCard = this.homey.flow.getActionCard('force_off_capacity');
+    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
     forceOffCard.registerRunListener(async (args: { device_id: string }) => {
       if (!this.capacityGuard) return false;
       this.capacityGuard.forceOff(args.device_id);
@@ -319,6 +330,7 @@ module.exports = class PelsApp extends Homey.App {
     });
 
     const saveCapacityCard = this.homey.flow.getActionCard('save_capacity_settings');
+    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
     saveCapacityCard.registerRunListener(async (args: { limit_kw: number; margin_kw: number }) => {
       const limit = Number(args.limit_kw);
       const margin = Number(args.margin_kw);
@@ -351,6 +363,7 @@ module.exports = class PelsApp extends Homey.App {
       }
       return true;
     });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey Flow API has no TypeScript definitions
     if (typeof (setCapacityMode as any).registerArgumentAutocompleteListener === 'function') {
       setCapacityMode.registerArgumentAutocompleteListener('mode', async (query: string) => {
         const q = (query || '').toLowerCase();
@@ -361,6 +374,7 @@ module.exports = class PelsApp extends Homey.App {
     }
 
     const setDevicePriority = this.homey.flow.getActionCard('set_device_priority');
+    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
     setDevicePriority.registerRunListener(async (args: { mode: string; device_id: string; priority: number }) => {
       const mode = (args.mode || '').trim() || this.capacityMode;
       const deviceId = (args.device_id || '').trim();
@@ -374,6 +388,7 @@ module.exports = class PelsApp extends Homey.App {
     });
 
     const hasCapacityCond = this.homey.flow.getConditionCard('has_capacity_for');
+    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
     hasCapacityCond.registerRunListener(async (args: { required_kw: number }) => {
       if (!this.capacityGuard) return false;
       return this.capacityGuard.hasCapacity(Number(args.required_kw));
@@ -391,6 +406,7 @@ module.exports = class PelsApp extends Homey.App {
       if (!chosenMode) return false;
       return this.capacityMode.toLowerCase() === chosenMode.toLowerCase();
     });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey Flow API has no TypeScript definitions
     if (typeof (isCapacityModeCond as any).registerArgumentAutocompleteListener === 'function') {
       isCapacityModeCond.registerArgumentAutocompleteListener('mode', async (query: string) => {
         const q = (query || '').toLowerCase();
@@ -458,6 +474,7 @@ module.exports = class PelsApp extends Homey.App {
 
   private startPeriodicSnapshotRefresh(): void {
     // Refresh device snapshot every 5 minutes to keep states current
+    // eslint-disable-next-line homey-app/global-timers -- Cleared in onUninit
     this.snapshotRefreshInterval = setInterval(() => {
       this.refreshTargetDevicesSnapshot().catch((error: Error) => {
         this.error('Periodic snapshot refresh failed', error);
@@ -505,13 +522,15 @@ module.exports = class PelsApp extends Homey.App {
     }
     const list = Array.isArray(devices) ? devices : Object.values(devices || {});
 
-      this.logDebug(`Manager API returned ${list.length} devices`);
+    this.logDebug(`Manager API returned ${list.length} devices`);
 
     return this.parseDeviceList(list);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Homey device objects have no TypeScript definitions
   private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }> {
     return list
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey device objects have no TypeScript definitions
       .map((device: any) => {
         const capabilities: string[] = device.capabilities || [];
         const capabilityObj = device.capabilitiesObj || {};
@@ -520,7 +539,7 @@ module.exports = class PelsApp extends Homey.App {
         const deviceId = device.id || device.data?.id || device.name;
         const isOn = capabilityObj.onoff?.value === true;
         let powerKw: number | undefined;
-        
+
         // Priority for power estimates:
         // 1. measure_power (real-time, when device is actively drawing)
         // 2. settings.load (configured expected load)
@@ -570,15 +589,24 @@ module.exports = class PelsApp extends Homey.App {
           currentOn,
           currentTemperature,
           // Prefer modern zone structure; fall back to legacy to avoid deprecation warning.
-          zone:
-            device.zone?.name ||
-            (typeof device.zone === 'string' ? device.zone : undefined) ||
-            device.zoneName ||
-            'Unknown',
+          zone: device.zone?.name
+            || (typeof device.zone === 'string' ? device.zone : undefined)
+            || device.zoneName
+            || 'Unknown',
           controllable: this.controllableDevices[deviceId] ?? true,
         };
       })
-      .filter(Boolean) as Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }>
+      .filter(Boolean) as Array<{
+        id: string;
+        name: string;
+        targets: Array<{ id: string; value: unknown; unit: string }>;
+        powerKw?: number;
+        priority?: number;
+        currentOn?: boolean;
+        zone?: string;
+        controllable?: boolean;
+        currentTemperature?: number;
+      }>;
   }
 
   private rebuildPlanFromCache(): void {
@@ -596,11 +624,13 @@ module.exports = class PelsApp extends Homey.App {
     );
     if (signature !== this.lastPlanSignature) {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plan meta has dynamic structure
         const headroom = (plan as any).meta?.headroomKw;
         const changes = [...plan.devices].filter((d) => {
           if (d.controllable === false) return false;
           const desiredPower = d.plannedState === 'shed' ? 'off' : 'on';
           const samePower = desiredPower === d.currentState;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Target values can be various types
           const normalizeTarget = (v: any) => (Number.isFinite(v) ? Number(v) : v ?? null);
           const sameTarget = normalizeTarget(d.plannedTarget) === normalizeTarget(d.currentTarget);
           return !(samePower && sameTarget);
@@ -616,16 +646,17 @@ module.exports = class PelsApp extends Homey.App {
             const temp = `${d.currentTarget ?? '–'}° -> ${d.plannedTarget ?? '–'}°`;
             const nextPower = d.plannedState === 'shed' ? 'off' : 'on';
             const power = `${d.currentState} -> ${nextPower}`;
-            const powerInfo =
-              typeof d.powerKw === 'number' ? `, est ${d.powerKw.toFixed(2)}kW` : '';
-            const headroomInfo =
-              typeof headroom === 'number' ? `, headroom ${headroom.toFixed(2)}kW` : '';
-            const restoringHint =
-              d.currentState === 'off' && nextPower === 'on'
-                ? ` (restoring, needs ~${(typeof d.powerKw === 'number' ? d.powerKw : 1).toFixed(2)}kW${
-                    typeof headroom === 'number' ? ` vs headroom ${headroom.toFixed(2)}kW` : ''
-                  })`
-                : '';
+            const powerInfo = typeof d.powerKw === 'number'
+              ? `, est ${d.powerKw.toFixed(2)}kW`
+              : '';
+            const headroomInfo = typeof headroom === 'number'
+              ? `, headroom ${headroom.toFixed(2)}kW`
+              : '';
+            const restoringHint = d.currentState === 'off' && nextPower === 'on'
+              ? ` (restoring, needs ~${(typeof d.powerKw === 'number' ? d.powerKw : 1).toFixed(2)}kW${
+                typeof headroom === 'number' ? ` vs headroom ${headroom.toFixed(2)}kW` : ''
+              })`
+              : '';
             return `${d.name}: temp ${temp}, power ${power}${powerInfo}${headroomInfo}, reason: ${
               d.reason ?? 'n/a'
             }${restoringHint}`;
@@ -683,7 +714,7 @@ module.exports = class PelsApp extends Homey.App {
     const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
     if (headroom !== null && headroom < restoreMargin) {
       // Treat as deficit until we have at least restoreMargin of headroom.
-      headroom = headroom - restoreMargin;
+      headroom -= restoreMargin;
     }
     // If the hourly energy budget is exhausted and soft limit is zero while instantaneous power reads ~0,
     // force a minimal negative headroom to proactively shed controllable devices.
@@ -708,22 +739,29 @@ module.exports = class PelsApp extends Homey.App {
         .map((d) => {
           const priority = this.getPriorityForDevice(d.id);
           const power = typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1; // fallback when unknown
+          // eslint-disable-next-line node/no-unsupported-features/es-syntax -- App targets Node 18+
           return { ...d, priority, effectivePower: power };
         })
         .sort((a, b) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
           const pa = (a as any).priority ?? 100;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
           const pb = (b as any).priority ?? 100;
           if (pa !== pb) return pa - pb;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
           return (b as any).effectivePower - (a as any).effectivePower;
         });
 
       let remaining = needed;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
       const totalSheddable = candidates.reduce((sum, c) => sum + ((c as any).effectivePower as number), 0);
       this.log(`Plan: overshoot=${needed.toFixed(2)}kW, candidates=${candidates.length}, totalSheddable=${totalSheddable.toFixed(2)}kW`);
       for (const c of candidates) {
         if (remaining <= 0) break;
         shedSet.add(c.id);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
         shedReasons.set(c.id, `shed due to capacity (priority ${c.priority ?? 100}, est ${((c as any).effectivePower as number).toFixed(2)}kW)`);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
         remaining -= (c as any).effectivePower as number;
       }
 
@@ -739,7 +777,9 @@ module.exports = class PelsApp extends Homey.App {
         const card = this.homey.flow?.getTriggerCard?.('capacity_shortfall');
         if (card && typeof card.trigger === 'function') {
           const result = card.trigger({});
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-misused-promises -- Homey trigger returns a possibly-thenable
           if (result && typeof (result as any).catch === 'function') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey trigger returns a possibly-thenable
             (result as any).catch((err: Error) => this.error('Failed to trigger capacity_shortfall', err));
           }
         }
@@ -751,8 +791,10 @@ module.exports = class PelsApp extends Homey.App {
       const desired = desiredForMode[dev.id];
       const plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
       const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
+      // eslint-disable-next-line no-nested-ternary -- Clear boolean-to-state mapping
       const currentState = typeof dev.currentOn === 'boolean' ? (dev.currentOn ? 'on' : 'off') : 'unknown';
       const controllable = dev.controllable !== false;
+      // eslint-disable-next-line no-nested-ternary -- Clear controllable-to-state mapping
       let plannedState = controllable ? (shedSet.has(dev.id) ? 'shed' : 'keep') : 'keep';
       let reason = controllable ? shedReasons.get(dev.id) || `keep (priority ${priority})` : 'not controllable by PELS';
       if (controllable && plannedState !== 'shed' && currentState === 'off') {
@@ -829,7 +871,7 @@ module.exports = class PelsApp extends Homey.App {
         // Don't restore it until that higher-priority device is restored first
         const swappedFor = this.swappedOutFor[dev.id];
         if (swappedFor) {
-          const higherPriDev = planDevices.find(d => d.id === swappedFor);
+          const higherPriDev = planDevices.find((d) => d.id === swappedFor);
           // If the higher-priority device is still off, don't restore this one
           if (higherPriDev && higherPriDev.currentState === 'off') {
             dev.plannedState = 'shed';
@@ -852,7 +894,7 @@ module.exports = class PelsApp extends Homey.App {
           let blockedBySwapTarget: { id: string; name: string; priority: number } | null = null;
           for (const swapTargetId of this.pendingSwapTargets) {
             if (swapTargetId === dev.id) continue; // Don't block ourselves
-            const swapTargetDev = planDevices.find(d => d.id === swapTargetId);
+            const swapTargetDev = planDevices.find((d) => d.id === swapTargetId);
             if (swapTargetDev) {
               const swapTargetPriority = swapTargetDev.priority ?? 100;
               // If swap target has higher or equal priority, it should restore first
@@ -880,7 +922,7 @@ module.exports = class PelsApp extends Homey.App {
         const devPower = dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1;
         // Need enough headroom to restore AND keep a safety buffer afterward
         const needed = devPower + restoreHysteresis;
-        
+
         if (availableHeadroom >= needed) {
           // Enough headroom - restore this device
           availableHeadroom -= devPower + restoreHysteresis; // Reserve the hysteresis buffer
@@ -896,18 +938,18 @@ module.exports = class PelsApp extends Homey.App {
             if ((onDev.priority ?? 100) >= devPriority) break; // Don't shed equal or higher priority
             if (onDev.plannedState === 'shed') continue; // Already being shed
             if (restoredThisCycle.has(onDev.id)) continue; // Don't swap out something we just decided to restore
-            
+
             const onDevPower = onDev.powerKw && onDev.powerKw > 0 ? onDev.powerKw : 1;
             toShed.push(onDev);
             potentialHeadroom += onDevPower;
-            
+
             if (potentialHeadroom >= needed) break; // Enough room now
           }
 
           if (potentialHeadroom >= needed && toShed.length > 0) {
             // Swap: shed the low-priority devices and restore the high-priority one
             // Swaps are budget-neutral (shedding creates headroom), so don't count against restore budget
-            this.log(`Plan: swap approved for ${dev.name} - shedding ${toShed.map(d => d.name).join(', ')} (${toShed.reduce((sum, d) => sum + (d.powerKw ?? 1), 0).toFixed(2)}kW) to get ${potentialHeadroom.toFixed(2)}kW >= ${needed.toFixed(2)}kW needed`);
+            this.log(`Plan: swap approved for ${dev.name} - shedding ${toShed.map((d) => d.name).join(', ')} (${toShed.reduce((sum, d) => sum + (d.powerKw ?? 1), 0).toFixed(2)}kW) to get ${potentialHeadroom.toFixed(2)}kW >= ${needed.toFixed(2)}kW needed`);
             // Track this device as a pending swap target - no lower-priority device should restore first
             this.pendingSwapTargets.add(dev.id);
             for (const shedDev of toShed) {
@@ -937,6 +979,7 @@ module.exports = class PelsApp extends Homey.App {
         .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed');
       for (const dev of offDevices) {
         dev.plannedState = 'shed';
+        // eslint-disable-next-line no-nested-ternary -- Clear state-dependent reason selection
         dev.reason = sheddingActive
           ? 'stay off while shedding is active'
           : inCooldown
@@ -992,7 +1035,7 @@ module.exports = class PelsApp extends Homey.App {
 
   private computeDynamicSoftLimit(): number {
     const budgetKw = this.capacitySettings.limitKw;
-    const marginKw = this.capacitySettings.marginKw;
+    const { marginKw } = this.capacitySettings;
     const netBudgetKWh = Math.max(0, budgetKw - marginKw);
     if (netBudgetKWh <= 0) return 0;
 
@@ -1061,6 +1104,7 @@ module.exports = class PelsApp extends Homey.App {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Plan structure has dynamic target values
   private async applyPlanActions(plan: { devices: Array<{ id: string; name?: string; plannedState: string; currentState: string; plannedTarget: number | null; currentTarget: any; controllable?: boolean }> }): Promise<void> {
     if (!plan || !Array.isArray(plan.devices)) return;
     // Track cumulative restored power this cycle to limit restore rate
@@ -1072,7 +1116,8 @@ module.exports = class PelsApp extends Homey.App {
       if (dev.controllable === false) continue;
       // Apply on/off when shedding.
       if (dev.plannedState === 'shed' && dev.currentState !== 'off') {
-        const reason = (dev as any).reason;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Dev reason is dynamically added
+        const { reason } = dev as any;
         const isSwap = reason && reason.includes('swapped out for');
         await this.applySheddingToDevice(dev.id, dev.name, isSwap ? reason : undefined);
         continue;
@@ -1089,6 +1134,7 @@ module.exports = class PelsApp extends Homey.App {
         const headroom = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
         const sheddingActive = this.capacityGuard?.isSheddingActive() === true;
         const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Device power is dynamically available
         const plannedPower = (dev as any).powerKw && (dev as any).powerKw > 0 ? (dev as any).powerKw : 1;
         const extraBuffer = Math.max(0.2, restoreMargin); // add a little hysteresis for restores
         const neededForDevice = plannedPower + restoreMargin + extraBuffer;
@@ -1100,11 +1146,13 @@ module.exports = class PelsApp extends Homey.App {
         // Do not restore devices while shedding is active, during cooldown, when headroom is unknown or near zero,
         // when there is insufficient headroom for this device plus buffers, or when we've used up the restore budget.
         if (sheddingActive || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice || wouldExceedRestoreBudget) {
+          /* eslint-disable no-nested-ternary, max-len -- Clear state-dependent reason logging */
           this.logDebug(
             `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : inCooldown ? 'cooldown' : wouldExceedRestoreBudget ? 'restore budget exceeded' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
               3,
             )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)}, device ~${plannedPower.toFixed(2)}kW, cooldown ${inCooldown ? 'yes' : 'no'}, restored ${restoredPowerThisCycle.toFixed(2)}/${maxRestoreBudget.toFixed(2)}kW)`,
           );
+          /* eslint-enable no-nested-ternary, max-len */
           continue;
         }
         // Mark as pending before async operation
@@ -1152,4 +1200,4 @@ module.exports = class PelsApp extends Homey.App {
       }
     }
   }
-}
+};

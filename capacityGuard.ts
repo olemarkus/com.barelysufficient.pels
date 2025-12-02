@@ -16,7 +16,9 @@ export interface CapacityGuardOptions {
   onDeviceShed?: ShedCallback;
   actuator?: ActuatorCallback;
   intervalMs?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
   log?: (...args: any[]) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
   errorLog?: (...args: any[]) => void;
 }
 
@@ -36,7 +38,9 @@ export default class CapacityGuard {
   private onDeviceShed?: ShedCallback;
   private actuator?: ActuatorCallback;
   private intervalMs: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
   private log?: (...args: any[]) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
   private errorLog?: (...args: any[]) => void;
   private softLimitProvider?: SoftLimitProvider;
 
@@ -57,6 +61,7 @@ export default class CapacityGuard {
 
   start(): void {
     if (this.interval) return;
+    // eslint-disable-next-line homey-app/global-timers -- Cleared in stop()
     this.interval = setInterval(() => {
       this.tick().catch((err) => this.errorLog?.('Capacity guard tick failed', err));
     }, this.intervalMs);
@@ -95,7 +100,9 @@ export default class CapacityGuard {
     if (this.allocatedKw + powerKw > planMax) {
       return false;
     }
-    this.controllables.set(deviceId, { name, powerKw, priority, desired: 'ON' });
+    this.controllables.set(deviceId, {
+      name, powerKw, priority, desired: 'ON',
+    });
     this.recomputeAllocation();
     return true;
   }
