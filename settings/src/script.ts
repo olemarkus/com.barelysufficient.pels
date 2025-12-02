@@ -579,8 +579,8 @@ const savePriorities = async () => {
   rows.forEach((row, index) => {
     const id = row.dataset.deviceId;
     if (id) {
-      // Higher in the list = higher priority to keep (shed later), so invert order.
-      modeMap[id] = total - index;
+      // Top of list = priority 1 (most important, shed last)
+      modeMap[id] = index + 1;
     }
   });
   capacityPriorities[mode] = modeMap;

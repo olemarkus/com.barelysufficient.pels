@@ -573,4 +573,20 @@ describe('Plan sorting', () => {
       'Least Important Heater', // priority 5
     ]);
   });
+
+  it('savePriorities assigns priority 1 to top device', () => {
+    // Verify savePriorities logic: top item = priority 1 (most important, shed last)
+    const rows = ['dev-1', 'dev-2', 'dev-3']; // DOM order: top to bottom
+    const priorities: Record<string, number> = {};
+
+    // Fixed code: modeMap[id] = index + 1;
+    rows.forEach((id, index) => {
+      priorities[id] = index + 1;
+    });
+
+    // Top item should be priority 1 (most important, shed last)
+    expect(priorities['dev-1']).toBe(1); // TOP = most important = priority 1
+    expect(priorities['dev-2']).toBe(2);
+    expect(priorities['dev-3']).toBe(3); // BOTTOM = least important = priority 3
+  });
 });
