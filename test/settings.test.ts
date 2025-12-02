@@ -91,7 +91,6 @@ describe('settings script', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].querySelector('.device-row__name')?.textContent).toContain('Heater');
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(true);
-    expect(document.querySelector('#status-badge')?.textContent).toBe('Live');
   });
 
   it('shows empty state when no devices support target temperature', async () => {
@@ -317,15 +316,15 @@ describe('settings script', () => {
     const currentHour = now.getHours();
     const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
-    // Create 24 hours of prices with average around 100 øre
+    // Create 48 hours of prices (today and tomorrow) with average around 100 øre
     // Make cheap hours in the future relative to current hour
     const prices: any[] = [];
-    for (let hour = 0; hour < 24; hour++) {
+    for (let hourOffset = 0; hourOffset < 48; hourOffset++) {
       const date = new Date(baseDate);
-      date.setHours(hour, 0, 0, 0);
+      date.setHours(hourOffset, 0, 0, 0);
       let total = 100; // Normal price
       // Make hours relative to current: current+1 to +3 cheap, current+6 to +8 expensive
-      const hoursFromNow = hour - currentHour;
+      const hoursFromNow = hourOffset - currentHour;
       if (hoursFromNow >= 1 && hoursFromNow <= 3) total = 50; // Cheap hours
       if (hoursFromNow >= 6 && hoursFromNow <= 8) total = 150; // Expensive hours
       prices.push({

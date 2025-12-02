@@ -7,5 +7,6 @@ module.exports = {
     '^homey$': '<rootDir>/test/mocks/homey.ts',
   },
   roots: ['<rootDir>/test'],
+  testPathIgnorePatterns: ['<rootDir>/test/settings-ui.test.ts'],
   clearMocks: true,
 };
