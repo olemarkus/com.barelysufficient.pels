@@ -6,6 +6,7 @@
     "build:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --minify",
     "watch:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
     "start": "npm run build:settings && homey app run",
+    "install-app": "npm run build:settings && homey app install",
     "lint": "eslint --ext .js,.ts --ignore-path .gitignore .",
     "test": "jest && npm run validate",
     "validate": "npm run build:settings && homey app validate",
