@@ -43,9 +43,11 @@ describe('Device plan snapshot', () => {
     jest.clearAllTimers();
   });
 
-  it('marks lower-priority devices as shed when over soft limit', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'measure_power']);
-    const dev2 = new MockDevice('dev-2', 'Heater B', ['target_temperature', 'measure_power']);
+  it('sheds devices with higher priority NUMBER first (priority 1 = most important, shed last)', async () => {
+    // Priority 1 = most important = should be kept longest
+    // Priority 10 = least important = should be shed first
+    const dev1 = new MockDevice('dev-1', 'Important Heater', ['target_temperature', 'measure_power']);
+    const dev2 = new MockDevice('dev-2', 'Less Important Heater', ['target_temperature', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
     await dev2.setCapabilityValue('measure_power', 4000); // 4 kW
 
@@ -53,8 +55,9 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [dev1, dev2]),
     });
 
-    // Priorities: dev2 sheds first.
-    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 2, 'dev-2': 1 } });
+    // dev-1 is priority 1 (most important), dev-2 is priority 10 (less important)
+    // When over limit, dev-2 should be shed first
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
 
     const app = new MyApp();
     await app.onInit();
@@ -65,13 +68,52 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 9);
     }
 
-    // Report 12 kW total; soft limit defaults to 9.8 kW (10 - 0.2).
+    // Report 12 kW total; over the 9 kW soft limit
     await (app as any).recordPowerSample(12000);
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan).toBeTruthy();
+    
+    // dev-2 (priority 10, less important) should be shed
     const dev2Plan = plan.devices.find((d: any) => d.id === 'dev-2');
     expect(dev2Plan?.plannedState).toBe('shed');
+    
+    // dev-1 (priority 1, most important) should be kept
+    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(dev1Plan?.plannedState).toBe('keep');
+  });
+
+  it('marks less important devices as shed when over soft limit (priority 1 = most important)', async () => {
+    const dev1 = new MockDevice('dev-1', 'Important Heater', ['target_temperature', 'measure_power']);
+    const dev2 = new MockDevice('dev-2', 'Less Important Heater', ['target_temperature', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
+    await dev2.setCapabilityValue('measure_power', 4000); // 4 kW
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1, dev2]),
+    });
+
+    // dev-1 is priority 1 (most important), dev-2 is priority 10 (less important)
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Deterministic soft limit for the test.
+    (app as any).computeDynamicSoftLimit = () => 9;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 9);
+    }
+
+    // Report 12 kW total; over the 9 kW soft limit
+    await (app as any).recordPowerSample(12000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan).toBeTruthy();
+    // dev-2 (priority 10, less important) should be shed first
+    const dev2Plan = plan.devices.find((d: any) => d.id === 'dev-2');
+    expect(dev2Plan?.plannedState).toBe('shed');
+    // dev-1 (priority 1, most important) should be kept
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
   });
@@ -1023,5 +1065,43 @@ describe('Device plan snapshot', () => {
     // Guard should now see desired='OFF'
     controllable = guard.controllables.get('dev-1');
     expect(controllable?.desired).toBe('OFF');
+  });
+
+  it('sorts plan devices by priority ascending (priority 1 = most important, first)', async () => {
+    // Create devices with different priorities (lower number = higher importance)
+    const dev1 = new MockDevice('dev-1', 'Most Important Heater', ['target_temperature']);
+    const dev2 = new MockDevice('dev-2', 'Least Important Heater', ['target_temperature']);
+    const dev3 = new MockDevice('dev-3', 'Medium Priority Heater', ['target_temperature']);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1, dev2, dev3]),
+    });
+
+    // Set priorities: dev-1 is #1 (most important), dev-3 is #5, dev-2 is #10 (least important)
+    mockHomeyInstance.settings.set('capacity_priorities', {
+      Home: { 'dev-1': 1, 'dev-2': 10, 'dev-3': 5 },
+    });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Trigger a power sample to generate a plan
+    await (app as any).recordPowerSample(1000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan).toBeTruthy();
+    expect(plan.devices.length).toBe(3);
+
+    // Devices should be sorted by priority ascending (1 = most important, shown first)
+    const deviceOrder = plan.devices.map((d: any) => ({ name: d.name, priority: d.priority }));
+    
+    expect(deviceOrder[0].name).toBe('Most Important Heater');
+    expect(deviceOrder[0].priority).toBe(1);
+    
+    expect(deviceOrder[1].name).toBe('Medium Priority Heater');
+    expect(deviceOrder[1].priority).toBe(5);
+    
+    expect(deviceOrder[2].name).toBe('Least Important Heater');
+    expect(deviceOrder[2].priority).toBe(10);
   });
 });

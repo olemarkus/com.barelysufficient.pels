@@ -1298,11 +1298,13 @@ module.exports = class PelsApp extends Homey.App {
           return { ...d, priority, effectivePower: power };
         })
         .sort((a, b) => {
+          // Sort by priority descending: higher number = less important = shed first
+          // Priority 1 = most important = shed last
           // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
           const pa = (a as any).priority ?? 100;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
           const pb = (b as any).priority ?? 100;
-          if (pa !== pb) return pa - pb;
+          if (pa !== pb) return pb - pa; // Higher number sheds first
           // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
           return (b as any).effectivePower - (a as any).effectivePower;
         });
@@ -1408,15 +1410,15 @@ module.exports = class PelsApp extends Homey.App {
       let availableHeadroom = headroomRaw;
       const restoredThisCycle = new Set<string>(); // Track devices restored in this planning cycle
 
-      // Sort off devices by priority (higher priority = restore first)
+      // Sort off devices by priority (priority 1 = most important, restore first)
       const offDevices = planDevices
         .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed')
-        .sort((a, b) => (b.priority ?? 100) - (a.priority ?? 100)); // Higher priority first
+        .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999)); // Lower number = higher importance
 
-      // Get ON devices sorted by priority (lower priority = shed first for swaps)
+      // Get ON devices sorted by priority (higher number = less important, shed first for swaps)
       const onDevices = planDevices
         .filter((d) => d.controllable !== false && d.currentState === 'on' && d.plannedState !== 'shed')
-        .sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100)); // Lower priority first
+        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)); // Higher number = shed first
 
       // Restore safety buffer: require headroom to stay positive by this much AFTER restore
       // This prevents oscillation from measurement variance/latency
@@ -1556,6 +1558,9 @@ module.exports = class PelsApp extends Homey.App {
         this.logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) - ${dev.reason}`);
       }
     }
+
+    // Sort devices by priority ascending (priority 1 = most important, shown first)
+    planDevices.sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
     return {
       meta: {

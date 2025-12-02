@@ -1,7 +1,7 @@
 import CapacityGuard from '../capacityGuard';
 
 describe('CapacityGuard', () => {
-  it('sheds lowest-priority devices first to restore headroom', async () => {
+  it('sheds higher priority NUMBER devices first (priority 1 = most important, shed last)', async () => {
     const shedOrder: string[] = [];
     const guard = new CapacityGuard({
       limitKw: 5,
@@ -13,13 +13,15 @@ describe('CapacityGuard', () => {
       intervalMs: 100000, // avoid ticking automatically
     });
 
-    guard.requestOn('devA', 'A', 3, 5);
-    guard.requestOn('devB', 'B', 2, 10);
+    // devA has priority 10 (less important), devB has priority 1 (most important)
+    guard.requestOn('devA', 'A', 3, 10);
+    guard.requestOn('devB', 'B', 2, 1);
     guard.reportTotalPower(7); // soft limit = 4.8 -> headroom = -2.2
 
     await guard.tick();
 
-    expect(shedOrder).toEqual(['devA']); // priority 5 sheds before 10
+    // devA (priority 10, less important) should be shed first
+    expect(shedOrder).toEqual(['devA']);
   });
 
   it('denies allocation when plan limit is exceeded', () => {
@@ -42,14 +44,14 @@ describe('CapacityGuard', () => {
       intervalMs: 100000,
     });
 
-    guard.requestOn('devA', 'Heater', 1, 5);
-    guard.requestOn('devB', 'Washer', 1.5, 1); // lower priority number = shed first
+    guard.requestOn('devA', 'Heater', 1, 1);  // priority 1 = most important
+    guard.requestOn('devB', 'Washer', 1.5, 10); // priority 10 = less important, shed first
 
     guard.reportTotalPower(2); // below soft, no shed
     await guard.tick();
     expect(shedOrder).toEqual([]);
 
-    guard.reportTotalPower(4.5); // headroom = -0.6, should shed devB (1.5kW)
+    guard.reportTotalPower(4.5); // headroom = -0.6, should shed devB (priority 10, less important)
     await guard.tick();
     expect(shedOrder).toEqual(['devB']);
   });
@@ -73,11 +75,13 @@ describe('CapacityGuard', () => {
       return remainingKWh / remainingHours;
     });
 
-    guard.requestOn('devA', 'A', 3, 5);
-    guard.requestOn('devB', 'B', 2, 1); // shed first
+    // devA has priority 10 (less important), devB has priority 1 (most important)
+    guard.requestOn('devA', 'A', 3, 10);
+    guard.requestOn('devB', 'B', 2, 1);
 
     guard.reportTotalPower(6); // current draw
     await guard.tick();
-    expect(shedOrder).toEqual(['devB']); // shed 2kW to get within dynamic soft limit (5kW)
+    // devA (priority 10, less important) should be shed first
+    expect(shedOrder).toEqual(['devA']);
   });
 });

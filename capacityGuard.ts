@@ -207,12 +207,14 @@ export default class CapacityGuard {
   private async shedUntilHealthy(initialHeadroom: number): Promise<void> {
     let headroom = initialHeadroom;
 
+    // Sort by priority descending: higher number = less important = shed first
+    // Priority 1 = most important = shed last
     const toShed = Array.from(this.controllables.entries())
       .filter(([, c]) => c.desired === 'ON')
-      .sort((a, b) => a[1].priority - b[1].priority);
+      .sort((a, b) => b[1].priority - a[1].priority);
 
     // Log the shed order for debugging
-    this.log?.(`Guard: shed candidates (low→high priority): ${toShed.map(([, c]) => `${c.name}(p${c.priority})`).join(', ')}`);
+    this.log?.(`Guard: shed candidates (least→most important): ${toShed.map(([, c]) => `${c.name}(p${c.priority})`).join(', ')}`);
 
     let shedThisTick = false;
     for (const [deviceId, device] of toShed) {

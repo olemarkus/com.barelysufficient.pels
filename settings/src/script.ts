@@ -402,7 +402,8 @@ const renderPriorities = (devices) => {
   }
   priorityEmpty.hidden = true;
 
-  const sorted = [...devices].sort((a, b) => getPriority(b.id) - getPriority(a.id));
+  // Sort by priority ascending (1 = most important, shown at top)
+  const sorted = [...devices].sort((a, b) => getPriority(a.id) - getPriority(b.id));
 
   sorted.forEach((device) => {
     const row = document.createElement('div');
@@ -613,67 +614,52 @@ const renderPlan = (plan) => {
     planMeta.textContent = 'Awaiting data';
   }
 
-  const grouped = plan.devices.reduce((acc, dev) => {
-    const zone = dev.zone || 'Unknown';
-    if (!acc[zone]) acc[zone] = [];
-    acc[zone].push(dev);
-    return acc;
-  }, {});
+  // Sort all devices globally by priority (priority 1 = most important = first)
+  const sortedDevices = [...plan.devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
-  Object.keys(grouped)
-    .sort((a, b) => a.localeCompare(b))
-    .forEach((zone) => {
-      const header = document.createElement('div');
-      header.className = 'zone-header';
-      header.textContent = zone;
-      planList.appendChild(header);
+  sortedDevices.forEach((dev) => {
+    const row = document.createElement('div');
+    row.className = 'device-row';
+    row.dataset.deviceId = dev.id;
 
-      grouped[zone]
-        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)) // Higher priority first
-        .forEach((dev) => {
-          const row = document.createElement('div');
-          row.className = 'device-row';
-          row.dataset.deviceId = dev.id;
+    const name = document.createElement('div');
+    name.className = 'device-row__name';
+    name.textContent = dev.name;
 
-          const name = document.createElement('div');
-          name.className = 'device-row__name';
-          name.textContent = dev.name;
+    const metaWrap = document.createElement('div');
+    metaWrap.className = 'device-row__target plan-row__meta';
 
-          const metaWrap = document.createElement('div');
-          metaWrap.className = 'device-row__target plan-row__meta';
+    const tempLine = document.createElement('div');
+    tempLine.className = 'plan-meta-line';
+    const currentTemp = typeof dev.currentTemperature === 'number' ? `${dev.currentTemperature.toFixed(1)}°` : '–';
+    const targetTemp = dev.currentTarget ?? '–';
+    const plannedTemp = dev.plannedTarget ?? '–';
+    const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
+    const targetText = targetChanging ? `${targetTemp}° → ${plannedTemp}°` : `${targetTemp}°`;
+    tempLine.innerHTML = `<span class="plan-label">Temperature</span><span>${currentTemp} / target ${targetText}</span>`;
 
-          const tempLine = document.createElement('div');
-          tempLine.className = 'plan-meta-line';
-          const currentTemp = typeof dev.currentTemperature === 'number' ? `${dev.currentTemperature.toFixed(1)}°` : '–';
-          const targetTemp = dev.currentTarget ?? '–';
-          const plannedTemp = dev.plannedTarget ?? '–';
-          const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
-          const targetText = targetChanging ? `${targetTemp}° → ${plannedTemp}°` : `${targetTemp}°`;
-          tempLine.innerHTML = `<span class="plan-label">Temperature</span><span>${currentTemp} / target ${targetText}</span>`;
+    const powerLine = document.createElement('div');
+    powerLine.className = 'plan-meta-line';
+    const currentPower = dev.currentState || 'unknown';
+    const plannedPower =
+      dev.plannedState === 'shed'
+        ? 'off'
+        : dev.plannedState === 'keep'
+          ? currentPower
+          : dev.plannedState || 'keep';
+    const powerChanging = currentPower !== plannedPower;
+    const powerText = powerChanging ? `${currentPower} → ${plannedPower}` : currentPower;
+    powerLine.innerHTML = `<span class="plan-label">Power</span><span>${powerText}</span>`;
 
-          const powerLine = document.createElement('div');
-          powerLine.className = 'plan-meta-line';
-          const currentPower = dev.currentState || 'unknown';
-          const plannedPower =
-            dev.plannedState === 'shed'
-              ? 'off'
-              : dev.plannedState === 'keep'
-                ? currentPower
-                : dev.plannedState || 'keep';
-          const powerChanging = currentPower !== plannedPower;
-          const powerText = powerChanging ? `${currentPower} → ${plannedPower}` : currentPower;
-          powerLine.innerHTML = `<span class="plan-label">Power</span><span>${powerText}</span>`;
+    const reasonLine = document.createElement('div');
+    reasonLine.className = 'plan-meta-line';
+    reasonLine.innerHTML = `<span class="plan-label">Reason</span><span>${dev.reason || 'Plan unchanged'}</span>`;
 
-          const reasonLine = document.createElement('div');
-          reasonLine.className = 'plan-meta-line';
-          reasonLine.innerHTML = `<span class="plan-label">Reason</span><span>${dev.reason || 'Plan unchanged'}</span>`;
+    metaWrap.append(name, tempLine, powerLine, reasonLine);
 
-          metaWrap.append(name, tempLine, powerLine, reasonLine);
-
-          row.append(metaWrap);
-          planList.appendChild(row);
-        });
-    });
+    row.append(metaWrap);
+    planList.appendChild(row);
+  });
 };
 
 const refreshPlan = async () => {

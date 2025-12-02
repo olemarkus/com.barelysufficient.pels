@@ -515,3 +515,63 @@ describe('settings script', () => {
     expect(priceStatusBadge?.textContent).toContain('Now:');
   });
 });
+
+describe('Plan sorting', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    buildDom();
+  });
+
+  it('sorts devices by priority ascending within each zone (priority 1 = most important, first)', async () => {
+    // Note: This test verifies the settings UI sorting - backend sorting is tested in plan.test.ts
+    const planSnapshot = {
+      meta: {
+        totalKw: 4.2,
+        softLimitKw: 9.5,
+        headroomKw: 5.3,
+      },
+      devices: [
+        { id: 'dev-1', name: 'Most Important Heater', zone: 'Living Room', priority: 1, currentState: 'heating', plannedState: 'keep' },
+        { id: 'dev-2', name: 'Least Important Heater', zone: 'Living Room', priority: 5, currentState: 'heating', plannedState: 'keep' },
+        { id: 'dev-3', name: 'Medium Priority Heater', zone: 'Living Room', priority: 3, currentState: 'heating', plannedState: 'keep' },
+      ],
+    };
+
+    // @ts-expect-error expose mock Homey
+    global.Homey = {
+      ready: jest.fn().mockResolvedValue(undefined),
+      set: jest.fn((key, val, cb) => cb && cb(null)),
+      get: jest.fn((key, cb) => {
+        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
+        if (key === 'target_devices_snapshot') return cb(null, []);
+        return cb(null, null);
+      }),
+    };
+
+    // @ts-ignore settings script is plain JS
+    await import('../settings/script.js');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Switch to plan tab
+    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
+    planTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const planList = document.querySelector('#plan-list');
+    const deviceRows = planList?.querySelectorAll('.device-row');
+
+    expect(deviceRows?.length).toBe(3);
+
+    // Get device names in order
+    const deviceNames = Array.from(deviceRows || []).map(
+      (row) => row.querySelector('.device-row__name')?.textContent
+    );
+
+    // Priority 1 = most important, shown first: 1, 3, 5
+    expect(deviceNames).toEqual([
+      'Most Important Heater',  // priority 1
+      'Medium Priority Heater', // priority 3
+      'Least Important Heater', // priority 5
+    ]);
+  });
+});

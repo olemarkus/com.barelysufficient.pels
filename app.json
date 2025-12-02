@@ -252,7 +252,7 @@
             "name": "priority",
             "type": "number",
             "title": {
-              "en": "Priority (higher = more important)"
+              "en": "Priority (1 = most important)"
             },
             "min": 0,
             "step": 1
@@ -365,7 +365,7 @@
             "name": "priority",
             "type": "number",
             "title": {
-              "en": "Priority (higher = more important)"
+              "en": "Priority (1 = most important)"
             },
             "min": 0,
             "step": 1
