@@ -883,6 +883,25 @@ const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceCl
   const chip = document.createElement('span');
   chip.className = `chip ${priceClass}`;
   chip.innerHTML = `<strong>${entry.total.toFixed(1)}</strong><span>øre/kWh</span>`;
+  
+  // Build tooltip with price breakdown
+  const tooltipLines: string[] = [];
+  if (typeof entry.spotPrice === 'number') {
+    tooltipLines.push(`Spot: ${entry.spotPrice.toFixed(1)} øre`);
+  }
+  if (typeof entry.nettleie === 'number') {
+    tooltipLines.push(`Nettleie: ${entry.nettleie.toFixed(1)} øre`);
+  }
+  // Calculate surcharge as the remainder
+  if (typeof entry.spotPrice === 'number') {
+    const surcharge = entry.total - entry.spotPrice - (entry.nettleie ?? 0);
+    if (Math.abs(surcharge) >= 0.05) {
+      tooltipLines.push(`Surcharge: ${surcharge.toFixed(1)} øre`);
+    }
+  }
+  tooltipLines.push(`Total: ${entry.total.toFixed(1)} øre/kWh`);
+  chip.title = tooltipLines.join('\n');
+  
   priceWrap.appendChild(chip);
 
   row.append(timeWrap, priceWrap);
