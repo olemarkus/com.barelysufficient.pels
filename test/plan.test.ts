@@ -1028,6 +1028,70 @@ describe('Device plan snapshot', () => {
     expect(lowerPriPlan?.reason).toContain('swap target');
   });
 
+  it('clears stale swap tracking after timeout (60 seconds)', async () => {
+    // Scenario: A swap was initiated but the high-priority device couldn't restore
+    // (e.g., headroom dropped). After 60 seconds, the swap tracking should be cleared
+    // so the swapped-out device can restore.
+
+    // Device that was swapped out (lower priority)
+    const swappedOut = new MockDevice('dev-swapped', 'Swapped Out Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await swappedOut.setCapabilityValue('measure_power', 500);
+    await swappedOut.setCapabilityValue('onoff', false); // OFF - was shed for swap
+
+    // Device that was supposed to restore (higher priority) but couldn't
+    const swapTarget = new MockDevice('dev-target', 'Swap Target', ['target_temperature', 'onoff', 'measure_power']);
+    await swapTarget.setCapabilityValue('measure_power', 2000); // Needs 2kW
+    await swapTarget.setCapabilityValue('onoff', false); // Still OFF
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [swappedOut, swapTarget]),
+    });
+
+    // Lower number = higher priority
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-target': 1, 'dev-swapped': 5 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-target': true, 'dev-swapped': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Setup: not enough headroom for swap target (needs 2kW + 0.4 = 2.4kW)
+    // but enough for swapped-out device (needs 0.5kW + 0.4 = 0.9kW)
+    (app as any).computeDynamicSoftLimit = () => 3;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 3);
+    }
+
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+    (app as any).lastRestoreMs = null;
+
+    // Simulate swap state: dev-swapped was shed for dev-target, but dev-target can't restore
+    // Set timestamp to 61 seconds ago (stale)
+    const staleTime = Date.now() - 61000;
+    (app as any).swappedOutFor = { 'dev-swapped': 'dev-target' };
+    (app as any).pendingSwapTargets = new Set(['dev-target']);
+    (app as any).pendingSwapTimestamps = { 'dev-target': staleTime };
+
+    // Record power - only 1.5kW headroom (not enough for swap target 2.4kW, but enough for swapped 0.9kW)
+    await (app as any).recordPowerSample(1500);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const swappedPlan = plan.devices.find((d: any) => d.id === 'dev-swapped');
+    const targetPlan = plan.devices.find((d: any) => d.id === 'dev-target');
+
+    // Swap target still can't restore (not enough headroom)
+    expect(targetPlan?.plannedState).toBe('shed');
+
+    // Swapped-out device should now be able to restore (swap timed out after 60s)
+    // It has enough headroom and is no longer blocked by stale swap
+    expect(swappedPlan?.plannedState).toBe('keep');
+
+    // Verify swap tracking was cleared
+    expect((app as any).pendingSwapTargets.has('dev-target')).toBe(false);
+    expect((app as any).swappedOutFor['dev-swapped']).toBeUndefined();
+  });
+
   it('syncs Guard controllables when updateLocalSnapshot changes on/off state', async () => {
     // Scenario: A device is restored (on=true) via updateLocalSnapshot
     // The Guard should immediately see this device as desired='ON' so it can be shed if needed

@@ -12,6 +12,7 @@ const DEBUG_LOG = false;
 // Timing constants for shedding/restore behavior
 const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before considering restores
 const RESTORE_COOLDOWN_MS = 30000; // Wait 30s after restore for power to stabilize
+const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot every 5 minutes
 
 // Power thresholds
@@ -49,6 +50,8 @@ module.exports = class PelsApp extends Homey.App {
   // Track devices that are swap targets (higher-priority devices waiting to restore via swap)
   // No device with lower priority than a pending swap target should restore first
   private pendingSwapTargets: Set<string> = new Set();
+  // Track when each swap was initiated - used to timeout stale swaps
+  private pendingSwapTimestamps: Record<string, number> = {};
   private latestTargetSnapshot: Array<{
     id: string;
     name: string;
@@ -1432,6 +1435,23 @@ module.exports = class PelsApp extends Homey.App {
     const inCooldown = (sinceShedding !== null && sinceShedding < SHED_COOLDOWN_MS) || (sinceOvershoot !== null && sinceOvershoot < SHED_COOLDOWN_MS);
     const inRestoreCooldown = sinceRestore !== null && sinceRestore < RESTORE_COOLDOWN_MS;
 
+    // Clean up stale swap tracking - if a swap couldn't complete within timeout, release the blocked devices
+    const swapCleanupNow = Date.now();
+    for (const swapTargetId of [...this.pendingSwapTargets]) {
+      const swapTime = this.pendingSwapTimestamps[swapTargetId];
+      if (swapTime && swapCleanupNow - swapTime > SWAP_TIMEOUT_MS) {
+        this.log(`Plan: clearing stale swap for ${swapTargetId} (${Math.round((swapCleanupNow - swapTime) / 1000)}s since swap initiated)`);
+        this.pendingSwapTargets.delete(swapTargetId);
+        delete this.pendingSwapTimestamps[swapTargetId];
+        // Also clear any swappedOutFor entries pointing to this target
+        for (const [deviceId, targetId] of Object.entries(this.swappedOutFor)) {
+          if (targetId === swapTargetId) {
+            delete this.swappedOutFor[deviceId];
+          }
+        }
+      }
+    }
+
     if (headroomRaw !== null && !sheddingActive && !inCooldown && !inRestoreCooldown) {
       let availableHeadroom = headroomRaw;
       const restoredThisCycle = new Set<string>(); // Track devices restored in this planning cycle
@@ -1478,6 +1498,7 @@ module.exports = class PelsApp extends Homey.App {
             // Higher-priority device is now on, clear the swap tracking
             delete this.swappedOutFor[dev.id];
             this.pendingSwapTargets.delete(swappedFor);
+            delete this.pendingSwapTimestamps[swappedFor];
             this.logDebug(`Plan: ${dev.name} can now be considered for restore - ${higherPriDev?.name ?? swappedFor} is restored`);
           }
         }
@@ -1501,10 +1522,12 @@ module.exports = class PelsApp extends Homey.App {
               // If swap target is now on, it's no longer pending
               if (swapTargetDev.currentState === 'on') {
                 this.pendingSwapTargets.delete(swapTargetId);
+                delete this.pendingSwapTimestamps[swapTargetId];
               }
             } else {
               // Device no longer exists, clean up
               this.pendingSwapTargets.delete(swapTargetId);
+              delete this.pendingSwapTimestamps[swapTargetId];
             }
           }
           if (blockedBySwapTarget) {
@@ -1549,6 +1572,7 @@ module.exports = class PelsApp extends Homey.App {
             this.log(`Plan: swap approved for ${dev.name} - shedding ${toShed.map((d) => d.name).join(', ')} (${toShed.reduce((sum, d) => sum + (d.powerKw ?? 1), 0).toFixed(2)}kW) to get ${potentialHeadroom.toFixed(2)}kW >= ${needed.toFixed(2)}kW needed`);
             // Track this device as a pending swap target - no lower-priority device should restore first
             this.pendingSwapTargets.add(dev.id);
+            this.pendingSwapTimestamps[dev.id] = Date.now();
             for (const shedDev of toShed) {
               shedDev.plannedState = 'shed';
               shedDev.reason = `swapped out for higher priority ${dev.name} (p${devPriority})`;
@@ -1776,6 +1800,7 @@ module.exports = class PelsApp extends Homey.App {
               this.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
               // Clear this device from pending swap targets if it was one
               this.pendingSwapTargets.delete(dev.id);
+              delete this.pendingSwapTimestamps[dev.id];
             } catch (error) {
               this.error(`Failed to turn on ${name} via HomeyAPI`, error);
             }
