@@ -10,8 +10,8 @@ const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint']
 const DEBUG_LOG = false;
 
 // Timing constants for shedding/restore behavior
-const SHED_COOLDOWN_MS = 12000; // Wait 12s after shedding before considering restores
-const RESTORE_COOLDOWN_MS = 6000; // Wait 6s after restore for power to stabilize
+const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before considering restores
+const RESTORE_COOLDOWN_MS = 30000; // Wait 30s after restore for power to stabilize
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot every 5 minutes
 
 // Power thresholds
