@@ -206,6 +206,7 @@ module.exports = class PelsApp extends Homey.App {
     this.loadPowerTracker();
     this.loadPriceOptimizationSettings();
     await this.refreshTargetDevicesSnapshot();
+    this.rebuildPlanFromCache(); // Build initial plan after snapshot is loaded
     await this.applyDeviceTargetsForMode(this.capacityMode);
     this.registerFlowCards();
     this.startPeriodicSnapshotRefresh();
@@ -546,8 +547,9 @@ module.exports = class PelsApp extends Homey.App {
     this.latestTargetSnapshot = snapshot;
     this.syncGuardFromSnapshot(snapshot);
     this.logDebug(`Stored snapshot with ${snapshot.length} devices`);
-    const plan = this.buildDevicePlanSnapshot(snapshot);
-    this.homey.settings.set('device_plan_snapshot', plan);
+    // Note: We don't call buildDevicePlanSnapshot() here - plan building happens
+    // in rebuildPlanFromCache() which is called during recordPowerSample().
+    // This prevents duplicate plan builds when periodic refresh coincides with power samples.
   }
 
   private async refreshNettleieData(forceRefresh = false): Promise<void> {
@@ -1529,7 +1531,8 @@ module.exports = class PelsApp extends Homey.App {
           const toShed: typeof onDevices = [];
 
           for (const onDev of onDevices) {
-            if ((onDev.priority ?? 100) >= devPriority) break; // Don't shed equal or higher priority
+            // Don't shed equal or higher priority devices (lower number = higher priority)
+            if ((onDev.priority ?? 100) <= devPriority) break;
             if (onDev.plannedState === 'shed') continue; // Already being shed
             if (restoredThisCycle.has(onDev.id)) continue; // Don't swap out something we just decided to restore
 

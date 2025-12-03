@@ -762,12 +762,12 @@ describe('Device plan snapshot', () => {
   });
 
   it('swaps low-priority ON device with high-priority OFF device when headroom is insufficient', async () => {
-    // High priority device (OFF, needs restoration)
+    // High priority device (OFF, needs restoration) - priority 1 = most important
     const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
     await highPri.setCapabilityValue('measure_power', 1500); // 1.5 kW
     await highPri.setCapabilityValue('onoff', false); // Currently OFF
 
-    // Low priority device (ON, can be swapped out)
+    // Low priority device (ON, can be swapped out) - priority 10 = less important
     const lowPri = new MockDevice('dev-low', 'Low Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
     await lowPri.setCapabilityValue('measure_power', 1200); // 1.2 kW (increased for hysteresis margin)
     await lowPri.setCapabilityValue('onoff', true); // Currently ON
@@ -776,8 +776,9 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [highPri, lowPri]),
     });
 
-    // Set priorities: dev-high has higher priority (10) than dev-low (5)
-    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 10, 'dev-low': 5 } });
+    // Set priorities: dev-high has priority 1 (most important), dev-low has priority 10 (less important)
+    // Lower number = higher priority = more important
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
@@ -907,7 +908,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('swaps multiple low-priority devices when needed to restore a high-priority device', async () => {
-    // High priority device (OFF, needs 1.5kW)
+    // High priority device (OFF, needs 1.5kW) - priority 1 = most important
     const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
     await highPri.setCapabilityValue('measure_power', 1500);
     await highPri.setCapabilityValue('onoff', false);
@@ -925,8 +926,8 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [highPri, lowPri1, lowPri2]),
     });
 
-    // High (10) > Low1 (3) > Low2 (2)
-    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 10, 'dev-low1': 3, 'dev-low2': 2 } });
+    // Lower number = higher priority: High (1) is most important, Low1 (8) and Low2 (9) are less important
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low1': 8, 'dev-low2': 9 } });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low1': true, 'dev-low2': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
@@ -1103,5 +1104,68 @@ describe('Device plan snapshot', () => {
     
     expect(deviceOrder[2].name).toBe('Least Important Heater');
     expect(deviceOrder[2].priority).toBe(10);
+  });
+
+  it('does not log swap messages twice when refreshTargetDevicesSnapshot and recordPowerSample run close together', async () => {
+    // High priority device (OFF, needs restoration) - priority 1 = most important
+    const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await highPri.setCapabilityValue('measure_power', 1500);
+    await highPri.setCapabilityValue('onoff', false);
+
+    // Low priority device (ON, can be swapped) - priority 10 = less important
+    const lowPri = new MockDevice('dev-low', 'Low Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await lowPri.setCapabilityValue('measure_power', 1200);
+    await lowPri.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [highPri, lowPri]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
+    // Lower number = higher priority: dev-high (1) is more important than dev-low (10)
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Set up conditions for swap
+    (app as any).computeDynamicSoftLimit = () => 4;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+    }
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.sheddingActive = false;
+    }
+
+    // Capture log calls
+    const logCalls: string[] = [];
+    const originalLog = (app as any).log.bind(app);
+    (app as any).log = (...args: unknown[]) => {
+      const msg = args.map(a => String(a)).join(' ');
+      logCalls.push(msg);
+      originalLog(...args);
+    };
+
+    // Simulate what happens when periodic refresh and power sample happen close together
+    // This replicates production behavior at 08:22:36 where:
+    // - Periodic refresh calls refreshTargetDevicesSnapshot() -> buildDevicePlanSnapshot()
+    // - Power sample calls recordPowerSample() -> rebuildPlanFromCache() -> buildDevicePlanSnapshot()
+    await Promise.all([
+      (app as any).refreshTargetDevicesSnapshot(),
+      (app as any).recordPowerSample(3000),
+    ]);
+
+    // Count swap-related log messages
+    const swapApprovedLogs = logCalls.filter(msg => msg.includes('swap approved'));
+    const swappingOutLogs = logCalls.filter(msg => msg.includes('swapping out'));
+
+    // Should only have ONE of each, not duplicates
+    expect(swapApprovedLogs.length).toBe(1);
+    expect(swappingOutLogs.length).toBe(1);
   });
 });
