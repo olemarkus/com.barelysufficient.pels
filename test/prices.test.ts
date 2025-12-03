@@ -204,6 +204,45 @@ describe('Spot price fetching', () => {
     expect(firstPrice.total).toBeCloseTo(43.75, 1);
   });
 
+  it('emits prices_updated realtime event when prices are refreshed', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('price_area', 'NO1');
+
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
+      callback(response);
+      return {
+        on: jest.fn(),
+        setTimeout: jest.fn(),
+        destroy: jest.fn(),
+      };
+    });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Clear events from initialization
+    mockHomeyInstance.api.clearRealtimeEvents();
+
+    // Trigger spot price refresh
+    mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
+    await flushPromises();
+
+    // Check that prices_updated event was emitted
+    const priceEvents = mockHomeyInstance.api._realtimeEvents.filter((e: { event: string }) => e.event === 'prices_updated');
+    expect(priceEvents.length).toBeGreaterThan(0);
+
+    // Verify the event data contains price info
+    const lastPriceEvent = priceEvents[priceEvents.length - 1];
+    expect(lastPriceEvent.data).toHaveProperty('prices');
+    expect(lastPriceEvent.data).toHaveProperty('avgPrice');
+    expect(Array.isArray(lastPriceEvent.data.prices)).toBe(true);
+  });
+
   it('does not apply VAT for NO4 (Nord-Norge)', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({

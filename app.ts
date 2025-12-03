@@ -630,9 +630,11 @@ module.exports = class PelsApp extends Homey.App {
   private updateCombinedPrices(): void {
     const combined = this.getCombinedHourlyPrices();
     if (combined.length === 0) {
-      this.homey.settings.set('combined_prices', {
+      const emptyPrices = {
         prices: [], avgPrice: 0, lowThreshold: 0, highThreshold: 0,
-      });
+      };
+      this.homey.settings.set('combined_prices', emptyPrices);
+      this.homey.api.realtime('prices_updated', emptyPrices).catch(() => {});
       return;
     }
 
@@ -659,14 +661,17 @@ module.exports = class PelsApp extends Homey.App {
       };
     });
 
-    this.homey.settings.set('combined_prices', {
+    const combinedPrices = {
       prices,
       avgPrice,
       lowThreshold,
       highThreshold,
       thresholdPercent,
       minDiffOre,
-    });
+    };
+    this.homey.settings.set('combined_prices', combinedPrices);
+    // Emit realtime event so settings page can update
+    this.homey.api.realtime('prices_updated', combinedPrices).catch(() => {});
   }
 
   private async refreshSpotPrices(forceRefresh = false): Promise<void> {

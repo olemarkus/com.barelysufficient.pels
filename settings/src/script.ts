@@ -1427,6 +1427,13 @@ const boot = async () => {
         }
       });
 
+      // Listen for realtime prices updates from the app backend
+      homey.on('prices_updated', () => {
+        const pricesPanel = document.querySelector('#price-panel');
+        if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
+          refreshPrices().catch(() => {});
+        }
+      });
       // Fallback: also listen for settings.set (may work in some scenarios)
       homey.on('settings.set', (key) => {
         if (key === 'device_plan_snapshot') {
