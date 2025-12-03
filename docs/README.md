@@ -273,6 +273,8 @@ The device shows the current mode name and updates automatically when you change
 4. Marks hours as "cheap" or "expensive" based on your threshold
 5. Applies temperature deltas to devices during those hours
 
+> **Want more detail?** See the [Technical Documentation](technical.md) for in-depth information about the capacity budget model, cooldown logic, priority swapping, and system assumptions.
+
 ---
 
 ## Tips & Best Practices
