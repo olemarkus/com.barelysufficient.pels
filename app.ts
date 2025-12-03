@@ -195,12 +195,6 @@ module.exports = class PelsApp extends Homey.App {
       onSheddingEnd: async () => {
         await this.homey.flow.getTriggerCard('capacity_shedding_ended').trigger({});
       },
-      onDeviceShed: async (deviceId, deviceName) => {
-        await this.homey.flow.getTriggerCard('capacity_device_shed').trigger({
-          device_id: deviceId,
-          device_name: deviceName,
-        });
-      },
       log: (...args) => this.log(...args),
       errorLog: (...args) => this.error(...args),
     });
@@ -369,41 +363,6 @@ module.exports = class PelsApp extends Homey.App {
       return true;
     });
 
-    const requestOnCard = this.homey.flow.getActionCard('request_on_capacity');
-    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
-    requestOnCard.registerRunListener(async (args: { device_id: string; device_name: string; power_kw: number; priority: number }) => {
-      if (!this.capacityGuard) return false;
-      const ok = this.capacityGuard.requestOn(args.device_id, args.device_name, Number(args.power_kw), Number(args.priority) || 100);
-      if (!ok) throw new Error('No capacity available');
-      return true;
-    });
-
-    const forceOffCard = this.homey.flow.getActionCard('force_off_capacity');
-    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
-    forceOffCard.registerRunListener(async (args: { device_id: string }) => {
-      if (!this.capacityGuard) return false;
-      this.capacityGuard.forceOff(args.device_id);
-      return true;
-    });
-
-    const saveCapacityCard = this.homey.flow.getActionCard('save_capacity_settings');
-    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
-    saveCapacityCard.registerRunListener(async (args: { limit_kw: number; margin_kw: number }) => {
-      const limit = Number(args.limit_kw);
-      const margin = Number(args.margin_kw);
-      if (Number.isFinite(limit)) {
-        this.homey.settings.set('capacity_limit_kw', limit);
-        this.capacitySettings.limitKw = limit;
-        if (this.capacityGuard) this.capacityGuard.setLimit(limit);
-      }
-      if (Number.isFinite(margin)) {
-        this.homey.settings.set('capacity_margin_kw', margin);
-        this.capacitySettings.marginKw = margin;
-        if (this.capacityGuard) this.capacityGuard.setSoftMargin(margin);
-      }
-      return true;
-    });
-
     const setCapacityMode = this.homey.flow.getActionCard('set_capacity_mode');
     setCapacityMode.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
       // Handle both string (manual input) and object (autocomplete selection) formats
@@ -429,20 +388,6 @@ module.exports = class PelsApp extends Homey.App {
           .map((m) => ({ id: m, name: m }));
       });
     }
-
-    const setDevicePriority = this.homey.flow.getActionCard('set_device_priority');
-    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
-    setDevicePriority.registerRunListener(async (args: { mode: string; device_id: string; priority: number }) => {
-      const mode = (args.mode || '').trim() || this.capacityMode;
-      const deviceId = (args.device_id || '').trim();
-      const priority = Number(args.priority);
-      if (!deviceId) throw new Error('Device ID required');
-      if (!Number.isFinite(priority)) throw new Error('Priority must be a number');
-      if (!this.capacityPriorities[mode]) this.capacityPriorities[mode] = {};
-      this.capacityPriorities[mode][deviceId] = priority;
-      this.homey.settings.set('capacity_priorities', this.capacityPriorities);
-      return true;
-    });
 
     const hasCapacityCond = this.homey.flow.getConditionCard('has_capacity_for');
     // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
