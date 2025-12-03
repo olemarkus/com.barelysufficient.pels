@@ -611,6 +611,170 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
   });
 
+  it('does not trigger capacity_shortfall repeatedly while already in shortfall state', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
+    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
+    mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
+      if (id === 'capacity_shortfall') {
+        return { trigger: triggerSpy };
+      }
+      return originalGetTrigger();
+    }) as any;
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Only 1 kW available to shed but deficit is ~3 kW (4 kW total, 1 kW soft).
+    (app as any).latestTargetSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+      },
+    ];
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    // First shortfall sample - should trigger
+    await (app as any).recordPowerSample(4000);
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
+
+    // Second shortfall sample - should NOT trigger again (already in shortfall)
+    await (app as any).recordPowerSample(4500);
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
+
+    // Third shortfall sample - should still NOT trigger
+    await (app as any).recordPowerSample(4200);
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
+
+    mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
+  });
+
+  it('triggers capacity_shortfall again after shortfall is resolved and re-enters', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 500);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
+    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
+    mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
+      if (id === 'capacity_shortfall') {
+        return { trigger: triggerSpy };
+      }
+      return originalGetTrigger();
+    }) as any;
+
+    const app = new MyApp();
+    await app.onInit();
+
+    (app as any).latestTargetSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 0.5,
+        currentOn: true,
+        controllable: true,
+      },
+    ];
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    // First shortfall - should trigger (deficit: 4kW total, 0.5kW sheddable, 1kW soft)
+    await (app as any).recordPowerSample(4000);
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
+    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
+
+    // Power drops below soft limit - shortfall resolved
+    (app as any).computeDynamicSoftLimit = () => 2;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+    }
+    await (app as any).recordPowerSample(1500);
+    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
+
+    // Shortfall returns - should trigger again
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+    await (app as any).recordPowerSample(4000);
+    expect(triggerSpy).toHaveBeenCalledTimes(2);
+    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
+
+    mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
+  });
+
+  it('updates capacity_shortfall setting for device sync', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
+    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
+    mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
+      if (id === 'capacity_shortfall') {
+        return { trigger: triggerSpy };
+      }
+      return originalGetTrigger();
+    }) as any;
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Initially not in shortfall
+    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBeFalsy();
+
+    (app as any).latestTargetSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 0.5,
+        currentOn: true,
+        controllable: true,
+      },
+    ];
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    // Enter shortfall - setting should be true
+    await (app as any).recordPowerSample(4000);
+    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
+
+    // Exit shortfall - setting should be false
+    (app as any).computeDynamicSoftLimit = () => 5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+    }
+    await (app as any).recordPowerSample(1000);
+    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
+
+    mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
+  });
+
   it('does not restore immediately after shedding (prevents flapping)', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 500);
