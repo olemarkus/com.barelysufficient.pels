@@ -189,12 +189,6 @@ module.exports = class PelsApp extends Homey.App {
       actuator: async (deviceId, deviceName) => {
         await this.applySheddingToDevice(deviceId, deviceName);
       },
-      onSheddingStart: async () => {
-        await this.homey.flow.getTriggerCard('capacity_shedding_started').trigger({});
-      },
-      onSheddingEnd: async () => {
-        await this.homey.flow.getTriggerCard('capacity_shedding_ended').trigger({});
-      },
       log: (...args) => this.log(...args),
       errorLog: (...args) => this.error(...args),
     });

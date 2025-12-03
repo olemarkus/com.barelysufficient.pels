@@ -33,24 +33,6 @@
     "triggers": [
       {
         "title": {
-          "en": "Capacity guard: shedding ended"
-        },
-        "titleFormatted": {
-          "en": "Capacity guard: shedding ended"
-        },
-        "id": "capacity_shedding_ended"
-      },
-      {
-        "title": {
-          "en": "Capacity guard: shedding started"
-        },
-        "titleFormatted": {
-          "en": "Capacity guard: shedding started"
-        },
-        "id": "capacity_shedding_started"
-      },
-      {
-        "title": {
           "en": "Capacity guard: manual action needed"
         },
         "titleFormatted": {
