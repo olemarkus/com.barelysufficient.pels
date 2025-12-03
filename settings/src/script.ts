@@ -4,6 +4,15 @@ declare const Homey: any;
 
 const qs = (selector: string) => document.querySelector(selector) as HTMLElement;
 
+/**
+ * Escape HTML special characters to prevent XSS attacks.
+ */
+const escapeHtml = (str: string): string => {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+};
+
 const toastEl = qs('#toast');
 const deviceList = qs('#device-list');
 const emptyState = qs('#empty-state');
@@ -335,7 +344,14 @@ const renderPowerUsage = (entries) => {
 
     const val = document.createElement('div');
     val.className = 'device-row__target';
-    val.innerHTML = `<span class="chip"><strong>Energy</strong><span>${entry.kWh.toFixed(3)} kWh</span></span>`;
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    const strong = document.createElement('strong');
+    strong.textContent = 'Energy';
+    const span = document.createElement('span');
+    span.textContent = `${entry.kWh.toFixed(3)} kWh`;
+    chip.append(strong, span);
+    val.appendChild(chip);
 
     row.append(hour, val);
     powerList.appendChild(row);
@@ -359,8 +375,15 @@ const saveCapacitySettings = async () => {
   const limit = parseFloat(capacityLimitInput.value);
   const margin = parseFloat(capacityMarginInput.value);
   const dryRun = capacityDryRunInput ? capacityDryRunInput.checked : true;
+  
+  // Validate limit: must be a finite positive number within reasonable bounds
   if (!Number.isFinite(limit) || limit <= 0) throw new Error('Limit must be positive.');
+  if (limit > 1000) throw new Error('Limit cannot exceed 1000 kW.');
+  
+  // Validate margin: must be a finite non-negative number within reasonable bounds
   if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
+  if (margin > limit) throw new Error('Margin cannot exceed the limit.');
+  
   await setSetting('capacity_limit_kw', limit);
   await setSetting('capacity_margin_kw', margin);
   await setSetting('capacity_dry_run', dryRun);
@@ -637,7 +660,12 @@ const renderPlan = (plan) => {
     const budgetText = typeof meta.usedKWh === 'number' && typeof meta.budgetKWh === 'number'
       ? ` · This hour: ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)}kWh`
       : '';
-    planMeta.innerHTML = `<div>${powerText}</div><div>${headroomText}${budgetText}</div>`;
+    planMeta.innerHTML = '';
+    const powerDiv = document.createElement('div');
+    powerDiv.textContent = powerText;
+    const headroomDiv = document.createElement('div');
+    headroomDiv.textContent = `${headroomText}${budgetText}`;
+    planMeta.append(powerDiv, headroomDiv);
   } else {
     planMeta.textContent = 'Awaiting data';
   }
@@ -664,7 +692,12 @@ const renderPlan = (plan) => {
     const plannedTemp = dev.plannedTarget ?? '–';
     const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
     const targetText = targetChanging ? `${targetTemp}° → ${plannedTemp}°` : `${targetTemp}°`;
-    tempLine.innerHTML = `<span class="plan-label">Temperature</span><span>${currentTemp} / target ${targetText}</span>`;
+    const tempLabel = document.createElement('span');
+    tempLabel.className = 'plan-label';
+    tempLabel.textContent = 'Temperature';
+    const tempValue = document.createElement('span');
+    tempValue.textContent = `${currentTemp} / target ${targetText}`;
+    tempLine.append(tempLabel, tempValue);
 
     const powerLine = document.createElement('div');
     powerLine.className = 'plan-meta-line';
@@ -677,11 +710,21 @@ const renderPlan = (plan) => {
           : dev.plannedState || 'keep';
     const powerChanging = currentPower !== plannedPower;
     const powerText = powerChanging ? `${currentPower} → ${plannedPower}` : currentPower;
-    powerLine.innerHTML = `<span class="plan-label">Power</span><span>${powerText}</span>`;
+    const powerLabel = document.createElement('span');
+    powerLabel.className = 'plan-label';
+    powerLabel.textContent = 'Power';
+    const powerValue = document.createElement('span');
+    powerValue.textContent = powerText;
+    powerLine.append(powerLabel, powerValue);
 
     const reasonLine = document.createElement('div');
     reasonLine.className = 'plan-meta-line';
-    reasonLine.innerHTML = `<span class="plan-label">Reason</span><span>${dev.reason || 'Plan unchanged'}</span>`;
+    const reasonLabel = document.createElement('span');
+    reasonLabel.className = 'plan-label';
+    reasonLabel.textContent = 'Reason';
+    const reasonValue = document.createElement('span');
+    reasonValue.textContent = dev.reason || 'Plan unchanged';
+    reasonLine.append(reasonLabel, reasonValue);
 
     metaWrap.append(name, tempLine, powerLine, reasonLine);
 
@@ -739,6 +782,25 @@ const savePriceSettings = async () => {
   const providerSurcharge = parseFloat(providerSurchargeInput?.value || '0') || 0;
   const thresholdPercent = parseInt(priceThresholdInput?.value || '25', 10) || 25;
   const minDiffOre = parseInt(priceMinDiffInput?.value || '0', 10) || 0;
+
+  // Validate price area (whitelist of allowed values)
+  const validPriceAreas = ['NO1', 'NO2', 'NO3', 'NO4', 'NO5'];
+  if (!validPriceAreas.includes(priceArea)) throw new Error('Invalid price area.');
+
+  // Validate surcharge: must be within reasonable bounds
+  if (!Number.isFinite(providerSurcharge) || providerSurcharge < -100 || providerSurcharge > 1000) {
+    throw new Error('Provider surcharge must be between -100 and 1000 øre.');
+  }
+
+  // Validate threshold percent: must be 0-100
+  if (!Number.isFinite(thresholdPercent) || thresholdPercent < 0 || thresholdPercent > 100) {
+    throw new Error('Threshold must be between 0 and 100%.');
+  }
+
+  // Validate min diff: must be non-negative and reasonable
+  if (!Number.isFinite(minDiffOre) || minDiffOre < 0 || minDiffOre > 1000) {
+    throw new Error('Minimum difference must be between 0 and 1000 øre.');
+  }
 
   await setSetting('price_area', priceArea);
   await setSetting('provider_surcharge', providerSurcharge);
@@ -882,7 +944,11 @@ const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceCl
 
   const chip = document.createElement('span');
   chip.className = `chip ${priceClass}`;
-  chip.innerHTML = `<strong>${entry.total.toFixed(1)}</strong><span>øre/kWh</span>`;
+  const priceStrong = document.createElement('strong');
+  priceStrong.textContent = entry.total.toFixed(1);
+  const priceUnit = document.createElement('span');
+  priceUnit.textContent = 'øre/kWh';
+  chip.append(priceStrong, priceUnit);
   
   // Build tooltip with price breakdown
   const tooltipLines: string[] = [];
@@ -1238,12 +1304,16 @@ const saveDeviceDetail = async () => {
   const cheapDelta = parseFloat(deviceDetailCheapDelta?.value || '5');
   const expensiveDelta = parseFloat(deviceDetailExpensiveDelta?.value || '-5');
   
+  // Validate temperature deltas: must be within reasonable bounds (-20 to +20 degrees)
+  const validCheapDelta = Number.isFinite(cheapDelta) && cheapDelta >= -20 && cheapDelta <= 20;
+  const validExpensiveDelta = Number.isFinite(expensiveDelta) && expensiveDelta >= -20 && expensiveDelta <= 20;
+  
   if (!priceOptimizationSettings[deviceId]) {
     priceOptimizationSettings[deviceId] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
   }
   priceOptimizationSettings[deviceId].enabled = priceOptEnabled;
-  priceOptimizationSettings[deviceId].cheapDelta = isNaN(cheapDelta) ? 5 : cheapDelta;
-  priceOptimizationSettings[deviceId].expensiveDelta = isNaN(expensiveDelta) ? -5 : expensiveDelta;
+  priceOptimizationSettings[deviceId].cheapDelta = validCheapDelta ? cheapDelta : 5;
+  priceOptimizationSettings[deviceId].expensiveDelta = validExpensiveDelta ? expensiveDelta : -5;
   await savePriceOptimizationSettings();
   
   // Save mode temperatures

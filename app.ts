@@ -576,7 +576,7 @@ module.exports = class PelsApp extends Homey.App {
       }
     }
 
-    const url = `https://nettleietariffer.dataplattform.nve.no/v1/NettleiePerOmradePrTimeHusholdningFritidEffekttariffer?ValgtDato=${today}&Tariffgruppe=${encodeURIComponent(tariffgruppe)}&FylkeNr=${fylke}&OrganisasjonsNr=${orgnr}`;
+    const url = `https://nettleietariffer.dataplattform.nve.no/v1/NettleiePerOmradePrTimeHusholdningFritidEffekttariffer?ValgtDato=${encodeURIComponent(today)}&Tariffgruppe=${encodeURIComponent(tariffgruppe)}&FylkeNr=${encodeURIComponent(fylke)}&OrganisasjonsNr=${encodeURIComponent(orgnr)}`;
 
     this.log(`Nettleie: Fetching grid tariffs from NVE API for ${today}, fylke=${fylke}, org=${orgnr}`);
 
@@ -758,7 +758,9 @@ module.exports = class PelsApp extends Homey.App {
 
   /**
    * Make an HTTPS GET request and parse JSON response.
-   * Uses rejectUnauthorized: false to work around certificate issues on Homey.
+   * Note: rejectUnauthorized is disabled because Homey's Node.js environment
+   * lacks the full certificate chain for some external APIs (e.g., hvakosterstrommen.no).
+   * This is a known limitation of the Homey platform.
    */
   private httpsGetJson(url: string): Promise<unknown> {
     return new Promise((resolve, reject) => {
@@ -766,7 +768,7 @@ module.exports = class PelsApp extends Homey.App {
         url,
         {
           headers: { Accept: 'application/json' },
-          rejectUnauthorized: false, // Workaround for Homey certificate issues
+          rejectUnauthorized: false, // Required for Homey - missing CA certificates
         },
         (res) => {
           if (res.statusCode === 404) {
