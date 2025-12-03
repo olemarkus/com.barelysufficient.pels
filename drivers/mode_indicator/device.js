@@ -5,10 +5,14 @@ const Homey = require('homey');
 class ModeIndicatorDevice extends Homey.Device {
   async onInit() {
     await this.updateMode(this.homey.settings.get('capacity_mode') || 'home');
+    await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') || false);
 
     this.homey.settings.on('set', async (key) => {
       if (key === 'capacity_mode') {
         await this.updateMode(this.homey.settings.get('capacity_mode') || 'home');
+      }
+      if (key === 'capacity_in_shortfall') {
+        await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') || false);
       }
     });
   }
@@ -19,6 +23,14 @@ class ModeIndicatorDevice extends Homey.Device {
       await this.setCapabilityValue('mode_indicator', mode);
     } catch (error) {
       this.error('Failed to update mode indicator', error);
+    }
+  }
+
+  async updateShortfall(inShortfall) {
+    try {
+      await this.setCapabilityValue('alarm_generic', Boolean(inShortfall));
+    } catch (error) {
+      this.error('Failed to update shortfall alarm', error);
     }
   }
 }

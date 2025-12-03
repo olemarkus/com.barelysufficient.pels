@@ -44,6 +44,7 @@ module.exports = class PelsApp extends Homey.App {
   private lastSheddingMs: number | null = null;
   private lastOvershootMs: number | null = null;
   private lastRestoreMs: number | null = null; // Track when we last restored a device
+  private inShortfall = false; // Track if we're currently in a capacity shortfall state
   // Track devices that were swapped out: swappedOutDeviceId -> higherPriorityDeviceId
   // These devices should not be restored until the higher-priority device they were swapped for is restored
   private swappedOutFor: Record<string, string> = {};
@@ -1300,8 +1301,11 @@ module.exports = class PelsApp extends Homey.App {
       // Only raise a shortfall when we truly cannot shed enough controllable load to reach the soft limit.
       // Add a small tolerance to avoid noisy triggers when we are only a few watts over.
       const shortfallTolerance = 0.05;
-      if (remaining > shortfallTolerance && totalSheddable < needed - shortfallTolerance) {
-        // Even after shedding all controllable ON devices we are still over budget.
+      const nowInShortfall = remaining > shortfallTolerance && totalSheddable < needed - shortfallTolerance;
+      
+      // Only trigger on state transition (entering shortfall)
+      if (nowInShortfall && !this.inShortfall) {
+        // Entering shortfall state
         const deficitKw = remaining;
         this.log(`Capacity shortfall: cannot reach soft limit, deficit ~${deficitKw.toFixed(2)}kW (total ${
           total === null ? 'unknown' : total.toFixed(2)
@@ -1315,6 +1319,14 @@ module.exports = class PelsApp extends Homey.App {
             (result as any).catch((err: Error) => this.error('Failed to trigger capacity_shortfall', err));
           }
         }
+      } else if (!nowInShortfall && this.inShortfall) {
+        this.log('Capacity shortfall resolved');
+      }
+      
+      // Update state and persist to settings (for mode_indicator device)
+      if (nowInShortfall !== this.inShortfall) {
+        this.inShortfall = nowInShortfall;
+        this.homey.settings.set('capacity_in_shortfall', nowInShortfall);
       }
     }
 

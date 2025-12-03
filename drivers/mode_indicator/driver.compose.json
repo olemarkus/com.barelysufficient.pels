@@ -5,8 +5,16 @@
   },
   "class": "sensor",
   "capabilities": [
-    "mode_indicator"
+    "mode_indicator",
+    "alarm_generic"
   ],
+  "capabilitiesOptions": {
+    "alarm_generic": {
+      "title": {
+        "en": "Capacity shortfall"
+      }
+    }
+  },
   "icon": "/assets/icon.svg",
   "images": {
     "small": "/drivers/mode_indicator/assets/images/small.png",
