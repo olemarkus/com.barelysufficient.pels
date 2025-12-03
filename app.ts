@@ -126,8 +126,9 @@ module.exports = class PelsApp extends Homey.App {
       }
 
       if (key === 'power_tracker_state') {
+        // Only reload state; recordPowerSample() already calls rebuildPlanFromCache()
+        // so we don't need to call it again here (avoids duplicate plan rebuilds)
         this.loadPowerTracker();
-        this.rebuildPlanFromCache();
         return;
       }
 
