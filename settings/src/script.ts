@@ -1417,8 +1417,17 @@ const boot = async () => {
 
     await homey.ready();
 
-    // Listen for setting changes to auto-update UI (if supported)
+    // Listen for realtime events from the app (these are reliable, unlike settings.set)
     if (typeof homey.on === 'function') {
+      // Plan updates via realtime event
+      homey.on('plan_updated', (plan) => {
+        const planPanel = document.querySelector('#plan-panel');
+        if (planPanel && !planPanel.classList.contains('hidden')) {
+          renderPlan(plan);
+        }
+      });
+
+      // Fallback: also listen for settings.set (may work in some scenarios)
       homey.on('settings.set', (key) => {
         if (key === 'device_plan_snapshot') {
           // Only auto-refresh if Plan tab is visible

@@ -100,6 +100,14 @@ export const mockHomeyInstance = {
   settings: new MockSettings(),
   api: {
     getOwnerApiToken: async () => 'mock-token',
+    _realtimeEvents: [] as Array<{ event: string; data: any }>,
+    realtime: async (event: string, data: any) => {
+      // Track realtime events for testing
+      mockHomeyInstance.api._realtimeEvents.push({ event, data });
+    },
+    clearRealtimeEvents: () => {
+      mockHomeyInstance.api._realtimeEvents = [];
+    },
     get: async (path: string) => {
       // Return devices from mock drivers when API is called
       if (path === 'manager/devices' || path === 'devices') {

@@ -36,11 +36,40 @@ describe('Device plan snapshot', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    mockHomeyInstance.api.clearRealtimeEvents();
     jest.clearAllTimers();
   });
 
   afterEach(() => {
     jest.clearAllTimers();
+  });
+
+  it('emits plan_updated realtime event when plan changes', async () => {
+    const device = new MockDevice('dev-1', 'Test Heater', ['target_temperature', 'measure_power']);
+    await device.setCapabilityValue('measure_power', 1000);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [device]),
+    });
+
+    const app = new MyApp();
+    await app.onInit();
+
+    // Clear events from initialization
+    mockHomeyInstance.api.clearRealtimeEvents();
+
+    // Trigger a plan rebuild by recording power
+    await (app as any).recordPowerSample(1000);
+
+    // Check that plan_updated event was emitted
+    const planEvents = mockHomeyInstance.api._realtimeEvents.filter(e => e.event === 'plan_updated');
+    expect(planEvents.length).toBeGreaterThan(0);
+    
+    // Verify the event data contains the plan
+    const lastPlanEvent = planEvents[planEvents.length - 1];
+    expect(lastPlanEvent.data).toHaveProperty('meta');
+    expect(lastPlanEvent.data).toHaveProperty('devices');
+    expect(Array.isArray(lastPlanEvent.data.devices)).toBe(true);
   });
 
   it('sheds devices with higher priority NUMBER first (priority 1 = most important, shed last)', async () => {

@@ -1254,6 +1254,8 @@ module.exports = class PelsApp extends Homey.App {
       this.lastPlanSignature = signature;
     }
     this.homey.settings.set('device_plan_snapshot', plan);
+    // Emit realtime event so settings page can update
+    this.homey.api.realtime('plan_updated', plan).catch(() => {});
     const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
     if (this.capacityDryRun && hasShedding) {
       this.logDebug('Dry run enabled; skipping shedding actions.');
