@@ -27,7 +27,7 @@ export interface CapacityGuardOptions {
 
 export default class CapacityGuard {
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
-  private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 10000; // 10 seconds of sustained positive headroom
+  private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 60000; // 60 seconds of sustained positive headroom
   private limitKw: number;
   private softMarginKw: number;
   private restoreMarginKw: number;

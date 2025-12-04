@@ -146,18 +146,21 @@ describe('CapacityGuard', () => {
     expect(guard.isInShortfall()).toBe(true);
 
     // Power drops enough to provide 0.2 kW hysteresis margin
-    // But now also needs sustained time - simulate 5 ticks to get > 10s
+    // But now also needs sustained time - simulate ticks to get > 60s
     guard.reportTotalPower(4.5); // headroom = +0.2
     advanceTime(3000);
     await guard.tick(); // tick 1 - starts timer at T
+
+    // Advance 57s (19 more ticks of 3s each) - still under 60s
+    for (let i = 0; i < 19; i++) {
+      advanceTime(3000);
+      await guard.tick();
+    }
+    expect(shortfallEvents).toHaveLength(1); // elapsed 60s, not yet (needs > 60s)
+    expect(guard.isInShortfall()).toBe(true);
+
     advanceTime(3000);
-    await guard.tick(); // tick 2 - elapsed 3s
-    advanceTime(3000);
-    await guard.tick(); // tick 3 - elapsed 6s
-    advanceTime(3000);
-    await guard.tick(); // tick 4 - elapsed 9s, not yet
-    advanceTime(3000);
-    await guard.tick(); // tick 5 - elapsed 12s > 10s, NOW should clear
+    await guard.tick(); // elapsed 63s > 60s, NOW should clear
     expect(shortfallEvents).toHaveLength(2);
     expect(shortfallEvents[1].type).toBe('cleared');
     expect(guard.isInShortfall()).toBe(false);
@@ -206,23 +209,16 @@ describe('CapacityGuard', () => {
     expect(shortfallEvents).toHaveLength(1); // First tick of new sustained period - timer starts
     expect(guard.isInShortfall()).toBe(true);
 
-    // Sustained positive headroom - need 4 more ticks to exceed 10s
-    advanceTime(3000);
-    await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // elapsed 3s
+    // Sustained positive headroom - need more ticks to exceed 60s
+    // Advance 57s more (19 ticks of 3s)
+    for (let i = 0; i < 19; i++) {
+      advanceTime(3000);
+      await guard.tick();
+    }
+    expect(shortfallEvents).toHaveLength(1); // elapsed 60s, still waiting
     expect(guard.isInShortfall()).toBe(true);
 
-    advanceTime(3000);
-    await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // elapsed 6s
-    expect(guard.isInShortfall()).toBe(true);
-
-    advanceTime(3000);
-    await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // elapsed 9s, still < 10s
-    expect(guard.isInShortfall()).toBe(true);
-
-    // Fifth tick - NOW should clear (12s > 10s)
+    // Next tick - NOW should clear (63s > 60s)
     advanceTime(3000);
     await guard.tick();
     expect(shortfallEvents).toHaveLength(2);
@@ -273,21 +269,17 @@ describe('CapacityGuard', () => {
     guard.reportTotalPower(4.5); // headroom = +0.2
     advanceTime(3000);
     await guard.tick(); // New timer starts at 0s
-    advanceTime(3000);
-    await guard.tick(); // 3s elapsed
-    advanceTime(3000);
-    await guard.tick(); // 6s elapsed - would have been 15s if timer hadn't reset
-    expect(shortfallEvents).toHaveLength(1); // Still waiting (only 6s since reset)
-    expect(guard.isInShortfall()).toBe(true);
 
-    // Continue waiting - need 4 more seconds to reach 10s
-    advanceTime(3000);
-    await guard.tick(); // 9s elapsed
-    expect(shortfallEvents).toHaveLength(1); // Still < 10s
+    // Advance 57s (19 more ticks) - only 60s elapsed since reset
+    for (let i = 0; i < 19; i++) {
+      advanceTime(3000);
+      await guard.tick();
+    }
+    expect(shortfallEvents).toHaveLength(1); // Still waiting (60s since reset, needs > 60s)
     expect(guard.isInShortfall()).toBe(true);
 
     advanceTime(3000);
-    await guard.tick(); // 12s elapsed - NOW should clear
+    await guard.tick(); // 63s elapsed - NOW should clear
     expect(shortfallEvents).toHaveLength(2);
     expect(shortfallEvents[1].type).toBe('cleared');
     expect(guard.isInShortfall()).toBe(false);
@@ -336,17 +328,17 @@ describe('CapacityGuard', () => {
     guard.reportTotalPower(4.5); // headroom = +0.2
     advanceTime(3000);
     await guard.tick(); // New timer starts
-    advanceTime(3000);
-    await guard.tick(); // 3s
-    advanceTime(3000);
-    await guard.tick(); // 6s
-    advanceTime(3000);
-    await guard.tick(); // 9s - still waiting
-    expect(shortfallEvents).toHaveLength(1);
+
+    // Advance 57s (19 more ticks) - still at 60s
+    for (let i = 0; i < 19; i++) {
+      advanceTime(3000);
+      await guard.tick();
+    }
+    expect(shortfallEvents).toHaveLength(1); // elapsed 60s - still waiting
     expect(guard.isInShortfall()).toBe(true);
 
     advanceTime(3000);
-    await guard.tick(); // 12s - should clear
+    await guard.tick(); // 63s - should clear
     expect(shortfallEvents).toHaveLength(2);
     expect(shortfallEvents[1].type).toBe('cleared');
     expect(guard.isInShortfall()).toBe(false);

@@ -720,14 +720,14 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
     await (app as any).recordPowerSample(1500);
-    // Need to tick multiple times with time passing to clear shortfall (10s sustained)
+    // Need to tick multiple times with time passing to clear shortfall (60s sustained)
     const originalNow = Date.now;
     let mockTime = originalNow();
     jest.spyOn(Date, 'now').mockImplementation(() => mockTime);
     await (app as any).capacityGuard?.tick(); // starts timer
-    mockTime += 5000;
+    mockTime += 30000;
     await (app as any).capacityGuard?.tick();
-    mockTime += 6000; // total 11s
+    mockTime += 31000; // total 61s
     await (app as any).capacityGuard?.tick();
     jest.restoreAllMocks();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
@@ -795,14 +795,14 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
     await (app as any).recordPowerSample(1000);
-    // Need to tick multiple times with time passing to clear shortfall (10s sustained)
+    // Need to tick multiple times with time passing to clear shortfall (60s sustained)
     const originalNow = Date.now;
     let mockTime = originalNow();
     jest.spyOn(Date, 'now').mockImplementation(() => mockTime);
     await (app as any).capacityGuard?.tick(); // starts timer
-    mockTime += 5000;
+    mockTime += 30000;
     await (app as any).capacityGuard?.tick();
-    mockTime += 6000; // total 11s
+    mockTime += 31000; // total 61s
     await (app as any).capacityGuard?.tick();
     jest.restoreAllMocks();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
