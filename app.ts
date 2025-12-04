@@ -771,12 +771,12 @@ module.exports = class PelsApp extends Homey.App {
         const hasTodayPrices = existingPrices.some((p) => p.startsAt?.startsWith(todayStr));
         const hasTomorrowPrices = existingPrices.some((p) => p.startsAt?.startsWith(tomorrowStr));
 
-        // Tomorrow's prices are typically available after 13:00 CET
-        // Refresh if it's after 13:15 and we don't have tomorrow's prices yet
-        const currentHour = today.getHours();
-        const currentMinute = today.getMinutes();
-        const isAfter1315 = currentHour > 13 || (currentHour === 13 && currentMinute >= 15);
-        const shouldFetchTomorrow = isAfter1315 && !hasTomorrowPrices;
+        // Tomorrow's prices are typically available after 13:00 CET (12:00 UTC in winter, 11:00 UTC in summer)
+        // Use 12:15 UTC as a safe threshold that works year-round (13:15 CET / 14:15 CEST)
+        const currentHourUtc = today.getUTCHours();
+        const currentMinuteUtc = today.getUTCMinutes();
+        const isAfter1215Utc = currentHourUtc > 12 || (currentHourUtc === 12 && currentMinuteUtc >= 15);
+        const shouldFetchTomorrow = isAfter1215Utc && !hasTomorrowPrices;
 
         if (hasTodayPrices && !shouldFetchTomorrow) {
           this.logDebug(`Spot prices: Using cached data (${existingPrices.length} entries including today)`);
@@ -786,7 +786,7 @@ module.exports = class PelsApp extends Homey.App {
         }
 
         if (shouldFetchTomorrow) {
-          this.logDebug('Spot prices: Refreshing to fetch tomorrow\'s prices (after 13:15)');
+          this.logDebug('Spot prices: Refreshing to fetch tomorrow\'s prices (after 12:15 UTC)');
         }
       }
     }
@@ -1054,9 +1054,9 @@ module.exports = class PelsApp extends Homey.App {
    * In dry run mode, logs what would happen but does not actuate.
    */
   private async applyPriceOptimization(): Promise<void> {
-    // Always update combined prices at the start of each hour to refresh
-    // cheap/expensive flags for the new current hour and notify the UI
-    this.updateCombinedPrices();
+    // Refresh spot prices at the start of each hour (uses cache unless new data is expected)
+    // This ensures we fetch tomorrow's prices as soon as they become available (~12:15 UTC)
+    await this.refreshSpotPrices();
 
     if (!this.priceOptimizationEnabled) {
       this.logDebug('Price optimization: Disabled globally');
