@@ -1771,4 +1771,158 @@ describe('Dry run mode', () => {
     // Device should still be on (no actual shedding)
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
   });
+
+  it('does not apply device targets for mode in dry run mode at startup', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 20);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    // Configure a mode with a target temperature
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: { 'dev-1': 22 },
+    });
+    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    // Do NOT set capacity_dry_run - default is true
+
+    const app = createApp();
+    await app.onInit();
+
+    // Temperature should NOT have been changed in dry run mode
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(20);
+  });
+
+  it('logs preview message for mode targets in dry run mode', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 20);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    // Configure a mode with a target temperature
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: { 'dev-1': 22 },
+    });
+    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+
+    // Capture logs
+    const logCalls: string[] = [];
+
+    const app = createApp();
+    jest.spyOn(app as any, 'log').mockImplementation((...args: unknown[]) => {
+      logCalls.push(String(args[0]));
+    });
+
+    await app.onInit();
+
+    // Should have logged a dry-run preview message
+    expect(logCalls.some((msg) => msg.includes('Dry-run'))).toBe(true);
+  });
+
+  it('does not actuate price optimization in dry run mode', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 55);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    // Configure price optimization
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: { 'dev-1': 55 },
+    });
+    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': {
+        enabled: true,
+        cheapDelta: 10,
+        expensiveDelta: -5,
+      },
+    });
+    // Make current hour cheap
+    const now = new Date();
+    now.setHours(3, 30, 0, 0);
+    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const spotPrices: Array<{ startsAt: string; total: number }> = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const date = new Date(baseDate);
+      date.setHours(hour, 0, 0, 0);
+      const total = hour === 3 ? 20 : 50; // Hour 3 is cheap
+      spotPrices.push({ startsAt: date.toISOString(), total });
+    }
+    mockHomeyInstance.settings.set('combined_prices', {
+      prices: spotPrices.map((p) => ({
+        startsAt: p.startsAt,
+        spotPrice: p.total,
+        gridTariff: 0,
+        totalPrice: p.total,
+      })),
+    });
+    // Do NOT set capacity_dry_run - default is true
+
+    const app = createApp();
+    await app.onInit();
+
+    // Temperature should NOT have been changed in dry run mode
+    // (would be 65 if price optimization was applied: 55 + 10)
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(55);
+  });
+
+  it('price optimization respects dry run mode', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 55);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    // Configure price optimization
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: { 'dev-1': 55 },
+    });
+    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': {
+        enabled: true,
+        cheapDelta: 10,
+        expensiveDelta: -5,
+      },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Verify dry run is enabled by default
+    expect((app as any).capacityDryRun).toBe(true);
+
+    // Mock the cheap/expensive detection to return cheap
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
+
+    // Ensure the device is in snapshot with correct structure
+    (app as any).latestTargetSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [{ id: 'target_temperature', value: 55, unit: '°C' }],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+      },
+    ];
+
+    // Manually trigger price optimization
+    await (app as any).applyPriceOptimization();
+
+    // Temperature should NOT have been changed in dry run mode
+    // (would be 65 if price optimization was applied: 55 + 10)
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(55);
+  });
 });

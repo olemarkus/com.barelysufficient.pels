@@ -1572,6 +1572,7 @@ describe('Price optimization', () => {
       Hjemmekontor: { 'water-heater-1': 65 },
     });
     mockHomeyInstance.settings.set('capacity_mode', 'Hjemmekontor');
+    mockHomeyInstance.settings.set('capacity_dry_run', false); // Disable dry run to allow actuation
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {
         enabled: true,

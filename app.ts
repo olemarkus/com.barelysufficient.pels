@@ -209,7 +209,11 @@ module.exports = class PelsApp extends Homey.App {
     this.loadPriceOptimizationSettings();
     await this.refreshTargetDevicesSnapshot();
     this.rebuildPlanFromCache(); // Build initial plan after snapshot is loaded
-    await this.applyDeviceTargetsForMode(this.capacityMode);
+    if (this.capacityDryRun) {
+      this.previewDeviceTargetsForMode(this.capacityMode);
+    } else {
+      await this.applyDeviceTargetsForMode(this.capacityMode);
+    }
     this.registerFlowCards();
     this.startPeriodicSnapshotRefresh();
     // Refresh prices (will use cache if we have today's data, and update combined_prices)
@@ -941,6 +945,7 @@ module.exports = class PelsApp extends Homey.App {
    * Apply price optimization to all configured devices.
    * Called periodically (at start of each hour) to adjust temperatures.
    * Uses delta values relative to the mode's target temperature.
+   * In dry run mode, logs what would happen but does not actuate.
    */
   private async applyPriceOptimization(): Promise<void> {
     if (!this.homeyApi || !this.homeyApi.devices) {
@@ -1014,15 +1019,22 @@ module.exports = class PelsApp extends Homey.App {
         continue;
       }
 
+      // eslint-disable-next-line no-nested-ternary -- Clear delta info mapping
+      const deltaInfo = isCheap ? `+${config.cheapDelta}` : isExpensive ? `${config.expensiveDelta}` : '0';
+      const priceInfo = this.getCurrentHourPriceInfo();
+
+      // In dry run mode, only log what would happen
+      if (this.capacityDryRun) {
+        this.log(`Price optimization (dry run): Would set ${device.name} to ${targetTemp}°C (${priceState} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
+        continue;
+      }
+
       try {
         await this.homeyApi.devices.setCapabilityValue({
           deviceId,
           capabilityId: targetCap,
           value: targetTemp,
         });
-        const priceInfo = this.getCurrentHourPriceInfo();
-        // eslint-disable-next-line no-nested-ternary -- Clear delta info mapping
-        const deltaInfo = isCheap ? `+${config.cheapDelta}` : isExpensive ? `${config.expensiveDelta}` : '0';
         this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${priceState} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
         this.updateLocalSnapshot(deviceId, { target: targetTemp });
       } catch (error) {
