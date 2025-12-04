@@ -872,6 +872,17 @@ input[type="text"]:focus {
   font-style: italic;
 }
 
+.price-notice-info {
+  color: #64b5f6;
+  font-style: normal;
+  font-size: 13px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: rgba(100, 181, 246, 0.1);
+  border: 1px solid rgba(100, 181, 246, 0.3);
+  border-radius: 8px;
+}
+
 .price-notice-warning {
   color: #ffc107;
   font-style: normal;
@@ -881,6 +892,15 @@ input[type="text"]:focus {
   background: rgba(255, 193, 7, 0.1);
   border: 1px solid rgba(255, 193, 7, 0.3);
   border-radius: 8px;
+}
+
+.price-section-header.normal {
+  color: var(--muted);
+}
+
+.price-row .chip.price-normal {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
 }
 
 /* Price optimization inputs */

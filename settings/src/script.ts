@@ -1128,17 +1128,32 @@ const renderPrices = (data: CombinedPriceData | null) => {
     });
   }
 
+  // Show notice and normal prices when no hours are flagged as cheap/expensive
   if (cheapHours.length === 0 && expensiveHours.length === 0) {
     const notice = document.createElement('div');
-    notice.className = 'price-notice';
+    notice.className = 'price-notice price-notice-info';
     const thresholdPct = data.thresholdPercent ?? 25;
     const minDiff = data.minDiffOre ?? 0;
-    let noticeText = `All prices are within ${thresholdPct}% of average (${avgPrice.toFixed(0)} øre/kWh)`;
+    let noticeText = `ℹ️ No cheap or expensive hours found. All prices are within ${thresholdPct}% of average (${avgPrice.toFixed(0)} øre/kWh)`;
     if (minDiff > 0) {
-      noticeText += ` or below ${minDiff} øre difference`;
+      noticeText += ` and at least ${minDiff} øre difference is required`;
     }
+    noticeText += '.';
     notice.textContent = noticeText;
     priceList.appendChild(notice);
+
+    // Show all remaining hours in a "Normal prices" section
+    const normalHours = futurePrices.filter(p => !p.isCheap && !p.isExpensive);
+    if (normalHours.length > 0) {
+      const header = document.createElement('div');
+      header.className = 'price-section-header normal';
+      header.textContent = `📊 All prices (avg ${avgPrice.toFixed(0)} øre/kWh)`;
+      priceList.appendChild(header);
+
+      normalHours.forEach((entry) => {
+        priceList.appendChild(createPriceRow(entry, currentHour, now, 'price-normal'));
+      });
+    }
   }
 
   // Show notice if price data is limited (e.g., tomorrow's prices not yet available)
