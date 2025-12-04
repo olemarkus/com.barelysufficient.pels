@@ -49,6 +49,7 @@ const capacityForm = document.querySelector('#capacity-form') as HTMLFormElement
 const capacityLimitInput = document.querySelector('#capacity-limit') as HTMLInputElement;
 const capacityMarginInput = document.querySelector('#capacity-margin') as HTMLInputElement;
 const capacityDryRunInput = document.querySelector('#capacity-dry-run') as HTMLInputElement;
+const dryRunBanner = qs('#dry-run-banner');
 const planList = qs('#plan-list');
 const planEmpty = qs('#plan-empty');
 const planMeta = qs('#plan-meta');
@@ -589,6 +590,12 @@ const renderPowerUsage = (entries) => {
   });
 };
 
+const updateDryRunBanner = (isDryRun: boolean) => {
+  if (dryRunBanner) {
+    dryRunBanner.hidden = !isDryRun;
+  }
+};
+
 const loadCapacitySettings = async () => {
   const limit = await getSetting('capacity_limit_kw');
   const margin = await getSetting('capacity_margin_kw');
@@ -597,9 +604,11 @@ const loadCapacitySettings = async () => {
   const fallbackMargin = 0.2;
   capacityLimitInput.value = typeof limit === 'number' ? limit.toString() : fallbackLimit.toString();
   capacityMarginInput.value = typeof margin === 'number' ? margin.toString() : fallbackMargin.toString();
+  const isDryRun = typeof dryRun === 'boolean' ? dryRun : true;
   if (capacityDryRunInput) {
-    capacityDryRunInput.checked = typeof dryRun === 'boolean' ? dryRun : true;
+    capacityDryRunInput.checked = isDryRun;
   }
+  updateDryRunBanner(isDryRun);
 };
 
 const saveCapacitySettings = async () => {
@@ -618,6 +627,7 @@ const saveCapacitySettings = async () => {
   await setSetting('capacity_limit_kw', limit);
   await setSetting('capacity_margin_kw', margin);
   await setSetting('capacity_dry_run', dryRun);
+  updateDryRunBanner(dryRun);
   await showToast('Capacity settings saved.', 'ok');
 };
 

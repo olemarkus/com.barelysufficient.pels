@@ -894,6 +894,35 @@ input[type="text"]:focus {
   border-radius: 8px;
 }
 
+/* Global banner for warnings/notices */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner--warning {
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  color: #ffc107;
+}
+
+.banner__icon {
+  flex-shrink: 0;
+}
+
+.banner__text {
+  flex: 1;
+}
+
 .price-last-fetched {
   color: var(--muted);
   font-size: 12px;
