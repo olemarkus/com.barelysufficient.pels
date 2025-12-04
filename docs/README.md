@@ -137,8 +137,14 @@ Configure capacity management and view power consumption.
 | **Soft margin (kW)** | Buffer zone before the hard limit. PELS starts shedding when you exceed (limit - margin) |
 | **Dry run** | When enabled, PELS calculates what it would do but doesn't actually control devices. Great for testing! |
 
+#### Usage Summary
+Shows energy consumption for today, the past week, and the past month.
+
+#### Usage Patterns
+Displays a heatmap showing your average power usage by hour of day and day of week, helping you identify consumption patterns.
+
 #### Hourly Totals
-Shows power consumption per hour, derived from reported power samples.
+Shows power consumption per hour for the last 30 days, derived from reported power samples. Older data is automatically aggregated into daily summaries.
 
 > **Important:** You must create a Flow to report power usage to PELS (see [Flow Cards](#flow-cards)).
 
@@ -194,10 +200,7 @@ For each device with price optimization enabled:
 
 | Card | Description |
 |------|-------------|
-| **Device shed due to capacity** | Fires when a specific device is turned off due to capacity constraints |
-| **Capacity guard: shedding started** | Fires when PELS starts shedding load |
-| **Capacity guard: shedding ended** | Fires when PELS finishes shedding and returns to normal |
-| **Capacity guard: manual action needed** | Fires when PELS cannot reduce load enough – manual intervention required |
+| **Capacity guard: manual action needed** | Fires when PELS cannot reduce load enough – manual intervention required. The mode indicator device will also show a "Capacity shortfall" alarm. |
 
 ### Conditions
 
@@ -212,13 +215,8 @@ For each device with price optimization enabled:
 | Card | Description |
 |------|-------------|
 | **Report power usage** | **Required!** Feed current power draw (W) from your power meter to PELS |
-| **Report total power** | Alternative: feed total power (kW) directly |
 | **Set capacity limit** | Change the capacity limit dynamically |
-| **Save capacity settings** | Save limit and margin |
 | **Set capacity mode** | Switch between modes (Home, Away, etc.) |
-| **Set device priority for mode** | Adjust a device's priority in a specific mode |
-| **Force OFF** | Force a device OFF immediately |
-| **Request ON under capacity limit** | Request to turn a device ON if capacity allows |
 
 ### Essential Flow: Reporting Power Usage
 
@@ -237,7 +235,7 @@ THEN Report power usage: {{Power}}
 
 ## Mode Indicator Device
 
-PELS includes a virtual device called "Capacity mode" that displays the currently active mode.
+PELS includes a virtual device called "Capacity mode" that displays the currently active mode and capacity shortfall status.
 
 ### Adding the Mode Indicator
 
@@ -245,7 +243,9 @@ PELS includes a virtual device called "Capacity mode" that displays the currentl
 2. Select **PELS** → **Capacity mode**
 3. Add the device
 
-The device shows the current mode name and updates automatically when you change modes.
+The device shows:
+- **Current mode name** – Updates automatically when you change modes
+- **Capacity shortfall alarm** – Activates when PELS cannot reduce load enough and manual action is needed
 
 ---
 

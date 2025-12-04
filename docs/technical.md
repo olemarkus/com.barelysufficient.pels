@@ -125,6 +125,23 @@ This estimation is inherently imperfect, which is why PELS:
 
 ---
 
+## Power Usage Data Retention
+
+PELS tracks power consumption over time using a tiered retention system:
+
+### Hourly Data (30 days)
+Full-resolution hourly buckets are kept for the last 30 days. Each bucket contains total energy consumed and the number of samples.
+
+### Daily Summaries (365 days)
+Older hourly data is automatically aggregated into daily summaries showing average consumption per hour.
+
+### Hourly Patterns (permanent)
+A 24×7 grid (hour of day × day of week) maintains running averages of your usage patterns. This helps identify when you typically use the most power.
+
+Aggregation happens automatically when power data is saved—you don't need to manage this manually.
+
+---
+
 ## Assumptions and Limitations
 
 ### Thermostats and Water Heaters
