@@ -1511,3 +1511,264 @@ describe('Device plan snapshot', () => {
     expect(swappingOutLogs.length).toBe(1);
   });
 });
+
+describe('Dry run mode', () => {
+  beforeEach(() => {
+    mockHomeyInstance.settings.removeAllListeners();
+    mockHomeyInstance.settings.clear();
+    mockHomeyInstance.api.clearRealtimeEvents();
+    jest.clearAllTimers();
+  });
+
+  afterEach(async () => {
+    await cleanupApps();
+    jest.clearAllTimers();
+  });
+
+  it('defaults to dry run mode when capacity_dry_run setting is not configured', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    // Do NOT set capacity_dry_run - should default to true
+
+    const app = createApp();
+    await app.onInit();
+
+    // Verify the app is in dry run mode
+    expect((app as any).capacityDryRun).toBe(true);
+  });
+
+  it('defaults to dry run mode when capacity_dry_run setting is undefined', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', undefined);
+
+    const app = createApp();
+    await app.onInit();
+
+    // Verify the app is in dry run mode (undefined should not override default true)
+    expect((app as any).capacityDryRun).toBe(true);
+  });
+
+  it('does not call actuator when shedding in dry run mode', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    // Explicitly NOT setting capacity_dry_run - default is true
+
+    const app = createApp();
+    await app.onInit();
+
+    // Track if actuator was called
+    const actuatorCalls: string[] = [];
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.actuator = async (deviceId: string) => {
+        actuatorCalls.push(deviceId);
+      };
+    }
+
+    // Trigger overshoot
+    await (app as any).recordPowerSample(6000); // Way over soft limit
+    await (app as any).capacityGuard?.tick();
+
+    // Actuator should NOT have been called in dry run mode
+    expect(actuatorCalls).toHaveLength(0);
+  });
+
+  it('does not apply plan actions in dry run mode', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    // Default dry run mode
+
+    const app = createApp();
+    await app.onInit();
+
+    // Spy on applyPlanActions
+    const applyPlanSpy = jest.spyOn(app as any, 'applyPlanActions');
+
+    // Rebuild plan with shedding needed
+    (app as any).latestTargetSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 2,
+        currentOn: true,
+        controllable: true,
+      },
+    ];
+    (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
+    await (app as any).recordPowerSample(6000);
+
+    // applyPlanActions should NOT be called in dry run mode
+    expect(applyPlanSpy).not.toHaveBeenCalled();
+  });
+
+  it('calls actuator when shedding with dry run disabled (CapacityGuard)', async () => {
+    // Test the CapacityGuard directly to verify actuator is called when dryRun=false
+    const CapacityGuard = require('../capacityGuard').default;
+
+    const actuatorCalls: string[] = [];
+    const guard = new CapacityGuard({
+      limitKw: 5,
+      softMarginKw: 0.2, // soft limit = 4.8
+      dryRun: false,
+      actuator: async (deviceId: string) => {
+        actuatorCalls.push(deviceId);
+      },
+    });
+
+    // Add a controllable device
+    guard.requestOn('dev-1', 'Heater A', 2, 10);
+
+    // Trigger overshoot
+    guard.reportTotalPower(6); // headroom = 4.8 - 6 = -1.2
+
+    await guard.tick();
+
+    // Actuator should have been called
+    expect(actuatorCalls).toContain('dev-1');
+  });
+
+  it('does not call actuator when shedding with dry run enabled (CapacityGuard)', async () => {
+    // Test the CapacityGuard directly to verify actuator is NOT called when dryRun=true
+    const CapacityGuard = require('../capacityGuard').default;
+
+    const actuatorCalls: string[] = [];
+    const guard = new CapacityGuard({
+      limitKw: 5,
+      softMarginKw: 0.2, // soft limit = 4.8
+      dryRun: true, // DRY RUN MODE
+      actuator: async (deviceId: string) => {
+        actuatorCalls.push(deviceId);
+      },
+    });
+
+    // Add a controllable device
+    guard.requestOn('dev-1', 'Heater A', 2, 10);
+
+    // Trigger overshoot
+    guard.reportTotalPower(6); // headroom = 4.8 - 6 = -1.2
+
+    await guard.tick();
+
+    // Actuator should NOT have been called in dry run mode
+    expect(actuatorCalls).toHaveLength(0);
+  });
+
+  it('logs dry run message when shedding would occur', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    // Default dry run mode
+
+    const app = createApp();
+    await app.onInit();
+
+    // Capture log calls
+    const logDebugCalls: string[] = [];
+    jest.spyOn(app as any, 'logDebug').mockImplementation((...args: unknown[]) => {
+      logDebugCalls.push(String(args[0]));
+    });
+
+    // Setup snapshot with a device that will be shed
+    (app as any).latestTargetSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 2,
+        currentOn: true,
+        controllable: true,
+      },
+    ];
+    (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
+
+    // Set a low soft limit to trigger shedding
+    (app as any).computeDynamicSoftLimit = () => 2;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+    }
+
+    // Record power sample that triggers overshoot and plan rebuild
+    await (app as any).recordPowerSample(4000); // Will cause overshoot with soft limit of 2
+
+    // Should log dry run message
+    expect(logDebugCalls.some((msg) => msg.includes('Dry run enabled'))).toBe(true);
+  });
+
+  it('can toggle dry run mode at runtime via settings change', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    // Start in dry run mode (default)
+
+    const app = createApp();
+    await app.onInit();
+
+    expect((app as any).capacityDryRun).toBe(true);
+
+    // Change setting to disable dry run
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    // Verify the app picked up the change
+    expect((app as any).capacityDryRun).toBe(false);
+
+    // Change back to dry run
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+    expect((app as any).capacityDryRun).toBe(true);
+  });
+
+  it('does not shed devices via applySheddingToDevice in dry run mode', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    // Default dry run mode
+
+    const app = createApp();
+    await app.onInit();
+
+    // Directly call applySheddingToDevice
+    await (app as any).applySheddingToDevice('dev-1', 'Heater A', 'test');
+
+    // Device should still be on (no actual shedding)
+    expect(await dev1.getCapabilityValue('onoff')).toBe(true);
+  });
+});
