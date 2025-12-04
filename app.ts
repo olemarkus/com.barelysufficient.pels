@@ -793,53 +793,82 @@ module.exports = class PelsApp extends Homey.App {
 
   /**
    * Make an HTTPS GET request and parse JSON response.
-   * Note: rejectUnauthorized is disabled because Homey's Node.js environment
-   * lacks the full certificate chain for some external APIs (e.g., hvakosterstrommen.no).
-   * This is a known limitation of the Homey platform.
+   * Attempts secure connection first, falls back to insecure if SSL verification fails.
+   * This handles Homey's incomplete CA certificate chain while preferring secure connections.
    */
-  private httpsGetJson(url: string): Promise<unknown> {
+  private httpsGetJson(url: string, allowInsecureFallback = true): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      const req = https.get(
-        url,
-        {
-          headers: { Accept: 'application/json' },
-          rejectUnauthorized: false, // Required for Homey - missing CA certificates
-        },
-        (res) => {
-          if (res.statusCode === 404) {
-            const err = new Error('Not found') as Error & { statusCode: number };
-            err.statusCode = 404;
-            reject(err);
-            return;
-          }
-          if (res.statusCode !== 200) {
-            reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
-            return;
-          }
-
-          let data = '';
-          res.on('data', (chunk) => {
-            data += chunk;
-          });
-          res.on('end', () => {
-            try {
-              resolve(JSON.parse(data));
-            } catch (_e) {
-              reject(new Error('Failed to parse JSON response'));
+      const makeRequest = (rejectUnauthorized: boolean) => {
+        const req = https.get(
+          url,
+          {
+            headers: { Accept: 'application/json' },
+            rejectUnauthorized,
+          },
+          (res) => {
+            if (res.statusCode === 404) {
+              const err = new Error('Not found') as Error & { statusCode: number };
+              err.statusCode = 404;
+              reject(err);
+              return;
             }
-          });
-        },
-      );
+            if (res.statusCode !== 200) {
+              reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+              return;
+            }
 
-      req.on('error', (err) => {
-        reject(err);
-      });
+            let data = '';
+            res.on('data', (chunk) => {
+              data += chunk;
+            });
+            res.on('end', () => {
+              try {
+                resolve(JSON.parse(data));
+              } catch (_e) {
+                reject(new Error('Failed to parse JSON response'));
+              }
+            });
+          },
+        );
 
-      req.setTimeout(10000, () => {
-        req.destroy();
-        reject(new Error('Request timeout'));
-      });
+        req.on('error', (err: NodeJS.ErrnoException) => {
+          // If SSL verification failed and fallback is allowed, retry without verification
+          if (rejectUnauthorized && allowInsecureFallback && this.isSslError(err)) {
+            this.log(`SSL verification failed for ${url}, retrying with insecure fallback`);
+            makeRequest(false);
+          } else {
+            reject(err);
+          }
+        });
+
+        req.setTimeout(10000, () => {
+          req.destroy();
+          reject(new Error('Request timeout'));
+        });
+      };
+
+      // Try secure connection first
+      makeRequest(true);
     });
+  }
+
+  /**
+   * Check if an error is an SSL/TLS certificate error.
+   */
+  private isSslError(err: NodeJS.ErrnoException): boolean {
+    const sslErrorCodes = [
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      'CERT_HAS_EXPIRED',
+      'DEPTH_ZERO_SELF_SIGNED_CERT',
+      'SELF_SIGNED_CERT_IN_CHAIN',
+      'UNABLE_TO_GET_ISSUER_CERT',
+      'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+      'CERT_CHAIN_TOO_LONG',
+      'CERT_REVOKED',
+      'CERT_UNTRUSTED',
+      'ERR_TLS_CERT_ALTNAME_INVALID',
+    ];
+    return sslErrorCodes.includes(err.code || '') || (err.message || '').includes('certificate');
   }
 
   /**
