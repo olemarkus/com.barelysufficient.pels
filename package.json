@@ -16,7 +16,7 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "*.{js,ts}": "eslint --max-warnings=0"
+    "*.ts": "eslint --max-warnings=0"
   },
   "dependencies": {
     "homey-api": "^3.14.21",

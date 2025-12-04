@@ -4,6 +4,11 @@ const Homey = require('homey');
 
 class ModeIndicatorDevice extends Homey.Device {
   async onInit() {
+    // Add alarm_generic capability if missing (for devices created before this capability was added)
+    if (!this.hasCapability('alarm_generic')) {
+      await this.addCapability('alarm_generic');
+    }
+
     await this.updateMode(this.homey.settings.get('capacity_mode') || 'home');
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') || false);
 
