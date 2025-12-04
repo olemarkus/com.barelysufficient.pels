@@ -1543,6 +1543,7 @@ module.exports = class PelsApp extends Homey.App {
       hourlyBudgetExhausted?: boolean;
       usedKWh?: number;
       budgetKWh?: number;
+      minutesRemaining?: number;
     };
     devices: Array<{
       id: string;
@@ -1570,6 +1571,8 @@ module.exports = class PelsApp extends Homey.App {
     hourStart.setMinutes(0, 0, 0);
     const bucketKey = hourStart.toISOString();
     const usedKWh = this.powerTracker.buckets?.[bucketKey] || 0;
+    const hourEnd = hourStart.getTime() + 60 * 60 * 1000;
+    const minutesRemaining = Math.max(0, (hourEnd - now) / 60000);
 
     const headroomRaw = total === null ? null : softLimit - total;
     let headroom = headroomRaw === null && softLimit <= 0 ? -1 : headroomRaw;
@@ -1913,6 +1916,7 @@ module.exports = class PelsApp extends Homey.App {
         hourlyBudgetExhausted: this.hourlyBudgetExhausted,
         usedKWh,
         budgetKWh,
+        minutesRemaining,
       },
       devices: planDevices,
     };

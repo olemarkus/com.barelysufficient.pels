@@ -901,11 +901,14 @@ const renderPlan = (plan) => {
     const budgetText = typeof meta.usedKWh === 'number' && typeof meta.budgetKWh === 'number'
       ? ` · This hour: ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)}kWh`
       : '';
+    const endOfHourText = typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10
+      ? ' · End of hour'
+      : '';
     planMeta.innerHTML = '';
     const powerDiv = document.createElement('div');
     powerDiv.textContent = powerText;
     const headroomDiv = document.createElement('div');
-    headroomDiv.textContent = `${headroomText}${budgetText}`;
+    headroomDiv.textContent = `${headroomText}${budgetText}${endOfHourText}`;
     planMeta.append(powerDiv, headroomDiv);
   } else {
     planMeta.textContent = 'Awaiting data';
