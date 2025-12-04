@@ -1,28 +1,26 @@
-'use strict';
-
-const Homey = require('homey');
+import Homey from 'homey';
 
 class ModeIndicatorDevice extends Homey.Device {
-  async onInit() {
+  async onInit(): Promise<void> {
     // Add alarm_generic capability if missing (for devices created before this capability was added)
     if (!this.hasCapability('alarm_generic')) {
       await this.addCapability('alarm_generic');
     }
 
-    await this.updateMode(this.homey.settings.get('capacity_mode') || 'home');
-    await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') || false);
+    await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
+    await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
 
-    this.homey.settings.on('set', async (key) => {
+    this.homey.settings.on('set', async (key: string) => {
       if (key === 'capacity_mode') {
-        await this.updateMode(this.homey.settings.get('capacity_mode') || 'home');
+        await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
       }
       if (key === 'capacity_in_shortfall') {
-        await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') || false);
+        await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
       }
     });
   }
 
-  async updateMode(mode) {
+  async updateMode(mode: string): Promise<void> {
     if (typeof mode !== 'string' || !mode.trim()) return;
     try {
       await this.setCapabilityValue('mode_indicator', mode);
@@ -31,7 +29,7 @@ class ModeIndicatorDevice extends Homey.Device {
     }
   }
 
-  async updateShortfall(inShortfall) {
+  async updateShortfall(inShortfall: boolean): Promise<void> {
     try {
       await this.setCapabilityValue('alarm_generic', Boolean(inShortfall));
     } catch (error) {

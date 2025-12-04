@@ -1,13 +1,11 @@
-'use strict';
-
-const Homey = require('homey');
+import Homey from 'homey';
 
 class ModeIndicatorDriver extends Homey.Driver {
-  async onInit() {
+  async onInit(): Promise<void> {
     this.log('ModeIndicator driver initialized');
   }
 
-  async onPairListDevices() {
+  async onPairListDevices(): Promise<Array<{ name: string; data: { id: string } }>> {
     const uniqueId = `capacity-mode-indicator-${Date.now()}`;
     return [
       {

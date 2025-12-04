@@ -12,7 +12,6 @@ export default tseslint.config(
       '.homeybuild/**',
       '*.js',
       'settings/**',
-      'drivers/**/*.js',
       'test/screenshots/**',
     ],
   },
