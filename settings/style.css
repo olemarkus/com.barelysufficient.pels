@@ -894,6 +894,14 @@ input[type="text"]:focus {
   border-radius: 8px;
 }
 
+.price-last-fetched {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+  margin-top: 12px;
+  opacity: 0.7;
+}
+
 .price-section-header.normal {
   color: var(--muted);
 }

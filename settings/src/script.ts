@@ -13,6 +13,22 @@ const escapeHtml = (str: string): string => {
   return div.innerHTML;
 };
 
+/**
+ * Get a human-readable "time ago" string.
+ */
+const getTimeAgo = (date: Date, now: Date): string => {
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins === 1) return '1 minute ago';
+  if (diffMins < 60) return `${diffMins} minutes ago`;
+  if (diffHours === 1) return '1 hour ago';
+  if (diffHours < 24) return `${diffHours} hours ago`;
+  return date.toLocaleString();
+};
+
 const toastEl = qs('#toast');
 const deviceList = qs('#device-list');
 const emptyState = qs('#empty-state');
@@ -970,6 +986,7 @@ interface CombinedPriceData {
   highThreshold: number;
   thresholdPercent?: number;
   minDiffOre?: number;
+  lastFetched?: string;
 }
 
 const loadPriceSettings = async () => {
@@ -1166,6 +1183,16 @@ const renderPrices = (data: CombinedPriceData | null) => {
       limitedNotice.textContent = `⚠️ Price data available for ${hoursRemaining} more hour${hoursRemaining === 1 ? '' : 's'}. Tomorrow's prices typically publish around 13:00.`;
       priceList.appendChild(limitedNotice);
     }
+  }
+
+  // Show last fetched timestamp
+  if (data.lastFetched) {
+    const lastFetchedDate = new Date(data.lastFetched);
+    const timeAgo = getTimeAgo(lastFetchedDate, now);
+    const lastFetchedNotice = document.createElement('div');
+    lastFetchedNotice.className = 'price-last-fetched';
+    lastFetchedNotice.textContent = `Last updated: ${timeAgo}`;
+    priceList.appendChild(lastFetchedNotice);
   }
 };
 

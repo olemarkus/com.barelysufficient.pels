@@ -818,6 +818,7 @@ module.exports = class PelsApp extends Homey.App {
       highThreshold,
       thresholdPercent,
       minDiffOre,
+      lastFetched: new Date().toISOString(),
     };
     this.homey.settings.set('combined_prices', combinedPrices);
     // Emit realtime event so settings page can update
