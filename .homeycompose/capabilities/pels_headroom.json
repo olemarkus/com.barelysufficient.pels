@@ -1,0 +1,17 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Headroom"
+  },
+  "desc": {
+    "en": "Available power headroom before capacity limit"
+  },
+  "units": {
+    "en": "kW"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "decimals": 2
+}

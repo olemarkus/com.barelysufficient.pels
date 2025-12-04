@@ -1,5 +1,31 @@
 {
   "mode_indicator": {
-    "name": "Capacity mode"
+    "name": "PELS Status"
+  },
+  "capability": {
+    "mode_indicator": {
+      "title": "Mode"
+    },
+    "pels_headroom": {
+      "title": "Headroom"
+    },
+    "pels_hourly_usage": {
+      "title": "Hourly usage"
+    },
+    "alarm_generic": {
+      "title": "Capacity shortfall"
+    },
+    "pels_shedding": {
+      "title": "Shedding"
+    },
+    "pels_price_level": {
+      "title": "Price level",
+      "values": {
+        "cheap": "Cheap",
+        "normal": "Normal",
+        "expensive": "Expensive",
+        "unknown": "Unknown"
+      }
+    }
   }
 }

@@ -2,20 +2,36 @@ import Homey from 'homey';
 
 class ModeIndicatorDevice extends Homey.Device {
   async onInit(): Promise<void> {
-    // Add alarm_generic capability if missing (for devices created before this capability was added)
-    if (!this.hasCapability('alarm_generic')) {
-      await this.addCapability('alarm_generic');
+    // Add capabilities if missing (for devices created before these were added)
+    const requiredCapabilities = [
+      'alarm_generic',
+      'pels_headroom',
+      'pels_hourly_usage',
+      'pels_shedding',
+      'pels_price_level',
+    ];
+
+    for (const cap of requiredCapabilities) {
+      if (!this.hasCapability(cap)) {
+        await this.addCapability(cap);
+      }
     }
 
+    // Initialize from current settings
     await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
+    await this.updateFromStatus();
 
+    // Listen for settings changes
     this.homey.settings.on('set', async (key: string) => {
       if (key === 'capacity_mode') {
         await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
       }
       if (key === 'capacity_in_shortfall') {
         await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
+      }
+      if (key === 'pels_status') {
+        await this.updateFromStatus();
       }
     });
   }
@@ -36,6 +52,35 @@ class ModeIndicatorDevice extends Homey.Device {
       this.error('Failed to update shortfall alarm', error);
     }
   }
+
+  async updateFromStatus(): Promise<void> {
+    const status = this.homey.settings.get('pels_status') as {
+      headroomKw?: number;
+      hourlyUsageKwh?: number;
+      shedding?: boolean;
+      priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
+    } | null;
+
+    if (!status) return;
+
+    try {
+      if (typeof status.headroomKw === 'number') {
+        await this.setCapabilityValue('pels_headroom', status.headroomKw);
+      }
+      if (typeof status.hourlyUsageKwh === 'number') {
+        await this.setCapabilityValue('pels_hourly_usage', status.hourlyUsageKwh);
+      }
+      if (typeof status.shedding === 'boolean') {
+        await this.setCapabilityValue('pels_shedding', status.shedding);
+      }
+      if (status.priceLevel) {
+        await this.setCapabilityValue('pels_price_level', status.priceLevel);
+      }
+    } catch (error) {
+      this.error('Failed to update status capabilities', error);
+    }
+  }
 }
 
 module.exports = ModeIndicatorDevice;
+

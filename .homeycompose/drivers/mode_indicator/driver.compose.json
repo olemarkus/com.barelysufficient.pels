@@ -1,12 +1,24 @@
 {
   "id": "mode_indicator",
   "name": {
-    "en": "Capacity mode"
+    "en": "PELS Status"
   },
   "class": "sensor",
   "capabilities": [
-    "mode_indicator"
+    "mode_indicator",
+    "pels_headroom",
+    "pels_hourly_usage",
+    "alarm_generic",
+    "pels_shedding",
+    "pels_price_level"
   ],
+  "capabilitiesOptions": {
+    "alarm_generic": {
+      "title": {
+        "en": "Capacity shortfall"
+      }
+    }
+  },
   "icon": "/assets/icon.svg",
   "images": {
     "small": "/drivers/mode_indicator/assets/images/small.png",

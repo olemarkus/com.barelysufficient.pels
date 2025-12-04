@@ -210,6 +210,91 @@
       "type": "string",
       "getable": true,
       "setable": false
+    },
+    "pels_headroom": {
+      "type": "number",
+      "title": {
+        "en": "Headroom"
+      },
+      "desc": {
+        "en": "Available power headroom before capacity limit"
+      },
+      "units": {
+        "en": "kW"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_hourly_usage": {
+      "type": "number",
+      "title": {
+        "en": "Hourly usage"
+      },
+      "desc": {
+        "en": "Energy usage for the current hour"
+      },
+      "units": {
+        "en": "kWh"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_price_level": {
+      "type": "enum",
+      "title": {
+        "en": "Price level"
+      },
+      "desc": {
+        "en": "Current electricity price level relative to daily average"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "values": [
+        {
+          "id": "cheap",
+          "title": {
+            "en": "Cheap"
+          }
+        },
+        {
+          "id": "normal",
+          "title": {
+            "en": "Normal"
+          }
+        },
+        {
+          "id": "expensive",
+          "title": {
+            "en": "Expensive"
+          }
+        },
+        {
+          "id": "unknown",
+          "title": {
+            "en": "Unknown"
+          }
+        }
+      ]
+    },
+    "pels_shedding": {
+      "type": "boolean",
+      "title": {
+        "en": "Shedding"
+      },
+      "desc": {
+        "en": "Whether PELS is currently shedding load to stay within capacity"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true
     }
   }
 }

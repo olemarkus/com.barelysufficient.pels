@@ -1274,6 +1274,8 @@ module.exports = class PelsApp extends Homey.App {
     this.homey.settings.set('device_plan_snapshot', plan);
     // Emit realtime event so settings page can update
     this.homey.api.realtime('plan_updated', plan).catch(() => {});
+    // Update PELS status for mode indicator device
+    this.updatePelsStatus(plan);
     const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
     if (this.capacityDryRun && hasShedding) {
       this.logDebug('Dry run enabled; skipping shedding actions.');
@@ -1281,6 +1283,38 @@ module.exports = class PelsApp extends Homey.App {
     if (!this.capacityDryRun) {
       this.applyPlanActions(plan).catch((error: Error) => this.error('Failed to apply plan actions', error));
     }
+  }
+
+  private updatePelsStatus(plan: {
+    meta: {
+      totalKw: number | null;
+      softLimitKw: number;
+      headroomKw: number | null;
+      usedKWh?: number;
+      budgetKWh?: number;
+    };
+    devices: Array<{ plannedState: string }>;
+  }): void {
+    // Compute price level
+    const isCheap = this.isCurrentHourCheap();
+    const isExpensive = this.isCurrentHourExpensive();
+    let priceLevel: 'cheap' | 'normal' | 'expensive' | 'unknown' = 'unknown';
+    const prices = this.homey.settings.get('combined_prices') as { prices?: Array<{ total: number }> } | null;
+    if (prices?.prices && prices.prices.length > 0) {
+      if (isCheap) priceLevel = 'cheap';
+      else if (isExpensive) priceLevel = 'expensive';
+      else priceLevel = 'normal';
+    }
+
+    const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
+    const status = {
+      headroomKw: plan.meta.headroomKw,
+      hourlyUsageKwh: plan.meta.usedKWh ?? 0,
+      shedding: hasShedding,
+      priceLevel,
+    };
+
+    this.homey.settings.set('pels_status', status);
   }
 
   private buildDevicePlanSnapshot(devices: Array<{
