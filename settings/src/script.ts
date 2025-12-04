@@ -1125,6 +1125,18 @@ const renderPrices = (data: CombinedPriceData | null) => {
     notice.textContent = noticeText;
     priceList.appendChild(notice);
   }
+
+  // Show notice if price data is limited (e.g., tomorrow's prices not yet available)
+  const lastPriceTime = futurePrices.length > 0 ? new Date(futurePrices[futurePrices.length - 1].startsAt) : null;
+  if (lastPriceTime) {
+    const hoursRemaining = Math.floor((lastPriceTime.getTime() - now.getTime()) / (1000 * 60 * 60)) + 1;
+    if (hoursRemaining <= 12) {
+      const limitedNotice = document.createElement('div');
+      limitedNotice.className = 'price-notice price-notice-warning';
+      limitedNotice.textContent = `⚠️ Price data available for ${hoursRemaining} more hour${hoursRemaining === 1 ? '' : 's'}. Tomorrow's prices typically publish around 13:00.`;
+      priceList.appendChild(limitedNotice);
+    }
+  }
 };
 
 const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceClass: string) => {
