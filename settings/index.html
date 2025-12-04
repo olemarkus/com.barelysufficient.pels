@@ -112,11 +112,71 @@
           <button type="submit" class="btn primary">Save capacity settings</button>
         </div>
       </form>
-      <div id="power-list" class="device-list" role="list"></div>
-      <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the “Report power usage” Flow action.</p>
+
+      <details class="settings-collapse" open>
+        <summary class="section-header clickable">
+          <h3>📊 Usage summary</h3>
+          <span class="collapse-hint">Daily totals and patterns</span>
+        </summary>
+        <div class="collapse-content">
+          <div id="usage-summary" class="usage-summary">
+            <div class="summary-card">
+              <span class="summary-label">Today</span>
+              <span class="summary-value" id="usage-today">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">This week</span>
+              <span class="summary-value" id="usage-week">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">This month</span>
+              <span class="summary-value" id="usage-month">-- kWh</span>
+            </div>
+          </div>
+
+          <h4>Weekday vs weekend average</h4>
+          <div id="weekday-weekend-stats" class="usage-summary">
+            <div class="summary-card">
+              <span class="summary-label">Weekday avg</span>
+              <span class="summary-value" id="usage-weekday-avg">-- kWh/day</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Weekend avg</span>
+              <span class="summary-value" id="usage-weekend-avg">-- kWh/day</span>
+            </div>
+          </div>
+
+          <h4>Typical usage by time of day</h4>
+          <div id="hourly-pattern" class="hourly-pattern"></div>
+          <p class="muted">Average kWh per hour based on historical data.</p>
+        </div>
+      </details>
+
+      <details class="settings-collapse">
+        <summary class="section-header clickable">
+          <h3>📅 Daily history</h3>
+          <span class="collapse-hint">Last 30 days</span>
+        </summary>
+        <div class="collapse-content">
+          <div id="daily-list" class="device-list" role="list"></div>
+          <p id="daily-empty" class="muted" hidden>No daily totals yet.</p>
+        </div>
+      </details>
+
+      <details class="settings-collapse">
+        <summary class="section-header clickable">
+          <h3>⏰ Hourly detail</h3>
+          <span class="collapse-hint">Recent hours</span>
+        </summary>
+        <div class="collapse-content">
+          <div id="power-list" class="device-list" role="list"></div>
+          <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the "Report power usage" Flow action.</p>
+        </div>
+      </details>
+
       <div class="list__footer">
-        <button type="button" class="btn ghost" id="reset-stats-button">Reset stats</button>
-        <p class="muted">Totals are derived from reported power samples and grouped per hour.</p>
+        <button type="button" class="btn ghost" id="reset-stats-button">Reset all stats</button>
+        <p class="muted">Hourly data kept for 30 days, daily totals for 1 year.</p>
       </div>
     </section>
 

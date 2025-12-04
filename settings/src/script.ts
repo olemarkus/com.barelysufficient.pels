@@ -19,6 +19,14 @@ const emptyState = qs('#empty-state');
 const refreshButton = qs('#refresh-button') as HTMLButtonElement;
 const powerList = qs('#power-list');
 const powerEmpty = qs('#power-empty');
+const dailyList = qs('#daily-list');
+const dailyEmpty = qs('#daily-empty');
+const usageToday = qs('#usage-today');
+const usageWeek = qs('#usage-week');
+const usageMonth = qs('#usage-month');
+const usageWeekdayAvg = qs('#usage-weekday-avg');
+const usageWeekendAvg = qs('#usage-weekend-avg');
+const hourlyPattern = qs('#hourly-pattern');
 const tabs = Array.from(document.querySelectorAll('.tab'));
 const panels = Array.from(document.querySelectorAll('.panel'));
 const capacityForm = document.querySelector('#capacity-form') as HTMLFormElement;
@@ -310,8 +318,14 @@ const getTargetDevices = async () => {
 
 const getPlanSnapshot = async () => getSetting('device_plan_snapshot');
 
+interface PowerTracker {
+  buckets?: Record<string, number>;
+  dailyTotals?: Record<string, number>;
+  hourlyAverages?: Record<string, { sum: number; count: number }>;
+}
+
 const getPowerUsage = async () => {
-  const tracker = await getSetting('power_tracker_state');
+  const tracker = await getSetting('power_tracker_state') as PowerTracker | null;
   if (!tracker || typeof tracker !== 'object' || !tracker.buckets) return [];
 
   return Object.entries(tracker.buckets)
@@ -323,6 +337,191 @@ const getPowerUsage = async () => {
       };
     })
     .sort((a, b) => a.hour.getTime() - b.hour.getTime());
+};
+
+const getPowerStats = async () => {
+  const tracker = await getSetting('power_tracker_state') as PowerTracker | null;
+  if (!tracker || typeof tracker !== 'object') {
+    return {
+      today: 0,
+      week: 0,
+      month: 0,
+      weekdayAvg: 0,
+      weekendAvg: 0,
+      hourlyPattern: [] as { hour: number; avg: number }[],
+      dailyHistory: [] as { date: string; kWh: number }[],
+    };
+  }
+
+  const now = new Date();
+  const todayKey = now.toISOString().slice(0, 10);
+  const todayStart = new Date(todayKey).getTime();
+
+  // Calculate today's usage from hourly buckets
+  let today = 0;
+  if (tracker.buckets) {
+    for (const [iso, kWh] of Object.entries(tracker.buckets)) {
+      const ts = new Date(iso).getTime();
+      if (ts >= todayStart) {
+        today += kWh;
+      }
+    }
+  }
+
+  // Calculate week and month from daily totals + today's hourly
+  const weekStart = new Date(now);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week (Sunday)
+  weekStart.setHours(0, 0, 0, 0);
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let week = today;
+  let month = today;
+
+  if (tracker.dailyTotals) {
+    for (const [dateKey, kWh] of Object.entries(tracker.dailyTotals)) {
+      const ts = new Date(dateKey).getTime();
+      if (ts >= weekStart.getTime() && dateKey !== todayKey) {
+        week += kWh;
+      }
+      if (ts >= monthStart.getTime() && dateKey !== todayKey) {
+        month += kWh;
+      }
+    }
+  }
+
+  // Also add older hourly data that's still within the period
+  if (tracker.buckets) {
+    for (const [iso, kWh] of Object.entries(tracker.buckets)) {
+      const ts = new Date(iso).getTime();
+      if (ts < todayStart) {
+        if (ts >= weekStart.getTime()) week += kWh;
+        if (ts >= monthStart.getTime()) month += kWh;
+      }
+    }
+  }
+
+  // Calculate weekday/weekend averages from hourly patterns
+  let weekdaySum = 0, weekdayCount = 0;
+  let weekendSum = 0, weekendCount = 0;
+
+  if (tracker.hourlyAverages) {
+    for (const [key, data] of Object.entries(tracker.hourlyAverages)) {
+      const [dayOfWeek] = key.split('_').map(Number);
+      const dailyContribution = data.sum; // This is sum of hourly kWh for this day-hour slot
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        weekendSum += dailyContribution;
+        weekendCount += data.count;
+      } else {
+        weekdaySum += dailyContribution;
+        weekdayCount += data.count;
+      }
+    }
+  }
+
+  // Convert to daily averages (24 hours per day)
+  const weekdayAvg = weekdayCount > 0 ? (weekdaySum / weekdayCount) * 24 : 0;
+  const weekendAvg = weekendCount > 0 ? (weekendSum / weekendCount) * 24 : 0;
+
+  // Build hourly pattern (average kWh per hour of day, across all days of week)
+  const hourlyPattern: { hour: number; avg: number }[] = [];
+  for (let h = 0; h < 24; h++) {
+    let sum = 0, count = 0;
+    if (tracker.hourlyAverages) {
+      for (let d = 0; d < 7; d++) {
+        const key = `${d}_${h}`;
+        if (tracker.hourlyAverages[key]) {
+          sum += tracker.hourlyAverages[key].sum;
+          count += tracker.hourlyAverages[key].count;
+        }
+      }
+    }
+    hourlyPattern.push({ hour: h, avg: count > 0 ? sum / count : 0 });
+  }
+
+  // Build daily history (last 30 days from dailyTotals)
+  const dailyHistory: { date: string; kWh: number }[] = [];
+  if (tracker.dailyTotals) {
+    const entries = Object.entries(tracker.dailyTotals)
+      .map(([date, kWh]) => ({ date, kWh }))
+      .sort((a, b) => b.date.localeCompare(a.date)) // Most recent first
+      .slice(0, 30);
+    dailyHistory.push(...entries);
+  }
+
+  return { today, week, month, weekdayAvg, weekendAvg, hourlyPattern, dailyHistory };
+};
+
+const renderPowerStats = async () => {
+  const stats = await getPowerStats();
+
+  // Summary cards
+  if (usageToday) usageToday.textContent = `${stats.today.toFixed(1)} kWh`;
+  if (usageWeek) usageWeek.textContent = `${stats.week.toFixed(1)} kWh`;
+  if (usageMonth) usageMonth.textContent = `${stats.month.toFixed(1)} kWh`;
+
+  // Weekday/weekend averages
+  if (usageWeekdayAvg) usageWeekdayAvg.textContent = `${stats.weekdayAvg.toFixed(1)} kWh/day`;
+  if (usageWeekendAvg) usageWeekendAvg.textContent = `${stats.weekendAvg.toFixed(1)} kWh/day`;
+
+  // Hourly pattern visualization
+  if (hourlyPattern) {
+    hourlyPattern.innerHTML = '';
+    const maxAvg = Math.max(...stats.hourlyPattern.map(p => p.avg), 0.1);
+
+    for (const { hour, avg } of stats.hourlyPattern) {
+      const bar = document.createElement('div');
+      bar.className = 'hourly-bar';
+      bar.title = `${hour}:00 - ${avg.toFixed(2)} kWh avg`;
+
+      const fill = document.createElement('div');
+      fill.className = 'hourly-bar__fill';
+      const heightPct = Math.max(5, (avg / maxAvg) * 100);
+      fill.style.height = `${heightPct}%`;
+
+      const label = document.createElement('span');
+      label.className = 'hourly-bar__label';
+      label.textContent = hour % 6 === 0 ? `${hour}` : '';
+
+      bar.append(fill, label);
+      hourlyPattern.appendChild(bar);
+    }
+  }
+
+  // Daily history list
+  if (dailyList) {
+    dailyList.innerHTML = '';
+    if (stats.dailyHistory.length === 0) {
+      if (dailyEmpty) dailyEmpty.hidden = false;
+    } else {
+      if (dailyEmpty) dailyEmpty.hidden = true;
+      for (const { date, kWh } of stats.dailyHistory) {
+        const row = document.createElement('div');
+        row.className = 'device-row';
+        row.setAttribute('role', 'listitem');
+
+        const dateEl = document.createElement('div');
+        dateEl.className = 'device-row__name';
+        const d = new Date(date);
+        const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
+        dateEl.textContent = `${dayName} ${date}`;
+
+        const val = document.createElement('div');
+        val.className = 'device-row__target';
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        const strong = document.createElement('strong');
+        strong.textContent = 'Total';
+        const span = document.createElement('span');
+        span.textContent = `${kWh.toFixed(1)} kWh`;
+        chip.append(strong, span);
+        val.appendChild(chip);
+
+        row.append(dateEl, val);
+        dailyList.appendChild(row);
+      }
+    }
+  }
 };
 
 const renderPowerUsage = (entries) => {
@@ -1482,6 +1681,7 @@ const boot = async () => {
     await refreshDevices();
     const usage = await getPowerUsage();
     renderPowerUsage(usage);
+    await renderPowerStats();
     await loadCapacitySettings();
     await loadModeAndPriorities();
     await loadPriceOptimizationSettings(); // Load before rendering devices
@@ -1556,9 +1756,10 @@ const boot = async () => {
       try {
         await setSetting('power_tracker_state', {});
         renderPowerUsage([]);
+        await renderPowerStats();
         await showToast('Power stats reset.', 'ok');
       } catch (err) {
-        await showToast(err.message || 'Failed to reset stats.', 'warn');
+        await showToast((err as Error).message || 'Failed to reset stats.', 'warn');
       }
     });
 

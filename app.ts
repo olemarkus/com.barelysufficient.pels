@@ -16,13 +16,19 @@ const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot e
 // Power thresholds
 const MIN_SIGNIFICANT_POWER_W = 50; // Minimum power draw to consider "on" or worth tracking
 
+// Power history retention
+const HOURLY_RETENTION_DAYS = 30; // Keep detailed hourly data for 30 days
+const DAILY_RETENTION_DAYS = 365; // Keep daily totals for 1 year
+
 module.exports = class PelsApp extends Homey.App {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey API has no TypeScript definitions
   private homeyApi?: any;
   private powerTracker: {
     lastPowerW?: number;
     lastTimestamp?: number;
-    buckets?: Record<string, number>;
+    buckets?: Record<string, number>; // Hourly data (ISO timestamp -> kWh), kept for 30 days
+    dailyTotals?: Record<string, number>; // Daily totals (YYYY-MM-DD -> kWh), kept for 365 days
+    hourlyAverages?: Record<string, { sum: number; count: number }>; // day-hour pattern (0-6_0-23 -> { sum, count })
   } = {};
 
   private capacityGuard?: CapacityGuard;
@@ -270,7 +276,67 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private savePowerTracker(): void {
+    this.aggregateAndPruneHistory();
     this.homey.settings.set('power_tracker_state', this.powerTracker);
+  }
+
+  /**
+   * Aggregate old hourly data into daily totals and hourly pattern averages,
+   * then prune data older than retention limits.
+   */
+  private aggregateAndPruneHistory(): void {
+    const state = this.powerTracker;
+    if (!state.buckets) return;
+
+    const now = Date.now();
+    const hourlyRetentionMs = HOURLY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const dailyRetentionMs = DAILY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const hourlyThreshold = now - hourlyRetentionMs;
+    const dailyThreshold = now - dailyRetentionMs;
+
+    state.dailyTotals = state.dailyTotals || {};
+    state.hourlyAverages = state.hourlyAverages || {};
+
+    const bucketsToRemove: string[] = [];
+
+    for (const [isoKey, kWh] of Object.entries(state.buckets)) {
+      const timestamp = new Date(isoKey).getTime();
+      if (isNaN(timestamp)) continue;
+
+      // If older than hourly retention, aggregate and mark for removal
+      if (timestamp < hourlyThreshold) {
+        const date = new Date(isoKey);
+        const dayOfWeek = date.getDay(); // 0=Sunday, 6=Saturday
+        const hourOfDay = date.getHours();
+        const dateKey = date.toISOString().slice(0, 10); // YYYY-MM-DD
+
+        // Add to daily total
+        state.dailyTotals[dateKey] = (state.dailyTotals[dateKey] || 0) + kWh;
+
+        // Add to hourly pattern averages (for predicting usage by day-of-week and hour)
+        const patternKey = `${dayOfWeek}_${hourOfDay}`;
+        if (!state.hourlyAverages[patternKey]) {
+          state.hourlyAverages[patternKey] = { sum: 0, count: 0 };
+        }
+        state.hourlyAverages[patternKey].sum += kWh;
+        state.hourlyAverages[patternKey].count += 1;
+
+        bucketsToRemove.push(isoKey);
+      }
+    }
+
+    // Remove aggregated hourly buckets
+    for (const key of bucketsToRemove) {
+      delete state.buckets[key];
+    }
+
+    // Prune daily totals older than daily retention
+    for (const dateKey of Object.keys(state.dailyTotals)) {
+      const timestamp = new Date(dateKey).getTime();
+      if (!isNaN(timestamp) && timestamp < dailyThreshold) {
+        delete state.dailyTotals[dateKey];
+      }
+    }
   }
 
   private truncateToHour(timestamp: number): number {
