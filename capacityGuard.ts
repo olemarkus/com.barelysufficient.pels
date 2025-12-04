@@ -132,14 +132,6 @@ export default class CapacityGuard {
     return this.headroom();
   }
 
-  headroomBand(): 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN' {
-    const h = this.headroom();
-    if (h === null) return 'UNKNOWN';
-    if (h >= 1) return 'HIGH';
-    if (h >= 0.2) return 'MEDIUM';
-    return 'LOW';
-  }
-
   getLastTotalPower(): number | null {
     return this.mainPowerKw;
   }

@@ -455,12 +455,6 @@ module.exports = class PelsApp extends Homey.App {
       return this.capacityGuard.hasCapacity(Number(args.required_kw));
     });
 
-    const headroomBandCond = this.homey.flow.getConditionCard('headroom_band');
-    headroomBandCond.registerRunListener(async (args: { band: string }) => {
-      if (!this.capacityGuard) return false;
-      return this.capacityGuard.headroomBand() === args.band;
-    });
-
     const isCapacityModeCond = this.homey.flow.getConditionCard('is_capacity_mode');
     isCapacityModeCond.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
       // Handle both string (manual input) and object (autocomplete selection) formats

@@ -207,7 +207,6 @@ For each device with price optimization enabled:
 | Card | Description |
 |------|-------------|
 | **Is there enough capacity?** | Check if there's capacity for a specified kW load |
-| **Capacity headroom band** | Check if headroom is High, Medium, or Low |
 | **Capacity mode is...** | Check which mode is currently active |
 
 ### Actions

@@ -65,44 +65,6 @@
       },
       {
         "title": {
-          "en": "Capacity headroom band"
-        },
-        "titleFormatted": {
-          "en": "Capacity headroom is [[band]]"
-        },
-        "args": [
-          {
-            "name": "band",
-            "type": "dropdown",
-            "title": {
-              "en": "Band"
-            },
-            "values": [
-              {
-                "id": "HIGH",
-                "title": {
-                  "en": "High"
-                }
-              },
-              {
-                "id": "MEDIUM",
-                "title": {
-                  "en": "Medium"
-                }
-              },
-              {
-                "id": "LOW",
-                "title": {
-                  "en": "Low"
-                }
-              }
-            ]
-          }
-        ],
-        "id": "headroom_band"
-      },
-      {
-        "title": {
           "en": "Capacity mode is..."
         },
         "titleFormatted": {
