@@ -4,6 +4,7 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 
 ## Table of Contents
 
+- [Permissions](#permissions)
 - [Capacity Budget Model](#capacity-budget-model)
 - [Hour Transitions](#hour-transitions)
 - [Cooldown Logic](#cooldown-logic)
@@ -11,7 +12,20 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 - [Shedding Order](#shedding-order)
 - [Restoration Order](#restoration-order)
 - [Power Estimation](#power-estimation)
+- [Power Usage Data Retention](#power-usage-data-retention)
 - [Assumptions and Limitations](#assumptions-and-limitations)
+
+---
+
+## Permissions
+
+PELS requires the `homey:manager:api` permission to function. This permission grants access to Homey's internal device API (HomeyAPI), which PELS uses to:
+
+1. **Discover devices** – List all devices in your home to find thermostats, water heaters, and other controllable devices
+2. **Read device state** – Get current temperatures, power consumption, and on/off states
+3. **Control devices** – Set thermostat target temperatures and turn devices on/off for load shedding and price optimization
+
+Without this permission, PELS would not be able to see or control any devices. This is why Homey shows a warning that apps with this permission require more thorough review.
 
 ---
 
