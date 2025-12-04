@@ -18,6 +18,20 @@
     "alarm_generic": {
       "title": {
         "en": "Capacity shortfall"
+      },
+      "insightsTitleTrue": {
+        "en": null
+      },
+      "insightsTitleFalse": {
+        "en": null
+      }
+    },
+    "pels_shedding": {
+      "insightsTitleTrue": {
+        "en": null
+      },
+      "insightsTitleFalse": {
+        "en": null
       }
     }
   },
