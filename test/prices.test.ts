@@ -689,7 +689,8 @@ describe('Nettleie (grid tariff) fetching', () => {
     expect(capturedUrl).toContain('nettleietariffer.dataplattform.nve.no');
     expect(capturedUrl).toContain('FylkeNr=46');
     expect(capturedUrl).toContain('OrganisasjonsNr=976944801');
-    expect(capturedUrl).toContain('Tariffgruppe=Hytter%20og%20fritidshus');
+    // URLSearchParams uses + for spaces, which is valid URL encoding
+    expect(capturedUrl).toMatch(/Tariffgruppe=Hytter(\+|%20)og(\+|%20)fritidshus/);
   });
 });
 

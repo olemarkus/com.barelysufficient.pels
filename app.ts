@@ -523,13 +523,13 @@ module.exports = class PelsApp extends Homey.App {
     }
 
     const baseUrl = 'https://nettleietariffer.dataplattform.nve.no/v1/NettleiePerOmradePrTimeHusholdningFritidEffekttariffer';
-    const queryParams = [
-      `ValgtDato=${encodeURIComponent(today)}`,
-      `Tariffgruppe=${encodeURIComponent(tariffgruppe)}`,
-      `FylkeNr=${encodeURIComponent(fylke)}`,
-      `OrganisasjonsNr=${encodeURIComponent(orgnr)}`,
-    ].join('&');
-    const url = `${baseUrl}?${queryParams}`;
+    const params = new URLSearchParams({
+      ValgtDato: today,
+      Tariffgruppe: tariffgruppe,
+      FylkeNr: fylke,
+      OrganisasjonsNr: orgnr,
+    });
+    const url = `${baseUrl}?${params.toString()}`;
 
     this.log(`Nettleie: Fetching grid tariffs from NVE API for ${today}, fylke=${fylke}, org=${orgnr}`);
 
