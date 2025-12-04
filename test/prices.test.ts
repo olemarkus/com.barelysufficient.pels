@@ -1,9 +1,9 @@
+import https from 'https';
 import {
   mockHomeyInstance,
   setMockDrivers,
   MockDevice,
   MockDriver,
-  mockHomeyApiInstance,
 } from './mocks/homey';
 
 // Mock the https module
@@ -17,8 +17,6 @@ jest.mock('homey-api', () => ({
     createAppAPI: jest.fn().mockResolvedValue(require('./mocks/homey').mockHomeyApiInstance),
   },
 }));
-
-import https from 'https';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date', 'nextTick'] });
@@ -408,7 +406,10 @@ describe('Spot price fetching', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
@@ -474,7 +475,10 @@ describe('Spot price fetching', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
@@ -533,7 +537,10 @@ describe('Spot price fetching', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
@@ -742,7 +749,7 @@ describe('Price optimization', () => {
       let priceNok = 0.30;
       if (hour >= 2 && hour <= 5) priceNok = 0.15; // cheap
       if ((hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19)) priceNok = 0.60; // expensive
-      
+
       prices.push({
         NOK_per_kWh: priceNok,
         EUR_per_kWh: priceNok / 11.5,
@@ -853,7 +860,7 @@ describe('Price optimization', () => {
     // The function filters to only future hours, so we need prices that start at or after "now"
     const now = new Date();
     now.setMinutes(0, 0, 0); // Start of current hour
-    
+
     // Generate 24 hours of prices starting from NOW
     const generate24HoursFromNow = () => {
       const prices: any[] = [];
@@ -864,7 +871,7 @@ describe('Price optimization', () => {
         let priceNok = 0.30;
         if (hour >= 2 && hour <= 5) priceNok = 0.10; // very cheap
         else if ((hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19)) priceNok = 0.60; // expensive
-        
+
         prices.push({
           NOK_per_kWh: priceNok,
           EUR_per_kWh: priceNok / 11.5,
@@ -903,14 +910,14 @@ describe('Price optimization', () => {
     // Should get up to 4 hours (or fewer if not enough cheap hours exist in next 24h)
     expect(cheapestHours.length).toBeGreaterThan(0);
     expect(cheapestHours.length).toBeLessThanOrEqual(4);
-    
+
     // Verify the returned hours are sorted by price (cheapest first)
     const combinedPrices = app['getCombinedHourlyPrices']();
     const cheapestPrices = cheapestHours.map((hourStr: string) => {
       const price = combinedPrices.find((p: any) => p.startsAt === hourStr);
       return price ? price.totalPrice : Infinity;
     });
-    
+
     // Verify prices are in ascending order
     for (let i = 1; i < cheapestPrices.length; i++) {
       expect(cheapestPrices[i]).toBeGreaterThanOrEqual(cheapestPrices[i - 1]);
@@ -938,13 +945,13 @@ describe('Price optimization', () => {
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', nettleieData);
-    
+
     // Configure price optimization for the water heater with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {
         enabled: true,
-        cheapDelta: 10,      // +10°C during cheap hours
-        expensiveDelta: -5,  // -5°C during expensive hours
+        cheapDelta: 10, // +10°C during cheap hours
+        expensiveDelta: -5, // -5°C during expensive hours
       },
     });
 
@@ -987,7 +994,7 @@ describe('Price optimization', () => {
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', nettleieData);
-    
+
     // Configure price optimization with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {
@@ -1028,7 +1035,7 @@ describe('Price optimization', () => {
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', generateMockNettleieFor24Hours());
-    
+
     // Configure price optimization but DISABLED
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {
@@ -1186,19 +1193,19 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
-    
+
     // Set mode target for the device
     mockHomeyInstance.settings.set('mode_device_targets', {
-      'Home': { 'water-heater-1': 55 },
+      Home: { 'water-heater-1': 55 },
     });
     mockHomeyInstance.settings.set('capacity_mode', 'Home');
-    
+
     // Configure price optimization with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {
         enabled: true,
-        cheapDelta: 10,      // +10°C during cheap hours
-        expensiveDelta: -5,  // -5°C during expensive hours
+        cheapDelta: 10, // +10°C during cheap hours
+        expensiveDelta: -5, // -5°C during expensive hours
       },
     });
 
@@ -1209,7 +1216,7 @@ describe('Price optimization', () => {
     });
 
     const app = new MyApp();
-    
+
     // Mock Date to return hour 3
     const MockDate = class extends Date {
       constructor(...args: any[]) {
@@ -1220,11 +1227,14 @@ describe('Price optimization', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
-    
+
     try {
       await app.onInit();
       await flushPromises();
@@ -1236,7 +1246,7 @@ describe('Price optimization', () => {
 
       const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
       expect(waterHeaterPlan).toBeDefined();
-      
+
       // During cheap hour, plannedTarget should be base (55) + cheapDelta (10) = 65
       expect(waterHeaterPlan.plannedTarget).toBe(65);
     } finally {
@@ -1274,19 +1284,19 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
-    
+
     // Set mode target for the device
     mockHomeyInstance.settings.set('mode_device_targets', {
-      'Home': { 'water-heater-1': 55 },
+      Home: { 'water-heater-1': 55 },
     });
     mockHomeyInstance.settings.set('capacity_mode', 'Home');
-    
+
     // Configure price optimization with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {
         enabled: true,
         cheapDelta: 10,
-        expensiveDelta: -5,  // -5°C during expensive hours
+        expensiveDelta: -5, // -5°C during expensive hours
       },
     });
 
@@ -1297,7 +1307,7 @@ describe('Price optimization', () => {
     });
 
     const app = new MyApp();
-    
+
     // Mock Date to return hour 8
     const MockDate = class extends Date {
       constructor(...args: any[]) {
@@ -1308,11 +1318,14 @@ describe('Price optimization', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
-    
+
     try {
       await app.onInit();
       await flushPromises();
@@ -1324,7 +1337,7 @@ describe('Price optimization', () => {
 
       const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
       expect(waterHeaterPlan).toBeDefined();
-      
+
       // During expensive hour, plannedTarget should be base (55) + expensiveDelta (-5) = 50
       expect(waterHeaterPlan.plannedTarget).toBe(50);
     } finally {
@@ -1359,13 +1372,13 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
-    
+
     // Set mode target for the device
     mockHomeyInstance.settings.set('mode_device_targets', {
-      'Home': { 'water-heater-1': 55 },
+      Home: { 'water-heater-1': 55 },
     });
     mockHomeyInstance.settings.set('capacity_mode', 'Home');
-    
+
     // Configure price optimization with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {
@@ -1382,7 +1395,7 @@ describe('Price optimization', () => {
     });
 
     const app = new MyApp();
-    
+
     // Mock Date to return hour 12
     const MockDate = class extends Date {
       constructor(...args: any[]) {
@@ -1393,11 +1406,14 @@ describe('Price optimization', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
-    
+
     try {
       await app.onInit();
       await flushPromises();
@@ -1409,7 +1425,7 @@ describe('Price optimization', () => {
 
       const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
       expect(waterHeaterPlan).toBeDefined();
-      
+
       // During normal hour, plannedTarget should be base temperature (55), no delta applied
       expect(waterHeaterPlan.plannedTarget).toBe(55);
     } finally {
@@ -1445,17 +1461,17 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
-    
+
     // Set mode target for the device
     mockHomeyInstance.settings.set('mode_device_targets', {
-      'Home': { 'water-heater-1': 55 },
+      Home: { 'water-heater-1': 55 },
     });
     mockHomeyInstance.settings.set('capacity_mode', 'Home');
-    
+
     // Configure price optimization but DISABLED
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {
-        enabled: false,  // Disabled!
+        enabled: false, // Disabled!
         cheapDelta: 10,
         expensiveDelta: -5,
       },
@@ -1468,7 +1484,7 @@ describe('Price optimization', () => {
     });
 
     const app = new MyApp();
-    
+
     // Mock Date to return hour 3
     const MockDate = class extends Date {
       constructor(...args: any[]) {
@@ -1479,11 +1495,14 @@ describe('Price optimization', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
-    
+
     try {
       await app.onInit();
       await flushPromises();
@@ -1495,7 +1514,7 @@ describe('Price optimization', () => {
 
       const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
       expect(waterHeaterPlan).toBeDefined();
-      
+
       // Even during cheap hour, disabled optimization means base temp (55)
       expect(waterHeaterPlan.plannedTarget).toBe(55);
     } finally {
@@ -1550,7 +1569,7 @@ describe('Price optimization', () => {
     // Set up settings - price optimization enabled with -5 delta for expensive hours
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
     mockHomeyInstance.settings.set('mode_device_targets', {
-      'Hjemmekontor': { 'water-heater-1': 65 },
+      Hjemmekontor: { 'water-heater-1': 65 },
     });
     mockHomeyInstance.settings.set('capacity_mode', 'Hjemmekontor');
     mockHomeyInstance.settings.set('price_optimization_settings', {
@@ -1571,7 +1590,10 @@ describe('Price optimization', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
@@ -1627,7 +1649,7 @@ describe('Price optimization', () => {
     });
 
     const app = new MyApp();
-    
+
     const MockDate = class extends Date {
       constructor(...args: any[]) {
         if (args.length === 0) {
@@ -1637,11 +1659,14 @@ describe('Price optimization', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
-    
+
     try {
       await app.onInit();
       await flushPromises();
@@ -1687,7 +1712,7 @@ describe('Price optimization', () => {
     });
 
     const app = new MyApp();
-    
+
     const MockDate = class extends Date {
       constructor(...args: any[]) {
         if (args.length === 0) {
@@ -1697,11 +1722,14 @@ describe('Price optimization', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
-    
+
     try {
       await app.onInit();
       await flushPromises();
@@ -1746,7 +1774,7 @@ describe('Price optimization', () => {
     });
 
     const app = new MyApp();
-    
+
     const MockDate = class extends Date {
       constructor(...args: any[]) {
         if (args.length === 0) {
@@ -1756,11 +1784,14 @@ describe('Price optimization', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
-    
+
     try {
       // With default 25% threshold, 20% deviation is NOT cheap
       await app.onInit();
@@ -1810,7 +1841,7 @@ describe('Price optimization', () => {
     });
 
     const app = new MyApp();
-    
+
     const MockDate = class extends Date {
       constructor(...args: any[]) {
         if (args.length === 0) {
@@ -1820,11 +1851,14 @@ describe('Price optimization', () => {
           super(...args);
         }
       }
-      static now() { return now.getTime(); }
+
+      static now() {
+        return now.getTime();
+      }
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
-    
+
     try {
       // With no min diff, hour 3 is cheap (15 øre below average)
       mockHomeyInstance.settings.set('price_min_diff_ore', 0);

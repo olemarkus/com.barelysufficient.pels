@@ -300,12 +300,12 @@ describe('settings script', () => {
     // Both dropdowns should now show 'Cozy' (since we renamed the active mode)
     const editingOptions = Array.from(modeSelect.options).map((o) => o.value);
     const activeOptions = Array.from(activeModeSelect.options).map((o) => o.value);
-    
+
     expect(editingOptions).toContain('Cozy');
     expect(editingOptions).not.toContain('Home');
     expect(activeOptions).toContain('Cozy');
     expect(activeOptions).not.toContain('Home');
-    
+
     // Active mode should have been updated to 'Cozy'
     expect(setSpy).toHaveBeenCalledWith('capacity_mode', 'Cozy', expect.any(Function));
   });
@@ -315,7 +315,7 @@ describe('settings script', () => {
     const now = new Date();
     const currentHour = now.getHours();
     const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     // Create 48 hours of prices (today and tomorrow) with average around 100 øre
     // Make cheap hours in the future relative to current hour
     const prices: any[] = [];
@@ -332,7 +332,7 @@ describe('settings script', () => {
         total,
         spotPrice: total * 0.7,
         nettleie: total * 0.3,
-        isCheap: total <= 75,  // 25% below 100
+        isCheap: total <= 75, // 25% below 100
         isExpensive: total >= 125, // 25% above 100
       });
     }
@@ -373,24 +373,24 @@ describe('settings script', () => {
 
     const priceList = document.querySelector('#price-list');
     const priceStatusBadge = document.querySelector('#price-status-badge');
-    
+
     // Verify price list has content
     expect(priceList?.innerHTML).not.toBe('');
-    
+
     // Verify cheap hours section is shown
     const cheapHeader = priceList?.querySelector('.price-section-header.cheap');
     expect(cheapHeader).not.toBeNull();
     expect(cheapHeader?.textContent).toContain('Cheap hours');
-    
-    // Verify expensive hours section is shown  
+
+    // Verify expensive hours section is shown
     const expensiveHeader = priceList?.querySelector('.price-section-header.expensive');
     expect(expensiveHeader).not.toBeNull();
     expect(expensiveHeader?.textContent).toContain('Expensive hours');
-    
+
     // Verify price rows are rendered
     const priceRows = priceList?.querySelectorAll('.price-row');
     expect(priceRows?.length).toBeGreaterThan(0);
-    
+
     // Verify status badge shows current price
     expect(priceStatusBadge?.textContent).toContain('Now:');
     expect(priceStatusBadge?.textContent).toContain('øre/kWh');
@@ -400,7 +400,7 @@ describe('settings script', () => {
     // Create price data where all prices are within 25% of average
     const now = new Date();
     const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     // All prices around 100 øre (within 25% threshold)
     const prices: any[] = [];
     for (let hour = 0; hour < 24; hour++) {
@@ -413,7 +413,7 @@ describe('settings script', () => {
         total,
         spotPrice: total * 0.7,
         nettleie: total * 0.3,
-        isCheap: false,  // All within threshold
+        isCheap: false, // All within threshold
         isExpensive: false,
       });
     }
@@ -448,12 +448,12 @@ describe('settings script', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     const priceList = document.querySelector('#price-list');
-    
+
     // Verify notice is shown instead of cheap/expensive sections
     const notice = priceList?.querySelector('.price-notice');
     expect(notice).not.toBeNull();
     expect(notice?.textContent).toContain('within 25% of average');
-    
+
     // Verify no cheap/expensive headers
     const cheapHeader = priceList?.querySelector('.price-section-header.cheap');
     const expensiveHeader = priceList?.querySelector('.price-section-header.expensive');
@@ -466,7 +466,7 @@ describe('settings script', () => {
     const now = new Date();
     const currentHour = now.getHours();
     const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     const spotPrices: any[] = [];
     for (let hour = 0; hour < 24; hour++) {
       const date = new Date(baseDate);
@@ -506,10 +506,10 @@ describe('settings script', () => {
 
     const priceList = document.querySelector('#price-list');
     const priceStatusBadge = document.querySelector('#price-status-badge');
-    
+
     // Verify price list has content (using fallback data)
     expect(priceList?.innerHTML).not.toBe('');
-    
+
     // Verify status badge shows current price
     expect(priceStatusBadge?.textContent).toContain('Now:');
   });
@@ -530,9 +530,15 @@ describe('Plan sorting', () => {
         headroomKw: 5.3,
       },
       devices: [
-        { id: 'dev-1', name: 'Most Important Heater', zone: 'Living Room', priority: 1, currentState: 'heating', plannedState: 'keep' },
-        { id: 'dev-2', name: 'Least Important Heater', zone: 'Living Room', priority: 5, currentState: 'heating', plannedState: 'keep' },
-        { id: 'dev-3', name: 'Medium Priority Heater', zone: 'Living Room', priority: 3, currentState: 'heating', plannedState: 'keep' },
+        {
+          id: 'dev-1', name: 'Most Important Heater', zone: 'Living Room', priority: 1, currentState: 'heating', plannedState: 'keep',
+        },
+        {
+          id: 'dev-2', name: 'Least Important Heater', zone: 'Living Room', priority: 5, currentState: 'heating', plannedState: 'keep',
+        },
+        {
+          id: 'dev-3', name: 'Medium Priority Heater', zone: 'Living Room', priority: 3, currentState: 'heating', plannedState: 'keep',
+        },
       ],
     };
 
@@ -563,12 +569,12 @@ describe('Plan sorting', () => {
 
     // Get device names in order
     const deviceNames = Array.from(deviceRows || []).map(
-      (row) => row.querySelector('.device-row__name')?.textContent
+      (row) => row.querySelector('.device-row__name')?.textContent,
     );
 
     // Priority 1 = most important, shown first: 1, 3, 5
     expect(deviceNames).toEqual([
-      'Most Important Heater',  // priority 1
+      'Most Important Heater', // priority 1
       'Medium Priority Heater', // priority 3
       'Least Important Heater', // priority 5
     ]);

@@ -62,9 +62,9 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(1000);
 
     // Check that plan_updated event was emitted
-    const planEvents = mockHomeyInstance.api._realtimeEvents.filter(e => e.event === 'plan_updated');
+    const planEvents = mockHomeyInstance.api._realtimeEvents.filter((e) => e.event === 'plan_updated');
     expect(planEvents.length).toBeGreaterThan(0);
-    
+
     // Verify the event data contains the plan
     const lastPlanEvent = planEvents[planEvents.length - 1];
     expect(lastPlanEvent.data).toHaveProperty('meta');
@@ -102,11 +102,11 @@ describe('Device plan snapshot', () => {
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan).toBeTruthy();
-    
+
     // dev-2 (priority 10, less important) should be shed
     const dev2Plan = plan.devices.find((d: any) => d.id === 'dev-2');
     expect(dev2Plan?.plannedState).toBe('shed');
-    
+
     // dev-1 (priority 1, most important) should be kept
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
@@ -913,7 +913,7 @@ describe('Device plan snapshot', () => {
     });
 
     // Configure Away mode with lower temp for water heater
-    mockHomeyInstance.settings.set('mode_device_targets', { 
+    mockHomeyInstance.settings.set('mode_device_targets', {
       Away: { 'hoiax-1': 45 },
       Home: { 'hoiax-1': 65 },
     });
@@ -931,7 +931,7 @@ describe('Device plan snapshot', () => {
             id: 'hoiax-1',
             name: 'Connected 300',
             capabilities: ['target_temperature', 'onoff', 'max_power_3000'],
-            capabilitiesObj: { 
+            capabilitiesObj: {
               target_temperature: { value: 65 },
               onoff: { value: true },
             },
@@ -1095,7 +1095,7 @@ describe('Device plan snapshot', () => {
     // High priority should stay off - not enough headroom even with swap
     expect(highPriPlan?.plannedState).toBe('shed');
     expect(highPriPlan?.reason).toContain('no lower-priority devices to swap');
-    
+
     // Low priority should stay ON - it wasn't swapped out because swap wouldn't help
     expect(lowPriPlan?.plannedState).toBe('keep');
   });
@@ -1147,7 +1147,7 @@ describe('Device plan snapshot', () => {
 
     // High priority should be restored (swap successful)
     expect(highPriPlan?.plannedState).toBe('keep');
-    
+
     // Both low priority devices should be shed for the swap
     expect(low1Plan?.plannedState).toBe('shed');
     expect(low1Plan?.reason).toContain('swapped out');
@@ -1158,7 +1158,7 @@ describe('Device plan snapshot', () => {
   it('blocks lower-priority devices from restoring before pending swap targets', async () => {
     // Scenario: A swap was initiated but the swap target hasn't restored yet
     // A lower-priority OFF device should NOT restore before the swap target
-    
+
     // High priority swap target (OFF, pending restore via swap)
     const swapTarget = new MockDevice('dev-swap-target', 'Swap Target', ['target_temperature', 'onoff', 'measure_power']);
     await swapTarget.setCapabilityValue('measure_power', 1000); // 1 kW
@@ -1174,11 +1174,11 @@ describe('Device plan snapshot', () => {
     });
 
     // Swap target (10) > Lower priority (8)
-    mockHomeyInstance.settings.set('capacity_priorities', { 
-      Home: { 'dev-swap-target': 10, 'dev-lower': 8 } 
+    mockHomeyInstance.settings.set('capacity_priorities', {
+      Home: { 'dev-swap-target': 10, 'dev-lower': 8 },
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 
-      'dev-swap-target': true, 'dev-lower': true 
+    mockHomeyInstance.settings.set('controllable_devices', {
+      'dev-swap-target': true, 'dev-lower': true,
     });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
@@ -1190,7 +1190,7 @@ describe('Device plan snapshot', () => {
     // Soft limit = 2 kW, total power = 0 (both devices OFF), headroom = 2.0 kW
     // But with NO on devices, swap target can restore normally with 1.4 kW needed
     // To test the blocking, we need to manually set up the pendingSwapTargets
-    
+
     (app as any).computeDynamicSoftLimit = () => 2;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 2);
@@ -1199,7 +1199,7 @@ describe('Device plan snapshot', () => {
     (app as any).lastSheddingMs = null;
     (app as any).lastOvershootMs = null;
     (app as any).lastRestoreMs = null;
-    
+
     // Simulate that a swap was initiated: swap target is in pendingSwapTargets
     // This mimics the state after a swap where the target hasn't been restored yet
     (app as any).pendingSwapTargets = new Set(['dev-swap-target']);
@@ -1214,7 +1214,7 @@ describe('Device plan snapshot', () => {
 
     // Swap target doesn't have enough headroom, should stay shed
     expect(swapTargetPlan?.plannedState).toBe('shed');
-    
+
     // Lower priority device COULD restore (has enough headroom)
     // But should be blocked because swap target is pending
     expect(lowerPriPlan?.plannedState).toBe('shed');
@@ -1288,7 +1288,7 @@ describe('Device plan snapshot', () => {
   it('syncs Guard controllables when updateLocalSnapshot changes on/off state', async () => {
     // Scenario: A device is restored (on=true) via updateLocalSnapshot
     // The Guard should immediately see this device as desired='ON' so it can be shed if needed
-    
+
     const dev = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await dev.setCapabilityValue('measure_power', 2000); // 2 kW
     await dev.setCapabilityValue('onoff', false); // Currently OFF
@@ -1306,7 +1306,7 @@ describe('Device plan snapshot', () => {
     // Initially, device is OFF, so Guard should have desired='OFF'
     const guard = (app as any).capacityGuard;
     expect(guard).toBeTruthy();
-    
+
     let controllable = guard.controllables.get('dev-1');
     expect(controllable?.desired).toBe('OFF');
 
@@ -1352,13 +1352,13 @@ describe('Device plan snapshot', () => {
 
     // Devices should be sorted by priority ascending (1 = most important, shown first)
     const deviceOrder = plan.devices.map((d: any) => ({ name: d.name, priority: d.priority }));
-    
+
     expect(deviceOrder[0].name).toBe('Most Important Heater');
     expect(deviceOrder[0].priority).toBe(1);
-    
+
     expect(deviceOrder[1].name).toBe('Medium Priority Heater');
     expect(deviceOrder[1].priority).toBe(5);
-    
+
     expect(deviceOrder[2].name).toBe('Least Important Heater');
     expect(deviceOrder[2].priority).toBe(10);
   });
@@ -1403,7 +1403,7 @@ describe('Device plan snapshot', () => {
     const logCalls: string[] = [];
     const originalLog = (app as any).log.bind(app);
     (app as any).log = (...args: unknown[]) => {
-      const msg = args.map(a => String(a)).join(' ');
+      const msg = args.map((a) => String(a)).join(' ');
       logCalls.push(msg);
       originalLog(...args);
     };
@@ -1418,8 +1418,8 @@ describe('Device plan snapshot', () => {
     ]);
 
     // Count swap-related log messages
-    const swapApprovedLogs = logCalls.filter(msg => msg.includes('swap approved'));
-    const swappingOutLogs = logCalls.filter(msg => msg.includes('swapping out'));
+    const swapApprovedLogs = logCalls.filter((msg) => msg.includes('swap approved'));
+    const swappingOutLogs = logCalls.filter((msg) => msg.includes('swapping out'));
 
     // Should only have ONE of each, not duplicates
     expect(swapApprovedLogs.length).toBe(1);

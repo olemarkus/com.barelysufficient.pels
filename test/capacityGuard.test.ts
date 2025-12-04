@@ -44,7 +44,7 @@ describe('CapacityGuard', () => {
       intervalMs: 100000,
     });
 
-    guard.requestOn('devA', 'Heater', 1, 1);  // priority 1 = most important
+    guard.requestOn('devA', 'Heater', 1, 1); // priority 1 = most important
     guard.requestOn('devB', 'Washer', 1.5, 10); // priority 10 = less important, shed first
 
     guard.reportTotalPower(2); // below soft, no shed
@@ -58,8 +58,8 @@ describe('CapacityGuard', () => {
 
   it('respects hourly energy budget by allowing higher draw when budget remains', async () => {
     const shedOrder: string[] = [];
-    let remainingHours = 0.5;
-    let usedKWh = 2.5;
+    const remainingHours = 0.5;
+    const usedKWh = 2.5;
     const budgetKWh = 5;
     const guard = new CapacityGuard({
       dryRun: false,
