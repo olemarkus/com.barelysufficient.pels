@@ -26,6 +26,7 @@ export interface CapacityGuardOptions {
 }
 
 export default class CapacityGuard {
+  private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
   private limitKw: number;
   private softMarginKw: number;
   private restoreMarginKw: number;
@@ -198,8 +199,8 @@ export default class CapacityGuard {
       }
       await this.shedUntilHealthy(headroom);
     } else {
-      // Headroom is positive - clear shortfall if we were in one
-      if (this.inShortfall) {
+      // Headroom is positive - clear shortfall if we have enough margin (hysteresis)
+      if (this.inShortfall && headroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
         this.log?.('Guard: shortfall cleared (headroom now positive)');
         this.inShortfall = false;
         await this.onShortfallCleared?.();
@@ -252,8 +253,8 @@ export default class CapacityGuard {
       this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW`);
       this.inShortfall = true;
       await this.onShortfall?.(deficitKw);
-    } else if (this.inShortfall && headroom >= 0) {
-      // Shortfall clears when we have positive headroom (power dropped or limit increased)
+    } else if (this.inShortfall && headroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
+      // Shortfall clears when we have positive headroom with hysteresis margin
       this.log?.('Guard: shortfall cleared');
       this.inShortfall = false;
       await this.onShortfallCleared?.();

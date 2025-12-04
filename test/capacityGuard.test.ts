@@ -84,4 +84,53 @@ describe('CapacityGuard', () => {
     // devA (priority 10, less important) should be shed first
     expect(shedOrder).toEqual(['devA']);
   });
+
+  it('requires hysteresis margin before clearing shortfall', async () => {
+    const shortfallEvents: Array<{ type: 'shortfall' | 'cleared'; deficit?: number }> = [];
+    const guard = new CapacityGuard({
+      limitKw: 5,
+      softMarginKw: 0.3, // soft limit = 4.7
+      dryRun: true,
+      intervalMs: 100000,
+      onShortfall: async (deficitKw) => {
+        shortfallEvents.push({ type: 'shortfall', deficit: deficitKw });
+      },
+      onShortfallCleared: async () => {
+        shortfallEvents.push({ type: 'cleared' });
+      },
+    });
+
+    // No controllables - any overshoot causes immediate shortfall
+    guard.reportTotalPower(5.0); // headroom = 4.7 - 5.0 = -0.3
+    await guard.tick();
+
+    expect(shortfallEvents).toHaveLength(1);
+    expect(shortfallEvents[0].type).toBe('shortfall');
+    expect(guard.isInShortfall()).toBe(true);
+
+    // Power drops slightly but still negative headroom - should stay in shortfall
+    guard.reportTotalPower(4.75); // headroom = 4.7 - 4.75 = -0.05
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(1); // No new events
+    expect(guard.isInShortfall()).toBe(true);
+
+    // Power drops to exactly soft limit - headroom = 0, but not enough margin to clear
+    guard.reportTotalPower(4.7); // headroom = 0
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(1); // Still no cleared event
+    expect(guard.isInShortfall()).toBe(true);
+
+    // Power drops slightly below soft limit - headroom = +0.1, still not enough margin
+    guard.reportTotalPower(4.6); // headroom = +0.1
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(1); // Still no cleared event
+    expect(guard.isInShortfall()).toBe(true);
+
+    // Power drops enough to provide 0.2 kW hysteresis margin - NOW it should clear
+    guard.reportTotalPower(4.5); // headroom = +0.2
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(2);
+    expect(shortfallEvents[1].type).toBe('cleared');
+    expect(guard.isInShortfall()).toBe(false);
+  });
 });
