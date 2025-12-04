@@ -1,7 +1,5 @@
 import Homey from 'homey';
 import https from 'https';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-// eslint-disable-next-line import/no-unresolved, import/extensions, node/no-missing-import
 import CapacityGuard from './capacityGuard';
 
 const { HomeyAPI } = require('homey-api');
@@ -473,7 +471,6 @@ module.exports = class PelsApp extends Homey.App {
 
   private startPeriodicSnapshotRefresh(): void {
     // Refresh device snapshot every 5 minutes to keep states current
-    // eslint-disable-next-line homey-app/global-timers -- Cleared in onUninit
     this.snapshotRefreshInterval = setInterval(() => {
       this.refreshTargetDevicesSnapshot().catch((error: Error) => {
         this.error('Periodic snapshot refresh failed', error);
@@ -747,7 +744,7 @@ module.exports = class PelsApp extends Homey.App {
           res.on('end', () => {
             try {
               resolve(JSON.parse(data));
-            } catch (e) {
+            } catch (_e) {
               reject(new Error('Failed to parse JSON response'));
             }
           });
@@ -1001,14 +998,12 @@ module.exports = class PelsApp extends Homey.App {
     await this.applyPriceOptimization();
 
     // Schedule to run at the start of each hour
-    // eslint-disable-next-line homey-app/global-timers -- One-shot timer to align with hour boundary
     setTimeout(() => {
       this.applyPriceOptimization().catch((error: Error) => {
         this.error('Price optimization failed', error);
       });
 
       // Then run every hour
-      // eslint-disable-next-line homey-app/global-timers -- Cleared in onUninit
       this.priceOptimizationInterval = setInterval(() => {
         this.applyPriceOptimization().catch((error: Error) => {
           this.error('Price optimization failed', error);
@@ -1026,7 +1021,6 @@ module.exports = class PelsApp extends Homey.App {
     // Refresh prices every 3 hours
     const refreshIntervalMs = 3 * 60 * 60 * 1000;
 
-    // eslint-disable-next-line homey-app/global-timers -- Cleared in onUninit
     this.priceRefreshInterval = setInterval(() => {
       this.refreshSpotPrices().catch((error: Error) => {
         this.error('Failed to refresh spot prices', error);
@@ -1301,7 +1295,6 @@ module.exports = class PelsApp extends Homey.App {
         .map((d) => {
           const priority = this.getPriorityForDevice(d.id);
           const power = typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1; // fallback when unknown
-          // eslint-disable-next-line node/no-unsupported-features/es-syntax -- App targets Node 18+
           return { ...d, priority, effectivePower: power };
         })
         .sort((a, b) => {

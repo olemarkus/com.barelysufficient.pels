@@ -61,7 +61,6 @@ export default class CapacityGuard {
 
   start(): void {
     if (this.interval) return;
-    // eslint-disable-next-line homey-app/global-timers -- Cleared in stop()
     this.interval = setInterval(() => {
       this.tick().catch((err) => this.errorLog?.('Capacity guard tick failed', err));
     }, this.intervalMs);
