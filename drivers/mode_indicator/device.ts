@@ -4,7 +4,7 @@ class ModeIndicatorDevice extends Homey.Device {
   async onInit(): Promise<void> {
     // Add capabilities if missing (for devices created before these were added)
     const requiredCapabilities = [
-      'alarm_generic',
+      'pels_shortfall',
       'pels_headroom',
       'pels_hourly_usage',
       'pels_shedding',
@@ -17,6 +17,11 @@ class ModeIndicatorDevice extends Homey.Device {
       if (!this.hasCapability(cap)) {
         await this.addCapability(cap);
       }
+    }
+
+    // Remove deprecated alarm_generic if present (replaced by pels_shortfall)
+    if (this.hasCapability('alarm_generic')) {
+      await this.removeCapability('alarm_generic');
     }
 
     // Initialize from current settings
@@ -49,7 +54,7 @@ class ModeIndicatorDevice extends Homey.Device {
 
   async updateShortfall(inShortfall: boolean): Promise<void> {
     try {
-      await this.setCapabilityValue('alarm_generic', Boolean(inShortfall));
+      await this.setCapabilityValue('pels_shortfall', Boolean(inShortfall));
     } catch (error) {
       this.error('Failed to update shortfall alarm', error);
     }

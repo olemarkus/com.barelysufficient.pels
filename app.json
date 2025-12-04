@@ -322,7 +322,20 @@
       "getable": true,
       "setable": false,
       "uiComponent": "sensor",
-      "insights": true
+      "insights": false
+    },
+    "pels_shortfall": {
+      "type": "boolean",
+      "title": {
+        "en": "Capacity shortfall"
+      },
+      "desc": {
+        "en": "Whether PELS cannot shed enough load to stay within capacity limits"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
     }
   }
 }

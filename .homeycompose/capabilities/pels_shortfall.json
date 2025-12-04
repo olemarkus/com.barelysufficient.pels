@@ -1,10 +1,10 @@
 {
   "type": "boolean",
   "title": {
-    "en": "Shedding"
+    "en": "Capacity shortfall"
   },
   "desc": {
-    "en": "Whether PELS is currently shedding load to stay within capacity"
+    "en": "Whether PELS cannot shed enough load to stay within capacity limits"
   },
   "getable": true,
   "setable": false,

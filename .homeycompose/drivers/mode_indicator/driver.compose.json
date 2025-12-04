@@ -8,33 +8,12 @@
     "mode_indicator",
     "pels_headroom",
     "pels_hourly_usage",
-    "alarm_generic",
+    "pels_shortfall",
     "pels_shedding",
     "pels_price_level",
     "pels_devices_on",
     "pels_devices_off"
   ],
-  "capabilitiesOptions": {
-    "alarm_generic": {
-      "title": {
-        "en": "Capacity shortfall"
-      },
-      "insightsTitleTrue": {
-        "en": null
-      },
-      "insightsTitleFalse": {
-        "en": null
-      }
-    },
-    "pels_shedding": {
-      "insightsTitleTrue": {
-        "en": null
-      },
-      "insightsTitleFalse": {
-        "en": null
-      }
-    }
-  },
   "icon": "/assets/icon.svg",
   "images": {
     "small": "/drivers/mode_indicator/assets/images/small.png",

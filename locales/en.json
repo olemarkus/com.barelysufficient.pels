@@ -12,7 +12,7 @@
     "pels_hourly_usage": {
       "title": "Hourly usage"
     },
-    "alarm_generic": {
+    "pels_shortfall": {
       "title": "Capacity shortfall"
     },
     "pels_shedding": {
