@@ -1054,6 +1054,10 @@ module.exports = class PelsApp extends Homey.App {
    * In dry run mode, logs what would happen but does not actuate.
    */
   private async applyPriceOptimization(): Promise<void> {
+    // Always update combined prices at the start of each hour to refresh
+    // cheap/expensive flags for the new current hour and notify the UI
+    this.updateCombinedPrices();
+
     if (!this.priceOptimizationEnabled) {
       this.logDebug('Price optimization: Disabled globally');
       return;
