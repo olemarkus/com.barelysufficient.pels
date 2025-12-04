@@ -4,5 +4,8 @@
   },
   "1.0.1": {
     "en": "Take Homey's TZ into consideration in the UI"
+  },
+  "1.0.2": {
+    "en": "Fixed devices not restoring during capacity shortfall. Burst rate now only limited in last 10 minutes of the hour. Added dry-run warning banner. Added end-of-hour indicator in plan view."
   }
 }
