@@ -194,6 +194,12 @@ module.exports = class PelsApp extends Homey.App {
       actuator: async (deviceId, deviceName) => {
         await this.applySheddingToDevice(deviceId, deviceName);
       },
+      onShortfall: async (deficitKw) => {
+        await this.handleShortfall(deficitKw);
+      },
+      onShortfallCleared: async () => {
+        await this.handleShortfallCleared();
+      },
       log: (...args) => this.log(...args),
       errorLog: (...args) => this.error(...args),
     });
@@ -1341,7 +1347,6 @@ module.exports = class PelsApp extends Homey.App {
     const shedSet = new Set<string>();
     const shedReasons = new Map<string, string>();
     const restoreMarginPlanning = Math.max(0.1, this.capacitySettings.marginKw || 0);
-    let nowInShortfall = false; // Default: no shortfall when headroom is positive
     if (headroom !== null && headroom < 0) {
       this.lastOvershootMs = Date.now();
       const needed = -headroom;
@@ -1381,37 +1386,18 @@ module.exports = class PelsApp extends Homey.App {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
         remaining -= (c as any).effectivePower as number;
       }
-
-      // Only raise a shortfall when we truly cannot shed enough controllable load to reach the soft limit.
-      // Add a small tolerance to avoid noisy triggers when we are only a few watts over.
-      const shortfallTolerance = 0.05;
-      nowInShortfall = remaining > shortfallTolerance && totalSheddable < needed - shortfallTolerance;
     }
 
-    // Handle shortfall state transitions (moved outside the headroom<0 block to allow clearing)
-    if (nowInShortfall && !this.inShortfall) {
-      // Entering shortfall state
-      const deficitKw = total !== null && softLimit > 0 ? total - softLimit : 0;
-      this.log(`Capacity shortfall: cannot reach soft limit, deficit ~${deficitKw.toFixed(2)}kW (total ${
-        total === null ? 'unknown' : total.toFixed(2)
-      }kW, soft ${softLimit.toFixed(2)}kW)`);
-      const card = this.homey.flow?.getTriggerCard?.('capacity_shortfall');
-      if (card && typeof card.trigger === 'function') {
-        const result = card.trigger({});
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-misused-promises -- Homey trigger returns a possibly-thenable
-        if (result && typeof (result as any).catch === 'function') {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey trigger returns a possibly-thenable
-          (result as any).catch((err: Error) => this.error('Failed to trigger capacity_shortfall', err));
-        }
+    // Shortfall is now detected by the CapacityGuard's onShortfall callback
+    // We just sync state from the guard if available
+    const guardInShortfall = this.capacityGuard?.isInShortfall() ?? false;
+    if (guardInShortfall !== this.inShortfall) {
+      // Guard state changed but callbacks didn't fire (shouldn't happen, but sync just in case)
+      if (guardInShortfall) {
+        this.log('Plan: syncing shortfall state from guard');
       }
-    } else if (!nowInShortfall && this.inShortfall) {
-      this.log('Capacity shortfall resolved');
-    }
-
-    // Update state and persist to settings (for mode_indicator device)
-    if (nowInShortfall !== this.inShortfall) {
-      this.inShortfall = nowInShortfall;
-      this.homey.settings.set('capacity_in_shortfall', nowInShortfall);
+      this.inShortfall = guardInShortfall;
+      this.homey.settings.set('capacity_in_shortfall', guardInShortfall);
     }
 
     const planDevices = devices.map((dev) => {
@@ -1784,6 +1770,39 @@ module.exports = class PelsApp extends Homey.App {
     } finally {
       this.pendingSheds.delete(deviceId);
     }
+  }
+
+  private async handleShortfall(deficitKw: number): Promise<void> {
+    if (this.inShortfall) return; // Already in shortfall state
+
+    const softLimit = this.capacityGuard ? this.capacityGuard.getSoftLimit() : this.capacitySettings.limitKw;
+    const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
+
+    this.log(`Capacity shortfall: cannot reach soft limit, deficit ~${deficitKw.toFixed(2)}kW (total ${
+      total === null ? 'unknown' : total.toFixed(2)
+    }kW, soft ${softLimit.toFixed(2)}kW)`);
+
+    this.inShortfall = true;
+    this.homey.settings.set('capacity_in_shortfall', true);
+
+    // Trigger flow card
+    const card = this.homey.flow?.getTriggerCard?.('capacity_shortfall');
+    if (card && typeof card.trigger === 'function') {
+      const result = card.trigger({});
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-misused-promises -- Homey trigger returns a possibly-thenable
+      if (result && typeof (result as any).catch === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey trigger returns a possibly-thenable
+        (result as any).catch((err: Error) => this.error('Failed to trigger capacity_shortfall', err));
+      }
+    }
+  }
+
+  private async handleShortfallCleared(): Promise<void> {
+    if (!this.inShortfall) return; // Not in shortfall state
+
+    this.log('Capacity shortfall resolved');
+    this.inShortfall = false;
+    this.homey.settings.set('capacity_in_shortfall', false);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Plan structure has dynamic target values

@@ -565,12 +565,15 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
     ];
+    // Sync the snapshot to the guard so it knows about controllable devices
+    (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
     (app as any).computeDynamicSoftLimit = () => 1;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
     await (app as any).recordPowerSample(4000);
+    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalled();
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
@@ -641,6 +644,8 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
     ];
+    // Sync the snapshot to the guard so it knows about controllable devices
+    (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
     (app as any).computeDynamicSoftLimit = () => 1;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
@@ -648,14 +653,17 @@ describe('Device plan snapshot', () => {
 
     // First shortfall sample - should trigger
     await (app as any).recordPowerSample(4000);
+    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     // Second shortfall sample - should NOT trigger again (already in shortfall)
     await (app as any).recordPowerSample(4500);
+    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     // Third shortfall sample - should still NOT trigger
     await (app as any).recordPowerSample(4200);
+    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
@@ -693,6 +701,8 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
     ];
+    // Sync the snapshot to the guard so it knows about controllable devices
+    (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
     (app as any).computeDynamicSoftLimit = () => 1;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
@@ -700,15 +710,18 @@ describe('Device plan snapshot', () => {
 
     // First shortfall - should trigger (deficit: 4kW total, 0.5kW sheddable, 1kW soft)
     await (app as any).recordPowerSample(4000);
+    // Guard tick detects shortfall when there's overshoot but no more devices to shed
+    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
     // Power drops below soft limit - shortfall resolved
-    (app as any).computeDynamicSoftLimit = () => 2;
+    (app as any).computeDynamicSoftLimit = () => 5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
     await (app as any).recordPowerSample(1500);
+    await (app as any).capacityGuard?.tick();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
 
     // Shortfall returns - should trigger again
@@ -717,6 +730,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
     await (app as any).recordPowerSample(4000);
+    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(2);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
@@ -755,6 +769,8 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
     ];
+    // Sync the snapshot to the guard so it knows about controllable devices
+    (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
     (app as any).computeDynamicSoftLimit = () => 1;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
@@ -762,6 +778,7 @@ describe('Device plan snapshot', () => {
 
     // Enter shortfall - setting should be true
     await (app as any).recordPowerSample(4000);
+    await (app as any).capacityGuard?.tick();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
     // Exit shortfall - setting should be false
@@ -770,6 +787,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
     await (app as any).recordPowerSample(1000);
+    await (app as any).capacityGuard?.tick();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;

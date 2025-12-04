@@ -2,6 +2,7 @@ type DesiredState = 'ON' | 'OFF' | 'SHED';
 
 type ShedCallback = (deviceId: string, name: string) => Promise<void> | void;
 type TriggerCallback = () => Promise<void> | void;
+type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
 type ActuatorCallback = (deviceId: string, name: string) => Promise<void> | void;
 type SoftLimitProvider = () => number | null;
 
@@ -14,6 +15,8 @@ export interface CapacityGuardOptions {
   onSheddingStart?: TriggerCallback;
   onSheddingEnd?: TriggerCallback;
   onDeviceShed?: ShedCallback;
+  onShortfall?: ShortfallCallback;
+  onShortfallCleared?: TriggerCallback;
   actuator?: ActuatorCallback;
   intervalMs?: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
@@ -33,9 +36,12 @@ export default class CapacityGuard {
   private controllables: Map<string, { name: string; powerKw: number; priority: number; desired: DesiredState }> = new Map();
   private interval: NodeJS.Timeout | null = null;
   private sheddingActive = false;
+  private inShortfall = false;
   private onSheddingStart?: TriggerCallback;
   private onSheddingEnd?: TriggerCallback;
   private onDeviceShed?: ShedCallback;
+  private onShortfall?: ShortfallCallback;
+  private onShortfallCleared?: TriggerCallback;
   private actuator?: ActuatorCallback;
   private intervalMs: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
@@ -53,6 +59,8 @@ export default class CapacityGuard {
     this.onSheddingStart = options.onSheddingStart;
     this.onSheddingEnd = options.onSheddingEnd;
     this.onDeviceShed = options.onDeviceShed;
+    this.onShortfall = options.onShortfall;
+    this.onShortfallCleared = options.onShortfallCleared;
     this.actuator = options.actuator;
     this.intervalMs = options.intervalMs ?? 3000;
     this.log = options.log;
@@ -140,7 +148,7 @@ export default class CapacityGuard {
     return Math.max(0, this.getSoftLimit() - this.planReserveKw);
   }
 
-  private getSoftLimit(): number {
+  getSoftLimit(): number {
     if (this.softLimitProvider) {
       const dynamic = this.softLimitProvider();
       if (typeof dynamic === 'number' && dynamic >= 0) return dynamic;
@@ -189,9 +197,17 @@ export default class CapacityGuard {
         await this.onSheddingStart?.();
       }
       await this.shedUntilHealthy(headroom);
-    } else if (this.sheddingActive && headroom >= this.restoreMarginKw) {
-      this.sheddingActive = false;
-      await this.onSheddingEnd?.();
+    } else {
+      // Headroom is positive - clear shortfall if we were in one
+      if (this.inShortfall) {
+        this.log?.('Guard: shortfall cleared (headroom now positive)');
+        this.inShortfall = false;
+        await this.onShortfallCleared?.();
+      }
+      if (this.sheddingActive && headroom >= this.restoreMarginKw) {
+        this.sheddingActive = false;
+        await this.onSheddingEnd?.();
+      }
     }
   }
 
@@ -227,11 +243,31 @@ export default class CapacityGuard {
       await this.onSheddingStart?.();
     }
 
+    // Detect shortfall: overshoot remains after shedding all available devices
+    // This happens when uncontrolled load exceeds our limit or all controllables are already shed
+    const remainingToShed = Array.from(this.controllables.values()).filter((c) => c.desired === 'ON').length;
+    const nowInShortfall = headroom < 0 && remainingToShed === 0;
+    if (nowInShortfall && !this.inShortfall) {
+      const deficitKw = -headroom;
+      this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW`);
+      this.inShortfall = true;
+      await this.onShortfall?.(deficitKw);
+    } else if (this.inShortfall && headroom >= 0) {
+      // Shortfall clears when we have positive headroom (power dropped or limit increased)
+      this.log?.('Guard: shortfall cleared');
+      this.inShortfall = false;
+      await this.onShortfallCleared?.();
+    }
+
     // Only end shedding if headroom is truly positive with margin
     // Don't end shedding just because we ran out of things to shed
     if (this.sheddingActive && headroom >= this.restoreMarginKw) {
       this.sheddingActive = false;
       await this.onSheddingEnd?.();
     }
+  }
+
+  isInShortfall(): boolean {
+    return this.inShortfall;
   }
 }
