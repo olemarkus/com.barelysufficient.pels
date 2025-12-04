@@ -440,15 +440,30 @@ const getPowerStats = async () => {
     hourlyPattern.push({ hour: h, avg: count > 0 ? sum / count : 0 });
   }
 
-  // Build daily history (last 30 days from dailyTotals)
-  const dailyHistory: { date: string; kWh: number }[] = [];
-  if (tracker.dailyTotals) {
-    const entries = Object.entries(tracker.dailyTotals)
-      .map(([date, kWh]) => ({ date, kWh }))
-      .sort((a, b) => b.date.localeCompare(a.date)) // Most recent first
-      .slice(0, 30);
-    dailyHistory.push(...entries);
+  // Build daily history (last 30 days from dailyTotals + hourly buckets)
+  // First, aggregate hourly buckets into daily totals for recent days
+  const dailyFromBuckets: Record<string, number> = {};
+  if (tracker.buckets) {
+    for (const [iso, kWh] of Object.entries(tracker.buckets)) {
+      const dateKey = iso.slice(0, 10); // YYYY-MM-DD
+      if (dateKey !== todayKey) { // Exclude today (incomplete)
+        dailyFromBuckets[dateKey] = (dailyFromBuckets[dateKey] || 0) + kWh;
+      }
+    }
   }
+
+  // Merge with existing dailyTotals (dailyTotals takes precedence for old data)
+  const mergedDaily: Record<string, number> = { ...dailyFromBuckets };
+  if (tracker.dailyTotals) {
+    for (const [dateKey, kWh] of Object.entries(tracker.dailyTotals)) {
+      mergedDaily[dateKey] = kWh; // Override with aggregated data if available
+    }
+  }
+
+  const dailyHistory: { date: string; kWh: number }[] = Object.entries(mergedDaily)
+    .map(([date, kWh]) => ({ date, kWh }))
+    .sort((a, b) => b.date.localeCompare(a.date)) // Most recent first
+    .slice(0, 30);
 
   return { today, week, month, weekdayAvg, weekendAvg, hourlyPattern, dailyHistory };
 };
