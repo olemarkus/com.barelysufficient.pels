@@ -16,6 +16,7 @@
     "prepare": "husky"
   },
   "lint-staged": {
+    "*.ts": "eslint --max-warnings=0",
     "!(settings)/**/*.ts": "eslint --max-warnings=0"
   },
   "dependencies": {
