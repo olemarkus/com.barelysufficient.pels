@@ -1637,6 +1637,15 @@ module.exports = class PelsApp extends Homey.App {
         } else {
           // Not enough headroom or budget - try to swap with lower priority ON devices
           const devPriority = dev.priority ?? 100;
+
+          // Check if this device is already a pending swap target - don't re-plan the same swap
+          if (this.pendingSwapTargets.has(dev.id)) {
+            dev.plannedState = 'shed';
+            dev.reason = 'stay off (swap already pending, waiting for execution)';
+            this.logDebug(`Plan: skipping ${dev.name} - swap already pending`);
+            continue;
+          }
+
           let potentialHeadroom = availableHeadroom;
           const toShed: typeof onDevices = [];
 
@@ -1645,6 +1654,8 @@ module.exports = class PelsApp extends Homey.App {
             if ((onDev.priority ?? 100) <= devPriority) break;
             if (onDev.plannedState === 'shed') continue; // Already being shed
             if (restoredThisCycle.has(onDev.id)) continue; // Don't swap out something we just decided to restore
+            // Don't include devices that are already being swapped out for another target
+            if (this.swappedOutFor[onDev.id]) continue;
 
             const onDevPower = onDev.powerKw && onDev.powerKw > 0 ? onDev.powerKw : 1;
             toShed.push(onDev);

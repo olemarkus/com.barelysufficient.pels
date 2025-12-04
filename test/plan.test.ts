@@ -1510,6 +1510,83 @@ describe('Device plan snapshot', () => {
     expect(swapApprovedLogs.length).toBe(1);
     expect(swappingOutLogs.length).toBe(1);
   });
+
+  it('does not re-plan swap when swap is already pending (e.g. after API timeout)', async () => {
+    // This test reproduces the bug where API timeouts caused repeated swap planning.
+    // When applySheddingToDevice times out, the swap target stays in pendingSwapTargets
+    // but the device wasn't actually shed, so next power sample re-plans the same swap.
+
+    // High priority device (OFF, needs restoration) - priority 1 = most important
+    const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await highPri.setCapabilityValue('measure_power', 1500);
+    await highPri.setCapabilityValue('onoff', false);
+
+    // Low priority device (ON, can be swapped) - priority 10 = less important
+    const lowPri = new MockDevice('dev-low', 'Low Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await lowPri.setCapabilityValue('measure_power', 1200);
+    await lowPri.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [highPri, lowPri]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    // Set up conditions for swap
+    (app as any).computeDynamicSoftLimit = () => 4;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+    }
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.sheddingActive = false;
+    }
+
+    // Mock HomeyAPI to simulate timeout (shedding fails)
+    (app as any).homeyApi = {
+      devices: {
+        setCapabilityValue: jest.fn().mockRejectedValue(new Error('Timeout after 10000ms')),
+      },
+    };
+
+    // Capture log calls
+    const logCalls: string[] = [];
+    const originalLog = (app as any).log.bind(app);
+    (app as any).log = (...args: unknown[]) => {
+      const msg = args.map((a) => String(a)).join(' ');
+      logCalls.push(msg);
+      originalLog(...args);
+    };
+
+    // First power sample - should plan the swap
+    await (app as any).recordPowerSample(3000);
+    await new Promise((r) => setTimeout(r, 50)); // Let async shedding attempt complete
+
+    const swapApprovedAfterFirst = logCalls.filter((msg) => msg.includes('swap approved')).length;
+    expect(swapApprovedAfterFirst).toBe(1);
+
+    // Clear logs for second sample
+    logCalls.length = 0;
+
+    // Second power sample - should NOT re-plan the same swap
+    // The swap is already pending (dev-high in pendingSwapTargets)
+    await (app as any).recordPowerSample(3000);
+    await new Promise((r) => setTimeout(r, 50));
+
+    const swapApprovedAfterSecond = logCalls.filter((msg) => msg.includes('swap approved')).length;
+
+    // BUG: Without the fix, this would be 1 (re-planning the same swap)
+    // With the fix, this should be 0 (swap already pending)
+    expect(swapApprovedAfterSecond).toBe(0);
+  });
 });
 
 describe('Dry run mode', () => {
