@@ -11,7 +11,7 @@ export default tseslint.config(
       'node_modules/**',
       '.homeybuild/**',
       '*.js',
-      'settings/**',
+      'settings/*.js',
       'test/screenshots/**',
     ],
   },
@@ -94,6 +94,34 @@ export default tseslint.config(
       'n/no-unpublished-import': 'off',
       'n/no-unsupported-features/es-syntax': 'off',
       'max-len': 'off',
+    },
+  },
+  // Settings UI files - browser environment
+  {
+    files: ['settings/**/*.ts'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'module',
+      globals: {
+        ...globals.browser,
+      },
+      parserOptions: {
+        project: './settings/tsconfig.json',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+      }],
+      'no-trailing-spaces': 'error',
+      'max-len': ['warn', { code: 200 }],
+      'comma-dangle': ['error', 'always-multiline'],
+      // Disable Node.js specific rules for browser code
+      'n/no-unsupported-features/node-builtins': 'off',
+      'n/no-unsupported-features/es-syntax': 'off',
     },
   },
 );

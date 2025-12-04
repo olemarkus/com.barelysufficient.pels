@@ -7,7 +7,7 @@ const qs = (selector: string) => document.querySelector(selector) as HTMLElement
 /**
  * Escape HTML special characters to prevent XSS attacks.
  */
-const escapeHtml = (str: string): string => {
+const _escapeHtml = (str: string): string => {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
@@ -86,7 +86,7 @@ const priceOptimizationEnabledCheckbox = document.querySelector('#price-optimiza
 
 // Device detail panel elements
 const deviceDetailOverlay = qs('#device-detail-overlay');
-const deviceDetailPanel = qs('#device-detail-panel');
+const _deviceDetailPanel = qs('#device-detail-panel');
 const deviceDetailTitle = qs('#device-detail-title');
 const deviceDetailClose = qs('#device-detail-close') as HTMLButtonElement;
 const deviceDetailControllable = document.querySelector('#device-detail-controllable') as HTMLInputElement;
@@ -228,7 +228,7 @@ const showTab = (tabId) => {
   const overflowToggle = document.querySelector('.tab-overflow-toggle') as HTMLButtonElement;
   if (overflowMenu) overflowMenu.hidden = true;
   if (overflowToggle) overflowToggle.setAttribute('aria-expanded', 'false');
-  
+
   tabs.forEach((tab) => {
     const isActive = tab.dataset.tab === tabId;
     tab.classList.toggle('active', isActive);
@@ -276,7 +276,7 @@ const renderDevices = (devices) => {
     const nameWrap = document.createElement('div');
     nameWrap.className = 'device-row__name';
     nameWrap.textContent = device.name;
-    
+
     // Controllable checkbox (icon only)
     const ctrlLabel = document.createElement('label');
     ctrlLabel.className = 'checkbox-icon';
@@ -289,7 +289,7 @@ const renderDevices = (devices) => {
       await setSetting('controllable_devices', controllableMap);
     });
     ctrlLabel.append(ctrlInput);
-    
+
     // Price optimization checkbox (icon only)
     const priceOptLabel = document.createElement('label');
     priceOptLabel.className = 'checkbox-icon';
@@ -606,15 +606,15 @@ const saveCapacitySettings = async () => {
   const limit = parseFloat(capacityLimitInput.value);
   const margin = parseFloat(capacityMarginInput.value);
   const dryRun = capacityDryRunInput ? capacityDryRunInput.checked : true;
-  
+
   // Validate limit: must be a finite positive number within reasonable bounds
   if (!Number.isFinite(limit) || limit <= 0) throw new Error('Limit must be positive.');
   if (limit > 1000) throw new Error('Limit cannot exceed 1000 kW.');
-  
+
   // Validate margin: must be a finite non-negative number within reasonable bounds
   if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
   if (margin > limit) throw new Error('Margin cannot exceed the limit.');
-  
+
   await setSetting('capacity_limit_kw', limit);
   await setSetting('capacity_margin_kw', margin);
   await setSetting('capacity_dry_run', dryRun);
@@ -649,7 +649,7 @@ const renderModeOptions = () => {
   Object.keys(capacityPriorities || {}).forEach((m) => modes.add(m));
   Object.keys(modeTargets || {}).forEach((m) => modes.add(m));
   if (modes.size === 0) modes.add('Home');
-  
+
   // Mode editor dropdown - shows editingMode as selected
   if (modeSelect) {
     modeSelect.innerHTML = '';
@@ -661,7 +661,7 @@ const renderModeOptions = () => {
       modeSelect.appendChild(opt);
     });
   }
-  
+
   // Active mode dropdown - shows activeMode as selected
   if (activeModeSelect) {
     activeModeSelect.innerHTML = '';
@@ -806,7 +806,7 @@ const initSortable = () => {
     sortableInstance.destroy();
   }
   if (!priorityList) return;
-  
+
   sortableInstance = new Sortable(priorityList, {
     animation: 150,
     handle: '.drag-handle',
@@ -829,7 +829,7 @@ const savePriorities = async () => {
   editingMode = mode;
   const rows = priorityList?.querySelectorAll('.device-row') || [];
   const modeMap = capacityPriorities[mode] || {};
-  const total = rows.length;
+  const _total = rows.length;
   rows.forEach((row, index) => {
     const id = row.dataset.deviceId;
     if (id) {
@@ -843,7 +843,7 @@ const savePriorities = async () => {
   await showToast(`Priorities saved for ${mode}.`, 'ok');
 };
 
-const saveTargets = async () => {
+const _saveTargets = async () => {
   const mode = (modeSelect?.value || editingMode || 'Home').trim() || 'Home';
   editingMode = mode;
   const inputs = priorityList?.querySelectorAll('.mode-target-input') || [];
@@ -933,8 +933,8 @@ const renderPlan = (plan) => {
     const powerLine = document.createElement('div');
     powerLine.className = 'plan-meta-line';
     const currentPower = dev.currentState || 'unknown';
-    const plannedPower =
-      dev.plannedState === 'shed'
+    const plannedPower
+      = dev.plannedState === 'shed'
         ? 'off'
         : dev.plannedState === 'keep'
           ? currentPower
@@ -1044,7 +1044,7 @@ const savePriceSettings = async () => {
   await setSetting('price_threshold_percent', thresholdPercent);
   await setSetting('price_min_diff_ore', minDiffOre);
   await showToast('Price settings saved.', 'ok');
-  
+
   // Trigger refresh of spot prices
   await setSetting('refresh_spot_prices', Date.now());
   await refreshPrices();
@@ -1102,7 +1102,7 @@ const renderPrices = (data: CombinedPriceData | null) => {
 
   // Show prices starting from current hour in the list
   const futurePrices = prices.filter(p => new Date(p.startsAt) >= currentHour);
-  
+
   if (futurePrices.length === 0) {
     if (priceEmpty) priceEmpty.hidden = false;
     return;
@@ -1223,7 +1223,7 @@ const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceCl
   const priceUnit = document.createElement('span');
   priceUnit.textContent = 'øre/kWh';
   chip.append(priceStrong, priceUnit);
-  
+
   // Build tooltip with price breakdown
   const tooltipLines: string[] = [];
   if (typeof entry.spotPrice === 'number') {
@@ -1241,7 +1241,7 @@ const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceCl
   }
   tooltipLines.push(`Total: ${entry.total.toFixed(1)} øre/kWh`);
   chip.dataset.tooltip = tooltipLines.join('\n');
-  
+
   priceWrap.appendChild(chip);
 
   row.append(timeWrap, priceWrap);
@@ -1279,10 +1279,10 @@ const loadNettleieSettings = async () => {
   if (nettleieFylkeSelect && typeof fylke === 'string') {
     nettleieFylkeSelect.value = fylke;
   }
-  
+
   // Populate company dropdown based on fylke
   updateGridCompanyOptions(typeof fylke === 'string' ? fylke : '03');
-  
+
   if (nettleieOrgnrInput && typeof orgnr === 'string') {
     nettleieOrgnrInput.value = orgnr;
     // Select the matching company in dropdown
@@ -1297,15 +1297,15 @@ const loadNettleieSettings = async () => {
 
 const updateGridCompanyOptions = (fylkeNr: string) => {
   if (!nettleieCompanySelect) return;
-  
+
   const currentValue = nettleieOrgnrInput?.value || '';
   nettleieCompanySelect.innerHTML = '<option value="">-- Select grid company --</option>';
-  
+
   // Filter companies that operate in the selected fylke
   const filteredCompanies = gridCompanies
     .filter(c => c.fylker.includes(fylkeNr))
     .sort((a, b) => a.name.localeCompare(b.name));
-  
+
   filteredCompanies.forEach(company => {
     const opt = document.createElement('option');
     opt.value = company.orgnr;
@@ -1327,7 +1327,7 @@ const saveNettleieSettings = async () => {
   await setSetting('nettleie_orgnr', orgnr);
   await setSetting('nettleie_tariffgruppe', tariffgruppe);
   await showToast('Grid tariff settings saved.', 'ok');
-  
+
   // Trigger refresh of nettleie data
   await setSetting('refresh_nettleie', Date.now());
   await refreshNettleie();
@@ -1455,27 +1455,27 @@ const renderPriceOptimization = (devices: any[]) => {
 const openDeviceDetail = (deviceId: string) => {
   const device = latestDevices.find(d => d.id === deviceId);
   if (!device) return;
-  
+
   currentDetailDeviceId = deviceId;
-  
+
   // Set title
   if (deviceDetailTitle) {
     deviceDetailTitle.textContent = device.name;
   }
-  
+
   // Set control checkboxes
   if (deviceDetailControllable) {
     deviceDetailControllable.checked = controllableMap[deviceId] !== false;
   }
-  
+
   const priceConfig = priceOptimizationSettings[deviceId];
   if (deviceDetailPriceOpt) {
     deviceDetailPriceOpt.checked = priceConfig?.enabled || false;
   }
-  
+
   // Populate mode list
   renderDeviceDetailModes(device);
-  
+
   // Set delta values
   if (deviceDetailCheapDelta) {
     deviceDetailCheapDelta.value = (priceConfig?.cheapDelta ?? 5).toString();
@@ -1483,10 +1483,10 @@ const openDeviceDetail = (deviceId: string) => {
   if (deviceDetailExpensiveDelta) {
     deviceDetailExpensiveDelta.value = (priceConfig?.expensiveDelta ?? -5).toString();
   }
-  
+
   // Show/hide delta section based on price optimization enabled
   updateDeltaSectionVisibility();
-  
+
   // Show panel
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = false;
@@ -1509,39 +1509,39 @@ const updateDeltaSectionVisibility = () => {
 const renderDeviceDetailModes = (device: any) => {
   if (!deviceDetailModes) return;
   deviceDetailModes.innerHTML = '';
-  
+
   // Collect all modes
   const modes = new Set([activeMode]);
   Object.keys(capacityPriorities || {}).forEach(m => modes.add(m));
   Object.keys(modeTargets || {}).forEach(m => modes.add(m));
   if (modes.size === 0) modes.add('Home');
-  
+
   Array.from(modes).sort().forEach(mode => {
     const row = document.createElement('div');
     row.className = 'detail-mode-row';
     row.dataset.mode = mode;
-    
+
     const nameWrap = document.createElement('div');
     nameWrap.className = 'detail-mode-row__name';
-    
+
     const nameSpan = document.createElement('span');
     nameSpan.textContent = mode;
     nameWrap.appendChild(nameSpan);
-    
+
     if (mode === activeMode) {
       const badge = document.createElement('span');
       badge.className = 'active-badge';
       badge.textContent = 'Active';
       nameWrap.appendChild(badge);
     }
-    
+
     // Get priority for this device in this mode
     const priority = capacityPriorities[mode]?.[device.id] ?? 100;
     const prioritySpan = document.createElement('div');
     prioritySpan.className = 'detail-mode-row__priority';
     prioritySpan.textContent = `Priority: #${priority <= 100 ? priority : '—'}`;
     nameWrap.appendChild(prioritySpan);
-    
+
     // Temperature input
     const tempInput = document.createElement('input');
     tempInput.type = 'number';
@@ -1550,13 +1550,13 @@ const renderDeviceDetailModes = (device: any) => {
     tempInput.placeholder = '°C';
     tempInput.className = 'detail-mode-temp';
     tempInput.dataset.mode = mode;
-    
+
     // Get current target for this mode
     const currentTarget = modeTargets[mode]?.[device.id];
     const defaultTarget = device.targets?.[0]?.value;
-    tempInput.value = typeof currentTarget === 'number' ? currentTarget.toString() : 
-                      (typeof defaultTarget === 'number' ? defaultTarget.toString() : '');
-    
+    tempInput.value = typeof currentTarget === 'number' ? currentTarget.toString()
+                      : (typeof defaultTarget === 'number' ? defaultTarget.toString() : '');
+
     row.append(nameWrap, tempInput);
     deviceDetailModes.appendChild(row);
   });
@@ -1564,24 +1564,24 @@ const renderDeviceDetailModes = (device: any) => {
 
 const saveDeviceDetail = async () => {
   if (!currentDetailDeviceId) return;
-  
+
   const deviceId = currentDetailDeviceId;
-  
+
   // Save controllable setting
   if (deviceDetailControllable) {
     controllableMap[deviceId] = deviceDetailControllable.checked;
     await setSetting('controllable_devices', controllableMap);
   }
-  
+
   // Save price optimization settings
   const priceOptEnabled = deviceDetailPriceOpt?.checked || false;
   const cheapDelta = parseFloat(deviceDetailCheapDelta?.value || '5');
   const expensiveDelta = parseFloat(deviceDetailExpensiveDelta?.value || '-5');
-  
+
   // Validate temperature deltas: must be within reasonable bounds (-20 to +20 degrees)
   const validCheapDelta = Number.isFinite(cheapDelta) && cheapDelta >= -20 && cheapDelta <= 20;
   const validExpensiveDelta = Number.isFinite(expensiveDelta) && expensiveDelta >= -20 && expensiveDelta <= 20;
-  
+
   if (!priceOptimizationSettings[deviceId]) {
     priceOptimizationSettings[deviceId] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
   }
@@ -1589,13 +1589,13 @@ const saveDeviceDetail = async () => {
   priceOptimizationSettings[deviceId].cheapDelta = validCheapDelta ? cheapDelta : 5;
   priceOptimizationSettings[deviceId].expensiveDelta = validExpensiveDelta ? expensiveDelta : -5;
   await savePriceOptimizationSettings();
-  
+
   // Save mode temperatures
   const tempInputs = deviceDetailModes?.querySelectorAll('.detail-mode-temp') as NodeListOf<HTMLInputElement>;
   tempInputs?.forEach(input => {
     const mode = input.dataset.mode;
     if (!mode) return;
-    
+
     const value = parseFloat(input.value);
     if (!isNaN(value)) {
       if (!modeTargets[mode]) modeTargets[mode] = {};
@@ -1603,12 +1603,12 @@ const saveDeviceDetail = async () => {
     }
   });
   await setSetting('mode_device_targets', modeTargets);
-  
+
   // Refresh device list and close
   renderDevices(latestDevices);
   renderPriorities(latestDevices);
   renderPriceOptimization(latestDevices);
-  
+
   closeDeviceDetail();
   await showToast('Device settings saved.', 'ok');
 };
@@ -1616,20 +1616,20 @@ const saveDeviceDetail = async () => {
 const initDeviceDetailHandlers = () => {
   // Close button
   deviceDetailClose?.addEventListener('click', closeDeviceDetail);
-  
+
   // Overlay click (close on background click)
   deviceDetailOverlay?.addEventListener('click', (e) => {
     if (e.target === deviceDetailOverlay) {
       closeDeviceDetail();
     }
   });
-  
+
   // Save button
   deviceDetailSave?.addEventListener('click', saveDeviceDetail);
-  
+
   // Toggle delta section visibility when price opt changes
   deviceDetailPriceOpt?.addEventListener('change', updateDeltaSectionVisibility);
-  
+
   // Escape key to close
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && deviceDetailOverlay && !deviceDetailOverlay.hidden) {
@@ -1732,7 +1732,7 @@ const boot = async () => {
     }
 
     showTab('devices');
-    
+
     // Initialize overflow menu toggle
     const overflowToggle = document.querySelector('.tab-overflow-toggle') as HTMLButtonElement;
     const overflowMenu = document.querySelector('.tab-overflow-menu') as HTMLElement;
@@ -1749,7 +1749,7 @@ const boot = async () => {
         overflowMenu.hidden = true;
       });
     }
-    
+
     tabs.forEach((tab) => {
       tab.addEventListener('click', () => showTab(tab.dataset.tab));
     });
