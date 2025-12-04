@@ -1,6 +1,22 @@
 import CapacityGuard from '../capacityGuard';
 
 describe('CapacityGuard', () => {
+  let mockNow: number;
+
+  beforeEach(() => {
+    mockNow = 1000000; // Start at some fixed time
+    jest.spyOn(Date, 'now').mockImplementation(() => mockNow);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  // Helper to advance mock time
+  const advanceTime = (ms: number) => {
+    mockNow += ms;
+  };
+
   it('sheds higher priority NUMBER devices first (priority 1 = most important, shed last)', async () => {
     const shedOrder: string[] = [];
     const guard = new CapacityGuard({
@@ -91,7 +107,7 @@ describe('CapacityGuard', () => {
       limitKw: 5,
       softMarginKw: 0.3, // soft limit = 4.7
       dryRun: true,
-      intervalMs: 100000,
+      intervalMs: 3000, // 3 second tick interval
       onShortfall: async (deficitKw) => {
         shortfallEvents.push({ type: 'shortfall', deficit: deficitKw });
       },
@@ -110,24 +126,104 @@ describe('CapacityGuard', () => {
 
     // Power drops slightly but still negative headroom - should stay in shortfall
     guard.reportTotalPower(4.75); // headroom = 4.7 - 4.75 = -0.05
+    advanceTime(3000);
     await guard.tick();
     expect(shortfallEvents).toHaveLength(1); // No new events
     expect(guard.isInShortfall()).toBe(true);
 
     // Power drops to exactly soft limit - headroom = 0, but not enough margin to clear
     guard.reportTotalPower(4.7); // headroom = 0
+    advanceTime(3000);
     await guard.tick();
     expect(shortfallEvents).toHaveLength(1); // Still no cleared event
     expect(guard.isInShortfall()).toBe(true);
 
     // Power drops slightly below soft limit - headroom = +0.1, still not enough margin
     guard.reportTotalPower(4.6); // headroom = +0.1
+    advanceTime(3000);
     await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // Still no cleared event
+    expect(shortfallEvents).toHaveLength(1); // Still no cleared event (margin not met)
     expect(guard.isInShortfall()).toBe(true);
 
-    // Power drops enough to provide 0.2 kW hysteresis margin - NOW it should clear
+    // Power drops enough to provide 0.2 kW hysteresis margin
+    // But now also needs sustained time - simulate 5 ticks to get > 10s
     guard.reportTotalPower(4.5); // headroom = +0.2
+    advanceTime(3000);
+    await guard.tick(); // tick 1 - starts timer at T
+    advanceTime(3000);
+    await guard.tick(); // tick 2 - elapsed 3s
+    advanceTime(3000);
+    await guard.tick(); // tick 3 - elapsed 6s
+    advanceTime(3000);
+    await guard.tick(); // tick 4 - elapsed 9s, not yet
+    advanceTime(3000);
+    await guard.tick(); // tick 5 - elapsed 12s > 10s, NOW should clear
+    expect(shortfallEvents).toHaveLength(2);
+    expect(shortfallEvents[1].type).toBe('cleared');
+    expect(guard.isInShortfall()).toBe(false);
+  });
+
+  it('requires sustained positive headroom before clearing shortfall (time-based hysteresis)', async () => {
+    const shortfallEvents: Array<{ type: 'shortfall' | 'cleared'; deficit?: number }> = [];
+    const guard = new CapacityGuard({
+      limitKw: 5,
+      softMarginKw: 0.3, // soft limit = 4.7
+      dryRun: true,
+      intervalMs: 3000, // 3 second tick interval
+      onShortfall: async (deficitKw) => {
+        shortfallEvents.push({ type: 'shortfall', deficit: deficitKw });
+      },
+      onShortfallCleared: async () => {
+        shortfallEvents.push({ type: 'cleared' });
+      },
+    });
+
+    // Enter shortfall
+    guard.reportTotalPower(5.0); // headroom = -0.3
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(1);
+    expect(shortfallEvents[0].type).toBe('shortfall');
+
+    // Power drops to positive headroom with margin - but needs sustained time
+    guard.reportTotalPower(4.5); // headroom = +0.2 (meets margin requirement)
+    advanceTime(3000);
+    await guard.tick();
+    // First tick with positive headroom - should NOT clear yet (needs sustained period)
+    expect(shortfallEvents).toHaveLength(1);
+    expect(guard.isInShortfall()).toBe(true);
+
+    // Power spikes back up briefly - resets the timer
+    guard.reportTotalPower(4.8); // headroom = -0.1 (back in overshoot)
+    advanceTime(3000);
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(1); // Still in shortfall
+    expect(guard.isInShortfall()).toBe(true);
+
+    // Power drops again - timer restarts
+    guard.reportTotalPower(4.5); // headroom = +0.2
+    advanceTime(3000);
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(1); // First tick of new sustained period - timer starts
+    expect(guard.isInShortfall()).toBe(true);
+
+    // Sustained positive headroom - need 4 more ticks to exceed 10s
+    advanceTime(3000);
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(1); // elapsed 3s
+    expect(guard.isInShortfall()).toBe(true);
+
+    advanceTime(3000);
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(1); // elapsed 6s
+    expect(guard.isInShortfall()).toBe(true);
+
+    advanceTime(3000);
+    await guard.tick();
+    expect(shortfallEvents).toHaveLength(1); // elapsed 9s, still < 10s
+    expect(guard.isInShortfall()).toBe(true);
+
+    // Fifth tick - NOW should clear (12s > 10s)
+    advanceTime(3000);
     await guard.tick();
     expect(shortfallEvents).toHaveLength(2);
     expect(shortfallEvents[1].type).toBe('cleared');

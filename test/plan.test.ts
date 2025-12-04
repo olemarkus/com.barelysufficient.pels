@@ -714,13 +714,22 @@ describe('Device plan snapshot', () => {
     expect(triggerSpy).toHaveBeenCalledTimes(1);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
-    // Power drops below soft limit - shortfall resolved
+    // Power drops below soft limit - shortfall resolved (needs sustained time)
     (app as any).computeDynamicSoftLimit = () => 5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
     await (app as any).recordPowerSample(1500);
+    // Need to tick multiple times with time passing to clear shortfall (10s sustained)
+    const originalNow = Date.now;
+    let mockTime = originalNow();
+    jest.spyOn(Date, 'now').mockImplementation(() => mockTime);
+    await (app as any).capacityGuard?.tick(); // starts timer
+    mockTime += 5000;
     await (app as any).capacityGuard?.tick();
+    mockTime += 6000; // total 11s
+    await (app as any).capacityGuard?.tick();
+    jest.restoreAllMocks();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
 
     // Shortfall returns - should trigger again
@@ -780,13 +789,22 @@ describe('Device plan snapshot', () => {
     await (app as any).capacityGuard?.tick();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
-    // Exit shortfall - setting should be false
+    // Exit shortfall - setting should be false (needs sustained time)
     (app as any).computeDynamicSoftLimit = () => 5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
     await (app as any).recordPowerSample(1000);
+    // Need to tick multiple times with time passing to clear shortfall (10s sustained)
+    const originalNow = Date.now;
+    let mockTime = originalNow();
+    jest.spyOn(Date, 'now').mockImplementation(() => mockTime);
+    await (app as any).capacityGuard?.tick(); // starts timer
+    mockTime += 5000;
     await (app as any).capacityGuard?.tick();
+    mockTime += 6000; // total 11s
+    await (app as any).capacityGuard?.tick();
+    jest.restoreAllMocks();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;

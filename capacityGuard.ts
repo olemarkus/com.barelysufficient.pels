@@ -27,6 +27,7 @@ export interface CapacityGuardOptions {
 
 export default class CapacityGuard {
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
+  private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 10000; // 10 seconds of sustained positive headroom
   private limitKw: number;
   private softMarginKw: number;
   private restoreMarginKw: number;
@@ -38,6 +39,7 @@ export default class CapacityGuard {
   private interval: NodeJS.Timeout | null = null;
   private sheddingActive = false;
   private inShortfall = false;
+  private shortfallClearStartTime: number | null = null; // When positive headroom started
   private onSheddingStart?: TriggerCallback;
   private onSheddingEnd?: TriggerCallback;
   private onDeviceShed?: ShedCallback;
@@ -192,6 +194,11 @@ export default class CapacityGuard {
 
     if (headroom < 0) {
       this.log?.(`Guard: overshoot detected. total=${this.mainPowerKw.toFixed(2)}kW soft=${soft.toFixed(2)}kW headroom=${headroom.toFixed(2)}kW`);
+      // Reset shortfall clear timer if we're back in overshoot
+      if (this.shortfallClearStartTime !== null) {
+        this.log?.('Guard: back in overshoot, resetting shortfall clear timer');
+        this.shortfallClearStartTime = null;
+      }
       // Ensure sheddingActive is set even if we can't shed anything (uncontrolled load exceeds limit)
       if (!this.sheddingActive) {
         this.sheddingActive = true;
@@ -199,11 +206,26 @@ export default class CapacityGuard {
       }
       await this.shedUntilHealthy(headroom);
     } else {
-      // Headroom is positive - clear shortfall if we have enough margin (hysteresis)
+      // Headroom is positive - clear shortfall if we have enough margin AND sustained time
       if (this.inShortfall && headroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
-        this.log?.('Guard: shortfall cleared (headroom now positive)');
-        this.inShortfall = false;
-        await this.onShortfallCleared?.();
+        const now = Date.now();
+        if (this.shortfallClearStartTime === null) {
+          // First tick with positive headroom - start the timer
+          this.shortfallClearStartTime = now;
+          this.log?.(`Guard: positive headroom detected, waiting for sustained period before clearing shortfall`);
+        } else if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
+          // Sustained positive headroom for required duration - clear shortfall
+          this.log?.('Guard: shortfall cleared (sustained positive headroom)');
+          this.inShortfall = false;
+          this.shortfallClearStartTime = null;
+          await this.onShortfallCleared?.();
+        }
+      } else if (this.inShortfall) {
+        // Headroom dropped below margin while waiting - reset the timer
+        if (this.shortfallClearStartTime !== null) {
+          this.log?.('Guard: headroom dropped, resetting shortfall clear timer');
+          this.shortfallClearStartTime = null;
+        }
       }
       if (this.sheddingActive && headroom >= this.restoreMarginKw) {
         this.sheddingActive = false;
@@ -254,10 +276,8 @@ export default class CapacityGuard {
       this.inShortfall = true;
       await this.onShortfall?.(deficitKw);
     } else if (this.inShortfall && headroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
-      // Shortfall clears when we have positive headroom with hysteresis margin
-      this.log?.('Guard: shortfall cleared');
-      this.inShortfall = false;
-      await this.onShortfallCleared?.();
+      // Shortfall clearing is handled in tick() with time-based hysteresis
+      // Don't clear here - let tick() handle the sustained time requirement
     }
 
     // Only end shedding if headroom is truly positive with margin
