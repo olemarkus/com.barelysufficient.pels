@@ -2002,4 +2002,147 @@ describe('Dry run mode', () => {
     // (would be 65 if price optimization was applied: 55 + 10)
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(55);
   });
+
+  it('plan reason should reflect actual restore status when blocked by shortfall', async () => {
+    // Bug: Device shows "restore (need X, headroom Y)" even though restore is blocked
+    // by shortfall state. The reason should accurately reflect that the device will stay off.
+
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 1500); // 1.5 kW
+    await dev1.setCapabilityValue('onoff', false); // Currently OFF
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_limit_kw', 10);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Set a generous soft limit with plenty of headroom
+    (app as any).computeDynamicSoftLimit = () => 8;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 8);
+    }
+
+    // Simulate being in shortfall state (Guard detected overshoot previously)
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.inShortfall = true;
+    }
+    (app as any).inShortfall = true;
+
+    // Report low power - plenty of headroom mathematically, but we're in shortfall
+    await (app as any).recordPowerSample(2000); // 2 kW, headroom = 6 kW
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(dev1Plan).toBeTruthy();
+    expect(dev1Plan.currentState).toBe('off');
+
+    // The bug: plan shows "restore" reason but device won't actually restore due to shortfall
+    // If the reason says "restore", the applyPlanActions should actually restore it
+    // OR the reason should accurately reflect that it will stay off
+    if (dev1Plan.reason.includes('restore') && dev1Plan.plannedState !== 'shed') {
+      // This is the bug - reason says restore, plannedState says keep, but applyPlanActions won't restore
+      // because we're in shortfall. The plan is misleading.
+
+      // Let's verify applyPlanActions will NOT restore due to shortfall
+      const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+      (app as any).homeyApi = {
+        devices: {
+          setCapabilityValue: mockSetCapability,
+        },
+      };
+
+      await (app as any).applyPlanActions(plan);
+
+      // Due to shortfall, the restore should NOT happen even though reason says "restore"
+      // This assertion will PASS (proving the bug exists), because the device won't be restored
+      const restoreCall = mockSetCapability.mock.calls.find(
+        (call: any) => call[0].deviceId === 'dev-1' && call[0].capabilityId === 'onoff' && call[0].value === true,
+      );
+
+      // The REAL assertion: if plan says "restore" in reason, the device SHOULD be restored
+      // This should FAIL, demonstrating the bug
+      if (dev1Plan.reason.includes('restore')) {
+        expect(restoreCall).toBeDefined(); // This will FAIL because shortfall blocks restore
+      }
+    }
+  });
+
+  it('should restore device when headroom is sufficient even if device power exceeds 50% of headroom', async () => {
+    // Bug: The 50% restore budget limit prevents restoring a device even when
+    // there's more than enough headroom. For example:
+    // - Headroom: 2.22 kW
+    // - Device power: 1.30 kW
+    // - 50% budget: 1.11 kW
+    // - Result: Can't restore because 1.30 > 1.11, even though 2.22 > 1.30!
+
+    const dev1 = new MockDevice('dev-1', 'Termostat kontor', ['target_temperature', 'onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 1300); // 1.3 kW - more than 50% of 2.22 kW headroom
+    await dev1.setCapabilityValue('onoff', false); // Currently OFF
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_limit_kw', 10);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Set a soft limit of 6.5 kW
+    (app as any).computeDynamicSoftLimit = () => 6.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 6.5);
+    }
+
+    // Ensure not in shortfall or shedding
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.inShortfall = false;
+      (app as any).capacityGuard.sheddingActive = false;
+    }
+    (app as any).inShortfall = false;
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+    (app as any).lastRestoreMs = null;
+
+    // Report 4.3 kW power - gives 2.2 kW headroom (6.5 - 4.3 = 2.2)
+    await (app as any).recordPowerSample(4300);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(dev1Plan).toBeTruthy();
+    expect(dev1Plan.currentState).toBe('off');
+    expect(dev1Plan.reason).toContain('restore'); // Plan says "restore"
+
+    // Now try to apply the plan
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    await (app as any).applyPlanActions(plan);
+
+    // The device should be restored because:
+    // - Headroom: 2.2 kW
+    // - Device needs: 1.3 kW (+ buffers ~1.6 kW)
+    // - 2.2 > 1.6, so there's enough headroom
+    // But the 50% budget (1.1 kW) blocks it because 1.3 > 1.1
+    const restoreCall = mockSetCapability.mock.calls.find(
+      (call: any) => call[0].deviceId === 'dev-1' && call[0].capabilityId === 'onoff' && call[0].value === true,
+    );
+
+    // This SHOULD pass but will FAIL due to the 50% budget bug
+    expect(restoreCall).toBeDefined();
+  });
 });

@@ -153,7 +153,7 @@ describe('computeDynamicSoftLimit', () => {
     jest.clearAllTimers();
   });
 
-  it('caps soft limit to sustainable rate even when burst rate is higher', async () => {
+  it('caps soft limit to sustainable rate in last 10 minutes even when burst rate is higher', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -166,30 +166,33 @@ describe('computeDynamicSoftLimit', () => {
     const app = createApp();
     await app.onInit();
 
-    // Simulate end of hour scenario where burst rate would be very high:
-    // If 1 minute left in hour and only 0.5 kWh used, remaining = 4.5 kWh
-    // burstRate = 4.5 / (1/60) = 270 kW (way over sustainable!)
-    // But with capping, it should never exceed 5 kW (sustainable rate)
+    // Simulate end of hour scenario (last 10 minutes) where burst rate would be very high:
+    // If 5 minutes left in hour and only 0.5 kWh used, remaining = 4.5 kWh
+    // burstRate = 4.5 / (5/60) = 54 kW (way over sustainable!)
+    // But with capping in last 10 minutes, it should never exceed 5 kW (sustainable rate)
+
+    // Mock Date.now to be at :55 (5 minutes left - within last 10 minutes)
+    const now = new Date();
+    now.setMinutes(55, 0, 0);
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker to simulate some usage
     (app as any).powerTracker = {
-      buckets: {},
+      buckets: { [hourStart.toISOString()]: 0.5 },
     };
-
-    // Set the bucket to have 0.5 kWh used this hour
-    const now = new Date();
-    now.setMinutes(0, 0, 0);
-    const bucketKey = now.toISOString();
-    (app as any).powerTracker.buckets[bucketKey] = 0.5;
 
     // Call computeDynamicSoftLimit
     const softLimit = (app as any).computeDynamicSoftLimit();
 
-    // With 5 kWh budget, 0.5 used, 4.5 remaining:
-    // - burstRate could be very high depending on time remaining
-    // - but it should be capped to sustainableRate = 5 kW
+    // With 5 kWh budget, 0.5 used, 4.5 remaining, 5 minutes left:
+    // - burstRate = 54 kW (very high)
+    // - but in last 10 minutes, it should be capped to sustainableRate = 5 kW
     expect(softLimit).toBeLessThanOrEqual(5);
     expect(softLimit).toBeGreaterThan(0);
+
+    jest.restoreAllMocks();
   });
 
   it('allows lower soft limit when budget is exhausted', async () => {
@@ -238,6 +241,11 @@ describe('computeDynamicSoftLimit', () => {
     const app = createApp();
     await app.onInit();
 
+    // Mock Date.now to be at :00 (start of hour)
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+
     // Mock the power tracker with empty bucket (start of hour)
     (app as any).powerTracker = {
       buckets: {},
@@ -248,7 +256,119 @@ describe('computeDynamicSoftLimit', () => {
     // At start of hour with full budget:
     // burstRate = 5 kWh / 1 hour = 5 kW
     // sustainableRate = 5 kW
-    // Result should be 5 kW (min of equal values)
+    // Not in last 10 minutes, so no cap - but burst = sustainable = 5 kW
     expect(softLimit).toBe(5);
+
+    jest.restoreAllMocks();
+  });
+
+  it('allows burst rate above sustainable rate mid-hour when under budget', async () => {
+    // Test: Halfway through the hour, if we've used less than expected,
+    // the burst rate should be allowed to exceed sustainable rate.
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Set capacity limit to 7 kW with 0.3 margin -> sustainable rate = 6.7 kW
+    mockHomeyInstance.settings.set('capacity_limit_kw', 7);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
+
+    const app = createApp();
+    await app.onInit();
+
+    // Mock Date.now to be at :30 (halfway through the hour)
+    const now = new Date();
+    now.setMinutes(30, 0, 0);
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+
+    // Mock the power tracker - only used 1.5 kWh (should have used ~3.35 kWh by now)
+    (app as any).powerTracker = {
+      buckets: { [hourStart.toISOString()]: 1.5 },
+    };
+
+    const softLimit = (app as any).computeDynamicSoftLimit();
+
+    // With 6.7 kWh budget, 1.5 used, 5.2 remaining, 0.5 hours left:
+    // burstRate = 5.2 / 0.5 = 10.4 kW
+    // sustainableRate = 6.7 kW
+    // Mid-hour should allow burst rate (10.4 kW), not cap to sustainable (6.7 kW)
+    expect(softLimit).toBeGreaterThan(6.7);
+
+    jest.restoreAllMocks();
+  });
+
+  it('caps to sustainable rate in the last 10 minutes of the hour', async () => {
+    // Test: At :52 (8 minutes left), the rate cap should kick in
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Set capacity limit to 7 kW with 0.3 margin -> sustainable rate = 6.7 kW
+    mockHomeyInstance.settings.set('capacity_limit_kw', 7);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
+
+    const app = createApp();
+    await app.onInit();
+
+    // Mock Date.now to be at :52 (8 minutes left)
+    const now = new Date();
+    now.setMinutes(52, 0, 0);
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+
+    // Mock the power tracker - only used 3 kWh (under budget)
+    (app as any).powerTracker = {
+      buckets: { [hourStart.toISOString()]: 3 },
+    };
+
+    const softLimit = (app as any).computeDynamicSoftLimit();
+
+    // With 6.7 kWh budget, 3 used, 3.7 remaining, ~0.133 hours (8 min) left:
+    // burstRate = 3.7 / 0.133 = ~27.8 kW (way over sustainable!)
+    // In last 10 minutes, should cap to sustainable rate = 6.7 kW
+    expect(softLimit).toBeLessThanOrEqual(6.7);
+
+    jest.restoreAllMocks();
+  });
+
+  it('caps to sustainable rate at :59 to prevent next-hour overshoot', async () => {
+    // Test: At :59 (1 minute left), should definitely cap to sustainable rate
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Set capacity limit to 7 kW with 0.3 margin -> sustainable rate = 6.7 kW
+    mockHomeyInstance.settings.set('capacity_limit_kw', 7);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
+
+    const app = createApp();
+    await app.onInit();
+
+    // Mock Date.now to be at :59 (1 minute left)
+    const now = new Date();
+    now.setMinutes(59, 0, 0);
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0, 0, 0);
+    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+
+    // Mock the power tracker - only used 2 kWh (lots of remaining budget)
+    (app as any).powerTracker = {
+      buckets: { [hourStart.toISOString()]: 2 },
+    };
+
+    const softLimit = (app as any).computeDynamicSoftLimit();
+
+    // With 6.7 kWh budget, 2 used, 4.7 remaining, ~0.017 hours (1 min) left:
+    // burstRate = 4.7 / 0.017 = ~280 kW (extreme!)
+    // At :59, must cap to sustainable rate = 6.7 kW to avoid next-hour overshoot
+    expect(softLimit).toBeLessThanOrEqual(6.7);
+
+    jest.restoreAllMocks();
   });
 });

@@ -1669,7 +1669,13 @@ module.exports = class PelsApp extends Homey.App {
       if (controllable && plannedState !== 'shed' && currentState === 'off') {
         const need = (dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1) + restoreMarginPlanning;
         const hr = headroomRaw;
-        reason = `restore (need ${need.toFixed(2)}kW, headroom ${hr === null ? 'unknown' : hr.toFixed(2)}kW)`;
+        // Only show "restore" reason if we're not in shortfall - otherwise device won't actually restore
+        if (guardInShortfall) {
+          plannedState = 'shed';
+          reason = 'stay off while in capacity shortfall';
+        } else {
+          reason = `restore (need ${need.toFixed(2)}kW, headroom ${hr === null ? 'unknown' : hr.toFixed(2)}kW)`;
+        }
       }
 
       // If hourly energy budget exhausted, proactively shed any controllable device that is currently on (or unknown state)
@@ -1965,13 +1971,13 @@ module.exports = class PelsApp extends Homey.App {
     // Calculate instantaneous rate needed to use remaining budget
     const burstRateKw = remainingKWh / remainingHours;
 
-    // Cap the soft limit to the base sustainable rate (netBudgetKWh kW).
+    // Only cap to sustainable rate in the last 10 minutes of the hour.
     // This prevents the "end of hour burst" problem where devices ramp up
     // to use remaining budget, then immediately overshoot the next hour.
-    // By never allowing more than the sustainable rate, devices won't be
-    // turned on at the end of hour N if they'd overshoot hour N+1.
+    // Earlier in the hour, allow the full burst rate since there's time to recover.
+    const minutesRemaining = remainingMs / 60000;
     const sustainableRateKw = netBudgetKWh; // kWh/h = kW at steady state
-    const allowedKw = Math.min(burstRateKw, sustainableRateKw);
+    const allowedKw = minutesRemaining <= 10 ? Math.min(burstRateKw, sustainableRateKw) : burstRateKw;
 
     this.logDebug(
       `Soft limit calc: budget=${netBudgetKWh.toFixed(3)}kWh used=${usedKWh.toFixed(3)}kWh `
@@ -2071,10 +2077,6 @@ module.exports = class PelsApp extends Homey.App {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Plan structure has dynamic target values
   private async applyPlanActions(plan: { devices: Array<{ id: string; name?: string; plannedState: string; currentState: string; plannedTarget: number | null; currentTarget: any; controllable?: boolean }> }): Promise<void> {
     if (!plan || !Array.isArray(plan.devices)) return;
-    // Track cumulative restored power this cycle to limit restore rate
-    let restoredPowerThisCycle = 0;
-    const headroomAtStart = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
-    const maxRestoreBudget = headroomAtStart !== null ? Math.max(0, headroomAtStart * 0.5) : 0;
 
     for (const dev of plan.devices) {
       if (dev.controllable === false) continue;
@@ -2106,23 +2108,24 @@ module.exports = class PelsApp extends Homey.App {
         const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
         const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
         const inCooldown = (sinceShedding !== null && sinceShedding < SHED_COOLDOWN_MS) || (sinceOvershoot !== null && sinceOvershoot < SHED_COOLDOWN_MS);
-        // Check if restoring this device would exceed our restore budget for this cycle
-        const wouldExceedRestoreBudget = restoredPowerThisCycle + plannedPower > maxRestoreBudget;
         // Do not restore devices while shedding is active, in shortfall, during cooldown, when headroom is unknown or near zero,
-        // when there is insufficient headroom for this device plus buffers, or when we've used up the restore budget.
-        if (sheddingActive || inShortfall || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice || wouldExceedRestoreBudget) {
+        // or when there is insufficient headroom for this device plus buffers.
+        // Note: We don't need a separate "restore budget" because:
+        // 1. The plan already limits to ONE restore per cycle (restoredOneThisCycle)
+        // 2. 30-second restore cooldown prevents rapid successive restores
+        // 3. headroom < neededForDevice ensures we have enough margin
+        if (sheddingActive || inShortfall || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice) {
           /* eslint-disable no-nested-ternary, max-len -- Clear state-dependent reason logging */
           this.logDebug(
-            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : inShortfall ? 'in shortfall' : inCooldown ? 'cooldown' : wouldExceedRestoreBudget ? 'restore budget exceeded' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
+            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : inShortfall ? 'in shortfall' : inCooldown ? 'cooldown' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
               3,
-            )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)}, device ~${plannedPower.toFixed(2)}kW, cooldown ${inCooldown ? 'yes' : 'no'}, restored ${restoredPowerThisCycle.toFixed(2)}/${maxRestoreBudget.toFixed(2)}kW)`,
+            )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)}, device ~${plannedPower.toFixed(2)}kW, cooldown ${inCooldown ? 'yes' : 'no'})`,
           );
           /* eslint-enable no-nested-ternary, max-len */
           continue;
         }
         // Mark as pending before async operation
         this.pendingRestores.add(dev.id);
-        restoredPowerThisCycle += plannedPower; // Track restored power upfront to prevent concurrent restores
         try {
           if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
             try {
