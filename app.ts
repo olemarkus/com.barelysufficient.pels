@@ -522,7 +522,14 @@ module.exports = class PelsApp extends Homey.App {
       }
     }
 
-    const url = `https://nettleietariffer.dataplattform.nve.no/v1/NettleiePerOmradePrTimeHusholdningFritidEffekttariffer?ValgtDato=${encodeURIComponent(today)}&Tariffgruppe=${encodeURIComponent(tariffgruppe)}&FylkeNr=${encodeURIComponent(fylke)}&OrganisasjonsNr=${encodeURIComponent(orgnr)}`;
+    const baseUrl = 'https://nettleietariffer.dataplattform.nve.no/v1/NettleiePerOmradePrTimeHusholdningFritidEffekttariffer';
+    const queryParams = [
+      `ValgtDato=${encodeURIComponent(today)}`,
+      `Tariffgruppe=${encodeURIComponent(tariffgruppe)}`,
+      `FylkeNr=${encodeURIComponent(fylke)}`,
+      `OrganisasjonsNr=${encodeURIComponent(orgnr)}`,
+    ].join('&');
+    const url = `${baseUrl}?${queryParams}`;
 
     this.log(`Nettleie: Fetching grid tariffs from NVE API for ${today}, fylke=${fylke}, org=${orgnr}`);
 
@@ -896,7 +903,12 @@ module.exports = class PelsApp extends Homey.App {
     const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
     const thresholdPercent = this.homey.settings.get('price_threshold_percent') ?? 25;
     const minDiffOre = this.homey.settings.get('price_min_diff_ore') ?? 0;
-    this.log(`Price optimization: current=${currentPrice?.totalPrice?.toFixed(1) ?? 'N/A'} øre, avg=${avgPrice.toFixed(1)} øre, threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`);
+    const currentPriceStr = currentPrice?.totalPrice?.toFixed(1) ?? 'N/A';
+    this.log(
+      `Price optimization: current=${currentPriceStr} øre, avg=${avgPrice.toFixed(1)} øre, `
+      + `threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, `
+      + `isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`,
+    );
 
     // If price is normal (not cheap or expensive), use the mode's base temperature
     // eslint-disable-next-line no-nested-ternary -- Clear price state mapping
@@ -989,6 +1001,7 @@ module.exports = class PelsApp extends Homey.App {
     await this.applyPriceOptimization();
 
     // Schedule to run at the start of each hour
+    // eslint-disable-next-line homey-app/global-timers -- One-shot timer to align with hour boundary
     setTimeout(() => {
       this.applyPriceOptimization().catch((error: Error) => {
         this.error('Price optimization failed', error);
@@ -1210,8 +1223,25 @@ module.exports = class PelsApp extends Homey.App {
     }
   }
 
-  private buildDevicePlanSnapshot(devices: Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }>): {
-    meta: { totalKw: number | null; softLimitKw: number; headroomKw: number | null; hourlyBudgetExhausted?: boolean; usedKWh?: number; budgetKWh?: number };
+  private buildDevicePlanSnapshot(devices: Array<{
+    id: string;
+    name: string;
+    targets: Array<{ id: string; value: unknown; unit: string }>;
+    powerKw?: number;
+    priority?: number;
+    currentOn?: boolean;
+    zone?: string;
+    controllable?: boolean;
+    currentTemperature?: number;
+  }>): {
+    meta: {
+      totalKw: number | null;
+      softLimitKw: number;
+      headroomKw: number | null;
+      hourlyBudgetExhausted?: boolean;
+      usedKWh?: number;
+      budgetKWh?: number;
+    };
     devices: Array<{
       id: string;
       name: string;
@@ -1304,7 +1334,7 @@ module.exports = class PelsApp extends Homey.App {
       const shortfallTolerance = 0.05;
       nowInShortfall = remaining > shortfallTolerance && totalSheddable < needed - shortfallTolerance;
     }
-    
+
     // Handle shortfall state transitions (moved outside the headroom<0 block to allow clearing)
     if (nowInShortfall && !this.inShortfall) {
       // Entering shortfall state
@@ -1324,7 +1354,7 @@ module.exports = class PelsApp extends Homey.App {
     } else if (!nowInShortfall && this.inShortfall) {
       this.log('Capacity shortfall resolved');
     }
-    
+
     // Update state and persist to settings (for mode_indicator device)
     if (nowInShortfall !== this.inShortfall) {
       this.inShortfall = nowInShortfall;
@@ -1528,7 +1558,12 @@ module.exports = class PelsApp extends Homey.App {
           if (potentialHeadroom >= needed && toShed.length > 0) {
             // Swap: shed the low-priority devices and restore the high-priority one
             // Swaps are budget-neutral (shedding creates headroom), so don't count against restore budget
-            this.log(`Plan: swap approved for ${dev.name} - shedding ${toShed.map((d) => d.name).join(', ')} (${toShed.reduce((sum, d) => sum + (d.powerKw ?? 1), 0).toFixed(2)}kW) to get ${potentialHeadroom.toFixed(2)}kW >= ${needed.toFixed(2)}kW needed`);
+            const shedNames = toShed.map((d) => d.name).join(', ');
+            const shedPower = toShed.reduce((sum, d) => sum + (d.powerKw ?? 1), 0).toFixed(2);
+            this.log(
+              `Plan: swap approved for ${dev.name} - shedding ${shedNames} (${shedPower}kW) `
+              + `to get ${potentialHeadroom.toFixed(2)}kW >= ${needed.toFixed(2)}kW needed`,
+            );
             // Track this device as a pending swap target - no lower-priority device should restore first
             this.pendingSwapTargets.add(dev.id);
             this.pendingSwapTimestamps[dev.id] = Date.now();
@@ -1647,7 +1682,9 @@ module.exports = class PelsApp extends Homey.App {
     const allowedKw = Math.min(burstRateKw, sustainableRateKw);
 
     this.logDebug(
-      `Soft limit calc: budget=${netBudgetKWh.toFixed(3)}kWh used=${usedKWh.toFixed(3)}kWh remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h burst=${burstRateKw.toFixed(3)}kW capped=${allowedKw.toFixed(3)}kW`,
+      `Soft limit calc: budget=${netBudgetKWh.toFixed(3)}kWh used=${usedKWh.toFixed(3)}kWh `
+      + `remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h `
+      + `burst=${burstRateKw.toFixed(3)}kW capped=${allowedKw.toFixed(3)}kW`,
     );
     return allowedKw;
   }
@@ -1782,8 +1819,11 @@ module.exports = class PelsApp extends Homey.App {
               capabilityId: targetCap,
               value: dev.plannedTarget,
             });
+            const fromStr = dev.currentTarget === undefined || dev.currentTarget === null
+              ? ''
+              : `from ${dev.currentTarget} `;
             this.log(
-              `Set ${targetCap} for ${dev.name || dev.id} ${dev.currentTarget === undefined || dev.currentTarget === null ? '' : `from ${dev.currentTarget} `}to ${dev.plannedTarget} (mode: ${this.capacityMode})`,
+              `Set ${targetCap} for ${dev.name || dev.id} ${fromStr}to ${dev.plannedTarget} (mode: ${this.capacityMode})`,
             );
             this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
           } catch (error) {
