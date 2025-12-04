@@ -1891,6 +1891,7 @@ module.exports = class PelsApp extends Homey.App {
         // Skip turning back on unless we have some headroom to avoid flapping.
         const headroom = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
         const sheddingActive = this.capacityGuard?.isSheddingActive() === true;
+        const inShortfall = this.capacityGuard?.isInShortfall() === true;
         const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Device power is dynamically available
         const plannedPower = (dev as any).powerKw && (dev as any).powerKw > 0 ? (dev as any).powerKw : 1;
@@ -1901,12 +1902,12 @@ module.exports = class PelsApp extends Homey.App {
         const inCooldown = (sinceShedding !== null && sinceShedding < SHED_COOLDOWN_MS) || (sinceOvershoot !== null && sinceOvershoot < SHED_COOLDOWN_MS);
         // Check if restoring this device would exceed our restore budget for this cycle
         const wouldExceedRestoreBudget = restoredPowerThisCycle + plannedPower > maxRestoreBudget;
-        // Do not restore devices while shedding is active, during cooldown, when headroom is unknown or near zero,
+        // Do not restore devices while shedding is active, in shortfall, during cooldown, when headroom is unknown or near zero,
         // when there is insufficient headroom for this device plus buffers, or when we've used up the restore budget.
-        if (sheddingActive || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice || wouldExceedRestoreBudget) {
+        if (sheddingActive || inShortfall || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice || wouldExceedRestoreBudget) {
           /* eslint-disable no-nested-ternary, max-len -- Clear state-dependent reason logging */
           this.logDebug(
-            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : inCooldown ? 'cooldown' : wouldExceedRestoreBudget ? 'restore budget exceeded' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
+            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : inShortfall ? 'in shortfall' : inCooldown ? 'cooldown' : wouldExceedRestoreBudget ? 'restore budget exceeded' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
               3,
             )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)}, device ~${plannedPower.toFixed(2)}kW, cooldown ${inCooldown ? 'yes' : 'no'}, restored ${restoredPowerThisCycle.toFixed(2)}/${maxRestoreBudget.toFixed(2)}kW)`,
           );

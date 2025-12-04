@@ -853,6 +853,56 @@ describe('Device plan snapshot', () => {
     expect(onSpy).not.toHaveBeenCalled();
   });
 
+  it('does not restore devices while in shortfall state (prevents restore-then-reshed cycle)', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 500);
+    await dev1.setCapabilityValue('onoff', false); // off after being shed
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    // Simulate being in shortfall state with positive headroom (waiting for 60s sustain)
+    // This happens when power drops but we haven't sustained positive headroom long enough
+    (app as any).lastSheddingMs = Date.now() - 120000; // shedding was 2 minutes ago (past cooldown)
+    (app as any).lastOvershootMs = Date.now() - 120000; // overshoot was 2 minutes ago
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.getHeadroom = () => 2; // plenty of headroom
+      (app as any).capacityGuard.isSheddingActive = () => false;
+      (app as any).capacityGuard.isInShortfall = () => true; // still in shortfall, waiting for sustained period
+    }
+
+    // Spy on logDebug to verify the reason for not restoring
+    const logDebugSpy = jest.spyOn(app as any, 'logDebug');
+
+    const plan = {
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater A',
+          plannedState: 'keep',
+          currentState: 'off',
+          plannedTarget: null,
+          currentTarget: null,
+          controllable: true,
+          powerKw: 0.5,
+        },
+      ],
+    };
+
+    await (app as any).applyPlanActions(plan);
+
+    // Should log that we're keeping the device off due to shortfall
+    expect(logDebugSpy).toHaveBeenCalledWith(
+      expect.stringContaining('in shortfall'),
+    );
+  });
+
   it('uses settings.load as fallback power when device is off', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
     dev1.setSettings({ load: 1200 }); // watts
