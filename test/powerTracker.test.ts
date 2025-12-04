@@ -4,12 +4,10 @@ import {
   MockDriver,
   setMockDrivers,
 } from './mocks/homey';
+import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const MyApp = require('../app');
 
 describe('power tracker integration', () => {
   beforeEach(() => {
@@ -21,12 +19,13 @@ describe('power tracker integration', () => {
     jest.clearAllTimers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanupApps();
     jest.clearAllTimers();
   });
 
   it('accumulates kWh from W samples correctly', async () => {
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Use current time to avoid aggregation pruning (data older than 30 days is aggregated)
@@ -42,7 +41,7 @@ describe('power tracker integration', () => {
   });
 
   it('reloads tracker state when settings change', async () => {
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Simulate persisted state being cleared via settings UI.
@@ -53,7 +52,7 @@ describe('power tracker integration', () => {
   });
 
   it('aggregates old hourly data into daily totals', async () => {
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Create data that is 35 days old (older than 30-day hourly retention)
@@ -92,7 +91,7 @@ describe('power tracker integration', () => {
   });
 
   it('keeps recent hourly data without aggregation', async () => {
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Create data that is 5 days old (within 30-day retention)

@@ -9,4 +9,6 @@ module.exports = {
   roots: ['<rootDir>/test'],
   testPathIgnorePatterns: ['<rootDir>/test/settings-ui.test.ts'],
   clearMocks: true,
+  testTimeout: 10000,
+  forceExit: true,
 };

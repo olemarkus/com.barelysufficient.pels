@@ -4,12 +4,10 @@ import {
   MockDevice,
   MockDriver,
 } from './mocks/homey';
+import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const MyApp = require('../app');
 
 // Factory for creating a Hoiax Connected 300 water heater mock
 function createHoiaxWaterHeater(id: string, name: string = 'Connected 300') {
@@ -40,7 +38,8 @@ describe('Device plan snapshot', () => {
     jest.clearAllTimers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanupApps();
     jest.clearAllTimers();
   });
 
@@ -52,7 +51,7 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [device]),
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Clear events from initialization
@@ -88,7 +87,7 @@ describe('Device plan snapshot', () => {
     // When over limit, dev-2 should be shed first
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Deterministic soft limit for the test.
@@ -125,7 +124,7 @@ describe('Device plan snapshot', () => {
     // dev-1 is priority 1 (most important), dev-2 is priority 10 (less important)
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Deterministic soft limit for the test.
@@ -155,7 +154,7 @@ describe('Device plan snapshot', () => {
 
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     const spy = jest.fn().mockResolvedValue(undefined);
@@ -188,7 +187,7 @@ describe('Device plan snapshot', () => {
 
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-ctl': true, 'dev-non': false });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Force soft limit low and total high to trigger shedding.
@@ -215,7 +214,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 }, Comfort: { 'dev-1': 21 } });
     mockHomeyInstance.settings.set('capacity_mode', 'Home');
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Ensure plan exists for Home.
@@ -240,7 +239,7 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [dev1]),
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Force soft limit to 1 kW and total to 1.1 kW -> deficit triggers shed.
@@ -279,7 +278,7 @@ describe('Device plan snapshot', () => {
 
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Force headroom small; monkey-patch guard headroom and margin.
@@ -315,7 +314,7 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [dev1]),
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Force soft limit to 2 kW and total to 2.1 kW -> shed.
@@ -354,7 +353,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_dry_run', false);
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Force soft limit to 1 kW so 2 kW total is an overshoot.
@@ -390,7 +389,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Force soft limit to about 3.1 kW so total 5.63 kW is an overshoot of ~2.53 kW.
@@ -419,7 +418,7 @@ describe('Device plan snapshot', () => {
 
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Inject mock homeyApi for the test
@@ -454,7 +453,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Inject mock homeyApi for the test
@@ -483,7 +482,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('uses settings.load as power when measure_power is zero', async () => {
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     const sampleDevice = {
@@ -518,7 +517,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-on': true, 'dev-off': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Soft limit 3 kW, total 6.3 kW -> need ~3.3 kW. Off device should not be counted as shed.
@@ -551,7 +550,7 @@ describe('Device plan snapshot', () => {
       return originalGetTrigger();
     }) as any;
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Only 1 kW available to shed but deficit is ~3 kW (4 kW total, 1 kW soft).
@@ -599,7 +598,7 @@ describe('Device plan snapshot', () => {
       return originalGetTrigger();
     }) as any;
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Soft limit 3.2 kW, total 5.6 kW -> need 2.4 kW, controllables can cover ~2.7 kW so no shortfall.
@@ -630,7 +629,7 @@ describe('Device plan snapshot', () => {
       return originalGetTrigger();
     }) as any;
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Only 1 kW available to shed but deficit is ~3 kW (4 kW total, 1 kW soft).
@@ -688,7 +687,7 @@ describe('Device plan snapshot', () => {
       return originalGetTrigger();
     }) as any;
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     (app as any).latestTargetSnapshot = [
@@ -753,7 +752,7 @@ describe('Device plan snapshot', () => {
       return originalGetTrigger();
     }) as any;
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Initially not in shortfall
@@ -804,7 +803,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Simulate recent shedding/overshoot.
@@ -848,7 +847,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_dry_run', false);
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
@@ -865,7 +864,7 @@ describe('Device plan snapshot', () => {
       hoiaxDriver: new MockDriver('hoiaxDriver', [hoiax]),
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
@@ -893,7 +892,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'hoiax-1': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Inject mock homeyApi
@@ -937,7 +936,7 @@ describe('Device plan snapshot', () => {
     });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Inject mock homeyApi
@@ -993,7 +992,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // With hysteresis: restoreHysteresis = max(0.2, marginKw * 2) = max(0.2, 0.4) = 0.4 kW
@@ -1045,7 +1044,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 10, 'dev-high2': 10 } });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-high2': true });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Headroom 0.5 kW, not enough for dev-high (1.5 kW + margin)
@@ -1089,7 +1088,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Soft limit = 3.5 kW, total = 3 kW, headroom = 0.5 kW
@@ -1142,7 +1141,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low1': true, 'dev-low2': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Soft limit = 4 kW, total = 3 kW, headroom = 1 kW
@@ -1200,7 +1199,7 @@ describe('Device plan snapshot', () => {
     });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Setup: enough headroom to restore the lower priority device (0.3 + 0.4 = 0.7 kW)
@@ -1263,7 +1262,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-target': true, 'dev-swapped': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Setup: not enough headroom for swap target (needs 2kW + 0.4 = 2.4kW)
@@ -1318,7 +1317,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 10 } });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Initially, device is OFF, so Guard should have desired='OFF'
@@ -1358,7 +1357,7 @@ describe('Device plan snapshot', () => {
       Home: { 'dev-1': 1, 'dev-2': 10, 'dev-3': 5 },
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Trigger a power sample to generate a plan
@@ -1403,7 +1402,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Set up conditions for swap

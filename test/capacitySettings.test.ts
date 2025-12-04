@@ -4,6 +4,7 @@ import {
   MockDriver,
   MockDevice,
 } from './mocks/homey';
+import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
@@ -37,9 +38,6 @@ jest.mock('../capacityGuard', () => {
   };
 });
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const MyApp = require('../app');
-
 describe('capacity settings propagation', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
@@ -51,12 +49,13 @@ describe('capacity settings propagation', () => {
     jest.clearAllTimers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanupApps();
     jest.clearAllTimers();
   });
 
   it('updates CapacityGuard when settings change', async () => {
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     expect(capacityGuardInstances.length).toBe(1);

@@ -4,13 +4,10 @@ import {
   MockDevice,
   MockDriver,
 } from './mocks/homey';
+import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
-
-// app.ts uses CommonJS export (module.exports = class ...)
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const MyApp = require('../app');
 
 describe('MyApp initialization', () => {
   beforeEach(() => {
@@ -21,7 +18,8 @@ describe('MyApp initialization', () => {
     jest.clearAllTimers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanupApps();
     jest.clearAllTimers();
   });
 
@@ -32,7 +30,7 @@ describe('MyApp initialization', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
@@ -48,7 +46,7 @@ describe('MyApp initialization', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Get the registered listener for set_capacity_mode
@@ -72,7 +70,7 @@ describe('MyApp initialization', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
@@ -87,7 +85,7 @@ describe('MyApp initialization', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
@@ -110,7 +108,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Away: { 'dev-1': 16 } });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Inject mock homeyApi
@@ -165,7 +163,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Simulate end of hour scenario where burst rate would be very high:
@@ -204,7 +202,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Mock the power tracker
@@ -237,7 +235,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Mock the power tracker with empty bucket (start of hour)

@@ -1134,11 +1134,16 @@ module.exports = class PelsApp extends Homey.App {
     return list
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey device objects have no TypeScript definitions
       .map((device: any) => {
+        const deviceId = device.id || device.data?.id;
+        if (!deviceId) {
+          this.error(`Device missing ID, skipping:`, device.name || 'unknown');
+          return null;
+        }
+
         const capabilities: string[] = device.capabilities || [];
         const capabilityObj = device.capabilitiesObj || {};
         const currentTemperature = typeof capabilityObj.measure_temperature?.value === 'number' ? capabilityObj.measure_temperature.value : undefined;
         const powerRaw = capabilityObj.measure_power?.value;
-        const deviceId = device.id || device.data?.id || device.name;
         const isOn = capabilityObj.onoff?.value === true;
         let powerKw: number | undefined;
 

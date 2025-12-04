@@ -4,12 +4,10 @@ import {
   MockDevice,
   MockDriver,
 } from './mocks/homey';
+import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const MyApp = require('../app');
 
 describe('Mode device targets', () => {
   beforeEach(() => {
@@ -18,7 +16,8 @@ describe('Mode device targets', () => {
     jest.clearAllTimers();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanupApps();
     jest.clearAllTimers();
   });
 
@@ -28,7 +27,7 @@ describe('Mode device targets', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Inject mock homeyApi that updates the actual device
@@ -73,7 +72,7 @@ describe('Mode device targets', () => {
     // Preload active mode before app init.
     mockHomeyInstance.settings.set('capacity_mode', 'Home');
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Inject mock homeyApi that updates the actual device

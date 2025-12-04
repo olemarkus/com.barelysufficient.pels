@@ -5,6 +5,7 @@ import {
   MockDevice,
   MockDriver,
 } from './mocks/homey';
+import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Mock the https module
 jest.mock('https', () => ({
@@ -20,10 +21,6 @@ jest.mock('homey-api', () => ({
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date', 'nextTick'] });
-
-// app.ts uses CommonJS export (module.exports = class ...)
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const MyApp = require('../app');
 
 // Helper to wait for async operations
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
@@ -155,7 +152,8 @@ describe('Spot price fetching', () => {
     mockHttpsGet.mockReset();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanupApps();
     jest.clearAllTimers();
   });
 
@@ -179,7 +177,7 @@ describe('Spot price fetching', () => {
       };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Trigger spot price refresh
@@ -220,7 +218,7 @@ describe('Spot price fetching', () => {
       };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Clear events from initialization
@@ -260,7 +258,7 @@ describe('Spot price fetching', () => {
       };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
@@ -289,7 +287,7 @@ describe('Spot price fetching', () => {
       };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
@@ -308,7 +306,7 @@ describe('Spot price fetching', () => {
 
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
-    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+    mockHttpsGet.mockImplementation((_url: string, _options: any, _callback: Function) => {
       const req: any = {
         on: jest.fn((event: string, handler: Function): any => {
           if (event === 'error') {
@@ -322,7 +320,7 @@ describe('Spot price fetching', () => {
       return req;
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Should not throw
@@ -354,7 +352,7 @@ describe('Spot price fetching', () => {
       };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
@@ -415,7 +413,7 @@ describe('Spot price fetching', () => {
     global.Date = MockDate;
 
     try {
-      const app = new MyApp();
+      const app = createApp();
       await app.onInit();
       await flushPromises();
 
@@ -484,7 +482,7 @@ describe('Spot price fetching', () => {
     global.Date = MockDate;
 
     try {
-      const app = new MyApp();
+      const app = createApp();
       await app.onInit();
       await flushPromises();
 
@@ -546,7 +544,7 @@ describe('Spot price fetching', () => {
     global.Date = MockDate;
 
     try {
-      const app = new MyApp();
+      const app = createApp();
       await app.onInit();
       await flushPromises();
 
@@ -573,7 +571,8 @@ describe('Nettleie (grid tariff) fetching', () => {
     global.fetch = jest.fn();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanupApps();
     jest.clearAllTimers();
     global.fetch = originalFetch;
   });
@@ -595,7 +594,7 @@ describe('Nettleie (grid tariff) fetching', () => {
       json: async () => mockNveNettleieResponse,
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Trigger nettleie refresh
@@ -628,7 +627,7 @@ describe('Nettleie (grid tariff) fetching', () => {
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
     // No nettleie_orgnr set
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
@@ -655,7 +654,7 @@ describe('Nettleie (grid tariff) fetching', () => {
       statusText: 'Internal Server Error',
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     // Should not throw
@@ -686,7 +685,7 @@ describe('Nettleie (grid tariff) fetching', () => {
       });
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
 
     mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
@@ -798,7 +797,8 @@ describe('Price optimization', () => {
     global.fetch = jest.fn();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanupApps();
     jest.clearAllTimers();
     global.fetch = originalFetch;
   });
@@ -831,7 +831,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
     await flushPromises();
 
@@ -900,7 +900,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
     await flushPromises();
 
@@ -961,7 +961,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
     await flushPromises();
 
@@ -1010,7 +1010,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
     await flushPromises();
 
@@ -1051,7 +1051,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
     await flushPromises();
 
@@ -1085,7 +1085,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
     await flushPromises();
 
@@ -1104,7 +1104,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
     await flushPromises();
 
@@ -1149,7 +1149,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
     await app.onInit();
     await flushPromises();
 
@@ -1215,7 +1215,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
 
     // Mock Date to return hour 3
     const MockDate = class extends Date {
@@ -1306,7 +1306,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
 
     // Mock Date to return hour 8
     const MockDate = class extends Date {
@@ -1394,7 +1394,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
 
     // Mock Date to return hour 12
     const MockDate = class extends Date {
@@ -1483,7 +1483,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
 
     // Mock Date to return hour 3
     const MockDate = class extends Date {
@@ -1599,7 +1599,7 @@ describe('Price optimization', () => {
     global.Date = MockDate;
 
     try {
-      const app = new MyApp();
+      const app = createApp();
       await app.onInit();
       await flushPromises();
 
@@ -1648,7 +1648,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
 
     const MockDate = class extends Date {
       constructor(...args: any[]) {
@@ -1711,7 +1711,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
 
     const MockDate = class extends Date {
       constructor(...args: any[]) {
@@ -1773,7 +1773,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
 
     const MockDate = class extends Date {
       constructor(...args: any[]) {
@@ -1840,7 +1840,7 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = new MyApp();
+    const app = createApp();
 
     const MockDate = class extends Date {
       constructor(...args: any[]) {
