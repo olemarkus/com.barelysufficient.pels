@@ -26,6 +26,12 @@
         "expensive": "Expensive",
         "unknown": "Unknown"
       }
+    },
+    "pels_devices_on": {
+      "title": "Devices on"
+    },
+    "pels_devices_off": {
+      "title": "Devices off"
     }
   }
 }

@@ -211,6 +211,34 @@
       "getable": true,
       "setable": false
     },
+    "pels_devices_off": {
+      "type": "number",
+      "title": {
+        "en": "Devices off"
+      },
+      "desc": {
+        "en": "Number of controlled devices currently off or shed"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 0
+    },
+    "pels_devices_on": {
+      "type": "number",
+      "title": {
+        "en": "Devices on"
+      },
+      "desc": {
+        "en": "Number of controlled devices currently running"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 0
+    },
     "pels_headroom": {
       "type": "number",
       "title": {

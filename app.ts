@@ -1293,7 +1293,7 @@ module.exports = class PelsApp extends Homey.App {
       usedKWh?: number;
       budgetKWh?: number;
     };
-    devices: Array<{ plannedState: string }>;
+    devices: Array<{ plannedState: string; currentState: string; controllable?: boolean }>;
   }): void {
     // Compute price level
     const isCheap = this.isCurrentHourCheap();
@@ -1307,11 +1307,19 @@ module.exports = class PelsApp extends Homey.App {
     }
 
     const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
+
+    // Count controlled devices on/off
+    const controllableDevices = plan.devices.filter((d) => d.controllable !== false);
+    const devicesOn = controllableDevices.filter((d) => d.currentState === 'on' && d.plannedState !== 'shed').length;
+    const devicesOff = controllableDevices.filter((d) => d.currentState === 'off' || d.plannedState === 'shed').length;
+
     const status = {
       headroomKw: plan.meta.headroomKw,
       hourlyUsageKwh: plan.meta.usedKWh ?? 0,
       shedding: hasShedding,
       priceLevel,
+      devicesOn,
+      devicesOff,
     };
 
     this.homey.settings.set('pels_status', status);
@@ -1819,6 +1827,11 @@ module.exports = class PelsApp extends Homey.App {
     this.inShortfall = true;
     this.homey.settings.set('capacity_in_shortfall', true);
 
+    // Create timeline notification
+    this.homey.notifications.createNotification({
+      excerpt: `Capacity shortfall: **${deficitKw.toFixed(2)} kW** over limit. Manual action may be needed.`,
+    }).catch((err: Error) => this.error('Failed to create shortfall notification', err));
+
     // Trigger flow card
     const card = this.homey.flow?.getTriggerCard?.('capacity_shortfall');
     if (card && typeof card.trigger === 'function') {
@@ -1837,6 +1850,11 @@ module.exports = class PelsApp extends Homey.App {
     this.log('Capacity shortfall resolved');
     this.inShortfall = false;
     this.homey.settings.set('capacity_in_shortfall', false);
+
+    // Create timeline notification
+    this.homey.notifications.createNotification({
+      excerpt: 'Capacity shortfall **resolved**. Load is back within limits.',
+    }).catch((err: Error) => this.error('Failed to create shortfall cleared notification', err));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Plan structure has dynamic target values

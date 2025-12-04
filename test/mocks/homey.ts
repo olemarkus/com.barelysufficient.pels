@@ -98,6 +98,15 @@ const findMockDeviceById = (deviceId: string): MockDevice | null => {
 
 export const mockHomeyInstance = {
   settings: new MockSettings(),
+  notifications: {
+    _notifications: [] as Array<{ excerpt: string }>,
+    createNotification: async ({ excerpt }: { excerpt: string }) => {
+      mockHomeyInstance.notifications._notifications.push({ excerpt });
+    },
+    clearNotifications: () => {
+      mockHomeyInstance.notifications._notifications = [];
+    },
+  },
   api: {
     getOwnerApiToken: async () => 'mock-token',
     _realtimeEvents: [] as Array<{ event: string; data: any }>,

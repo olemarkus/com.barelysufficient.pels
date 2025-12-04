@@ -1,0 +1,14 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Devices off"
+  },
+  "desc": {
+    "en": "Number of controlled devices currently off or shed"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "decimals": 0
+}

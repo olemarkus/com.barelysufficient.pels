@@ -10,7 +10,9 @@
     "pels_hourly_usage",
     "alarm_generic",
     "pels_shedding",
-    "pels_price_level"
+    "pels_price_level",
+    "pels_devices_on",
+    "pels_devices_off"
   ],
   "capabilitiesOptions": {
     "alarm_generic": {

@@ -9,6 +9,8 @@ class ModeIndicatorDevice extends Homey.Device {
       'pels_hourly_usage',
       'pels_shedding',
       'pels_price_level',
+      'pels_devices_on',
+      'pels_devices_off',
     ];
 
     for (const cap of requiredCapabilities) {
@@ -59,6 +61,8 @@ class ModeIndicatorDevice extends Homey.Device {
       hourlyUsageKwh?: number;
       shedding?: boolean;
       priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
+      devicesOn?: number;
+      devicesOff?: number;
     } | null;
 
     if (!status) return;
@@ -75,6 +79,12 @@ class ModeIndicatorDevice extends Homey.Device {
       }
       if (status.priceLevel) {
         await this.setCapabilityValue('pels_price_level', status.priceLevel);
+      }
+      if (typeof status.devicesOn === 'number') {
+        await this.setCapabilityValue('pels_devices_on', status.devicesOn);
+      }
+      if (typeof status.devicesOff === 'number') {
+        await this.setCapabilityValue('pels_devices_off', status.devicesOff);
       }
     } catch (error) {
       this.error('Failed to update status capabilities', error);

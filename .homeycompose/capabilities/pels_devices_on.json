@@ -1,0 +1,14 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Devices on"
+  },
+  "desc": {
+    "en": "Number of controlled devices currently running"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "decimals": 0
+}
