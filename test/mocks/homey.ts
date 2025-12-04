@@ -98,6 +98,10 @@ const findMockDeviceById = (deviceId: string): MockDevice | null => {
 
 export const mockHomeyInstance = {
   settings: new MockSettings(),
+  clock: {
+    getTimezone: () => 'Europe/Oslo',
+    getTimezoneOffset: () => -60, // CET in winter
+  },
   notifications: {
     _notifications: [] as Array<{ excerpt: string }>,
     createNotification: async ({ excerpt }: { excerpt: string }) => {

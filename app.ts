@@ -360,8 +360,73 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   /**
+   * Format a date as YYYY-MM-DD in the Homey's configured timezone.
+   * This ensures daily statistics align with the user's local day boundaries.
+   */
+  private formatDateInHomeyTimezone(date: Date): string {
+    const timezone = this.homey.clock.getTimezone();
+    try {
+      // Use Intl.DateTimeFormat to format in the Homey timezone
+      const formatter = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      // sv-SE locale formats as YYYY-MM-DD
+      return formatter.format(date);
+    } catch {
+      // Fallback to local time if timezone is invalid
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  /**
+   * Get the hour of day (0-23) in the Homey's configured timezone.
+   */
+  private getHourInHomeyTimezone(date: Date): number {
+    const timezone = this.homey.clock.getTimezone();
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        hour12: false,
+      });
+      return parseInt(formatter.format(date), 10);
+    } catch {
+      // Fallback to local time
+      return date.getHours();
+    }
+  }
+
+  /**
+   * Get the day of week (0=Sunday, 6=Saturday) in the Homey's configured timezone.
+   */
+  private getDayOfWeekInHomeyTimezone(date: Date): number {
+    const timezone = this.homey.clock.getTimezone();
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        weekday: 'short',
+      });
+      const weekday = formatter.format(date);
+      const days: Record<string, number> = {
+        Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+      };
+      return days[weekday] ?? date.getDay();
+    } catch {
+      // Fallback to local time
+      return date.getDay();
+    }
+  }
+
+  /**
    * Aggregate old hourly data into daily totals and hourly pattern averages,
    * then prune data older than retention limits.
+   * Uses Homey's configured timezone for day boundaries.
    */
   private aggregateAndPruneHistory(): void {
     const state = this.powerTracker;
@@ -385,9 +450,10 @@ module.exports = class PelsApp extends Homey.App {
       // If older than hourly retention, aggregate and mark for removal
       if (timestamp < hourlyThreshold) {
         const date = new Date(isoKey);
-        const dayOfWeek = date.getDay(); // 0=Sunday, 6=Saturday
-        const hourOfDay = date.getHours();
-        const dateKey = date.toISOString().slice(0, 10); // YYYY-MM-DD
+        // Use Homey timezone for user-facing day/hour boundaries
+        const dayOfWeek = this.getDayOfWeekInHomeyTimezone(date);
+        const hourOfDay = this.getHourInHomeyTimezone(date);
+        const dateKey = this.formatDateInHomeyTimezone(date);
 
         // Add to daily total
         state.dailyTotals[dateKey] = (state.dailyTotals[dateKey] || 0) + kWh;
@@ -641,7 +707,8 @@ module.exports = class PelsApp extends Homey.App {
       return;
     }
 
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    // Use Homey timezone for "today" since grid tariffs are local-time based
+    const today = this.formatDateInHomeyTimezone(new Date());
 
     // Check if we already have today's nettleie data (cached)
     if (!forceRefresh) {
