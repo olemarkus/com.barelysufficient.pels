@@ -1126,6 +1126,97 @@ describe('Price optimization', () => {
     expect(app['priceOptimizationSettings']).toEqual(newSettings);
   });
 
+  it('skips price optimization when globally disabled', async () => {
+    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    waterHeater.setCapabilityValue('target_temperature', 55);
+    waterHeater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [waterHeater]),
+    });
+
+    // Create price data that makes the current hour clearly cheap
+    const now = new Date();
+    now.setHours(3, 30, 0, 0);
+    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const spotPrices: any[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const date = new Date(baseDate);
+      date.setHours(hour, 0, 0, 0);
+      const total = hour === 3 ? 20 : 50; // Hour 3 is cheap
+      spotPrices.push({
+        startsAt: date.toISOString(),
+        total,
+        currency: 'NOK',
+      });
+    }
+
+    mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+    mockHomeyInstance.settings.set('nettleie_data', []);
+    mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'water-heater-1': 55 } });
+    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('capacity_dry_run', false); // Not dry run
+
+    // Configure price optimization for the device
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'water-heater-1': {
+        enabled: true,
+        cheapDelta: 10,
+        expensiveDelta: -5,
+      },
+    });
+
+    // GLOBALLY DISABLE price optimization
+    mockHomeyInstance.settings.set('price_optimization_enabled', false);
+
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      const response = createMockHttpsResponse(200, []);
+      callback(response);
+      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+    });
+
+    const app = createApp();
+    await app.onInit();
+    await flushPromises();
+
+    // Even though price optimization is configured for the device and it's a cheap hour,
+    // the temperature should remain at 55 because price optimization is globally disabled
+    expect(await waterHeater.getCapabilityValue('target_temperature')).toBe(55);
+  });
+
+  it('respects price_optimization_enabled setting change at runtime', async () => {
+    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    waterHeater.setCapabilityValue('target_temperature', 55);
+    waterHeater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [waterHeater]),
+    });
+
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      const response = createMockHttpsResponse(200, []);
+      callback(response);
+      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+    });
+
+    // Start with global price optimization DISABLED
+    mockHomeyInstance.settings.set('price_optimization_enabled', false);
+
+    const app = createApp();
+    await app.onInit();
+    await flushPromises();
+
+    // Verify it's disabled
+    expect(app['priceOptimizationEnabled']).toBe(false);
+
+    // Enable it at runtime
+    mockHomeyInstance.settings.set('price_optimization_enabled', true);
+    await flushPromises();
+
+    // Verify it's now enabled
+    expect(app['priceOptimizationEnabled']).toBe(true);
+  });
+
   it('getCurrentHourPriceInfo returns formatted price string', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
@@ -1148,6 +1239,7 @@ describe('Price optimization', () => {
       callback(response);
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
+
 
     const app = createApp();
     await app.onInit();

@@ -38,6 +38,7 @@ module.exports = class PelsApp extends Homey.App {
   };
 
   private capacityDryRun = true;
+  private priceOptimizationEnabled = true;
   private capacityMode = 'Home';
   private capacityPriorities: Record<string, Record<string, number>> = {};
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
@@ -183,6 +184,12 @@ module.exports = class PelsApp extends Homey.App {
           this.error('Failed to refresh plan after price optimization settings change', error);
         });
       }
+
+      if (key === 'price_optimization_enabled') {
+        const enabled = this.homey.settings.get('price_optimization_enabled');
+        this.priceOptimizationEnabled = enabled !== false; // Default to true
+        this.log(`Price optimization ${this.priceOptimizationEnabled ? 'enabled' : 'disabled'}`);
+      }
     });
 
     this.loadCapacitySettings();
@@ -272,6 +279,9 @@ module.exports = class PelsApp extends Homey.App {
     if (modeTargets && typeof modeTargets === 'object') this.modeDeviceTargets = modeTargets as Record<string, Record<string, number>>;
     if (typeof dryRun === 'boolean') this.capacityDryRun = dryRun;
     if (controllables && typeof controllables === 'object') this.controllableDevices = controllables as Record<string, boolean>;
+    // Load price optimization enabled (defaults to true)
+    const priceOptEnabled = this.homey.settings.get('price_optimization_enabled');
+    this.priceOptimizationEnabled = priceOptEnabled !== false;
   }
 
   private loadPriceOptimizationSettings(): void {
@@ -948,6 +958,11 @@ module.exports = class PelsApp extends Homey.App {
    * In dry run mode, logs what would happen but does not actuate.
    */
   private async applyPriceOptimization(): Promise<void> {
+    if (!this.priceOptimizationEnabled) {
+      this.logDebug('Price optimization: Disabled globally');
+      return;
+    }
+
     if (!this.homeyApi || !this.homeyApi.devices) {
       this.log('Price optimization: HomeyAPI not available, skipping');
       return;

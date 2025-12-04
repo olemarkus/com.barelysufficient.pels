@@ -66,6 +66,7 @@ const nettleieRefreshButton = document.querySelector('#nettleie-refresh-button')
 const priceOptimizationList = qs('#price-optimization-list');
 const priceOptimizationEmpty = qs('#price-optimization-empty');
 const priceOptimizationSection = qs('#price-optimization-section');
+const priceOptimizationEnabledCheckbox = document.querySelector('#price-optimization-enabled') as HTMLInputElement;
 
 // Device detail panel elements
 const deviceDetailOverlay = qs('#device-detail-overlay');
@@ -961,6 +962,7 @@ const loadPriceSettings = async () => {
   const providerSurcharge = await getSetting('provider_surcharge');
   const thresholdPercent = await getSetting('price_threshold_percent');
   const minDiffOre = await getSetting('price_min_diff_ore');
+  const priceOptEnabled = await getSetting('price_optimization_enabled');
 
   if (priceAreaSelect) {
     priceAreaSelect.value = typeof priceArea === 'string' ? priceArea : 'NO1';
@@ -973,6 +975,10 @@ const loadPriceSettings = async () => {
   }
   if (priceMinDiffInput) {
     priceMinDiffInput.value = typeof minDiffOre === 'number' ? minDiffOre.toString() : '0';
+  }
+  if (priceOptimizationEnabledCheckbox) {
+    // Default to true if not set
+    priceOptimizationEnabledCheckbox.checked = priceOptEnabled !== false;
   }
 };
 
@@ -1779,6 +1785,10 @@ const boot = async () => {
     priceRefreshButton?.addEventListener('click', async () => {
       await setSetting('refresh_spot_prices', Date.now());
       await refreshPrices();
+    });
+    priceOptimizationEnabledCheckbox?.addEventListener('change', async () => {
+      await setSetting('price_optimization_enabled', priceOptimizationEnabledCheckbox.checked);
+      await showToast(priceOptimizationEnabledCheckbox.checked ? 'Price optimization enabled.' : 'Price optimization disabled.', 'ok');
     });
     nettleieSettingsForm?.addEventListener('submit', async (event) => {
       event.preventDefault();
