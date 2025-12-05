@@ -195,7 +195,7 @@ describe('settings script', () => {
     expect(activeModeSelect.value).toBe('Home');
   });
 
-  it('changes active mode only when explicitly set via active mode form', async () => {
+  it('changes active mode when selection changes (auto-save)', async () => {
     const setSpy = jest.fn((key, val, cb) => cb && cb(null));
     // @ts-expect-error mutate mock
     global.Homey.set = setSpy;
@@ -218,11 +218,10 @@ describe('settings script', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
-    const activeModeForm = document.querySelector('#active-mode-form') as HTMLFormElement;
 
-    // Change active mode to 'Away' via the form
+    // Change active mode to 'Away' - should auto-save on change
     activeModeSelect.value = 'Away';
-    activeModeForm.dispatchEvent(new Event('submit'));
+    activeModeSelect.dispatchEvent(new Event('change'));
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     // Now capacity_mode should be saved as 'Away'

@@ -501,17 +501,17 @@ input:focus-visible {
 
 .drag-handle {
   cursor: grab;
-  padding: 3px 4px;
+  padding: 4px;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface-4);
   user-select: none;
-  font-weight: var(--font-weight-bold);
   touch-action: none;
   -webkit-user-select: none;
   color: var(--muted);
-  font-size: var(--font-size-sm);
-  letter-spacing: -2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .drag-handle:hover {
@@ -1369,6 +1369,13 @@ input[type="text"]:focus {
   color: var(--text);
 }
 
+.summary-value--empty {
+  font-size: 14px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--muted);
+}
+
 /* Hourly pattern visualization */
 .hourly-pattern {
   display: grid;
@@ -1404,4 +1411,13 @@ input[type="text"]:focus {
 
 .hourly-bar[title] {
   cursor: help;
+}
+
+.hourly-pattern__empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
 }

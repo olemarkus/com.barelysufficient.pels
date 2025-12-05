@@ -19,9 +19,9 @@
         <div class="tab-overflow">
           <button class="tab-overflow-toggle" aria-label="More tabs" aria-expanded="false">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-              <circle cx="4" cy="10" r="2"/>
-              <circle cx="10" cy="10" r="2"/>
-              <circle cx="16" cy="10" r="2"/>
+              <rect x="2" y="4" width="16" height="2" rx="1"/>
+              <rect x="2" y="9" width="16" height="2" rx="1"/>
+              <rect x="2" y="14" width="16" height="2" rx="1"/>
             </svg>
           </button>
           <div class="tab-overflow-menu" hidden>
@@ -69,16 +69,13 @@
           <h2>Per-mode priorities & temperatures</h2>
         </div>
       </div>
-      <form id="active-mode-form" class="form-grid form-inline">
+      <div class="form-grid form-inline">
         <label class="field">
           <span class="field__label">Active mode</span>
           <select id="active-mode-select" name="active_mode"></select>
+          <small class="field__hint">Changes apply immediately.</small>
         </label>
-        <div class="form__actions">
-          <button type="submit" class="btn secondary">Set active mode</button>
-        </div>
-        <small class="field__hint">Applies immediately to planning.</small>
-      </form>
+      </div>
       <form id="priority-form" class="form-grid">
         <label class="field">
           <span class="field__label">Edit mode</span>
@@ -118,9 +115,6 @@
           <input id="capacity-dry-run" name="capacity_dry_run" type="checkbox" checked>
           <span class="field__label">Dry run (do not switch devices)</span>
         </label>
-        <div class="form__actions">
-          <button type="submit" class="btn primary">Save capacity settings</button>
-        </div>
       </form>
 
       <details class="settings-collapse" open>
@@ -271,7 +265,6 @@
               </select>
             </label>
             <div class="form__actions">
-              <button type="submit" class="btn secondary">Save grid tariff settings</button>
               <button type="button" class="btn ghost" id="nettleie-refresh-button">Refresh tariffs</button>
             </div>
           </form>
@@ -304,9 +297,6 @@
               <input type="number" id="price-min-diff-ore" name="price_min_diff_ore" step="1" min="0" max="100" value="0">
               <small class="field__hint">Skip optimization if savings are less than this. Avoids sacrificing comfort for minimal savings.</small>
             </label>
-            <div class="form__actions">
-              <button type="submit" class="btn primary">Save price settings</button>
-            </div>
           </form>
         </div>
       </details>
@@ -393,9 +383,6 @@
         </section>
       </div>
       
-      <div class="slide-panel__footer">
-        <button type="button" class="btn primary" id="device-detail-save">Save changes</button>
-      </div>
     </div>
   </div>
 

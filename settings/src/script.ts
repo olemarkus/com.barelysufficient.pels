@@ -68,7 +68,6 @@ const modeNewInput = document.querySelector('#mode-new') as HTMLInputElement;
 const addModeButton = document.querySelector('#add-mode-button') as HTMLButtonElement;
 const deleteModeButton = document.querySelector('#delete-mode-button') as HTMLButtonElement;
 const renameModeButton = document.querySelector('#rename-mode-button') as HTMLButtonElement;
-const activeModeForm = document.querySelector('#active-mode-form') as HTMLFormElement;
 const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
 const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 const priorityList = qs('#priority-list');
@@ -104,7 +103,6 @@ const deviceDetailModes = qs('#device-detail-modes');
 const deviceDetailDeltaSection = qs('#device-detail-delta-section');
 const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement;
 const deviceDetailExpensiveDelta = document.querySelector('#device-detail-expensive-delta') as HTMLInputElement;
-const deviceDetailSave = qs('#device-detail-save') as HTMLButtonElement;
 
 let currentDetailDeviceId: string | null = null;
 
@@ -376,6 +374,7 @@ const getPowerStats = async () => {
       weekendAvg: 0,
       hourlyPattern: [] as { hour: number; avg: number }[],
       dailyHistory: [] as { date: string; kWh: number }[],
+      hasPatternData: false,
     };
   }
 
@@ -445,6 +444,9 @@ const getPowerStats = async () => {
     }
   }
 
+  // Check if we have enough data for pattern analysis (need at least some hourly averages)
+  const hasPatternData = (weekdayCount + weekendCount) > 0;
+
   // Convert to daily averages (24 hours per day)
   const weekdayAvg = weekdayCount > 0 ? (weekdaySum / weekdayCount) * 24 : 0;
   const weekendAvg = weekendCount > 0 ? (weekendSum / weekendCount) * 24 : 0;
@@ -490,7 +492,7 @@ const getPowerStats = async () => {
     .sort((a, b) => b.date.localeCompare(a.date)) // Most recent first
     .slice(0, 30);
 
-  return { today, week, month, weekdayAvg, weekendAvg, hourlyPattern, dailyHistory };
+  return { today, week, month, weekdayAvg, weekendAvg, hourlyPattern, dailyHistory, hasPatternData };
 };
 
 const renderPowerStats = async () => {
@@ -501,31 +503,56 @@ const renderPowerStats = async () => {
   if (usageWeek) usageWeek.textContent = `${stats.week.toFixed(1)} kWh`;
   if (usageMonth) usageMonth.textContent = `${stats.month.toFixed(1)} kWh`;
 
-  // Weekday/weekend averages
-  if (usageWeekdayAvg) usageWeekdayAvg.textContent = `${stats.weekdayAvg.toFixed(1)} kWh/day`;
-  if (usageWeekendAvg) usageWeekendAvg.textContent = `${stats.weekendAvg.toFixed(1)} kWh/day`;
+  // Weekday/weekend averages - show "Not enough data" if no pattern data yet
+  if (usageWeekdayAvg) {
+    if (stats.hasPatternData) {
+      usageWeekdayAvg.textContent = `${stats.weekdayAvg.toFixed(1)} kWh/day`;
+      usageWeekdayAvg.classList.remove('summary-value--empty');
+    } else {
+      usageWeekdayAvg.textContent = 'Not enough data';
+      usageWeekdayAvg.classList.add('summary-value--empty');
+    }
+  }
+  if (usageWeekendAvg) {
+    if (stats.hasPatternData) {
+      usageWeekendAvg.textContent = `${stats.weekendAvg.toFixed(1)} kWh/day`;
+      usageWeekendAvg.classList.remove('summary-value--empty');
+    } else {
+      usageWeekendAvg.textContent = 'Not enough data';
+      usageWeekendAvg.classList.add('summary-value--empty');
+    }
+  }
 
   // Hourly pattern visualization
   if (hourlyPattern) {
     hourlyPattern.innerHTML = '';
-    const maxAvg = Math.max(...stats.hourlyPattern.map(p => p.avg), 0.1);
 
-    for (const { hour, avg } of stats.hourlyPattern) {
-      const bar = document.createElement('div');
-      bar.className = 'hourly-bar';
-      bar.title = `${hour}:00 - ${avg.toFixed(2)} kWh avg`;
+    if (!stats.hasPatternData) {
+      // Show message when no pattern data available
+      const message = document.createElement('div');
+      message.className = 'hourly-pattern__empty';
+      message.textContent = 'Usage patterns will appear after collecting more data';
+      hourlyPattern.appendChild(message);
+    } else {
+      const maxAvg = Math.max(...stats.hourlyPattern.map(p => p.avg), 0.1);
 
-      const fill = document.createElement('div');
-      fill.className = 'hourly-bar__fill';
-      const heightPct = Math.max(5, (avg / maxAvg) * 100);
-      fill.style.height = `${heightPct}%`;
+      for (const { hour, avg } of stats.hourlyPattern) {
+        const bar = document.createElement('div');
+        bar.className = 'hourly-bar';
+        bar.title = `${hour}:00 - ${avg.toFixed(2)} kWh avg`;
 
-      const label = document.createElement('span');
-      label.className = 'hourly-bar__label';
-      label.textContent = hour % 6 === 0 ? `${hour}` : '';
+        const fill = document.createElement('div');
+        fill.className = 'hourly-bar__fill';
+        const heightPct = Math.max(5, (avg / maxAvg) * 100);
+        fill.style.height = `${heightPct}%`;
 
-      bar.append(fill, label);
-      hourlyPattern.appendChild(bar);
+        const label = document.createElement('span');
+        label.className = 'hourly-bar__label';
+        label.textContent = hour % 6 === 0 ? `${hour}` : '';
+
+        bar.append(fill, label);
+        hourlyPattern.appendChild(bar);
+      }
     }
   }
 
@@ -739,7 +766,13 @@ const renderPriorities = (devices) => {
 
     const handle = document.createElement('span');
     handle.className = 'drag-handle';
-    handle.textContent = '⋮⋮';
+    handle.innerHTML = [
+      '<svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">',
+      '<circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/>',
+      '<circle cx="3" cy="8" r="1.5"/><circle cx="9" cy="8" r="1.5"/>',
+      '<circle cx="3" cy="13" r="1.5"/><circle cx="9" cy="13" r="1.5"/>',
+      '</svg>',
+    ].join('');
 
     const name = document.createElement('div');
     name.className = 'device-row__name';
@@ -1633,60 +1666,20 @@ const renderDeviceDetailModes = (device: any) => {
     tempInput.value = typeof currentTarget === 'number' ? currentTarget.toString()
                       : (typeof defaultTarget === 'number' ? defaultTarget.toString() : '');
 
+    // Auto-save temperature on change
+    tempInput.addEventListener('change', async () => {
+      const value = parseFloat(tempInput.value);
+      if (!isNaN(value)) {
+        if (!modeTargets[mode]) modeTargets[mode] = {};
+        modeTargets[mode][device.id] = value;
+        await setSetting('mode_device_targets', modeTargets);
+        renderPriorities(latestDevices);
+      }
+    });
+
     row.append(nameWrap, tempInput);
     deviceDetailModes.appendChild(row);
   });
-};
-
-const saveDeviceDetail = async () => {
-  if (!currentDetailDeviceId) return;
-
-  const deviceId = currentDetailDeviceId;
-
-  // Save controllable setting
-  if (deviceDetailControllable) {
-    controllableMap[deviceId] = deviceDetailControllable.checked;
-    await setSetting('controllable_devices', controllableMap);
-  }
-
-  // Save price optimization settings
-  const priceOptEnabled = deviceDetailPriceOpt?.checked || false;
-  const cheapDelta = parseFloat(deviceDetailCheapDelta?.value || '5');
-  const expensiveDelta = parseFloat(deviceDetailExpensiveDelta?.value || '-5');
-
-  // Validate temperature deltas: must be within reasonable bounds (-20 to +20 degrees)
-  const validCheapDelta = Number.isFinite(cheapDelta) && cheapDelta >= -20 && cheapDelta <= 20;
-  const validExpensiveDelta = Number.isFinite(expensiveDelta) && expensiveDelta >= -20 && expensiveDelta <= 20;
-
-  if (!priceOptimizationSettings[deviceId]) {
-    priceOptimizationSettings[deviceId] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
-  }
-  priceOptimizationSettings[deviceId].enabled = priceOptEnabled;
-  priceOptimizationSettings[deviceId].cheapDelta = validCheapDelta ? cheapDelta : 5;
-  priceOptimizationSettings[deviceId].expensiveDelta = validExpensiveDelta ? expensiveDelta : -5;
-  await savePriceOptimizationSettings();
-
-  // Save mode temperatures
-  const tempInputs = deviceDetailModes?.querySelectorAll('.detail-mode-temp') as NodeListOf<HTMLInputElement>;
-  tempInputs?.forEach(input => {
-    const mode = input.dataset.mode;
-    if (!mode) return;
-
-    const value = parseFloat(input.value);
-    if (!isNaN(value)) {
-      if (!modeTargets[mode]) modeTargets[mode] = {};
-      modeTargets[mode][deviceId] = value;
-    }
-  });
-  await setSetting('mode_device_targets', modeTargets);
-
-  // Refresh device list and close
-  renderDevices(latestDevices);
-  renderPriorities(latestDevices);
-  renderPriceOptimization(latestDevices);
-
-  closeDeviceDetail();
-  await showToast('Device settings saved.', 'ok');
 };
 
 const initDeviceDetailHandlers = () => {
@@ -1700,11 +1693,40 @@ const initDeviceDetailHandlers = () => {
     }
   });
 
-  // Save button
-  deviceDetailSave?.addEventListener('click', saveDeviceDetail);
+  // Auto-save controllable on change
+  deviceDetailControllable?.addEventListener('change', async () => {
+    if (!currentDetailDeviceId) return;
+    controllableMap[currentDetailDeviceId] = deviceDetailControllable.checked;
+    await setSetting('controllable_devices', controllableMap);
+    renderDevices(latestDevices);
+  });
 
-  // Toggle delta section visibility when price opt changes
-  deviceDetailPriceOpt?.addEventListener('change', updateDeltaSectionVisibility);
+  // Auto-save price optimization settings on change
+  const autoSavePriceOpt = async () => {
+    if (!currentDetailDeviceId) return;
+    const deviceId = currentDetailDeviceId;
+    const priceOptEnabled = deviceDetailPriceOpt?.checked || false;
+    const cheapDelta = parseFloat(deviceDetailCheapDelta?.value || '5');
+    const expensiveDelta = parseFloat(deviceDetailExpensiveDelta?.value || '-5');
+
+    // Validate temperature deltas: must be within reasonable bounds (-20 to +20 degrees)
+    const validCheapDelta = Number.isFinite(cheapDelta) && cheapDelta >= -20 && cheapDelta <= 20;
+    const validExpensiveDelta = Number.isFinite(expensiveDelta) && expensiveDelta >= -20 && expensiveDelta <= 20;
+
+    if (!priceOptimizationSettings[deviceId]) {
+      priceOptimizationSettings[deviceId] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
+    }
+    priceOptimizationSettings[deviceId].enabled = priceOptEnabled;
+    priceOptimizationSettings[deviceId].cheapDelta = validCheapDelta ? cheapDelta : 5;
+    priceOptimizationSettings[deviceId].expensiveDelta = validExpensiveDelta ? expensiveDelta : -5;
+    await savePriceOptimizationSettings();
+    renderDevices(latestDevices);
+    renderPriceOptimization(latestDevices);
+    updateDeltaSectionVisibility();
+  };
+  deviceDetailPriceOpt?.addEventListener('change', autoSavePriceOpt);
+  deviceDetailCheapDelta?.addEventListener('change', autoSavePriceOpt);
+  deviceDetailExpensiveDelta?.addEventListener('change', autoSavePriceOpt);
 
   // Escape key to close
   document.addEventListener('keydown', (e) => {
@@ -1847,8 +1869,8 @@ const boot = async () => {
       // Mode editor selection changes which mode we're editing, not the active mode
       setEditingMode(modeSelect.value || 'Home');
     });
-    activeModeForm?.addEventListener('submit', async (event) => {
-      event.preventDefault();
+    // Auto-save active mode on selection change
+    activeModeSelect?.addEventListener('change', async () => {
       const mode = (activeModeSelect?.value || '').trim();
       if (!mode) return;
       setActiveMode(mode);
@@ -1892,14 +1914,18 @@ const boot = async () => {
       await renameMode(oldMode, newMode);
       modeNewInput.value = '';
     });
-    capacityForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
+    // Auto-save capacity settings on change
+    const autoSaveCapacity = async () => {
       try {
         await saveCapacitySettings();
       } catch (err) {
-        await showToast(err.message || 'Failed to save capacity settings.', 'warn');
+        await showToast((err as Error).message || 'Failed to save capacity settings.', 'warn');
       }
-    });
+    };
+    capacityLimitInput?.addEventListener('change', autoSaveCapacity);
+    capacityMarginInput?.addEventListener('change', autoSaveCapacity);
+    capacityDryRunInput?.addEventListener('change', autoSaveCapacity);
+    capacityForm.addEventListener('submit', (event) => event.preventDefault());
     // Priority form submit no longer needed - priorities auto-save on drag, temps auto-save on change
     priorityForm?.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -1922,14 +1948,19 @@ const boot = async () => {
     await refreshPrices();
     await loadNettleieSettings();
     await refreshNettleie();
-    priceSettingsForm?.addEventListener('submit', async (event) => {
-      event.preventDefault();
+    // Auto-save price settings on change
+    const autoSavePriceSettings = async () => {
       try {
         await savePriceSettings();
       } catch (err) {
-        await showToast(err.message || 'Failed to save price settings.', 'warn');
+        await showToast((err as Error).message || 'Failed to save price settings.', 'warn');
       }
-    });
+    };
+    priceAreaSelect?.addEventListener('change', autoSavePriceSettings);
+    providerSurchargeInput?.addEventListener('change', autoSavePriceSettings);
+    priceThresholdInput?.addEventListener('change', autoSavePriceSettings);
+    priceMinDiffInput?.addEventListener('change', autoSavePriceSettings);
+    priceSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
     priceRefreshButton?.addEventListener('click', async () => {
       await setSetting('refresh_spot_prices', Date.now());
       await refreshPrices();
@@ -1938,14 +1969,17 @@ const boot = async () => {
       await setSetting('price_optimization_enabled', priceOptimizationEnabledCheckbox.checked);
       await showToast(priceOptimizationEnabledCheckbox.checked ? 'Price optimization enabled.' : 'Price optimization disabled.', 'ok');
     });
-    nettleieSettingsForm?.addEventListener('submit', async (event) => {
-      event.preventDefault();
+    // Auto-save grid tariff settings on change
+    const autoSaveNettleieSettings = async () => {
       try {
         await saveNettleieSettings();
       } catch (err) {
-        await showToast(err.message || 'Failed to save grid tariff settings.', 'warn');
+        await showToast((err as Error).message || 'Failed to save grid tariff settings.', 'warn');
       }
-    });
+    };
+    nettleieCompanySelect?.addEventListener('change', autoSaveNettleieSettings);
+    nettleieTariffgruppeSelect?.addEventListener('change', autoSaveNettleieSettings);
+    nettleieSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
     nettleieFylkeSelect?.addEventListener('change', () => {
       updateGridCompanyOptions(nettleieFylkeSelect.value);
     });
