@@ -1107,7 +1107,7 @@ const renderPrices = (data: CombinedPriceData | null) => {
 
   if (priceEmpty) priceEmpty.hidden = true;
 
-  const { prices, avgPrice, lowThreshold, highThreshold } = data;
+  const { prices, avgPrice } = data;
 
   const now = new Date();
   const currentHour = new Date(now);
@@ -1135,56 +1135,76 @@ const renderPrices = (data: CombinedPriceData | null) => {
   // Use pre-calculated cheap/expensive flags from backend
   const cheapHours = futurePrices.filter(p => p.isCheap).sort((a, b) => a.total - b.total);
   const expensiveHours = futurePrices.filter(p => p.isExpensive).sort((a, b) => b.total - a.total);
+  const thresholdPct = data.thresholdPercent ?? 25;
 
+  // Summary section
+  const summarySection = document.createElement('div');
+  summarySection.className = 'price-summary';
+
+  // Cheap hours summary
+  const cheapSummary = document.createElement('div');
+  cheapSummary.className = 'price-summary-item';
   if (cheapHours.length > 0) {
-    const header = document.createElement('div');
-    header.className = 'price-section-header cheap';
-    header.textContent = `🟢 Cheap hours (< ${lowThreshold.toFixed(0)} øre)`;
-    priceList.appendChild(header);
+    const cheapest = cheapHours[0];
+    const cheapestTime = new Date(cheapest.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const countText = `<strong>${cheapHours.length}</strong> cheap hour${cheapHours.length === 1 ? '' : 's'}`;
+    cheapSummary.innerHTML = `<span class="price-indicator cheap">🟢</span> ${countText} (cheapest: ${cheapest.total.toFixed(0)} øre at ${cheapestTime})`;
+  } else {
+    cheapSummary.innerHTML = `<span class="price-indicator neutral">⚪</span> No cheap hours (<${thresholdPct}% below avg)`;
+  }
+  summarySection.appendChild(cheapSummary);
 
+  // Expensive hours summary
+  const expensiveSummary = document.createElement('div');
+  expensiveSummary.className = 'price-summary-item';
+  if (expensiveHours.length > 0) {
+    const mostExpensive = expensiveHours[0];
+    const expensiveTime = new Date(mostExpensive.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const countText = `<strong>${expensiveHours.length}</strong> expensive hour${expensiveHours.length === 1 ? '' : 's'}`;
+    expensiveSummary.innerHTML = `<span class="price-indicator expensive">🔴</span> ${countText} (peak: ${mostExpensive.total.toFixed(0)} øre at ${expensiveTime})`;
+  } else {
+    expensiveSummary.innerHTML = `<span class="price-indicator neutral">⚪</span> No expensive hours (>${thresholdPct}% above avg)`;
+  }
+  summarySection.appendChild(expensiveSummary);
+
+  priceList.appendChild(summarySection);
+
+  // Collapsible details sections
+  if (cheapHours.length > 0) {
+    const details = document.createElement('details');
+    details.className = 'price-details';
+    const summary = document.createElement('summary');
+    summary.textContent = `🟢 Cheap hours (${cheapHours.length})`;
+    details.appendChild(summary);
     cheapHours.forEach((entry) => {
-      priceList.appendChild(createPriceRow(entry, currentHour, now, 'price-low'));
+      details.appendChild(createPriceRow(entry, currentHour, now, 'price-low'));
     });
+    priceList.appendChild(details);
   }
 
   if (expensiveHours.length > 0) {
-    const header = document.createElement('div');
-    header.className = 'price-section-header expensive';
-    header.textContent = `🔴 Expensive hours (> ${highThreshold.toFixed(0)} øre)`;
-    priceList.appendChild(header);
-
+    const details = document.createElement('details');
+    details.className = 'price-details';
+    const summary = document.createElement('summary');
+    summary.textContent = `🔴 Expensive hours (${expensiveHours.length})`;
+    details.appendChild(summary);
     expensiveHours.forEach((entry) => {
-      priceList.appendChild(createPriceRow(entry, currentHour, now, 'price-high'));
+      details.appendChild(createPriceRow(entry, currentHour, now, 'price-high'));
     });
+    priceList.appendChild(details);
   }
 
-  // Show notice and normal prices when no hours are flagged as cheap/expensive
-  if (cheapHours.length === 0 && expensiveHours.length === 0) {
-    const notice = document.createElement('div');
-    notice.className = 'price-notice price-notice-info';
-    const thresholdPct = data.thresholdPercent ?? 25;
-    const minDiff = data.minDiffOre ?? 0;
-    let noticeText = `ℹ️ No cheap or expensive hours found. All prices are within ${thresholdPct}% of average (${avgPrice.toFixed(0)} øre/kWh)`;
-    if (minDiff > 0) {
-      noticeText += ` and at least ${minDiff} øre difference is required`;
-    }
-    noticeText += '.';
-    notice.textContent = noticeText;
-    priceList.appendChild(notice);
-
-    // Show all remaining hours in a "Normal prices" section
-    const normalHours = futurePrices.filter(p => !p.isCheap && !p.isExpensive);
-    if (normalHours.length > 0) {
-      const header = document.createElement('div');
-      header.className = 'price-section-header normal';
-      header.textContent = `📊 All prices (avg ${avgPrice.toFixed(0)} øre/kWh)`;
-      priceList.appendChild(header);
-
-      normalHours.forEach((entry) => {
-        priceList.appendChild(createPriceRow(entry, currentHour, now, 'price-normal'));
-      });
-    }
-  }
+  // All prices (always collapsible)
+  const allDetails = document.createElement('details');
+  allDetails.className = 'price-details';
+  const allSummary = document.createElement('summary');
+  allSummary.textContent = `📊 All prices (${futurePrices.length} hours, avg ${avgPrice.toFixed(0)} øre/kWh)`;
+  allDetails.appendChild(allSummary);
+  futurePrices.forEach((entry) => {
+    const priceClass = entry.isCheap ? 'price-low' : entry.isExpensive ? 'price-high' : 'price-normal';
+    allDetails.appendChild(createPriceRow(entry, currentHour, now, priceClass));
+  });
+  priceList.appendChild(allDetails);
 
   // Show notice if price data is limited (e.g., tomorrow's prices not yet available)
   const lastPriceTime = futurePrices.length > 0 ? new Date(futurePrices[futurePrices.length - 1].startsAt) : null;

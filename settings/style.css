@@ -865,6 +865,77 @@ input[type="text"]:focus {
   color: #e57373;
 }
 
+/* Price summary section */
+.price-summary {
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.price-summary-item {
+  padding: 6px 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.price-summary-item:first-child {
+  padding-top: 0;
+}
+
+.price-summary-item:last-child {
+  padding-bottom: 0;
+}
+
+.price-indicator {
+  margin-right: 4px;
+}
+
+.price-indicator.neutral {
+  opacity: 0.5;
+}
+
+/* Collapsible price details */
+.price-details {
+  margin-top: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.price-details summary {
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel-bg);
+  cursor: pointer;
+  list-style: none;
+}
+
+.price-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.price-details summary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform 0.2s;
+}
+
+.price-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.price-details summary:hover {
+  background: var(--panel-hover);
+}
+
+.price-details .device-row {
+  border-top: 1px solid var(--panel-border);
+}
+
 .price-notice {
   padding: 16px 0;
   text-align: center;
