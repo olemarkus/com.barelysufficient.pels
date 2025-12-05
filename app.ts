@@ -673,7 +673,47 @@ module.exports = class PelsApp extends Homey.App {
       this.refreshTargetDevicesSnapshot().catch((error: Error) => {
         this.error('Periodic snapshot refresh failed', error);
       });
+      this.logPeriodicStatus();
     }, SNAPSHOT_REFRESH_INTERVAL_MS);
+  }
+
+  private logPeriodicStatus(): void {
+    const headroom = this.capacityGuard?.getHeadroom() ?? null;
+    const total = this.capacityGuard?.getLastTotalPower() ?? null;
+    const softLimit = this.capacityGuard?.getSoftLimit() ?? this.capacitySettings.limitKw;
+    const sheddingActive = this.capacityGuard?.isSheddingActive() ?? false;
+    const inShortfall = this.capacityGuard?.isInShortfall() ?? false;
+
+    // Get current hour usage
+    const now = Date.now();
+    const date = new Date(now);
+    date.setMinutes(0, 0, 0);
+    const hourStart = date.getTime();
+    const bucketKey = new Date(hourStart).toISOString();
+    const usedKWh = this.powerTracker.buckets?.[bucketKey] || 0;
+    const budgetKWh = this.capacitySettings.limitKw;
+
+    const statusParts: string[] = [];
+    if (total !== null) {
+      statusParts.push(`power=${total.toFixed(2)}kW`);
+    }
+    statusParts.push(`limit=${softLimit.toFixed(2)}kW`);
+    if (headroom !== null) {
+      statusParts.push(`headroom=${headroom.toFixed(2)}kW`);
+    }
+    statusParts.push(`used=${usedKWh.toFixed(2)}/${budgetKWh.toFixed(1)}kWh`);
+    if (sheddingActive) {
+      statusParts.push('SHEDDING');
+    }
+    if (inShortfall) {
+      statusParts.push('SHORTFALL');
+    }
+    statusParts.push(`mode=${this.capacityMode}`);
+    if (this.capacityDryRun) {
+      statusParts.push('dry-run');
+    }
+
+    this.log(`Status: ${statusParts.join(', ')}`);
   }
 
   private async refreshTargetDevicesSnapshot(): Promise<void> {
@@ -1476,7 +1516,7 @@ module.exports = class PelsApp extends Homey.App {
     this.updatePelsStatus(plan);
     const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
     if (this.capacityDryRun && hasShedding) {
-      this.logDebug('Dry run enabled; skipping shedding actions.');
+      this.log('Dry run: shedding planned but not executed');
     }
     if (!this.capacityDryRun) {
       this.applyPlanActions(plan).catch((error: Error) => this.error('Failed to apply plan actions', error));
@@ -2114,10 +2154,10 @@ module.exports = class PelsApp extends Homey.App {
         // 3. headroom < neededForDevice ensures we have enough margin
         if (sheddingActive || inShortfall || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice) {
           /* eslint-disable no-nested-ternary, max-len -- Clear state-dependent reason logging */
+          const reason = sheddingActive ? 'shedding active' : inShortfall ? 'in shortfall' : inCooldown ? 'cooldown' : 'insufficient headroom';
+          this.log(`Capacity: keeping ${name} off (${reason})`);
           this.logDebug(
-            `Capacity: keeping ${name} off (${sheddingActive ? 'shedding active' : inShortfall ? 'in shortfall' : inCooldown ? 'cooldown' : 'insufficient/unknown headroom'}, need ${neededForDevice.toFixed(
-              3,
-            )}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(3)}, device ~${plannedPower.toFixed(2)}kW, cooldown ${inCooldown ? 'yes' : 'no'})`,
+            `  → need ${neededForDevice.toFixed(2)}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(2)}kW, device ~${plannedPower.toFixed(2)}kW`,
           );
           /* eslint-enable no-nested-ternary, max-len */
           continue;

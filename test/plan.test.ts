@@ -877,8 +877,8 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.isInShortfall = () => true; // still in shortfall, waiting for sustained period
     }
 
-    // Spy on logDebug to verify the reason for not restoring
-    const logDebugSpy = jest.spyOn(app as any, 'logDebug');
+    // Spy on log to verify the reason for not restoring
+    const logSpy = jest.spyOn(app as any, 'log');
 
     const plan = {
       devices: [
@@ -898,7 +898,7 @@ describe('Device plan snapshot', () => {
     await (app as any).applyPlanActions(plan);
 
     // Should log that we're keeping the device off due to shortfall
-    expect(logDebugSpy).toHaveBeenCalledWith(
+    expect(logSpy).toHaveBeenCalledWith(
       expect.stringContaining('in shortfall'),
     );
   });
@@ -1770,9 +1770,9 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Capture log calls
-    const logDebugCalls: string[] = [];
-    jest.spyOn(app as any, 'logDebug').mockImplementation((...args: unknown[]) => {
-      logDebugCalls.push(String(args[0]));
+    const logCalls: string[] = [];
+    jest.spyOn(app as any, 'log').mockImplementation((...args: unknown[]) => {
+      logCalls.push(String(args[0]));
     });
 
     // Setup snapshot with a device that will be shed
@@ -1798,7 +1798,7 @@ describe('Dry run mode', () => {
     await (app as any).recordPowerSample(4000); // Will cause overshoot with soft limit of 2
 
     // Should log dry run message
-    expect(logDebugCalls.some((msg) => msg.includes('Dry run enabled'))).toBe(true);
+    expect(logCalls.some((msg) => msg.includes('Dry run'))).toBe(true);
   });
 
   it('can toggle dry run mode at runtime via settings change', async () => {
