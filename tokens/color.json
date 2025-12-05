@@ -1,0 +1,100 @@
+{
+  "color": {
+    "base": {
+      "black": { "value": "#0c111b" },
+      "white": { "value": "#ffffff" },
+      "gray": {
+        "50": { "value": "#e6ecf5" },
+        "100": { "value": "#cdd6e1" },
+        "200": { "value": "#a8b8c8" },
+        "900": { "value": "#0d1117" }
+      },
+      "accent": {
+        "light": { "value": "#9ee8c8" },
+        "default": { "value": "#7fd1ae" },
+        "dark": { "value": "#6ab894" }
+      },
+      "danger": {
+        "default": { "value": "#f26b6b" },
+        "dark": { "value": "#e57373" }
+      },
+      "warning": {
+        "default": { "value": "#ffc107" }
+      },
+      "info": {
+        "default": { "value": "#64b5f6" }
+      },
+      "success": {
+        "default": { "value": "#4ed2cc" }
+      }
+    },
+    "semantic": {
+      "bg": { "value": "{color.base.black}" },
+      "text": {
+        "primary": { "value": "{color.base.gray.50}" },
+        "secondary": { "value": "{color.base.gray.100}" },
+        "muted": { "value": "{color.base.gray.200}" },
+        "inverse": { "value": "{color.base.gray.900}" }
+      },
+      "accent": { "value": "{color.base.accent.default}" },
+      "accent-strong": { "value": "{color.base.accent.dark}" },
+      "danger": { "value": "{color.base.danger.default}" },
+      "warning": { "value": "{color.base.warning.default}" },
+      "info": { "value": "{color.base.info.default}" }
+    },
+    "surface": {
+      "1": { "value": "rgba(255, 255, 255, 0.04)" },
+      "2": { "value": "rgba(255, 255, 255, 0.05)" },
+      "3": { "value": "rgba(255, 255, 255, 0.06)" },
+      "4": { "value": "rgba(255, 255, 255, 0.08)" },
+      "5": { "value": "rgba(255, 255, 255, 0.12)" },
+      "elevated": { "value": "#1a1a1a" }
+    },
+    "border": {
+      "default": { "value": "rgba(255, 255, 255, 0.12)" },
+      "medium": { "value": "rgba(255, 255, 255, 0.15)" },
+      "strong": { "value": "rgba(255, 255, 255, 0.20)" }
+    },
+    "state": {
+      "positive": {
+        "bg": { "value": "rgba(127, 209, 174, 0.15)" },
+        "bg-muted": { "value": "rgba(127, 209, 174, 0.1)" },
+        "bg-strong": { "value": "rgba(127, 209, 174, 0.25)" },
+        "border": { "value": "rgba(127, 209, 174, 0.4)" },
+        "text": { "value": "{color.base.accent.light}" }
+      },
+      "negative": {
+        "bg": { "value": "rgba(242, 107, 107, 0.15)" },
+        "border": { "value": "rgba(242, 107, 107, 0.35)" },
+        "text": { "value": "{color.base.danger.dark}" }
+      },
+      "warning": {
+        "bg": { "value": "rgba(255, 193, 7, 0.15)" },
+        "bg-muted": { "value": "rgba(255, 193, 7, 0.1)" },
+        "border": { "value": "rgba(255, 193, 7, 0.4)" },
+        "border-muted": { "value": "rgba(255, 193, 7, 0.3)" },
+        "text": { "value": "{color.base.warning.default}" }
+      },
+      "info": {
+        "bg": { "value": "rgba(100, 181, 246, 0.1)" },
+        "border": { "value": "rgba(100, 181, 246, 0.3)" },
+        "text": { "value": "{color.base.info.default}" }
+      },
+      "success": {
+        "bg": { "value": "rgba(78, 210, 204, 0.15)" },
+        "bg-muted": { "value": "rgba(78, 210, 204, 0.1)" }
+      }
+    },
+    "focus": {
+      "ring": { "value": "rgba(127, 209, 174, 0.6)" }
+    },
+    "overlay": {
+      "backdrop": { "value": "rgba(0, 0, 0, 0.6)" },
+      "toast": { "value": "rgba(12, 17, 27, 0.9)" }
+    },
+    "gradient": {
+      "accent-radial": { "value": "rgba(127, 209, 174, 0.12)" },
+      "accent-radial-blue": { "value": "rgba(116, 145, 255, 0.1)" }
+    }
+  }
+}

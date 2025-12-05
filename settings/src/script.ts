@@ -739,7 +739,7 @@ const renderPriorities = (devices) => {
 
     const handle = document.createElement('span');
     handle.className = 'drag-handle';
-    handle.textContent = '↕';
+    handle.textContent = '⋮⋮';
 
     const name = document.createElement('div');
     name.className = 'device-row__name';
@@ -932,17 +932,27 @@ const renderPlan = (plan) => {
     const headroomText = meta.headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
     const powerText = `Now ${meta.totalKw.toFixed(1)}kW / Limit ${meta.softLimitKw.toFixed(1)}kW`;
     const budgetText = typeof meta.usedKWh === 'number' && typeof meta.budgetKWh === 'number'
-      ? ` · This hour: ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)}kWh`
+      ? `This hour: ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)}kWh`
       : '';
     const endOfHourText = typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10
-      ? ' · End of hour'
+      ? 'End of hour'
       : '';
     planMeta.innerHTML = '';
     const powerDiv = document.createElement('div');
     powerDiv.textContent = powerText;
     const headroomDiv = document.createElement('div');
-    headroomDiv.textContent = `${headroomText}${budgetText}${endOfHourText}`;
+    headroomDiv.textContent = headroomText;
     planMeta.append(powerDiv, headroomDiv);
+    if (budgetText) {
+      const budgetDiv = document.createElement('div');
+      budgetDiv.textContent = budgetText;
+      planMeta.append(budgetDiv);
+    }
+    if (endOfHourText) {
+      const endDiv = document.createElement('div');
+      endDiv.textContent = endOfHourText;
+      planMeta.append(endDiv);
+    }
   } else {
     planMeta.textContent = 'Awaiting data';
   }

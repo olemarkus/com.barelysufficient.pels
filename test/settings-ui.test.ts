@@ -17,8 +17,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Cache file contents at module level - read once
 const htmlPath = path.resolve(__dirname, '../settings/index.html');
 const cssPath = path.resolve(__dirname, '../settings/style.css');
+const tokensCssPath = path.resolve(__dirname, '../settings/tokens.css');
 const baseHtml = fs.readFileSync(htmlPath, 'utf-8');
-const baseCss = fs.readFileSync(cssPath, 'utf-8');
+let baseCss = fs.readFileSync(cssPath, 'utf-8');
+
+// Inline the tokens.css import (file:// protocol doesn't support @import)
+if (fs.existsSync(tokensCssPath)) {
+  const tokensCss = fs.readFileSync(tokensCssPath, 'utf-8');
+  baseCss = baseCss.replace("@import url('tokens.css');", tokensCss);
+}
 
 describe('Settings UI', () => {
   let browser: Browser;
