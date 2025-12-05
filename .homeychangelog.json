@@ -7,5 +7,8 @@
   },
   "1.0.2": {
     "en": "Fixed devices not restoring during capacity shortfall. Burst rate now only limited in last 10 minutes of the hour. Added dry-run warning banner. Added end-of-hour indicator in plan view."
+  },
+  "1.0.3": {
+    "en": "Improved settings UI with better spacing and navigation. Added stale data warning banner. Improved price display with collapsible summary. Renamed insights driver with new icon."
   }
 }
