@@ -168,6 +168,7 @@ export const mockHomeyInstance = {
       registerRunListener: (listener: (args: any) => Promise<any>) => {
         mockHomeyInstance.flow._conditionCardListeners[cardId] = listener;
       },
+      registerArgumentAutocompleteListener: () => {},
     }),
     getTriggerCard: () => ({
       trigger: () => {},

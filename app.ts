@@ -529,8 +529,7 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private async initHomeyApi(): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey API has no TypeScript definitions
-    if (!this.homey.api || typeof (this.homey.api as any).getOwnerApiToken !== 'function') {
+    if (!this.homey.api || typeof this.homey.api.getOwnerApiToken !== 'function') {
       this.logDebug('Homey API token unavailable, skipping HomeyAPI client init');
       return;
     }
@@ -583,15 +582,12 @@ module.exports = class PelsApp extends Homey.App {
       }
       return true;
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey Flow API has no TypeScript definitions
-    if (typeof (setCapacityMode as any).registerArgumentAutocompleteListener === 'function') {
-      setCapacityMode.registerArgumentAutocompleteListener('mode', async (query: string) => {
-        const q = (query || '').toLowerCase();
-        return Array.from(this.getAllModes())
-          .filter((m) => !q || m.toLowerCase().includes(q))
-          .map((m) => ({ id: m, name: m }));
-      });
-    }
+    setCapacityMode.registerArgumentAutocompleteListener('mode', async (query: string) => {
+      const q = (query || '').toLowerCase();
+      return Array.from(this.getAllModes())
+        .filter((m) => !q || m.toLowerCase().includes(q))
+        .map((m) => ({ id: m, name: m }));
+    });
 
     const hasCapacityCond = this.homey.flow.getConditionCard('has_capacity_for');
     // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
@@ -608,15 +604,12 @@ module.exports = class PelsApp extends Homey.App {
       if (!chosenMode) return false;
       return this.capacityMode.toLowerCase() === chosenMode.toLowerCase();
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey Flow API has no TypeScript definitions
-    if (typeof (isCapacityModeCond as any).registerArgumentAutocompleteListener === 'function') {
-      isCapacityModeCond.registerArgumentAutocompleteListener('mode', async (query: string) => {
-        const q = (query || '').toLowerCase();
-        return Array.from(this.getAllModes())
-          .filter((m) => !q || m.toLowerCase().includes(q))
-          .map((m) => ({ id: m, name: m }));
-      });
-    }
+    isCapacityModeCond.registerArgumentAutocompleteListener('mode', async (query: string) => {
+      const q = (query || '').toLowerCase();
+      return Array.from(this.getAllModes())
+        .filter((m) => !q || m.toLowerCase().includes(q))
+        .map((m) => ({ id: m, name: m }));
+    });
   }
 
   private async applyDeviceTargetsForMode(mode: string): Promise<void> {
@@ -2056,12 +2049,7 @@ module.exports = class PelsApp extends Homey.App {
     // Trigger flow card
     const card = this.homey.flow?.getTriggerCard?.('capacity_shortfall');
     if (card && typeof card.trigger === 'function') {
-      const result = card.trigger({});
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-misused-promises -- Homey trigger returns a possibly-thenable
-      if (result && typeof (result as any).catch === 'function') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey trigger returns a possibly-thenable
-        (result as any).catch((err: Error) => this.error('Failed to trigger capacity_shortfall', err));
-      }
+      card.trigger({}).catch((err: Error) => this.error('Failed to trigger capacity_shortfall', err));
     }
   }
 
