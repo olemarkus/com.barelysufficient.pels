@@ -1,10 +1,10 @@
 {
   "type": "number",
   "title": {
-    "en": "Hourly usage"
+    "en": "Used this hour"
   },
   "desc": {
-    "en": "Energy usage for the current hour"
+    "en": "kWh consumed so far this hour"
   },
   "units": {
     "en": "kWh"

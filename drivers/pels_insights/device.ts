@@ -1,6 +1,6 @@
 import Homey from 'homey';
 
-class ModeIndicatorDevice extends Homey.Device {
+class PelsInsightsDevice extends Homey.Device {
   async onInit(): Promise<void> {
     // Add capabilities if missing (for devices created before these were added)
     const requiredCapabilities = [
@@ -46,9 +46,9 @@ class ModeIndicatorDevice extends Homey.Device {
   async updateMode(mode: string): Promise<void> {
     if (typeof mode !== 'string' || !mode.trim()) return;
     try {
-      await this.setCapabilityValue('mode_indicator', mode);
+      await this.setCapabilityValue('pels_insights', mode);
     } catch (error) {
-      this.error('Failed to update mode indicator', error);
+      this.error('Failed to update pels insights', error);
     }
   }
 
@@ -97,5 +97,5 @@ class ModeIndicatorDevice extends Homey.Device {
   }
 }
 
-module.exports = ModeIndicatorDevice;
+module.exports = PelsInsightsDevice;
 

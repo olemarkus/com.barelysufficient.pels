@@ -1,23 +1,24 @@
 {
-  "id": "mode_indicator",
+  "id": "pels_insights",
   "name": {
-    "en": "PELS Status"
+    "en": "PELS Insights"
   },
   "class": "sensor",
   "capabilities": [
-    "mode_indicator",
+    "pels_insights",
+    "pels_shortfall",
     "pels_headroom",
     "pels_hourly_usage",
-    "pels_shortfall",
     "pels_shedding",
     "pels_price_level",
     "pels_devices_on",
     "pels_devices_off"
   ],
-  "icon": "/assets/icon.svg",
+  "icon": "/drivers/pels_insights/assets/icon.svg",
   "images": {
-    "small": "/drivers/mode_indicator/assets/images/small.png",
-    "large": "/drivers/mode_indicator/assets/images/large.png"
+    "small": "/drivers/pels_insights/assets/images/small.png",
+    "large": "/drivers/pels_insights/assets/images/large.png",
+    "xlarge": "/drivers/pels_insights/assets/images/xlarge.png"
   },
   "pair": [
     {

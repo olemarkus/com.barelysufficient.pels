@@ -53,7 +53,7 @@ class MockDevice {
 }
 
 // The actual device implementation (we'll test against this logic)
-class ModeIndicatorDevice extends MockDevice {
+class PelsInsightsDevice extends MockDevice {
   async onInit(): Promise<void> {
     await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
@@ -71,9 +71,9 @@ class ModeIndicatorDevice extends MockDevice {
   async updateMode(mode: string): Promise<void> {
     if (typeof mode !== 'string' || !mode.trim()) return;
     try {
-      await this.setCapabilityValue('mode_indicator', mode);
+      await this.setCapabilityValue('pels_insights', mode);
     } catch (error) {
-      this.error('Failed to update mode indicator', error);
+      this.error('Failed to update pels insights', error);
     }
   }
 
@@ -87,7 +87,7 @@ class ModeIndicatorDevice extends MockDevice {
 }
 
 // Device with fix - adds capability if missing
-class ModeIndicatorDeviceFixed extends MockDevice {
+class PelsInsightsDeviceFixed extends MockDevice {
   async onInit(): Promise<void> {
     // Add alarm_generic capability if missing (for devices created before this capability was added)
     if (!this.hasCapability('alarm_generic')) {
@@ -110,9 +110,9 @@ class ModeIndicatorDeviceFixed extends MockDevice {
   async updateMode(mode: string): Promise<void> {
     if (typeof mode !== 'string' || !mode.trim()) return;
     try {
-      await this.setCapabilityValue('mode_indicator', mode);
+      await this.setCapabilityValue('pels_insights', mode);
     } catch (error) {
-      this.error('Failed to update mode indicator', error);
+      this.error('Failed to update pels insights', error);
     }
   }
 
@@ -125,12 +125,12 @@ class ModeIndicatorDeviceFixed extends MockDevice {
   }
 }
 
-describe('ModeIndicatorDevice', () => {
+describe('PelsInsightsDevice', () => {
   describe('updateShortfall - current behavior (fails for old devices)', () => {
     it('should fail to set alarm_generic when capability is missing', async () => {
-      const device = new ModeIndicatorDevice();
-      // Simulate old device that only has mode_indicator capability
-      await device.addCapability('mode_indicator');
+      const device = new PelsInsightsDevice();
+      // Simulate old device that only has pels_insights capability
+      await device.addCapability('pels_insights');
 
       // This should fail silently (error is caught) but capability value won't be set
       await device.updateShortfall(true);
@@ -140,8 +140,8 @@ describe('ModeIndicatorDevice', () => {
     });
 
     it('should work when device has alarm_generic capability', async () => {
-      const device = new ModeIndicatorDevice();
-      await device.addCapability('mode_indicator');
+      const device = new PelsInsightsDevice();
+      await device.addCapability('pels_insights');
       await device.addCapability('alarm_generic');
 
       await device.updateShortfall(true);
@@ -152,9 +152,9 @@ describe('ModeIndicatorDevice', () => {
 
   describe('updateShortfall - fixed behavior', () => {
     it('should add alarm_generic capability on init if missing', async () => {
-      const device = new ModeIndicatorDeviceFixed();
-      // Simulate old device that only has mode_indicator capability
-      await device.addCapability('mode_indicator');
+      const device = new PelsInsightsDeviceFixed();
+      // Simulate old device that only has pels_insights capability
+      await device.addCapability('pels_insights');
       // Note: alarm_generic is NOT added - simulating old device
 
       await device.onInit();
@@ -164,8 +164,8 @@ describe('ModeIndicatorDevice', () => {
     });
 
     it('should successfully set alarm_generic after capability is added', async () => {
-      const device = new ModeIndicatorDeviceFixed();
-      await device.addCapability('mode_indicator');
+      const device = new PelsInsightsDeviceFixed();
+      await device.addCapability('pels_insights');
 
       await device.onInit();
       await device.updateShortfall(true);
@@ -174,8 +174,8 @@ describe('ModeIndicatorDevice', () => {
     });
 
     it('should not duplicate capability if already present', async () => {
-      const device = new ModeIndicatorDeviceFixed();
-      await device.addCapability('mode_indicator');
+      const device = new PelsInsightsDeviceFixed();
+      await device.addCapability('pels_insights');
       await device.addCapability('alarm_generic');
 
       // onInit should not throw even if capability already exists
@@ -186,41 +186,41 @@ describe('ModeIndicatorDevice', () => {
   });
 
   describe('updateMode', () => {
-    it('should set mode_indicator capability', async () => {
-      const device = new ModeIndicatorDevice();
-      await device.addCapability('mode_indicator');
+    it('should set pels_insights capability', async () => {
+      const device = new PelsInsightsDevice();
+      await device.addCapability('pels_insights');
       await device.addCapability('alarm_generic');
 
       await device.updateMode('away');
 
-      expect(device.getCapabilityValue('mode_indicator')).toBe('away');
+      expect(device.getCapabilityValue('pels_insights')).toBe('away');
     });
 
     it('should not set empty mode', async () => {
-      const device = new ModeIndicatorDevice();
-      await device.addCapability('mode_indicator');
+      const device = new PelsInsightsDevice();
+      await device.addCapability('pels_insights');
       await device.addCapability('alarm_generic');
 
       await device.updateMode('');
 
-      expect(device.getCapabilityValue('mode_indicator')).toBeUndefined();
+      expect(device.getCapabilityValue('pels_insights')).toBeUndefined();
     });
 
     it('should not set whitespace-only mode', async () => {
-      const device = new ModeIndicatorDevice();
-      await device.addCapability('mode_indicator');
+      const device = new PelsInsightsDevice();
+      await device.addCapability('pels_insights');
       await device.addCapability('alarm_generic');
 
       await device.updateMode('   ');
 
-      expect(device.getCapabilityValue('mode_indicator')).toBeUndefined();
+      expect(device.getCapabilityValue('pels_insights')).toBeUndefined();
     });
   });
 
   describe('settings listener', () => {
     it('should update shortfall when setting changes', async () => {
-      const device = new ModeIndicatorDeviceFixed();
-      await device.addCapability('mode_indicator');
+      const device = new PelsInsightsDeviceFixed();
+      await device.addCapability('pels_insights');
 
       await device.onInit();
 
@@ -234,8 +234,8 @@ describe('ModeIndicatorDevice', () => {
     });
 
     it('should update mode when setting changes', async () => {
-      const device = new ModeIndicatorDeviceFixed();
-      await device.addCapability('mode_indicator');
+      const device = new PelsInsightsDeviceFixed();
+      await device.addCapability('pels_insights');
 
       await device.onInit();
 
@@ -243,7 +243,7 @@ describe('ModeIndicatorDevice', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      expect(device.getCapabilityValue('mode_indicator')).toBe('night');
+      expect(device.getCapabilityValue('pels_insights')).toBe('night');
     });
   });
 });

@@ -1,16 +1,16 @@
 {
-  "mode_indicator": {
-    "name": "PELS Status"
+  "pels_insights": {
+    "name": "PELS Insights"
   },
   "capability": {
-    "mode_indicator": {
+    "pels_insights": {
       "title": "Mode"
     },
     "pels_headroom": {
       "title": "Headroom"
     },
     "pels_hourly_usage": {
-      "title": "Hourly usage"
+      "title": "Used this hour"
     },
     "pels_shortfall": {
       "title": "Capacity shortfall"

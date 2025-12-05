@@ -163,26 +163,26 @@
   },
   "drivers": [
     {
-      "id": "mode_indicator",
+      "id": "pels_insights",
       "name": {
-        "en": "Capacity mode"
+        "en": "PELS Insights"
       },
       "class": "sensor",
       "capabilities": [
-        "mode_indicator",
-        "alarm_generic"
+        "pels_insights",
+        "pels_shortfall",
+        "pels_headroom",
+        "pels_hourly_usage",
+        "pels_shedding",
+        "pels_price_level",
+        "pels_devices_on",
+        "pels_devices_off"
       ],
-      "capabilitiesOptions": {
-        "alarm_generic": {
-          "title": {
-            "en": "Capacity shortfall"
-          }
-        }
-      },
-      "icon": "/assets/icon.svg",
+      "icon": "/drivers/pels_insights/assets/icon.svg",
       "images": {
-        "small": "/drivers/mode_indicator/assets/images/small.png",
-        "large": "/drivers/mode_indicator/assets/images/large.png"
+        "small": "/drivers/pels_insights/assets/images/small.png",
+        "large": "/drivers/pels_insights/assets/images/large.png",
+        "xlarge": "/drivers/pels_insights/assets/images/xlarge.png"
       },
       "pair": [
         {
@@ -202,7 +202,7 @@
   "capabilities": {
     "mode_indicator": {
       "title": {
-        "en": "Capacity mode"
+        "en": "PELS Status"
       },
       "desc": {
         "en": "Shows the current capacity mode selected in settings or Flow."
@@ -272,6 +272,17 @@
       "uiComponent": "sensor",
       "insights": true,
       "decimals": 2
+    },
+    "pels_insights": {
+      "title": {
+        "en": "PELS Insights"
+      },
+      "desc": {
+        "en": "Shows the current capacity mode selected in settings or Flow."
+      },
+      "type": "string",
+      "getable": true,
+      "setable": false
     },
     "pels_price_level": {
       "type": "enum",
