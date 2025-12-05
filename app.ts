@@ -820,6 +820,7 @@ module.exports = class PelsApp extends Homey.App {
 
   private async refreshSpotPrices(forceRefresh = false): Promise<void> {
     const priceArea = this.homey.settings.get('price_area') || 'NO1';
+    const cachedArea = this.homey.settings.get('electricity_prices_area');
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     const tomorrowStr = new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -827,7 +828,11 @@ module.exports = class PelsApp extends Homey.App {
     // Check if we already have today's prices (cached)
     if (!forceRefresh) {
       const existingPrices = this.homey.settings.get('electricity_prices') as Array<{ startsAt?: string }> | null;
-      if (existingPrices && Array.isArray(existingPrices) && existingPrices.length > 0) {
+      const areaChanged = cachedArea && cachedArea !== priceArea;
+      if (areaChanged) {
+        this.logDebug(`Spot prices: Price area changed from ${cachedArea} to ${priceArea}, ignoring cache`);
+      }
+      if (!areaChanged && existingPrices && Array.isArray(existingPrices) && existingPrices.length > 0) {
         // Check if we have prices for today
         const hasTodayPrices = existingPrices.some((p) => p.startsAt?.startsWith(todayStr));
         const hasTomorrowPrices = existingPrices.some((p) => p.startsAt?.startsWith(tomorrowStr));
@@ -865,6 +870,7 @@ module.exports = class PelsApp extends Homey.App {
 
     if (allPrices.length > 0) {
       this.homey.settings.set('electricity_prices', allPrices);
+      this.homey.settings.set('electricity_prices_area', priceArea);
       this.log(`Spot prices: Stored ${allPrices.length} hourly prices for ${priceArea}`);
       this.updateCombinedPrices();
     } else {

@@ -362,6 +362,69 @@ describe('Spot price fetching', () => {
     expect(capturedUrl).toContain('_NO1.json');
   });
 
+  it('refetches prices when price area changes even if cache has today', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Freeze time to a morning hour (before tomorrow-price window) for deterministic cache logic
+    const now = new Date();
+    now.setHours(10, 0, 0, 0);
+    const todayStr = now.toISOString().split('T')[0];
+    const originalDate = global.Date;
+    const MockDate = class extends Date {
+      constructor(...args: any[]) {
+        if (args.length === 0) {
+          super(now.getTime());
+        } else {
+          // @ts-ignore
+          super(...args);
+        }
+      }
+
+      static now() {
+        return now.getTime();
+      }
+    } as DateConstructor;
+    global.Date = MockDate;
+
+    // Seed cache for NO1, then switch to NO2
+    mockHomeyInstance.settings.set('price_area', 'NO1');
+    mockHomeyInstance.settings.set('electricity_prices_area', 'NO1');
+    mockHomeyInstance.settings.set('electricity_prices', [{
+      startsAt: `${todayStr}T00:00:00.000Z`,
+      total: 40,
+      currency: 'NOK',
+    }]);
+    mockHomeyInstance.settings.set('price_area', 'NO2');
+
+    let fetchCount = 0;
+    let capturedUrl = '';
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      fetchCount++;
+      capturedUrl = url;
+      const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
+      callback(response);
+      return {
+        on: jest.fn(),
+        setTimeout: jest.fn(),
+        destroy: jest.fn(),
+      };
+    });
+
+    try {
+      const app = createApp();
+      await app.onInit();
+      await flushPromises();
+
+      expect(fetchCount).toBeGreaterThan(0);
+      expect(capturedUrl).toContain('_NO2.json');
+    } finally {
+      global.Date = originalDate;
+    }
+  });
+
   it('refreshes prices after 13:15 if tomorrow prices are missing', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
