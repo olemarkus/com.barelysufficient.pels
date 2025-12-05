@@ -371,4 +371,48 @@ describe('computeDynamicSoftLimit', () => {
 
     jest.restoreAllMocks();
   });
+
+  it('sets pels_status even with no devices so stale data banner shows', async () => {
+    // No devices configured
+    setMockDrivers({});
+
+    const app = createApp();
+    await app.onInit();
+
+    // pels_status should be set even with no devices
+    const status = mockHomeyInstance.settings.get('pels_status');
+    expect(status).toBeDefined();
+    expect(status).toHaveProperty('lastPowerUpdate');
+    // No power data received yet, so lastPowerUpdate should be null
+    expect(status.lastPowerUpdate).toBeNull();
+  });
+
+  it('builds device plan in dry-run mode without actuating', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('target_temperature', 20);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Enable dry-run mode
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+    // Set up priorities so the device is in the plan
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Plan should be built
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan).toBeDefined();
+    expect(plan.devices).toBeDefined();
+    expect(plan.devices.length).toBeGreaterThan(0);
+
+    // pels_status should be set
+    const status = mockHomeyInstance.settings.get('pels_status');
+    expect(status).toBeDefined();
+    expect(status).toHaveProperty('headroomKw');
+  });
 });

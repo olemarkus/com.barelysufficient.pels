@@ -50,6 +50,7 @@ const capacityLimitInput = document.querySelector('#capacity-limit') as HTMLInpu
 const capacityMarginInput = document.querySelector('#capacity-margin') as HTMLInputElement;
 const capacityDryRunInput = document.querySelector('#capacity-dry-run') as HTMLInputElement;
 const dryRunBanner = qs('#dry-run-banner');
+const staleDataBanner = qs('#stale-data-banner');
 const planList = qs('#plan-list');
 const planEmpty = qs('#plan-empty');
 const planMeta = qs('#plan-meta');
@@ -594,6 +595,25 @@ const updateDryRunBanner = (isDryRun: boolean) => {
   if (dryRunBanner) {
     dryRunBanner.hidden = !isDryRun;
   }
+};
+
+const STALE_DATA_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
+  if (!staleDataBanner) return;
+  if (lastPowerUpdate === null) {
+    // No data ever received - show warning
+    staleDataBanner.hidden = false;
+    return;
+  }
+  const now = Date.now();
+  const isStale = (now - lastPowerUpdate) > STALE_DATA_THRESHOLD_MS;
+  staleDataBanner.hidden = !isStale;
+};
+
+const loadStaleDataStatus = async () => {
+  const status = await getSetting('pels_status') as { lastPowerUpdate?: number | null } | null;
+  updateStaleDataBanner(status?.lastPowerUpdate ?? null);
 };
 
 const loadCapacitySettings = async () => {
@@ -1791,6 +1811,9 @@ const boot = async () => {
     renderPowerUsage(usage);
     await renderPowerStats();
     await loadCapacitySettings();
+    await loadStaleDataStatus();
+    // Refresh stale data status periodically (every 30 seconds)
+    setInterval(() => loadStaleDataStatus(), 30 * 1000);
     await loadModeAndPriorities();
     await loadPriceOptimizationSettings(); // Load before rendering devices
     initDeviceDetailHandlers();
