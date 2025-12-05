@@ -240,7 +240,8 @@ const useFirefox = process.argv.includes('firefox');
           const expensivePrices = prices.filter(p => p.isExpensive);
           
           if (cheapPrices.length > 0) {
-            const header = el('div', 'price-section-header cheap', '🟢 Cheap hours (< 70 øre)');
+            const header = el('div', 'muted', '🟢 Cheap hours (< 70 øre)');
+            header.style.cssText = 'padding: 8px 0; margin-top: 12px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--panel-border); color: var(--color-base-accent-default);';
             list.appendChild(header);
             cheapPrices.slice(0, 3).forEach(p => {
               const row = el('div', 'device-row price-row');
@@ -255,7 +256,8 @@ const useFirefox = process.argv.includes('firefox');
           }
           
           if (expensivePrices.length > 0) {
-            const header = el('div', 'price-section-header expensive', '🔴 Expensive hours (> 120 øre)');
+            const header = el('div', 'muted', '🔴 Expensive hours (> 120 øre)');
+            header.style.cssText = 'padding: 8px 0; margin-top: 12px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--panel-border); color: var(--color-state-negative-text);';
             list.appendChild(header);
             expensivePrices.slice(0, 3).forEach(p => {
               const row = el('div', 'device-row price-row');

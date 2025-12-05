@@ -121,7 +121,7 @@ body {
   max-width: 960px;
   margin: 0 auto;
   display: grid;
-  gap: 20px;
+  gap: var(--spacing-8);
 }
 
 .hero h1 {
@@ -138,7 +138,7 @@ body {
 .tabs {
   display: flex;
   align-items: center;
-  gap: var(--spacing-1);
+  gap: var(--spacing-2);
   margin-top: var(--spacing-3);
   background: var(--color-surface-1);
   border: 1px solid var(--panel-border);
@@ -156,13 +156,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border: 2px solid rgba(255, 255, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+  border-radius: 10px !important;
   cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
   transition: background 150ms ease, color 150ms ease;
 }
 
@@ -229,7 +231,7 @@ body {
   border: none;
   background: transparent;
   color: var(--muted);
-  padding: var(--spacing-2) var(--spacing-3);
+  padding: var(--spacing-2) var(--spacing-4);
   border-radius: var(--radius-md);
   font-weight: var(--font-weight-bold);
   font-size: var(--font-size-sm);
@@ -286,7 +288,8 @@ body {
 
 .form-grid {
   display: grid;
-  gap: 14px;
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-6);
 }
 
 .field {
@@ -501,17 +504,19 @@ input:focus-visible {
 
 .drag-handle {
   cursor: grab;
-  padding: 4px;
+  padding: 4px 6px;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface-4);
   user-select: none;
   touch-action: none;
   -webkit-user-select: none;
-  color: var(--muted);
+  color: var(--text);
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .drag-handle:hover {
@@ -540,17 +545,15 @@ input:focus-visible {
   box-shadow: var(--shadow-md);
 }
 
-.device-list {
-  display: grid;
+.sortable-fallback {
+  opacity: 1 !important;
+  background: var(--panel) !important;
+  box-shadow: var(--shadow-lg) !important;
+  border-radius: var(--radius-md);
 }
 
-.zone-header {
-  margin: 12px 0 4px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 12px;
+.device-list {
+  display: grid;
 }
 
 .plan-row__meta {
@@ -856,28 +859,6 @@ input[type="text"]:focus {
   color: var(--text);
 }
 
-/* Price section headers for outlier display */
-.price-section-header {
-  padding: 8px 0;
-  margin-top: 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.price-section-header:first-child {
-  margin-top: 0;
-}
-
-.price-section-header.cheap {
-  color: var(--color-base-accent-default);
-}
-
-.price-section-header.expensive {
-  color: var(--color-state-negative-text);
-}
-
 /* Price summary section */
 .price-summary {
   padding: 12px;
@@ -986,7 +967,6 @@ input[type="text"]:focus {
   padding: 12px 16px;
   border-radius: 10px;
   font-size: 14px;
-  margin-bottom: 8px;
 }
 
 .banner[hidden] {
@@ -1013,10 +993,6 @@ input[type="text"]:focus {
   text-align: right;
   margin-top: 12px;
   opacity: 0.7;
-}
-
-.price-section-header.normal {
-  color: var(--muted);
 }
 
 .price-row .chip.price-normal {
@@ -1077,17 +1053,21 @@ input[type="text"]:focus {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius);
-  margin-bottom: 16px;
+  margin-bottom: var(--spacing-4);
+}
+
+.settings-collapse:first-of-type {
+  margin-top: var(--spacing-4);
 }
 
 .settings-collapse summary {
   cursor: pointer;
-  padding: 12px 16px;
+  padding: var(--spacing-6);
   list-style: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--spacing-3);
 }
 
 .settings-collapse summary::-webkit-details-marker {
@@ -1117,7 +1097,7 @@ input[type="text"]:focus {
 }
 
 .settings-collapse .collapse-content {
-  padding: 0 16px 16px;
+  padding: var(--spacing-4) var(--spacing-4) var(--spacing-4);
   border-top: 1px solid var(--panel-border);
 }
 
@@ -1343,15 +1323,15 @@ input[type="text"]:focus {
 .usage-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-6);
 }
 
 .summary-card {
   background: var(--panel);
   border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 16px;
+  border-radius: var(--radius-md);
+  padding: var(--spacing-6) var(--spacing-4);
   text-align: center;
 }
 

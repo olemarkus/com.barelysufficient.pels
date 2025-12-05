@@ -760,7 +760,6 @@ const renderPriorities = (devices) => {
   sorted.forEach((device) => {
     const row = document.createElement('div');
     row.className = 'device-row draggable mode-row';
-    row.draggable = true;
     row.setAttribute('role', 'listitem');
     row.dataset.deviceId = device.id;
 
@@ -889,6 +888,9 @@ const initSortable = () => {
     ghostClass: 'sortable-ghost',
     chosenClass: 'sortable-chosen',
     dragClass: 'sortable-drag',
+    forceFallback: true, // Use SortableJS drag instead of native HTML5 drag
+    fallbackClass: 'sortable-fallback',
+    fallbackOnBody: true,
     delay: 150,
     delayOnTouchOnly: true,
     touchStartThreshold: 5,

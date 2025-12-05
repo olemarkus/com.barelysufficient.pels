@@ -17,13 +17,7 @@
         <button class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</button>
         <button class="tab" data-tab="price" role="tab" aria-selected="false">Price</button>
         <div class="tab-overflow">
-          <button class="tab-overflow-toggle" aria-label="More tabs" aria-expanded="false">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-              <rect x="2" y="4" width="16" height="2" rx="1"/>
-              <rect x="2" y="9" width="16" height="2" rx="1"/>
-              <rect x="2" y="14" width="16" height="2" rx="1"/>
-            </svg>
-          </button>
+          <button class="tab-overflow-toggle" aria-label="More tabs" aria-expanded="false">☰</button>
           <div class="tab-overflow-menu" hidden>
             <button class="tab" data-tab="power" role="tab" aria-selected="false">Power usage</button>
             <button class="tab" data-tab="plan" role="tab" aria-selected="false">Plan</button>
@@ -118,7 +112,7 @@
       </form>
 
       <details class="settings-collapse" open>
-        <summary class="section-header clickable">
+        <summary>
           <h3>📊 Usage summary</h3>
           <span class="collapse-hint">Daily totals and patterns</span>
         </summary>
@@ -157,9 +151,9 @@
       </details>
 
       <details class="settings-collapse">
-        <summary class="section-header clickable">
+        <summary>
           <h3>📅 Daily history</h3>
-          <span class="collapse-hint">Last 30 days</span>
+          <span class="collapse-hint">Last 7 days</span>
         </summary>
         <div class="collapse-content">
           <div id="daily-list" class="device-list" role="list"></div>
@@ -168,9 +162,9 @@
       </details>
 
       <details class="settings-collapse">
-        <summary class="section-header clickable">
-          <h3>⏰ Hourly detail</h3>
-          <span class="collapse-hint">Recent hours</span>
+        <summary>
+          <h3>⏱️ Hourly detail</h3>
+          <span class="collapse-hint">Today's hours</span>
         </summary>
         <div class="collapse-content">
           <div id="power-list" class="device-list" role="list"></div>
@@ -221,7 +215,7 @@
       </div>
       
       <details class="settings-collapse">
-        <summary class="section-header clickable">
+        <summary>
           <h3>⚙️ Price settings</h3>
           <span class="collapse-hint">Grid tariff & spot price configuration</span>
         </summary>

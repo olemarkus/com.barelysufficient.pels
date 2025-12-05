@@ -582,7 +582,8 @@ describe('Settings UI', () => {
           
           Object.keys(grouped).sort().forEach(zone => {
             const header = document.createElement('div');
-            header.className = 'zone-header';
+            header.className = 'muted';
+            header.style.cssText = 'margin: 12px 0 4px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 12px;';
             header.textContent = zone;
             planList.appendChild(header);
             
