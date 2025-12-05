@@ -2,6 +2,13 @@ import Sortable from 'sortablejs';
 
 declare const Homey: any;
 
+// Extend Window interface for Homey runtime injection
+declare global {
+  interface Window {
+    Homey?: any;
+  }
+}
+
 const qs = (selector: string) => document.querySelector(selector) as HTMLElement;
 
 /**
@@ -658,9 +665,15 @@ const loadModeAndPriorities = async () => {
   const controllables = await getSetting('controllable_devices');
   activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
   editingMode = activeMode; // Start editing the active mode
-  capacityPriorities = priorities && typeof priorities === 'object' ? priorities : {};
-  modeTargets = targets && typeof targets === 'object' ? targets : {};
-  controllableMap = controllables && typeof controllables === 'object' ? controllables : {};
+  capacityPriorities = priorities && typeof priorities === 'object'
+    ? priorities as Record<string, Record<string, number>>
+    : {};
+  modeTargets = targets && typeof targets === 'object'
+    ? targets as Record<string, Record<string, number>>
+    : {};
+  controllableMap = controllables && typeof controllables === 'object'
+    ? controllables as Record<string, boolean>
+    : {};
   renderModeOptions();
 };
 
@@ -1804,7 +1817,7 @@ const boot = async () => {
     }
 
     tabs.forEach((tab) => {
-      tab.addEventListener('click', () => showTab(tab.dataset.tab));
+      tab.addEventListener('click', () => showTab((tab as HTMLElement).dataset.tab));
     });
     await refreshDevices();
     const usage = await getPowerUsage();

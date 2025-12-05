@@ -377,17 +377,21 @@ describe('settings script', () => {
     // Verify price list has content
     expect(priceList?.innerHTML).not.toBe('');
 
-    // Verify cheap hours section is shown
-    const cheapHeader = priceList?.querySelector('.price-section-header.cheap');
-    expect(cheapHeader).not.toBeNull();
-    expect(cheapHeader?.textContent).toContain('Cheap hours');
+    // Verify price summary section exists with cheap hours info
+    const priceSummary = priceList?.querySelector('.price-summary');
+    expect(priceSummary).not.toBeNull();
 
-    // Verify expensive hours section is shown
-    const expensiveHeader = priceList?.querySelector('.price-section-header.expensive');
-    expect(expensiveHeader).not.toBeNull();
-    expect(expensiveHeader?.textContent).toContain('Expensive hours');
+    // Verify summary shows cheap hours count
+    const summaryItems = priceList?.querySelectorAll('.price-summary-item');
+    expect(summaryItems?.length).toBe(2); // Cheap and expensive summaries
+    expect(summaryItems?.[0]?.textContent).toContain('cheap hour');
+    expect(summaryItems?.[1]?.textContent).toContain('expensive hour');
 
-    // Verify price rows are rendered
+    // Verify collapsible details sections exist
+    const detailsSections = priceList?.querySelectorAll('.price-details');
+    expect(detailsSections?.length).toBeGreaterThanOrEqual(2); // Cheap, expensive, and all prices
+
+    // Verify price rows are rendered inside details
     const priceRows = priceList?.querySelectorAll('.price-row');
     expect(priceRows?.length).toBeGreaterThan(0);
 
@@ -449,16 +453,19 @@ describe('settings script', () => {
 
     const priceList = document.querySelector('#price-list');
 
-    // Verify notice is shown instead of cheap/expensive sections
-    const notice = priceList?.querySelector('.price-notice');
-    expect(notice).not.toBeNull();
-    expect(notice?.textContent).toContain('within 25% of average');
+    // Verify summary section exists
+    const priceSummary = priceList?.querySelector('.price-summary');
+    expect(priceSummary).not.toBeNull();
 
-    // Verify no cheap/expensive headers
-    const cheapHeader = priceList?.querySelector('.price-section-header.cheap');
-    const expensiveHeader = priceList?.querySelector('.price-section-header.expensive');
-    expect(cheapHeader).toBeNull();
-    expect(expensiveHeader).toBeNull();
+    // When all prices are within threshold, summary shows "No cheap/expensive hours"
+    const summaryItems = priceList?.querySelectorAll('.price-summary-item');
+    expect(summaryItems?.length).toBe(2);
+    expect(summaryItems?.[0]?.textContent).toContain('No cheap hours');
+    expect(summaryItems?.[1]?.textContent).toContain('No expensive hours');
+
+    // Verify no cheap/expensive collapsible details (only "All prices")
+    const detailsSections = priceList?.querySelectorAll('.price-details');
+    expect(detailsSections?.length).toBe(1); // Only "All prices" section
   });
 
   it('falls back to electricity_prices when combined_prices not available', async () => {

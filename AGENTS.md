@@ -22,7 +22,7 @@ PELS helps users stay within their electricity capacity limits (effekttariff) by
 app.ts              # Main app - ALL core logic lives here (intentionally monolithic)
 capacityGuard.ts    # Capacity monitoring, extracted for testability
 drivers/            # Homey device drivers (mode_indicator virtual device)
-settings/           # Settings UI (separate TypeScript build, not type-checked with app)
+settings/           # Settings UI (separate TypeScript build)
 test/               # Jest tests with mock Homey SDK
   mocks/homey.ts    # Mock implementation - update when using new Homey APIs
 .homeycompose/      # Homey app manifest fragments (merged into app.json on build)
@@ -77,7 +77,7 @@ Note: Do not run `homey` CLI commands - these deploy to hardware and should be r
 - **Two Homey packages**: `homey` (SDK) vs `homey-api` (device control) - don't confuse them
 - **Dry-run mode**: Check `capacity_dry_run` setting - devices won't actuate if enabled
 - **Mock updates**: New Homey SDK methods need to be added to `test/mocks/homey.ts`
-- **Settings UI**: Built separately, has its own tsconfig, not type-checked with main app
+- **Pre-commit hooks**: All commits must pass ESLint, TypeScript, and tests
 
 ## Settings Keys
 

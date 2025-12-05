@@ -16,7 +16,10 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "**/*.ts": "eslint --max-warnings=0"
+    "**/*.ts": [
+      "eslint --max-warnings=0",
+      "bash -c 'tsc --noEmit'"
+    ]
   },
   "dependencies": {
     "homey-api": "^3.14.21",
@@ -29,6 +32,7 @@
     "@types/jest": "^29.5.14",
     "@types/node": "^24.10.1",
     "@types/puppeteer": "^7.0.4",
+    "@types/sortablejs": "^1.15.9",
     "@typescript-eslint/eslint-plugin": "^8.48.1",
     "@typescript-eslint/parser": "^8.48.1",
     "esbuild": "^0.27.0",
