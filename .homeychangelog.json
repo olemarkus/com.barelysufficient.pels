@@ -13,5 +13,8 @@
   },
   "1.0.4": {
     "en": "Fix shortfall detection during end of hour"
+  },
+  "1.0.5": {
+    "en": "Renaming modes should now be safe"
   }
 }
