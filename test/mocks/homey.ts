@@ -98,9 +98,15 @@ const findMockDeviceById = (deviceId: string): MockDevice | null => {
 
 export const mockHomeyInstance = {
   settings: new MockSettings(),
+  platform: 'local',
+  platformVersion: 2,
+  version: '1.0.0',
   clock: {
     getTimezone: () => 'Europe/Oslo',
     getTimezoneOffset: () => -60, // CET in winter
+  },
+  cloud: {
+    getHomeyId: async () => 'mock-homey-id',
   },
   notifications: {
     _notifications: [] as Array<{ excerpt: string }>,
@@ -113,6 +119,7 @@ export const mockHomeyInstance = {
   },
   api: {
     getOwnerApiToken: async () => 'mock-token',
+    getLocalUrl: async () => 'http://localhost',
     _realtimeEvents: [] as Array<{ event: string; data: any }>,
     realtime: async (event: string, data: any) => {
       // Track realtime events for testing

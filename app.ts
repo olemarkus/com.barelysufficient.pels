@@ -257,8 +257,16 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private async initHomeyApi(): Promise<void> {
-    if (!this.homey.api || typeof this.homey.api.getOwnerApiToken !== 'function') {
-      this.logDebug('Homey API token unavailable, skipping HomeyAPI client init');
+    if (
+      !this.homey.api
+      || typeof this.homey.api.getOwnerApiToken !== 'function'
+      || typeof this.homey.api.getLocalUrl !== 'function'
+      || !this.homey.cloud
+      || typeof this.homey.cloud.getHomeyId !== 'function'
+      || !this.homey.platform
+      || !this.homey.platformVersion
+    ) {
+      this.logDebug('Homey API token/local URL/identity unavailable, skipping HomeyAPI client init');
       return;
     }
 
