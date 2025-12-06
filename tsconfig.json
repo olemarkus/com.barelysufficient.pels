@@ -8,7 +8,9 @@
     "app.ts",
     "capacityGuard.ts",
     "httpClient.ts",
+    "powerTracker.ts",
     "priceService.ts",
+    "settingsHandlers.ts",
     "drivers/**/*.ts",
     "test/**/*.ts"
   ],

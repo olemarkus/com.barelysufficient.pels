@@ -5,6 +5,12 @@ import {
   setMockDrivers,
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
+import {
+  formatDateInHomeyTimezone,
+  getDayOfWeekInHomeyTimezone,
+  getHourInHomeyTimezone,
+  truncateToHour,
+} from '../powerTracker';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
@@ -35,7 +41,7 @@ describe('power tracker integration', () => {
     await app['recordPowerSample'](1000, start);
     await app['recordPowerSample'](1000, start + 30 * 60 * 1000);
 
-    const bucketKey = new Date(app['truncateToHour'](start)).toISOString();
+    const bucketKey = new Date(truncateToHour(start)).toISOString();
     const state = mockHomeyInstance.settings.get('power_tracker_state');
     expect(state.buckets[bucketKey]).toBeCloseTo(0.5, 3);
   });
@@ -60,7 +66,7 @@ describe('power tracker integration', () => {
     const oldTimestamp = now - (35 * 24 * 60 * 60 * 1000); // 35 days ago
     const oldHourStart = oldTimestamp - (oldTimestamp % (60 * 60 * 1000));
     const oldBucketKey = new Date(oldHourStart).toISOString();
-    const oldDateKey = new Date(oldHourStart).toISOString().slice(0, 10);
+    const oldDateKey = formatDateInHomeyTimezone(mockHomeyInstance as any, new Date(oldHourStart));
 
     // Manually set old data in powerTracker
     app['powerTracker'] = {
@@ -84,7 +90,7 @@ describe('power tracker integration', () => {
 
     // Should be in hourly averages pattern
     const date = new Date(oldHourStart);
-    const patternKey = `${date.getDay()}_${date.getHours()}`;
+    const patternKey = `${getDayOfWeekInHomeyTimezone(mockHomeyInstance as any, date)}_${getHourInHomeyTimezone(mockHomeyInstance as any, date)}`;
     expect(state.hourlyAverages[patternKey]).toBeDefined();
     expect(state.hourlyAverages[patternKey].sum).toBeCloseTo(1.5, 3);
     expect(state.hourlyAverages[patternKey].count).toBe(1);

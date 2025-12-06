@@ -1,6 +1,8 @@
 import Homey from 'homey';
 import CapacityGuard from './capacityGuard';
 import PriceService from './priceService';
+import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './powerTracker';
+import { createSettingsHandler } from './settingsHandlers';
 
 const { HomeyAPI } = require('homey-api');
 
@@ -17,9 +19,6 @@ const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot e
 const MIN_SIGNIFICANT_POWER_W = 50; // Minimum power draw to consider "on" or worth tracking
 
 // Power history retention
-const HOURLY_RETENTION_DAYS = 30; // Keep detailed hourly data for 30 days
-const DAILY_RETENTION_DAYS = 365; // Keep daily totals for 1 year
-
 type TargetDeviceSnapshot = {
   id: string;
   name: string;
@@ -34,13 +33,7 @@ type TargetDeviceSnapshot = {
 module.exports = class PelsApp extends Homey.App {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey API has no TypeScript definitions
   private homeyApi?: any;
-  private powerTracker: {
-    lastPowerW?: number;
-    lastTimestamp?: number;
-    buckets?: Record<string, number>; // Hourly data (ISO timestamp -> kWh), kept for 30 days
-    dailyTotals?: Record<string, number>; // Daily totals (YYYY-MM-DD -> kWh), kept for 365 days
-    hourlyAverages?: Record<string, { sum: number; count: number }>; // day-hour pattern (0-6_0-23 -> { sum, count })
-  } = {};
+  private powerTracker: PowerTrackerState = {};
 
   private capacityGuard?: CapacityGuard;
   private capacitySettings = {
@@ -87,6 +80,7 @@ module.exports = class PelsApp extends Homey.App {
     cheapDelta: number;
     expensiveDelta: number;
   }> = {};
+  private settingsHandler?: (key: string) => void;
 
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     const snap = this.latestTargetSnapshot.find((d) => d.id === deviceId);
@@ -108,10 +102,6 @@ module.exports = class PelsApp extends Homey.App {
    */
   async onInit() {
     this.log('PELS has been initialized');
-
-    this.homey.settings.on('set', (key: string) => {
-      this.handleSettingChange(key);
-    });
 
     this.loadCapacitySettings();
     this.priceService = new PriceService(
@@ -140,6 +130,26 @@ module.exports = class PelsApp extends Homey.App {
     this.capacityGuard.setSoftLimitProvider(() => this.computeDynamicSoftLimit());
     this.capacityGuard.setShortfallThresholdProvider(() => this.computeShortfallThreshold());
     this.capacityGuard.start();
+
+    this.settingsHandler = createSettingsHandler({
+      homey: this.homey,
+      loadCapacitySettings: () => this.loadCapacitySettings(),
+      applyDeviceTargetsForMode: (mode) => this.applyDeviceTargetsForMode(mode),
+      rebuildPlanFromCache: () => this.rebuildPlanFromCache(),
+      refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
+      loadPowerTracker: () => this.loadPowerTracker(),
+      getCapacityGuard: () => this.capacityGuard,
+      getCapacitySettings: () => this.capacitySettings,
+      getCapacityDryRun: () => this.capacityDryRun,
+      loadPriceOptimizationSettings: () => this.loadPriceOptimizationSettings(),
+      priceService: this.priceService,
+      updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
+      errorLog: (message: string, error: unknown) => this.error(message, error as Error),
+    });
+    this.homey.settings.on('set', (key: string) => {
+      this.settingsHandler?.(key);
+    });
+
     this.loadPowerTracker();
     this.loadPriceOptimizationSettings();
     await this.refreshTargetDevicesSnapshot();
@@ -183,76 +193,6 @@ module.exports = class PelsApp extends Homey.App {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug logging accepts any arguments
   private logDebug(...args: any[]): void {
     if (DEBUG_LOG) this.log(...args);
-  }
-
-  private handleSettingChange(key: string): void {
-    switch (key) {
-      case 'mode_device_targets':
-      case 'capacity_mode':
-        this.loadCapacitySettings();
-        this.applyDeviceTargetsForMode(this.capacityMode).catch((error: Error) => {
-          this.error('Failed to apply per-mode device targets', error);
-        });
-        this.rebuildPlanFromCache();
-        break;
-      case 'capacity_priorities':
-        this.loadCapacitySettings();
-        this.rebuildPlanFromCache();
-        break;
-      case 'controllable_devices':
-        this.loadCapacitySettings();
-        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
-          this.error('Failed to refresh devices after controllable change', error);
-        });
-        break;
-      case 'power_tracker_state':
-        // Only reload state; recordPowerSample() already calls rebuildPlanFromCache()
-        // so we don't need to call it again here (avoids duplicate plan rebuilds)
-        this.loadPowerTracker();
-        break;
-      case 'capacity_limit_kw':
-      case 'capacity_margin_kw':
-        this.loadCapacitySettings();
-        if (this.capacityGuard) {
-          this.capacityGuard.setLimit(this.capacitySettings.limitKw);
-          this.capacityGuard.setSoftMargin(this.capacitySettings.marginKw);
-        }
-        this.rebuildPlanFromCache();
-        break;
-      case 'capacity_dry_run':
-        this.loadCapacitySettings();
-        if (this.capacityGuard) {
-          this.capacityGuard.setDryRun(this.capacityDryRun);
-        }
-        this.rebuildPlanFromCache();
-        break;
-      case 'refresh_target_devices_snapshot':
-        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
-          this.error('Failed to refresh target devices snapshot', error);
-        });
-        break;
-      case 'refresh_nettleie':
-        this.priceService.refreshNettleieData(true).catch((error: Error) => {
-          this.error('Failed to refresh nettleie data', error);
-        });
-        break;
-      case 'refresh_spot_prices':
-        this.priceService.refreshSpotPrices(true).catch((error: Error) => {
-          this.error('Failed to refresh spot prices', error);
-        });
-        break;
-      case 'price_optimization_settings':
-        this.loadPriceOptimizationSettings();
-        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
-          this.error('Failed to refresh plan after price optimization settings change', error);
-        });
-        break;
-      case 'price_optimization_enabled':
-        this.updatePriceOptimizationEnabled(true);
-        break;
-      default:
-        break;
-    }
   }
 
   private updatePriceOptimizationEnabled(logChange = false): void {
@@ -300,177 +240,20 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private savePowerTracker(): void {
-    this.aggregateAndPruneHistory();
+    aggregateAndPruneHistory(this.powerTracker, this.homey);
     this.homey.settings.set('power_tracker_state', this.powerTracker);
   }
 
-  /**
-   * Format a date as YYYY-MM-DD in the Homey's configured timezone.
-   * This ensures daily statistics align with the user's local day boundaries.
-   */
-  private formatDateInHomeyTimezone(date: Date): string {
-    const timezone = this.homey.clock.getTimezone();
-    try {
-      // Use Intl.DateTimeFormat to format in the Homey timezone
-      const formatter = new Intl.DateTimeFormat('sv-SE', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      });
-      // sv-SE locale formats as YYYY-MM-DD
-      return formatter.format(date);
-    } catch {
-      // Fallback to local time if timezone is invalid
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-  }
-
-  /**
-   * Get the hour of day (0-23) in the Homey's configured timezone.
-   */
-  private getHourInHomeyTimezone(date: Date): number {
-    const timezone = this.homey.clock.getTimezone();
-    try {
-      const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        hour: 'numeric',
-        hour12: false,
-      });
-      return parseInt(formatter.format(date), 10);
-    } catch {
-      // Fallback to local time
-      return date.getHours();
-    }
-  }
-
-  /**
-   * Get the day of week (0=Sunday, 6=Saturday) in the Homey's configured timezone.
-   */
-  private getDayOfWeekInHomeyTimezone(date: Date): number {
-    const timezone = this.homey.clock.getTimezone();
-    try {
-      const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        weekday: 'short',
-      });
-      const weekday = formatter.format(date);
-      const days: Record<string, number> = {
-        Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-      };
-      return days[weekday] ?? date.getDay();
-    } catch {
-      // Fallback to local time
-      return date.getDay();
-    }
-  }
-
-  /**
-   * Aggregate old hourly data into daily totals and hourly pattern averages,
-   * then prune data older than retention limits.
-   * Uses Homey's configured timezone for day boundaries.
-   */
-  private aggregateAndPruneHistory(): void {
-    const state = this.powerTracker;
-    if (!state.buckets) return;
-
-    const now = Date.now();
-    const hourlyRetentionMs = HOURLY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-    const dailyRetentionMs = DAILY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-    const hourlyThreshold = now - hourlyRetentionMs;
-    const dailyThreshold = now - dailyRetentionMs;
-
-    state.dailyTotals = state.dailyTotals || {};
-    state.hourlyAverages = state.hourlyAverages || {};
-
-    const bucketsToRemove: string[] = [];
-
-    for (const [isoKey, kWh] of Object.entries(state.buckets)) {
-      const timestamp = new Date(isoKey).getTime();
-      if (isNaN(timestamp)) continue;
-
-      // If older than hourly retention, aggregate and mark for removal
-      if (timestamp < hourlyThreshold) {
-        const date = new Date(isoKey);
-        // Use Homey timezone for user-facing day/hour boundaries
-        const dayOfWeek = this.getDayOfWeekInHomeyTimezone(date);
-        const hourOfDay = this.getHourInHomeyTimezone(date);
-        const dateKey = this.formatDateInHomeyTimezone(date);
-
-        // Add to daily total
-        state.dailyTotals[dateKey] = (state.dailyTotals[dateKey] || 0) + kWh;
-
-        // Add to hourly pattern averages (for predicting usage by day-of-week and hour)
-        const patternKey = `${dayOfWeek}_${hourOfDay}`;
-        if (!state.hourlyAverages[patternKey]) {
-          state.hourlyAverages[patternKey] = { sum: 0, count: 0 };
-        }
-        state.hourlyAverages[patternKey].sum += kWh;
-        state.hourlyAverages[patternKey].count += 1;
-
-        bucketsToRemove.push(isoKey);
-      }
-    }
-
-    // Remove aggregated hourly buckets
-    for (const key of bucketsToRemove) {
-      delete state.buckets[key];
-    }
-
-    // Prune daily totals older than daily retention
-    for (const dateKey of Object.keys(state.dailyTotals)) {
-      const timestamp = new Date(dateKey).getTime();
-      if (!isNaN(timestamp) && timestamp < dailyThreshold) {
-        delete state.dailyTotals[dateKey];
-      }
-    }
-  }
-
-  private truncateToHour(timestamp: number): number {
-    const date = new Date(timestamp);
-    date.setMinutes(0, 0, 0);
-    return date.getTime();
-  }
-
   private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
-    const state = this.powerTracker;
-    state.buckets = state.buckets || {};
-
-    if (typeof state.lastTimestamp !== 'number' || typeof state.lastPowerW !== 'number') {
-      state.lastTimestamp = nowMs;
-      state.lastPowerW = currentPowerW;
-      if (this.capacityGuard) this.capacityGuard.reportTotalPower(currentPowerW / 1000);
-      this.savePowerTracker();
-      this.rebuildPlanFromCache();
-      return;
-    }
-
-    const previousTs = state.lastTimestamp;
-    const previousPower = state.lastPowerW;
-    let remainingMs = nowMs - previousTs;
-    let currentTs = previousTs;
-
-    while (remainingMs > 0) {
-      const hourStart = this.truncateToHour(currentTs);
-      const hourEnd = hourStart + 60 * 60 * 1000;
-      const segmentMs = Math.min(remainingMs, hourEnd - currentTs);
-      // previousPower is in W; convert to kWh for the elapsed segment.
-      const energyKWh = (previousPower / 1000) * (segmentMs / 3600000);
-      const bucketKey = new Date(hourStart).toISOString();
-      state.buckets[bucketKey] = (state.buckets[bucketKey] || 0) + energyKWh;
-
-      remainingMs -= segmentMs;
-      currentTs += segmentMs;
-    }
-
-    state.lastTimestamp = nowMs;
-    state.lastPowerW = currentPowerW;
-    if (this.capacityGuard) this.capacityGuard.reportTotalPower(currentPowerW / 1000);
-    this.rebuildPlanFromCache();
-    this.savePowerTracker();
+    await recordPowerSample({
+      state: this.powerTracker,
+      currentPowerW,
+      nowMs,
+      capacityGuard: this.capacityGuard,
+      rebuildPlanFromCache: () => this.rebuildPlanFromCache(),
+      saveState: () => this.savePowerTracker(),
+      homey: this.homey,
+    });
   }
 
   private async initHomeyApi(): Promise<void> {
