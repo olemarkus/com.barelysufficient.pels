@@ -320,12 +320,19 @@ describe('Spot price fetching', () => {
       return req;
     });
 
-    const app = createApp();
-    await app.onInit();
+    // Use require to avoid ESM extension issues in TS tests
+    const { setAllowConsoleError } = require('./setup');
+    setAllowConsoleError(true);
+    try {
+      const app = createApp();
+      await app.onInit();
 
-    // Should not throw
-    mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
-    await flushPromises();
+      // Should not throw
+      mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
+      await flushPromises();
+    } finally {
+      setAllowConsoleError(false);
+    }
 
     // No prices stored due to error
     const prices = mockHomeyInstance.settings.get('electricity_prices');
@@ -717,12 +724,18 @@ describe('Nettleie (grid tariff) fetching', () => {
       statusText: 'Internal Server Error',
     });
 
-    const app = createApp();
-    await app.onInit();
+    const { setAllowConsoleError } = require('./setup');
+    setAllowConsoleError(true);
+    try {
+      const app = createApp();
+      await app.onInit();
 
-    // Should not throw
-    mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
-    await flushPromises();
+      // Should not throw
+      mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+      await flushPromises();
+    } finally {
+      setAllowConsoleError(false);
+    }
 
     // No data stored due to error
     const nettleieData = mockHomeyInstance.settings.get('nettleie_data');
