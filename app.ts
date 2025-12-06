@@ -1,70 +1,11 @@
 import Homey from 'homey';
-import https from 'https';
 import CapacityGuard from './capacityGuard';
+import PriceService from './priceService';
 
 const { HomeyAPI } = require('homey-api');
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
 const DEBUG_LOG = false;
-
-// CA certificates for hvakosterstrommen.no (Cloudflare + SSL.com chain)
-// These are included to work around Homey's incomplete CA certificate bundle.
-// The chain is: hvakosterstrommen.no -> Cloudflare TLS Issuing ECC CA 1 -> SSL.com TLS Transit ECC CA R2 -> AAA Certificate Services
-
-// AAA Certificate Services (Comodo Root CA) - expires 2028-12-31
-const COMODO_AAA_ROOT_CA = `-----BEGIN CERTIFICATE-----
-MIIEMjCCAxqgAwIBAgIBATANBgkqhkiG9w0BAQUFADB7MQswCQYDVQQGEwJHQjEb
-MBkGA1UECAwSR3JlYXRlciBNYW5jaGVzdGVyMRAwDgYDVQQHDAdTYWxmb3JkMRow
-GAYDVQQKDBFDb21vZG8gQ0EgTGltaXRlZDEhMB8GA1UEAwwYQUFBIENlcnRpZmlj
-YXRlIFNlcnZpY2VzMB4XDTA0MDEwMTAwMDAwMFoXDTI4MTIzMTIzNTk1OVowezEL
-MAkGA1UEBhMCR0IxGzAZBgNVBAgMEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4GA1UE
-BwwHU2FsZm9yZDEaMBgGA1UECgwRQ29tb2RvIENBIExpbWl0ZWQxITAfBgNVBAMM
-GEFBQSBDZXJ0aWZpY2F0ZSBTZXJ2aWNlczCCASIwDQYJKoZIhvcNAQEBBQADggEP
-ADCCAQoCggEBAL5AnfRu4ep2hxxNRUSOvkbIgwadwSr+GB+O5AL686tdUIoWMQua
-BtDFcCLNSS1UY8y2bmhGC1Pqy0wkwLxyTurxFa70VJoSCsN6sjNg4tqJVfMiWPPe
-3M/vg4aijJRPn2jymJBGhCfHdr/jzDUsi14HZGWCwEiwqJH5YZ92IFCokcdmtet4
-YgNW8IoaE+oxox6gmf049vYnMlhvB/VruPsUK6+3qszWY19zjNoFmag4qMsXeDZR
-rOme9Hg6jc8P2ULimAyrL58OAd7vn5lJ8S3frHRNG5i1R8XlKdH5kBjHYpy+g8cm
-ez6KJcfA3Z3mNWgQIJ2P2N7Sw4ScDV7oL8kCAwEAAaOBwDCBvTAdBgNVHQ4EFgQU
-oBEKIz6W8Qfs4q8p74Klf9AwpLQwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQF
-MAMBAf8wewYDVR0fBHQwcjA4oDagNIYyaHR0cDovL2NybC5jb21vZG9jYS5jb20v
-QUFBQ2VydGlmaWNhdGVTZXJ2aWNlcy5jcmwwNqA0oDKGMGh0dHA6Ly9jcmwuY29t
-b2RvLm5ldC9BQUFDZXJ0aWZpY2F0ZVNlcnZpY2VzLmNybDANBgkqhkiG9w0BAQUF
-AAOCAQEACFb8AvCb6P+k+tZ7xkSAzk/ExfYAWMymtrwUSWgEdujm7l3sAg9g1o1Q
-GE8mTgHj5rCl7r+8dFRBv/38ErjHT1r0iWAFf2C3BUrz9vHCv8S5dIa2LX1rzNLz
-Rt0vxuBqw8M0Ayx9lt1awg6nCpnBBYurDC/zXDrPbDdVCYfeU0BsWO/8tqtlbgT2
-G9w84FoVxp7Z8VlIMCFlA2zs6SFz7JsDoeA3raAVGI/6ugLOpyypEBMs1OUIJqsi
-l2D4kF501KKaU73yqWjgom7C12yxow+ev+to51byrvLjKzg6CYG1a4XXvi3tPxq3
-smPi9WIsgtRqAEFQ8TmDn5XpNpaYbg==
------END CERTIFICATE-----`;
-
-// SSL.com TLS Transit ECC CA R2 (Intermediate) - expires 2028-12-31
-const SSL_COM_TRANSIT_CA = `-----BEGIN CERTIFICATE-----
-MIID0DCCArigAwIBAgIRAK2NLfZGgaDTZEfqqU+ic8EwDQYJKoZIhvcNAQELBQAw
-ezELMAkGA1UEBhMCR0IxGzAZBgNVBAgMEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4G
-A1UEBwwHU2FsZm9yZDEaMBgGA1UECgwRQ29tb2RvIENBIExpbWl0ZWQxITAfBgNV
-BAMMGEFBQSBDZXJ0aWZpY2F0ZSBTZXJ2aWNlczAeFw0yNDA2MjEwMDAwMDBaFw0y
-ODEyMzEyMzU5NTlaME8xCzAJBgNVBAYTAlVTMRgwFgYDVQQKDA9TU0wgQ29ycG9y
-YXRpb24xJjAkBgNVBAMMHVNTTC5jb20gVExTIFRyYW5zaXQgRUNDIENBIFIyMHYw
-EAYHKoZIzj0CAQYFK4EEACIDYgAEZOd9mQNTXJEe6vjYI62hvyziY4nvKGj27dfw
-7Ktorncr5HaXG1Dr21koLW+4NrmrjZfKTCKe7onZAj/9enM6kI0rzC86N4PaDbQt
-RRtzcgllX3ghPeeLZj9H/Qkp1hQPo4IBJzCCASMwHwYDVR0jBBgwFoAUoBEKIz6W
-8Qfs4q8p74Klf9AwpLQwHQYDVR0OBBYEFDKix9hYi/9/wDzyVWkz7M7MH7yXMA4G
-A1UdDwEB/wQEAwIBhjASBgNVHRMBAf8ECDAGAQH/AgEBMB0GA1UdJQQWMBQGCCsG
-AQUFBwMBBggrBgEFBQcDAjAjBgNVHSAEHDAaMAgGBmeBDAECATAOBgwrBgEEAYKp
-MAEDAQEwQwYDVR0fBDwwOjA4oDagNIYyaHR0cDovL2NybC5jb21vZG9jYS5jb20v
-QUFBQ2VydGlmaWNhdGVTZXJ2aWNlcy5jcmwwNAYIKwYBBQUHAQEEKDAmMCQGCCsG
-AQUFBzABhhhodHRwOi8vb2NzcC5jb21vZG9jYS5jb20wDQYJKoZIhvcNAQELBQAD
-ggEBAB4oL4ChKaKGZVZK8uAXjj8wvFdm45uvhU/t14QeH5bwETeKiQQXBga4/Nyz
-zvpfuoEycantX+tHl/muwpmuHT0Z6IKYoICaMxOIktcTF4qHvxQW2WItHjOglrTj
-qlXJXVL+3HCO60TEloSX8eUGsqfLQkc//z3Lb4gz117+fkDbnPt8+2REq3SCvaAG
-hlh/lWWfHqTAiHed/qqzBSYqqvfjNlhIfXnPnhfAv/PpOUO1PmxCEAEYrg+VoS+O
-+EBd1zkT0V7CfrPpj30cAMs2h+k4pPMwcLuB3Ku4TncBTRyt5K0gbJ3pQ0Rk9Hmu
-wOz5QAZ+2n1q4TlApJzBfwFrCDg=
------END CERTIFICATE-----`;
-
-// Combined CA bundle for pinned hosts
-const PINNED_CA_BUNDLE = COMODO_AAA_ROOT_CA + '\n' + SSL_COM_TRANSIT_CA;
 
 // Timing constants for shedding/restore behavior
 const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before considering restores
@@ -78,6 +19,17 @@ const MIN_SIGNIFICANT_POWER_W = 50; // Minimum power draw to consider "on" or wo
 // Power history retention
 const HOURLY_RETENTION_DAYS = 30; // Keep detailed hourly data for 30 days
 const DAILY_RETENTION_DAYS = 365; // Keep daily totals for 1 year
+
+type TargetDeviceSnapshot = {
+  id: string;
+  name: string;
+  targets: Array<{ id: string; value: unknown; unit: string }>;
+  powerKw?: number;
+  priority?: number;
+  currentOn?: boolean;
+  zone?: string;
+  controllable?: boolean;
+};
 
 module.exports = class PelsApp extends Homey.App {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey API has no TypeScript definitions
@@ -117,16 +69,8 @@ module.exports = class PelsApp extends Homey.App {
   private pendingSwapTargets: Set<string> = new Set();
   // Track when each swap was initiated - used to timeout stale swaps
   private pendingSwapTimestamps: Record<string, number> = {};
-  private latestTargetSnapshot: Array<{
-    id: string;
-    name: string;
-    targets: Array<{ id: string; value: unknown; unit: string }>;
-    powerKw?: number;
-    priority?: number;
-    currentOn?: boolean;
-    zone?: string;
-    controllable?: boolean;
-  }> = [];
+  private latestTargetSnapshot: TargetDeviceSnapshot[] = [];
+  private priceService!: PriceService;
 
   private lastPlanSignature = '';
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
@@ -166,92 +110,16 @@ module.exports = class PelsApp extends Homey.App {
     this.log('PELS has been initialized');
 
     this.homey.settings.on('set', (key: string) => {
-      if (key === 'mode_device_targets' || key === 'capacity_mode') {
-        const newMode = this.homey.settings.get('capacity_mode');
-        if (typeof newMode === 'string' && newMode.trim()) {
-          this.capacityMode = newMode;
-        }
-        this.loadCapacitySettings();
-        this.applyDeviceTargetsForMode(this.capacityMode).catch((error: Error) => {
-          this.error('Failed to apply per-mode device targets', error);
-        });
-        this.rebuildPlanFromCache();
-        return;
-      }
-
-      if (key === 'capacity_priorities') {
-        this.loadCapacitySettings();
-        this.rebuildPlanFromCache();
-        return;
-      }
-
-      if (key === 'controllable_devices') {
-        this.loadCapacitySettings();
-        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
-          this.error('Failed to refresh devices after controllable change', error);
-        });
-        return;
-      }
-
-      if (key === 'power_tracker_state') {
-        // Only reload state; recordPowerSample() already calls rebuildPlanFromCache()
-        // so we don't need to call it again here (avoids duplicate plan rebuilds)
-        this.loadPowerTracker();
-        return;
-      }
-
-      if (key === 'capacity_limit_kw' || key === 'capacity_margin_kw') {
-        this.loadCapacitySettings();
-        if (this.capacityGuard) {
-          this.capacityGuard.setLimit(this.capacitySettings.limitKw);
-          this.capacityGuard.setSoftMargin(this.capacitySettings.marginKw);
-        }
-        this.rebuildPlanFromCache();
-        return;
-      }
-
-      if (key === 'capacity_dry_run') {
-        this.loadCapacitySettings();
-        if (this.capacityGuard) {
-          this.capacityGuard.setDryRun(this.capacityDryRun);
-        }
-        this.rebuildPlanFromCache();
-        return;
-      }
-
-      if (key === 'refresh_target_devices_snapshot') {
-        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
-          this.error('Failed to refresh target devices snapshot', error);
-        });
-      }
-
-      if (key === 'refresh_nettleie') {
-        this.refreshNettleieData(true).catch((error: Error) => {
-          this.error('Failed to refresh nettleie data', error);
-        });
-      }
-
-      if (key === 'refresh_spot_prices') {
-        this.refreshSpotPrices(true).catch((error: Error) => {
-          this.error('Failed to refresh spot prices', error);
-        });
-      }
-
-      if (key === 'price_optimization_settings') {
-        this.loadPriceOptimizationSettings();
-        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
-          this.error('Failed to refresh plan after price optimization settings change', error);
-        });
-      }
-
-      if (key === 'price_optimization_enabled') {
-        const enabled = this.homey.settings.get('price_optimization_enabled');
-        this.priceOptimizationEnabled = enabled !== false; // Default to true
-        this.log(`Price optimization ${this.priceOptimizationEnabled ? 'enabled' : 'disabled'}`);
-      }
+      this.handleSettingChange(key);
     });
 
     this.loadCapacitySettings();
+    this.priceService = new PriceService(
+      this.homey,
+      this.log.bind(this),
+      this.logDebug.bind(this),
+      this.error.bind(this),
+    );
     await this.initHomeyApi();
     this.capacityGuard = new CapacityGuard({
       limitKw: this.capacitySettings.limitKw,
@@ -284,8 +152,8 @@ module.exports = class PelsApp extends Homey.App {
     this.registerFlowCards();
     this.startPeriodicSnapshotRefresh();
     // Refresh prices (will use cache if we have today's data, and update combined_prices)
-    await this.refreshSpotPrices();
-    await this.refreshNettleieData();
+    await this.priceService.refreshSpotPrices();
+    await this.priceService.refreshNettleieData();
     this.startPriceRefresh();
     await this.startPriceOptimization();
   }
@@ -317,6 +185,84 @@ module.exports = class PelsApp extends Homey.App {
     if (DEBUG_LOG) this.log(...args);
   }
 
+  private handleSettingChange(key: string): void {
+    switch (key) {
+      case 'mode_device_targets':
+      case 'capacity_mode':
+        this.loadCapacitySettings();
+        this.applyDeviceTargetsForMode(this.capacityMode).catch((error: Error) => {
+          this.error('Failed to apply per-mode device targets', error);
+        });
+        this.rebuildPlanFromCache();
+        break;
+      case 'capacity_priorities':
+        this.loadCapacitySettings();
+        this.rebuildPlanFromCache();
+        break;
+      case 'controllable_devices':
+        this.loadCapacitySettings();
+        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
+          this.error('Failed to refresh devices after controllable change', error);
+        });
+        break;
+      case 'power_tracker_state':
+        // Only reload state; recordPowerSample() already calls rebuildPlanFromCache()
+        // so we don't need to call it again here (avoids duplicate plan rebuilds)
+        this.loadPowerTracker();
+        break;
+      case 'capacity_limit_kw':
+      case 'capacity_margin_kw':
+        this.loadCapacitySettings();
+        if (this.capacityGuard) {
+          this.capacityGuard.setLimit(this.capacitySettings.limitKw);
+          this.capacityGuard.setSoftMargin(this.capacitySettings.marginKw);
+        }
+        this.rebuildPlanFromCache();
+        break;
+      case 'capacity_dry_run':
+        this.loadCapacitySettings();
+        if (this.capacityGuard) {
+          this.capacityGuard.setDryRun(this.capacityDryRun);
+        }
+        this.rebuildPlanFromCache();
+        break;
+      case 'refresh_target_devices_snapshot':
+        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
+          this.error('Failed to refresh target devices snapshot', error);
+        });
+        break;
+      case 'refresh_nettleie':
+        this.priceService.refreshNettleieData(true).catch((error: Error) => {
+          this.error('Failed to refresh nettleie data', error);
+        });
+        break;
+      case 'refresh_spot_prices':
+        this.priceService.refreshSpotPrices(true).catch((error: Error) => {
+          this.error('Failed to refresh spot prices', error);
+        });
+        break;
+      case 'price_optimization_settings':
+        this.loadPriceOptimizationSettings();
+        this.refreshTargetDevicesSnapshot().catch((error: Error) => {
+          this.error('Failed to refresh plan after price optimization settings change', error);
+        });
+        break;
+      case 'price_optimization_enabled':
+        this.updatePriceOptimizationEnabled(true);
+        break;
+      default:
+        break;
+    }
+  }
+
+  private updatePriceOptimizationEnabled(logChange = false): void {
+    const enabled = this.homey.settings.get('price_optimization_enabled');
+    this.priceOptimizationEnabled = enabled !== false; // Default to true
+    if (logChange) {
+      this.log(`Price optimization ${this.priceOptimizationEnabled ? 'enabled' : 'disabled'}`);
+    }
+  }
+
   private loadPowerTracker(): void {
     const stored = this.homey.settings.get('power_tracker_state');
     if (stored && typeof stored === 'object') {
@@ -339,9 +285,7 @@ module.exports = class PelsApp extends Homey.App {
     if (modeTargets && typeof modeTargets === 'object') this.modeDeviceTargets = modeTargets as Record<string, Record<string, number>>;
     if (typeof dryRun === 'boolean') this.capacityDryRun = dryRun;
     if (controllables && typeof controllables === 'object') this.controllableDevices = controllables as Record<string, boolean>;
-    // Load price optimization enabled (defaults to true)
-    const priceOptEnabled = this.homey.settings.get('price_optimization_enabled');
-    this.priceOptimizationEnabled = priceOptEnabled !== false;
+    this.updatePriceOptimizationEnabled();
   }
 
   private loadPriceOptimizationSettings(): void {
@@ -732,79 +676,7 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private async refreshNettleieData(forceRefresh = false): Promise<void> {
-    const fylke = this.homey.settings.get('nettleie_fylke') || '03';
-    const orgnr = this.homey.settings.get('nettleie_orgnr');
-    const tariffgruppe = this.homey.settings.get('nettleie_tariffgruppe') || 'Husholdning';
-
-    if (!orgnr) {
-      this.log('Nettleie: No organization number configured, skipping fetch');
-      return;
-    }
-
-    // Use Homey timezone for "today" since grid tariffs are local-time based
-    const today = this.formatDateInHomeyTimezone(new Date());
-
-    // Check if we already have today's nettleie data (cached)
-    if (!forceRefresh) {
-      const existingData = this.homey.settings.get('nettleie_data') as Array<{ datoId?: string }> | null;
-      if (existingData && Array.isArray(existingData) && existingData.length > 0) {
-        // Check if the data is from today by looking at the first entry's datoId
-        const firstEntry = existingData[0];
-        if (firstEntry?.datoId?.startsWith(today)) {
-          this.logDebug(`Nettleie: Using cached data for ${today} (${existingData.length} entries)`);
-          // Update combined prices in case spot prices changed
-          this.updateCombinedPrices();
-          return;
-        }
-      }
-    }
-
-    const baseUrl = 'https://nettleietariffer.dataplattform.nve.no/v1/NettleiePerOmradePrTimeHusholdningFritidEffekttariffer';
-    const params = new URLSearchParams({
-      ValgtDato: today,
-      Tariffgruppe: tariffgruppe,
-      FylkeNr: fylke,
-      OrganisasjonsNr: orgnr,
-    });
-    const url = `${baseUrl}?${params.toString()}`;
-
-    this.log(`Nettleie: Fetching grid tariffs from NVE API for ${today}, fylke=${fylke}, org=${orgnr}`);
-
-    try {
-      const response = await fetch(url, {
-        headers: {
-          Accept: 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`NVE API returned ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (!Array.isArray(data)) {
-        this.log('Nettleie: Unexpected response format from NVE API');
-        return;
-      }
-
-      // Transform and store the data
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- NVE API response type
-      const nettleieData = data.map((entry: Record<string, unknown>) => ({
-        time: entry.time,
-        energileddEks: entry.energileddEks,
-        energileddInk: entry.energileddInk,
-        fastleddEks: entry.fastleddEks,
-        fastleddInk: entry.fastleddInk,
-        datoId: entry.datoId,
-      }));
-
-      this.homey.settings.set('nettleie_data', nettleieData);
-      this.log(`Nettleie: Stored ${nettleieData.length} hourly tariff entries`);
-      this.updateCombinedPrices();
-    } catch (error) {
-      this.error('Nettleie: Failed to fetch grid tariffs from NVE API', error);
-    }
+    await this.priceService.refreshNettleieData(forceRefresh);
   }
 
   /**
@@ -812,272 +684,19 @@ module.exports = class PelsApp extends Homey.App {
    * Includes pre-calculated thresholds and cheap/expensive flags for UI consistency.
    */
   private updateCombinedPrices(): void {
-    const combined = this.getCombinedHourlyPrices();
-    if (combined.length === 0) {
-      const emptyPrices = {
-        prices: [], avgPrice: 0, lowThreshold: 0, highThreshold: 0,
-      };
-      this.homey.settings.set('combined_prices', emptyPrices);
-      this.homey.api.realtime('prices_updated', emptyPrices).catch(() => {});
-      return;
-    }
-
-    // Calculate average and thresholds (same logic used by isCurrentHourCheap/Expensive)
-    const avgPrice = combined.reduce((sum, p) => sum + p.totalPrice, 0) / combined.length;
-    const thresholdPercent = this.homey.settings.get('price_threshold_percent') ?? 25;
-    const minDiffOre = this.homey.settings.get('price_min_diff_ore') ?? 0;
-    const thresholdMultiplier = thresholdPercent / 100;
-    const lowThreshold = avgPrice * (1 - thresholdMultiplier);
-    const highThreshold = avgPrice * (1 + thresholdMultiplier);
-
-    // Store prices with cheap/expensive flags
-    // Also check minimum price difference from average (comfort vs savings trade-off)
-    const prices = combined.map((p) => {
-      const diffFromAvg = Math.abs(p.totalPrice - avgPrice);
-      const meetsMinDiff = diffFromAvg >= minDiffOre;
-      return {
-        startsAt: p.startsAt,
-        total: p.totalPrice,
-        spotPrice: p.spotPrice,
-        nettleie: p.nettleie,
-        isCheap: p.totalPrice <= lowThreshold && meetsMinDiff,
-        isExpensive: p.totalPrice >= highThreshold && meetsMinDiff,
-      };
-    });
-
-    const combinedPrices = {
-      prices,
-      avgPrice,
-      lowThreshold,
-      highThreshold,
-      thresholdPercent,
-      minDiffOre,
-      lastFetched: new Date().toISOString(),
-    };
-    this.homey.settings.set('combined_prices', combinedPrices);
-    // Emit realtime event so settings page can update
-    this.homey.api.realtime('prices_updated', combinedPrices).catch(() => {});
+    this.priceService.updateCombinedPrices();
   }
 
   private async refreshSpotPrices(forceRefresh = false): Promise<void> {
-    const priceArea = this.homey.settings.get('price_area') || 'NO1';
-    const cachedArea = this.homey.settings.get('electricity_prices_area');
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const tomorrowStr = new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-    // Check if we already have today's prices (cached)
-    if (!forceRefresh) {
-      const existingPrices = this.homey.settings.get('electricity_prices') as Array<{ startsAt?: string }> | null;
-      const areaChanged = cachedArea && cachedArea !== priceArea;
-      if (areaChanged) {
-        this.logDebug(`Spot prices: Price area changed from ${cachedArea} to ${priceArea}, ignoring cache`);
-      }
-      if (!areaChanged && existingPrices && Array.isArray(existingPrices) && existingPrices.length > 0) {
-        // Check if we have prices for today
-        const hasTodayPrices = existingPrices.some((p) => p.startsAt?.startsWith(todayStr));
-        const hasTomorrowPrices = existingPrices.some((p) => p.startsAt?.startsWith(tomorrowStr));
-
-        // Tomorrow's prices are typically available after 13:00 CET (12:00 UTC in winter, 11:00 UTC in summer)
-        // Use 12:15 UTC as a safe threshold that works year-round (13:15 CET / 14:15 CEST)
-        const currentHourUtc = today.getUTCHours();
-        const currentMinuteUtc = today.getUTCMinutes();
-        const isAfter1215Utc = currentHourUtc > 12 || (currentHourUtc === 12 && currentMinuteUtc >= 15);
-        const shouldFetchTomorrow = isAfter1215Utc && !hasTomorrowPrices;
-
-        if (hasTodayPrices && !shouldFetchTomorrow) {
-          this.logDebug(`Spot prices: Using cached data (${existingPrices.length} entries including today)`);
-          // Still update combined prices in case nettleie changed
-          this.updateCombinedPrices();
-          return;
-        }
-
-        if (shouldFetchTomorrow) {
-          this.logDebug('Spot prices: Refreshing to fetch tomorrow\'s prices (after 12:15 UTC)');
-        }
-      }
-    }
-
-    // Fetch today's prices
-    const todayPrices = await this.fetchSpotPricesForDate(today, priceArea);
-
-    // Try to fetch tomorrow's prices (available after 13:00)
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowPrices = await this.fetchSpotPricesForDate(tomorrow, priceArea);
-
-    // Combine prices
-    const allPrices = [...todayPrices, ...tomorrowPrices];
-
-    if (allPrices.length > 0) {
-      this.homey.settings.set('electricity_prices', allPrices);
-      this.homey.settings.set('electricity_prices_area', priceArea);
-      this.log(`Spot prices: Stored ${allPrices.length} hourly prices for ${priceArea}`);
-      this.updateCombinedPrices();
-    } else {
-      this.log('Spot prices: No price data available');
-    }
-  }
-
-  private async fetchSpotPricesForDate(date: Date, priceArea: string): Promise<Array<{ startsAt: string; total: number; currency: string }>> {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-
-    const url = `https://www.hvakosterstrommen.no/api/v1/prices/${year}/${month}-${day}_${priceArea}.json`;
-
-    this.logDebug(`Spot prices: Fetching from ${url}`);
-
-    try {
-      const data = await this.httpsGetJson(url);
-
-      if (!Array.isArray(data)) {
-        this.log('Spot prices: Unexpected response format');
-        return [];
-      }
-
-      // Transform to our format
-      // Note: prices from hvakosterstrommen.no are without VAT
-      // We add 25% VAT for all areas except NO4 (Nord-Norge)
-      const vatMultiplier = priceArea === 'NO4' ? 1.0 : 1.25;
-
-      return data.map((entry: Record<string, unknown>) => ({
-        startsAt: entry.time_start as string,
-        // Convert from NOK/kWh to øre/kWh and add VAT
-        total: (entry.NOK_per_kWh as number) * 100 * vatMultiplier,
-        currency: 'NOK',
-      }));
-    } catch (error: unknown) {
-      if ((error as { statusCode?: number })?.statusCode === 404) {
-        // Prices not yet available (e.g., tomorrow's prices before 13:00)
-        this.logDebug(`Spot prices: No data for ${year}-${month}-${day} (not yet available)`);
-        return [];
-      }
-      this.error(`Spot prices: Failed to fetch prices for ${year}-${month}-${day}`, error);
-      return [];
-    }
-  }
-
-  /**
-   * Make an HTTPS GET request and parse JSON response.
-   * For hvakosterstrommen.no, uses pinned CA certificates to work around Homey's incomplete CA bundle.
-   * Falls back to insecure connection only if pinned CA verification fails (e.g., CA changed).
-   */
-  private httpsGetJson(url: string, allowInsecureFallback = true): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      const urlObj = new URL(url);
-      const isPinnedHost = urlObj.hostname.endsWith('hvakosterstrommen.no');
-
-      const makeRequest = (options: { rejectUnauthorized: boolean; ca?: string }) => {
-        const req = https.get(
-          url,
-          {
-            headers: { Accept: 'application/json' },
-            ...options,
-          },
-          (res) => {
-            if (res.statusCode === 404) {
-              const err = new Error('Not found') as Error & { statusCode: number };
-              err.statusCode = 404;
-              reject(err);
-              return;
-            }
-            if (res.statusCode !== 200) {
-              reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
-              return;
-            }
-
-            let data = '';
-            res.on('data', (chunk) => {
-              data += chunk;
-            });
-            res.on('end', () => {
-              try {
-                resolve(JSON.parse(data));
-              } catch (_e) {
-                reject(new Error('Failed to parse JSON response'));
-              }
-            });
-          },
-        );
-
-        req.on('error', (err: NodeJS.ErrnoException) => {
-          // If SSL verification failed and fallback is allowed, retry without verification
-          if (options.rejectUnauthorized && allowInsecureFallback && this.isSslError(err)) {
-            this.log(`SSL verification failed for ${url}, retrying with insecure fallback`);
-            makeRequest({ rejectUnauthorized: false });
-          } else {
-            reject(err);
-          }
-        });
-
-        req.setTimeout(10000, () => {
-          req.destroy();
-          reject(new Error('Request timeout'));
-        });
-      };
-
-      // For pinned hosts, use our CA bundle for verification
-      if (isPinnedHost) {
-        makeRequest({ rejectUnauthorized: true, ca: PINNED_CA_BUNDLE });
-      } else {
-        // For other hosts, try system CA first with fallback
-        makeRequest({ rejectUnauthorized: true });
-      }
-    });
-  }
-
-  /**
-   * Check if an error is an SSL/TLS certificate error.
-   */
-  private isSslError(err: NodeJS.ErrnoException): boolean {
-    const sslErrorCodes = [
-      'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-      'CERT_HAS_EXPIRED',
-      'DEPTH_ZERO_SELF_SIGNED_CERT',
-      'SELF_SIGNED_CERT_IN_CHAIN',
-      'UNABLE_TO_GET_ISSUER_CERT',
-      'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
-      'CERT_CHAIN_TOO_LONG',
-      'CERT_REVOKED',
-      'CERT_UNTRUSTED',
-      'ERR_TLS_CERT_ALTNAME_INVALID',
-    ];
-    return sslErrorCodes.includes(err.code || '') || (err.message || '').includes('certificate');
+    await this.priceService.refreshSpotPrices(forceRefresh);
   }
 
   /**
    * Get combined hourly prices (spot + nettleie + provider surcharge) for all available hours.
    * Returns an array sorted by time, with total price in øre/kWh including VAT.
    */
-  private getCombinedHourlyPrices(): Array<{ startsAt: string; spotPrice: number; nettleie: number; providerSurcharge: number; totalPrice: number }> {
-    const spotPrices: Array<{ startsAt: string; total: number }> = this.homey.settings.get('electricity_prices') || [];
-    const nettleieData: Array<{ time: string; energileddInk: number }> = this.homey.settings.get('nettleie_data') || [];
-    const providerSurcharge: number = this.homey.settings.get('provider_surcharge') || 0;
-
-    // Create a map of nettleie by hour (0-23)
-    const nettleieByHour = new Map<number, number>();
-    for (const entry of nettleieData) {
-      // NVE API returns time as hour number (0-23)
-      const hour = typeof entry.time === 'number' ? entry.time : parseInt(entry.time, 10);
-      if (!Number.isNaN(hour) && typeof entry.energileddInk === 'number') {
-        nettleieByHour.set(hour, entry.energileddInk);
-      }
-    }
-
-    // Combine spot prices with nettleie and provider surcharge
-    return spotPrices.map((spot) => {
-      const date = new Date(spot.startsAt);
-      const hour = date.getHours();
-      const nettleie = nettleieByHour.get(hour) || 0;
-      return {
-        startsAt: spot.startsAt,
-        spotPrice: spot.total,
-        nettleie,
-        providerSurcharge,
-        totalPrice: spot.total + nettleie + providerSurcharge,
-      };
-    }).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  private getCombinedHourlyPrices() {
+    return this.priceService.getCombinedHourlyPrices();
   }
 
   /**
@@ -1085,74 +704,21 @@ module.exports = class PelsApp extends Homey.App {
    * Returns the start times of the cheapest hours.
    */
   private findCheapestHours(count: number): string[] {
-    const now = new Date();
-    const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-    const prices = this.getCombinedHourlyPrices()
-      .filter((p) => {
-        const time = new Date(p.startsAt);
-        return time >= now && time < in24Hours;
-      });
-
-    if (prices.length === 0) return [];
-
-    // Sort by total price and take the cheapest N
-    return prices
-      .sort((a, b) => a.totalPrice - b.totalPrice)
-      .slice(0, count)
-      .map((p) => p.startsAt);
+    return this.priceService.findCheapestHours(count);
   }
 
   /**
    * Check if the current hour is cheap (25% below average).
    */
   private isCurrentHourCheap(): boolean {
-    const prices = this.getCombinedHourlyPrices();
-    if (prices.length === 0) return false;
-
-    const now = new Date();
-    const currentHourStart = new Date(now);
-    currentHourStart.setMinutes(0, 0, 0);
-
-    const currentPrice = prices.find((p) => {
-      const hourStart = new Date(p.startsAt);
-      return hourStart.getTime() === currentHourStart.getTime();
-    });
-
-    if (!currentPrice) return false;
-
-    const avgPrice = prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length;
-    const thresholdPercent = this.homey.settings.get('price_threshold_percent') ?? 25;
-    const minDiffOre = this.homey.settings.get('price_min_diff_ore') ?? 0;
-    const threshold = avgPrice * (1 - thresholdPercent / 100);
-    const diffFromAvg = avgPrice - currentPrice.totalPrice;
-    return currentPrice.totalPrice <= threshold && diffFromAvg >= minDiffOre;
+    return this.priceService.isCurrentHourCheap();
   }
 
   /**
    * Check if the current hour is expensive (25% above average).
    */
   private isCurrentHourExpensive(): boolean {
-    const prices = this.getCombinedHourlyPrices();
-    if (prices.length === 0) return false;
-
-    const now = new Date();
-    const currentHourStart = new Date(now);
-    currentHourStart.setMinutes(0, 0, 0);
-
-    const currentPrice = prices.find((p) => {
-      const hourStart = new Date(p.startsAt);
-      return hourStart.getTime() === currentHourStart.getTime();
-    });
-
-    if (!currentPrice) return false;
-
-    const avgPrice = prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length;
-    const thresholdPercent = this.homey.settings.get('price_threshold_percent') ?? 25;
-    const minDiffOre = this.homey.settings.get('price_min_diff_ore') ?? 0;
-    const threshold = avgPrice * (1 + thresholdPercent / 100);
-    const diffFromAvg = currentPrice.totalPrice - avgPrice;
-    return currentPrice.totalPrice >= threshold && diffFromAvg >= minDiffOre;
+    return this.priceService.isCurrentHourExpensive();
   }
 
   /**
@@ -1164,7 +730,7 @@ module.exports = class PelsApp extends Homey.App {
   private async applyPriceOptimization(): Promise<void> {
     // Refresh spot prices at the start of each hour (uses cache unless new data is expected)
     // This ensures we fetch tomorrow's prices as soon as they become available (~12:15 UTC)
-    await this.refreshSpotPrices();
+    await this.priceService.refreshSpotPrices();
 
     if (!this.priceOptimizationEnabled) {
       this.logDebug('Price optimization: Disabled globally');
@@ -1270,18 +836,7 @@ module.exports = class PelsApp extends Homey.App {
    * Get a human-readable price info for the current hour.
    */
   private getCurrentHourPriceInfo(): string {
-    const prices = this.getCombinedHourlyPrices();
-    const now = new Date();
-    const currentHourStart = new Date(now);
-    currentHourStart.setMinutes(0, 0, 0);
-
-    const current = prices.find((p) => {
-      const hourStart = new Date(p.startsAt);
-      return hourStart.getTime() === currentHourStart.getTime();
-    });
-
-    if (!current) return 'price unknown';
-    return `${current.totalPrice.toFixed(1)} øre/kWh (spot ${current.spotPrice.toFixed(1)} + nettleie ${current.nettleie.toFixed(1)})`;
+    return this.priceService.getCurrentHourPriceInfo();
   }
 
   /**
@@ -1323,10 +878,10 @@ module.exports = class PelsApp extends Homey.App {
     const refreshIntervalMs = 3 * 60 * 60 * 1000;
 
     this.priceRefreshInterval = setInterval(() => {
-      this.refreshSpotPrices().catch((error: Error) => {
+      this.priceService.refreshSpotPrices().catch((error: Error) => {
         this.error('Failed to refresh spot prices', error);
       });
-      this.refreshNettleieData().catch((error: Error) => {
+      this.priceService.refreshNettleieData().catch((error: Error) => {
         this.error('Failed to refresh nettleie data', error);
       });
     }, refreshIntervalMs);

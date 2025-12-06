@@ -1,3 +1,4 @@
+export {};
 // Mock Homey.Device
 class MockDevice {
   private capabilities: Set<string> = new Set();
