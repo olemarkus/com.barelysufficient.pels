@@ -1891,8 +1891,52 @@ const boot = async () => {
     addModeButton?.addEventListener('click', async () => {
       const mode = (modeNewInput?.value || '').trim();
       if (!mode) return;
-      if (!capacityPriorities[mode]) capacityPriorities[mode] = {};
-      if (!modeTargets[mode]) modeTargets[mode] = {};
+      if (Object.keys(capacityPriorities || {}).length === 0 || Object.keys(modeTargets || {}).length === 0) {
+        // Ensure we have the latest settings before cloning
+        await loadModeAndPriorities();
+      }
+      const templateMode = activeMode || 'Home';
+      const storedPriorities = await getSetting('capacity_priorities');
+      const storedTargets = await getSetting('mode_device_targets');
+
+      if (!capacityPriorities[mode]) {
+        // Fallback to stored settings if in-memory map is empty (e.g., slow load)
+        let template = (storedPriorities && storedPriorities[templateMode])
+          || (storedPriorities && storedPriorities.Home)
+          || capacityPriorities[templateMode]
+          || capacityPriorities.Home
+          || {};
+        if (Object.keys(template).length === 0 && storedPriorities) {
+          const source = storedPriorities[templateMode] || storedPriorities.Home || {};
+          template = Object.keys(source).reduce<Record<string, number>>((acc, deviceId, index) => {
+            acc[deviceId] = index + 1;
+            return acc;
+          }, {});
+        }
+        if (Object.keys(template).length === 0 && Array.isArray(latestDevices)) {
+          template = latestDevices.reduce<Record<string, number>>((acc, device, index) => {
+            acc[device.id] = index + 1; // default priority ordering when no template exists
+            return acc;
+          }, {});
+        }
+        capacityPriorities = {
+          ...(storedPriorities || {}),
+          ...(capacityPriorities || {}),
+          [mode]: { ...template },
+        };
+      }
+      if (!modeTargets[mode]) {
+        const templateTargets = (storedTargets && storedTargets[templateMode])
+          || (storedTargets && storedTargets.Home)
+          || modeTargets[templateMode]
+          || modeTargets.Home
+          || {};
+        modeTargets = {
+          ...(storedTargets || {}),
+          ...(modeTargets || {}),
+          [mode]: { ...templateTargets },
+        };
+      }
       editingMode = mode;
       renderModeOptions();
       renderPriorities(latestDevices);

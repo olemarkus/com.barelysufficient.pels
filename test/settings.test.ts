@@ -195,6 +195,54 @@ describe('settings script', () => {
     expect(activeModeSelect.value).toBe('Home');
   });
 
+  it('copies priorities and targets from the active mode when adding a new mode', async () => {
+    const store: Record<string, any> = {};
+    const setSpy = jest.fn((key, val, cb) => {
+      store[key] = val;
+      if (cb) cb(null);
+    });
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1, 'dev-2': 2 } });
+      if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
+      if (key === 'capacity_mode') return cb(null, 'Home');
+      return cb(null, [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        },
+        {
+          id: 'dev-2',
+          name: 'Fan',
+          targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
+        },
+      ]);
+    });
+
+    // @ts-ignore settings script is plain JS
+    await import('../settings/script.js');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
+    const addBtn = document.querySelector('#add-mode-button') as HTMLButtonElement;
+
+    modeInput.value = 'Cozy';
+    addBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(store.capacity_priorities).toEqual({
+      Home: { 'dev-1': 1, 'dev-2': 2 },
+      Cozy: { 'dev-1': 1, 'dev-2': 2 },
+    });
+    expect(store.mode_device_targets).toEqual({
+      Home: { 'dev-1': 20 },
+      Cozy: { 'dev-1': 20 },
+    });
+  });
+
   it('changes active mode when selection changes (auto-save)', async () => {
     const setSpy = jest.fn((key, val, cb) => cb && cb(null));
     // @ts-expect-error mutate mock
