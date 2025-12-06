@@ -219,6 +219,28 @@ const homeyModule = {
 // Mock for homey-api module - HomeyAPI.createAppAPI
 export const mockHomeyApiInstance = {
   devices: {
+    // Mirror Homey's device API using the in-memory mock drivers
+    getDevices: async () => {
+      const drivers = mockHomeyInstance.drivers.getDrivers();
+      const devices: Record<string, any> = {};
+      for (const driver of Object.values(drivers)) {
+        for (const device of driver.getDevices()) {
+          const caps = device.getCapabilities();
+          const capabilitiesObj: Record<string, any> = {};
+          for (const cap of caps) {
+            capabilitiesObj[cap] = { value: await device.getCapabilityValue(cap) };
+          }
+          devices[device.idValue] = {
+            id: device.idValue,
+            name: device.getName(),
+            capabilities: caps,
+            capabilitiesObj,
+            settings: await device.getSettings(),
+          };
+        }
+      }
+      return devices;
+    },
     setCapabilityValue: async ({ deviceId, capabilityId, value }: { deviceId: string; capabilityId: string; value: any }) => {
       const device = findMockDeviceById(deviceId);
       if (device) {

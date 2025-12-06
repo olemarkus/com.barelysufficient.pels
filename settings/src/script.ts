@@ -198,6 +198,7 @@ let editingMode = 'Home'; // The mode currently being edited in the UI
 let latestDevices: any[] = [];
 let modeTargets: Record<string, Record<string, number>> = {};
 let controllableMap: Record<string, boolean> = {};
+let modeAliases: Record<string, string> = {};
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -690,6 +691,7 @@ const loadModeAndPriorities = async () => {
   const priorities = await getSetting('capacity_priorities');
   const targets = await getSetting('mode_device_targets');
   const controllables = await getSetting('controllable_devices');
+  const aliases = await getSetting('mode_aliases');
   activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
   editingMode = activeMode; // Start editing the active mode
   capacityPriorities = priorities && typeof priorities === 'object'
@@ -700,6 +702,12 @@ const loadModeAndPriorities = async () => {
     : {};
   controllableMap = controllables && typeof controllables === 'object'
     ? controllables as Record<string, boolean>
+    : {};
+  modeAliases = aliases && typeof aliases === 'object'
+    ? Object.entries(aliases).reduce((acc, [k, v]) => {
+      if (typeof k === 'string' && typeof v === 'string') acc[k.toLowerCase()] = v;
+      return acc;
+    }, {} as Record<string, string>)
     : {};
   renderModeOptions();
 };
@@ -852,6 +860,7 @@ const renameMode = async (oldName, newName) => {
     modeTargets[newKey] = modeTargets[oldKey];
     delete modeTargets[oldKey];
   }
+  modeAliases[oldKey.toLowerCase()] = newKey;
   // If we're renaming the active mode, update it
   if (activeMode === oldKey) {
     activeMode = newKey;
@@ -861,6 +870,7 @@ const renameMode = async (oldName, newName) => {
   if (editingMode === oldKey) editingMode = newKey;
   await setSetting('capacity_priorities', capacityPriorities);
   await setSetting('mode_device_targets', modeTargets);
+  await setSetting('mode_aliases', modeAliases);
   renderModeOptions();
   renderPriorities(latestDevices);
   await showToast(`Renamed mode to ${newKey}`, 'ok');

@@ -44,6 +44,7 @@ module.exports = class PelsApp extends Homey.App {
   private capacityDryRun = true;
   private priceOptimizationEnabled = true;
   private capacityMode = 'Home';
+  private modeAliases: Record<string, string> = {};
   private capacityPriorities: Record<string, Record<string, number>> = {};
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
   private controllableDevices: Record<string, boolean> = {};
@@ -213,14 +214,21 @@ module.exports = class PelsApp extends Homey.App {
   private loadCapacitySettings(): void {
     const limit = this.homey.settings.get('capacity_limit_kw');
     const margin = this.homey.settings.get('capacity_margin_kw');
-    const mode = this.homey.settings.get('capacity_mode');
+    const modeRaw = this.homey.settings.get('capacity_mode');
+    const modeAliases = this.homey.settings.get('mode_aliases');
     const priorities = this.homey.settings.get('capacity_priorities');
     const modeTargets = this.homey.settings.get('mode_device_targets');
     const dryRun = this.homey.settings.get('capacity_dry_run');
     const controllables = this.homey.settings.get('controllable_devices');
     if (Number.isFinite(limit)) this.capacitySettings.limitKw = Number(limit);
     if (Number.isFinite(margin)) this.capacitySettings.marginKw = Number(margin);
-    if (typeof mode === 'string' && mode.length > 0) this.capacityMode = mode;
+    if (modeAliases && typeof modeAliases === 'object') {
+      this.modeAliases = Object.entries(modeAliases).reduce<Record<string, string>>((acc, [k, v]) => {
+        if (typeof k === 'string' && typeof v === 'string') acc[k.toLowerCase()] = v;
+        return acc;
+      }, {});
+    }
+    if (typeof modeRaw === 'string' && modeRaw.length > 0) this.capacityMode = this.resolveModeName(modeRaw);
     if (priorities && typeof priorities === 'object') this.capacityPriorities = priorities as Record<string, Record<string, number>>;
     if (modeTargets && typeof modeTargets === 'object') this.modeDeviceTargets = modeTargets as Record<string, Record<string, number>>;
     if (typeof dryRun === 'boolean') this.capacityDryRun = dryRun;
@@ -306,15 +314,20 @@ module.exports = class PelsApp extends Homey.App {
     setCapacityMode.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
       // Handle both string (manual input) and object (autocomplete selection) formats
       const modeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
-      const chosen = (modeValue || '').trim();
-      if (!chosen) throw new Error('Mode must be provided');
-      this.capacityMode = chosen;
-      this.homey.settings.set('capacity_mode', chosen);
+      const raw = (modeValue || '').trim();
+      if (!raw) throw new Error('Mode must be provided');
+      const resolved = this.resolveModeName(raw);
+      if (resolved !== raw) {
+        this.logDebug(`Mode '${raw}' resolved via alias to '${resolved}'. Flows using the old name should be updated.`);
+      }
+      this.capacityMode = resolved;
+      this.homey.settings.set('capacity_mode', resolved);
+      this.homey.settings.set('mode_alias_used', raw !== resolved ? raw : null);
       // rebuildPlanFromCache() is triggered by the settings listener, no need to call it twice
       if (this.capacityDryRun) {
-        this.previewDeviceTargetsForMode(chosen);
+        this.previewDeviceTargetsForMode(resolved);
       } else {
-        await this.applyDeviceTargetsForMode(chosen);
+        await this.applyDeviceTargetsForMode(resolved);
       }
       return true;
     });
@@ -336,9 +349,14 @@ module.exports = class PelsApp extends Homey.App {
     isCapacityModeCond.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
       // Handle both string (manual input) and object (autocomplete selection) formats
       const modeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
-      const chosenMode = (modeValue || '').trim();
+      const chosenModeRaw = (modeValue || '').trim();
+      const chosenMode = this.resolveModeName(chosenModeRaw);
       if (!chosenMode) return false;
-      return this.capacityMode.toLowerCase() === chosenMode.toLowerCase();
+      const matches = this.capacityMode.toLowerCase() === chosenMode.toLowerCase();
+      if (!matches && chosenModeRaw !== chosenMode) {
+        this.logDebug(`Mode condition checked using alias '${chosenModeRaw}' -> '${chosenMode}', but active mode is '${this.capacityMode}'`);
+      }
+      return matches;
     });
     isCapacityModeCond.registerArgumentAutocompleteListener('mode', async (query: string) => {
       const q = (query || '').toLowerCase();
@@ -1325,6 +1343,13 @@ module.exports = class PelsApp extends Homey.App {
   private getPriorityForDevice(deviceId: string): number {
     const mode = this.capacityMode || 'Home';
     return this.capacityPriorities[mode]?.[deviceId] ?? 100;
+  }
+
+  private resolveModeName(name: string): string {
+    const current = (name || '').trim();
+    const mapped = this.modeAliases[current.toLowerCase()];
+    if (typeof mapped === 'string' && mapped.trim()) return mapped;
+    return current;
   }
 
   private getAllModes(): Set<string> {

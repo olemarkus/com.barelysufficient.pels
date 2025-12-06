@@ -29,6 +29,9 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
         });
         deps.rebuildPlanFromCache();
         break;
+      case 'mode_aliases':
+        deps.loadCapacitySettings();
+        break;
       case 'capacity_priorities':
         deps.loadCapacitySettings();
         deps.rebuildPlanFromCache();

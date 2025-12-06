@@ -6,6 +6,8 @@ import {
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
 
@@ -137,6 +139,113 @@ describe('MyApp initialization', () => {
       capabilityId: 'target_temperature',
       value: 16,
     });
+  });
+
+  it('handles mode rename without losing settings or leaving dangling entries', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 } });
+    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    // Simulate UI rename operation (data moved to new key, old removed)
+    const renamedTargets = { Cozy: { 'dev-1': 20 } };
+    const renamedPriorities = { Cozy: { 'dev-1': 3 } };
+    mockHomeyInstance.settings.set('mode_device_targets', renamedTargets);
+    mockHomeyInstance.settings.set('capacity_priorities', renamedPriorities);
+    mockHomeyInstance.settings.set('capacity_mode', 'Cozy');
+    mockHomeyInstance.settings.set('mode_aliases', { home: 'Cozy' });
+    await flushPromises();
+    await flushPromises();
+
+    // Settings should only contain the renamed mode
+    expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual(renamedTargets);
+    expect(mockHomeyInstance.settings.get('capacity_priorities')).toEqual(renamedPriorities);
+    expect(mockHomeyInstance.settings.get('capacity_mode')).toBe('Cozy');
+
+    // Internal state should use the renamed mode and drop the old one
+    expect((app as any).capacityMode).toBe('Cozy');
+    expect((app as any).modeDeviceTargets.Cozy['dev-1']).toBe(20);
+    expect((app as any).modeDeviceTargets.Home).toBeUndefined();
+    expect((app as any).capacityPriorities.Home).toBeUndefined();
+
+    const modes = Array.from((app as any).getAllModes());
+    expect(modes).toContain('Cozy');
+    expect(modes).not.toContain('Home');
+
+    // Flow condition should resolve using the renamed mode
+    const isModeListener = mockHomeyInstance.flow._conditionCardListeners['is_capacity_mode'];
+    await expect(isModeListener({ mode: 'Cozy' })).resolves.toBe(true);
+    await expect(isModeListener({ mode: 'Home' })).resolves.toBe(true);
+
+    // Targets should still apply for the renamed mode
+    expect(await heater.getCapabilityValue('target_temperature')).toBe(20);
+  });
+
+  it('keeps existing flow arguments working after a rename via mode aliases', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 } });
+    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+
+    const app = createApp();
+    await app.onInit();
+
+    // Simulate renaming Home -> Cozy in settings (UI migration)
+    mockHomeyInstance.settings.set('mode_device_targets', { Cozy: { 'dev-1': 20 } });
+    mockHomeyInstance.settings.set('capacity_priorities', { Cozy: { 'dev-1': 3 } });
+    mockHomeyInstance.settings.set('capacity_mode', 'Cozy');
+    mockHomeyInstance.settings.set('mode_aliases', { home: 'Cozy' });
+    await flushPromises();
+
+    // Flow card still holds the old name; alias should resolve it to the new one.
+    const isModeListener = mockHomeyInstance.flow._conditionCardListeners['is_capacity_mode'];
+    await expect(isModeListener({ mode: 'Home' })).resolves.toBe(true);
+
+    // Keep lint happy about unused app
+    expect(app).toBeDefined();
+  });
+
+  it('keeps flow arguments working when two modes swap names via aliases', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 }, Away: { 'dev-1': 18 } });
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 }, Away: { 'dev-1': 2 } });
+    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+
+    const app = createApp();
+    await app.onInit();
+
+    // Simulate a swap: Home -> Work, Away -> Home (so "Work" takes the old Home data)
+    mockHomeyInstance.settings.set('mode_device_targets', { Work: { 'dev-1': 20 }, Home: { 'dev-1': 18 } });
+    mockHomeyInstance.settings.set('capacity_priorities', { Work: { 'dev-1': 3 }, Home: { 'dev-1': 2 } });
+    mockHomeyInstance.settings.set('capacity_mode', 'Work'); // active mode is the renamed former Home
+    mockHomeyInstance.settings.set('mode_aliases', { home: 'Work', away: 'Home' });
+    await flushPromises();
+
+    expect((app as any).capacityMode).toBe('Work');
+
+    const isModeListener = mockHomeyInstance.flow._conditionCardListeners['is_capacity_mode'];
+
+    // Flows still referring to old names should resolve via aliases
+    await expect(isModeListener({ mode: 'Away' })).resolves.toBe(false); // Away -> Home (inactive)
+    await expect(isModeListener({ mode: 'Home' })).resolves.toBe(true); // Home -> Work (active)
+
+    expect(app).toBeDefined();
   });
 });
 
