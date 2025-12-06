@@ -17,6 +17,7 @@ jest.mock('../capacityGuard', () => {
     public setSoftMargin = jest.fn();
     public setDryRun = jest.fn();
     public setSoftLimitProvider = jest.fn();
+    public setShortfallThresholdProvider = jest.fn();
     public start = jest.fn();
     public stop = jest.fn();
     public reportTotalPower = jest.fn();

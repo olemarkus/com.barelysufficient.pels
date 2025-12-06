@@ -102,12 +102,16 @@ describe('CapacityGuard', () => {
   });
 
   it('requires hysteresis margin before clearing shortfall', async () => {
+    // Without a shortfall threshold provider, shortfall uses soft limit.
+    // limitKw: 5, softMarginKw: 0.3 → soft limit = 4.7kW
+    // Shortfall triggers when power > 4.7kW
+    // Shortfall clears when headroom >= 0.2kW sustained for 60s (power <= 4.5kW)
     const shortfallEvents: Array<{ type: 'shortfall' | 'cleared'; deficit?: number }> = [];
     const guard = new CapacityGuard({
       limitKw: 5,
-      softMarginKw: 0.3, // soft limit = 4.7
+      softMarginKw: 0.3, // soft limit = 4.7kW
       dryRun: true,
-      intervalMs: 3000, // 3 second tick interval
+      intervalMs: 3000,
       onShortfall: async (deficitKw) => {
         shortfallEvents.push({ type: 'shortfall', deficit: deficitKw });
       },
@@ -116,40 +120,32 @@ describe('CapacityGuard', () => {
       },
     });
 
-    // No controllables - any overshoot causes immediate shortfall
-    guard.reportTotalPower(5.0); // headroom = 4.7 - 5.0 = -0.3
+    // No controllables - exceeding soft limit (4.7kW) causes immediate shortfall
+    guard.reportTotalPower(5.0); // 0.3kW over soft limit
     await guard.tick();
 
     expect(shortfallEvents).toHaveLength(1);
     expect(shortfallEvents[0].type).toBe('shortfall');
     expect(guard.isInShortfall()).toBe(true);
 
-    // Power drops slightly but still negative headroom - should stay in shortfall
-    guard.reportTotalPower(4.75); // headroom = 4.7 - 4.75 = -0.05
+    // Power drops to 4.7kW (exactly at soft limit) - headroom = 0, not enough margin
+    guard.reportTotalPower(4.7);
     advanceTime(3000);
     await guard.tick();
     expect(shortfallEvents).toHaveLength(1); // No new events
     expect(guard.isInShortfall()).toBe(true);
 
-    // Power drops to exactly soft limit - headroom = 0, but not enough margin to clear
-    guard.reportTotalPower(4.7); // headroom = 0
+    // Power drops to 4.6kW - headroom = 0.1kW, still not enough margin (need 0.2)
+    guard.reportTotalPower(4.6);
     advanceTime(3000);
     await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // Still no cleared event
+    expect(shortfallEvents).toHaveLength(1); // Still in shortfall
     expect(guard.isInShortfall()).toBe(true);
 
-    // Power drops slightly below soft limit - headroom = +0.1, still not enough margin
-    guard.reportTotalPower(4.6); // headroom = +0.1
+    // Power drops to 4.5kW - headroom = 0.2kW, meets margin but needs sustained time
+    guard.reportTotalPower(4.5);
     advanceTime(3000);
-    await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // Still no cleared event (margin not met)
-    expect(guard.isInShortfall()).toBe(true);
-
-    // Power drops enough to provide 0.2 kW hysteresis margin
-    // But now also needs sustained time - simulate ticks to get > 60s
-    guard.reportTotalPower(4.5); // headroom = +0.2
-    advanceTime(3000);
-    await guard.tick(); // tick 1 - starts timer at T
+    await guard.tick(); // starts timer
 
     // Advance 57s (19 more ticks of 3s each) - still under 60s
     for (let i = 0; i < 19; i++) {
@@ -167,12 +163,15 @@ describe('CapacityGuard', () => {
   });
 
   it('requires sustained positive headroom before clearing shortfall (time-based hysteresis)', async () => {
+    // Without a shortfall threshold provider, shortfall uses soft limit.
+    // limitKw: 5, softMarginKw: 0.3 → soft limit = 4.7kW
+    // Shortfall clears when headroom >= 0.2kW sustained for 60s (power <= 4.5kW)
     const shortfallEvents: Array<{ type: 'shortfall' | 'cleared'; deficit?: number }> = [];
     const guard = new CapacityGuard({
       limitKw: 5,
-      softMarginKw: 0.3, // soft limit = 4.7
+      softMarginKw: 0.3,
       dryRun: true,
-      intervalMs: 3000, // 3 second tick interval
+      intervalMs: 3000,
       onShortfall: async (deficitKw) => {
         shortfallEvents.push({ type: 'shortfall', deficit: deficitKw });
       },
@@ -181,36 +180,34 @@ describe('CapacityGuard', () => {
       },
     });
 
-    // Enter shortfall
-    guard.reportTotalPower(5.0); // headroom = -0.3
+    // Enter shortfall - power exceeds soft limit (4.7kW)
+    guard.reportTotalPower(5.0);
     await guard.tick();
     expect(shortfallEvents).toHaveLength(1);
     expect(shortfallEvents[0].type).toBe('shortfall');
 
-    // Power drops to positive headroom with margin - but needs sustained time
-    guard.reportTotalPower(4.5); // headroom = +0.2 (meets margin requirement)
+    // Power drops to 4.4kW - headroom = 0.3kW, meets margin, starts timer
+    guard.reportTotalPower(4.4);
     advanceTime(3000);
     await guard.tick();
-    // First tick with positive headroom - should NOT clear yet (needs sustained period)
     expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
-    // Power spikes back up briefly - resets the timer
-    guard.reportTotalPower(4.8); // headroom = -0.1 (back in overshoot)
+    // Power spikes to 4.55kW - headroom = 0.15kW (below margin), resets timer
+    guard.reportTotalPower(4.55);
     advanceTime(3000);
     await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // Still in shortfall
+    expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
-    // Power drops again - timer restarts
-    guard.reportTotalPower(4.5); // headroom = +0.2
+    // Power drops back to 4.4kW - timer restarts
+    guard.reportTotalPower(4.4);
     advanceTime(3000);
     await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // First tick of new sustained period - timer starts
+    expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
-    // Sustained positive headroom - need more ticks to exceed 60s
-    // Advance 57s more (19 ticks of 3s)
+    // Sustained positive headroom - advance 57s more (19 ticks of 3s)
     for (let i = 0; i < 19; i++) {
       advanceTime(3000);
       await guard.tick();
@@ -227,10 +224,12 @@ describe('CapacityGuard', () => {
   });
 
   it('resets shortfall clear timer when power spikes back into overshoot during waiting period', async () => {
+    // Without a shortfall threshold provider, shortfall uses soft limit (4.7kW).
+    // Timer resets when power exceeds soft limit again (back in overshoot)
     const shortfallEvents: Array<{ type: 'shortfall' | 'cleared'; deficit?: number }> = [];
     const guard = new CapacityGuard({
       limitKw: 5,
-      softMarginKw: 0.3, // soft limit = 4.7
+      softMarginKw: 0.3, // soft limit = 4.7kW
       dryRun: true,
       intervalMs: 3000,
       onShortfall: async (deficitKw) => {
@@ -241,41 +240,41 @@ describe('CapacityGuard', () => {
       },
     });
 
-    // Enter shortfall
-    guard.reportTotalPower(5.0); // headroom = -0.3
+    // Enter shortfall - power exceeds soft limit (4.7kW)
+    guard.reportTotalPower(5.0);
     await guard.tick();
     expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
-    // Start waiting period with positive headroom
-    guard.reportTotalPower(4.5); // headroom = +0.2
+    // Start waiting period - power drops with margin (headroom = 0.3kW)
+    guard.reportTotalPower(4.4);
     advanceTime(3000);
     await guard.tick(); // Timer starts
     advanceTime(3000);
     await guard.tick(); // 3s elapsed
     advanceTime(3000);
     await guard.tick(); // 6s elapsed
-    expect(shortfallEvents).toHaveLength(1); // Still waiting
+    expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
-    // Power spikes back into overshoot at 6s - timer should reset
-    guard.reportTotalPower(5.2); // headroom = -0.5
+    // Power spikes back above soft limit - timer resets (back in overshoot)
+    guard.reportTotalPower(4.9); // headroom = -0.2kW
     advanceTime(3000);
     await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // Still in shortfall (no new shortfall event since already in shortfall)
+    expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
     // Power drops again - timer restarts from zero
-    guard.reportTotalPower(4.5); // headroom = +0.2
+    guard.reportTotalPower(4.4);
     advanceTime(3000);
-    await guard.tick(); // New timer starts at 0s
+    await guard.tick(); // New timer starts
 
-    // Advance 57s (19 more ticks) - only 60s elapsed since reset
+    // Advance 57s (19 more ticks) - 60s elapsed since reset
     for (let i = 0; i < 19; i++) {
       advanceTime(3000);
       await guard.tick();
     }
-    expect(shortfallEvents).toHaveLength(1); // Still waiting (60s since reset, needs > 60s)
+    expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
     advanceTime(3000);
@@ -286,10 +285,12 @@ describe('CapacityGuard', () => {
   });
 
   it('resets shortfall clear timer when headroom drops below margin during waiting period', async () => {
+    // Without a shortfall threshold provider, shortfall uses soft limit (4.7kW).
+    // Timer resets when headroom drops below 0.2kW margin (power > 4.5kW)
     const shortfallEvents: Array<{ type: 'shortfall' | 'cleared'; deficit?: number }> = [];
     const guard = new CapacityGuard({
       limitKw: 5,
-      softMarginKw: 0.3, // soft limit = 4.7
+      softMarginKw: 0.3, // soft limit = 4.7kW
       dryRun: true,
       intervalMs: 3000,
       onShortfall: async (deficitKw) => {
@@ -300,14 +301,14 @@ describe('CapacityGuard', () => {
       },
     });
 
-    // Enter shortfall
-    guard.reportTotalPower(5.0); // headroom = -0.3
+    // Enter shortfall - power exceeds soft limit (4.7kW)
+    guard.reportTotalPower(5.0);
     await guard.tick();
     expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
-    // Start waiting period with positive headroom meeting margin
-    guard.reportTotalPower(4.5); // headroom = +0.2 (exactly at margin)
+    // Start waiting period - power at 4.4kW, headroom = 0.3kW (exceeds 0.2 margin)
+    guard.reportTotalPower(4.4);
     advanceTime(3000);
     await guard.tick(); // Timer starts
     advanceTime(3000);
@@ -317,24 +318,24 @@ describe('CapacityGuard', () => {
     expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
-    // Power rises slightly - headroom drops below margin but still positive
-    guard.reportTotalPower(4.6); // headroom = +0.1 (below 0.2 margin)
+    // Power rises to 4.55kW - headroom = 0.15kW (below 0.2 margin), timer resets
+    guard.reportTotalPower(4.55);
     advanceTime(3000);
     await guard.tick();
-    expect(shortfallEvents).toHaveLength(1); // Timer should reset
+    expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
-    // Power drops back to good headroom - timer restarts
-    guard.reportTotalPower(4.5); // headroom = +0.2
+    // Power drops back to 4.4kW - timer restarts
+    guard.reportTotalPower(4.4);
     advanceTime(3000);
     await guard.tick(); // New timer starts
 
-    // Advance 57s (19 more ticks) - still at 60s
+    // Advance 57s (19 more ticks)
     for (let i = 0; i < 19; i++) {
       advanceTime(3000);
       await guard.tick();
     }
-    expect(shortfallEvents).toHaveLength(1); // elapsed 60s - still waiting
+    expect(shortfallEvents).toHaveLength(1);
     expect(guard.isInShortfall()).toBe(true);
 
     advanceTime(3000);
@@ -342,5 +343,66 @@ describe('CapacityGuard', () => {
     expect(shortfallEvents).toHaveLength(2);
     expect(shortfallEvents[1].type).toBe('cleared');
     expect(guard.isInShortfall()).toBe(false);
+  });
+
+  it('should NOT trigger shortfall when over soft limit but under shortfall threshold (end-of-hour mode)', async () => {
+    // In end-of-hour mode:
+    // - Soft limit is artificially lowered (e.g., 6.8kW) to prepare for next hour
+    // - Shortfall threshold remains high (e.g., 15kW) based on actual budget
+    // - Shedding happens when power > soft limit
+    // - Shortfall only triggers when power > shortfall threshold
+    //
+    // This prevents false shortfall alerts when we're just constraining to sustainable rate.
+
+    const shortfallEvents: Array<{ type: 'shortfall' | 'cleared'; deficit?: number }> = [];
+    const shedOrder: string[] = [];
+
+    const guard = new CapacityGuard({
+      limitKw: 15, // Not used when providers are set
+      softMarginKw: 0,
+      dryRun: false,
+      intervalMs: 3000,
+      actuator: async (deviceId) => {
+        shedOrder.push(deviceId);
+      },
+      onShortfall: async (deficitKw) => {
+        shortfallEvents.push({ type: 'shortfall', deficit: deficitKw });
+      },
+      onShortfallCleared: async () => {
+        shortfallEvents.push({ type: 'cleared' });
+      },
+    });
+
+    // Simulate end-of-hour: soft limit is artificially lowered for shedding
+    guard.setSoftLimitProvider(() => 6.8);
+    // But shortfall threshold remains at the actual budget-based limit (burst rate)
+    guard.setShortfallThresholdProvider(() => 15.0);
+
+    // Register one controllable device
+    guard.requestOn('heater', 'Heater', 2.0, 1);
+
+    // Total power is 7.3kW - over soft limit (6.8kW) but well under shortfall threshold (15kW)
+    guard.reportTotalPower(7.3);
+    await guard.tick();
+
+    // The heater should be shed to try to get under soft limit
+    expect(shedOrder).toEqual(['heater']);
+
+    // Simulate: after shedding heater, uncontrolled load is still 7.3kW
+    guard.reportTotalPower(7.3);
+    await guard.tick();
+
+    // Should NOT trigger shortfall - we're under the shortfall threshold (15kW)
+    expect(shortfallEvents).toHaveLength(0);
+    expect(guard.isInShortfall()).toBe(false);
+
+    // Now simulate exceeding the shortfall threshold
+    guard.reportTotalPower(16.0);
+    await guard.tick();
+
+    // NOW should trigger shortfall - we're over the threshold (15kW)
+    expect(shortfallEvents).toHaveLength(1);
+    expect(shortfallEvents[0].type).toBe('shortfall');
+    expect(guard.isInShortfall()).toBe(true);
   });
 });

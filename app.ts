@@ -270,6 +270,7 @@ module.exports = class PelsApp extends Homey.App {
       errorLog: (...args) => this.error(...args),
     });
     this.capacityGuard.setSoftLimitProvider(() => this.computeDynamicSoftLimit());
+    this.capacityGuard.setShortfallThresholdProvider(() => this.computeShortfallThreshold());
     this.capacityGuard.start();
     this.loadPowerTracker();
     this.loadPriceOptimizationSettings();
@@ -2028,6 +2029,34 @@ module.exports = class PelsApp extends Homey.App {
       + `burst=${burstRateKw.toFixed(3)}kW capped=${allowedKw.toFixed(3)}kW`,
     );
     return allowedKw;
+  }
+
+  /**
+   * Compute the shortfall threshold - the "real" soft limit without EOH capping.
+   * Shortfall should only trigger when power exceeds this threshold AND no devices left to shed.
+   * During end-of-hour, the soft limit for shedding is artificially lowered to prepare
+   * for the next hour, but we shouldn't alert shortfall just because of that constraint.
+   */
+  private computeShortfallThreshold(): number {
+    const budgetKw = this.capacitySettings.limitKw;
+    const { marginKw } = this.capacitySettings;
+    const netBudgetKWh = Math.max(0, budgetKw - marginKw);
+    if (netBudgetKWh <= 0) return 0;
+
+    const now = Date.now();
+    const date = new Date(now);
+    date.setMinutes(0, 0, 0);
+    const hourStart = date.getTime();
+    const hourEnd = hourStart + 60 * 60 * 1000;
+    const remainingMs = hourEnd - now;
+    const remainingHours = Math.max(remainingMs / 3600000, 0.01);
+
+    const bucketKey = new Date(hourStart).toISOString();
+    const usedKWh = this.powerTracker.buckets?.[bucketKey] || 0;
+    const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
+
+    // Return the uncapped burst rate - this is the actual limit before we'd exceed hourly budget
+    return remainingKWh / remainingHours;
   }
 
   private async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {

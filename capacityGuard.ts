@@ -5,6 +5,7 @@ type TriggerCallback = () => Promise<void> | void;
 type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
 type ActuatorCallback = (deviceId: string, name: string) => Promise<void> | void;
 type SoftLimitProvider = () => number | null;
+type ShortfallThresholdProvider = () => number | null;
 
 export interface CapacityGuardOptions {
   limitKw?: number;
@@ -52,6 +53,7 @@ export default class CapacityGuard {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
   private errorLog?: (...args: any[]) => void;
   private softLimitProvider?: SoftLimitProvider;
+  private shortfallThresholdProvider?: ShortfallThresholdProvider;
 
   constructor(options: CapacityGuardOptions = {}) {
     this.limitKw = options.limitKw ?? 10;
@@ -92,6 +94,10 @@ export default class CapacityGuard {
 
   setSoftLimitProvider(provider: SoftLimitProvider | undefined): void {
     this.softLimitProvider = provider;
+  }
+
+  setShortfallThresholdProvider(provider: ShortfallThresholdProvider | undefined): void {
+    this.shortfallThresholdProvider = provider;
   }
 
   setDryRun(dryRun: boolean, actuator?: ActuatorCallback): void {
@@ -159,6 +165,22 @@ export default class CapacityGuard {
     return Math.max(0, this.limitKw - this.softMarginKw);
   }
 
+  /**
+   * Get the threshold for shortfall detection.
+   * This is the "real" soft limit (uncapped burst rate) - shortfall only triggers
+   * when power exceeds this AND no devices are left to shed.
+   * During end-of-hour, the soft limit for shedding may be artificially lowered,
+   * but shortfall should use the actual budget-based limit.
+   */
+  getShortfallThreshold(): number {
+    if (this.shortfallThresholdProvider) {
+      const threshold = this.shortfallThresholdProvider();
+      if (typeof threshold === 'number' && threshold >= 0) return threshold;
+    }
+    // Fall back to soft limit if no separate threshold provider
+    return this.getSoftLimit();
+  }
+
   private recomputeAllocation(): void {
     let total = 0;
     this.controllables.forEach((c) => {
@@ -206,8 +228,11 @@ export default class CapacityGuard {
       }
       await this.shedUntilHealthy(headroom);
     } else {
-      // Headroom is positive - clear shortfall if we have enough margin AND sustained time
-      if (this.inShortfall && headroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
+      // Headroom is positive (relative to soft limit)
+      // For shortfall clearing, check against shortfall threshold (same as shortfall detection)
+      const shortfallThreshold = this.getShortfallThreshold();
+      const thresholdHeadroom = shortfallThreshold - this.mainPowerKw;
+      if (this.inShortfall && thresholdHeadroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
         const now = Date.now();
         if (this.shortfallClearStartTime === null) {
           // First tick with positive headroom - start the timer
@@ -266,13 +291,18 @@ export default class CapacityGuard {
       await this.onSheddingStart?.();
     }
 
-    // Detect shortfall: overshoot remains after shedding all available devices
-    // This happens when uncontrolled load exceeds our limit or all controllables are already shed
+    // Detect shortfall: when power exceeds the shortfall threshold AND no devices left to shed.
+    // The shortfall threshold is the "real" soft limit (uncapped burst rate).
+    // During end-of-hour, the soft limit for shedding may be artificially lowered to prepare
+    // for the next hour, but shortfall should use the actual budget-based limit.
+    // This prevents false shortfall alerts when we're just constraining to sustainable rate.
     const remainingToShed = Array.from(this.controllables.values()).filter((c) => c.desired === 'ON').length;
-    const nowInShortfall = headroom < 0 && remainingToShed === 0;
+    const shortfallThreshold = this.getShortfallThreshold();
+    const thresholdExceeded = this.mainPowerKw !== null && this.mainPowerKw > shortfallThreshold;
+    const nowInShortfall = thresholdExceeded && remainingToShed === 0;
     if (nowInShortfall && !this.inShortfall) {
-      const deficitKw = -headroom;
-      this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW`);
+      const deficitKw = this.mainPowerKw! - shortfallThreshold;
+      this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW (total=${this.mainPowerKw!.toFixed(2)}kW > threshold=${shortfallThreshold.toFixed(2)}kW)`);
       this.inShortfall = true;
       await this.onShortfall?.(deficitKw);
     } else if (this.inShortfall && headroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {

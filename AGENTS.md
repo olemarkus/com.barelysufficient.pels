@@ -31,8 +31,10 @@ test/               # Jest tests with mock Homey SDK
 ## Key Concepts
 
 ### Capacity Management
-- **Soft limit**: Dynamic limit based on remaining hourly energy budget
-- **Headroom**: Available power (kW) before hitting soft limit
+- **Hard cap**: The contracted grid capacity limit (kW). Exceeding this for the hour triggers penalties (effekttariff). Only meaningful as a full-hour energy estimate, not instantaneous power.
+- **Soft limit**: Dynamically calculated power limit - "if we consume this much for the remainder of the hour, we'll stay below the hard cap"
+- **Headroom**: Available power (kW) before hitting soft limit (soft limit - current power)
+- **Shortfall**: Triggered when estimated hourly usage will exceed hard cap AND no more devices can be shed
 - **Shedding**: Turning off devices to reduce load (lowest priority first)
 - **Restore**: Turning devices back on when headroom allows (highest priority first)
 - **End-of-hour mode**: Last 10 minutes cap burst rate to sustainable rate

@@ -535,11 +535,17 @@ describe('Device plan snapshot', () => {
   });
 
   it('triggers capacity_shortfall when deficit remains after shedding all controllables', async () => {
+    // Shortfall triggers when power exceeds the shortfall threshold AND no devices left to shed.
+    // The shortfall threshold is based on remaining hourly budget / remaining time.
+    // At any point in the hour with no usage, threshold = (limit - margin) / remainingHours.
+    // To ensure shortfall triggers regardless of when the test runs, use a low limit.
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5); // Low limit ensures threshold is exceeded
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
     const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
     const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
@@ -553,7 +559,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Only 1 kW available to shed but deficit is ~3 kW (4 kW total, 1 kW soft).
+    // Only 1 kW available to shed
     (app as any).latestTargetSnapshot = [
       {
         id: 'dev-1',
@@ -566,12 +572,12 @@ describe('Device plan snapshot', () => {
     ];
     // Sync the snapshot to the guard so it knows about controllable devices
     (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
 
-    await (app as any).recordPowerSample(4000);
+    // Use very high power to ensure it exceeds any threshold
+    // Even at minute 1 (59 mins left): threshold = 5 / 0.983 = ~5.1kW
+    // At minute 59 (1 min left): threshold = 5 / 0.0167 = ~300kW
+    // So use 500kW to be safe
+    await (app as any).recordPowerSample(500000); // 500kW definitely exceeds threshold
     await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalled();
 
@@ -614,11 +620,14 @@ describe('Device plan snapshot', () => {
   });
 
   it('does not trigger capacity_shortfall repeatedly while already in shortfall state', async () => {
+    // Shortfall triggers when power exceeds the shortfall threshold.
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
     const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
     const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
@@ -632,7 +641,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Only 1 kW available to shed but deficit is ~3 kW (4 kW total, 1 kW soft).
+    // Only 1 kW available to shed
     (app as any).latestTargetSnapshot = [
       {
         id: 'dev-1',
@@ -645,23 +654,19 @@ describe('Device plan snapshot', () => {
     ];
     // Sync the snapshot to the guard so it knows about controllable devices
     (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
 
-    // First shortfall sample - should trigger
-    await (app as any).recordPowerSample(4000);
+    // First shortfall sample - should trigger (500kW definitely exceeds threshold)
+    await (app as any).recordPowerSample(500000);
     await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     // Second shortfall sample - should NOT trigger again (already in shortfall)
-    await (app as any).recordPowerSample(4500);
+    await (app as any).recordPowerSample(550000);
     await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     // Third shortfall sample - should still NOT trigger
-    await (app as any).recordPowerSample(4200);
+    await (app as any).recordPowerSample(520000);
     await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
@@ -669,6 +674,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('triggers capacity_shortfall again after shortfall is resolved and re-enters', async () => {
+    // Shortfall triggers when power exceeds shortfall threshold.
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 500);
     await dev1.setCapabilityValue('onoff', true);
@@ -677,6 +683,8 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [dev1]),
     });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
     const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
     const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
@@ -702,24 +710,15 @@ describe('Device plan snapshot', () => {
     ];
     // Sync the snapshot to the guard so it knows about controllable devices
     (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
 
-    // First shortfall - should trigger (deficit: 4kW total, 0.5kW sheddable, 1kW soft)
-    await (app as any).recordPowerSample(4000);
-    // Guard tick detects shortfall when there's overshoot but no more devices to shed
+    // First shortfall - should trigger (500kW definitely exceeds threshold)
+    await (app as any).recordPowerSample(500000);
     await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
-    // Power drops below soft limit - shortfall resolved (needs sustained time)
-    (app as any).computeDynamicSoftLimit = () => 5;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
-    }
-    await (app as any).recordPowerSample(1500);
+    // Power drops way below threshold - shortfall resolved (needs sustained time)
+    await (app as any).recordPowerSample(1000); // 1kW
     // Need to tick multiple times with time passing to clear shortfall (60s sustained)
     const originalNow = Date.now;
     let mockTime = originalNow();
@@ -732,12 +731,8 @@ describe('Device plan snapshot', () => {
     jest.restoreAllMocks();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
 
-    // Shortfall returns - should trigger again
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
-    await (app as any).recordPowerSample(4000);
+    // Shortfall returns - should trigger again (500kW exceeds threshold)
+    await (app as any).recordPowerSample(500000);
     await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(2);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
@@ -746,11 +741,14 @@ describe('Device plan snapshot', () => {
   });
 
   it('updates capacity_shortfall setting for device sync', async () => {
+    // Shortfall triggers when power exceeds shortfall threshold.
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
     const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
     const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
@@ -779,22 +777,14 @@ describe('Device plan snapshot', () => {
     ];
     // Sync the snapshot to the guard so it knows about controllable devices
     (app as any).syncGuardFromSnapshot((app as any).latestTargetSnapshot);
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
 
-    // Enter shortfall - setting should be true
-    await (app as any).recordPowerSample(4000);
+    // Enter shortfall - setting should be true (500kW definitely exceeds threshold)
+    await (app as any).recordPowerSample(500000);
     await (app as any).capacityGuard?.tick();
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
     // Exit shortfall - setting should be false (needs sustained time)
-    (app as any).computeDynamicSoftLimit = () => 5;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
-    }
-    await (app as any).recordPowerSample(1000);
+    await (app as any).recordPowerSample(1000); // 1kW
     // Need to tick multiple times with time passing to clear shortfall (60s sustained)
     const originalNow = Date.now;
     let mockTime = originalNow();
