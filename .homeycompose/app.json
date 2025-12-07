@@ -14,8 +14,19 @@
   },
   "brandColor": "#7fd1ae",
   "category": [
-    "energy"
+    "energy",
+    "climate"
   ],
+  "source": "https://github.com/olemarkus/com.barelysufficient.pels",
+  "support": "https://github.com/olemarkus/com.barelysufficient.pels/issues",
+  "tags": {
+    "en": [
+      "capacity",
+      "power limit",
+      "energy price",
+      "temperature"
+    ]
+  },
   "permissions": [
     "homey:manager:api"
   ],
