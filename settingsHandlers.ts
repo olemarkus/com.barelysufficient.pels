@@ -27,9 +27,11 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       case 'operating_mode': {
         deps.loadCapacitySettings();
         const mode = deps.homey.settings.get('operating_mode') || 'Home';
-        deps.applyDeviceTargetsForMode(mode).catch((error: Error) => {
-          deps.errorLog('Failed to apply per-mode device targets', error);
-        });
+        if (!deps.getCapacityDryRun()) {
+          deps.applyDeviceTargetsForMode(mode).catch((error: Error) => {
+            deps.errorLog('Failed to apply per-mode device targets', error);
+          });
+        }
         deps.rebuildPlanFromCache();
         break;
       }
@@ -86,6 +88,10 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
         deps.refreshTargetDevicesSnapshot().catch((error: Error) => {
           deps.errorLog('Failed to refresh plan after price optimization settings change', error);
         });
+        break;
+      case 'overshoot_behaviors':
+        deps.loadCapacitySettings();
+        deps.rebuildPlanFromCache();
         break;
       case 'price_optimization_enabled':
         deps.updatePriceOptimizationEnabled(true);

@@ -142,6 +142,21 @@ describe('Settings UI', () => {
           priceOptList.appendChild(row);
         }
       }
+
+      // Overshoot control toggle
+      const overshootSelect = document.getElementById('device-detail-overshoot');
+      const overshootRow = document.getElementById('device-detail-overshoot-temp-row');
+      const overshootInput = document.getElementById('device-detail-overshoot-temp');
+      const updateOvershoot = () => {
+        if (!overshootRow || !overshootSelect) return;
+        const isTemp = overshootSelect.value === 'set_temperature';
+        overshootRow.hidden = !isTemp;
+        if (overshootInput) overshootInput.disabled = !isTemp;
+      };
+      if (overshootSelect) {
+        overshootSelect.addEventListener('change', updateOvershoot);
+      }
+      updateOvershoot();
     });
   `;
 
@@ -947,6 +962,20 @@ describe('Settings UI', () => {
               });
             });
           });
+
+          const overshootSelect = document.getElementById('device-detail-overshoot');
+          const overshootRow = document.getElementById('device-detail-overshoot-temp-row');
+          const overshootInput = document.getElementById('device-detail-overshoot-temp');
+          const updateOvershoot = () => {
+            if (!overshootSelect || !overshootRow) return;
+            const isTemp = overshootSelect.value === 'set_temperature';
+            overshootRow.hidden = !isTemp;
+            if (overshootInput) overshootInput.disabled = !isTemp;
+          };
+          if (overshootSelect) {
+            overshootSelect.addEventListener('change', updateOvershoot);
+          }
+          updateOvershoot();
         });
       `;
 
@@ -1061,6 +1090,22 @@ describe('Settings UI', () => {
 
       expect(cheapDelta).toBeTruthy();
       expect(expensiveDelta).toBeTruthy();
+    });
+
+    test('overshoot temperature input appears when choosing set temperature', async () => {
+      const isHidden = await page.$eval('#device-detail-overlay', (el) => (el as HTMLElement).hidden);
+      if (isHidden) await page.click('.device-row__name');
+
+      const initiallyHidden = await page.$eval('#device-detail-overshoot-temp-row', (el) => (el as HTMLElement).hidden);
+      expect(initiallyHidden).toBe(true);
+
+      await page.select('#device-detail-overshoot', 'set_temperature');
+
+      const hiddenAfterSelect = await page.$eval('#device-detail-overshoot-temp-row', (el) => (el as HTMLElement).hidden);
+      expect(hiddenAfterSelect).toBe(false);
+
+      const inputDisabled = await page.$eval('#device-detail-overshoot-temp', (el) => (el as HTMLInputElement).disabled);
+      expect(inputDisabled).toBe(false);
     });
 
     test('device detail panel fits within viewport', async () => {

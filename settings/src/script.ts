@@ -106,6 +106,9 @@ const deviceDetailModes = qs('#device-detail-modes');
 const deviceDetailDeltaSection = qs('#device-detail-delta-section');
 const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement;
 const deviceDetailExpensiveDelta = document.querySelector('#device-detail-expensive-delta') as HTMLInputElement;
+const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
+const deviceDetailShedTemp = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
 
 let currentDetailDeviceId: string | null = null;
 
@@ -202,6 +205,12 @@ let latestDevices: any[] = [];
 let modeTargets: Record<string, Record<string, number>> = {};
 let controllableMap: Record<string, boolean> = {};
 let modeAliases: Record<string, string> = {};
+type ShedAction = 'turn_off' | 'set_temperature';
+interface ShedBehavior {
+  action: ShedAction;
+  temperature?: number;
+}
+let shedBehaviors: Record<string, ShedBehavior> = {};
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -722,6 +731,13 @@ const loadModeAndPriorities = async () => {
   renderModeOptions();
 };
 
+const loadShedBehaviors = async () => {
+  const behaviors = await getSetting('overshoot_behaviors');
+  shedBehaviors = behaviors && typeof behaviors === 'object'
+    ? behaviors as Record<string, ShedBehavior>
+    : {};
+};
+
 // Refresh only the active mode (when changed externally), preserving editing mode
 const refreshActiveMode = async () => {
   const mode = await getSetting(OPERATING_MODE_KEY);
@@ -1052,9 +1068,16 @@ const renderPlan = (plan) => {
       const powerLine = document.createElement('div');
       powerLine.className = 'plan-meta-line';
       const currentPower = dev.currentState || 'unknown';
-      const plannedPower = dev.plannedState === 'shed' ? 'off' : dev.plannedState === 'keep' ? currentPower : dev.plannedState || 'keep';
-      const powerChanging = currentPower !== plannedPower;
-      const powerText = powerChanging ? `${currentPower} → ${plannedPower}` : currentPower;
+      const isMinTempActive = dev.shedAction === 'set_temperature'
+        && typeof dev.shedTemperature === 'number'
+        && dev.currentTarget === dev.shedTemperature;
+      const plannedPowerState = dev.plannedState === 'shed'
+        ? (dev.shedAction === 'set_temperature' ? 'on' : 'off')
+        : dev.plannedState === 'keep'
+          ? (isMinTempActive ? 'on' : currentPower)
+          : dev.plannedState || 'keep';
+      const powerChanging = plannedPowerState !== currentPower;
+      const powerText = powerChanging ? `${currentPower} → ${plannedPowerState}` : plannedPowerState;
       const powerLabel = document.createElement('span');
       powerLabel.className = 'plan-label';
       powerLabel.textContent = 'Power';
@@ -1644,6 +1667,15 @@ const openDeviceDetail = (deviceId: string) => {
     deviceDetailPriceOpt.checked = priceConfig?.enabled || false;
   }
 
+  const shedConfig = shedBehaviors[deviceId];
+  if (deviceDetailShedAction) {
+    deviceDetailShedAction.value = shedConfig?.action || 'turn_off';
+  }
+  if (deviceDetailShedTemp) {
+    const temp = shedConfig?.temperature;
+    deviceDetailShedTemp.value = typeof temp === 'number' ? temp.toString() : '';
+  }
+
   // Populate mode list
   renderDeviceDetailModes(device);
 
@@ -1657,6 +1689,7 @@ const openDeviceDetail = (deviceId: string) => {
 
   // Show/hide delta section based on price optimization enabled
   updateDeltaSectionVisibility();
+  updateShedTempVisibility();
 
   // Show panel
   if (deviceDetailOverlay) {
@@ -1674,6 +1707,29 @@ const closeDeviceDetail = () => {
 const updateDeltaSectionVisibility = () => {
   if (deviceDetailDeltaSection && deviceDetailPriceOpt) {
     deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.checked ? 'block' : 'none';
+  }
+};
+
+const getShedDefaultTemp = (deviceId: string | null): number => {
+  if (!deviceId) return 10;
+  const modeTarget = modeTargets[activeMode]?.[deviceId] ?? modeTargets[editingMode]?.[deviceId];
+  if (typeof modeTarget === 'number') return modeTarget;
+  const device = latestDevices.find((d) => d.id === deviceId);
+  const currentTarget = device?.targets?.[0]?.value;
+  if (typeof currentTarget === 'number') return currentTarget;
+  return 10;
+};
+
+const updateShedTempVisibility = () => {
+  if (!deviceDetailShedAction || !deviceDetailShedTempRow) return;
+  const isTemp = deviceDetailShedAction.value === 'set_temperature';
+  deviceDetailShedTempRow.hidden = !isTemp;
+  if (deviceDetailShedTemp) {
+    deviceDetailShedTemp.disabled = !isTemp;
+    if (isTemp && !deviceDetailShedTemp.value) {
+      const fallback = getShedDefaultTemp(currentDetailDeviceId);
+      deviceDetailShedTemp.value = fallback.toString();
+    }
   }
 };
 
@@ -1744,6 +1800,26 @@ const renderDeviceDetailModes = (device: any) => {
   });
 };
 
+const saveShedBehavior = async () => {
+  if (!currentDetailDeviceId) return;
+  const deviceId = currentDetailDeviceId;
+  const action: ShedAction = deviceDetailShedAction?.value === 'set_temperature' ? 'set_temperature' : 'turn_off';
+  const parsedTemp = parseFloat(deviceDetailShedTemp?.value || '');
+  const validTemp = Number.isFinite(parsedTemp) && parsedTemp >= -20 && parsedTemp <= 50 ? parsedTemp : null;
+
+  if (action === 'set_temperature') {
+    const temperature = validTemp ?? shedBehaviors[deviceId]?.temperature ?? getShedDefaultTemp(deviceId);
+    shedBehaviors[deviceId] = { action, temperature };
+    if (deviceDetailShedTemp && validTemp === null) {
+      deviceDetailShedTemp.value = temperature.toString();
+    }
+  } else {
+    shedBehaviors[deviceId] = { action: 'turn_off' };
+  }
+
+  await setSetting('overshoot_behaviors', shedBehaviors);
+};
+
 const initDeviceDetailHandlers = () => {
   // Close button
   deviceDetailClose?.addEventListener('click', closeDeviceDetail);
@@ -1789,6 +1865,14 @@ const initDeviceDetailHandlers = () => {
   deviceDetailPriceOpt?.addEventListener('change', autoSavePriceOpt);
   deviceDetailCheapDelta?.addEventListener('change', autoSavePriceOpt);
   deviceDetailExpensiveDelta?.addEventListener('change', autoSavePriceOpt);
+
+  // Shedding behavior handling
+  const autoSaveShedBehavior = async () => {
+    updateShedTempVisibility();
+    await saveShedBehavior();
+  };
+  deviceDetailShedAction?.addEventListener('change', autoSaveShedBehavior);
+  deviceDetailShedTemp?.addEventListener('change', autoSaveShedBehavior);
 
   // Escape key to close
   document.addEventListener('keydown', (e) => {
@@ -1888,6 +1972,9 @@ const boot = async () => {
           // Mode changed externally (e.g., via Flow) - refresh only active mode dropdown
           refreshActiveMode().catch(() => {});
         }
+        if (key === 'overshoot_behaviors') {
+          loadShedBehaviors().catch(() => {});
+        }
       });
     }
 
@@ -1922,6 +2009,7 @@ const boot = async () => {
     // Refresh stale data status periodically (every 30 seconds)
     setInterval(() => loadStaleDataStatus(), 30 * 1000);
     await loadModeAndPriorities();
+    await loadShedBehaviors();
     await loadPriceOptimizationSettings(); // Load before rendering devices
     initDeviceDetailHandlers();
     renderPriorities(latestDevices);
