@@ -2,7 +2,8 @@
   "extends": "@tsconfig/node16/tsconfig.json",
   "compilerOptions": {
     "allowJs": false,
-    "outDir": ".homeybuild/"
+    "outDir": ".homeybuild/",
+    "isolatedModules": true
   },
   "include": [
     "app.ts",
