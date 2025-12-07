@@ -24,6 +24,9 @@
       "bash -c 'tsc --noEmit'"
     ]
   },
+  "overrides": {
+    "parseuri": "3.0.2"
+  },
   "dependencies": {
     "homey-api": "^3.14.22",
     "sortablejs": "^1.15.6"
