@@ -350,6 +350,20 @@
               <span>Price-based control</span>
             </label>
             <p class="muted">Adjust temperature based on electricity price fluctuations.</p>
+
+            <label class="field">
+              <span class="field__label">When overshooting</span>
+              <select id="device-detail-overshoot">
+                <option value="turn_off">Turn off</option>
+                <option value="set_temperature">Set to temperature</option>
+              </select>
+              <small class="field__hint">Choose how PELS reacts when capacity is exceeded.</small>
+            </label>
+            <label class="field" id="device-detail-overshoot-temp-row" hidden>
+              <span class="field__label">Overshoot temperature (°C)</span>
+              <input type="number" id="device-detail-overshoot-temp" step="0.5" min="-20" max="40">
+              <small class="field__hint">Minimum setpoint instead of turning off.</small>
+            </label>
           </div>
         </section>
         

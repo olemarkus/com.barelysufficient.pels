@@ -86,6 +86,10 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
           deps.errorLog('Failed to refresh plan after price optimization settings change', error);
         });
         break;
+      case 'overshoot_behaviors':
+        deps.loadCapacitySettings();
+        deps.rebuildPlanFromCache();
+        break;
       case 'price_optimization_enabled':
         deps.updatePriceOptimizationEnabled(true);
         break;

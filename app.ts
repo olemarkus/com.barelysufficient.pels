@@ -18,6 +18,45 @@ const RESTORE_COOLDOWN_MS = 30000; // Wait 30s after restore for power to stabil
 const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot every 5 minutes
 
+type OvershootAction = 'turn_off' | 'set_temperature';
+
+type OvershootBehavior = {
+  action: OvershootAction;
+  temperature?: number;
+};
+
+type DevicePlanDevice = {
+  id: string;
+  name: string;
+  currentState: string;
+  plannedState: string;
+  currentTarget: unknown;
+  plannedTarget: number | null;
+  priority?: number;
+  powerKw?: number;
+  expectedPowerKw?: number;
+  measuredPowerKw?: number;
+  reason?: string;
+  zone?: string;
+  controllable?: boolean;
+  currentTemperature?: number;
+  shedAction?: OvershootAction;
+  shedTemperature?: number | null;
+};
+
+type DevicePlan = {
+  meta: {
+    totalKw: number | null;
+    softLimitKw: number;
+    headroomKw: number | null;
+    hourlyBudgetExhausted?: boolean;
+    usedKWh?: number;
+    budgetKWh?: number;
+    minutesRemaining?: number;
+  };
+  devices: DevicePlanDevice[];
+};
+
 module.exports = class PelsApp extends Homey.App {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey API has no TypeScript definitions
   private powerTracker: PowerTrackerState = {};
@@ -35,6 +74,7 @@ module.exports = class PelsApp extends Homey.App {
   private capacityPriorities: Record<string, Record<string, number>> = {};
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
   private controllableDevices: Record<string, boolean> = {};
+  private overshootBehaviors: Record<string, OvershootBehavior> = {};
   private lastDeviceShedMs: Record<string, number> = {};
   private pendingSheds = new Set<string>(); // Devices currently being shed (in-flight)
   private pendingRestores = new Set<string>(); // Devices currently being restored (in-flight)
@@ -224,6 +264,7 @@ module.exports = class PelsApp extends Homey.App {
     const modeTargets = this.homey.settings.get('mode_device_targets');
     const dryRun = this.homey.settings.get('capacity_dry_run');
     const controllables = this.homey.settings.get('controllable_devices');
+    const overshootBehaviors = this.homey.settings.get('overshoot_behaviors') || this.homey.settings.get('shed_behaviors');
     if (Number.isFinite(limit)) this.capacitySettings.limitKw = Number(limit);
     if (Number.isFinite(margin)) this.capacitySettings.marginKw = Number(margin);
     if (modeAliases && typeof modeAliases === 'object') {
@@ -240,6 +281,7 @@ module.exports = class PelsApp extends Homey.App {
     if (modeTargets && typeof modeTargets === 'object') this.modeDeviceTargets = modeTargets as Record<string, Record<string, number>>;
     if (typeof dryRun === 'boolean') this.capacityDryRun = dryRun;
     if (controllables && typeof controllables === 'object') this.controllableDevices = controllables as Record<string, boolean>;
+    this.overshootBehaviors = this.normalizeOvershootBehaviors(overshootBehaviors);
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.capacitySettings.marginKw);
   }
@@ -590,7 +632,7 @@ module.exports = class PelsApp extends Homey.App {
         const headroom = (plan as any).meta?.headroomKw;
         const changes = [...plan.devices].filter((d) => {
           if (d.controllable === false) return false;
-          const desiredPower = d.plannedState === 'shed' ? 'off' : 'on';
+          const desiredPower = d.plannedState === 'shed' && d.shedAction !== 'set_temperature' ? 'off' : 'on';
           const samePower = desiredPower === d.currentState;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Target values can be various types
           const normalizeTarget = (v: any) => (Number.isFinite(v) ? Number(v) : v ?? null);
@@ -606,7 +648,11 @@ module.exports = class PelsApp extends Homey.App {
           })
           .map((d) => {
             const temp = `${d.currentTarget ?? '–'}° -> ${d.plannedTarget ?? '–'}°`;
-            const nextPower = d.plannedState === 'shed' ? 'off' : 'on';
+            const nextPower = d.plannedState === 'shed'
+              ? (d.shedAction === 'set_temperature'
+                ? `set temp${typeof d.plannedTarget === 'number' ? ` ${d.plannedTarget}°` : ''}`
+                : 'off')
+              : 'on';
             const power = `${d.currentState} -> ${nextPower}`;
             const powerInfo = typeof d.powerKw === 'number'
               ? `, est ${d.powerKw.toFixed(2)}kW`
@@ -643,16 +689,7 @@ module.exports = class PelsApp extends Homey.App {
     }
   }
 
-  private updatePelsStatus(plan: {
-    meta: {
-      totalKw: number | null;
-      softLimitKw: number;
-      headroomKw: number | null;
-      usedKWh?: number;
-      budgetKWh?: number;
-    };
-    devices: Array<{ plannedState: string; currentState: string; controllable?: boolean }>;
-  }): void {
+  private updatePelsStatus(plan: DevicePlan): void {
     // Compute price level
     const isCheap = this.isCurrentHourCheap();
     const isExpensive = this.isCurrentHourExpensive();
@@ -668,8 +705,14 @@ module.exports = class PelsApp extends Homey.App {
 
     // Count controlled devices on/off
     const controllableDevices = plan.devices.filter((d) => d.controllable !== false);
-    const devicesOn = controllableDevices.filter((d) => d.currentState === 'on' && d.plannedState !== 'shed').length;
-    const devicesOff = controllableDevices.filter((d) => d.currentState === 'off' || d.plannedState === 'shed').length;
+    const devicesOn = controllableDevices.filter((d) => {
+      const treatedAsOff = d.plannedState === 'shed' && d.shedAction !== 'set_temperature';
+      return d.currentState === 'on' && !treatedAsOff;
+    }).length;
+    const devicesOff = controllableDevices.filter((d) => {
+      const treatedAsOff = d.plannedState === 'shed' && d.shedAction !== 'set_temperature';
+      return d.currentState === 'off' || treatedAsOff;
+    }).length;
 
     const status = {
       headroomKw: plan.meta.headroomKw,
@@ -707,33 +750,7 @@ module.exports = class PelsApp extends Homey.App {
     zone?: string;
     controllable?: boolean;
     currentTemperature?: number;
-  }>): {
-    meta: {
-      totalKw: number | null;
-      softLimitKw: number;
-      headroomKw: number | null;
-      hourlyBudgetExhausted?: boolean;
-      usedKWh?: number;
-      budgetKWh?: number;
-      minutesRemaining?: number;
-    };
-    devices: Array<{
-      id: string;
-      name: string;
-      currentState: string;
-      plannedState: string;
-      currentTarget: unknown;
-      plannedTarget: number | null;
-      priority?: number;
-      powerKw?: number;
-      expectedPowerKw?: number;
-      measuredPowerKw?: number;
-      reason?: string;
-      zone?: string;
-      controllable?: boolean;
-      currentTemperature?: number;
-    }>;
-  } {
+  }>): DevicePlan {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
     const softLimit = this.computeDynamicSoftLimit();
@@ -860,6 +877,19 @@ module.exports = class PelsApp extends Homey.App {
       // eslint-disable-next-line no-nested-ternary -- Clear controllable-to-state mapping
       let plannedState = controllable ? (shedSet.has(dev.id) ? 'shed' : 'keep') : 'keep';
       let reason = controllable ? shedReasons.get(dev.id) || `keep (priority ${priority})` : 'not controllable by PELS';
+      let shedAction: OvershootAction = 'turn_off';
+      let shedTemperature: number | null = null;
+
+      if (controllable && shedSet.has(dev.id)) {
+        const overshootBehavior = this.getOvershootBehavior(dev.id);
+        if (overshootBehavior.action === 'set_temperature' && overshootBehavior.temperature !== null) {
+          shedAction = 'set_temperature';
+          shedTemperature = overshootBehavior.temperature;
+          plannedTarget = overshootBehavior.temperature;
+          reason = `${reason}, set to ${overshootBehavior.temperature}°C instead of off`;
+        }
+      }
+
       if (controllable && plannedState !== 'shed' && currentState === 'off') {
         const need = (dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1) + restoreMarginPlanning;
         const hr = headroomRaw;
@@ -893,6 +923,8 @@ module.exports = class PelsApp extends Homey.App {
         zone: dev.zone || 'Unknown',
         controllable,
         currentTemperature: dev.currentTemperature,
+        shedAction,
+        shedTemperature,
       };
     });
 
@@ -1142,6 +1174,37 @@ module.exports = class PelsApp extends Homey.App {
     return modes;
   }
 
+  private normalizeOvershootBehaviors(input: unknown): Record<string, OvershootBehavior> {
+    if (!this.isRecord(input)) return {};
+    const result: Record<string, OvershootBehavior> = {};
+    for (const deviceId of Object.keys(input)) {
+      const raw = input[deviceId];
+      if (!raw || typeof raw !== 'object') continue;
+      const candidate = raw as { action?: unknown; temperature?: unknown };
+      const action: OvershootAction = candidate.action === 'set_temperature' ? 'set_temperature' : 'turn_off';
+      const tempRaw = candidate.temperature;
+      const temperature = typeof tempRaw === 'number' && Number.isFinite(tempRaw)
+        ? Math.max(-50, Math.min(50, tempRaw))
+        : undefined;
+      result[deviceId] = action === 'set_temperature' && typeof temperature === 'number'
+        ? { action, temperature }
+        : { action };
+    }
+    return result;
+  }
+
+  private getOvershootBehavior(deviceId: string): { action: OvershootAction; temperature: number | null } {
+    const behavior = this.overshootBehaviors[deviceId];
+    const action: OvershootAction = behavior?.action === 'set_temperature' ? 'set_temperature' : 'turn_off';
+    const temp = behavior?.temperature;
+    const temperature = Number.isFinite(temp) ? Math.max(-50, Math.min(50, Number(temp))) : null;
+    return { action, temperature };
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+  }
+
   private computeDynamicSoftLimit(): number {
     const budgetKw = this.capacitySettings.limitKw;
     const { marginKw } = this.capacitySettings;
@@ -1229,10 +1292,30 @@ module.exports = class PelsApp extends Homey.App {
       this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, already off in snapshot`);
       return;
     }
+    const overshootBehavior = this.getOvershootBehavior(deviceId);
+    const targetCap = snapshotState?.targets?.[0]?.id;
+    const overshootTemp = overshootBehavior.action === 'set_temperature' && overshootBehavior.temperature !== null
+      ? overshootBehavior.temperature
+      : null;
+    const canSetOvershootTemp = Boolean(targetCap && overshootTemp !== null);
     const name = deviceName || deviceId;
     // Mark as pending before async operation
     this.pendingSheds.add(deviceId);
     try {
+      if (canSetOvershootTemp) {
+        try {
+          await this.deviceManager.setCapability(deviceId, targetCap!, overshootTemp as number);
+          this.log(`Capacity: set ${targetCap} for ${name} to ${overshootTemp}°C (overshoot)`);
+          this.updateLocalSnapshot(deviceId, { target: overshootTemp as number });
+          this.lastSheddingMs = now;
+          this.lastOvershootMs = now;
+          this.lastDeviceShedMs[deviceId] = now;
+          return;
+        } catch (error) {
+          this.error(`Failed to set overshoot temperature for ${name} via DeviceManager`, error);
+          // Fall through to power off as a fallback
+        }
+      }
       try {
         await this.deviceManager.setCapability(deviceId, 'onoff', false);
 
@@ -1285,18 +1368,42 @@ module.exports = class PelsApp extends Homey.App {
     }).catch((err: Error) => this.error('Failed to create shortfall cleared notification', err));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Plan structure has dynamic target values
-  private async applyPlanActions(plan: { devices: Array<{ id: string; name?: string; plannedState: string; currentState: string; plannedTarget: number | null; currentTarget: any; controllable?: boolean }> }): Promise<void> {
+  // eslint-disable-next-line max-len -- Plan structure has dynamic target values
+  private async applyPlanActions(plan: DevicePlan): Promise<void> {
     if (!plan || !Array.isArray(plan.devices)) return;
 
     for (const dev of plan.devices) {
+      const shedAction = dev.shedAction ?? 'turn_off';
       if (dev.controllable === false) continue;
       // Apply on/off when shedding.
-      if (dev.plannedState === 'shed' && dev.currentState !== 'off') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Dev reason is dynamically added
-        const { reason } = dev as any;
-        const isSwap = reason && reason.includes('swapped out for');
-        await this.applySheddingToDevice(dev.id, dev.name, isSwap ? reason : undefined);
+      if (dev.plannedState === 'shed') {
+        if (shedAction === 'set_temperature') {
+          const targetCap = this.latestTargetSnapshot.find((d) => d.id === dev.id)?.targets?.[0]?.id;
+          if (this.capacityDryRun) {
+            this.log(`Capacity (dry run): would set ${targetCap || 'target'} for ${dev.name || dev.id} to ${dev.plannedTarget ?? '–'}°C (overshoot)`);
+            continue;
+          }
+          if (targetCap && typeof dev.plannedTarget === 'number') {
+            try {
+              await this.deviceManager.setCapability(dev.id, targetCap, dev.plannedTarget);
+              this.log(`Capacity: set ${targetCap} for ${dev.name || dev.id} to ${dev.plannedTarget}°C (overshoot)`);
+              this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
+              const now = Date.now();
+              this.lastSheddingMs = now;
+              this.lastOvershootMs = now;
+              this.lastDeviceShedMs[dev.id] = now;
+            } catch (error) {
+              this.error(`Failed to set overshoot temperature for ${dev.name || dev.id} via DeviceManager`, error);
+            }
+          }
+          continue;
+        }
+        if (dev.currentState !== 'off') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Dev reason is dynamically added
+          const { reason } = dev as any;
+          const isSwap = reason && reason.includes('swapped out for');
+          await this.applySheddingToDevice(dev.id, dev.name, isSwap ? reason : undefined);
+        }
         continue;
       }
       // Restore power if the plan keeps it on and it was off.

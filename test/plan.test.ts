@@ -151,6 +151,38 @@ describe('Device plan snapshot', () => {
     expect(dev1Plan?.plannedState).toBe('keep');
   });
 
+  it('sets an overshoot temperature instead of turning off when configured', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 4000); // 4 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 15 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Force overshoot
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    await (app as any).recordPowerSample(5000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.shedAction).toBe('set_temperature');
+    expect(devPlan?.plannedTarget).toBe(15);
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.reason).toContain('set to 15');
+  });
+
   it('executes shedding action when plan says shed and dry run is off', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
     setMockDrivers({
@@ -181,6 +213,27 @@ describe('Device plan snapshot', () => {
 
     await (app as any).applyPlanActions(plan);
     expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
+  });
+
+  it('applies overshoot temperature via actuator when configured to avoid turning off', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 20);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 12 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    await (app as any).applySheddingToDevice('dev-1', 'Heater A', 'test overshoot');
+
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(12);
+    expect(await dev1.getCapabilityValue('onoff')).toBe(true);
   });
 
   it('ignores non-controllable devices when planning shedding', async () => {
