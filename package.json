@@ -10,6 +10,7 @@
     "install-app": "npm run build:settings && homey app install",
     "lint": "eslint .",
     "test:unit": "jest --testPathIgnorePatterns=settings-ui",
+    "ci": "npm run build && npm run test:unit && npm run test:ui && npm run lint",
     "test": "npm run test:unit && npm run validate",
     "test:ui": "npm run build:tokens && jest --config jest.config.ui.cjs",
     "test:all": "npm run test:ui && npm test",
