@@ -92,6 +92,7 @@ Note: Do not run `homey` CLI commands - these deploy to hardware and should be r
 | `operating_mode` | string | Active operating mode name |
 | `capacity_priorities` | object | `{ [mode]: { [deviceId]: priority } }` |
 | `mode_device_targets` | object | `{ [mode]: { [deviceId]: temperature } }` |
+| `overshoot_behaviors` | object | Per-device shedding behavior `{ [deviceId]: { action: 'turn_off' \| 'set_temperature', temperature?: number } }` |
 | `price_area` | string | NO1-NO5 price zone |
 | `price_optimization_settings` | object | Per-device price deltas |
 

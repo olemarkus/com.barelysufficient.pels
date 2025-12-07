@@ -110,6 +110,7 @@ When power exceeds the soft limit, devices are shed in priority order:
 1. **Lowest priority first** (highest number): Priority 5 sheds before priority 3
 2. **One device at a time**: After shedding, wait for measurements to stabilize
 3. **Respect cooldowns**: No rapid toggling
+4. **Optional min temperature**: A device can be configured to drop to a minimum setpoint instead of turning fully off.
 
 ---
 

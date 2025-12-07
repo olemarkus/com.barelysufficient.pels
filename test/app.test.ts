@@ -152,9 +152,9 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await app.onInit();
 
-    // Inject mock homeyApi
+    // Inject mock homeyApi (override both app and device manager instances)
     const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
+    const homeyApiStub = {
       devices: {
         getDevices: async () => ({
           'dev-1': {
@@ -168,6 +168,8 @@ describe('MyApp initialization', () => {
         setCapabilityValue: setCapSpy,
       },
     };
+    (app as any).homeyApi = homeyApiStub;
+    (app as any).deviceManager.homeyApi = homeyApiStub;
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
@@ -177,6 +179,60 @@ describe('MyApp initialization', () => {
       deviceId: 'dev-1',
       capabilityId: 'target_temperature',
       value: 16,
+    });
+  });
+
+  it('does not reapply mode target when device is already at target', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('target_temperature', 20);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Reset device to 20 to ensure applyDeviceTargetsForMode has work to do
+    // (onInit might have synced it to 19 already via applyPriceOptimization)
+    await heater.setCapabilityValue('target_temperature', 20);
+    // Also update the internal snapshot so the app knows it's 20
+    (app as any).updateLocalSnapshot('dev-1', { target: 20 });
+
+    const setCapSpy = jest.fn().mockImplementation(async (args) => {
+      if (args.deviceId === 'dev-1' && args.capabilityId === 'target_temperature') {
+        await heater.setCapabilityValue('target_temperature', args.value);
+      }
+    });
+    (app as any).homeyApi = {
+      devices: {
+        setCapabilityValue: setCapSpy,
+        getDevices: async () => ({
+          'dev-1': {
+            id: 'dev-1',
+            name: 'Heater',
+            capabilities: ['target_temperature', 'onoff'],
+            capabilitiesObj: {
+              target_temperature: { value: await heater.getCapabilityValue('target_temperature') },
+              onoff: { value: await heater.getCapabilityValue('onoff') },
+            },
+          },
+        }),
+      },
+    };
+
+    // First apply should set target to 19.
+    await (app as any).applyDeviceTargetsForMode('Home');
+    // Snapshot is updated internally; second apply should skip because target matches.
+    await (app as any).applyDeviceTargetsForMode('Home');
+
+    expect(setCapSpy).toHaveBeenCalledTimes(1);
+    expect(setCapSpy).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      value: 19,
     });
   });
 
