@@ -64,6 +64,13 @@ const buildDom = () => {
   `;
 };
 
+const loadSettingsScript = async (delay = 50) => {
+  // Use require to avoid Node --experimental-vm-modules requirement for dynamic import under Jest 30
+  // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
+  require('../settings/script.js');
+  await new Promise((resolve) => setTimeout(resolve, delay));
+};
+
 describe('settings script', () => {
   beforeEach(() => {
     jest.resetModules();
@@ -83,9 +90,7 @@ describe('settings script', () => {
   });
 
   it('renders devices with target temperature capabilities', async () => {
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await loadSettingsScript();
 
     const rows = document.querySelectorAll('#device-list .device-row');
     expect(rows.length).toBe(1);
@@ -98,9 +103,7 @@ describe('settings script', () => {
     global.Homey.get = jest.fn((key, cb) => cb(null, []));
     // @ts-expect-error mutate mock
     global.Homey.set = jest.fn((key, val, cb) => cb && cb(null));
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await loadSettingsScript();
 
     expect(document.querySelectorAll('#device-list .device-row').length).toBe(0);
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(false);
@@ -124,9 +127,7 @@ describe('settings script', () => {
       ]);
     });
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await loadSettingsScript();
 
     const renameBtn = document.querySelector('#rename-mode-button') as HTMLButtonElement;
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
@@ -161,9 +162,7 @@ describe('settings script', () => {
       ]);
     });
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await loadSettingsScript();
 
     const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
@@ -222,9 +221,7 @@ describe('settings script', () => {
       ]);
     });
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await loadSettingsScript();
 
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
     const addBtn = document.querySelector('#add-mode-button') as HTMLButtonElement;
@@ -261,9 +258,7 @@ describe('settings script', () => {
       ]);
     });
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await loadSettingsScript();
 
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
 
@@ -294,9 +289,7 @@ describe('settings script', () => {
       ]);
     });
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await loadSettingsScript();
 
     const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
@@ -329,9 +322,7 @@ describe('settings script', () => {
       ]);
     });
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await loadSettingsScript();
 
     const renameBtn = document.querySelector('#rename-mode-button') as HTMLButtonElement;
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
@@ -404,9 +395,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await loadSettingsScript(200);
 
     // Check that the price panel exists and make it visible first
     const pricePanel = document.querySelector('#price-panel');
@@ -489,9 +478,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await loadSettingsScript(200);
 
     // Switch to price tab to trigger refresh
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
@@ -549,9 +536,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await loadSettingsScript(200);
 
     // Switch to price tab to trigger refresh
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
@@ -607,9 +592,7 @@ describe('Plan sorting', () => {
       }),
     };
 
-    // @ts-ignore settings script is plain JS
-    await import('../settings/script.js');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await loadSettingsScript(100);
 
     // Switch to plan tab
     const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
