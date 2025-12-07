@@ -53,8 +53,9 @@ test/               # Jest tests with mock Homey SDK
 
 ```bash
 npm install          # Install dependencies
-npm test             # Run Jest tests
-npx tsc --noEmit     # Type check (run before committing)
+npx lint-staged      # Pre-commit hook: ESLint + type check on staged files
+npm test             # Full test suite (pre-commit)
+npx tsc --noEmit     # Type check (extra safety if needed)
 ```
 
 Note: Do not run `homey` CLI commands - these deploy to hardware and should be run manually by the user.
