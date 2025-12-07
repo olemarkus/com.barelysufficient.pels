@@ -114,6 +114,10 @@ After installation:
 ### 5) Use price optimization
 - Enable price optimization per device in the Devices tab, set cheap/expensive deltas, and configure your price area and tariff in the Price tab.
 
+### 6) Reapply mode targets to fix drift
+- If a device has drifted from its mode target (e.g., manual override), trigger **Set operating mode** with the *current* mode (and ensure dry-run is off).  
+- The card will re-send the configured targets for that mode to bring devices back in line.
+
 ---
 
 ## Configuration
@@ -126,6 +130,7 @@ The Devices tab shows all devices in your home that have temperature control cap
 |---------|-------------|
 | **Controllable** | Toggle whether PELS can control this device. Only controllable devices will be managed for capacity and price optimization. |
 | **Price Optimization** | Enable temperature adjustments based on electricity prices. |
+| **When shedding** | Choose what happens during capacity shedding: turn off (default) or drop to a minimum temperature. |
 
 > **Note:** You must enable "Controllable" for a device before it appears in the Modes tab.
 

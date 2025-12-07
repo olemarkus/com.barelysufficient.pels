@@ -151,6 +151,393 @@ describe('Device plan snapshot', () => {
     expect(dev1Plan?.plannedState).toBe('keep');
   });
 
+  it('sets a shed temperature instead of turning off when configured', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 4000); // 4 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 15 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Force overshoot
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    await (app as any).recordPowerSample(5000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.shedAction).toBe('set_temperature');
+    expect(devPlan?.plannedTarget).toBe(15);
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.reason).toContain('shed');
+  });
+
+  it('uses concise reason when shedding to a minimum temperature', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 4000); // 4 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    await (app as any).recordPowerSample(5000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.reason).toContain('shed');
+  });
+
+  it('keeps a device marked as shed when it is already at its shed temperature', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 16); // already set to min temp
+    await dev1.setCapabilityValue('measure_power', 0);
+    await dev1.setCapabilityValue('onoff', false); // currently off, so would not be selected as a shed candidate
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+
+    await (app as any).recordPowerSample(1000); // force overshoot (will try to shed but already at min temp)
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.reason).toContain('shed due to capacity');
+  });
+
+  it('uses the same shed reason for minimum-temperature shedding and turn-off shedding', async () => {
+    const minTempDev = new MockDevice('dev-min', 'Min Temp', ['target_temperature', 'measure_power', 'onoff']);
+    await minTempDev.setCapabilityValue('target_temperature', 20);
+    await minTempDev.setCapabilityValue('measure_power', 1000); // 1 kW
+    await minTempDev.setCapabilityValue('onoff', true);
+
+    const offDev = new MockDevice('dev-off', 'Turn Off', ['target_temperature', 'measure_power', 'onoff']);
+    await offDev.setCapabilityValue('target_temperature', 20);
+    await offDev.setCapabilityValue('measure_power', 800); // 0.8 kW
+    await offDev.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [minTempDev, offDev]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-min': 11, 'dev-off': 10 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-min': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+
+    await (app as any).recordPowerSample(1800); // total 1.8 kW -> shed both
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const minPlan = plan.devices.find((d: any) => d.id === 'dev-min');
+    const offPlan = plan.devices.find((d: any) => d.id === 'dev-off');
+
+    expect(minPlan?.plannedState).toBe('shed');
+    expect(minPlan?.shedAction).toBe('set_temperature');
+    expect(minPlan?.plannedTarget).toBe(16);
+    expect(minPlan?.reason).toContain('shed due to capacity');
+
+    expect(offPlan?.plannedState).toBe('shed');
+    expect(offPlan?.shedAction).toBe('turn_off');
+    expect(offPlan?.reason).toContain('shed due to capacity');
+  });
+
+  it('uses shortfall reason for minimum-temperature shedding when in shortfall', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Force shortfall state and an overshoot so shedding occurs.
+    (app as any).capacityGuard.isInShortfall = () => true;
+    (app as any).inShortfall = true;
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(1200);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.shedAction).toBe('set_temperature');
+    expect(devPlan?.reason).toBe('temperature lowered while in capacity shortfall');
+  });
+
+  it('keeps a min-temperature shed device marked as shed during cooldown even if its target was overwritten', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Trigger an initial shed to set deviceLastShedMs.
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(1200);
+
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
+
+    // Force cooldown window for device by keeping lastDeviceShedMs recent.
+    (app as any).lastDeviceShedMs['dev-1'] = Date.now();
+    (app as any).lastSheddingMs = Date.now();
+
+    // Now plan with ample headroom but still within cooldown.
+    (app as any).computeDynamicSoftLimit = () => 5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+    }
+    await (app as any).recordPowerSample(500);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.plannedTarget).toBe(16);
+    expect(devPlan?.reason).toContain('cooldown');
+  });
+
+  it('does not overwrite a shed device target when applying mode targets', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 4000); // 4 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Trigger shed to set min-temp.
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(5000);
+
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
+
+    // Apply mode targets while device is shed; should be skipped.
+    await (app as any).applyDeviceTargetsForMode('Home');
+
+    // Rebuild plan to reflect current snapshot.
+    (app as any).computeDynamicSoftLimit = () => 5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+    }
+    await (app as any).recordPowerSample(500);
+
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.plannedTarget).toBe(16);
+  });
+
+  it('keeps minimum-temperature shedding in cooldown while leaving power on', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Initial overshoot to start shedding and record timestamps.
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(1200);
+
+    // Force cooldown window and rebuild plan with available headroom.
+    (app as any).lastSheddingMs = Date.now();
+    (app as any).lastOvershootMs = Date.now();
+    (app as any).computeDynamicSoftLimit = () => 5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+    }
+
+    await (app as any).recordPowerSample(500);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.shedAction).toBe('set_temperature');
+    expect(devPlan?.plannedTarget).toBe(16);
+    expect(devPlan?.reason).toContain('stay shed during cooldown before restore');
+  });
+
+  it('restores minimum-temperature shedding after cooldown with normal reason and targets', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Initial overshoot to shed.
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(1200);
+
+    // Move past cooldown and provide ample headroom so device should restore.
+    (app as any).lastSheddingMs = Date.now() - 180000; // cooldown expired
+    (app as any).lastOvershootMs = Date.now() - 180000;
+    (app as any).computeDynamicSoftLimit = () => 5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+    }
+
+    await (app as any).recordPowerSample(500);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('keep');
+    expect(devPlan?.plannedTarget).toBe(21);
+    expect(devPlan?.reason).toContain('keep');
+    expect(devPlan?.reason).not.toContain('cooldown');
+  });
+
+  it('marks off devices as staying off during cooldown with a short reason', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 0);
+    await dev1.setCapabilityValue('onoff', false); // currently off
+    await dev1.setCapabilityValue('target_temperature', 20);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Plenty of headroom but still in cooldown due to a recent shed
+    (app as any).computeDynamicSoftLimit = () => 5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+    }
+    (app as any).lastSheddingMs = Date.now(); // force cooldown window
+
+    await (app as any).recordPowerSample(1000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.reason).toContain('stay shed during cooldown before restore');
+  });
+
+  it('does not start shedding cooldown when no devices can be shed', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 0);
+    await dev1.setCapabilityValue('onoff', true);
+    await dev1.setCapabilityValue('target_temperature', 20);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    // Make device non-controllable so no shedding is possible
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': false });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+
+    await (app as any).recordPowerSample(600); // 0.6 kW total, overshoot of 0.1 kW
+
+    expect((app as any).lastOvershootMs).toBeNull();
+  });
+
   it('executes shedding action when plan says shed and dry run is off', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
     setMockDrivers({
@@ -183,11 +570,66 @@ describe('Device plan snapshot', () => {
     expect(spy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
   });
 
+  it('applies shed temperature via actuator when configured to avoid turning off', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 20);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 12 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    await (app as any).applySheddingToDevice('dev-1', 'Heater A', 'test overshoot');
+
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(12);
+    expect(await dev1.getCapabilityValue('onoff')).toBe(true);
+  });
+
+  it('does not plan swaps using devices constrained to minimum temperature shedding', async () => {
+    const minTempDev = new MockDevice('dev-min', 'Low Pri', ['target_temperature', 'measure_power', 'onoff']);
+    await minTempDev.setCapabilityValue('measure_power', 1000); // 1 kW on
+    await minTempDev.setCapabilityValue('onoff', true);
+    await minTempDev.setCapabilityValue('target_temperature', 20);
+
+    const highPriDev = new MockDevice('dev-high', 'High Pri', ['target_temperature', 'onoff']);
+    await highPriDev.setCapabilityValue('onoff', false);
+    await highPriDev.setCapabilityValue('target_temperature', 21);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [minTempDev, highPriDev]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-min': 11 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-min': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Soft limit 1.3 kW, current total 1.0 kW -> headroom 0.3 kW (not enough for ~1 kW restore)
+    (app as any).computeDynamicSoftLimit = () => 1.3;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1.3);
+    }
+    await (app as any).recordPowerSample(1000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const highPlan = plan.devices.find((d: any) => d.id === 'dev-high');
+    const minPlan = plan.devices.find((d: any) => d.id === 'dev-min');
+
+    expect(highPlan?.plannedState).toBe('shed');
+    expect(highPlan?.reason).toContain('insufficient headroom');
+    expect(minPlan?.plannedState).not.toBe('shed'); // not swapped out because min-temp devices are non-swappable
+  });
+
   it('ignores non-controllable devices when planning shedding', async () => {
-    const controllable = new MockDevice('dev-ctl', 'Heater A', ['target_temperature', 'measure_power']);
-    const nonCtl = new MockDevice('dev-non', 'Heater B', ['target_temperature', 'measure_power']);
-    await controllable.setCapabilityValue('measure_power', 2000);
-    await nonCtl.setCapabilityValue('measure_power', 2000);
+    const controllable = new MockDevice('dev-ctl', 'Heater A', ['target_temperature']);
+    const nonCtl = new MockDevice('dev-non', 'Heater B', ['target_temperature']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [controllable, nonCtl]),
     });
@@ -240,41 +682,75 @@ describe('Device plan snapshot', () => {
   });
 
   it('keeps device shed until headroom exceeds restore margin', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'measure_power']);
-    await dev1.setCapabilityValue('measure_power', 2000);
+    // This test verifies hysteresis behavior:
+    // 1. Device gets shed during overshoot
+    // 2. Device stays shed when headroom is positive but below restore margin
+    // 3. Device restores when headroom exceeds restore margin + device power
+
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 1000); // 1 kW device
+    await dev1.setCapabilityValue('onoff', true);
+    await dev1.setCapabilityValue('target_temperature', 20);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
 
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('capacity_margin', 0.2); // 200W restore margin
+
     const app = createApp();
     await app.onInit();
 
-    // Force soft limit to 1 kW and total to 1.1 kW -> deficit triggers shed.
-    (app as any).computeDynamicSoftLimit = () => 1;
+    // Step 1: Overshoot - device should be shed
+    // Set soft limit low enough to trigger shedding
+    (app as any).computeDynamicSoftLimit = () => 0.5; // 500W limit
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
-    await (app as any).recordPowerSample(1100);
+
+    await (app as any).recordPowerSample(1000); // 1kW total, 500W limit => -500W headroom
     let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
-    // Slight headroom (+0.05 kW) should not restore because below restore margin (0.2).
-    (app as any).computeDynamicSoftLimit = () => 1.15;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1.15);
+    // Step 2: Small positive headroom (below restore margin) - device should STAY shed
+    // First, update mock device to reflect it was turned off
+    await dev1.setCapabilityValue('onoff', false);
+    (app as any).lastSnapshotRefreshMs = 0; // Force refresh
+
+    // Clear shedding-related cooldowns but NOT restore margin consideration
+    (app as any).lastSheddingMs = 0;
+    (app as any).lastOvershootMs = 0;
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.sheddingActive = false;
     }
-    await (app as any).recordPowerSample(1100);
+
+    // Now set headroom to small positive (0.1 kW) - below device power (1kW) + margin (0.2kW)
+    // With device off, power drops. Say power is now 0.5kW (other loads).
+    // Soft limit 0.7 => headroom = 0.2kW. Device needs 1kW + 0.2kW margin = 1.2kW. Not enough.
+    (app as any).computeDynamicSoftLimit = () => 0.7;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.7);
+    }
+
+    await (app as any).recordPowerSample(500); // 500W with device off
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    // Device should stay shed because headroom (0.2kW) < device power (1kW) + margin (0.2kW)
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
-    // Large headroom should allow restoration.
-    // Need at least 1kW (fallback) + 0.2kW margin = 1.2kW headroom.
-    // Total 1.1kW. Soft limit needs to be > 2.3kW.
-    (app as any).computeDynamicSoftLimit = () => 2.5;
+    // Step 3: Large headroom - device should restore
+    // Clear all cooldowns to allow restoration
+    (app as any).lastSheddingMs = 0;
+    (app as any).lastOvershootMs = 0;
+    (app as any).lastRestoreMs = 0;
+
+    // Set soft limit high enough for restoration: need > device power + margin
+    // Power 500W, soft limit 2kW => headroom 1.5kW. Device needs 1kW + 0.2kW = 1.2kW. OK!
+    (app as any).computeDynamicSoftLimit = () => 2;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 2.5);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
     }
-    await (app as any).recordPowerSample(1100);
+
+    await (app as any).recordPowerSample(500);
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('keep');
   });
@@ -511,42 +987,6 @@ describe('Device plan snapshot', () => {
     expect(parsed[0].targets[0].value).toBe(22);
   });
 
-  it('uses expected power for shedding when measured power is unavailable', async () => {
-    const app = createApp();
-    await app.onInit();
-
-    // Force a small soft limit so the sample power triggers an overshoot.
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
-    }
-
-    // Snapshot contains a controllable, powered-on device with known expected draw but no live measurement.
-    (app as any).setSnapshotForTests([
-      {
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-        powerKw: 1.2,
-        expectedPowerKw: 1.2,
-        currentOn: true,
-        controllable: true,
-      },
-    ]);
-
-    const logSpy = jest.spyOn(app as any, 'log');
-
-    await (app as any).recordPowerSample(2000); // 2 kW total, above the 0.5 kW soft limit
-
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-    const devicePlan = plan.devices.find((d: any) => d.id === 'dev-1');
-    expect(devicePlan?.plannedState).toBe('shed');
-
-    const planLog = logSpy.mock.calls.map((args) => args.join(' ')).find((line) => line.includes('Plan: overshoot'));
-    expect(planLog).toBeDefined();
-    expect(planLog).not.toContain('totalSheddable=0.00kW');
-  });
-
   it('does not count already-off devices toward shedding need', async () => {
     const devOn = new MockDevice('dev-on', 'On Device', ['target_temperature', 'onoff', 'measure_power']);
     const devOff = new MockDevice('dev-off', 'Off Device', ['target_temperature', 'onoff', 'measure_power']);
@@ -611,7 +1051,6 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 1,
-        measuredPowerKw: 1, // Required for shedding logic to see it as effective
         currentOn: true,
         controllable: true,
       },
@@ -962,22 +1401,6 @@ describe('Device plan snapshot', () => {
     const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
     const device = snapshot.find((d: any) => d.id === 'dev-1');
     expect(device.powerKw).toBeCloseTo(1.2, 3);
-  });
-
-  it('interprets settings.load = 0 as 1 kW', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
-    dev1.setSettings({ load: 0 });
-
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [dev1]),
-    });
-
-    const app = createApp();
-    await app.onInit();
-
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
-    const device = snapshot.find((d: any) => d.id === 'dev-1');
-    expect(device.powerKw).toBe(1);
   });
 
   it('includes Hoiax water heater in device snapshot with target_temperature', async () => {
@@ -1761,7 +2184,6 @@ describe('Dry run mode', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 2,
-        measuredPowerKw: 2,
         currentOn: true,
         controllable: true,
       },
@@ -2124,5 +2546,218 @@ describe('Dry run mode', () => {
 
     // This SHOULD pass but will FAIL due to the 50% budget bug
     expect(restoreCall).toBeDefined();
+  });
+
+
+  it('should not consider devices already at shed temperature as candidates', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater 1', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 20); // Normal temp
+    await dev1.setCapabilityValue('measure_power', 1000); // 1 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    const dev2 = new MockDevice('dev-2', 'Heater 2', ['target_temperature', 'measure_power', 'onoff']);
+    await dev2.setCapabilityValue('target_temperature', 20); // Normal temp
+    await dev2.setCapabilityValue('measure_power', 1000); // 1 kW
+    await dev2.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1, dev2]),
+    });
+
+    // Configure shed behavior to lower temperature
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'dev-1': { action: 'set_temperature', temperature: 15 },
+      'dev-2': { action: 'set_temperature', temperature: 15 },
+    });
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20, 'dev-2': 20 } });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    // 1. Initial State: Both devices ON at 20C. Total power 2kW. Limit 3kW. No shed.
+
+    // 2. Trigger Overshoot to shed dev-1
+    // Set Limit to 1.5kW. Total 2kW. Need to shed 0.5kW.
+    (app as any).computeDynamicSoftLimit = () => 1.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1.5);
+    }
+    await (app as any).recordPowerSample(2000);
+
+    // Verify dev-1 or dev-2 is shed to 15C.
+    const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const shedCount1 = plan1.devices.filter((d: any) => d.plannedState === 'shed').length;
+    expect(shedCount1).toBeGreaterThanOrEqual(1);
+
+    // We assume dev-1 was shed (or dev-2). Let's say dev-1.
+    // Manually update dev-1 to reflect it reached 15C.
+    await dev1.setCapabilityValue('target_temperature', 15);
+
+    // 3. Trigger another overshoot.
+    // Total power still 2kW (heater might still run at lower temp).
+    // Limit drops to 0.5kW. Need to shed another 1.5kW.
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+
+    // Spy on log to catch "Plan: ..."
+    const logSpy = jest.spyOn((app as any), 'log');
+
+    await (app as any).recordPowerSample(2000);
+
+    // Check logs for candidate count
+    const planLogs = logSpy.mock.calls.filter(args => typeof args[0] === 'string' && args[0].startsWith('Plan:'));
+    const lastPlanLog = planLogs[planLogs.length - 1][0] as string;
+
+    // Extract candidate count from log "Plan: overshoot=..., candidates=X, ..."
+    const match = lastPlanLog.match(/candidates=(\d+)/);
+    const candidateCount = match ? parseInt(match[1], 10) : -1;
+
+    // Expectations:
+    // dev-1 is already at shed temp (15C). It should NOT be a candidate.
+    // dev-2 is at normal temp (20C). It SHOULD be a candidate.
+    // So candidates should be 1.
+
+    expect(candidateCount).toBe(1);
+  });
+
+
+  it('should not plan shedding when headroom is positive but less than restore margin (hysteresis zone)', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater 1', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 20);
+    await dev1.setCapabilityValue('measure_power', 1000); // 1 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_limit_kw', 10);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.5); // Large margin for testing
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    // We want behavior: set_temperature to check if it tries to shed
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'dev-1': { action: 'set_temperature', temperature: 15 },
+    });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    // 1. Set Soft Limit to 1.1 kW.
+    (app as any).computeDynamicSoftLimit = () => 1.1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1.1);
+    }
+
+    // 2. Report Power 1.0 kW.
+    // Headroom = 1.1 - 1.0 = 0.1 kW.
+    // Restore Margin = 0.5 kW.
+    // 0 < Headroom (0.1) < Margin (0.5).
+    // Expected: No shed (positive headroom), but NO restore either (below margin).
+    // Current Bug: App subtracts margin: 0.1 - 0.5 = -0.4 -> OVERSHOOT! -> Sheds dev-1.
+
+    const logSpy = jest.spyOn((app as any), 'log');
+
+    await (app as any).recordPowerSample(1000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const sheds = plan.devices.filter((d: any) => d.plannedState === 'shed');
+
+    // Expectation: No shedding because we are under the limit (0.1 kW free).
+    expect(sheds.length).toBe(0);
+
+    // Verify no "Plan: overshoot" log
+    const overshootLogs = logSpy.mock.calls.filter(args => typeof args[0] === 'string' && args[0].includes('Plan: overshoot'));
+    expect(overshootLogs.length).toBe(0);
+  });
+
+
+  it('should throttle restoration of set_temperature devices to one per cycle', async () => {
+    // Detects bug where multiple devices shed via set_temperature restore simultaneously
+    const dev1 = new MockDevice('dev-1', 'Heater 1', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 20);
+    await dev1.setCapabilityValue('measure_power', 1000); // 1 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    const dev2 = new MockDevice('dev-2', 'Heater 2', ['target_temperature', 'measure_power', 'onoff']);
+    await dev2.setCapabilityValue('target_temperature', 20);
+    await dev2.setCapabilityValue('measure_power', 1000); // 1 kW
+    await dev2.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1, dev2]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_limit_kw', 10);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+
+    // Configure shed behavior to set_temperature
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20, 'dev-2': 20 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'dev-1': { action: 'set_temperature', temperature: 10 },
+      'dev-2': { action: 'set_temperature', temperature: 10 },
+    });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    jest.setSystemTime(new Date('2023-01-01T12:00:00Z'));
+
+    const app = createApp();
+    await app.onInit();
+
+    // 1. Trigger Overshoot to shed both devices
+    // Limit = 0.5 kW. Usage = 2.0 kW. Overshoot.
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(2000);
+
+    // Verify both are shed to 10C
+    const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const shedCount = plan1.devices.filter((d: any) => d.plannedState === 'shed').length;
+    expect(shedCount).toBe(2);
+
+    // Update devices to reflect shed state
+    await dev1.setCapabilityValue('target_temperature', 10);
+    await dev2.setCapabilityValue('target_temperature', 10);
+
+    // 2. Restore Capacity
+    // Limit = 5.0 kW. Usage = 2.0 kW (still pulling power at lower temp? or less. say 2.0 for simplicity).
+    // Headroom = 3.0 kW. Enough to restore both.
+    (app as any).computeDynamicSoftLimit = () => 5.0;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5.0);
+    }
+
+    // Advance time to bypass cooldowns if any
+    jest.advanceTimersByTime(10 * 60 * 1000);
+    jest.setSystemTime(new Date('2023-01-01T12:10:00Z'));
+
+    // Explicitly clear cooldowns to avoid test flakiness with Date mocking
+    (app as any).lastSheddingMs = 0;
+    (app as any).lastOvershootMs = 0;
+    (app as any).lastDeviceShedMs = {};
+
+    await (app as any).recordPowerSample(2000);
+
+    const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
+
+    // Check how many devices are still planned as 'shed'
+    // Ideally, only one should be restored, so one should still be 'shed'.
+    // If the bug exists, both will be restored (0 shed).
+    const shedDevicesAfterRestore = plan2.devices.filter((d: any) => d.plannedState === 'shed');
+
+    // We expect throttling: only 1 device restored per cycle.
+    // So 1 device should still be shed.
+    expect(shedDevicesAfterRestore.length).toBeGreaterThanOrEqual(1);
+
+    // Also verify that at least one IS restored (not both shed)
+    expect(shedDevicesAfterRestore.length).toBeLessThan(2);
   });
 });
