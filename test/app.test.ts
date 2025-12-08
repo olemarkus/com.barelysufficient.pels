@@ -147,7 +147,8 @@ describe('MyApp initialization', () => {
 
     // Set up mode targets before init
     mockHomeyInstance.settings.set('mode_device_targets', { Away: { 'dev-1': 16 } });
-    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    // Keep dry run true to avoid auto-applying targets during onInit; we'll apply manually below.
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
 
     const app = createApp();
     await app.onInit();
@@ -177,6 +178,39 @@ describe('MyApp initialization', () => {
       deviceId: 'dev-1',
       capabilityId: 'target_temperature',
       value: 16,
+    });
+  });
+
+  it('does not reapply mode target when device is already at target', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('target_temperature', 20);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    const setCapSpy = jest.fn().mockResolvedValue(undefined);
+    (app as any).homeyApi = {
+      devices: {
+        setCapabilityValue: setCapSpy,
+      },
+    };
+
+    // First apply should set target to 19.
+    await (app as any).applyDeviceTargetsForMode('Home');
+    // Snapshot is updated internally; second apply should skip because target matches.
+    await (app as any).applyDeviceTargetsForMode('Home');
+
+    expect(setCapSpy).toHaveBeenCalledTimes(1);
+    expect(setCapSpy).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      value: 19,
     });
   });
 

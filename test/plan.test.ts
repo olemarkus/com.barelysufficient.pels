@@ -315,6 +315,93 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.reason).toBe('temperature lowered while in capacity shortfall');
   });
 
+  it('keeps a min-temperature shed device marked as shed during cooldown even if its target was overwritten', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Trigger an initial shed to set deviceLastShedMs.
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(1200);
+
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
+
+    // Force cooldown window for device by keeping lastDeviceShedMs recent.
+    (app as any).lastDeviceShedMs['dev-1'] = Date.now();
+    (app as any).lastSheddingMs = Date.now();
+
+    // Now plan with ample headroom but still within cooldown.
+    (app as any).computeDynamicSoftLimit = () => 5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+    }
+    await (app as any).recordPowerSample(500);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.plannedTarget).toBe(16);
+    expect(devPlan?.reason).toContain('cooldown');
+  });
+
+  it('does not overwrite a shed device target when applying mode targets', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 4000); // 4 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Trigger shed to set min-temp.
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(5000);
+
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
+
+    // Apply mode targets while device is shed; should be skipped.
+    await (app as any).applyDeviceTargetsForMode('Home');
+
+    // Rebuild plan to reflect current snapshot.
+    (app as any).computeDynamicSoftLimit = () => 5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+    }
+    await (app as any).recordPowerSample(500);
+
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.plannedTarget).toBe(16);
+  });
+
   it('keeps minimum-temperature shedding in cooldown while leaving power on', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 21);

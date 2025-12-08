@@ -382,6 +382,10 @@ module.exports = class PelsApp extends Homey.App {
     }
     return this.latestTargetSnapshot;
   }
+(Try to fix plan and capacity competing)
+    }
+    return this.latestTargetSnapshot;
+  }
 
   private getCurrentPriceLevel(): PriceLevel {
     const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
@@ -1160,7 +1164,10 @@ module.exports = class PelsApp extends Homey.App {
       const atMinTemp = Number(dev.currentTarget) === behavior.temperature || Number(dev.plannedTarget) === behavior.temperature;
       const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
       const wasShedLastPlan = this.lastPlannedShedIds.has(dev.id);
-      const shouldHoldShed = inShedWindow && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan);
+      const deviceLastShed = this.lastDeviceShedMs[dev.id];
+      const deviceShedRecently = deviceLastShed && Date.now() - deviceLastShed < SHED_COOLDOWN_MS;
+      const shouldHoldShed = (inShedWindow || deviceShedRecently)
+        && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan || deviceShedRecently);
       if (shouldHoldShed) {
         dev.plannedState = 'shed';
         dev.shedAction = 'set_temperature';
