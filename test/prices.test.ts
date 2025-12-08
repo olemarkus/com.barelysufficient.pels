@@ -147,6 +147,9 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.flow._actionCardListeners = {};
     mockHomeyInstance.flow._conditionCardListeners = {};
+    mockHomeyInstance.flow._triggerCardRunListeners = {};
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     jest.clearAllTimers();
     mockHttpsGet = https.get as jest.Mock;
     mockHttpsGet.mockReset();
@@ -634,6 +637,9 @@ describe('Nettleie (grid tariff) fetching', () => {
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.flow._actionCardListeners = {};
     mockHomeyInstance.flow._conditionCardListeners = {};
+    mockHomeyInstance.flow._triggerCardRunListeners = {};
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     jest.clearAllTimers();
 
     // Mock global fetch for nettleie (uses fetch, not https)
@@ -866,6 +872,9 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.flow._actionCardListeners = {};
     mockHomeyInstance.flow._conditionCardListeners = {};
+    mockHomeyInstance.flow._triggerCardRunListeners = {};
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     jest.clearAllTimers();
     mockHttpsGet = https.get as jest.Mock;
     mockHttpsGet.mockReset();

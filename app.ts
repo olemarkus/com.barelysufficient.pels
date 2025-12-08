@@ -83,6 +83,7 @@ module.exports = class PelsApp extends Homey.App {
     expensiveDelta: number;
   }> = {};
   private settingsHandler?: (key: string) => void;
+  private lastNotifiedOperatingMode = 'Home';
 
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     const snap = this.latestTargetSnapshot.find((d) => d.id === deviceId);
@@ -150,6 +151,9 @@ module.exports = class PelsApp extends Homey.App {
     });
     this.homey.settings.on('set', (key: string) => {
       this.settingsHandler?.(key);
+      if (key === OPERATING_MODE_SETTING) {
+        this.notifyOperatingModeChanged(this.operatingMode);
+      }
     });
 
     this.loadPowerTracker();
@@ -161,6 +165,7 @@ module.exports = class PelsApp extends Homey.App {
     } else {
       await this.applyDeviceTargetsForMode(this.operatingMode);
     }
+    this.lastNotifiedOperatingMode = this.operatingMode;
     this.registerFlowCards();
     this.startPeriodicSnapshotRefresh();
     // Refresh prices (will use cache if we have today's data, and update combined_prices)
@@ -203,6 +208,16 @@ module.exports = class PelsApp extends Homey.App {
     if (logChange) {
       this.log(`Price optimization ${this.priceOptimizationEnabled ? 'enabled' : 'disabled'}`);
     }
+  }
+
+  private notifyOperatingModeChanged(mode: string): void {
+    const trimmed = (mode || '').trim();
+    if (!trimmed || this.lastNotifiedOperatingMode === trimmed) return;
+    const card = this.homey.flow?.getTriggerCard?.('operating_mode_changed');
+    if (card && typeof card.trigger === 'function') {
+      card.trigger({}, { mode: trimmed }).catch((err: Error) => this.error('Failed to trigger operating_mode_changed', err));
+    }
+    this.lastNotifiedOperatingMode = trimmed;
   }
 
   private loadPowerTracker(): void {
@@ -292,6 +307,22 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private registerFlowCards(): void {
+    const operatingModeChangedTrigger = this.homey.flow.getTriggerCard('operating_mode_changed');
+    operatingModeChangedTrigger.registerRunListener(async (args: { mode: string | { id: string; name: string } }, state: { mode?: string }) => {
+      const argModeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
+      const chosenModeRaw = (argModeValue || '').trim();
+      const chosenMode = this.resolveModeName(chosenModeRaw);
+      const stateMode = this.resolveModeName((state?.mode || '').trim());
+      if (!chosenMode || !stateMode) return false;
+      return chosenMode.toLowerCase() === stateMode.toLowerCase();
+    });
+    operatingModeChangedTrigger.registerArgumentAutocompleteListener('mode', async (query: string) => {
+      const q = (query || '').toLowerCase();
+      return Array.from(this.getAllModes())
+        .filter((m) => !q || m.toLowerCase().includes(q))
+        .map((m) => ({ id: m, name: m }));
+    });
+
     const reportPowerCard = this.homey.flow.getActionCard('report_power_usage');
     reportPowerCard.registerRunListener(async (args: { power: number }) => {
       const power = Number(args.power);
@@ -333,6 +364,7 @@ module.exports = class PelsApp extends Homey.App {
       } else {
         await this.applyDeviceTargetsForMode(resolved);
       }
+      this.notifyOperatingModeChanged(resolved);
       return true;
     });
     setOperatingModeCard.registerArgumentAutocompleteListener('mode', async (query: string) => {

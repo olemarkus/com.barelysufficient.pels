@@ -165,6 +165,9 @@ export const mockHomeyInstance = {
   flow: {
     _actionCardListeners: {} as Record<string, (args: any) => Promise<any>>,
     _conditionCardListeners: {} as Record<string, (args: any) => Promise<any>>,
+    _triggerCardRunListeners: {} as Record<string, (args: any, state: any) => Promise<any>>,
+    _triggerCardTriggers: {} as Record<string, Array<{ tokens: any; state: any }>>,
+    _triggerCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
     getActionCard: (cardId: string) => ({
       registerRunListener: (listener: (args: any) => Promise<any>) => {
         mockHomeyInstance.flow._actionCardListeners[cardId] = listener;
@@ -177,8 +180,26 @@ export const mockHomeyInstance = {
       },
       registerArgumentAutocompleteListener: () => {},
     }),
-    getTriggerCard: () => ({
-      trigger: () => {},
+    getTriggerCard: (cardId: string) => ({
+      registerRunListener: (listener: (args: any, state: any) => Promise<any>) => {
+        mockHomeyInstance.flow._triggerCardRunListeners[cardId] = listener;
+      },
+      registerArgumentAutocompleteListener: (arg: string, listener: (query: string) => Promise<any>) => {
+        if (!mockHomeyInstance.flow._triggerCardAutocompleteListeners[cardId]) {
+          mockHomeyInstance.flow._triggerCardAutocompleteListeners[cardId] = {};
+        }
+        mockHomeyInstance.flow._triggerCardAutocompleteListeners[cardId][arg] = listener;
+      },
+      trigger: (tokens?: any, state?: any) => {
+        if (!mockHomeyInstance.flow._triggerCardTriggers[cardId]) {
+          mockHomeyInstance.flow._triggerCardTriggers[cardId] = [];
+        }
+        mockHomeyInstance.flow._triggerCardTriggers[cardId].push({
+          tokens: tokens || {},
+          state: state || {},
+        });
+        return Promise.resolve(true);
+      },
     }),
   },
   drivers: {

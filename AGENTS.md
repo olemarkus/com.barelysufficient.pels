@@ -99,4 +99,4 @@ Note: Do not run `homey` CLI commands - these deploy to hardware and should be r
 
 - **Actions**: `report_power_usage`, `set_capacity_limit`, `set_capacity_mode` (operating mode)
 - **Conditions**: `has_capacity_for`, `is_capacity_mode` (operating mode)
-- **Triggers**: `capacity_shortfall`
+- **Triggers**: `capacity_shortfall`, `operating_mode_changed` (fires when operating mode changes to the selected mode)

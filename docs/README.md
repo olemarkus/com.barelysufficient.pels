@@ -201,6 +201,7 @@ For each device with price optimization enabled:
 | Card | Description |
 |------|-------------|
 | **Capacity guard: manual action needed** | Fires when PELS cannot reduce load enough – manual intervention required. The mode indicator device will also show a "Capacity shortfall" alarm. |
+| **Operating mode changed to...** | Fires when the operating mode switches to the selected mode |
 
 ### Conditions
 

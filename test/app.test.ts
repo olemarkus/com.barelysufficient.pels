@@ -17,6 +17,9 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.flow._actionCardListeners = {};
     mockHomeyInstance.flow._conditionCardListeners = {};
+    mockHomeyInstance.flow._triggerCardRunListeners = {};
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     jest.clearAllTimers();
   });
 
@@ -98,6 +101,42 @@ describe('MyApp initialization', () => {
 
     expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Away');
     expect((app as any).operatingMode).toBe('Away');
+  });
+
+  it('triggers operating_mode_changed when mode changes', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
+    await setModeListener({ mode: 'Away' });
+
+    const triggers = mockHomeyInstance.flow._triggerCardTriggers['operating_mode_changed'] || [];
+    expect(triggers.length).toBe(1);
+    expect(triggers[0].state).toEqual({ mode: 'Away' });
+  });
+
+  it('operating_mode_changed trigger filters by selected mode', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const triggerListener = mockHomeyInstance.flow._triggerCardRunListeners['operating_mode_changed'];
+    expect(typeof triggerListener).toBe('function');
+
+    await expect(triggerListener({ mode: 'Away' }, { mode: 'Away' })).resolves.toBe(true);
+    await expect(triggerListener({ mode: { id: 'Away', name: 'Away' } }, { mode: 'Away' })).resolves.toBe(true);
+    await expect(triggerListener({ mode: 'Home' }, { mode: 'Away' })).resolves.toBe(false);
+
+    expect(app).toBeDefined();
   });
 
   it('set_capacity_mode applies device targets when not in dry run', async () => {
@@ -255,6 +294,9 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.flow._actionCardListeners = {};
     mockHomeyInstance.flow._conditionCardListeners = {};
+    mockHomeyInstance.flow._triggerCardRunListeners = {};
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     jest.clearAllTimers();
   });
 

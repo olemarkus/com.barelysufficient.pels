@@ -34,6 +34,11 @@ describe('Device plan snapshot', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    mockHomeyInstance.flow._actionCardListeners = {};
+    mockHomeyInstance.flow._conditionCardListeners = {};
+    mockHomeyInstance.flow._triggerCardRunListeners = {};
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     mockHomeyInstance.api.clearRealtimeEvents();
     jest.clearAllTimers();
   });
@@ -1583,6 +1588,11 @@ describe('Dry run mode', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    mockHomeyInstance.flow._actionCardListeners = {};
+    mockHomeyInstance.flow._conditionCardListeners = {};
+    mockHomeyInstance.flow._triggerCardRunListeners = {};
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     mockHomeyInstance.api.clearRealtimeEvents();
     jest.clearAllTimers();
   });
