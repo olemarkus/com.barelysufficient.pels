@@ -212,7 +212,7 @@ describe('Device plan snapshot', () => {
     });
 
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 }, Comfort: { 'dev-1': 21 } });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     const app = createApp();
     await app.onInit();
@@ -224,7 +224,7 @@ describe('Device plan snapshot', () => {
     expect(homePlan?.plannedTarget).toBe(19);
 
     // Switch mode; settings listener should rebuild snapshot/plan.
-    mockHomeyInstance.settings.set('capacity_mode', 'Comfort');
+    mockHomeyInstance.settings.set('operating_mode', 'Comfort');
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
@@ -1852,7 +1852,7 @@ describe('Dry run mode', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'dev-1': 22 },
     });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
     // Do NOT set capacity_dry_run - default is true
 
     const app = createApp();
@@ -1875,7 +1875,7 @@ describe('Dry run mode', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'dev-1': 22 },
     });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     // Capture logs
     const logCalls: string[] = [];
@@ -1904,7 +1904,7 @@ describe('Dry run mode', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'dev-1': 55 },
     });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'dev-1': {
         enabled: true,
@@ -1954,7 +1954,7 @@ describe('Dry run mode', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'dev-1': 55 },
     });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'dev-1': {
         enabled: true,

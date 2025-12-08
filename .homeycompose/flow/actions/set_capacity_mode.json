@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Set capacity mode"
+    "en": "Set operating mode"
   },
   "titleFormatted": {
-    "en": "Set capacity mode to [[mode]]"
+    "en": "Set operating mode to [[mode]]"
   },
   "args": [
     {

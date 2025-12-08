@@ -1231,7 +1231,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'water-heater-1': 55 } });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('capacity_dry_run', false); // Not dry run
 
     // Configure price optimization for the device
@@ -1366,7 +1366,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'water-heater-1': 55 },
     });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     // Configure price optimization with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
@@ -1457,7 +1457,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'water-heater-1': 55 },
     });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     // Configure price optimization with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
@@ -1545,7 +1545,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'water-heater-1': 55 },
     });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     // Configure price optimization with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
@@ -1634,7 +1634,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'water-heater-1': 55 },
     });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     // Configure price optimization but DISABLED
     mockHomeyInstance.settings.set('price_optimization_settings', {
@@ -1739,7 +1739,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Hjemmekontor: { 'water-heater-1': 65 },
     });
-    mockHomeyInstance.settings.set('capacity_mode', 'Hjemmekontor');
+    mockHomeyInstance.settings.set('operating_mode', 'Hjemmekontor');
     mockHomeyInstance.settings.set('capacity_dry_run', false); // Disable dry run to allow actuation
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {

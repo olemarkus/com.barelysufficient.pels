@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Capacity mode is..."
+    "en": "Operating mode is..."
   },
   "titleFormatted": {
-    "en": "Capacity mode is [[mode]]"
+    "en": "Operating mode is [[mode]]"
   },
   "args": [
     {

@@ -117,7 +117,7 @@ describe('settings script', () => {
     global.Homey.get = jest.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
-      if (key === 'capacity_mode') return cb(null, 'Home');
+      if (key === 'operating_mode') return cb(null, 'Home');
       return cb(null, [
         {
           id: 'dev-1',
@@ -139,7 +139,7 @@ describe('settings script', () => {
 
     const modeOptions = Array.from(modeSelect.options).map((o) => o.value);
     expect(modeOptions).toContain('cozy');
-    expect(setSpy).toHaveBeenCalledWith('capacity_mode', 'cozy', expect.any(Function));
+    expect(setSpy).toHaveBeenCalledWith('operating_mode', 'cozy', expect.any(Function));
     expect(setSpy).toHaveBeenCalledWith('capacity_priorities', { cozy: { 'dev-1': 1 } }, expect.any(Function));
     expect(setSpy).toHaveBeenCalledWith('mode_device_targets', { cozy: { 'dev-1': 20 } }, expect.any(Function));
   });
@@ -152,7 +152,7 @@ describe('settings script', () => {
     global.Homey.get = jest.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
-      if (key === 'capacity_mode') return cb(null, 'Home');
+      if (key === 'operating_mode') return cb(null, 'Home');
       return cb(null, [
         {
           id: 'dev-1',
@@ -184,10 +184,10 @@ describe('settings script', () => {
     priorityForm.dispatchEvent(new Event('submit'));
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Verify that capacity_mode was NOT saved (active mode unchanged)
-    const capacityModeCalls = setSpy.mock.calls.filter((c) => c[0] === 'capacity_mode');
-    // Should not have called setSetting with capacity_mode when saving priorities
-    const prioritySaveCalls = capacityModeCalls.filter((c) => c[1] === 'Away');
+    // Verify that operating_mode was NOT saved (active mode unchanged)
+    const operatingModeCalls = setSpy.mock.calls.filter((c) => c[0] === 'operating_mode');
+    // Should not have called setSetting with operating_mode when saving priorities
+    const prioritySaveCalls = operatingModeCalls.filter((c) => c[1] === 'Away');
     expect(prioritySaveCalls.length).toBe(0);
 
     // Active mode select should still show 'Home'
@@ -206,7 +206,7 @@ describe('settings script', () => {
     global.Homey.get = jest.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1, 'dev-2': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
-      if (key === 'capacity_mode') return cb(null, 'Home');
+      if (key === 'operating_mode') return cb(null, 'Home');
       return cb(null, [
         {
           id: 'dev-1',
@@ -248,7 +248,7 @@ describe('settings script', () => {
     global.Homey.get = jest.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
-      if (key === 'capacity_mode') return cb(null, 'Home');
+      if (key === 'operating_mode') return cb(null, 'Home');
       return cb(null, [
         {
           id: 'dev-1',
@@ -267,8 +267,8 @@ describe('settings script', () => {
     activeModeSelect.dispatchEvent(new Event('change'));
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Now capacity_mode should be saved as 'Away'
-    expect(setSpy).toHaveBeenCalledWith('capacity_mode', 'Away', expect.any(Function));
+    // Now operating_mode should be saved as 'Away'
+    expect(setSpy).toHaveBeenCalledWith('operating_mode', 'Away', expect.any(Function));
   });
 
   it('shows different selected values in editing vs active mode dropdowns', async () => {
@@ -279,7 +279,7 @@ describe('settings script', () => {
     global.Homey.get = jest.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
-      if (key === 'capacity_mode') return cb(null, 'Home');
+      if (key === 'operating_mode') return cb(null, 'Home');
       return cb(null, [
         {
           id: 'dev-1',
@@ -312,7 +312,7 @@ describe('settings script', () => {
     global.Homey.get = jest.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
-      if (key === 'capacity_mode') return cb(null, 'Home');
+      if (key === 'operating_mode') return cb(null, 'Home');
       return cb(null, [
         {
           id: 'dev-1',
@@ -345,7 +345,7 @@ describe('settings script', () => {
     expect(activeOptions).not.toContain('Home');
 
     // Active mode should have been updated to 'Cozy'
-    expect(setSpy).toHaveBeenCalledWith('capacity_mode', 'Cozy', expect.any(Function));
+    expect(setSpy).toHaveBeenCalledWith('operating_mode', 'Cozy', expect.any(Function));
   });
 
   it('displays cheap and expensive hours when combined_prices are available', async () => {

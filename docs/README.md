@@ -207,7 +207,7 @@ For each device with price optimization enabled:
 | Card | Description |
 |------|-------------|
 | **Is there enough capacity?** | Check if there's capacity for a specified kW load |
-| **Capacity mode is...** | Check which mode is currently active |
+| **Operating mode is...** | Check which mode is currently active |
 
 ### Actions
 
@@ -215,7 +215,7 @@ For each device with price optimization enabled:
 |------|-------------|
 | **Report power usage** | **Required!** Feed current power draw (W) from your power meter to PELS |
 | **Set capacity limit** | Change the capacity limit dynamically |
-| **Set capacity mode** | Switch between modes (Home, Away, etc.) |
+| **Set operating mode** | Switch between modes (Home, Away, etc.) |
 
 ### Essential Flow: Reporting Power Usage
 
@@ -234,12 +234,12 @@ THEN Report power usage: {{Power}}
 
 ## Mode Indicator Device
 
-PELS includes a virtual device called "Capacity mode" that displays the currently active mode and capacity shortfall status.
+PELS includes a virtual device called "Operating mode" that displays the currently active mode and capacity shortfall status.
 
 ### Adding the Mode Indicator
 
 1. Go to **Devices** → **Add Device**
-2. Select **PELS** → **Capacity mode**
+2. Select **PELS** → **Operating mode**
 3. Add the device
 
 The device shows:

@@ -76,10 +76,10 @@
       },
       {
         "title": {
-          "en": "Capacity mode is..."
+          "en": "Operating mode is..."
         },
         "titleFormatted": {
-          "en": "Capacity mode is [[mode]]"
+          "en": "Operating mode is [[mode]]"
         },
         "args": [
           {
@@ -148,10 +148,10 @@
       },
       {
         "title": {
-          "en": "Set capacity mode"
+          "en": "Set operating mode"
         },
         "titleFormatted": {
-          "en": "Set capacity mode to [[mode]]"
+          "en": "Set operating mode to [[mode]]"
         },
         "args": [
           {
@@ -216,7 +216,7 @@
         "en": "PELS Status"
       },
       "desc": {
-        "en": "Shows the current capacity mode selected in settings or Flow."
+        "en": "Shows the current operating mode selected in settings or Flow."
       },
       "type": "string",
       "getable": true,
@@ -289,7 +289,7 @@
         "en": "PELS Insights"
       },
       "desc": {
-        "en": "Shows the current capacity mode selected in settings or Flow."
+        "en": "Shows the current operating mode selected in settings or Flow."
       },
       "type": "string",
       "getable": true,

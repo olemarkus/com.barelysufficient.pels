@@ -21,7 +21,7 @@ describe('Mode device targets', () => {
     jest.clearAllTimers();
   });
 
-  it('applies device targets when capacity_mode or mode_device_targets changes', async () => {
+  it('applies device targets when operating_mode or mode_device_targets changes', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -56,7 +56,7 @@ describe('Mode device targets', () => {
     };
 
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -70,7 +70,7 @@ describe('Mode device targets', () => {
     });
 
     // Preload active mode before app init.
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     const app = createApp();
     await app.onInit();

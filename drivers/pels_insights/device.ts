@@ -25,14 +25,16 @@ class PelsInsightsDevice extends Homey.Device {
     }
 
     // Initialize from current settings
-    await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
+    const initialMode = (this.homey.settings.get('operating_mode') as string) || 'home';
+    await this.updateMode(initialMode);
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
     await this.updateFromStatus();
 
     // Listen for settings changes
     this.homey.settings.on('set', async (key: string) => {
-      if (key === 'capacity_mode') {
-        await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
+      if (key === 'operating_mode') {
+        const mode = (this.homey.settings.get('operating_mode') as string) || 'home';
+        await this.updateMode(mode);
       }
       if (key === 'capacity_in_shortfall') {
         await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
@@ -98,4 +100,3 @@ class PelsInsightsDevice extends Homey.Device {
 }
 
 module.exports = PelsInsightsDevice;
-

@@ -3,7 +3,7 @@
     "en": "PELS Insights"
   },
   "desc": {
-    "en": "Shows the current capacity mode selected in settings or Flow."
+    "en": "Shows the current operating mode selected in settings or Flow."
   },
   "type": "string",
   "getable": true,
