@@ -22,13 +22,15 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
   return (key: string) => {
     switch (key) {
       case 'mode_device_targets':
-      case 'capacity_mode':
+      case 'operating_mode': {
         deps.loadCapacitySettings();
-        deps.applyDeviceTargetsForMode(deps.homey.settings.get('capacity_mode') || 'Home').catch((error: Error) => {
+        const mode = deps.homey.settings.get('operating_mode') || 'Home';
+        deps.applyDeviceTargetsForMode(mode).catch((error: Error) => {
           deps.errorLog('Failed to apply per-mode device targets', error);
         });
         deps.rebuildPlanFromCache();
         break;
+      }
       case 'mode_aliases':
         deps.loadCapacitySettings();
         break;

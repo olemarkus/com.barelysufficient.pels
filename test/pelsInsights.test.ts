@@ -56,12 +56,12 @@ class MockDevice {
 // The actual device implementation (we'll test against this logic)
 class PelsInsightsDevice extends MockDevice {
   async onInit(): Promise<void> {
-    await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
+    await this.updateMode(this.homey.settings.get('operating_mode') as string || 'home');
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
 
     this.homey.settings.on('set', async (key) => {
-      if (key === 'capacity_mode') {
-        await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
+      if (key === 'operating_mode') {
+        await this.updateMode(this.homey.settings.get('operating_mode') as string || 'home');
       }
       if (key === 'capacity_in_shortfall') {
         await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
@@ -95,12 +95,12 @@ class PelsInsightsDeviceFixed extends MockDevice {
       await this.addCapability('alarm_generic');
     }
 
-    await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
+    await this.updateMode(this.homey.settings.get('operating_mode') as string || 'home');
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
 
     this.homey.settings.on('set', async (key) => {
-      if (key === 'capacity_mode') {
-        await this.updateMode(this.homey.settings.get('capacity_mode') as string || 'home');
+      if (key === 'operating_mode') {
+        await this.updateMode(this.homey.settings.get('operating_mode') as string || 'home');
       }
       if (key === 'capacity_in_shortfall') {
         await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
@@ -240,7 +240,7 @@ describe('PelsInsightsDevice', () => {
 
       await device.onInit();
 
-      device.setMockSetting('capacity_mode', 'night');
+      device.setMockSetting('operating_mode', 'night');
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 

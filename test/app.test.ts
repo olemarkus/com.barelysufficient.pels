@@ -60,10 +60,10 @@ describe('MyApp initialization', () => {
     expect(result).toBe(true);
 
     // Verify mode was persisted to settings
-    expect(mockHomeyInstance.settings.get('capacity_mode')).toBe('Away');
+    expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Away');
 
     // Verify internal state was updated
-    expect((app as any).capacityMode).toBe('Away');
+    expect((app as any).operatingMode).toBe('Away');
   });
 
   it('set_capacity_mode flow card throws if mode is empty', async () => {
@@ -96,8 +96,8 @@ describe('MyApp initialization', () => {
     const result = await setModeListener({ mode: { id: 'Away', name: 'Away' } });
     expect(result).toBe(true);
 
-    expect(mockHomeyInstance.settings.get('capacity_mode')).toBe('Away');
-    expect((app as any).capacityMode).toBe('Away');
+    expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Away');
+    expect((app as any).operatingMode).toBe('Away');
   });
 
   it('set_capacity_mode applies device targets when not in dry run', async () => {
@@ -149,7 +149,7 @@ describe('MyApp initialization', () => {
 
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 } });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -160,7 +160,7 @@ describe('MyApp initialization', () => {
     const renamedPriorities = { Cozy: { 'dev-1': 3 } };
     mockHomeyInstance.settings.set('mode_device_targets', renamedTargets);
     mockHomeyInstance.settings.set('capacity_priorities', renamedPriorities);
-    mockHomeyInstance.settings.set('capacity_mode', 'Cozy');
+    mockHomeyInstance.settings.set('operating_mode', 'Cozy');
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Cozy' });
     await flushPromises();
     await flushPromises();
@@ -168,10 +168,10 @@ describe('MyApp initialization', () => {
     // Settings should only contain the renamed mode
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual(renamedTargets);
     expect(mockHomeyInstance.settings.get('capacity_priorities')).toEqual(renamedPriorities);
-    expect(mockHomeyInstance.settings.get('capacity_mode')).toBe('Cozy');
+    expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Cozy');
 
     // Internal state should use the renamed mode and drop the old one
-    expect((app as any).capacityMode).toBe('Cozy');
+    expect((app as any).operatingMode).toBe('Cozy');
     expect((app as any).modeDeviceTargets.Cozy['dev-1']).toBe(20);
     expect((app as any).modeDeviceTargets.Home).toBeUndefined();
     expect((app as any).capacityPriorities.Home).toBeUndefined();
@@ -197,7 +197,7 @@ describe('MyApp initialization', () => {
 
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 } });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     const app = createApp();
     await app.onInit();
@@ -205,7 +205,7 @@ describe('MyApp initialization', () => {
     // Simulate renaming Home -> Cozy in settings (UI migration)
     mockHomeyInstance.settings.set('mode_device_targets', { Cozy: { 'dev-1': 20 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Cozy: { 'dev-1': 3 } });
-    mockHomeyInstance.settings.set('capacity_mode', 'Cozy');
+    mockHomeyInstance.settings.set('operating_mode', 'Cozy');
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Cozy' });
     await flushPromises();
 
@@ -225,7 +225,7 @@ describe('MyApp initialization', () => {
 
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 }, Away: { 'dev-1': 18 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 }, Away: { 'dev-1': 2 } });
-    mockHomeyInstance.settings.set('capacity_mode', 'Home');
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
 
     const app = createApp();
     await app.onInit();
@@ -233,11 +233,11 @@ describe('MyApp initialization', () => {
     // Simulate a swap: Home -> Work, Away -> Home (so "Work" takes the old Home data)
     mockHomeyInstance.settings.set('mode_device_targets', { Work: { 'dev-1': 20 }, Home: { 'dev-1': 18 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Work: { 'dev-1': 3 }, Home: { 'dev-1': 2 } });
-    mockHomeyInstance.settings.set('capacity_mode', 'Work'); // active mode is the renamed former Home
+    mockHomeyInstance.settings.set('operating_mode', 'Work'); // active mode is the renamed former Home
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Work', away: 'Home' });
     await flushPromises();
 
-    expect((app as any).capacityMode).toBe('Work');
+    expect((app as any).operatingMode).toBe('Work');
 
     const isModeListener = mockHomeyInstance.flow._conditionCardListeners['is_capacity_mode'];
 

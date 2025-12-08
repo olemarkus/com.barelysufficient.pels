@@ -89,7 +89,7 @@ Note: Do not run `homey` CLI commands - these deploy to hardware and should be r
 | `capacity_limit` | number | Hard limit in kW |
 | `capacity_margin` | number | Soft margin in kW |
 | `capacity_dry_run` | boolean | Prevent actual device control |
-| `capacity_mode` | string | Active mode name |
+| `operating_mode` | string | Active operating mode name |
 | `capacity_priorities` | object | `{ [mode]: { [deviceId]: priority } }` |
 | `mode_device_targets` | object | `{ [mode]: { [deviceId]: temperature } }` |
 | `price_area` | string | NO1-NO5 price zone |
@@ -97,6 +97,6 @@ Note: Do not run `homey` CLI commands - these deploy to hardware and should be r
 
 ## Flow Cards
 
-- **Actions**: `report_power_usage`, `set_capacity_limit`, `set_capacity_mode`
-- **Conditions**: `has_capacity_for`, `is_capacity_mode`
+- **Actions**: `report_power_usage`, `set_capacity_limit`, `set_capacity_mode` (operating mode)
+- **Conditions**: `has_capacity_for`, `is_capacity_mode` (operating mode)
 - **Triggers**: `capacity_shortfall`

@@ -92,6 +92,8 @@ const priceOptimizationEmpty = qs('#price-optimization-empty');
 const priceOptimizationSection = qs('#price-optimization-section');
 const priceOptimizationEnabledCheckbox = document.querySelector('#price-optimization-enabled') as HTMLInputElement;
 
+const OPERATING_MODE_KEY = 'operating_mode';
+
 // Device detail panel elements
 const deviceDetailOverlay = qs('#device-detail-overlay');
 const _deviceDetailPanel = qs('#device-detail-panel');
@@ -687,7 +689,7 @@ const saveCapacitySettings = async () => {
 };
 
 const loadModeAndPriorities = async () => {
-  const mode = await getSetting('capacity_mode');
+  const mode = await getSetting(OPERATING_MODE_KEY);
   const priorities = await getSetting('capacity_priorities');
   const targets = await getSetting('mode_device_targets');
   const controllables = await getSetting('controllable_devices');
@@ -714,7 +716,7 @@ const loadModeAndPriorities = async () => {
 
 // Refresh only the active mode (when changed externally), preserving editing mode
 const refreshActiveMode = async () => {
-  const mode = await getSetting('capacity_mode');
+  const mode = await getSetting(OPERATING_MODE_KEY);
   activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
   // Only update the active mode dropdown, not the editing mode dropdown
   if (activeModeSelect) {
@@ -834,7 +836,7 @@ const setActiveMode = (mode) => {
   const next = (mode || '').trim() || 'Home';
   activeMode = next;
   renderModeOptions();
-  setSetting('capacity_mode', activeMode).catch(() => {});
+  setSetting(OPERATING_MODE_KEY, activeMode).catch(() => {});
 };
 
 const setEditingMode = (mode) => {
@@ -864,7 +866,7 @@ const renameMode = async (oldName, newName) => {
   // If we're renaming the active mode, update it
   if (activeMode === oldKey) {
     activeMode = newKey;
-    await setSetting('capacity_mode', activeMode);
+    await setSetting(OPERATING_MODE_KEY, activeMode);
   }
   // If we're renaming the mode we're editing, update it
   if (editingMode === oldKey) editingMode = newKey;
@@ -1834,7 +1836,7 @@ const boot = async () => {
             refreshPrices().catch(() => {});
           }
         }
-        if (key === 'capacity_mode') {
+        if (key === OPERATING_MODE_KEY) {
           // Mode changed externally (e.g., via Flow) - refresh only active mode dropdown
           refreshActiveMode().catch(() => {});
         }
@@ -1953,7 +1955,7 @@ const boot = async () => {
         // If we deleted the active mode, reset to Home
         if (activeMode === mode) {
           activeMode = 'Home';
-          await setSetting('capacity_mode', activeMode);
+          await setSetting(OPERATING_MODE_KEY, activeMode);
         }
         editingMode = 'Home';
         renderModeOptions();

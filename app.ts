@@ -8,6 +8,7 @@ const { HomeyAPI } = require('homey-api');
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
 const DEBUG_LOG = false;
+const OPERATING_MODE_SETTING = 'operating_mode';
 
 // Timing constants for shedding/restore behavior
 const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before considering restores
@@ -43,7 +44,7 @@ module.exports = class PelsApp extends Homey.App {
 
   private capacityDryRun = true;
   private priceOptimizationEnabled = true;
-  private capacityMode = 'Home';
+  private operatingMode = 'Home';
   private modeAliases: Record<string, string> = {};
   private capacityPriorities: Record<string, Record<string, number>> = {};
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
@@ -156,9 +157,9 @@ module.exports = class PelsApp extends Homey.App {
     await this.refreshTargetDevicesSnapshot();
     this.rebuildPlanFromCache(); // Build initial plan after snapshot is loaded
     if (this.capacityDryRun) {
-      this.previewDeviceTargetsForMode(this.capacityMode);
+      this.previewDeviceTargetsForMode(this.operatingMode);
     } else {
-      await this.applyDeviceTargetsForMode(this.capacityMode);
+      await this.applyDeviceTargetsForMode(this.operatingMode);
     }
     this.registerFlowCards();
     this.startPeriodicSnapshotRefresh();
@@ -214,7 +215,7 @@ module.exports = class PelsApp extends Homey.App {
   private loadCapacitySettings(): void {
     const limit = this.homey.settings.get('capacity_limit_kw');
     const margin = this.homey.settings.get('capacity_margin_kw');
-    const modeRaw = this.homey.settings.get('capacity_mode');
+    const modeRaw = this.homey.settings.get(OPERATING_MODE_SETTING);
     const modeAliases = this.homey.settings.get('mode_aliases');
     const priorities = this.homey.settings.get('capacity_priorities');
     const modeTargets = this.homey.settings.get('mode_device_targets');
@@ -228,7 +229,10 @@ module.exports = class PelsApp extends Homey.App {
         return acc;
       }, {});
     }
-    if (typeof modeRaw === 'string' && modeRaw.length > 0) this.capacityMode = this.resolveModeName(modeRaw);
+    if (typeof modeRaw === 'string' && modeRaw.length > 0) {
+      const resolvedMode = this.resolveModeName(modeRaw);
+      this.operatingMode = resolvedMode;
+    }
     if (priorities && typeof priorities === 'object') this.capacityPriorities = priorities as Record<string, Record<string, number>>;
     if (modeTargets && typeof modeTargets === 'object') this.modeDeviceTargets = modeTargets as Record<string, Record<string, number>>;
     if (typeof dryRun === 'boolean') this.capacityDryRun = dryRun;
@@ -310,8 +314,8 @@ module.exports = class PelsApp extends Homey.App {
       return true;
     });
 
-    const setCapacityMode = this.homey.flow.getActionCard('set_capacity_mode');
-    setCapacityMode.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
+    const setOperatingModeCard = this.homey.flow.getActionCard('set_capacity_mode');
+    setOperatingModeCard.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
       // Handle both string (manual input) and object (autocomplete selection) formats
       const modeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
       const raw = (modeValue || '').trim();
@@ -320,8 +324,8 @@ module.exports = class PelsApp extends Homey.App {
       if (resolved !== raw) {
         this.logDebug(`Mode '${raw}' resolved via alias to '${resolved}'. Flows using the old name should be updated.`);
       }
-      this.capacityMode = resolved;
-      this.homey.settings.set('capacity_mode', resolved);
+      this.operatingMode = resolved;
+      this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
       this.homey.settings.set('mode_alias_used', raw !== resolved ? raw : null);
       // rebuildPlanFromCache() is triggered by the settings listener, no need to call it twice
       if (this.capacityDryRun) {
@@ -331,7 +335,7 @@ module.exports = class PelsApp extends Homey.App {
       }
       return true;
     });
-    setCapacityMode.registerArgumentAutocompleteListener('mode', async (query: string) => {
+    setOperatingModeCard.registerArgumentAutocompleteListener('mode', async (query: string) => {
       const q = (query || '').toLowerCase();
       return Array.from(this.getAllModes())
         .filter((m) => !q || m.toLowerCase().includes(q))
@@ -345,20 +349,20 @@ module.exports = class PelsApp extends Homey.App {
       return this.capacityGuard.hasCapacity(Number(args.required_kw));
     });
 
-    const isCapacityModeCond = this.homey.flow.getConditionCard('is_capacity_mode');
-    isCapacityModeCond.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
+    const isOperatingModeCond = this.homey.flow.getConditionCard('is_capacity_mode');
+    isOperatingModeCond.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
       // Handle both string (manual input) and object (autocomplete selection) formats
       const modeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
       const chosenModeRaw = (modeValue || '').trim();
       const chosenMode = this.resolveModeName(chosenModeRaw);
       if (!chosenMode) return false;
-      const matches = this.capacityMode.toLowerCase() === chosenMode.toLowerCase();
+      const matches = this.operatingMode.toLowerCase() === chosenMode.toLowerCase();
       if (!matches && chosenModeRaw !== chosenMode) {
-        this.logDebug(`Mode condition checked using alias '${chosenModeRaw}' -> '${chosenMode}', but active mode is '${this.capacityMode}'`);
+        this.logDebug(`Mode condition checked using alias '${chosenModeRaw}' -> '${chosenMode}', but active mode is '${this.operatingMode}'`);
       }
       return matches;
     });
-    isCapacityModeCond.registerArgumentAutocompleteListener('mode', async (query: string) => {
+    isOperatingModeCond.registerArgumentAutocompleteListener('mode', async (query: string) => {
       const q = (query || '').toLowerCase();
       return Array.from(this.getAllModes())
         .filter((m) => !q || m.toLowerCase().includes(q))
@@ -462,7 +466,7 @@ module.exports = class PelsApp extends Homey.App {
     if (inShortfall) {
       statusParts.push('SHORTFALL');
     }
-    statusParts.push(`mode=${this.capacityMode}`);
+    statusParts.push(`mode=${this.operatingMode}`);
     if (this.capacityDryRun) {
       statusParts.push('dry-run');
     }
@@ -591,8 +595,8 @@ module.exports = class PelsApp extends Homey.App {
       }
 
       // Get the mode's base target temperature for this device
-      const modeTargets = this.homey.settings.get('mode_device_targets') || {};
-      const currentMode = this.homey.settings.get('capacity_mode') || 'Home';
+      const modeTargets = this.modeDeviceTargets;
+      const currentMode = this.operatingMode || 'Home';
       const baseTemp = modeTargets[currentMode]?.[deviceId];
 
       if (baseTemp === undefined) {
@@ -964,7 +968,7 @@ module.exports = class PelsApp extends Homey.App {
       currentTemperature?: number;
     }>;
   } {
-    const desiredForMode = this.modeDeviceTargets[this.capacityMode] || {};
+    const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
     const softLimit = this.computeDynamicSoftLimit();
 
@@ -1341,7 +1345,7 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private getPriorityForDevice(deviceId: string): number {
-    const mode = this.capacityMode || 'Home';
+    const mode = this.operatingMode || 'Home';
     return this.capacityPriorities[mode]?.[deviceId] ?? 100;
   }
 
@@ -1354,7 +1358,7 @@ module.exports = class PelsApp extends Homey.App {
 
   private getAllModes(): Set<string> {
     const modes = new Set<string>();
-    if (this.capacityMode) modes.add(this.capacityMode);
+    if (this.operatingMode) modes.add(this.operatingMode);
     Object.keys(this.capacityPriorities || {}).forEach((m) => {
       if (m && m.trim()) modes.add(m);
     });
@@ -1600,7 +1604,7 @@ module.exports = class PelsApp extends Homey.App {
               ? ''
               : `from ${dev.currentTarget} `;
             this.log(
-              `Set ${targetCap} for ${dev.name || dev.id} ${fromStr}to ${dev.plannedTarget} (mode: ${this.capacityMode})`,
+              `Set ${targetCap} for ${dev.name || dev.id} ${fromStr}to ${dev.plannedTarget} (mode: ${this.operatingMode})`,
             );
             this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
           } catch (error) {
