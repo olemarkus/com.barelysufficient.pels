@@ -105,9 +105,9 @@ const deviceDetailModes = qs('#device-detail-modes');
 const deviceDetailDeltaSection = qs('#device-detail-delta-section');
 const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement;
 const deviceDetailExpensiveDelta = document.querySelector('#device-detail-expensive-delta') as HTMLInputElement;
-const deviceDetailOvershoot = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
-const deviceDetailOvershootTempRow = qs('#device-detail-overshoot-temp-row');
-const deviceDetailOvershootTemp = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
+const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
+const deviceDetailShedTemp = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
 
 let currentDetailDeviceId: string | null = null;
 
@@ -204,12 +204,12 @@ let latestDevices: any[] = [];
 let modeTargets: Record<string, Record<string, number>> = {};
 let controllableMap: Record<string, boolean> = {};
 let modeAliases: Record<string, string> = {};
-type OvershootAction = 'turn_off' | 'set_temperature';
-interface OvershootBehavior {
-  action: OvershootAction;
+type ShedAction = 'turn_off' | 'set_temperature';
+interface ShedBehavior {
+  action: ShedAction;
   temperature?: number;
 }
-let overshootBehaviors: Record<string, OvershootBehavior> = {};
+let shedBehaviors: Record<string, ShedBehavior> = {};
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -723,10 +723,10 @@ const loadModeAndPriorities = async () => {
   renderModeOptions();
 };
 
-const loadOvershootBehaviors = async () => {
+const loadShedBehaviors = async () => {
   const behaviors = await getSetting('overshoot_behaviors');
-  overshootBehaviors = behaviors && typeof behaviors === 'object'
-    ? behaviors as Record<string, OvershootBehavior>
+  shedBehaviors = behaviors && typeof behaviors === 'object'
+    ? behaviors as Record<string, ShedBehavior>
     : {};
 };
 
@@ -1052,16 +1052,16 @@ const renderPlan = (plan) => {
     const powerLine = document.createElement('div');
     powerLine.className = 'plan-meta-line';
     const currentPower = dev.currentState || 'unknown';
-    const plannedPower
-      = dev.plannedState === 'shed'
-        ? (dev.shedAction === 'set_temperature'
-          ? `set temp${typeof dev.shedTemperature === 'number' ? ` ${dev.shedTemperature}°` : ''}`
-          : 'off')
-        : dev.plannedState === 'keep'
-          ? currentPower
-          : dev.plannedState || 'keep';
-    const powerChanging = currentPower !== plannedPower;
-    const powerText = powerChanging ? `${currentPower} → ${plannedPower}` : currentPower;
+    const isMinTempActive = dev.shedAction === 'set_temperature'
+      && typeof dev.shedTemperature === 'number'
+      && dev.currentTarget === dev.shedTemperature;
+    const plannedPowerState = dev.plannedState === 'shed'
+      ? (dev.shedAction === 'set_temperature' ? 'on' : 'off')
+      : dev.plannedState === 'keep'
+        ? (isMinTempActive ? 'on' : currentPower)
+        : dev.plannedState || 'keep';
+    const powerChanging = plannedPowerState !== currentPower;
+    const powerText = powerChanging ? `${currentPower} → ${plannedPowerState}` : plannedPowerState;
     const powerLabel = document.createElement('span');
     powerLabel.className = 'plan-label';
     powerLabel.textContent = 'Power';
@@ -1640,13 +1640,13 @@ const openDeviceDetail = (deviceId: string) => {
     deviceDetailPriceOpt.checked = priceConfig?.enabled || false;
   }
 
-  const overshootConfig = overshootBehaviors[deviceId];
-  if (deviceDetailOvershoot) {
-    deviceDetailOvershoot.value = overshootConfig?.action || 'turn_off';
+  const shedConfig = shedBehaviors[deviceId];
+  if (deviceDetailShedAction) {
+    deviceDetailShedAction.value = shedConfig?.action || 'turn_off';
   }
-  if (deviceDetailOvershootTemp) {
-    const temp = overshootConfig?.temperature;
-    deviceDetailOvershootTemp.value = typeof temp === 'number' ? temp.toString() : '';
+  if (deviceDetailShedTemp) {
+    const temp = shedConfig?.temperature;
+    deviceDetailShedTemp.value = typeof temp === 'number' ? temp.toString() : '';
   }
 
   // Populate mode list
@@ -1662,7 +1662,7 @@ const openDeviceDetail = (deviceId: string) => {
 
   // Show/hide delta section based on price optimization enabled
   updateDeltaSectionVisibility();
-  updateOvershootTempVisibility();
+  updateShedTempVisibility();
 
   // Show panel
   if (deviceDetailOverlay) {
@@ -1683,7 +1683,7 @@ const updateDeltaSectionVisibility = () => {
   }
 };
 
-const getOvershootDefaultTemp = (deviceId: string | null): number => {
+const getShedDefaultTemp = (deviceId: string | null): number => {
   if (!deviceId) return 10;
   const modeTarget = modeTargets[activeMode]?.[deviceId] ?? modeTargets[editingMode]?.[deviceId];
   if (typeof modeTarget === 'number') return modeTarget;
@@ -1693,15 +1693,15 @@ const getOvershootDefaultTemp = (deviceId: string | null): number => {
   return 10;
 };
 
-const updateOvershootTempVisibility = () => {
-  if (!deviceDetailOvershoot || !deviceDetailOvershootTempRow) return;
-  const isTemp = deviceDetailOvershoot.value === 'set_temperature';
-  deviceDetailOvershootTempRow.hidden = !isTemp;
-  if (deviceDetailOvershootTemp) {
-    deviceDetailOvershootTemp.disabled = !isTemp;
-    if (isTemp && !deviceDetailOvershootTemp.value) {
-      const fallback = getOvershootDefaultTemp(currentDetailDeviceId);
-      deviceDetailOvershootTemp.value = fallback.toString();
+const updateShedTempVisibility = () => {
+  if (!deviceDetailShedAction || !deviceDetailShedTempRow) return;
+  const isTemp = deviceDetailShedAction.value === 'set_temperature';
+  deviceDetailShedTempRow.hidden = !isTemp;
+  if (deviceDetailShedTemp) {
+    deviceDetailShedTemp.disabled = !isTemp;
+    if (isTemp && !deviceDetailShedTemp.value) {
+      const fallback = getShedDefaultTemp(currentDetailDeviceId);
+      deviceDetailShedTemp.value = fallback.toString();
     }
   }
 };
@@ -1773,24 +1773,24 @@ const renderDeviceDetailModes = (device: any) => {
   });
 };
 
-const saveOvershootBehavior = async () => {
+const saveShedBehavior = async () => {
   if (!currentDetailDeviceId) return;
   const deviceId = currentDetailDeviceId;
-  const action: OvershootAction = deviceDetailOvershoot?.value === 'set_temperature' ? 'set_temperature' : 'turn_off';
-  const parsedTemp = parseFloat(deviceDetailOvershootTemp?.value || '');
+  const action: ShedAction = deviceDetailShedAction?.value === 'set_temperature' ? 'set_temperature' : 'turn_off';
+  const parsedTemp = parseFloat(deviceDetailShedTemp?.value || '');
   const validTemp = Number.isFinite(parsedTemp) && parsedTemp >= -20 && parsedTemp <= 50 ? parsedTemp : null;
 
   if (action === 'set_temperature') {
-    const temperature = validTemp ?? overshootBehaviors[deviceId]?.temperature ?? getOvershootDefaultTemp(deviceId);
-    overshootBehaviors[deviceId] = { action, temperature };
-    if (deviceDetailOvershootTemp && validTemp === null) {
-      deviceDetailOvershootTemp.value = temperature.toString();
+    const temperature = validTemp ?? shedBehaviors[deviceId]?.temperature ?? getShedDefaultTemp(deviceId);
+    shedBehaviors[deviceId] = { action, temperature };
+    if (deviceDetailShedTemp && validTemp === null) {
+      deviceDetailShedTemp.value = temperature.toString();
     }
   } else {
-    overshootBehaviors[deviceId] = { action: 'turn_off' };
+    shedBehaviors[deviceId] = { action: 'turn_off' };
   }
 
-  await setSetting('overshoot_behaviors', overshootBehaviors);
+  await setSetting('overshoot_behaviors', shedBehaviors);
 };
 
 const initDeviceDetailHandlers = () => {
@@ -1839,13 +1839,13 @@ const initDeviceDetailHandlers = () => {
   deviceDetailCheapDelta?.addEventListener('change', autoSavePriceOpt);
   deviceDetailExpensiveDelta?.addEventListener('change', autoSavePriceOpt);
 
-  // Overshoot handling
-  const autoSaveOvershoot = async () => {
-    updateOvershootTempVisibility();
-    await saveOvershootBehavior();
+  // Shedding behavior handling
+  const autoSaveShedBehavior = async () => {
+    updateShedTempVisibility();
+    await saveShedBehavior();
   };
-  deviceDetailOvershoot?.addEventListener('change', autoSaveOvershoot);
-  deviceDetailOvershootTemp?.addEventListener('change', autoSaveOvershoot);
+  deviceDetailShedAction?.addEventListener('change', autoSaveShedBehavior);
+  deviceDetailShedTemp?.addEventListener('change', autoSaveShedBehavior);
 
   // Escape key to close
   document.addEventListener('keydown', (e) => {
@@ -1945,8 +1945,8 @@ const boot = async () => {
           // Mode changed externally (e.g., via Flow) - refresh only active mode dropdown
           refreshActiveMode().catch(() => {});
         }
-        if (key === 'overshoot_behaviors') {
-          loadOvershootBehaviors().catch(() => {});
+        if (key === 'overshoot_behaviors' || key === 'shed_behaviors') {
+          loadShedBehaviors().catch(() => {});
         }
       });
     }
@@ -1982,7 +1982,7 @@ const boot = async () => {
     // Refresh stale data status periodically (every 30 seconds)
     setInterval(() => loadStaleDataStatus(), 30 * 1000);
     await loadModeAndPriorities();
-    await loadOvershootBehaviors();
+    await loadShedBehaviors();
     await loadPriceOptimizationSettings(); // Load before rendering devices
     initDeviceDetailHandlers();
     renderPriorities(latestDevices);

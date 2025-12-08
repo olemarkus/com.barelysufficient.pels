@@ -126,7 +126,7 @@ The Devices tab shows all devices in your home that have temperature control cap
 |---------|-------------|
 | **Controllable** | Toggle whether PELS can control this device. Only controllable devices will be managed for capacity and price optimization. |
 | **Price Optimization** | Enable temperature adjustments based on electricity prices. |
-| **When overshooting** | Choose what happens during capacity shedding: turn off (default) or drop to a minimum temperature. |
+| **When shedding** | Choose what happens during capacity shedding: turn off (default) or drop to a minimum temperature. |
 
 > **Note:** You must enable "Controllable" for a device before it appears in the Modes tab.
 
