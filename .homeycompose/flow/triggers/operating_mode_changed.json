@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Operating mode changed to"
+  },
+  "titleFormatted": {
+    "en": "Operating mode changed to [[mode]]"
+  },
+  "args": [
+    {
+      "name": "mode",
+      "type": "autocomplete",
+      "title": {
+        "en": "Operating mode"
+      },
+      "placeholder": {
+        "en": "Select a mode"
+      },
+      "example": {
+        "en": "Home"
+      }
+    }
+  ]
+}
