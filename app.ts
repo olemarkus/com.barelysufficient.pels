@@ -1142,6 +1142,15 @@ module.exports = class PelsApp extends Homey.App {
     }
 
     const inShedWindow = sheddingActive || inCooldown || activeOvershoot || inRestoreCooldown;
+    const shedCooldownRemainingMs = Math.min(
+      sinceShedding !== null ? Math.max(0, SHED_COOLDOWN_MS - sinceShedding) : Number.POSITIVE_INFINITY,
+      sinceOvershoot !== null ? Math.max(0, SHED_COOLDOWN_MS - sinceOvershoot) : Number.POSITIVE_INFINITY,
+    );
+    const shedCooldownRemainingSec = Number.isFinite(shedCooldownRemainingMs)
+      ? Math.ceil(shedCooldownRemainingMs / 1000)
+      : null;
+    const restoreCooldownRemainingMs = sinceRestore !== null ? Math.max(0, RESTORE_COOLDOWN_MS - sinceRestore) : null;
+    const restoreCooldownRemainingSec = restoreCooldownRemainingMs !== null ? Math.ceil(restoreCooldownRemainingMs / 1000) : null;
 
     // Second pass: if a device is at its configured shed temperature and we're still in/just after overshoot,
     // keep it marked as shed so the plan reflects the min-temp shedding state.
@@ -1164,7 +1173,7 @@ module.exports = class PelsApp extends Homey.App {
           || 'shed due to capacity';
         const useCooldownReason = inCooldown && !activeOvershoot && !dev.reason?.includes('swap');
         dev.reason = useCooldownReason
-          ? 'stay shed during cooldown before restore'
+          ? `stay shed during cooldown before restore${shedCooldownRemainingSec !== null ? ` (${shedCooldownRemainingSec}s remaining)` : ''}`
           : baseReason;
       }
     }
@@ -1184,16 +1193,18 @@ module.exports = class PelsApp extends Homey.App {
         : null;
       const baseReason = shedReasons.get(dev.id) || keepReason || 'shed due to capacity';
 
+      if (guardInShortfall && !isSwapReason && !isBudgetReason) {
+        dev.reason = dev.shedAction === 'set_temperature'
+          ? 'temperature lowered while in capacity shortfall'
+          : 'stay off while in capacity shortfall';
+        continue;
+      }
       if (inCooldown && !activeOvershoot && !isSwapReason) {
-        dev.reason = 'stay shed during cooldown before restore';
+        dev.reason = `stay shed during cooldown before restore${shedCooldownRemainingSec !== null ? ` (${shedCooldownRemainingSec}s remaining)` : ''}`;
         continue;
       }
       if (inRestoreCooldown && !isSwapReason && !isBudgetReason && !isShortfallReason) {
-        dev.reason = 'stay shed while power stabilizes';
-        continue;
-      }
-      if (sheddingActive && !isSwapReason && !isBudgetReason && !isShortfallReason) {
-        dev.reason = 'stay shed while shedding is active';
+        dev.reason = `stay shed while power stabilizes${restoreCooldownRemainingSec !== null ? ` (${restoreCooldownRemainingSec}s remaining)` : ''}`;
         continue;
       }
       const shouldNormalizeReason = (

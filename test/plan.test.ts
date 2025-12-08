@@ -283,6 +283,38 @@ describe('Device plan snapshot', () => {
     expect(offPlan?.reason).toContain('shed due to capacity');
   });
 
+  it('uses shortfall reason for minimum-temperature shedding when in shortfall', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Force shortfall state and an overshoot so shedding occurs.
+    (app as any).capacityGuard.isInShortfall = () => true;
+    (app as any).inShortfall = true;
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(1200);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.shedAction).toBe('set_temperature');
+    expect(devPlan?.reason).toBe('temperature lowered while in capacity shortfall');
+  });
+
   it('keeps minimum-temperature shedding in cooldown while leaving power on', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 21);
@@ -321,7 +353,7 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
     expect(devPlan?.plannedTarget).toBe(16);
-    expect(devPlan?.reason).toBe('stay shed during cooldown before restore');
+    expect(devPlan?.reason).toContain('stay shed during cooldown before restore');
   });
 
   it('restores minimum-temperature shedding after cooldown with normal reason and targets', async () => {
@@ -390,7 +422,7 @@ describe('Device plan snapshot', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
-    expect(devPlan?.reason).toBe('stay shed during cooldown before restore');
+    expect(devPlan?.reason).toContain('stay shed during cooldown before restore');
   });
 
   it('does not start shedding cooldown when no devices can be shed', async () => {
