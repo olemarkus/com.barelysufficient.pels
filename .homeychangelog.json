@@ -16,5 +16,8 @@
   },
   "1.0.5": {
     "en": "Renaming modes should now be safe"
+  },
+  "1.1.0": {
+    "en": "Added new card for when operating mode changes"
   }
 }
