@@ -194,10 +194,31 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await app.onInit();
 
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
+    // Reset device to 20 to ensure applyDeviceTargetsForMode has work to do
+    // (onInit might have synced it to 19 already via applyPriceOptimization)
+    await heater.setCapabilityValue('target_temperature', 20);
+    // Also update the internal snapshot so the app knows it's 20
+    (app as any).updateLocalSnapshot('dev-1', { target: 20 });
+
+    const setCapSpy = jest.fn().mockImplementation(async (args) => {
+      if (args.deviceId === 'dev-1' && args.capabilityId === 'target_temperature') {
+        await heater.setCapabilityValue('target_temperature', args.value);
+      }
+    });
     (app as any).homeyApi = {
       devices: {
         setCapabilityValue: setCapSpy,
+        getDevices: async () => ({
+          'dev-1': {
+            id: 'dev-1',
+            name: 'Heater',
+            capabilities: ['target_temperature', 'onoff'],
+            capabilitiesObj: {
+              target_temperature: { value: await heater.getCapabilityValue('target_temperature') },
+              onoff: { value: await heater.getCapabilityValue('onoff') },
+            },
+          },
+        }),
       },
     };
 
