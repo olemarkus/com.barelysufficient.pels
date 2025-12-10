@@ -1392,6 +1392,14 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
+    // Set up mock driver for the device so DeviceManager can find it
+    const waterHeater2 = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    waterHeater2.setCapabilityValue('target_temperature', 55);
+    waterHeater2.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [waterHeater2]),
+    });
+
     const app = createApp();
 
     // Mock Date to return hour 3

@@ -1,5 +1,7 @@
 import Homey from 'homey';
 import CapacityGuard from './capacityGuard';
+import { DeviceManager } from './deviceManager';
+import { Logger, TargetDeviceSnapshot } from './types';
 import PriceService from './priceService';
 import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './powerTracker';
 import { createSettingsHandler } from './settingsHandlers';
@@ -17,28 +19,8 @@ const RESTORE_COOLDOWN_MS = 30000; // Wait 30s after restore for power to stabil
 const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot every 5 minutes
 
-// Power thresholds
-const MIN_SIGNIFICANT_POWER_W = 50; // Minimum power draw to consider "on" or worth tracking
-
-// Power history retention
-type TargetDeviceSnapshot = {
-  id: string;
-  name: string;
-  targets: Array<{ id: string; value: unknown; unit: string }>;
-  powerKw?: number;
-  expectedPowerKw?: number;
-  loadKw?: number;
-  priority?: number;
-  currentOn?: boolean;
-  zone?: string;
-  controllable?: boolean;
-  currentTemperature?: number;
-  measuredPowerKw?: number;
-};
-
 module.exports = class PelsApp extends Homey.App {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey API has no TypeScript definitions
-  private homeyApi?: any;
   private powerTracker: PowerTrackerState = {};
 
   private capacityGuard?: CapacityGuard;
@@ -67,10 +49,9 @@ module.exports = class PelsApp extends Homey.App {
   // Track devices that are swap targets (higher-priority devices waiting to restore via swap)
   // No device with lower priority than a pending swap target should restore first
   private pendingSwapTargets: Set<string> = new Set();
-  // Track when each swap was initiated - used to timeout stale swaps
   private pendingSwapTimestamps: Record<string, number> = {};
-  private latestTargetSnapshot: TargetDeviceSnapshot[] = [];
   private priceService!: PriceService;
+  private deviceManager!: DeviceManager;
 
   private lastPlanSignature = '';
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
@@ -98,17 +79,9 @@ module.exports = class PelsApp extends Homey.App {
   private lastNotifiedOperatingMode = 'Home';
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
+  // Delegated to DeviceManager
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
-    const snap = this.latestTargetSnapshot.find((d) => d.id === deviceId);
-    if (!snap) return;
-    if (typeof updates.target === 'number') {
-      if (snap.targets && snap.targets[0]) {
-        snap.targets[0].value = updates.target;
-      }
-    }
-    if (typeof updates.on === 'boolean') {
-      snap.currentOn = updates.on;
-    }
+    this.deviceManager.updateLocalSnapshot(deviceId, updates);
   }
 
   /**
@@ -118,13 +91,25 @@ module.exports = class PelsApp extends Homey.App {
     this.log('PELS has been initialized');
 
     this.loadCapacitySettings();
+    this.deviceManager = new DeviceManager(this, {
+      log: this.log.bind(this),
+      debug: this.logDebug.bind(this),
+      error: this.error.bind(this),
+    }, {
+      getPriority: (id) => this.getPriorityForDevice(id),
+      getControllable: (id) => this.controllableDevices[id] ?? true,
+    }, {
+      expectedPowerKwOverrides: this.expectedPowerKwOverrides,
+      lastKnownPowerKw: this.lastKnownPowerKw,
+      lastMeasuredPowerKw: this.lastMeasuredPowerKw,
+    });
     this.priceService = new PriceService(
       this.homey,
       this.log.bind(this),
       this.logDebug.bind(this),
       this.error.bind(this),
     );
-    await this.initHomeyApi();
+    await this.deviceManager.init();
     this.capacityGuard = new CapacityGuard({
       limitKw: this.capacitySettings.limitKw,
       softMarginKw: this.capacitySettings.marginKw,
@@ -305,28 +290,8 @@ module.exports = class PelsApp extends Homey.App {
     });
   }
 
-  private async initHomeyApi(): Promise<void> {
-    if (
-      !this.homey.api
-      || typeof this.homey.api.getOwnerApiToken !== 'function'
-      || typeof this.homey.api.getLocalUrl !== 'function'
-      || !this.homey.cloud
-      || typeof this.homey.cloud.getHomeyId !== 'function'
-      || !this.homey.platform
-      || !this.homey.platformVersion
-    ) {
-      this.logDebug('Homey API token/local URL/identity unavailable, skipping HomeyAPI client init');
-      return;
-    }
-
-    try {
-      this.homeyApi = await HomeyAPI.createAppAPI({ homey: this.homey });
-      this.logDebug('Homey API client initialized');
-    } catch (error) {
-      this.error('Failed to initialize Homey API client', error);
-      this.homeyApi = undefined;
-    }
-  }
+  // Replaced by deviceManager.init()
+  // private async initHomeyApi(): Promise<void> { ... }
 
   private registerFlowCards(): void {
     const operatingModeChangedTrigger = this.homey.flow.getTriggerCard('operating_mode_changed');
@@ -520,59 +485,22 @@ module.exports = class PelsApp extends Homey.App {
     });
   }
 
-  private async applyDeviceTargetsForMode(mode: string): Promise<void> {
-    const targets = this.modeDeviceTargets[mode];
-    if (!targets || typeof targets !== 'object') {
-      this.log(`No device targets configured for mode ${mode}`);
-      return;
-    }
-
-    if (!this.homeyApi || !this.homeyApi.devices) {
-      this.logDebug('HomeyAPI not available, cannot apply device targets');
-      return;
-    }
-
-    // Use the cached snapshot to find devices with target capabilities
-    for (const device of this.latestTargetSnapshot) {
-      const targetValue = targets[device.id];
-      if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
-
-      const targetCap = device.targets?.[0]?.id;
-      if (!targetCap) continue;
-
-      try {
-        await this.homeyApi.devices.setCapabilityValue({
-          deviceId: device.id,
-          capabilityId: targetCap,
-          value: targetValue,
-        });
-        this.log(`Set ${targetCap} for ${device.name} to ${targetValue} (${mode})`);
-        this.updateLocalSnapshot(device.id, { target: targetValue });
-      } catch (error) {
-        this.error(`Failed to set ${targetCap} for ${device.name}`, error);
-      }
-    }
-
-    await this.refreshTargetDevicesSnapshot();
-  }
-
   private previewDeviceTargetsForMode(mode: string): void {
     const targets = this.modeDeviceTargets[mode];
     if (!targets || typeof targets !== 'object') {
       this.log(`Dry-run mode change: no device targets configured for mode ${mode}`);
       return;
     }
+    this.deviceManager.previewDeviceTargets(targets, `mode ${mode}`);
+  }
 
-    // Use the cached snapshot to preview changes
-    for (const device of this.latestTargetSnapshot) {
-      const targetValue = targets[device.id];
-      if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
-
-      const targetCap = device.targets?.[0]?.id;
-      if (!targetCap) continue;
-
-      this.log(`Dry-run: would set ${targetCap} for ${device.name} to ${targetValue}°C (mode ${mode})`);
+  private async applyDeviceTargetsForMode(mode: string): Promise<void> {
+    const targets = this.modeDeviceTargets[mode];
+    if (!targets || typeof targets !== 'object') {
+      this.log(`No device targets configured for mode ${mode}`);
+      return;
     }
+    await this.deviceManager.applyDeviceTargets(targets, `mode: ${mode}`);
   }
 
   private startPeriodicSnapshotRefresh(): void {
@@ -624,13 +552,18 @@ module.exports = class PelsApp extends Homey.App {
     this.log(`Status: ${statusParts.join(', ')}`);
   }
 
+  // Proxy to DeviceManager for backward compatibility during refactor
+  private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
+    return this.deviceManager ? this.deviceManager.getSnapshot() : [];
+  }
+
   private async refreshTargetDevicesSnapshot(): Promise<void> {
     this.logDebug('Refreshing target devices snapshot');
 
-    const snapshot = await this.fetchDevicesViaApi();
+    await this.deviceManager.refreshSnapshot();
+    const snapshot = this.deviceManager.getSnapshot();
 
     this.homey.settings.set('target_devices_snapshot', snapshot);
-    this.latestTargetSnapshot = snapshot;
     this.logDebug(`Stored snapshot with ${snapshot.length} devices`);
     // Note: We don't call buildDevicePlanSnapshot() here - plan building happens
     // in rebuildPlanFromCache() which is called during recordPowerSample().
@@ -699,8 +632,11 @@ module.exports = class PelsApp extends Homey.App {
       return;
     }
 
-    if (!this.homeyApi || !this.homeyApi.devices) {
-      this.log('Price optimization: HomeyAPI not available, skipping');
+    // Check for DeviceManager readiness implies API availability
+    // Optimization: we could add an explict isReady() check to DeviceManager if needed
+    // For now, let's assume if we're running, we can try.
+    if (!this.deviceManager) {
+      this.log('Price optimization: DeviceManager not available, skipping');
       return;
     }
 
@@ -782,11 +718,11 @@ module.exports = class PelsApp extends Homey.App {
       }
 
       try {
-        await this.homeyApi.devices.setCapabilityValue({
+        await this.deviceManager.setCapability(
           deviceId,
-          capabilityId: targetCap,
-          value: targetTemp,
-        });
+          targetCap,
+          targetTemp
+        );
         this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${priceStateStr} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
         this.updateLocalSnapshot(deviceId, { target: targetTemp });
       } catch (error) {
@@ -850,186 +786,10 @@ module.exports = class PelsApp extends Homey.App {
     }, refreshIntervalMs);
   }
 
-  private async fetchDevicesViaApi(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; measuredPowerKw?: number }>> {
-    // Prefer the HomeyAPI helper if available.
-    if (this.homeyApi) {
-      try {
-        const devicesObj = await this.homeyApi.devices.getDevices();
-        const list = Object.values(devicesObj || {});
-        this.logDebug(`HomeyAPI returned ${list.length} devices`);
-        return this.parseDeviceList(list);
-      } catch (error) {
-        this.logDebug('HomeyAPI.getDevices failed, falling back to raw API', error as Error);
-      }
-    }
-
-    let devices;
-    try {
-      devices = await this.homey.api.get('manager/devices');
-    } catch (error) {
-      this.logDebug('Manager API manager/devices failed, retrying devices', error as Error);
-      try {
-        devices = await this.homey.api.get('devices');
-      } catch (err) {
-        this.logDebug('Manager API devices failed as well', err as Error);
-        return [];
-      }
-    }
-    const list = Array.isArray(devices) ? devices : Object.values(devices || {});
-
-    this.logDebug(`Manager API returned ${list.length} devices`);
-
-    return this.parseDeviceList(list);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Homey device objects have no TypeScript definitions
-  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; expectedPowerKw?: number; loadKw?: number; measuredPowerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }> {
-    return list
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey device objects have no TypeScript definitions
-      .map((device: any) => {
-        const deviceId = device.id || device.data?.id;
-        if (!deviceId) {
-          this.error(`Device missing ID, skipping:`, device.name || 'unknown');
-          return null;
-        }
-
-        const capabilities: string[] = device.capabilities || [];
-        const capabilityObj = device.capabilitiesObj || {};
-        const currentTemperature = typeof capabilityObj.measure_temperature?.value === 'number' ? capabilityObj.measure_temperature.value : undefined;
-        const powerRaw = capabilityObj.measure_power?.value;
-        const isOn = capabilityObj.onoff?.value === true;
-        let powerKw: number | undefined;
-        let expectedPowerKw: number | undefined;
-        const expectedOverride = this.expectedPowerKwOverrides[deviceId];
-        const now = Date.now();
-        let measuredPowerKw: number | undefined;
-        const deviceLabel = device.name ? `${device.name} (${deviceId})` : deviceId;
-
-        // Priority for power estimates:
-        // 1. settings.load (configured expected load)
-        // 2. Most recent of:
-        //    - measured power (measure_power), tracked with timestamp
-        //    - expectedPowerKwOverrides (temporary override set via flow)
-        // 3. Default fallback: 1 kW
-        const loadW = typeof device.settings?.load === 'number' ? device.settings.load : undefined;
-        if (loadW && loadW > 0) {
-          powerKw = loadW / 1000;
-          expectedPowerKw = powerKw;
-          this.lastKnownPowerKw[deviceId] = powerKw;
-          this.logDebug(`Power estimate: using settings.load for ${deviceLabel}: ${powerKw.toFixed(3)} kW`);
-        } else {
-          if (typeof powerRaw === 'number' && Number.isFinite(powerRaw) && powerRaw <= MIN_SIGNIFICANT_POWER_W) {
-            this.logDebug(`Power estimate: ignoring low reading for ${deviceLabel}: ${powerRaw} W (<= ${MIN_SIGNIFICANT_POWER_W} W threshold)`);
-          }
-          if (typeof powerRaw === 'number' && Number.isFinite(powerRaw) && powerRaw > MIN_SIGNIFICANT_POWER_W) {
-            const measuredKw = powerRaw / 1000;
-            measuredPowerKw = measuredKw;
-            this.lastMeasuredPowerKw[deviceId] = { kw: measuredKw, ts: now };
-            // Track this as the last known power for this device (when on and drawing)
-            if (isOn && measuredKw > MIN_SIGNIFICANT_POWER_W / 1000) {
-              this.lastKnownPowerKw[deviceId] = measuredKw;
-            }
-            this.logDebug(`Power estimate: captured measured power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW`);
-          }
-
-          const measured = this.lastMeasuredPowerKw[deviceId];
-          if (!measuredPowerKw && measured) {
-            measuredPowerKw = measured.kw;
-          }
-          const override = expectedOverride;
-          if (measured && (!override || measured.ts >= override.ts)) {
-            powerKw = measured.kw;
-            expectedPowerKw = measured.kw;
-            this.logDebug(`Power estimate: using last measured for ${deviceLabel}: ${measured.kw.toFixed(3)} kW`);
-          } else if (override) {
-            powerKw = override.kw;
-            expectedPowerKw = override.kw;
-            this.logDebug(`Power estimate: using override for ${deviceLabel}: ${override.kw.toFixed(3)} kW`);
-          } else {
-            powerKw = 1;
-            expectedPowerKw = undefined; // Unknown estimate shown as "Unknown" in UI
-            this.logDebug(`Power estimate: fallback 1 kW for ${deviceLabel} (no measured/override/load)`);
-          }
-        }
-
-        const targetCaps = capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
-        if (targetCaps.length === 0) {
-          return null;
-        }
-
-        const targets = targetCaps.map((capId) => ({
-          id: capId,
-          value: capabilityObj[capId]?.value ?? null,
-          unit: capabilityObj[capId]?.units || '°C',
-        }));
-
-        // Determine if device is ON:
-        // 1. Check explicit onoff capability
-        // 2. Fall back to checking if device is drawing significant power (>50W)
-        let currentOn: boolean | undefined;
-        if (typeof capabilityObj.onoff?.value === 'boolean') {
-          currentOn = capabilityObj.onoff.value;
-        } else if (typeof powerRaw === 'number' && powerRaw > 50) {
-          // Device is drawing power, consider it ON even without onoff capability
-          currentOn = true;
-        }
-
-        return {
-          id: deviceId,
-          name: device.name,
-          targets,
-          powerKw,
-          expectedPowerKw,
-          loadKw: loadW && loadW > 0 ? loadW / 1000 : undefined,
-          priority: this.getPriorityForDevice(deviceId),
-          currentOn,
-          currentTemperature,
-          measuredPowerKw,
-          // Prefer modern zone structure; fall back to legacy to avoid deprecation warning.
-          zone: device.zone?.name
-            || (typeof device.zone === 'string' ? device.zone : undefined)
-            || device.zoneName
-            || 'Unknown',
-          controllable: this.controllableDevices[deviceId] ?? true,
-        };
-      })
-      .filter(Boolean) as Array<{
-        id: string;
-        name: string;
-        targets: Array<{ id: string; value: unknown; unit: string }>;
-        powerKw?: number;
-        expectedPowerKw?: number;
-        priority?: number;
-        currentOn?: boolean;
-        zone?: string;
-        controllable?: boolean;
-        currentTemperature?: number;
-        measuredPowerKw?: number;
-      }>;
-  }
-
   private async getDeviceLoadSetting(deviceId: string): Promise<number | null> {
-    try {
-      const apiDevices = await this.homeyApi?.devices?.getDevices?.();
-      const device = apiDevices ? apiDevices[deviceId] : null;
-      if (device && typeof device.settings?.load === 'number') {
-        return device.settings.load;
-      }
-    } catch (error) {
-      this.logDebug('Failed to read device via HomeyAPI for load:', (error as Error)?.message || error);
-    }
-
-    try {
-      const devicesManager = (this.homey as { devices?: { getDevice?: (opts: { id: string }) => Promise<unknown> } }).devices;
-      if (devicesManager && typeof devicesManager.getDevice === 'function') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK typing lacks this signature
-        const dev: any = await devicesManager.getDevice({ id: deviceId });
-        if (dev && typeof dev.settings?.load === 'number') {
-          return dev.settings.load;
-        }
-      }
-    } catch (error) {
-      this.logDebug('Failed to read device via manager.devices for load:', (error as Error)?.message || error);
+    const snapshotLoadKw = this.latestTargetSnapshot.find((d) => d.id === deviceId)?.loadKw;
+    if (typeof snapshotLoadKw === 'number' && snapshotLoadKw > 0) {
+      return snapshotLoadKw * 1000;
     }
 
     try {
@@ -1710,20 +1470,16 @@ module.exports = class PelsApp extends Homey.App {
     // Mark as pending before async operation
     this.pendingSheds.add(deviceId);
     try {
-      if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
-        try {
-          await this.homeyApi.devices.setCapabilityValue({ deviceId, capabilityId: 'onoff', value: false });
-          this.log(`Capacity: turned off ${name} (${reason || 'shedding'})`);
-          this.updateLocalSnapshot(deviceId, { on: false });
-          this.lastSheddingMs = now;
-          this.lastDeviceShedMs[deviceId] = now;
-          return;
-        } catch (error) {
-          this.error(`Failed to turn off ${name} via HomeyAPI`, error);
-        }
-      }
+      try {
+        await this.deviceManager.setCapability(deviceId, 'onoff', false);
 
-      this.logDebug(`Actuator: device ${name} not found for shedding`);
+        this.log(`Capacity: turned off ${name} (${reason || 'shedding'})`);
+        this.updateLocalSnapshot(deviceId, { on: false });
+        this.lastSheddingMs = now;
+        this.lastDeviceShedMs[deviceId] = now;
+      } catch (error) {
+        this.error(`Failed to turn off ${name} via DeviceManager`, error);
+      }
     } finally {
       this.pendingSheds.delete(deviceId);
     }
@@ -1819,18 +1575,15 @@ module.exports = class PelsApp extends Homey.App {
         // Mark as pending before async operation
         this.pendingRestores.add(dev.id);
         try {
-          if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
-            try {
-              await this.homeyApi.devices.setCapabilityValue({ deviceId: dev.id, capabilityId: 'onoff', value: true });
-              this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
-              this.updateLocalSnapshot(dev.id, { on: true });
-              this.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
-              // Clear this device from pending swap targets if it was one
-              this.pendingSwapTargets.delete(dev.id);
-              delete this.pendingSwapTimestamps[dev.id];
-            } catch (error) {
-              this.error(`Failed to turn on ${name} via HomeyAPI`, error);
-            }
+          try {
+            await this.deviceManager.setCapability(dev.id, 'onoff', true);
+            this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
+            this.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
+            // Clear this device from pending swap targets if it was one
+            this.pendingSwapTargets.delete(dev.id);
+            delete this.pendingSwapTimestamps[dev.id];
+          } catch (error) {
+            this.error(`Failed to turn on ${name} via DeviceManager`, error);
           }
         } finally {
           this.pendingRestores.delete(dev.id);
@@ -1843,25 +1596,19 @@ module.exports = class PelsApp extends Homey.App {
         const targetCap = snapshot?.targets?.[0]?.id;
         if (!targetCap) continue;
 
-        if (this.homeyApi && this.homeyApi.devices && typeof this.homeyApi.devices.setCapabilityValue === 'function') {
-          try {
-            await this.homeyApi.devices.setCapabilityValue({
-              deviceId: dev.id,
-              capabilityId: targetCap,
-              value: dev.plannedTarget,
-            });
-            const fromStr = dev.currentTarget === undefined || dev.currentTarget === null
-              ? ''
-              : `from ${dev.currentTarget} `;
-            this.log(
-              `Set ${targetCap} for ${dev.name || dev.id} ${fromStr}to ${dev.plannedTarget} (mode: ${this.operatingMode})`,
-            );
-            this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
-          } catch (error) {
-            this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via HomeyAPI`, error);
-          }
+        try {
+          await this.deviceManager.setCapability(dev.id, targetCap, dev.plannedTarget);
+          const fromStr = dev.currentTarget === undefined || dev.currentTarget === null
+            ? ''
+            : `from ${dev.currentTarget} `;
+          this.log(
+            `Set ${targetCap} for ${dev.name || dev.id} ${fromStr}to ${dev.plannedTarget} (mode: ${this.operatingMode})`,
+          );
+          this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
+        } catch (error) {
+          this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via HomeyAPI`, error);
         }
       }
     }
   }
-};
+}

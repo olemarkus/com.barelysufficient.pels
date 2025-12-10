@@ -432,7 +432,7 @@ describe('Device plan snapshot', () => {
         setCapabilityValue: jest.fn().mockResolvedValue(undefined),
       },
     };
-    (app as any).homeyApi = mockHomeyApi;
+    (app as any).deviceManager.homeyApi = mockHomeyApi;
 
     // Clear snapshot so the second call would normally try again.
     (app as any).latestTargetSnapshot = [];
@@ -467,7 +467,7 @@ describe('Device plan snapshot', () => {
         setCapabilityValue: jest.fn().mockResolvedValue(undefined),
       },
     };
-    (app as any).homeyApi = mockHomeyApi;
+    (app as any).deviceManager.homeyApi = mockHomeyApi;
 
     // Force a low soft limit so the device must be shed.
     (app as any).computeDynamicSoftLimit = () => 1;
@@ -495,9 +495,9 @@ describe('Device plan snapshot', () => {
       name: 'Room Thermostat',
       capabilities: ['onoff', 'target_temperature', 'measure_power'],
       capabilitiesObj: {
-        onoff: { value: false },
-        target_temperature: { value: 22, units: '°C' },
-        measure_power: { value: 0 },
+        onoff: { value: false, id: 'onoff' },
+        target_temperature: { value: 22, units: '°C', id: 'target_temperature' },
+        measure_power: { value: 0, id: 'measure_power' },
       },
       settings: { load: 450 },
     };
@@ -1017,8 +1017,8 @@ describe('Device plan snapshot', () => {
             name: 'Connected 300',
             capabilities: ['target_temperature', 'onoff', 'max_power_3000'],
             capabilitiesObj: {
-              target_temperature: { value: 65 },
-              onoff: { value: true },
+              target_temperature: { value: 65, id: 'target_temperature' },
+              onoff: { value: true, id: 'onoff' },
             },
             settings: {},
           },
