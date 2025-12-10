@@ -681,60 +681,76 @@ describe('Device plan snapshot', () => {
     expect(comfortPlan?.plannedTarget).toBe(21);
   });
 
-  // TODO: This test requires complex state synchronization and is skipped pending refactor
-  it.skip('keeps device shed until headroom exceeds restore margin', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
-    await dev1.setCapabilityValue('measure_power', 2000);
+  it('keeps device shed until headroom exceeds restore margin', async () => {
+    // This test verifies hysteresis behavior:
+    // 1. Device gets shed during overshoot
+    // 2. Device stays shed when headroom is positive but below restore margin
+    // 3. Device restores when headroom exceeds restore margin + device power
+
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 1000); // 1 kW device
     await dev1.setCapabilityValue('onoff', true);
+    await dev1.setCapabilityValue('target_temperature', 20);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
 
     mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('capacity_margin', 0.2); // 200W restore margin
 
     const app = createApp();
     await app.onInit();
 
-    // Force soft limit to 1 kW and total to 1.1 kW -> deficit triggers shed.
-    (app as any).computeDynamicSoftLimit = () => 1;
+    // Step 1: Overshoot - device should be shed
+    // Set soft limit low enough to trigger shedding
+    (app as any).computeDynamicSoftLimit = () => 0.5; // 500W limit
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
-    await (app as any).recordPowerSample(1100);
+
+    await (app as any).recordPowerSample(1000); // 1kW total, 500W limit => -500W headroom
     let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
-    // Slight headroom (+0.05 kW) should not restore because below restore margin (0.2).
-    (app as any).computeDynamicSoftLimit = () => 1.15;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1.15);
-    }
-    await (app as any).recordPowerSample(1100);
-    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
+    // Step 2: Small positive headroom (below restore margin) - device should STAY shed
+    // First, update mock device to reflect it was turned off
+    await dev1.setCapabilityValue('onoff', false);
+    (app as any).lastSnapshotRefreshMs = 0; // Force refresh
 
-    // Force snapshot refresh so we pick up the 'off' state from the mock device
-    (app as any).lastSnapshotRefreshMs = 0;
-    // Ensure mock device state is off (actuation should have done this, but ensuring consistency)
-    const d1 = mockHomeyInstance.drivers.getDrivers()['driverA'].getDevices()[0];
-    await d1.setCapabilityValue('onoff', false);
-
-    // Clear cooldown timers so restoration can proceed
+    // Clear shedding-related cooldowns but NOT restore margin consideration
     (app as any).lastSheddingMs = 0;
     (app as any).lastOvershootMs = 0;
-    (app as any).lastRestoreMs = 0;
-    (app as any).lastPlannedShedIds = new Set(); // Clear shed tracking for fresh evaluation
-    // Reset guard state to allow restoration
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    // Large headroom should allow restoration.
+    // Now set headroom to small positive (0.1 kW) - below device power (1kW) + margin (0.2kW)
+    // With device off, power drops. Say power is now 0.5kW (other loads).
+    // Soft limit 0.7 => headroom = 0.2kW. Device needs 1kW + 0.2kW margin = 1.2kW. Not enough.
+    (app as any).computeDynamicSoftLimit = () => 0.7;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.7);
+    }
+
+    await (app as any).recordPowerSample(500); // 500W with device off
+    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    // Device should stay shed because headroom (0.2kW) < device power (1kW) + margin (0.2kW)
+    expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
+
+    // Step 3: Large headroom - device should restore
+    // Clear all cooldowns to allow restoration
+    (app as any).lastSheddingMs = 0;
+    (app as any).lastOvershootMs = 0;
+    (app as any).lastRestoreMs = 0;
+
+    // Set soft limit high enough for restoration: need > device power + margin
+    // Power 500W, soft limit 2kW => headroom 1.5kW. Device needs 1kW + 0.2kW = 1.2kW. OK!
     (app as any).computeDynamicSoftLimit = () => 2;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 2);
     }
-    await (app as any).recordPowerSample(1100);
+
+    await (app as any).recordPowerSample(500);
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('keep');
   });
