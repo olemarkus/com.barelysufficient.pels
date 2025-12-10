@@ -154,14 +154,14 @@ describe('MyApp initialization', () => {
 
     // Inject mock homeyApi
     const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    (app as any).homeyApi = {
+    (app as any).deviceManager.homeyApi = {
       devices: {
         getDevices: async () => ({
           'dev-1': {
             id: 'dev-1',
             name: 'Heater',
             capabilities: ['target_temperature', 'onoff'],
-            capabilitiesObj: { target_temperature: { value: 20 }, onoff: { value: true } },
+            capabilitiesObj: { target_temperature: { value: 20, id: 'target_temperature' }, onoff: { value: true, id: 'onoff' } },
             settings: {},
           },
         }),

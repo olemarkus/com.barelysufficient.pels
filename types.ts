@@ -1,0 +1,22 @@
+export interface TargetDeviceSnapshot {
+    id: string;
+    name: string;
+    targets: Array<{ id: string; value: unknown; unit: string }>;
+    powerKw?: number;
+    expectedPowerKw?: number;
+    loadKw?: number;
+    priority?: number;
+    currentOn?: boolean;
+    currentTemperature?: number;
+    measuredPowerKw?: number;
+    zone?: string;
+    controllable?: boolean;
+    capabilities?: string[];
+    lastUpdated?: number;
+}
+
+export interface Logger {
+    log: (...args: any[]) => void;
+    debug: (...args: any[]) => void;
+    error: (...args: any[]) => void;
+}

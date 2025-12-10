@@ -31,14 +31,14 @@ describe('Mode device targets', () => {
     await app.onInit();
 
     // Inject mock homeyApi that updates the actual device
-    (app as any).homeyApi = {
+    (app as any).deviceManager.homeyApi = {
       devices: {
         getDevices: async () => ({
           'dev-1': {
             id: 'dev-1',
             name: 'Heater',
             capabilities: ['target_temperature'],
-            capabilitiesObj: { target_temperature: { value: 20 } },
+            capabilitiesObj: { target_temperature: { value: 20, id: 'target_temperature' } },
             settings: {},
           },
         }),
@@ -76,14 +76,14 @@ describe('Mode device targets', () => {
     await app.onInit();
 
     // Inject mock homeyApi that updates the actual device
-    (app as any).homeyApi = {
+    (app as any).deviceManager.homeyApi = {
       devices: {
         getDevices: async () => ({
           'dev-1': {
             id: 'dev-1',
             name: 'Heater',
             capabilities: ['target_temperature'],
-            capabilitiesObj: { target_temperature: { value: 20 } },
+            capabilitiesObj: { target_temperature: { value: 20, id: 'target_temperature' } },
             settings: {},
           },
         }),

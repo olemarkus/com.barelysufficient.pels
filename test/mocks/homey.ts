@@ -22,7 +22,7 @@ export class MockDevice {
     private id: string,
     private name: string,
     private capabilities: string[],
-  ) {}
+  ) { }
 
   private capabilityValues = new Map<string, any>();
   private settings: Record<string, any> = {};
@@ -72,7 +72,7 @@ export class MockDriver {
   constructor(
     public id: string,
     private devices: MockDevice[],
-  ) {}
+  ) { }
 
   async ready(): Promise<void> {
     return;
@@ -138,7 +138,7 @@ export const mockHomeyInstance = {
             const caps = device.getCapabilities();
             const capabilitiesObj: Record<string, any> = {};
             for (const cap of caps) {
-              capabilitiesObj[cap] = { value: await device.getCapabilityValue(cap) };
+              capabilitiesObj[cap] = { id: cap, value: await device.getCapabilityValue(cap) };
             }
             devices[device.idValue] = {
               id: device.idValue,
@@ -261,7 +261,7 @@ export const mockHomeyApiInstance = {
           const caps = device.getCapabilities();
           const capabilitiesObj: Record<string, any> = {};
           for (const cap of caps) {
-            capabilitiesObj[cap] = { value: await device.getCapabilityValue(cap) };
+            capabilitiesObj[cap] = { id: cap, value: await device.getCapabilityValue(cap) };
           }
           devices[device.idValue] = {
             id: device.idValue,
