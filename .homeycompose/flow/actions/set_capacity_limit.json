@@ -5,8 +5,8 @@
   "titleFormatted": {
     "en": "Set capacity limit to [[limit_kw]] kW"
   },
-  "hint": {
-    "en": "Set the max allowed power (kW) for the capacity guard."
+"hint": {
+    "en": "Use this to dynamically adjust your power limit based on time of day, electricity prices, or other conditions."
   },
   "args": [
     {

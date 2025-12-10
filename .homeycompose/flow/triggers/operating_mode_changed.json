@@ -19,5 +19,8 @@
         "en": "Home"
       }
     }
-  ]
+  ],
+  "hint": {
+    "en": "Use this to trigger flows when PELS switches to a different operating mode."
+  }
 }
