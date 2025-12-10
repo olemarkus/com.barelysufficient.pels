@@ -382,6 +382,10 @@ module.exports = class PelsApp extends Homey.App {
     }
     return this.latestTargetSnapshot;
   }
+(Fix simultaneous restoration of mixed device types)
+    }
+    return this.latestTargetSnapshot;
+  }
 (Finish overshoot behavior feature and fix tests)
     }
     return this.latestTargetSnapshot;
@@ -775,13 +779,12 @@ module.exports = class PelsApp extends Homey.App {
     const minutesRemaining = Math.max(0, (hourEnd - now) / 60000);
 
     const headroomRaw = total === null ? null : softLimit - total;
+    // headroom is the ACTUAL available capacity. Use this for shedding.
     let headroom = headroomRaw === null && softLimit <= 0 ? -1 : headroomRaw;
-    // Hysteresis: require some positive margin before we start turning things back on.
-    const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
-    if (headroom !== null && headroom < restoreMargin) {
-      // Treat as deficit until we have at least restoreMargin of headroom.
-      headroom -= restoreMargin;
-    }
+
+    // Hysteresis for restoration is handled in the restore logic (using restoreHysteresis),
+    // so we don't need to subtract margin here. Subtracting it here caused false shedding.
+
     // If the hourly energy budget is exhausted and soft limit is zero while instantaneous power reads ~0,
     // force a minimal negative headroom to proactively shed controllable devices.
     if (this.hourlyBudgetExhausted && softLimit <= 0 && total !== null && total <= 0.01) {
@@ -805,6 +808,17 @@ module.exports = class PelsApp extends Homey.App {
           const priority = this.getPriorityForDevice(d.id);
           const power = typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1; // fallback when unknown
           return { ...d, priority, effectivePower: power };
+        })
+        .filter((d) => {
+          // Check if device is effectively shed (at shed temperature)
+          const shedBehavior = this.getShedBehavior(d.id);
+          if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
+            const currentTarget = d.targets?.[0]?.value;
+            if (typeof currentTarget === 'number' && currentTarget === shedBehavior.temperature) {
+              return false;
+            }
+          }
+          return true;
         })
         .sort((a, b) => {
           // Sort by priority descending: higher number = less important = shed first
@@ -969,10 +983,14 @@ module.exports = class PelsApp extends Homey.App {
       }
     }
 
-    if (headroomRaw !== null && !sheddingActive && !inCooldown && !inRestoreCooldown) {
-      let availableHeadroom = headroomRaw;
-      const restoredThisCycle = new Set<string>(); // Track devices restored in this planning cycle
+    // Initialize restoration variables common to both loops
+    let availableHeadroom = headroomRaw !== null ? headroomRaw : 0;
+    const restoredThisCycle = new Set<string>();
+    // Restore safety buffer: require headroom to stay positive by this much AFTER restore
+    const restoreHysteresis = Math.max(0.2, restoreMarginPlanning * 2);
+    let restoredOneThisCycle = false;
 
+    if (headroomRaw !== null && !sheddingActive && !inCooldown && !inRestoreCooldown) {
       // Sort off devices by priority (priority 1 = most important, restore first)
       const offDevices = planDevices
         .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed')
@@ -986,14 +1004,6 @@ module.exports = class PelsApp extends Homey.App {
         .filter((d) => this.getShedBehavior(d.id).action !== 'set_temperature')
         .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)); // Higher number = shed first
 
-      // Restore safety buffer: require headroom to stay positive by this much AFTER restore
-      // This prevents oscillation from measurement variance/latency
-      const restoreHysteresis = Math.max(0.2, restoreMarginPlanning * 2);
-
-      // Only restore ONE device per cycle, then wait for new measurements.
-      // This avoids relying on potentially inaccurate power estimates (settings.load, etc.)
-      // and lets us observe the actual impact before restoring more.
-      let restoredOneThisCycle = false;
 
       for (const dev of offDevices) {
         // Skip if we already restored one device this cycle
@@ -1172,7 +1182,28 @@ module.exports = class PelsApp extends Homey.App {
       const deviceShedRecently = deviceLastShed && Date.now() - deviceLastShed < SHED_COOLDOWN_MS;
       const shouldHoldShed = (inShedWindow || deviceShedRecently)
         && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan || deviceShedRecently);
-      if (shouldHoldShed) {
+
+      let finalHoldShed = shouldHoldShed;
+
+      // If logic says we can release the shed (restore), verify we have enough headroom and haven't restored another device yet.
+      if (!finalHoldShed && wasShedLastPlan) {
+        // We don't know the exact power increase of restoring the temperature, but we should at least ensure we have the safety buffer.
+        const needed = restoreHysteresis;
+        if (availableHeadroom < needed) {
+          finalHoldShed = true;
+          dev.reason = 'stay shed (insufficient headroom to restore)';
+        } else if (restoredOneThisCycle) {
+          finalHoldShed = true;
+          dev.reason = 'stay shed (throttled restore: one device per cycle)';
+        } else {
+          // Creating a restore event
+          restoredOneThisCycle = true;
+          availableHeadroom -= needed;
+          restoredThisCycle.add(dev.id);
+        }
+      }
+
+      if (finalHoldShed) {
         dev.plannedState = 'shed';
         dev.shedAction = 'set_temperature';
         dev.shedTemperature = behavior.temperature;
@@ -1567,6 +1598,13 @@ module.exports = class PelsApp extends Homey.App {
         const targetCap = snapshot?.targets?.[0]?.id;
         if (!targetCap) continue;
 
+        // Check if this is a restoration (increasing temperature from shed state)
+        const currentIsNumber = typeof dev.currentTarget === 'number';
+        const shedBehavior = this.getShedBehavior(dev.id);
+        const wasAtShedTemp = currentIsNumber && shedBehavior.action === 'set_temperature'
+          && shedBehavior.temperature !== null && dev.currentTarget === shedBehavior.temperature;
+        const isRestoring = wasAtShedTemp && dev.plannedTarget > (dev.currentTarget as number);
+
         try {
           await this.deviceManager.setCapability(dev.id, targetCap, dev.plannedTarget);
           const fromStr = dev.currentTarget === undefined || dev.currentTarget === null
@@ -1576,8 +1614,16 @@ module.exports = class PelsApp extends Homey.App {
             `Set ${targetCap} for ${dev.name || dev.id} ${fromStr}to ${dev.plannedTarget} (mode: ${this.operatingMode})`,
           );
           this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
+
+          // If this was a restoration from shed temperature, update lastRestoreMs
+          // This ensures cooldown applies between restoring different devices
+          if (isRestoring) {
+            this.lastRestoreMs = Date.now();
+          }
         } catch (error) {
-          this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via HomeyAPI`, error);
+          this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via DeviceManager`, error);
+        }
+(Fix simultaneous restoration of mixed device types)
         }
       }
     }
