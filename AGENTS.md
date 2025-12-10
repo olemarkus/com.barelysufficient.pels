@@ -20,7 +20,7 @@ PELS helps users stay within their electricity capacity limits (effekttariff) by
 
 ```
 app.ts              # Main app - ALL core logic lives here (intentionally monolithic)
-capacityGuard.ts    # Capacity monitoring, extracted for testability
+capacityGuard.ts    # Capacity state container (headroom, shortfall logic), used by Plan
 drivers/            # Homey device drivers (pels_insights virtual device)
 settings/           # Settings UI (separate TypeScript build)
 test/               # Jest tests with mock Homey SDK
