@@ -17,7 +17,10 @@
   "1.0.5": {
     "en": "Renaming modes should now be safe"
   },
-  "1.1.0": {
+"1.1.0": {
     "en": "Added new card for when operating mode changes"
+  },
+  "1.1.1": {
+    "en": "Improved flow card UX: removed parentheses from report power card title and added helpful usage hints. All flow cards now provide clear guidance on how to use them with practical examples."
   }
 }
