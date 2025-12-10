@@ -59,8 +59,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       }
       case 'capacity_dry_run': {
         deps.loadCapacitySettings();
-        const guard = deps.getCapacityGuard();
-        guard?.setDryRun(deps.getCapacityDryRun());
+        // Guard no longer has dry run mode - Plan handles shedding decisions
         deps.rebuildPlanFromCache();
         break;
       }

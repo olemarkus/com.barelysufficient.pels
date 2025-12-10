@@ -95,8 +95,6 @@ module.exports = class PelsApp extends Homey.App {
     }
     if (typeof updates.on === 'boolean') {
       snap.currentOn = updates.on;
-      // Keep Guard in sync with on/off state changes
-      this.syncGuardFromSnapshot(this.latestTargetSnapshot);
     }
   }
 
@@ -117,10 +115,6 @@ module.exports = class PelsApp extends Homey.App {
     this.capacityGuard = new CapacityGuard({
       limitKw: this.capacitySettings.limitKw,
       softMarginKw: this.capacitySettings.marginKw,
-      dryRun: this.capacityDryRun,
-      actuator: async (deviceId, deviceName) => {
-        await this.applySheddingToDevice(deviceId, deviceName);
-      },
       onShortfall: async (deficitKw) => {
         await this.handleShortfall(deficitKw);
       },
@@ -128,11 +122,9 @@ module.exports = class PelsApp extends Homey.App {
         await this.handleShortfallCleared();
       },
       log: (...args) => this.log(...args),
-      errorLog: (...args) => this.error(...args),
     });
     this.capacityGuard.setSoftLimitProvider(() => this.computeDynamicSoftLimit());
     this.capacityGuard.setShortfallThresholdProvider(() => this.computeShortfallThreshold());
-    this.capacityGuard.start();
 
     this.settingsHandler = createSettingsHandler({
       homey: this.homey,
@@ -192,9 +184,7 @@ module.exports = class PelsApp extends Homey.App {
       clearInterval(this.priceOptimizationInterval);
       this.priceOptimizationInterval = undefined;
     }
-    if (this.capacityGuard) {
-      this.capacityGuard.stop();
-    }
+    // Guard no longer needs cleanup (no interval)
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug logging accepts any arguments
@@ -377,8 +367,9 @@ module.exports = class PelsApp extends Homey.App {
     const hasCapacityCond = this.homey.flow.getConditionCard('has_capacity_for');
     // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
     hasCapacityCond.registerRunListener(async (args: { required_kw: number }) => {
-      if (!this.capacityGuard) return false;
-      return this.capacityGuard.hasCapacity(Number(args.required_kw));
+      const headroom = this.capacityGuard?.getHeadroom() ?? null;
+      if (headroom === null) return false;
+      return headroom >= Number(args.required_kw);
     });
 
     const isOperatingModeCond = this.homey.flow.getConditionCard('is_capacity_mode');
@@ -513,7 +504,6 @@ module.exports = class PelsApp extends Homey.App {
 
     this.homey.settings.set('target_devices_snapshot', snapshot);
     this.latestTargetSnapshot = snapshot;
-    this.syncGuardFromSnapshot(snapshot);
     this.logDebug(`Stored snapshot with ${snapshot.length} devices`);
     // Note: We don't call buildDevicePlanSnapshot() here - plan building happens
     // in rebuildPlanFromCache() which is called during recordPowerSample().
@@ -894,13 +884,11 @@ module.exports = class PelsApp extends Homey.App {
               ? `, headroom ${headroom.toFixed(2)}kW`
               : '';
             const restoringHint = d.currentState === 'off' && nextPower === 'on'
-              ? ` (restoring, needs ~${(typeof d.powerKw === 'number' ? d.powerKw : 1).toFixed(2)}kW${
-                typeof headroom === 'number' ? ` vs headroom ${headroom.toFixed(2)}kW` : ''
+              ? ` (restoring, needs ~${(typeof d.powerKw === 'number' ? d.powerKw : 1).toFixed(2)}kW${typeof headroom === 'number' ? ` vs headroom ${headroom.toFixed(2)}kW` : ''
               })`
               : '';
-            return `${d.name}: temp ${temp}, power ${power}${powerInfo}${headroomInfo}, reason: ${
-              d.reason ?? 'n/a'
-            }${restoringHint}`;
+            return `${d.name}: temp ${temp}, power ${power}${powerInfo}${headroomInfo}, reason: ${d.reason ?? 'n/a'
+              }${restoringHint}`;
           });
         if (lines.length) {
           this.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
@@ -912,7 +900,7 @@ module.exports = class PelsApp extends Homey.App {
     }
     this.homey.settings.set('device_plan_snapshot', plan);
     // Emit realtime event so settings page can update
-    this.homey.api.realtime('plan_updated', plan).catch(() => {});
+    this.homey.api.realtime('plan_updated', plan).catch(() => { });
     // Update PELS status for mode indicator device
     this.updatePelsStatus(plan);
     const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
@@ -1073,14 +1061,31 @@ module.exports = class PelsApp extends Homey.App {
       }
     }
 
-    // Shortfall is now detected by the CapacityGuard's onShortfall callback
-    // We just sync state from the guard if available
+    // Update Guard state based on shedding decisions
+    const hasShedding = shedSet.size > 0;
+    const hasNegativeHeadroom = headroom !== null && headroom < 0;
+    const remainingCandidates = headroom !== null && headroom < 0
+      ? devices.filter((d) => d.controllable !== false && d.currentOn !== false && !shedSet.has(d.id)).length
+      : 0;
+
+    // Note: We call the async Guard methods but don't await - they're fire-and-forget
+    // This keeps buildDevicePlanSnapshot synchronous as expected by callers
+    if (hasNegativeHeadroom || hasShedding) {
+      void this.capacityGuard?.setSheddingActive(true);
+      const deficitKw = headroom !== null ? -headroom : 0;
+      void this.capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
+    } else {
+      const restoreMargin = this.capacityGuard?.getRestoreMargin() ?? 0.2;
+      if (headroom !== null && headroom >= restoreMargin) {
+        void this.capacityGuard?.setSheddingActive(false);
+      }
+      // Check shortfall clearing (will handle hysteresis internally)
+      void this.capacityGuard?.checkShortfall(true, 0);
+    }
+
+    // Sync shortfall state from guard
     const guardInShortfall = this.capacityGuard?.isInShortfall() ?? false;
     if (guardInShortfall !== this.inShortfall) {
-      // Guard state changed but callbacks didn't fire (shouldn't happen, but sync just in case)
-      if (guardInShortfall) {
-        this.log('Plan: syncing shortfall state from guard');
-      }
       this.inShortfall = guardInShortfall;
       this.homey.settings.set('capacity_in_shortfall', guardInShortfall);
     }
@@ -1362,19 +1367,7 @@ module.exports = class PelsApp extends Homey.App {
     };
   }
 
-  private syncGuardFromSnapshot(snapshot: Array<{ id: string; name: string; powerKw?: number; priority?: number; currentOn?: boolean; controllable?: boolean }>): void {
-    if (!this.capacityGuard) return;
-    const controllables = snapshot
-      .filter((d) => d.controllable !== false)
-      .map((d) => ({
-        id: d.id,
-        name: d.name,
-        powerKw: typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1,
-        priority: this.getPriorityForDevice(d.id),
-        on: d.currentOn === true,
-      }));
-    this.capacityGuard.setControllables(controllables);
-  }
+
 
   private getPriorityForDevice(deviceId: string): number {
     const mode = this.operatingMode || 'Home';
@@ -1516,9 +1509,8 @@ module.exports = class PelsApp extends Homey.App {
     const softLimit = this.capacityGuard ? this.capacityGuard.getSoftLimit() : this.capacitySettings.limitKw;
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
 
-    this.log(`Capacity shortfall: cannot reach soft limit, deficit ~${deficitKw.toFixed(2)}kW (total ${
-      total === null ? 'unknown' : total.toFixed(2)
-    }kW, soft ${softLimit.toFixed(2)}kW)`);
+    this.log(`Capacity shortfall: cannot reach soft limit, deficit ~${deficitKw.toFixed(2)}kW (total ${total === null ? 'unknown' : total.toFixed(2)
+      }kW, soft ${softLimit.toFixed(2)}kW)`);
 
     this.inShortfall = true;
     this.homey.settings.set('capacity_in_shortfall', true);
