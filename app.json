@@ -50,6 +50,9 @@
           "en": "Capacity guard cannot reduce load to the limit; manual action required"
         },
         "args": [],
+        "hint": {
+          "en": "Use this to get notified when PELS needs manual intervention to prevent exceeding your power limit."
+        },
         "id": "capacity_shortfall"
       },
       {
@@ -74,6 +77,9 @@
             }
           }
         ],
+        "hint": {
+          "en": "Use this to trigger flows when PELS switches to a different operating mode."
+        },
         "id": "operating_mode_changed"
       }
     ],
@@ -96,6 +102,9 @@
             "step": 0.1
           }
         ],
+        "hint": {
+          "en": "Use this to check if you can safely turn on more devices without exceeding your capacity limit."
+        },
         "id": "has_capacity_for"
       },
       {
@@ -120,6 +129,9 @@
             }
           }
         ],
+        "hint": {
+          "en": "Use this to create flows that only run when PELS is in a specific mode (e.g., Home, Away, Night)."
+        },
         "id": "is_capacity_mode"
       }
     ],
@@ -129,10 +141,10 @@
           "en": "Report power usage"
         },
         "titleFormatted": {
-          "en": "Report power [[power]] W (feeds guard + hourly usage)"
+          "en": "Report power [[power]] W"
         },
         "hint": {
-          "en": "Feed instantaneous power (W) from a meter to track hourly energy usage."
+          "en": "Feed instantaneous power (W) from a meter to track hourly energy usage and feed capacity guard."
         },
         "args": [
           {
@@ -155,7 +167,7 @@
           "en": "Set capacity limit to [[limit_kw]] kW"
         },
         "hint": {
-          "en": "Set the max allowed power (kW) for the capacity guard."
+          "en": "Use this to dynamically adjust your power limit based on time of day, electricity prices, or other conditions."
         },
         "args": [
           {
@@ -192,6 +204,9 @@
             }
           }
         ],
+        "hint": {
+          "en": "Use this to automatically switch PELS modes based on time, presence, or other triggers in your flows."
+        },
         "id": "set_capacity_mode"
       }
     ]

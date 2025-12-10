@@ -5,5 +5,8 @@
   "titleFormatted": {
     "en": "Capacity guard cannot reduce load to the limit; manual action required"
   },
-  "args": []
+  "args": [],
+  "hint": {
+    "en": "Use this to get notified when PELS needs manual intervention to prevent exceeding your power limit."
+  }
 }
