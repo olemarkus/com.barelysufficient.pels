@@ -1,9 +1,5 @@
-type DesiredState = 'ON' | 'OFF' | 'SHED';
-
-type ShedCallback = (deviceId: string, name: string) => Promise<void> | void;
 type TriggerCallback = () => Promise<void> | void;
 type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
-type ActuatorCallback = (deviceId: string, name: string) => Promise<void> | void;
 type SoftLimitProvider = () => number | null;
 type ShortfallThresholdProvider = () => number | null;
 
@@ -11,78 +7,58 @@ export interface CapacityGuardOptions {
   limitKw?: number;
   softMarginKw?: number;
   restoreMarginKw?: number;
-  planReserveKw?: number;
-  dryRun?: boolean;
   onSheddingStart?: TriggerCallback;
   onSheddingEnd?: TriggerCallback;
-  onDeviceShed?: ShedCallback;
   onShortfall?: ShortfallCallback;
   onShortfallCleared?: TriggerCallback;
-  actuator?: ActuatorCallback;
-  intervalMs?: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
   log?: (...args: any[]) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
-  errorLog?: (...args: any[]) => void;
 }
 
+/**
+ * CapacityGuard - State container for capacity management.
+ * The Plan (buildDevicePlanSnapshot) is the single decision-maker for shedding.
+ * Guard tracks state (sheddingActive, shortfall) and provides shortfall hysteresis.
+ */
 export default class CapacityGuard {
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 60000; // 60 seconds of sustained positive headroom
+
   private limitKw: number;
   private softMarginKw: number;
   private restoreMarginKw: number;
-  private planReserveKw: number;
-  private dryRun: boolean;
   private mainPowerKw: number | null = null;
-  private allocatedKw = 0;
-  private controllables: Map<string, { name: string; powerKw: number; priority: number; desired: DesiredState }> = new Map();
-  private interval: NodeJS.Timeout | null = null;
-  private sheddingActive = false;
+  private shortfallClearStartTime: number | null = null;
+
+  // State - updated by Plan
+  sheddingActive = false;
   private inShortfall = false;
-  private shortfallClearStartTime: number | null = null; // When positive headroom started
+
+  // Callbacks
   private onSheddingStart?: TriggerCallback;
   private onSheddingEnd?: TriggerCallback;
-  private onDeviceShed?: ShedCallback;
   private onShortfall?: ShortfallCallback;
   private onShortfallCleared?: TriggerCallback;
-  private actuator?: ActuatorCallback;
-  private intervalMs: number;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
-  private log?: (...args: any[]) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
-  private errorLog?: (...args: any[]) => void;
+
+  // Providers
   private softLimitProvider?: SoftLimitProvider;
   private shortfallThresholdProvider?: ShortfallThresholdProvider;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
+  private log?: (...args: any[]) => void;
 
   constructor(options: CapacityGuardOptions = {}) {
     this.limitKw = options.limitKw ?? 10;
     this.softMarginKw = options.softMarginKw ?? 0.2;
     this.restoreMarginKw = options.restoreMarginKw ?? 0.2;
-    this.planReserveKw = options.planReserveKw ?? 0;
-    this.dryRun = options.dryRun ?? true;
     this.onSheddingStart = options.onSheddingStart;
     this.onSheddingEnd = options.onSheddingEnd;
-    this.onDeviceShed = options.onDeviceShed;
     this.onShortfall = options.onShortfall;
     this.onShortfallCleared = options.onShortfallCleared;
-    this.actuator = options.actuator;
-    this.intervalMs = options.intervalMs ?? 3000;
     this.log = options.log;
-    this.errorLog = options.errorLog;
   }
 
-  start(): void {
-    if (this.interval) return;
-    this.interval = setInterval(() => {
-      this.tick().catch((err) => this.errorLog?.('Capacity guard tick failed', err));
-    }, this.intervalMs);
-  }
-
-  stop(): void {
-    if (this.interval) clearInterval(this.interval);
-    this.interval = null;
-  }
+  // --- Configuration ---
 
   setLimit(limitKw: number): void {
     this.limitKw = Math.max(0, limitKw);
@@ -100,62 +76,18 @@ export default class CapacityGuard {
     this.shortfallThresholdProvider = provider;
   }
 
-  setDryRun(dryRun: boolean, actuator?: ActuatorCallback): void {
-    this.dryRun = dryRun;
-    if (actuator) this.actuator = actuator;
-  }
+  // --- Power tracking ---
 
   reportTotalPower(powerKw: number): void {
     if (!Number.isFinite(powerKw)) return;
     this.mainPowerKw = powerKw;
   }
 
-  requestOn(deviceId: string, name: string, powerKw: number, priority = 100): boolean {
-    if (!Number.isFinite(powerKw) || powerKw < 0) return false;
-    const planMax = this.getPlanMax();
-    if (this.allocatedKw + powerKw > planMax) {
-      return false;
-    }
-    this.controllables.set(deviceId, {
-      name, powerKw, priority, desired: 'ON',
-    });
-    this.recomputeAllocation();
-    return true;
-  }
-
-  forceOff(deviceId: string): void {
-    const device = this.controllables.get(deviceId);
-    if (!device) return;
-    device.desired = 'OFF';
-    this.controllables.set(deviceId, device);
-    this.recomputeAllocation();
-  }
-
-  hasCapacity(requiredKw: number): boolean {
-    if (!Number.isFinite(requiredKw) || requiredKw < 0) return false;
-    return this.allocatedKw + requiredKw <= this.getPlanMax();
-  }
-
-  headroom(): number | null {
-    if (this.mainPowerKw === null) return null;
-    return this.getSoftLimit() - this.mainPowerKw;
-  }
-
-  isSheddingActive(): boolean {
-    return this.sheddingActive;
-  }
-
-  getHeadroom(): number | null {
-    return this.headroom();
-  }
-
   getLastTotalPower(): number | null {
     return this.mainPowerKw;
   }
 
-  getPlanMax(): number {
-    return Math.max(0, this.getSoftLimit() - this.planReserveKw);
-  }
+  // --- Limit calculations ---
 
   getSoftLimit(): number {
     if (this.softLimitProvider) {
@@ -165,160 +97,91 @@ export default class CapacityGuard {
     return Math.max(0, this.limitKw - this.softMarginKw);
   }
 
-  /**
-   * Get the threshold for shortfall detection.
-   * This is the "real" soft limit (uncapped burst rate) - shortfall only triggers
-   * when power exceeds this AND no devices are left to shed.
-   * During end-of-hour, the soft limit for shedding may be artificially lowered,
-   * but shortfall should use the actual budget-based limit.
-   */
   getShortfallThreshold(): number {
     if (this.shortfallThresholdProvider) {
       const threshold = this.shortfallThresholdProvider();
       if (typeof threshold === 'number' && threshold >= 0) return threshold;
     }
-    // Fall back to soft limit if no separate threshold provider
     return this.getSoftLimit();
   }
 
-  private recomputeAllocation(): void {
-    let total = 0;
-    this.controllables.forEach((c) => {
-      if (c.desired === 'ON') total += c.powerKw;
-    });
-    this.allocatedKw = total;
+  headroom(): number | null {
+    if (this.mainPowerKw === null) return null;
+    return this.getSoftLimit() - this.mainPowerKw;
+  }
+
+  getHeadroom(): number | null {
+    return this.headroom();
+  }
+
+  getRestoreMargin(): number {
+    return this.restoreMarginKw;
+  }
+
+  // --- State management (called by Plan) ---
+
+  isSheddingActive(): boolean {
+    return this.sheddingActive;
+  }
+
+  isInShortfall(): boolean {
+    return this.inShortfall;
   }
 
   /**
-   * Replace the controllable set with a supplied list (used by app snapshot sync).
+   * Called by Plan after making shedding decisions.
+   * Updates sheddingActive state and triggers callbacks.
    */
-  setControllables(devices: Array<{ id: string; name: string; powerKw: number; priority: number; on?: boolean }>): void {
-    this.controllables.clear();
-    for (const dev of devices) {
-      if (!dev || !dev.id) continue;
-      const power = Number.isFinite(dev.powerKw) && dev.powerKw >= 0 ? dev.powerKw : 0;
-      const priority = Number.isFinite(dev.priority) ? dev.priority : 100;
-      const desired: DesiredState = dev.on ? 'ON' : 'OFF';
-      this.controllables.set(dev.id, {
-        name: dev.name,
-        powerKw: power,
-        priority,
-        desired,
-      });
-    }
-    this.recomputeAllocation();
-  }
-
-  async tick(): Promise<void> {
-    if (this.mainPowerKw === null) return;
-    const soft = this.getSoftLimit();
-    const headroom = soft - this.mainPowerKw;
-
-    if (headroom < 0) {
-      this.log?.(`Guard: overshoot detected. total=${this.mainPowerKw.toFixed(2)}kW soft=${soft.toFixed(2)}kW headroom=${headroom.toFixed(2)}kW`);
-      // Reset shortfall clear timer if we're back in overshoot
-      if (this.shortfallClearStartTime !== null) {
-        this.log?.('Guard: back in overshoot, resetting shortfall clear timer');
-        this.shortfallClearStartTime = null;
-      }
-      // Ensure sheddingActive is set even if we can't shed anything (uncontrolled load exceeds limit)
-      if (!this.sheddingActive) {
-        this.sheddingActive = true;
-        await this.onSheddingStart?.();
-      }
-      await this.shedUntilHealthy(headroom);
-    } else {
-      // Headroom is positive (relative to soft limit)
-      // For shortfall clearing, check against shortfall threshold (same as shortfall detection)
-      const shortfallThreshold = this.getShortfallThreshold();
-      const thresholdHeadroom = shortfallThreshold - this.mainPowerKw;
-      if (this.inShortfall && thresholdHeadroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
-        const now = Date.now();
-        if (this.shortfallClearStartTime === null) {
-          // First tick with positive headroom - start the timer
-          this.shortfallClearStartTime = now;
-          this.log?.(`Guard: positive headroom detected, waiting for sustained period before clearing shortfall`);
-        } else if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
-          // Sustained positive headroom for required duration - clear shortfall
-          this.log?.('Guard: shortfall cleared (sustained positive headroom)');
-          this.inShortfall = false;
-          this.shortfallClearStartTime = null;
-          await this.onShortfallCleared?.();
-        }
-      } else if (this.inShortfall) {
-        // Headroom dropped below margin while waiting - reset the timer
-        if (this.shortfallClearStartTime !== null) {
-          this.log?.('Guard: headroom dropped, resetting shortfall clear timer');
-          this.shortfallClearStartTime = null;
-        }
-      }
-      if (this.sheddingActive && headroom >= this.restoreMarginKw) {
-        this.sheddingActive = false;
-        await this.onSheddingEnd?.();
-      }
-    }
-  }
-
-  private async shedUntilHealthy(initialHeadroom: number): Promise<void> {
-    let headroom = initialHeadroom;
-
-    // Sort by priority descending: higher number = less important = shed first
-    // Priority 1 = most important = shed last
-    const toShed = Array.from(this.controllables.entries())
-      .filter(([, c]) => c.desired === 'ON')
-      .sort((a, b) => b[1].priority - a[1].priority);
-
-    // Log the shed order for debugging
-    this.log?.(`Guard: shed candidates (least→most important): ${toShed.map(([, c]) => `${c.name}(p${c.priority})`).join(', ')}`);
-
-    let shedThisTick = false;
-    for (const [deviceId, device] of toShed) {
-      if (headroom >= 0) break;
-      device.desired = 'SHED';
-      this.controllables.set(deviceId, device);
-      this.recomputeAllocation();
-      shedThisTick = true;
-      this.log?.(`Guard: shedding ${device.name} (${device.powerKw.toFixed(2)}kW) dryRun=${this.dryRun}`);
-      await this.onDeviceShed?.(deviceId, device.name);
-      if (!this.dryRun && this.actuator) {
-        await this.actuator(deviceId, device.name);
-      }
-      headroom += device.powerKw;
-    }
-
-    if (shedThisTick && !this.sheddingActive) {
+  async setSheddingActive(active: boolean): Promise<void> {
+    if (active && !this.sheddingActive) {
       this.sheddingActive = true;
       await this.onSheddingStart?.();
-    }
-
-    // Detect shortfall: when power exceeds the shortfall threshold AND no devices left to shed.
-    // The shortfall threshold is the "real" soft limit (uncapped burst rate).
-    // During end-of-hour, the soft limit for shedding may be artificially lowered to prepare
-    // for the next hour, but shortfall should use the actual budget-based limit.
-    // This prevents false shortfall alerts when we're just constraining to sustainable rate.
-    const remainingToShed = Array.from(this.controllables.values()).filter((c) => c.desired === 'ON').length;
-    const shortfallThreshold = this.getShortfallThreshold();
-    const thresholdExceeded = this.mainPowerKw !== null && this.mainPowerKw > shortfallThreshold;
-    const nowInShortfall = thresholdExceeded && remainingToShed === 0;
-    if (nowInShortfall && !this.inShortfall) {
-      const deficitKw = this.mainPowerKw! - shortfallThreshold;
-      this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW (total=${this.mainPowerKw!.toFixed(2)}kW > threshold=${shortfallThreshold.toFixed(2)}kW)`);
-      this.inShortfall = true;
-      await this.onShortfall?.(deficitKw);
-    } else if (this.inShortfall && headroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
-      // Shortfall clearing is handled in tick() with time-based hysteresis
-      // Don't clear here - let tick() handle the sustained time requirement
-    }
-
-    // Only end shedding if headroom is truly positive with margin
-    // Don't end shedding just because we ran out of things to shed
-    if (this.sheddingActive && headroom >= this.restoreMarginKw) {
+    } else if (!active && this.sheddingActive) {
       this.sheddingActive = false;
       await this.onSheddingEnd?.();
     }
   }
 
-  isInShortfall(): boolean {
-    return this.inShortfall;
+  /**
+   * Called by Plan after shedding decisions to check/update shortfall state.
+   * @param hasCandidates - Whether there are still devices that could be shed
+   * @param deficitKw - Current power deficit (negative headroom)
+   */
+  async checkShortfall(hasCandidates: boolean, deficitKw: number): Promise<void> {
+    const shortfallThreshold = this.getShortfallThreshold();
+    const thresholdExceeded = this.mainPowerKw !== null && this.mainPowerKw > shortfallThreshold;
+
+    // Enter shortfall if over threshold AND no candidates left
+    if (thresholdExceeded && !hasCandidates && !this.inShortfall) {
+      this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW`);
+      this.inShortfall = true;
+      this.shortfallClearStartTime = null;
+      await this.onShortfall?.(deficitKw);
+      return;
+    }
+
+    // Check for shortfall clearing (requires sustained positive headroom)
+    if (this.inShortfall) {
+      const thresholdHeadroom = shortfallThreshold - (this.mainPowerKw ?? 0);
+
+      if (thresholdHeadroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
+        const now = Date.now();
+        if (this.shortfallClearStartTime === null) {
+          this.shortfallClearStartTime = now;
+          this.log?.('Guard: positive headroom detected, waiting for sustained period before clearing shortfall');
+        } else if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
+          this.log?.('Guard: shortfall cleared (sustained positive headroom)');
+          this.inShortfall = false;
+          this.shortfallClearStartTime = null;
+          await this.onShortfallCleared?.();
+        }
+      } else {
+        // Headroom dropped - reset timer
+        if (this.shortfallClearStartTime !== null) {
+          this.log?.('Guard: headroom dropped, resetting shortfall clear timer');
+          this.shortfallClearStartTime = null;
+        }
+      }
+    }
   }
 }
