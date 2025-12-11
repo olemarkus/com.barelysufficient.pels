@@ -15,6 +15,7 @@ export interface SettingsHandlerDeps {
   loadPriceOptimizationSettings: () => void;
   priceService: PriceService;
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
+  updateOverheadToken: (value?: number) => void;
   errorLog: (message: string, error: unknown) => void;
 }
 
@@ -54,6 +55,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
         const { limitKw, marginKw } = deps.getCapacitySettings();
         guard?.setLimit(limitKw);
         guard?.setSoftMargin(marginKw);
+        deps.updateOverheadToken(marginKw);
         deps.rebuildPlanFromCache();
         break;
       }

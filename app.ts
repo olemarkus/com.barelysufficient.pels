@@ -82,6 +82,9 @@ module.exports = class PelsApp extends Homey.App {
   private lastKnownPowerKw: Record<string, number> = {};
   // Temporary overrides set via flow card until real power is reported again
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
+  // Flow token exposing capacity overhead (margin) in kW
+  // Flow token exposing capacity overhead (margin) in kW
+  private overheadToken?: Homey.FlowToken;
   // Track last measured power reading with timestamp to compare recency
   private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   // Price optimization settings per device: { deviceId: { enabled, cheapDelta, expensiveDelta } }
@@ -148,6 +151,7 @@ module.exports = class PelsApp extends Homey.App {
       loadPriceOptimizationSettings: () => this.loadPriceOptimizationSettings(),
       priceService: this.priceService,
       updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
+      updateOverheadToken: (value) => void this.updateOverheadToken(value),
       errorLog: (message: string, error: unknown) => this.error(message, error as Error),
     });
     this.homey.settings.on('set', (key: string) => {
@@ -159,6 +163,7 @@ module.exports = class PelsApp extends Homey.App {
 
     this.loadPowerTracker();
     this.loadPriceOptimizationSettings();
+    void this.updateOverheadToken();
     await this.refreshTargetDevicesSnapshot();
     this.rebuildPlanFromCache(); // Build initial plan after snapshot is loaded
     if (this.capacityDryRun) {
@@ -252,6 +257,7 @@ module.exports = class PelsApp extends Homey.App {
     if (typeof dryRun === 'boolean') this.capacityDryRun = dryRun;
     if (controllables && typeof controllables === 'object') this.controllableDevices = controllables as Record<string, boolean>;
     this.updatePriceOptimizationEnabled();
+    void this.updateOverheadToken(this.capacitySettings.marginKw);
   }
 
   private loadPriceOptimizationSettings(): void {
@@ -262,6 +268,22 @@ module.exports = class PelsApp extends Homey.App {
         cheapDelta: number;
         expensiveDelta: number;
       }>;
+    }
+  }
+
+  private async updateOverheadToken(value?: number): Promise<void> {
+    const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;
+    try {
+      if (!this.overheadToken) {
+        this.overheadToken = await this.homey.flow.createToken('capacity_overhead', {
+          type: 'number',
+          title: 'Capacity overhead (kW)',
+          value: overhead ?? 0,
+        });
+      }
+      await this.overheadToken.setValue(overhead ?? 0);
+    } catch (error) {
+      this.logDebug('Failed to create/update capacity_overhead token', error as Error);
     }
   }
 
@@ -368,8 +390,9 @@ module.exports = class PelsApp extends Homey.App {
         throw new Error('Device already has load configured in settings; remove it before overriding expected power.');
       }
 
+      const deviceName = this.latestTargetSnapshot.find((d) => d.id === deviceId)?.name || deviceId;
       this.expectedPowerKwOverrides[deviceId] = { kw: powerW / 1000, ts: Date.now() };
-      this.log(`Flow: set expected power for ${deviceId} to ${(powerW / 1000).toFixed(3)} kW`);
+      this.log(`Flow: set expected power for ${deviceName} to ${(powerW / 1000).toFixed(3)} kW`);
       await this.refreshTargetDevicesSnapshot();
       this.rebuildPlanFromCache();
       return true;
@@ -687,7 +710,7 @@ module.exports = class PelsApp extends Homey.App {
       // Find the device in snapshot to get its current capability
       const device = this.latestTargetSnapshot.find((d) => d.id === deviceId);
       if (!device || !device.targets || device.targets.length === 0) {
-        this.logDebug(`Price optimization: Device ${deviceId} not found or has no target capability`);
+        this.logDebug(`Price optimization: Device ${device?.name || deviceId} not found or has no target capability`);
         continue;
       }
 
