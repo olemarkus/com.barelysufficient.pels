@@ -1051,6 +1051,32 @@ const renderPlan = (plan) => {
     powerValue.textContent = powerText;
     powerLine.append(powerLabel, powerValue);
 
+    const usageLine = document.createElement('div');
+    usageLine.className = 'plan-meta-line';
+    const usageLabel = document.createElement('span');
+    usageLabel.className = 'plan-label';
+    usageLabel.textContent = 'Usage';
+    const usageValue = document.createElement('span');
+    const measuredKw = (dev as any).measuredPowerKw;
+    const expectedKw = (dev as any).expectedPowerKw;
+    const hasMeasured = Number.isFinite(measuredKw) && measuredKw > 0.01;
+    const hasExpected = Number.isFinite(expectedKw) && expectedKw > 0.01;
+
+    let usageText = 'Unknown';
+    if (hasMeasured && hasExpected) {
+      const diff = Math.abs(measuredKw - expectedKw);
+      usageText = diff < 0.01
+        ? `${measuredKw.toFixed(2)} kW`
+        : `${measuredKw.toFixed(2)} kW / ${expectedKw.toFixed(2)} kW expected`;
+    } else if (hasMeasured) {
+      usageText = `${measuredKw.toFixed(2)} kW`;
+    } else if (hasExpected) {
+      usageText = `${expectedKw.toFixed(2)} kW expected`;
+    }
+
+    usageValue.textContent = usageText;
+    usageLine.append(usageLabel, usageValue);
+
     const reasonLine = document.createElement('div');
     reasonLine.className = 'plan-meta-line';
     const reasonLabel = document.createElement('span');
@@ -1060,7 +1086,7 @@ const renderPlan = (plan) => {
     reasonValue.textContent = dev.reason || 'Plan unchanged';
     reasonLine.append(reasonLabel, reasonValue);
 
-    metaWrap.append(name, tempLine, powerLine, reasonLine);
+    metaWrap.append(name, tempLine, powerLine, usageLine, reasonLine);
 
     row.append(metaWrap);
     planList.appendChild(row);

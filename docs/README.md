@@ -157,6 +157,7 @@ Shows the current plan – what PELS intends to do with each device based on cur
 | **Device** | The device name |
 | **Current** | Current state (on/off and temperature) |
 | **Planned** | What PELS plans to do (keep, shed, restore) |
+| **Usage** | Current measured power vs. expected power (fallback 1 kW if unknown) |
 
 Click **Refresh plan** to recalculate.
 
@@ -217,6 +218,7 @@ For each device with price optimization enabled:
 | **Report power usage** | **Required!** Feed current power draw (W) from your power meter to PELS |
 | **Set capacity limit** | Change the capacity limit dynamically |
 | **Set operating mode** | Switch between modes (Home, Away, etc.) |
+| **Set expected power for device** | Temporarily override a device’s expected power until it reports a new meter value (fails if the device already has a configured load) |
 
 ### Essential Flow: Reporting Power Usage
 
