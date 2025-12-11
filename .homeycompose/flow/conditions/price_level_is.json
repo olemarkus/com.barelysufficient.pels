@@ -1,0 +1,24 @@
+{
+  "title": {
+    "en": "Price level is..."
+  },
+  "titleFormatted": {
+    "en": "Price level is [[level]]"
+  },
+  "args": [
+    {
+      "name": "level",
+      "type": "autocomplete",
+      "title": {
+        "en": "Price level"
+      },
+      "placeholder": {
+        "en": "Choose a price level"
+      },
+      "example": {
+        "en": "Cheap"
+      }
+    }
+  ],
+  "id": "price_level_is"
+}

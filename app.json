@@ -81,6 +81,30 @@
           "en": "Use this to trigger flows when PELS switches to a different operating mode."
         },
         "id": "operating_mode_changed"
+      },
+      {
+        "title": {
+          "en": "Price level changed to"
+        },
+        "titleFormatted": {
+          "en": "Price level changed to [[level]]"
+        },
+        "args": [
+          {
+            "name": "level",
+            "type": "autocomplete",
+            "title": {
+              "en": "Price level"
+            },
+            "placeholder": {
+              "en": "Choose a price level"
+            },
+            "example": {
+              "en": "Cheap"
+            }
+          }
+        ],
+        "id": "price_level_changed"
       }
     ],
     "conditions": [
@@ -133,6 +157,30 @@
           "en": "Use this to create flows that only run when PELS is in a specific mode (e.g., Home, Away, Night)."
         },
         "id": "is_capacity_mode"
+      },
+      {
+        "title": {
+          "en": "Price level is..."
+        },
+        "titleFormatted": {
+          "en": "Price level is [[level]]"
+        },
+        "args": [
+          {
+            "name": "level",
+            "type": "autocomplete",
+            "title": {
+              "en": "Price level"
+            },
+            "placeholder": {
+              "en": "Choose a price level"
+            },
+            "example": {
+              "en": "Cheap"
+            }
+          }
+        ],
+        "id": "price_level_is"
       }
     ],
     "actions": [

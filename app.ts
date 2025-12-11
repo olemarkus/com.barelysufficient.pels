@@ -3,6 +3,7 @@ import CapacityGuard from './capacityGuard';
 import PriceService from './priceService';
 import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './powerTracker';
 import { createSettingsHandler } from './settingsHandlers';
+import { PriceLevel, PRICE_LEVEL_OPTIONS } from './priceLevels';
 
 const { HomeyAPI } = require('homey-api');
 
@@ -84,6 +85,7 @@ module.exports = class PelsApp extends Homey.App {
   }> = {};
   private settingsHandler?: (key: string) => void;
   private lastNotifiedOperatingMode = 'Home';
+  private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     const snap = this.latestTargetSnapshot.find((d) => d.id === deviceId);
@@ -311,6 +313,34 @@ module.exports = class PelsApp extends Homey.App {
       return Array.from(this.getAllModes())
         .filter((m) => !q || m.toLowerCase().includes(q))
         .map((m) => ({ id: m, name: m }));
+    });
+
+    const priceLevelChangedTrigger = this.homey.flow.getTriggerCard('price_level_changed');
+    priceLevelChangedTrigger.registerRunListener(async (args: { level: string | { id: string; name: string } }, state: { priceLevel?: PriceLevel }) => {
+      const argLevelValue = typeof args.level === 'object' && args.level !== null ? args.level.id : args.level;
+      const chosenLevelRaw = (argLevelValue || '').trim().toLowerCase();
+      const chosenLevel = (chosenLevelRaw || PriceLevel.UNKNOWN) as PriceLevel;
+      const stateLevel = (state?.priceLevel || PriceLevel.UNKNOWN) as PriceLevel;
+      return chosenLevel === stateLevel;
+    });
+    priceLevelChangedTrigger.registerArgumentAutocompleteListener('level', async (query: string) => {
+      const q = (query || '').toLowerCase();
+      return PRICE_LEVEL_OPTIONS
+        .filter((opt) => !q || opt.name.toLowerCase().includes(q))
+        .map((opt) => ({ id: opt.id, name: opt.name }));
+    });
+
+    const priceLevelIsCond = this.homey.flow.getConditionCard('price_level_is');
+    priceLevelIsCond.registerRunListener(async (args: { level: string | { id: string; name: string } }) => {
+      const argLevelValue = typeof args.level === 'object' && args.level !== null ? args.level.id : args.level;
+      const chosenLevel = ((argLevelValue || '').trim().toLowerCase() || PriceLevel.UNKNOWN) as PriceLevel;
+      const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
+      const currentLevel = (status?.priceLevel || this.lastNotifiedPriceLevel) as PriceLevel;
+      return chosenLevel === currentLevel;
+    });
+    priceLevelIsCond.registerArgumentAutocompleteListener('level', async (query: string) => {
+      const q = (query || '').toLowerCase();
+      return PRICE_LEVEL_OPTIONS.filter((opt) => !q || opt.name.toLowerCase().includes(q));
     });
 
     const reportPowerCard = this.homey.flow.getActionCard('report_power_usage');
@@ -604,7 +634,8 @@ module.exports = class PelsApp extends Homey.App {
 
     // If price is normal (not cheap or expensive), use the mode's base temperature
     // eslint-disable-next-line no-nested-ternary -- Clear price state mapping
-    const priceState = isCheap ? 'cheap' : isExpensive ? 'expensive' : 'normal';
+    const priceState = isCheap ? PriceLevel.CHEAP : isExpensive ? PriceLevel.EXPENSIVE : PriceLevel.NORMAL;
+    const priceStateStr = priceState; // Convert to string for logging
 
     for (const [deviceId, config] of Object.entries(settings)) {
       if (!config.enabled) continue;
@@ -649,7 +680,7 @@ module.exports = class PelsApp extends Homey.App {
 
       // In dry run mode, only log what would happen
       if (this.capacityDryRun) {
-        this.log(`Price optimization (dry run): Would set ${device.name} to ${targetTemp}°C (${priceState} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
+        this.log(`Price optimization (dry run): Would set ${device.name} to ${targetTemp}°C (${priceStateStr} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
         continue;
       }
 
@@ -659,7 +690,7 @@ module.exports = class PelsApp extends Homey.App {
           capabilityId: targetCap,
           value: targetTemp,
         });
-        this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${priceState} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
+        this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${priceStateStr} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
         this.updateLocalSnapshot(deviceId, { target: targetTemp });
       } catch (error) {
         this.error(`Price optimization: Failed to set ${device.name} to ${targetTemp}°C`, error);
@@ -925,12 +956,12 @@ module.exports = class PelsApp extends Homey.App {
     // Compute price level
     const isCheap = this.isCurrentHourCheap();
     const isExpensive = this.isCurrentHourExpensive();
-    let priceLevel: 'cheap' | 'normal' | 'expensive' | 'unknown' = 'unknown';
+    let priceLevel: PriceLevel = PriceLevel.UNKNOWN;
     const prices = this.homey.settings.get('combined_prices') as { prices?: Array<{ total: number }> } | null;
     if (prices?.prices && prices.prices.length > 0) {
-      if (isCheap) priceLevel = 'cheap';
-      else if (isExpensive) priceLevel = 'expensive';
-      else priceLevel = 'normal';
+      if (isCheap) priceLevel = PriceLevel.CHEAP;
+      else if (isExpensive) priceLevel = PriceLevel.EXPENSIVE;
+      else priceLevel = PriceLevel.NORMAL;
     }
 
     const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
@@ -951,6 +982,17 @@ module.exports = class PelsApp extends Homey.App {
     };
 
     this.homey.settings.set('pels_status', status);
+
+    // Trigger price level changed flow card if price level changed
+    if (priceLevel !== this.lastNotifiedPriceLevel) {
+      this.lastNotifiedPriceLevel = priceLevel;
+      const card = this.homey.flow?.getTriggerCard?.('price_level_changed');
+      if (card) {
+        card
+          .trigger({ level: priceLevel }, { priceLevel })
+          .catch((err: Error) => this.error('Failed to trigger price_level_changed', err));
+      }
+    }
   }
 
   private buildDevicePlanSnapshot(devices: Array<{
