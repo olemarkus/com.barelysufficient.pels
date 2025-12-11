@@ -1,0 +1,32 @@
+{
+  "title": {
+    "en": "Set expected power for device"
+  },
+  "titleFormatted": {
+    "en": "Set expected power for [[device]] to [[power_w]] W"
+  },
+  "hint": {
+    "en": "Override a device's expected power usage until it reports a new meter reading. Fails if the device already has load configured in settings."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    },
+    {
+      "name": "power_w",
+      "type": "number",
+      "title": {
+        "en": "Expected power (W)"
+      },
+      "min": 1,
+      "step": 1
+    }
+  ]
+}

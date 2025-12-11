@@ -128,8 +128,8 @@ When headroom becomes available:
 
 PELS needs to estimate how much power a device will draw when turned on:
 
-1. **Last known power**: If we've seen this device on before, use its measured power
-2. **settings.load capability**: Some devices report their rated power
+1. **settings.load capability**: If configured on the device, always use this first
+2. **Most recent reading**: Whichever is newer between live `measure_power` and a temporary override from the "Set expected power for device" Flow action
 3. **Fallback**: Assume 1 kW if no better estimate available
 
 This estimation is inherently imperfect, which is why PELS:

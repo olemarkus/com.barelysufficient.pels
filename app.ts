@@ -26,10 +26,13 @@ type TargetDeviceSnapshot = {
   name: string;
   targets: Array<{ id: string; value: unknown; unit: string }>;
   powerKw?: number;
+  expectedPowerKw?: number;
   priority?: number;
   currentOn?: boolean;
   zone?: string;
   controllable?: boolean;
+  currentTemperature?: number;
+  measuredPowerKw?: number;
 };
 
 module.exports = class PelsApp extends Homey.App {
@@ -77,6 +80,10 @@ module.exports = class PelsApp extends Homey.App {
   // Track last known power draw (kW) for each device when it was ON and drawing power > 0
   // Used as a fallback estimate when settings.load is not available
   private lastKnownPowerKw: Record<string, number> = {};
+  // Temporary overrides set via flow card until real power is reported again
+  private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
+  // Track last measured power reading with timestamp to compare recency
+  private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   // Price optimization settings per device: { deviceId: { enabled, cheapDelta, expensiveDelta } }
   private priceOptimizationSettings: Record<string, {
     enabled: boolean;
@@ -341,6 +348,43 @@ module.exports = class PelsApp extends Homey.App {
     priceLevelIsCond.registerArgumentAutocompleteListener('level', async (query: string) => {
       const q = (query || '').toLowerCase();
       return PRICE_LEVEL_OPTIONS.filter((opt) => !q || opt.name.toLowerCase().includes(q));
+    });
+
+    const setExpectedPowerCard = this.homey.flow.getActionCard('set_expected_power_usage');
+    setExpectedPowerCard.registerRunListener(async (args: { device: string | { id?: string; name?: string; data?: { id?: string } }; power_w: number }) => {
+      const deviceIdRaw = typeof args.device === 'object' && args.device !== null
+        ? args.device.id || args.device.data?.id
+        : args.device;
+      const deviceId = (deviceIdRaw || '').trim();
+      if (!deviceId) throw new Error('Device must be provided');
+
+      const powerW = Number(args.power_w);
+      if (!Number.isFinite(powerW) || powerW <= 0) {
+        throw new Error('Expected power must be a positive number (W).');
+      }
+
+      const configuredLoad = await this.getDeviceLoadSetting(deviceId);
+      if (configuredLoad !== null && configuredLoad > 0) {
+        throw new Error('Device already has load configured in settings; remove it before overriding expected power.');
+      }
+
+      this.expectedPowerKwOverrides[deviceId] = { kw: powerW / 1000, ts: Date.now() };
+      this.log(`Flow: set expected power for ${deviceId} to ${(powerW / 1000).toFixed(3)} kW`);
+      await this.refreshTargetDevicesSnapshot();
+      this.rebuildPlanFromCache();
+      return true;
+    });
+    setExpectedPowerCard.registerArgumentAutocompleteListener('device', async (query: string) => {
+      const q = (query || '').toLowerCase();
+      if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) {
+        await this.refreshTargetDevicesSnapshot();
+      }
+      const devices = this.latestTargetSnapshot
+        .filter((d) => d.controllable !== false)
+        .map((d) => ({ id: d.id, name: d.name || d.id }));
+      return devices
+        .filter((d) => !q || d.name.toLowerCase().includes(q))
+        .sort((a, b) => a.name.localeCompare(b.name));
     });
 
     const reportPowerCard = this.homey.flow.getActionCard('report_power_usage');
@@ -753,7 +797,7 @@ module.exports = class PelsApp extends Homey.App {
     }, refreshIntervalMs);
   }
 
-  private async fetchDevicesViaApi(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number }>> {
+  private async fetchDevicesViaApi(): Promise<Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; measuredPowerKw?: number }>> {
     // Prefer the HomeyAPI helper if available.
     if (this.homeyApi) {
       try {
@@ -786,7 +830,7 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Homey device objects have no TypeScript definitions
-  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }> {
+  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; expectedPowerKw?: number; measuredPowerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }> {
     return list
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey device objects have no TypeScript definitions
       .map((device: any) => {
@@ -802,23 +846,56 @@ module.exports = class PelsApp extends Homey.App {
         const powerRaw = capabilityObj.measure_power?.value;
         const isOn = capabilityObj.onoff?.value === true;
         let powerKw: number | undefined;
+        let expectedPowerKw: number | undefined;
+        const expectedOverride = this.expectedPowerKwOverrides[deviceId];
+        const now = Date.now();
+        let measuredPowerKw: number | undefined;
+        const deviceLabel = device.name ? `${device.name} (${deviceId})` : deviceId;
 
         // Priority for power estimates:
-        // 1. measure_power (real-time, when device is actively drawing)
-        // 2. settings.load (configured expected load)
-        // 3. lastKnownPowerKw (last observed power when device was on)
-        if (typeof powerRaw === 'number' && powerRaw > 0) {
-          powerKw = powerRaw > MIN_SIGNIFICANT_POWER_W ? powerRaw / 1000 : powerRaw;
-          // Track this as the last known power for this device (when on and drawing)
-          if (isOn && powerKw > MIN_SIGNIFICANT_POWER_W / 1000) {
-            this.lastKnownPowerKw[deviceId] = powerKw;
-          }
-        } else if (device.settings && typeof device.settings.load === 'number') {
+        // 1. settings.load (configured expected load)
+        // 2. Most recent of:
+        //    - measured power (measure_power), tracked with timestamp
+        //    - expectedPowerKwOverrides (temporary override set via flow)
+        // 3. Default fallback: 1 kW
+        if (device.settings && typeof device.settings.load === 'number' && device.settings.load > 0) {
           const loadW = device.settings.load;
-          powerKw = loadW > MIN_SIGNIFICANT_POWER_W ? loadW / 1000 : loadW;
-        } else if (this.lastKnownPowerKw[deviceId]) {
-          // Use last known power as fallback
-          powerKw = this.lastKnownPowerKw[deviceId];
+          powerKw = loadW / 1000;
+          expectedPowerKw = powerKw;
+          this.logDebug(`Power estimate: using settings.load for ${deviceLabel}: ${powerKw.toFixed(3)} kW`);
+        } else {
+          if (typeof powerRaw === 'number' && Number.isFinite(powerRaw) && powerRaw <= MIN_SIGNIFICANT_POWER_W) {
+            this.logDebug(`Power estimate: ignoring low reading for ${deviceLabel}: ${powerRaw} W (<= ${MIN_SIGNIFICANT_POWER_W} W threshold)`);
+          }
+          if (typeof powerRaw === 'number' && Number.isFinite(powerRaw) && powerRaw > MIN_SIGNIFICANT_POWER_W) {
+            const measuredKw = powerRaw / 1000;
+            measuredPowerKw = measuredKw;
+            this.lastMeasuredPowerKw[deviceId] = { kw: measuredKw, ts: now };
+            // Track this as the last known power for this device (when on and drawing)
+            if (isOn && measuredKw > MIN_SIGNIFICANT_POWER_W / 1000) {
+              this.lastKnownPowerKw[deviceId] = measuredKw;
+            }
+            this.logDebug(`Power estimate: captured measured power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW`);
+          }
+
+          const measured = this.lastMeasuredPowerKw[deviceId];
+          if (!measuredPowerKw && measured) {
+            measuredPowerKw = measured.kw;
+          }
+          const override = expectedOverride;
+          if (measured && (!override || measured.ts >= override.ts)) {
+            powerKw = measured.kw;
+            expectedPowerKw = measured.kw;
+            this.logDebug(`Power estimate: using last measured for ${deviceLabel}: ${measured.kw.toFixed(3)} kW`);
+          } else if (override) {
+            powerKw = override.kw;
+            expectedPowerKw = override.kw;
+            this.logDebug(`Power estimate: using override for ${deviceLabel}: ${override.kw.toFixed(3)} kW`);
+          } else {
+            powerKw = 1;
+            expectedPowerKw = undefined; // Unknown estimate shown as "Unknown" in UI
+            this.logDebug(`Power estimate: fallback 1 kW for ${deviceLabel} (no measured/override/load)`);
+          }
         }
 
         const targetCaps = capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
@@ -848,9 +925,11 @@ module.exports = class PelsApp extends Homey.App {
           name: device.name,
           targets,
           powerKw,
+          expectedPowerKw,
           priority: this.getPriorityForDevice(deviceId),
           currentOn,
           currentTemperature,
+          measuredPowerKw,
           // Prefer modern zone structure; fall back to legacy to avoid deprecation warning.
           zone: device.zone?.name
             || (typeof device.zone === 'string' ? device.zone : undefined)
@@ -864,12 +943,56 @@ module.exports = class PelsApp extends Homey.App {
         name: string;
         targets: Array<{ id: string; value: unknown; unit: string }>;
         powerKw?: number;
+        expectedPowerKw?: number;
         priority?: number;
         currentOn?: boolean;
         zone?: string;
         controllable?: boolean;
         currentTemperature?: number;
+        measuredPowerKw?: number;
       }>;
+  }
+
+  private async getDeviceLoadSetting(deviceId: string): Promise<number | null> {
+    try {
+      const apiDevices = await this.homeyApi?.devices?.getDevices?.();
+      const device = apiDevices ? apiDevices[deviceId] : null;
+      if (device && typeof device.settings?.load === 'number') {
+        return device.settings.load;
+      }
+    } catch (error) {
+      this.logDebug('Failed to read device via HomeyAPI for load:', (error as Error)?.message || error);
+    }
+
+    try {
+      const devicesManager = (this.homey as { devices?: { getDevice?: (opts: { id: string }) => Promise<unknown> } }).devices;
+      if (devicesManager && typeof devicesManager.getDevice === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK typing lacks this signature
+        const dev: any = await devicesManager.getDevice({ id: deviceId });
+        if (dev && typeof dev.settings?.load === 'number') {
+          return dev.settings.load;
+        }
+      }
+    } catch (error) {
+      this.logDebug('Failed to read device via manager.devices for load:', (error as Error)?.message || error);
+    }
+
+    try {
+      const devices = await this.homey.api.get('manager/devices');
+      const list = (Array.isArray(devices) ? devices : Object.values(devices || {})) as Array<{
+        id?: string;
+        data?: { id?: string };
+        settings?: { load?: number };
+      }>;
+      const device = list.find((d) => d.id === deviceId || d.data?.id === deviceId);
+      if (device && typeof device.settings?.load === 'number') {
+        return device.settings.load;
+      }
+    } catch (error) {
+      this.logDebug('Failed to read device via manager/devices for load:', (error as Error)?.message || error);
+    }
+
+    return null;
   }
 
   private rebuildPlanFromCache(): void {
@@ -1000,6 +1123,8 @@ module.exports = class PelsApp extends Homey.App {
     name: string;
     targets: Array<{ id: string; value: unknown; unit: string }>;
     powerKw?: number;
+    expectedPowerKw?: number;
+    measuredPowerKw?: number;
     priority?: number;
     currentOn?: boolean;
     zone?: string;
@@ -1024,6 +1149,8 @@ module.exports = class PelsApp extends Homey.App {
       plannedTarget: number | null;
       priority?: number;
       powerKw?: number;
+      expectedPowerKw?: number;
+      measuredPowerKw?: number;
       reason?: string;
       zone?: string;
       controllable?: boolean;
@@ -1183,6 +1310,8 @@ module.exports = class PelsApp extends Homey.App {
         plannedTarget,
         priority,
         powerKw: dev.powerKw,
+        expectedPowerKw: dev.expectedPowerKw,
+        measuredPowerKw: dev.measuredPowerKw,
         reason,
         zone: dev.zone || 'Unknown',
         controllable,
