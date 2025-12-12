@@ -15,6 +15,11 @@ const OPERATING_MODE_SETTING = 'operating_mode';
 // Timing constants for shedding/restore behavior
 const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before considering restores
 const RESTORE_COOLDOWN_MS = 30000; // Wait 30s after restore for power to stabilize
+const RECENT_SHED_RESTORE_BACKOFF_MS = 3 * 60 * 1000; // Wait up to 3 minutes after a shed before retrying restore
+const RECENT_SHED_RESTORE_MULTIPLIER = 1.07; // Require ~7% more headroom if device was just shed
+const RECENT_SHED_EXTRA_BUFFER_KW = 0.08; // Or at least an extra 0.08 kW cushion when re-restoring
+const RECENT_RESTORE_SHED_GRACE_MS = 3 * 60 * 1000; // Avoid re-shedding a freshly restored device for 3 minutes unless overshoot is large
+const RECENT_RESTORE_OVERSHOOT_BYPASS_KW = 0.5; // Allow immediate re-shed if overshoot is >= 0.5 kW
 const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot every 5 minutes
 
@@ -76,6 +81,7 @@ module.exports = class PelsApp extends Homey.App {
   private controllableDevices: Record<string, boolean> = {};
   private shedBehaviors: Record<string, ShedBehavior> = {};
   private lastDeviceShedMs: Record<string, number> = {};
+  private lastDeviceRestoreMs: Record<string, number> = {};
   private pendingSheds = new Set<string>(); // Devices currently being shed (in-flight)
   private pendingRestores = new Set<string>(); // Devices currently being restored (in-flight)
   private lastSheddingMs: number | null = null;
@@ -861,6 +867,7 @@ module.exports = class PelsApp extends Homey.App {
           3,
         )} total=${total === null ? 'unknown' : total.toFixed(3)}`,
       );
+      const nowTs = Date.now();
       const candidates = devices
         .filter((d) => d.controllable !== false && d.currentOn !== false)
         .map((d) => {
@@ -876,6 +883,20 @@ module.exports = class PelsApp extends Homey.App {
             if (typeof currentTarget === 'number' && currentTarget === shedBehavior.temperature) {
               return false;
             }
+          }
+          return true;
+        })
+        .filter((d) => {
+          const lastRestore = this.lastDeviceRestoreMs[d.id];
+          if (!lastRestore) return true;
+          const sinceRestoreMs = nowTs - lastRestore;
+          const recentlyRestored = sinceRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
+          const overshootSevere = needed > RECENT_RESTORE_OVERSHOOT_BYPASS_KW;
+          if (recentlyRestored && !overshootSevere) {
+            this.logDebug(
+              `Plan: protecting ${d.name} from shedding (recently restored ${Math.round(sinceRestoreMs / 1000)}s ago, overshoot ${needed.toFixed(2)}kW)`,
+            );
+            return false;
           }
           return true;
         })
@@ -899,7 +920,7 @@ module.exports = class PelsApp extends Homey.App {
         if (remaining <= 0) break;
         shedSet.add(c.id);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
-        shedReasons.set(c.id, `shed due to capacity (priority ${c.priority ?? 100}, est ${((c as any).effectivePower as number).toFixed(2)}kW)`);
+        shedReasons.set(c.id, 'shed due to capacity');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
         remaining -= (c as any).effectivePower as number;
       }
@@ -993,6 +1014,23 @@ module.exports = class PelsApp extends Homey.App {
         reason = 'shed due to exhausted hourly energy budget';
       }
 
+      // If the device is already at its configured shed temperature, keep it marked as shed
+      // so UI and logic reflect the lowered-temperature shedding state.
+      const atShedTemperature = shedBehavior.action === 'set_temperature'
+        && shedBehavior.temperature !== null
+        && (Number(currentTarget) === shedBehavior.temperature
+          || Number(plannedTarget) === shedBehavior.temperature
+          || this.lastPlannedShedIds.has(dev.id));
+      const shedWindowActive = this.capacityGuard?.isSheddingActive?.() === true
+        || (this.lastOvershootMs !== null && Date.now() - this.lastOvershootMs < SHED_COOLDOWN_MS);
+      if (controllable && atShedTemperature && shedWindowActive) {
+        plannedState = 'shed';
+        shedAction = 'set_temperature';
+        shedTemperature = shedBehavior.temperature;
+        plannedTarget = shedBehavior.temperature;
+        reason = shedReasons.get(dev.id) || 'shed due to capacity';
+      }
+
       return {
         id: dev.id,
         name: dev.name,
@@ -1069,9 +1107,14 @@ module.exports = class PelsApp extends Homey.App {
         // Skip if we already restored one device this cycle
         if (restoredOneThisCycle) {
           dev.plannedState = 'shed';
-          dev.reason = 'stay off (waiting for measurement after previous restore)';
+          dev.reason = 'stay shed while power stabilizes';
           continue;
         }
+
+        const lastDeviceShed = this.lastDeviceShedMs[dev.id];
+        const recentlyShed = Boolean(
+          lastDeviceShed && Date.now() - lastDeviceShed < RECENT_SHED_RESTORE_BACKOFF_MS,
+        );
 
         // Check if this device was swapped out for a higher-priority device
         // Don't restore it until that higher-priority device is restored first
@@ -1081,7 +1124,7 @@ module.exports = class PelsApp extends Homey.App {
           // If the higher-priority device is still off, don't restore this one
           if (higherPriDev && higherPriDev.currentState === 'off') {
             dev.plannedState = 'shed';
-            dev.reason = `stay off (swapped out for ${higherPriDev.name}, waiting for it to restore first)`;
+            dev.reason = `stay shed while swap target ${higherPriDev.name} restores`;
             this.logDebug(`Plan: blocking restore of ${dev.name} - was swapped out for ${higherPriDev.name} which is still off`);
             continue;
           } else {
@@ -1122,7 +1165,7 @@ module.exports = class PelsApp extends Homey.App {
           }
           if (blockedBySwapTarget) {
             dev.plannedState = 'shed';
-            dev.reason = `stay off (pending swap target ${blockedBySwapTarget.name} p${blockedBySwapTarget.priority} should restore first)`;
+            dev.reason = `stay shed while swap target ${blockedBySwapTarget.name} restores`;
             this.logDebug(`Plan: blocking restore of ${dev.name} (p${devPriority}) - swap target ${blockedBySwapTarget.name} (p${blockedBySwapTarget.priority}) should restore first`);
             continue;
           }
@@ -1130,11 +1173,14 @@ module.exports = class PelsApp extends Homey.App {
 
         const devPower = dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1;
         // Need enough headroom to restore AND keep a safety buffer afterward
-        const needed = devPower + restoreHysteresis;
+        const baseNeeded = devPower + restoreHysteresis;
+        const needed = recentlyShed
+          ? Math.max(baseNeeded * RECENT_SHED_RESTORE_MULTIPLIER, baseNeeded + RECENT_SHED_EXTRA_BUFFER_KW)
+          : baseNeeded;
 
         if (availableHeadroom >= needed) {
           // Enough headroom - restore this device
-          availableHeadroom -= devPower + restoreHysteresis; // Reserve the hysteresis buffer
+          availableHeadroom -= needed; // Reserve the hysteresis buffer (with any extra cushion)
           restoredThisCycle.add(dev.id);
           restoredOneThisCycle = true; // Only restore one device per cycle
         } else {
@@ -1188,14 +1234,15 @@ module.exports = class PelsApp extends Homey.App {
               // It should not be restored until the higher-priority device is restored first
               this.swappedOutFor[shedDev.id] = dev.id;
             }
-            availableHeadroom -= devPower + restoreHysteresis; // Reserve the hysteresis buffer for swaps too
+            availableHeadroom -= needed; // Reserve the hysteresis buffer (with any extra cushion) for swaps too
             restoredThisCycle.add(dev.id);
             restoredOneThisCycle = true; // Swap counts as a restore - wait for measurement
             // Note: we don't add to cumulativeRestorePower for swaps since it's net-neutral
           } else {
             // Cannot restore - not enough headroom even with swaps
             dev.plannedState = 'shed';
-            dev.reason = `stay off (insufficient headroom ${availableHeadroom.toFixed(2)}kW < ${needed.toFixed(2)}kW needed, no lower-priority devices to swap)`;
+            const recentNote = recentlyShed ? ' (recently shed)' : '';
+            dev.reason = `stay shed due to insufficient headroom${recentNote} (no lower-priority devices to swap)`;
             this.logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${devPower.toFixed(2)}kW) - ${dev.reason}`);
           }
         }
@@ -1267,8 +1314,10 @@ module.exports = class PelsApp extends Homey.App {
         dev.shedAction = 'set_temperature';
         dev.shedTemperature = behavior.temperature;
         dev.plannedTarget = behavior.temperature;
+        const isSwapReason = typeof dev.reason === 'string'
+          && (dev.reason.includes('swapped out') || dev.reason.includes('swap target'));
         const hasSpecialReason = typeof dev.reason === 'string'
-          && (dev.reason.includes('shortfall') || dev.reason.includes('swap') || dev.reason.includes('hourly energy budget'));
+          && (dev.reason.includes('shortfall') || isSwapReason || dev.reason.includes('hourly energy budget'));
         const baseReason = shedReasons.get(dev.id)
           || (hasSpecialReason && dev.reason)
           || 'shed due to capacity';
@@ -1289,7 +1338,7 @@ module.exports = class PelsApp extends Homey.App {
     // Standardize shed reasons so min-temp and turn-off behaviors report the same states.
     for (const dev of planDevices) {
       if (dev.plannedState !== 'shed') continue;
-      const isSwapReason = dev.reason?.includes('swap');
+      const isSwapReason = dev.reason?.includes('swap target') || dev.reason?.includes('swapped out');
       const isBudgetReason = dev.reason?.includes('hourly energy budget');
       const isShortfallReason = dev.reason?.includes('shortfall');
       const keepReason = dev.reason
@@ -1634,7 +1683,14 @@ module.exports = class PelsApp extends Homey.App {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Device power is dynamically available
         const plannedPower = (dev as any).powerKw && (dev as any).powerKw > 0 ? (dev as any).powerKw : 1;
         const extraBuffer = Math.max(0.2, restoreMargin); // add a little hysteresis for restores
-        const neededForDevice = plannedPower + restoreMargin + extraBuffer;
+        const baseNeededForDevice = plannedPower + restoreMargin + extraBuffer;
+        const lastDeviceShed = this.lastDeviceShedMs[dev.id];
+        const recentlyShed = Boolean(
+          lastDeviceShed && Date.now() - lastDeviceShed < RECENT_SHED_RESTORE_BACKOFF_MS,
+        );
+        const neededForDevice = recentlyShed
+          ? Math.max(baseNeededForDevice * RECENT_SHED_RESTORE_MULTIPLIER, baseNeededForDevice + RECENT_SHED_EXTRA_BUFFER_KW)
+          : baseNeededForDevice;
         const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
         const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
         const inCooldown = (sinceShedding !== null && sinceShedding < SHED_COOLDOWN_MS) || (sinceOvershoot !== null && sinceOvershoot < SHED_COOLDOWN_MS);
@@ -1646,7 +1702,15 @@ module.exports = class PelsApp extends Homey.App {
         // 3. headroom < neededForDevice ensures we have enough margin
         if (sheddingActive || inShortfall || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice) {
           /* eslint-disable no-nested-ternary, max-len -- Clear state-dependent reason logging */
-          const reason = sheddingActive ? 'shedding active' : inShortfall ? 'in shortfall' : inCooldown ? 'cooldown' : 'insufficient headroom';
+          const reason = sheddingActive
+            ? 'shedding active'
+            : inShortfall
+              ? 'in shortfall'
+              : inCooldown
+                ? 'cooldown'
+                : recentlyShed
+                  ? 'recently shed, waiting for stable headroom'
+                  : 'insufficient headroom';
           this.log(`Capacity: keeping ${name} off (${reason})`);
           this.logDebug(
             `  → need ${neededForDevice.toFixed(2)}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(2)}kW, device ~${plannedPower.toFixed(2)}kW`,
@@ -1661,6 +1725,7 @@ module.exports = class PelsApp extends Homey.App {
             await this.deviceManager.setCapability(dev.id, 'onoff', true);
             this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
             this.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
+            this.lastDeviceRestoreMs[dev.id] = this.lastRestoreMs;
             // Clear this device from pending swap targets if it was one
             this.pendingSwapTargets.delete(dev.id);
             delete this.pendingSwapTimestamps[dev.id];
@@ -1699,6 +1764,7 @@ module.exports = class PelsApp extends Homey.App {
           // This ensures cooldown applies between restoring different devices
           if (isRestoring) {
             this.lastRestoreMs = Date.now();
+            this.lastDeviceRestoreMs[dev.id] = this.lastRestoreMs;
           }
         } catch (error) {
           this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via DeviceManager`, error);
