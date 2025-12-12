@@ -372,6 +372,34 @@ module.exports = class PelsApp extends Homey.App {
       return PRICE_LEVEL_OPTIONS.filter((opt) => !q || opt.name.toLowerCase().includes(q));
     });
 
+    const hasHeadroomForDeviceCond = this.homey.flow.getConditionCard('has_headroom_for_device');
+    hasHeadroomForDeviceCond.registerRunListener(async (args: { device: string | { id?: string; name?: string; data?: { id?: string } }; required_kw: number }) => {
+      if (!this.capacityGuard) return false;
+      const deviceIdRaw = typeof args.device === 'object' && args.device !== null
+        ? args.device.id || args.device.data?.id
+        : args.device;
+      const deviceId = (deviceIdRaw || '').trim();
+      const requiredKw = Number(args.required_kw);
+      if (!deviceId || !Number.isFinite(requiredKw) || requiredKw < 0) return false;
+
+      const headroom = this.capacityGuard.getHeadroom();
+      if (headroom === null) return false;
+
+      const deviceSnap = this.latestTargetSnapshot.find((d) => d.id === deviceId);
+      const deviceKw = deviceSnap?.expectedPowerKw ?? deviceSnap?.powerKw ?? 1;
+      return headroom + deviceKw >= requiredKw;
+    });
+    hasHeadroomForDeviceCond.registerArgumentAutocompleteListener('device', async (query: string) => {
+      const q = (query || '').toLowerCase();
+      if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) {
+        await this.refreshTargetDevicesSnapshot();
+      }
+      return this.latestTargetSnapshot
+        .map((d) => ({ id: d.id, name: d.name || d.id }))
+        .filter((d) => !q || d.name.toLowerCase().includes(q))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    });
+
     const setExpectedPowerCard = this.homey.flow.getActionCard('set_expected_power_usage');
     setExpectedPowerCard.registerRunListener(async (args: { device: string | { id?: string; name?: string; data?: { id?: string } }; power_w: number }) => {
       const deviceIdRaw = typeof args.device === 'object' && args.device !== null
