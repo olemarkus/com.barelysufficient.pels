@@ -912,7 +912,8 @@ module.exports = class PelsApp extends Homey.App {
     for (const swapTargetId of [...this.pendingSwapTargets]) {
       const swapTime = this.pendingSwapTimestamps[swapTargetId];
       if (swapTime && swapCleanupNow - swapTime > SWAP_TIMEOUT_MS) {
-        this.log(`Plan: clearing stale swap for ${swapTargetId} (${Math.round((swapCleanupNow - swapTime) / 1000)}s since swap initiated)`);
+        const swapName = planDevices.find((d) => d.id === swapTargetId)?.name || swapTargetId;
+        this.log(`Plan: clearing stale swap for ${swapName} (${Math.round((swapCleanupNow - swapTime) / 1000)}s since swap initiated)`);
         this.pendingSwapTargets.delete(swapTargetId);
         delete this.pendingSwapTimestamps[swapTargetId];
         // Also clear any swappedOutFor entries pointing to this target
