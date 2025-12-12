@@ -10,6 +10,7 @@
     "capacityGuard.ts",
     "httpClient.ts",
     "powerTracker.ts",
+    "priceOptimizer.ts",
     "priceService.ts",
     "settingsHandlers.ts",
     "drivers/**/*.ts",
