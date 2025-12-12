@@ -153,9 +153,9 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await app.onInit();
 
-    // Inject mock homeyApi
+    // Inject mock homeyApi (override both app and device manager instances)
     const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
+    const homeyApiStub = {
       devices: {
         getDevices: async () => ({
           'dev-1': {
@@ -169,6 +169,8 @@ describe('MyApp initialization', () => {
         setCapabilityValue: setCapSpy,
       },
     };
+    (app as any).homeyApi = homeyApiStub;
+    (app as any).deviceManager.homeyApi = homeyApiStub;
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });

@@ -27,7 +27,7 @@ export interface FlowCardDeps {
   resolveModeName: (mode: string) => string;
   getAllModes: () => Set<string>;
   getCurrentOperatingMode: () => string;
-  handleOperatingModeChange: (rawMode: string) => Promise<void>;
+  handleOperatingModeChange: (rawMode: string, forceApply?: boolean) => Promise<void>;
   getCurrentPriceLevel: () => PriceLevel;
   recordPowerSample: (powerW: number) => Promise<void>;
   getCapacityGuard: () => CapacityGuard | undefined;
@@ -163,7 +163,7 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const modeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
     const raw = (modeValue || '').trim();
     if (!raw) throw new Error('Mode must be provided');
-    await deps.handleOperatingModeChange(raw);
+    await deps.handleOperatingModeChange(raw, true);
     return true;
   });
   setOperatingModeCard.registerArgumentAutocompleteListener('mode', async (query: string) => {

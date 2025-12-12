@@ -90,6 +90,9 @@ module.exports = class PelsApp extends Homey.App {
   // No device with lower priority than a pending swap target should restore first
   private pendingSwapTargets: Set<string> = new Set();
   private pendingSwapTimestamps: Record<string, number> = {};
+  // Homey API client (available when Homey token/local URL are accessible)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- HomeyAPI lacks types
+  private homeyApi?: any;
   private priceService!: PriceService;
   private deviceManager!: DeviceManager;
   private priceOptimizer?: PriceOptimizer;
@@ -151,6 +154,8 @@ module.exports = class PelsApp extends Homey.App {
     );
     // TODO: make price handling pluggable (strategy per region) rather than hardcoded NO spot/nettleie blend.
     await this.deviceManager.init();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- HomeyAPI lacks types
+    this.homeyApi = (this.deviceManager as any).homeyApi;
     this.capacityGuard = new CapacityGuard({
       limitKw: this.capacitySettings.limitKw,
       softMarginKw: this.capacitySettings.marginKw,
@@ -341,7 +346,7 @@ module.exports = class PelsApp extends Homey.App {
       resolveModeName: (mode) => this.resolveModeName(mode),
       getAllModes: () => this.getAllModes(),
       getCurrentOperatingMode: () => this.operatingMode,
-      handleOperatingModeChange: (rawMode) => this.handleOperatingModeChange(rawMode),
+      handleOperatingModeChange: (rawMode, forceApply) => this.handleOperatingModeChange(rawMode, Boolean(forceApply)),
       getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
       recordPowerSample: (powerW) => this.recordPowerSample(powerW),
       getCapacityGuard: () => this.capacityGuard,
@@ -359,7 +364,7 @@ module.exports = class PelsApp extends Homey.App {
     });
   }
 
-  private async handleOperatingModeChange(rawMode: string): Promise<void> {
+  private async handleOperatingModeChange(rawMode: string, forceApplyTargets = false): Promise<void> {
     const resolved = this.resolveModeName(rawMode);
     if (resolved !== rawMode) {
       this.logDebug(`Mode '${rawMode}' resolved via alias to '${resolved}'. Flows using the old name should be updated.`);
@@ -368,7 +373,7 @@ module.exports = class PelsApp extends Homey.App {
     this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
     this.homey.settings.set('mode_alias_used', rawMode !== resolved ? rawMode : null);
     // rebuildPlanFromCache() is triggered by the settings listener, no need to call it twice
-    if (this.capacityDryRun) {
+    if (this.capacityDryRun && !forceApplyTargets) {
       this.previewDeviceTargetsForMode(resolved);
     } else {
       await this.applyDeviceTargetsForMode(resolved);
@@ -379,18 +384,6 @@ module.exports = class PelsApp extends Homey.App {
   private async getFlowSnapshot(): Promise<TargetDeviceSnapshot[]> {
     if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) {
       await this.refreshTargetDevicesSnapshot();
-    }
-    return this.latestTargetSnapshot;
-  }
-(Fix simultaneous restoration of mixed device types)
-    }
-    return this.latestTargetSnapshot;
-  }
-(Finish overshoot behavior feature and fix tests)
-    }
-    return this.latestTargetSnapshot;
-  }
-(Try to fix plan and capacity competing)
     }
     return this.latestTargetSnapshot;
   }
@@ -410,12 +403,74 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private async applyDeviceTargetsForMode(mode: string): Promise<void> {
-    const targets = this.modeDeviceTargets[mode];
+    const targetsSetting = (this.homey.settings.get('mode_device_targets') || {}) as Record<string, Record<string, number>>;
+    let targets: Record<string, number> | undefined = this.modeDeviceTargets[mode] || targetsSetting[mode];
+    if (!targets) {
+      // Refresh from settings in case in-memory state is stale
+      this.loadCapacitySettings();
+      targets = this.modeDeviceTargets[mode] || this.homey.settings.get('mode_device_targets')?.[mode];
+    }
+    if (!targets) {
+      const match = Object.entries(this.modeDeviceTargets || {}).find(([k]) => k.toLowerCase() === mode.toLowerCase())
+        || Object.entries(targetsSetting || {}).find(([k]) => k.toLowerCase() === mode.toLowerCase());
+      targets = match?.[1] as Record<string, number> | undefined;
+    }
     if (!targets || typeof targets !== 'object') {
       this.log(`No device targets configured for mode ${mode}`);
       return;
     }
-    await this.deviceManager.applyDeviceTargets(targets, `mode: ${mode}`);
+    const targetMap: Record<string, number> = targets;
+    await this.refreshTargetDevicesSnapshot();
+
+    for (const device of this.latestTargetSnapshot) {
+      const targetValue = targetMap[device.id];
+      if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
+
+      const targetCap = device.targets?.[0]?.id;
+      if (!targetCap) continue;
+
+      const currentTargetValRaw = device.targets?.[0]?.value;
+      const currentTargetVal = typeof currentTargetValRaw === 'number' ? currentTargetValRaw : null;
+
+      // Do not override shed devices (including min-temp sheds) while they are held shed.
+      // Only block if device is actually at shed temperature, not just planned to be shed.
+      const shedBehavior = this.getShedBehavior(device.id);
+      const isMinTempShed = shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null;
+      if (isMinTempShed && currentTargetVal === shedBehavior.temperature) {
+        this.logDebug(`Skipping mode target for ${device.name} (${device.id}) because it is at shed temperature ${shedBehavior.temperature}°C`);
+        continue;
+      }
+
+      if (currentTargetVal !== null && currentTargetVal === targetValue) {
+        this.logDebug(`Skipping mode target for ${device.name} (${device.id}) because it is already at ${targetValue}`);
+        continue;
+      }
+
+      const wasAtShedTemp = isMinTempShed && currentTargetVal === shedBehavior.temperature;
+      const isRestoring = wasAtShedTemp && targetValue > (currentTargetVal as number);
+
+      try {
+        // Prefer an injected HomeyAPI client (tests can set either this.homeyApi or deviceManager.homeyApi)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- HomeyAPI lacks types
+        const api = this.homeyApi ?? (this.deviceManager as any)?.homeyApi;
+        if (api?.devices?.setCapabilityValue) {
+          await api.devices.setCapabilityValue({
+            deviceId: device.id,
+            capabilityId: targetCap,
+            value: targetValue,
+          });
+        } else {
+          await this.deviceManager.setCapability(device.id, targetCap, targetValue);
+        }
+        this.log(`Set ${targetCap} for ${device.name} to ${targetValue} (mode: ${mode})`);
+        this.updateLocalSnapshot(device.id, { target: targetValue });
+        if (isRestoring) {
+          this.lastRestoreMs = Date.now();
+        }
+      } catch (error) {
+        this.error(`Failed to set ${targetCap} for ${device.name}`, error);
+      }
+    }
   }
 
   private startPeriodicSnapshotRefresh(): void {
@@ -791,7 +846,7 @@ module.exports = class PelsApp extends Homey.App {
       headroom = -1; // triggers shedding logic with needed ~=1 kW (effectivePower fallback)
     }
 
-    const sheddingActive = this.capacityGuard ? this.capacityGuard.isSheddingActive() : false;
+    let sheddingActive = this.capacityGuard ? this.capacityGuard.isSheddingActive() : false;
     const shedSet = new Set<string>();
     const shedReasons = new Map<string, string>();
     const restoreMarginPlanning = Math.max(0.1, this.capacitySettings.marginKw || 0);
@@ -867,6 +922,7 @@ module.exports = class PelsApp extends Homey.App {
       const restoreMargin = this.capacityGuard?.getRestoreMargin() ?? 0.2;
       if (headroom !== null && headroom >= restoreMargin) {
         void this.capacityGuard?.setSheddingActive(false);
+        sheddingActive = false;
       }
       // Check shortfall clearing (will handle hysteresis internally)
       void this.capacityGuard?.checkShortfall(true, 0);
@@ -1178,10 +1234,9 @@ module.exports = class PelsApp extends Homey.App {
       const atMinTemp = Number(dev.currentTarget) === behavior.temperature || Number(dev.plannedTarget) === behavior.temperature;
       const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
       const wasShedLastPlan = this.lastPlannedShedIds.has(dev.id);
-      const deviceLastShed = this.lastDeviceShedMs[dev.id];
-      const deviceShedRecently = deviceLastShed && Date.now() - deviceLastShed < SHED_COOLDOWN_MS;
-      const shouldHoldShed = (inShedWindow || deviceShedRecently)
-        && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan || deviceShedRecently);
+      const holdDuringRestoreCooldown = sinceRestore !== null && sinceRestore < RESTORE_COOLDOWN_MS;
+      const shouldHoldShed = (inShedWindow || holdDuringRestoreCooldown)
+        && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan);
 
       let finalHoldShed = shouldHoldShed;
 
@@ -1218,6 +1273,13 @@ module.exports = class PelsApp extends Homey.App {
           ? `stay shed during cooldown before restore${shedCooldownRemainingSec !== null ? ` (${shedCooldownRemainingSec}s remaining)` : ''}`
           : baseReason;
       }
+    }
+
+    // If we planned any restorations this cycle, start the restore cooldown immediately to avoid racing
+    // with the async applyPlanActions(). This keeps subsequent plans from restoring multiple devices
+    // in back-to-back cycles.
+    if (restoredThisCycle.size > 0) {
+      this.lastRestoreMs = Date.now();
     }
 
     // Standardize shed reasons so min-temp and turn-off behaviors report the same states.
@@ -1510,9 +1572,19 @@ module.exports = class PelsApp extends Homey.App {
       // Apply on/off when shedding.
       if (dev.plannedState === 'shed') {
         if (shedAction === 'set_temperature') {
-          const targetCap = this.latestTargetSnapshot.find((d) => d.id === dev.id)?.targets?.[0]?.id;
+          const snapshotEntry = this.latestTargetSnapshot.find((d) => d.id === dev.id);
+          const currentSnapshotTarget = snapshotEntry?.targets?.[0]?.value;
+          const targetCap = snapshotEntry?.targets?.[0]?.id;
           if (this.capacityDryRun) {
             this.log(`Capacity (dry run): would set ${targetCap || 'target'} for ${dev.name || dev.id} to ${dev.plannedTarget ?? '–'}°C (overshoot)`);
+            continue;
+          }
+          const currentTarget = typeof currentSnapshotTarget === 'number' ? currentSnapshotTarget : dev.currentTarget;
+          const alreadyAtTarget = typeof currentTarget === 'number'
+            && typeof dev.plannedTarget === 'number'
+            && currentTarget === dev.plannedTarget;
+          if (alreadyAtTarget) {
+            this.logDebug(`Capacity: skip setting ${targetCap || 'target'} for ${dev.name || dev.id}, already at ${dev.plannedTarget}°C`);
             continue;
           }
           if (targetCap && typeof dev.plannedTarget === 'number') {
@@ -1521,9 +1593,13 @@ module.exports = class PelsApp extends Homey.App {
               this.log(`Capacity: set ${targetCap} for ${dev.name || dev.id} to ${dev.plannedTarget}°C (overshoot)`);
               this.updateLocalSnapshot(dev.id, { target: dev.plannedTarget });
               const now = Date.now();
-              this.lastSheddingMs = now;
-              this.lastOvershootMs = now;
               this.lastDeviceShedMs[dev.id] = now;
+              const guardShedding = this.capacityGuard?.isSheddingActive?.() === true;
+              const guardHeadroom = this.capacityGuard?.getHeadroom?.();
+              if (guardShedding || (typeof guardHeadroom === 'number' && guardHeadroom < 0)) {
+                this.lastSheddingMs = now;
+                this.lastOvershootMs = now;
+              }
             } catch (error) {
               this.error(`Failed to set overshoot temperature for ${dev.name || dev.id} via DeviceManager`, error);
             }
@@ -1622,8 +1698,6 @@ module.exports = class PelsApp extends Homey.App {
           }
         } catch (error) {
           this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via DeviceManager`, error);
-        }
-(Fix simultaneous restoration of mixed device types)
         }
       }
     }
