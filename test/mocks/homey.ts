@@ -167,18 +167,30 @@ export const mockHomeyInstance = {
     _conditionCardListeners: {} as Record<string, (args: any) => Promise<any>>,
     _triggerCardRunListeners: {} as Record<string, (args: any, state: any) => Promise<any>>,
     _triggerCardTriggers: {} as Record<string, Array<{ tokens: any; state: any }>>,
+    _actionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
+    _conditionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
     _triggerCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
     getActionCard: (cardId: string) => ({
       registerRunListener: (listener: (args: any) => Promise<any>) => {
         mockHomeyInstance.flow._actionCardListeners[cardId] = listener;
       },
-      registerArgumentAutocompleteListener: () => {},
+      registerArgumentAutocompleteListener: (arg: string, listener: (query: string) => Promise<any>) => {
+        if (!mockHomeyInstance.flow._actionCardAutocompleteListeners[cardId]) {
+          mockHomeyInstance.flow._actionCardAutocompleteListeners[cardId] = {};
+        }
+        mockHomeyInstance.flow._actionCardAutocompleteListeners[cardId][arg] = listener;
+      },
     }),
     getConditionCard: (cardId: string) => ({
       registerRunListener: (listener: (args: any) => Promise<any>) => {
         mockHomeyInstance.flow._conditionCardListeners[cardId] = listener;
       },
-      registerArgumentAutocompleteListener: () => {},
+      registerArgumentAutocompleteListener: (arg: string, listener: (query: string) => Promise<any>) => {
+        if (!mockHomeyInstance.flow._conditionCardAutocompleteListeners[cardId]) {
+          mockHomeyInstance.flow._conditionCardAutocompleteListeners[cardId] = {};
+        }
+        mockHomeyInstance.flow._conditionCardAutocompleteListeners[cardId][arg] = listener;
+      },
     }),
     getTriggerCard: (cardId: string) => ({
       registerRunListener: (listener: (args: any, state: any) => Promise<any>) => {

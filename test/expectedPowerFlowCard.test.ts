@@ -19,6 +19,30 @@ describe('Expected power flow card', () => {
     jest.clearAllTimers();
   });
 
+  it('omits devices with settings.load from autocomplete lists', async () => {
+    const deviceWithLoad = new MockDevice('dev-load', 'With Load', ['target_temperature']);
+    deviceWithLoad.setSettings({ load: 800 });
+    const deviceNoLoad = new MockDevice('dev-noload', 'No Load', ['target_temperature']);
+
+    setMockDrivers({ driverA: new MockDriver('driverA', [deviceWithLoad, deviceNoLoad]) });
+
+    const app = createApp();
+    await app.onInit();
+
+    const actionAutocomplete = mockHomeyInstance.flow._actionCardAutocompleteListeners.set_expected_power_usage?.device;
+    expect(actionAutocomplete).toBeDefined();
+    const actionOptions = await actionAutocomplete?.('') || [];
+    expect(actionOptions).toEqual([{ id: 'dev-noload', name: 'No Load' }]);
+
+    // Headroom condition also filters out devices with settings.load
+    const condAutocompleteListener = (mockHomeyInstance.flow as any)._conditionCardAutocompleteListeners?.has_headroom_for_device?.device;
+    expect(condAutocompleteListener).toBeDefined();
+    const condOptions = await condAutocompleteListener?.('') || [];
+    expect(condOptions).toEqual([{ id: 'dev-noload', name: 'No Load' }]);
+
+    await app.onUninit?.();
+  });
+
   it('sets temporary expected power until real measurement arrives', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await device.setCapabilityValue('onoff', true);
