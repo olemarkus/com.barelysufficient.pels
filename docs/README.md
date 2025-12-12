@@ -209,6 +209,7 @@ For each device with price optimization enabled:
 | Card | Description |
 |------|-------------|
 | **Is there enough capacity?** | Check if there's capacity for a specified kW load |
+| **Is there headroom for device?** | Check if the current headroom plus the device's estimated draw can accommodate an extra kW amount (useful for EV chargers, water heaters, etc.) |
 | **Operating mode is...** | Check which mode is currently active |
 
 ### Actions
@@ -218,7 +219,7 @@ For each device with price optimization enabled:
 | **Report power usage** | **Required!** Feed current power draw (W) from your power meter to PELS |
 | **Set capacity limit** | Change the capacity limit dynamically |
 | **Set operating mode** | Switch between modes (Home, Away, etc.) |
-| **Set expected power for device** | Temporarily override a device’s expected power until it reports a new meter value (fails if the device already has a configured load) |
+| **Set expected power for device** | Provide an explicit expected draw (W) when the device can’t report it (e.g., map “Power changed to Max” → 3000 W). Fails if the device already has a configured load. |
 
 ### Essential Flow: Reporting Power Usage
 
