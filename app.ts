@@ -1,15 +1,13 @@
 import Homey from 'homey';
 import CapacityGuard from './capacityGuard';
 import { DeviceManager } from './deviceManager';
-import { Logger, TargetDeviceSnapshot } from './types';
+import { TargetDeviceSnapshot } from './types';
 import PriceService from './priceService';
 import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './powerTracker';
 import { createSettingsHandler } from './settingsHandlers';
-import { PriceLevel, PRICE_LEVEL_OPTIONS } from './priceLevels';
+import { PriceLevel } from './priceLevels';
+import { registerFlowCards } from './flowCards/registerFlowCards';
 
-const { HomeyAPI } = require('homey-api');
-
-const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
 const DEBUG_LOG = false;
 const OPERATING_MODE_SETTING = 'operating_mode';
 
@@ -109,6 +107,7 @@ module.exports = class PelsApp extends Homey.App {
       this.logDebug.bind(this),
       this.error.bind(this),
     );
+    // TODO: make price handling pluggable (strategy per region) rather than hardcoded NO spot/nettleie blend.
     await this.deviceManager.init();
     this.capacityGuard = new CapacityGuard({
       limitKw: this.capacitySettings.limitKw,
@@ -294,195 +293,57 @@ module.exports = class PelsApp extends Homey.App {
   // private async initHomeyApi(): Promise<void> { ... }
 
   private registerFlowCards(): void {
-    const operatingModeChangedTrigger = this.homey.flow.getTriggerCard('operating_mode_changed');
-    operatingModeChangedTrigger.registerRunListener(async (args: { mode: string | { id: string; name: string } }, state: { mode?: string }) => {
-      const argModeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
-      const chosenModeRaw = (argModeValue || '').trim();
-      const chosenMode = this.resolveModeName(chosenModeRaw);
-      const stateMode = this.resolveModeName((state?.mode || '').trim());
-      if (!chosenMode || !stateMode) return false;
-      return chosenMode.toLowerCase() === stateMode.toLowerCase();
+    registerFlowCards({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey Flow APIs lack TypeScript types
+      homey: this.homey as any,
+      resolveModeName: (mode) => this.resolveModeName(mode),
+      getAllModes: () => this.getAllModes(),
+      getCurrentOperatingMode: () => this.operatingMode,
+      handleOperatingModeChange: (rawMode) => this.handleOperatingModeChange(rawMode),
+      getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
+      recordPowerSample: (powerW) => this.recordPowerSample(powerW),
+      getCapacityGuard: () => this.capacityGuard,
+      getHeadroom: () => this.capacityGuard?.getHeadroom() ?? null,
+      setCapacityLimit: (kw) => this.capacityGuard?.setLimit(kw),
+      getSnapshot: () => this.getFlowSnapshot(),
+      refreshSnapshot: () => this.refreshTargetDevicesSnapshot(),
+      getDeviceLoadSetting: (deviceId) => this.getDeviceLoadSetting(deviceId),
+      setExpectedOverride: (deviceId, kw) => {
+        this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
+      },
+      rebuildPlan: () => this.rebuildPlanFromCache(),
+      log: (...args: unknown[]) => this.log(...args),
+      logDebug: (...args: unknown[]) => this.logDebug(...args),
     });
-    operatingModeChangedTrigger.registerArgumentAutocompleteListener('mode', async (query: string) => {
-      const q = (query || '').toLowerCase();
-      return Array.from(this.getAllModes())
-        .filter((m) => !q || m.toLowerCase().includes(q))
-        .map((m) => ({ id: m, name: m }));
-    });
+  }
 
-    const priceLevelChangedTrigger = this.homey.flow.getTriggerCard('price_level_changed');
-    priceLevelChangedTrigger.registerRunListener(async (args: { level: string | { id: string; name: string } }, state: { priceLevel?: PriceLevel }) => {
-      const argLevelValue = typeof args.level === 'object' && args.level !== null ? args.level.id : args.level;
-      const chosenLevelRaw = (argLevelValue || '').trim().toLowerCase();
-      const chosenLevel = (chosenLevelRaw || PriceLevel.UNKNOWN) as PriceLevel;
-      const stateLevel = (state?.priceLevel || PriceLevel.UNKNOWN) as PriceLevel;
-      return chosenLevel === stateLevel;
-    });
-    priceLevelChangedTrigger.registerArgumentAutocompleteListener('level', async (query: string) => {
-      const q = (query || '').toLowerCase();
-      return PRICE_LEVEL_OPTIONS
-        .filter((opt) => !q || opt.name.toLowerCase().includes(q))
-        .map((opt) => ({ id: opt.id, name: opt.name }));
-    });
+  private async handleOperatingModeChange(rawMode: string): Promise<void> {
+    const resolved = this.resolveModeName(rawMode);
+    if (resolved !== rawMode) {
+      this.logDebug(`Mode '${rawMode}' resolved via alias to '${resolved}'. Flows using the old name should be updated.`);
+    }
+    this.operatingMode = resolved;
+    this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
+    this.homey.settings.set('mode_alias_used', rawMode !== resolved ? rawMode : null);
+    // rebuildPlanFromCache() is triggered by the settings listener, no need to call it twice
+    if (this.capacityDryRun) {
+      this.previewDeviceTargetsForMode(resolved);
+    } else {
+      await this.applyDeviceTargetsForMode(resolved);
+    }
+    this.notifyOperatingModeChanged(resolved);
+  }
 
-    const priceLevelIsCond = this.homey.flow.getConditionCard('price_level_is');
-    priceLevelIsCond.registerRunListener(async (args: { level: string | { id: string; name: string } }) => {
-      const argLevelValue = typeof args.level === 'object' && args.level !== null ? args.level.id : args.level;
-      const chosenLevel = ((argLevelValue || '').trim().toLowerCase() || PriceLevel.UNKNOWN) as PriceLevel;
-      const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
-      const currentLevel = (status?.priceLevel || this.lastNotifiedPriceLevel) as PriceLevel;
-      return chosenLevel === currentLevel;
-    });
-    priceLevelIsCond.registerArgumentAutocompleteListener('level', async (query: string) => {
-      const q = (query || '').toLowerCase();
-      return PRICE_LEVEL_OPTIONS.filter((opt) => !q || opt.name.toLowerCase().includes(q));
-    });
-
-    const hasHeadroomForDeviceCond = this.homey.flow.getConditionCard('has_headroom_for_device');
-    hasHeadroomForDeviceCond.registerRunListener(async (args: { device: string | { id?: string; name?: string; data?: { id?: string } }; required_kw: number }) => {
-      if (!this.capacityGuard) return false;
-      const deviceIdRaw = typeof args.device === 'object' && args.device !== null
-        ? args.device.id || args.device.data?.id
-        : args.device;
-      const deviceId = (deviceIdRaw || '').trim();
-      const requiredKw = Number(args.required_kw);
-      if (!deviceId || !Number.isFinite(requiredKw) || requiredKw < 0) return false;
-
-      const headroom = this.capacityGuard.getHeadroom();
-      if (headroom === null) return false;
-
-      const deviceSnap = this.latestTargetSnapshot.find((d) => d.id === deviceId);
-      const deviceKw = deviceSnap?.expectedPowerKw ?? deviceSnap?.powerKw ?? 1;
-      return headroom + deviceKw >= requiredKw;
-    });
-    hasHeadroomForDeviceCond.registerArgumentAutocompleteListener('device', async (query: string) => {
-      const q = (query || '').toLowerCase();
-      if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) {
-        await this.refreshTargetDevicesSnapshot();
-      }
-      return this.latestTargetSnapshot
-        .filter((d) => !d.loadKw || d.loadKw <= 0)
-        .map((d) => ({ id: d.id, name: d.name || d.id }))
-        .filter((d) => !q || d.name.toLowerCase().includes(q))
-        .sort((a, b) => a.name.localeCompare(b.name));
-    });
-
-    const setExpectedPowerCard = this.homey.flow.getActionCard('set_expected_power_usage');
-    setExpectedPowerCard.registerRunListener(async (args: { device: string | { id?: string; name?: string; data?: { id?: string } }; power_w: number }) => {
-      const deviceIdRaw = typeof args.device === 'object' && args.device !== null
-        ? args.device.id || args.device.data?.id
-        : args.device;
-      const deviceId = (deviceIdRaw || '').trim();
-      if (!deviceId) throw new Error('Device must be provided');
-
-      const powerW = Number(args.power_w);
-      if (!Number.isFinite(powerW) || powerW <= 0) {
-        throw new Error('Expected power must be a positive number (W).');
-      }
-
-      const configuredLoad = await this.getDeviceLoadSetting(deviceId);
-      if (configuredLoad !== null && configuredLoad > 0) {
-        throw new Error('Device already has load configured in settings; remove it before overriding expected power.');
-      }
-
-      const deviceName = this.latestTargetSnapshot.find((d) => d.id === deviceId)?.name || deviceId;
-      this.expectedPowerKwOverrides[deviceId] = { kw: powerW / 1000, ts: Date.now() };
-      this.log(`Flow: set expected power for ${deviceName} to ${(powerW / 1000).toFixed(3)} kW`);
+  private async getFlowSnapshot(): Promise<TargetDeviceSnapshot[]> {
+    if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) {
       await this.refreshTargetDevicesSnapshot();
-      this.rebuildPlanFromCache();
-      return true;
-    });
-    setExpectedPowerCard.registerArgumentAutocompleteListener('device', async (query: string) => {
-      const q = (query || '').toLowerCase();
-      if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) {
-        await this.refreshTargetDevicesSnapshot();
-      }
-      const devices = this.latestTargetSnapshot
-        .filter((d) => d.controllable !== false && (!d.loadKw || d.loadKw <= 0))
-        .map((d) => ({ id: d.id, name: d.name || d.id }));
-      return devices
-        .filter((d) => !q || d.name.toLowerCase().includes(q))
-        .sort((a, b) => a.name.localeCompare(b.name));
-    });
+    }
+    return this.latestTargetSnapshot;
+  }
 
-    const reportPowerCard = this.homey.flow.getActionCard('report_power_usage');
-    reportPowerCard.registerRunListener(async (args: { power: number }) => {
-      const power = Number(args.power);
-      if (!Number.isFinite(power) || power < 0) {
-        throw new Error('Power must be a non-negative number (W).');
-      }
-      await this.recordPowerSample(power);
-      return true;
-    });
-
-    const setLimitCard = this.homey.flow.getActionCard('set_capacity_limit');
-    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
-    setLimitCard.registerRunListener(async (args: { limit_kw: number }) => {
-      if (!this.capacityGuard) return false;
-      const limit = Number(args.limit_kw);
-      if (!Number.isFinite(limit) || limit <= 0) {
-        throw new Error('Limit must be a positive number (kW).');
-      }
-      this.capacityGuard.setLimit(limit);
-      return true;
-    });
-
-    const setOperatingModeCard = this.homey.flow.getActionCard('set_capacity_mode');
-    setOperatingModeCard.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
-      // Handle both string (manual input) and object (autocomplete selection) formats
-      const modeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
-      const raw = (modeValue || '').trim();
-      if (!raw) throw new Error('Mode must be provided');
-      const resolved = this.resolveModeName(raw);
-      if (resolved !== raw) {
-        this.logDebug(`Mode '${raw}' resolved via alias to '${resolved}'. Flows using the old name should be updated.`);
-      }
-      this.operatingMode = resolved;
-      this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
-      this.homey.settings.set('mode_alias_used', raw !== resolved ? raw : null);
-      // rebuildPlanFromCache() is triggered by the settings listener, no need to call it twice
-      if (this.capacityDryRun) {
-        this.previewDeviceTargetsForMode(resolved);
-      } else {
-        await this.applyDeviceTargetsForMode(resolved);
-      }
-      this.notifyOperatingModeChanged(resolved);
-      return true;
-    });
-    setOperatingModeCard.registerArgumentAutocompleteListener('mode', async (query: string) => {
-      const q = (query || '').toLowerCase();
-      return Array.from(this.getAllModes())
-        .filter((m) => !q || m.toLowerCase().includes(q))
-        .map((m) => ({ id: m, name: m }));
-    });
-
-    const hasCapacityCond = this.homey.flow.getConditionCard('has_capacity_for');
-    // eslint-disable-next-line camelcase -- Homey Flow card argument names use snake_case
-    hasCapacityCond.registerRunListener(async (args: { required_kw: number }) => {
-      const headroom = this.capacityGuard?.getHeadroom() ?? null;
-      if (headroom === null) return false;
-      return headroom >= Number(args.required_kw);
-    });
-
-    const isOperatingModeCond = this.homey.flow.getConditionCard('is_capacity_mode');
-    isOperatingModeCond.registerRunListener(async (args: { mode: string | { id: string; name: string } }) => {
-      // Handle both string (manual input) and object (autocomplete selection) formats
-      const modeValue = typeof args.mode === 'object' && args.mode !== null ? args.mode.id : args.mode;
-      const chosenModeRaw = (modeValue || '').trim();
-      const chosenMode = this.resolveModeName(chosenModeRaw);
-      if (!chosenMode) return false;
-      const matches = this.operatingMode.toLowerCase() === chosenMode.toLowerCase();
-      if (!matches && chosenModeRaw !== chosenMode) {
-        this.logDebug(`Mode condition checked using alias '${chosenModeRaw}' -> '${chosenMode}', but active mode is '${this.operatingMode}'`);
-      }
-      return matches;
-    });
-    isOperatingModeCond.registerArgumentAutocompleteListener('mode', async (query: string) => {
-      const q = (query || '').toLowerCase();
-      return Array.from(this.getAllModes())
-        .filter((m) => !q || m.toLowerCase().includes(q))
-        .map((m) => ({ id: m, name: m }));
-    });
+  private getCurrentPriceLevel(): PriceLevel {
+    const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
+    return (status?.priceLevel || this.lastNotifiedPriceLevel) as PriceLevel;
   }
 
   private previewDeviceTargetsForMode(mode: string): void {
@@ -555,6 +416,16 @@ module.exports = class PelsApp extends Homey.App {
   // Proxy to DeviceManager for backward compatibility during refactor
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
     return this.deviceManager ? this.deviceManager.getSnapshot() : [];
+  }
+
+  // Test helpers
+  setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
+    this.deviceManager.setSnapshotForTests(snapshot);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parseDevicesForTests(list: any[]): TargetDeviceSnapshot[] {
+    return this.deviceManager.parseDeviceListForTests(list);
   }
 
   private async refreshTargetDevicesSnapshot(): Promise<void> {
@@ -721,7 +592,7 @@ module.exports = class PelsApp extends Homey.App {
         await this.deviceManager.setCapability(
           deviceId,
           targetCap,
-          targetTemp
+          targetTemp,
         );
         this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${priceStateStr} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
         this.updateLocalSnapshot(deviceId, { target: targetTemp });

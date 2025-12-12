@@ -1,7 +1,6 @@
 import { DeviceManager } from '../deviceManager';
 import { mockHomeyInstance } from './mocks/homey';
 import Homey from 'homey';
-import { TargetDeviceSnapshot } from '../types';
 
 // Mock homey-api
 const mockSetCapabilityValue = jest.fn();
@@ -85,8 +84,8 @@ describe('DeviceManager', () => {
                     capabilities: ['onoff'],
                     capabilitiesObj: {
                         onoff: { value: true, id: 'onoff' },
-                    }
-                }
+                    },
+                },
             });
 
             await deviceManager.refreshSnapshot();
@@ -150,7 +149,7 @@ describe('DeviceManager', () => {
             expect(mockSetCapabilityValue).toHaveBeenCalledWith({
                 deviceId: 'dev1',
                 capabilityId: 'target_temperature',
-                value: 22
+                value: 22,
             });
         });
     });
