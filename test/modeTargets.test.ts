@@ -26,6 +26,7 @@ describe('Mode device targets', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
     await app.onInit();
@@ -71,6 +72,7 @@ describe('Mode device targets', () => {
 
     // Preload active mode before app init.
     mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
     await app.onInit();

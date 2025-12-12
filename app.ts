@@ -366,6 +366,7 @@ module.exports = class PelsApp extends Homey.App {
 
   private async handleOperatingModeChange(rawMode: string): Promise<void> {
     const resolved = this.resolveModeName(rawMode);
+    const previousMode = this.operatingMode;
     if (resolved !== rawMode) {
       this.logDebug(`Mode '${rawMode}' resolved via alias to '${resolved}'. Flows using the old name should be updated.`);
     }
@@ -373,6 +374,9 @@ module.exports = class PelsApp extends Homey.App {
     this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
     this.homey.settings.set('mode_alias_used', rawMode !== resolved ? rawMode : null);
     // rebuildPlanFromCache() is triggered by the settings listener, no need to call it twice
+    if (previousMode && previousMode.toLowerCase() === resolved.toLowerCase() && !this.capacityDryRun) {
+      this.logDebug(`Mode '${resolved}' already active; reapplying targets to correct drift`);
+    }
     if (this.capacityDryRun) {
       this.previewDeviceTargetsForMode(resolved);
     } else {

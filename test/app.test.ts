@@ -182,6 +182,43 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('does not apply device targets when operating_mode changes in dry run', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Away: { 'dev-1': 16 } });
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    // Inject mock homeyApi to observe any attempts to set capability
+    const setCapSpy = jest.fn().mockResolvedValue(undefined);
+    const homeyApiStub = {
+      devices: {
+        getDevices: async () => ({
+          'dev-1': {
+            id: 'dev-1',
+            name: 'Heater',
+            capabilities: ['target_temperature', 'onoff'],
+            capabilitiesObj: { target_temperature: { value: 20, id: 'target_temperature' }, onoff: { value: true, id: 'onoff' } },
+            settings: {},
+          },
+        }),
+        setCapabilityValue: setCapSpy,
+      },
+    };
+    (app as any).homeyApi = homeyApiStub;
+    (app as any).deviceManager.homeyApi = homeyApiStub;
+
+    // Changing the operating_mode setting should not apply targets in dry run
+    mockHomeyInstance.settings.set('operating_mode', 'Away');
+
+    expect(setCapSpy).not.toHaveBeenCalled();
+  });
+
   it('does not reapply mode target when device is already at target', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('target_temperature', 20);
@@ -234,6 +271,55 @@ describe('MyApp initialization', () => {
       capabilityId: 'target_temperature',
       value: 19,
     });
+  });
+
+  it('reapplies targets when set_capacity_mode is invoked with the current mode (not dry-run)', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('target_temperature', 19);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    // Simulate drift away from the target
+    await heater.setCapabilityValue('target_temperature', 21);
+
+    const setCapSpy = jest.fn().mockResolvedValue(undefined);
+    const homeyApiStub = {
+      devices: {
+        getDevices: async () => ({
+          'dev-1': {
+            id: 'dev-1',
+            name: 'Heater',
+            capabilities: ['target_temperature', 'onoff'],
+            capabilitiesObj: {
+              target_temperature: { value: await heater.getCapabilityValue('target_temperature'), id: 'target_temperature' },
+              onoff: { value: await heater.getCapabilityValue('onoff'), id: 'onoff' },
+            },
+            settings: {},
+          },
+        }),
+        setCapabilityValue: setCapSpy,
+      },
+    };
+    (app as any).homeyApi = homeyApiStub;
+    (app as any).deviceManager.homeyApi = homeyApiStub;
+
+    const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
+    await setModeListener({ mode: 'Home' }); // same mode, should reapply because of drift
+
+    expect(setCapSpy).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      value: 19,
+    });
+    expect(setCapSpy).toHaveBeenCalled();
   });
 
   it('handles mode rename without losing settings or leaving dangling entries', async () => {
