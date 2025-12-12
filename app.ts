@@ -27,6 +27,7 @@ type TargetDeviceSnapshot = {
   targets: Array<{ id: string; value: unknown; unit: string }>;
   powerKw?: number;
   expectedPowerKw?: number;
+  loadKw?: number;
   priority?: number;
   currentOn?: boolean;
   zone?: string;
@@ -395,6 +396,7 @@ module.exports = class PelsApp extends Homey.App {
         await this.refreshTargetDevicesSnapshot();
       }
       return this.latestTargetSnapshot
+        .filter((d) => !d.loadKw || d.loadKw <= 0)
         .map((d) => ({ id: d.id, name: d.name || d.id }))
         .filter((d) => !q || d.name.toLowerCase().includes(q))
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -431,7 +433,7 @@ module.exports = class PelsApp extends Homey.App {
         await this.refreshTargetDevicesSnapshot();
       }
       const devices = this.latestTargetSnapshot
-        .filter((d) => d.controllable !== false)
+        .filter((d) => d.controllable !== false && (!d.loadKw || d.loadKw <= 0))
         .map((d) => ({ id: d.id, name: d.name || d.id }));
       return devices
         .filter((d) => !q || d.name.toLowerCase().includes(q))
@@ -881,7 +883,7 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Homey device objects have no TypeScript definitions
-  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; expectedPowerKw?: number; measuredPowerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }> {
+  private parseDeviceList(list: any[]): Array<{ id: string; name: string; targets: Array<{ id: string; value: unknown; unit: string }>; powerKw?: number; expectedPowerKw?: number; loadKw?: number; measuredPowerKw?: number; priority?: number; currentOn?: boolean; zone?: string; controllable?: boolean; currentTemperature?: number }> {
     return list
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Homey device objects have no TypeScript definitions
       .map((device: any) => {
@@ -909,10 +911,11 @@ module.exports = class PelsApp extends Homey.App {
         //    - measured power (measure_power), tracked with timestamp
         //    - expectedPowerKwOverrides (temporary override set via flow)
         // 3. Default fallback: 1 kW
-        if (device.settings && typeof device.settings.load === 'number' && device.settings.load > 0) {
-          const loadW = device.settings.load;
+        const loadW = typeof device.settings?.load === 'number' ? device.settings.load : undefined;
+        if (loadW && loadW > 0) {
           powerKw = loadW / 1000;
           expectedPowerKw = powerKw;
+          this.lastKnownPowerKw[deviceId] = powerKw;
           this.logDebug(`Power estimate: using settings.load for ${deviceLabel}: ${powerKw.toFixed(3)} kW`);
         } else {
           if (typeof powerRaw === 'number' && Number.isFinite(powerRaw) && powerRaw <= MIN_SIGNIFICANT_POWER_W) {
@@ -977,6 +980,7 @@ module.exports = class PelsApp extends Homey.App {
           targets,
           powerKw,
           expectedPowerKw,
+          loadKw: loadW && loadW > 0 ? loadW / 1000 : undefined,
           priority: this.getPriorityForDevice(deviceId),
           currentOn,
           currentTemperature,

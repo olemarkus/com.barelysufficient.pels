@@ -7,6 +7,7 @@
 - [Features](#features)
 - [Installation](#installation)
 - [Getting Started](#getting-started)
+- [How to Use (Scenarios)](#how-to-use-scenarios)
 - [Configuration](#configuration)
   - [Devices Tab](#devices-tab)
   - [Modes Tab](#modes-tab)
@@ -87,6 +88,31 @@ After installation:
 3. **Set priorities and temperatures** for each mode in the Modes tab
 4. **Configure price settings** (optional) in the Price tab
 5. **Create a Flow** to report power usage to PELS
+
+---
+
+## How to Use (Scenarios)
+
+### 1) Send power readings (required)
+- Create a Flow that calls **Report power usage** whenever your meter updates (e.g., Tibber Pulse).  
+- Without this, PELS cannot calculate headroom or plan shedding.
+
+### 2) Check if you can increase a controllable load (EV charger, water heater)
+- Create a Flow condition using **Is there headroom for device?**
+  - Device: pick the controllable device (e.g., charger)
+  - Required kW: how much extra you want to draw
+- The card checks current headroom plus the device’s **expected** draw (settings.load first, then latest reading or override) with a conservative **1 kW fallback** when unknown. This avoids over-promising capacity.
+
+### 3) Temporarily override expected power for a device
+- Use the **Set expected power for device** action to set a temporary expected draw (W).  
+- This is useful when a device under-reports for a short period. It expires when the device reports a new meter reading and fails if `settings.load` is set.
+
+### 4) Switch modes automatically
+- Use **Set operating mode** in Flows triggered by time/presence.  
+- Different modes can set different priorities and temperatures (e.g., Night vs. Home).
+
+### 5) Use price optimization
+- Enable price optimization per device in the Devices tab, set cheap/expensive deltas, and configure your price area and tariff in the Price tab.
 
 ---
 
@@ -220,19 +246,6 @@ For each device with price optimization enabled:
 | **Set capacity limit** | Change the capacity limit dynamically |
 | **Set operating mode** | Switch between modes (Home, Away, etc.) |
 | **Set expected power for device** | Provide an explicit expected draw (W) when the device can’t report it (e.g., map “Power changed to Max” → 3000 W). Fails if the device already has a configured load. |
-
-### Essential Flow: Reporting Power Usage
-
-PELS needs to know your current power consumption. Create this Flow:
-
-**Trigger:** When power meter reports new value  
-**Action:** PELS → Report power usage → `{{power in watts}}`
-
-Example using a Tibber Pulse:
-```
-WHEN Tibber Pulse power changed
-THEN Report power usage: {{Power}}
-```
 
 ---
 

@@ -141,7 +141,7 @@
         "args": [
           {
             "name": "device",
-            "type": "device",
+            "type": "autocomplete",
             "title": {
               "en": "Device"
             }
