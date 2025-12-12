@@ -158,6 +158,16 @@ Aggregation happens automatically when power data is saved—you don't need to m
 
 ## Assumptions and Limitations
 
+### Headroom check for controllable loads
+
+The **"Is there headroom for device?"** Flow condition is intended for controllable-load devices such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
+
+- Current headroom (soft limit minus current load)
+- Device's expected usage (estimator order: `settings.load` → newest of meter reading or flow override → last known on-state draw → fallback **1 kW**). Devices with `settings.load > 0` are excluded from this card entirely.
+- A conservative fallback of **1 kW** when no estimate exists, to avoid over-promising capacity
+
+Using 0 kW as a fallback would risk reporting that capacity exists when the actual load is unknown, so PELS never reports headroom based on a zero/unknown estimate.
+
 ### Thermostats and Water Heaters
 
 PELS is designed for devices that can tolerate being turned off temporarily without immediate consequences. It works best with thermal mass (the room or tank stays warm for a while).
