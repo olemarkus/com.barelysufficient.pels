@@ -1945,7 +1945,7 @@ const boot = async () => {
           // Mode changed externally (e.g., via Flow) - refresh only active mode dropdown
           refreshActiveMode().catch(() => {});
         }
-        if (key === 'overshoot_behaviors' || key === 'shed_behaviors') {
+        if (key === 'overshoot_behaviors') {
           loadShedBehaviors().catch(() => {});
         }
       });

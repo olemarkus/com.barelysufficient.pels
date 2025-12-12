@@ -270,7 +270,7 @@ module.exports = class PelsApp extends Homey.App {
     const modeTargets = this.homey.settings.get('mode_device_targets');
     const dryRun = this.homey.settings.get('capacity_dry_run');
     const controllables = this.homey.settings.get('controllable_devices');
-    const rawShedBehaviors = this.homey.settings.get('shed_behaviors') || this.homey.settings.get('overshoot_behaviors');
+    const rawShedBehaviors = this.homey.settings.get('overshoot_behaviors');
     if (Number.isFinite(limit)) this.capacitySettings.limitKw = Number(limit);
     if (Number.isFinite(margin)) this.capacitySettings.marginKw = Number(margin);
     if (modeAliases && typeof modeAliases === 'object') {

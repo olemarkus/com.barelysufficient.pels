@@ -89,7 +89,6 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
         });
         break;
       case 'overshoot_behaviors':
-      case 'shed_behaviors':
         deps.loadCapacitySettings();
         deps.rebuildPlanFromCache();
         break;
