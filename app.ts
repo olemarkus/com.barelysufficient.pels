@@ -3,6 +3,7 @@ import CapacityGuard from './capacityGuard';
 import { DeviceManager } from './deviceManager';
 import { TargetDeviceSnapshot } from './types';
 import PriceService from './priceService';
+import { PriceOptimizer } from './priceOptimizer';
 import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './powerTracker';
 import { createSettingsHandler } from './settingsHandlers';
 import { PriceLevel } from './priceLevels';
@@ -50,11 +51,11 @@ module.exports = class PelsApp extends Homey.App {
   private pendingSwapTimestamps: Record<string, number> = {};
   private priceService!: PriceService;
   private deviceManager!: DeviceManager;
+  private priceOptimizer?: PriceOptimizer;
 
   private lastPlanSignature = '';
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
   private priceRefreshInterval?: ReturnType<typeof setInterval>;
-  private priceOptimizationInterval?: ReturnType<typeof setInterval>;
   // Set when remaining hourly energy budget has been fully consumed (remainingKWh <= 0)
   private hourlyBudgetExhausted = false;
   // Track last known power draw (kW) for each device when it was ON and drawing power > 0
@@ -148,6 +149,7 @@ module.exports = class PelsApp extends Homey.App {
 
     this.loadPowerTracker();
     this.loadPriceOptimizationSettings();
+    this.priceOptimizer = this.buildPriceOptimizer();
     void this.updateOverheadToken();
     await this.refreshTargetDevicesSnapshot();
     this.rebuildPlanFromCache(); // Build initial plan after snapshot is loaded
@@ -179,10 +181,7 @@ module.exports = class PelsApp extends Homey.App {
       clearInterval(this.priceRefreshInterval);
       this.priceRefreshInterval = undefined;
     }
-    if (this.priceOptimizationInterval) {
-      clearInterval(this.priceOptimizationInterval);
-      this.priceOptimizationInterval = undefined;
-    }
+    this.priceOptimizer?.stop();
     // Guard no longer needs cleanup (no interval)
   }
 
@@ -488,154 +487,46 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   /**
-   * Apply price optimization to all configured devices.
-   * Called periodically (at start of each hour) to adjust temperatures.
-   * Uses delta values relative to the mode's target temperature.
-   * In dry run mode, logs what would happen but does not actuate.
-   */
-  private async applyPriceOptimization(): Promise<void> {
-    // Refresh spot prices at the start of each hour (uses cache unless new data is expected)
-    // This ensures we fetch tomorrow's prices as soon as they become available (~12:15 UTC)
-    await this.priceService.refreshSpotPrices();
-
-    if (!this.priceOptimizationEnabled) {
-      this.logDebug('Price optimization: Disabled globally');
-      return;
-    }
-
-    // Check for DeviceManager readiness implies API availability
-    // Optimization: we could add an explict isReady() check to DeviceManager if needed
-    // For now, let's assume if we're running, we can try.
-    if (!this.deviceManager) {
-      this.log('Price optimization: DeviceManager not available, skipping');
-      return;
-    }
-
-    const settings = this.priceOptimizationSettings;
-    if (!settings || Object.keys(settings).length === 0) {
-      this.log('Price optimization: No devices configured');
-      return;
-    }
-
-    const isCheap = this.isCurrentHourCheap();
-    const isExpensive = this.isCurrentHourExpensive();
-
-    // Debug: log current price info
-    const prices = this.getCombinedHourlyPrices();
-    const now = new Date();
-    const currentHourStart = new Date(now);
-    currentHourStart.setMinutes(0, 0, 0);
-    const currentPrice = prices.find((p) => new Date(p.startsAt).getTime() === currentHourStart.getTime());
-    const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
-    const thresholdPercent = this.homey.settings.get('price_threshold_percent') ?? 25;
-    const minDiffOre = this.homey.settings.get('price_min_diff_ore') ?? 0;
-    const currentPriceStr = currentPrice?.totalPrice?.toFixed(1) ?? 'N/A';
-    this.log(
-      `Price optimization: current=${currentPriceStr} øre, avg=${avgPrice.toFixed(1)} øre, `
-      + `threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, `
-      + `isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`,
-    );
-
-    // If price is normal (not cheap or expensive), use the mode's base temperature
-    // eslint-disable-next-line no-nested-ternary -- Clear price state mapping
-    const priceState = isCheap ? PriceLevel.CHEAP : isExpensive ? PriceLevel.EXPENSIVE : PriceLevel.NORMAL;
-    const priceStateStr = priceState; // Convert to string for logging
-
-    for (const [deviceId, config] of Object.entries(settings)) {
-      if (!config.enabled) continue;
-
-      // Find the device in snapshot to get its current capability
-      const device = this.latestTargetSnapshot.find((d) => d.id === deviceId);
-      if (!device || !device.targets || device.targets.length === 0) {
-        this.logDebug(`Price optimization: Device ${device?.name || deviceId} not found or has no target capability`);
-        continue;
-      }
-
-      // Get the mode's base target temperature for this device
-      const modeTargets = this.modeDeviceTargets;
-      const currentMode = this.operatingMode || 'Home';
-      const baseTemp = modeTargets[currentMode]?.[deviceId];
-
-      if (baseTemp === undefined) {
-        this.logDebug(`Price optimization: No mode target for ${device.name} in mode ${currentMode}`);
-        continue;
-      }
-
-      // Calculate the target temperature based on price state
-      let targetTemp = baseTemp;
-      if (isCheap && config.cheapDelta) {
-        targetTemp = baseTemp + config.cheapDelta;
-      } else if (isExpensive && config.expensiveDelta) {
-        targetTemp = baseTemp + config.expensiveDelta;
-      }
-
-      const targetCap = device.targets[0].id;
-      const currentTarget = device.targets[0].value;
-
-      // Only update if different
-      if (currentTarget === targetTemp) {
-        this.logDebug(`Price optimization: ${device.name} already at ${targetTemp}°C`);
-        continue;
-      }
-
-      // eslint-disable-next-line no-nested-ternary -- Clear delta info mapping
-      const deltaInfo = isCheap ? `+${config.cheapDelta}` : isExpensive ? `${config.expensiveDelta}` : '0';
-      const priceInfo = this.getCurrentHourPriceInfo();
-
-      // In dry run mode, only log what would happen
-      if (this.capacityDryRun) {
-        this.log(`Price optimization (dry run): Would set ${device.name} to ${targetTemp}°C (${priceStateStr} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
-        continue;
-      }
-
-      try {
-        await this.deviceManager.setCapability(
-          deviceId,
-          targetCap,
-          targetTemp,
-        );
-        this.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${priceStateStr} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
-        this.updateLocalSnapshot(deviceId, { target: targetTemp });
-      } catch (error) {
-        this.error(`Price optimization: Failed to set ${device.name} to ${targetTemp}°C`, error);
-      }
-    }
-  }
-
-  /**
    * Get a human-readable price info for the current hour.
    */
   private getCurrentHourPriceInfo(): string {
     return this.priceService.getCurrentHourPriceInfo();
   }
 
+  private buildPriceOptimizer(): PriceOptimizer {
+    return new PriceOptimizer({
+      priceStatus: {
+        getCurrentLevel: () => this.getCurrentPriceLevel(),
+        isCurrentHourCheap: () => this.isCurrentHourCheap(),
+        isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
+        getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
+        getCurrentHourPriceInfo: () => this.getCurrentHourPriceInfo(),
+      },
+      getSettings: () => this.priceOptimizationSettings,
+      getSnapshot: () => this.latestTargetSnapshot ?? [],
+      getOperatingMode: () => this.operatingMode,
+      getModeDeviceTargets: () => this.modeDeviceTargets,
+      isDryRun: () => this.capacityDryRun,
+      isEnabled: () => this.priceOptimizationEnabled,
+      getThresholdPercent: () => this.homey.settings.get('price_threshold_percent') ?? 25,
+      getMinDiffOre: () => this.homey.settings.get('price_min_diff_ore') ?? 0,
+      setDeviceTarget: (deviceId, capabilityId, value) => this.deviceManager.setCapability(deviceId, capabilityId, value),
+      updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+      log: (...args: unknown[]) => this.log(...args),
+      logDebug: (...args: unknown[]) => this.logDebug(...args),
+      error: (...args: unknown[]) => this.error(...args),
+    });
+  }
+
   /**
-   * Start periodic price optimization checks.
-   * Runs at the start of each hour.
+   * Apply price optimization to all configured devices (delegated).
    */
+  private async applyPriceOptimization(): Promise<void> {
+    await this.priceOptimizer?.applyOnce();
+  }
+
   private async startPriceOptimization(): Promise<void> {
-    // Calculate ms until the next hour
-    const now = new Date();
-    const nextHour = new Date(now);
-    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
-    const msUntilNextHour = nextHour.getTime() - now.getTime();
-
-    // Run once now (await to ensure initial price optimization is applied before onInit completes)
-    await this.applyPriceOptimization();
-
-    // Schedule to run at the start of each hour
-    setTimeout(() => {
-      this.applyPriceOptimization().catch((error: Error) => {
-        this.error('Price optimization failed', error);
-      });
-
-      // Then run every hour
-      this.priceOptimizationInterval = setInterval(() => {
-        this.applyPriceOptimization().catch((error: Error) => {
-          this.error('Price optimization failed', error);
-        });
-      }, 60 * 60 * 1000);
-    }, msUntilNextHour);
+    await this.priceOptimizer?.start();
   }
 
   /**
