@@ -16,7 +16,7 @@ export interface TargetDeviceSnapshot {
 }
 
 export interface Logger {
-    log: (...args: any[]) => void;
-    debug: (...args: any[]) => void;
-    error: (...args: any[]) => void;
+    log: (...args: unknown[]) => void;
+    debug: (...args: unknown[]) => void;
+    error: (...args: unknown[]) => void;
 }
