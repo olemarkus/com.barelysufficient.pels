@@ -435,11 +435,11 @@ describe('Device plan snapshot', () => {
     (app as any).deviceManager.homeyApi = mockHomeyApi;
 
     // Clear snapshot so the second call would normally try again.
-    (app as any).latestTargetSnapshot = [];
+    app.setSnapshotForTests([]);
 
     await (app as any).applySheddingToDevice('dev-1', 'Heater A');
     // Simulate plan still thinks it is on to force a second attempt.
-    (app as any).latestTargetSnapshot = [];
+    app.setSnapshotForTests([]);
     await (app as any).applySheddingToDevice('dev-1', 'Heater A');
 
     expect(mockHomeyApi.devices.setCapabilityValue).toHaveBeenCalledTimes(1);
@@ -502,7 +502,7 @@ describe('Device plan snapshot', () => {
       settings: { load: 450 },
     };
 
-    const parsed = (app as any).parseDeviceList([sampleDevice]);
+    const parsed = app.parseDevicesForTests([sampleDevice]);
     expect(parsed[0].powerKw).toBeCloseTo(0.45, 2);
     expect(parsed[0].targets[0].value).toBe(22);
   });
@@ -565,7 +565,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Only 1 kW available to shed
-    (app as any).latestTargetSnapshot = [
+    app.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -574,7 +574,7 @@ describe('Device plan snapshot', () => {
         currentOn: true,
         controllable: true,
       },
-    ];
+    ]);
     // Sync the snapshot to the guard so it knows about controllable devices
     // Guard no longer needs explicit sync - Plan calls Guard methods directly
 
@@ -650,7 +650,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Only 1 kW available to shed
-    (app as any).latestTargetSnapshot = [
+    app.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -659,7 +659,7 @@ describe('Device plan snapshot', () => {
         currentOn: true,
         controllable: true,
       },
-    ];
+    ]);
     // Sync the snapshot to the guard so it knows about controllable devices
     // Guard no longer needs explicit sync
 
@@ -707,7 +707,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).latestTargetSnapshot = [
+    app.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -716,7 +716,7 @@ describe('Device plan snapshot', () => {
         currentOn: true,
         controllable: true,
       },
-    ];
+    ]);
     // Sync the snapshot to the guard so it knows about controllable devices
     // Guard no longer needs explicit sync
 
@@ -775,7 +775,7 @@ describe('Device plan snapshot', () => {
     // Initially not in shortfall
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBeFalsy();
 
-    (app as any).latestTargetSnapshot = [
+    app.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -784,7 +784,7 @@ describe('Device plan snapshot', () => {
         currentOn: true,
         controllable: true,
       },
-    ];
+    ]);
     // Sync the snapshot to the guard so it knows about controllable devices
     // Guard no longer needs explicit sync
 
@@ -965,7 +965,7 @@ describe('Device plan snapshot', () => {
 
     // Inject mock homeyApi
     const setSpy = jest.fn().mockResolvedValue(undefined);
-    (app as any).homeyApi = {
+    (app as any).deviceManager.homeyApi = {
       devices: {
         setCapabilityValue: setSpy,
       },
@@ -1009,7 +1009,7 @@ describe('Device plan snapshot', () => {
 
     // Inject mock homeyApi
     const setSpy = jest.fn().mockResolvedValue(undefined);
-    (app as any).homeyApi = {
+    (app as any).deviceManager.homeyApi = {
       devices: {
         getDevices: async () => ({
           'hoiax-1': {
@@ -1514,7 +1514,7 @@ describe('Device plan snapshot', () => {
     }
 
     // Mock HomeyAPI to simulate timeout (shedding fails)
-    (app as any).homeyApi = {
+    (app as any).deviceManager.homeyApi = {
       devices: {
         setCapabilityValue: jest.fn().mockRejectedValue(new Error('Timeout after 10000ms')),
       },
@@ -1656,7 +1656,7 @@ describe('Dry run mode', () => {
     const applyPlanSpy = jest.spyOn(app as any, 'applyPlanActions');
 
     // Rebuild plan with shedding needed
-    (app as any).latestTargetSnapshot = [
+    app.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1665,7 +1665,7 @@ describe('Dry run mode', () => {
         currentOn: true,
         controllable: true,
       },
-    ];
+    ]);
     // Guard no longer needs explicit sync
     await (app as any).recordPowerSample(6000);
 
@@ -1698,7 +1698,7 @@ describe('Dry run mode', () => {
     });
 
     // Setup snapshot with a device that will be shed
-    (app as any).latestTargetSnapshot = [
+    app.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1707,7 +1707,7 @@ describe('Dry run mode', () => {
         currentOn: true,
         controllable: true,
       },
-    ];
+    ]);
     // Guard no longer needs explicit sync
 
     // Set a low soft limit to trigger shedding
@@ -1906,7 +1906,7 @@ describe('Dry run mode', () => {
     (app as any).isCurrentHourExpensive = () => false;
 
     // Ensure the device is in snapshot with correct structure
-    (app as any).latestTargetSnapshot = [
+    app.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1915,7 +1915,7 @@ describe('Dry run mode', () => {
         currentOn: true,
         controllable: true,
       },
-    ];
+    ]);
 
     // Manually trigger price optimization
     await (app as any).applyPriceOptimization();
@@ -1974,7 +1974,7 @@ describe('Dry run mode', () => {
 
       // Let's verify applyPlanActions will NOT restore due to shortfall
       const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-      (app as any).homeyApi = {
+      (app as any).deviceManager.homeyApi = {
         devices: {
           setCapabilityValue: mockSetCapability,
         },
@@ -2047,7 +2047,7 @@ describe('Dry run mode', () => {
 
     // Now try to apply the plan
     const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).homeyApi = {
+    (app as any).deviceManager.homeyApi = {
       devices: {
         setCapabilityValue: mockSetCapability,
       },

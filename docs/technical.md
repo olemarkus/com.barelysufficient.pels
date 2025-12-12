@@ -191,3 +191,7 @@ The budget model focuses on the current hour. It doesn't "save up" headroom from
 ### Local Control Only
 
 PELS controls devices through Homey's local API. Cloud-only devices may have additional latency.
+
+## Future Work / TODOs
+
+- Pricing strategies: current implementation assumes Norwegian spot + nettleie model. Introduce a pluggable price strategy interface (e.g., `PriceStrategy` with inputs for spot, tariffs, provider surcharges, taxes/VAT) so non-NO regions can drop in their own calculators without touching control logic. Keep aggregation/token outputs stable while swapping strategies.

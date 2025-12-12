@@ -100,6 +100,7 @@ describe('Expected power flow card', () => {
 
     // Remove load to test recency between override and measurement
     device.setSettings({ load: 0 });
+    await (app as any).refreshTargetDevicesSnapshot();
     const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
     await runAction({ device: { id: 'dev-3' }, power_w: 1500 }); // override first
     await (app as any).refreshTargetDevicesSnapshot();
@@ -115,9 +116,9 @@ describe('Expected power flow card', () => {
     expect(snapMeasured?.powerKw).toBeCloseTo(0.9);
 
     // Clear overrides and measurements -> fallback to 1kW
-    (app as any).expectedPowerKwOverrides = {};
-    (app as any).lastMeasuredPowerKw = {};
-    const snapshotFallback = (app as any).parseDeviceList([
+    Object.keys((app as any).expectedPowerKwOverrides).forEach((k) => delete (app as any).expectedPowerKwOverrides[k]);
+    Object.keys((app as any).lastMeasuredPowerKw).forEach((k) => delete (app as any).lastMeasuredPowerKw[k]);
+    const snapshotFallback = (app as any).parseDevicesForTests([
       {
         id: 'dev-3',
         capabilities: ['target_temperature'],

@@ -44,6 +44,17 @@ export class DeviceManager {
         return this.latestSnapshot;
     }
 
+    // Test helper: allow direct snapshot injection
+    setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
+        this.latestSnapshot = snapshot;
+    }
+
+    // Test helper: reuse parsing logic
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    parseDeviceListForTests(list: any[]): TargetDeviceSnapshot[] {
+        return this.parseDeviceList(list);
+    }
+
     async init(): Promise<void> {
         if (this.homeyApi) return;
 
