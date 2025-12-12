@@ -114,6 +114,10 @@ After installation:
 ### 5) Use price optimization
 - Enable price optimization per device in the Devices tab, set cheap/expensive deltas, and configure your price area and tariff in the Price tab.
 
+### 6) Reapply mode targets to fix drift
+- If a device has drifted from its mode target (e.g., manual override), trigger **Set operating mode** with the *current* mode (and ensure dry-run is off).  
+- The card will re-send the configured targets for that mode to bring devices back in line.
+
 ---
 
 ## Configuration
