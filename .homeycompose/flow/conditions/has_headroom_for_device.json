@@ -1,0 +1,29 @@
+{
+  "title": {
+    "en": "Is there headroom for device?"
+  },
+  "titleFormatted": {
+    "en": "Does [[device]] have headroom for [[required_kw]] kW?"
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "device",
+      "title": {
+        "en": "Device"
+      }
+    },
+    {
+      "name": "required_kw",
+      "type": "number",
+      "title": {
+        "en": "Required power (kW)"
+      },
+      "min": 0,
+      "step": 0.1
+    }
+  ],
+  "hint": {
+    "en": "Checks if the current headroom plus the device's estimated usage is enough to add the requested load."
+  }
+}
