@@ -118,8 +118,30 @@ function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {
 
     const snapshot = await deps.getSnapshot();
     const deviceSnap = snapshot.find((d) => d.id === deviceId);
-    const deviceKw = deviceSnap?.expectedPowerKw ?? deviceSnap?.powerKw ?? 1;
-    return headroom + deviceKw >= requiredKw;
+    // Use expectedPowerKw if set and higher than current measurement, otherwise use measurement
+    const deviceKw = deviceSnap?.expectedPowerKw !== undefined && deviceSnap.expectedPowerKw > (deviceSnap?.powerKw ?? 0)
+      ? deviceSnap.expectedPowerKw
+      : (deviceSnap?.powerKw ?? 1);
+
+    // Log headroom condition details
+    const softLimit = capacityGuard.getSoftLimit();
+    const currentPower = capacityGuard.getLastTotalPower();
+    const deviceName = deviceSnap?.name || deviceId;
+    const calculatedHeadroomForDevice = headroom + deviceKw;
+    const hasHeadroom = calculatedHeadroomForDevice >= requiredKw;
+    const expectedPowerKwStr = deviceSnap?.expectedPowerKw !== undefined ? deviceSnap.expectedPowerKw.toFixed(2) : 'unknown';
+
+    deps.logDebug(
+      `Headroom check for device "${deviceName}": `
+      + `soft limit=${softLimit.toFixed(2)}kW, `
+      + `current power=${currentPower?.toFixed(2) ?? 'unknown'}kW, `
+      + `device consumption=${deviceKw.toFixed(2)}kW, `
+      + `expected power=${expectedPowerKwStr}kW, `
+      + `headroom for device=${calculatedHeadroomForDevice.toFixed(2)}kW `
+      + `(required=${requiredKw.toFixed(2)}kW) → ${hasHeadroom ? 'PASS' : 'FAIL'}`,
+    );
+
+    return hasHeadroom;
   });
   hasHeadroomForDeviceCond.registerArgumentAutocompleteListener('device', async (query: string) => {
     const q = (query || '').toLowerCase();
