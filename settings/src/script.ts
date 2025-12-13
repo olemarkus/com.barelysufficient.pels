@@ -9,7 +9,7 @@ declare global {
   }
 }
 
-const qs = (selector: string) => document.querySelector(selector) as HTMLElement;
+const qs = (selector: string) => document.querySelector(selector) as HTMLElement | null;
 
 /**
  * Escape HTML special characters to prevent XSS attacks.
@@ -225,7 +225,7 @@ const getSetting = (key) => new Promise((resolve, reject) => {
   });
 });
 
-const setSetting = (key, value) => new Promise((resolve, reject) => {
+const setSetting = (key, value) => new Promise<void>((resolve, reject) => {
   homey.set(key, value, (err) => {
     if (err) return reject(err);
     resolve();
@@ -240,12 +240,12 @@ const showTab = (tabId) => {
   if (overflowToggle) overflowToggle.setAttribute('aria-expanded', 'false');
 
   tabs.forEach((tab) => {
-    const isActive = tab.dataset.tab === tabId;
+    const isActive = (tab as HTMLElement).dataset.tab === tabId;
     tab.classList.toggle('active', isActive);
     tab.setAttribute('aria-selected', String(isActive));
   });
   panels.forEach((panel) => {
-    panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
+    panel.classList.toggle('hidden', (panel as HTMLElement).dataset.panel !== tabId);
   });
   if (tabId === 'plan') {
     refreshPlan().catch(() => {});
@@ -964,6 +964,79 @@ const applyTargetChange = async (deviceId, rawValue) => {
   await setSetting('mode_device_targets', modeTargets);
 };
 
+// Format state key for display
+const formatStateKey = (stateKey: string): string => {
+  const stateMap: Record<string, string> = {
+    'normal': 'Normal',
+    'shed_power': 'Shed (Power)',
+    'restoring': 'Restoring',
+    'price_boost': 'Price Boost',
+    'price_limit': 'Price Limit',
+    'not_controllable': 'Not Controllable',
+    'swap_blocked': 'Swap Blocked',
+  };
+  return stateMap[stateKey] || stateKey;
+};
+
+// Format status keys for display
+const formatStatusKeys = (statusKeys: string[], reason?: string): string => {
+  const statusMap: Record<string, string> = {
+    'shortfall': 'Shortfall',
+    'dry_run': 'Dry Run',
+    'cooldown': 'Cooldown',
+    'restore_cooldown': 'Restore Cooldown',
+    'waiting_headroom': 'Waiting Headroom',
+    'swap_pending': 'Swap Pending',
+    'budget_exhausted': 'Budget Exhausted',
+    'capacity_overshoot': 'Capacity Overshoot',
+    'waiting_measurement': 'Waiting Measurement',
+    'price_cheap': 'Cheap Price',
+    'price_expensive': 'Expensive Price',
+    'swap_blocked': 'Swap Blocked',
+    'not_controllable': 'Not Controllable',
+  };
+
+  return statusKeys
+    .map(key => {
+      // Format cooldown with type and remaining seconds if available
+      if (key === 'cooldown' || key === 'restore_cooldown') {
+        // Extract remaining seconds from reason if available
+        const secondsMatch = reason?.match(/(\d+(?:\.\d+)?)s remaining/);
+        const cooldownType = key === 'restore_cooldown' ? 'Restore' : 'Shed';
+        if (secondsMatch) {
+          return `${cooldownType} Cooldown (${secondsMatch[1]}s)`;
+        }
+        return cooldownType;
+      }
+
+      // Format swap pending with target device info if available
+      if (key === 'swap_pending') {
+        // Extract swap target info from reason
+        const swapMatch = reason?.match(/swapped out for higher priority ([^)]+)/);
+        if (swapMatch) {
+          return `${statusMap[key]} (${swapMatch[1]})`;
+        }
+      }
+
+      // Format waiting headroom with needed vs available info if available
+      if (key === 'waiting_headroom') {
+        // Extract headroom info from reason patterns
+        const restoreMatch = reason?.match(/need ([\d.]+)kW, headroom ([\d.]+)kW/);
+        const insufficientMatch = reason?.match(/insufficient headroom ([\d.]+)kW < ([\d.]+)kW needed/);
+
+        if (restoreMatch) {
+          return `${statusMap[key]} (need ${restoreMatch[1]}kW, have ${restoreMatch[2]}kW)`;
+        }
+        if (insufficientMatch) {
+          return `${statusMap[key]} (have ${insufficientMatch[1]}kW, need ${insufficientMatch[2]}kW)`;
+        }
+      }
+
+      return statusMap[key];
+    })
+    .join(', ');
+};
+
 const renderPlan = (plan) => {
   planList.innerHTML = '';
   if (!plan || !Array.isArray(plan.devices) || plan.devices.length === 0) {
@@ -1077,16 +1150,32 @@ const renderPlan = (plan) => {
     usageValue.textContent = usageText;
     usageLine.append(usageLabel, usageValue);
 
-    const reasonLine = document.createElement('div');
-    reasonLine.className = 'plan-meta-line';
-    const reasonLabel = document.createElement('span');
-    reasonLabel.className = 'plan-label';
-    reasonLabel.textContent = 'Reason';
-    const reasonValue = document.createElement('span');
-    reasonValue.textContent = dev.reason || 'Plan unchanged';
-    reasonLine.append(reasonLabel, reasonValue);
+    // State display
+    const stateLine = document.createElement('div');
+    stateLine.className = 'plan-meta-line';
+    const stateLabel = document.createElement('span');
+    stateLabel.className = 'plan-label';
+    stateLabel.textContent = 'State';
+    const stateValue = document.createElement('span');
+    const stateKey = (dev as any).stateKey || 'normal';
+    stateValue.textContent = formatStateKey(stateKey);
+    stateValue.className = `plan-state plan-state-${stateKey}`;
+    stateLine.append(stateLabel, stateValue);
 
-    metaWrap.append(name, tempLine, powerLine, usageLine, reasonLine);
+    // Status display
+    const statusLine = document.createElement('div');
+    statusLine.className = 'plan-meta-line';
+    const statusLabel = document.createElement('span');
+    statusLabel.className = 'plan-label';
+    statusLabel.textContent = 'Status';
+    const statusValue = document.createElement('span');
+    const statusKeys = (dev as any).statusKeys || [];
+    const reason = (dev as any).reason;
+    statusValue.textContent = statusKeys.length > 0 ? formatStatusKeys(statusKeys, reason) : 'Normal';
+    statusValue.className = 'plan-status';
+    statusLine.append(statusLabel, statusValue);
+
+    metaWrap.append(name, tempLine, powerLine, usageLine, stateLine, statusLine);
 
     row.append(metaWrap);
     planList.appendChild(row);
@@ -1945,25 +2034,13 @@ const boot = async () => {
           template = latestDevices.reduce<Record<string, number>>((acc, device, index) => {
             acc[device.id] = index + 1; // default priority ordering when no template exists
             return acc;
-          }, {});
+}, {});
         }
         capacityPriorities = {
           ...(storedPriorities || {}),
           ...(capacityPriorities || {}),
           [mode]: { ...template },
-        };
-      }
-      if (!modeTargets[mode]) {
-        const templateTargets = (storedTargets && storedTargets[templateMode])
-          || (storedTargets && storedTargets.Home)
-          || modeTargets[templateMode]
-          || modeTargets.Home
-          || {};
-        modeTargets = {
-          ...(storedTargets || {}),
-          ...(modeTargets || {}),
-          [mode]: { ...templateTargets },
-        };
+        } as Record<string, Record<string, number>>;
       }
       editingMode = mode;
       renderModeOptions();

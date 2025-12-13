@@ -1,7 +1,7 @@
 import Homey from 'homey';
 import CapacityGuard from './capacityGuard';
 import { DeviceManager } from './deviceManager';
-import { TargetDeviceSnapshot } from './types';
+import { TargetDeviceSnapshot, ShedAction } from './types';
 import PriceService from './priceService';
 import { PriceOptimizer } from './priceOptimizer';
 import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './powerTracker';
@@ -729,6 +729,11 @@ module.exports = class PelsApp extends Homey.App {
       expectedPowerKw?: number;
       measuredPowerKw?: number;
       reason?: string;
+      stateKey: 'normal' | 'shed_power' | 'restoring' | 'price_boost' | 'price_limit' | 'not_controllable' | 'swap_blocked';
+      statusKeys: string[];
+      priceEffect?: 'boost' | 'limit' | null;
+      shedAction?: 'turn_off';
+
       zone?: string;
       controllable?: boolean;
       currentTemperature?: number;
@@ -840,6 +845,8 @@ module.exports = class PelsApp extends Homey.App {
       const priority = this.getPriorityForDevice(dev.id);
       const desired = desiredForMode[dev.id];
       let plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
+      const baseTarget = plannedTarget;
+      let priceEffect: 'boost' | 'limit' | null = null;
 
       // Apply price optimization delta if configured for this device
       const priceOptConfig = this.priceOptimizationSettings[dev.id];
@@ -848,8 +855,10 @@ module.exports = class PelsApp extends Homey.App {
         const isExpensive = this.isCurrentHourExpensive();
         if (isCheap && priceOptConfig.cheapDelta) {
           plannedTarget += priceOptConfig.cheapDelta;
+          if (plannedTarget !== baseTarget) priceEffect = 'boost';
         } else if (isExpensive && priceOptConfig.expensiveDelta) {
           plannedTarget += priceOptConfig.expensiveDelta;
+          if (plannedTarget !== baseTarget) priceEffect = 'limit';
         }
       }
 
@@ -859,17 +868,7 @@ module.exports = class PelsApp extends Homey.App {
       const controllable = dev.controllable !== false;
       // eslint-disable-next-line no-nested-ternary -- Clear controllable-to-state mapping
       let plannedState = controllable ? (shedSet.has(dev.id) ? 'shed' : 'keep') : 'keep';
-      let reason = controllable ? shedReasons.get(dev.id) || `keep (priority ${priority})` : 'not controllable by PELS';
-      if (controllable && plannedState !== 'shed' && currentState === 'off') {
-        const need = (dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1) + restoreMarginPlanning;
-        const hr = headroomRaw;
-        // Only show "restore" reason if we're not in shortfall - otherwise device won't actually restore
-        if (guardInShortfall) {
-          plannedState = 'shed';
-          reason = 'stay off while in capacity shortfall';
-        } else {
-          reason = `restore (need ${need.toFixed(2)}kW, headroom ${hr === null ? 'unknown' : hr.toFixed(2)}kW)`;
-        }
+let reason = controllable ? shedReasons.get(dev.id) || `keep (priority ${priority})` : 'not controllable by PELS';
       }
 
       // If hourly energy budget exhausted, proactively shed any controllable device that is currently on (or unknown state)
@@ -890,9 +889,13 @@ module.exports = class PelsApp extends Homey.App {
         expectedPowerKw: dev.expectedPowerKw,
         measuredPowerKw: dev.measuredPowerKw,
         reason,
+        stateKey: 'normal' as 'normal' | 'shed_power' | 'restoring' | 'price_boost' | 'price_limit' | 'not_controllable' | 'swap_blocked',
+        statusKeys: [] as string[],
+        priceEffect,
         zone: dev.zone || 'Unknown',
         controllable,
         currentTemperature: dev.currentTemperature,
+        shedAction,
       };
     });
 
@@ -1099,6 +1102,64 @@ module.exports = class PelsApp extends Homey.App {
       }
     }
 
+    // Derive normalized state/status keys for UI/i18n
+    for (const dev of planDevices) {
+      const statusKeys: string[] = [];
+      let stateKey: 'normal' | 'shed_power' | 'restoring' | 'price_boost' | 'price_limit' | 'not_controllable' | 'swap_blocked' = 'normal';
+
+      // Derive state from planned state and current conditions
+      if (dev.controllable === false) {
+        stateKey = 'not_controllable';
+        statusKeys.push('not_controllable');
+      } else if (dev.plannedState === 'shed') {
+        stateKey = 'shed_power'; // Temperature shed functionality removed
+      } else if (dev.currentState === 'off' && dev.plannedState !== 'shed') {
+        stateKey = 'restoring';
+      } else if (dev.priceEffect === 'boost') {
+        stateKey = 'price_boost';
+      } else if (dev.priceEffect === 'limit') {
+        stateKey = 'price_limit';
+      } else {
+        stateKey = 'normal';
+      }
+
+      // Derive status from reason and conditions
+      if (guardInShortfall) statusKeys.push('shortfall');
+      if (this.capacityDryRun) statusKeys.push('dry_run');
+
+      // Cooldown status
+      if (inCooldown && (dev.plannedState === 'shed' || stateKey === 'shed_power')) {
+        statusKeys.push('cooldown');
+      }
+      if (inRestoreCooldown && (dev.plannedState === 'shed' || stateKey === 'shed_power')) {
+        statusKeys.push('restore_cooldown');
+      }
+
+      // Status derived from reason patterns
+      if (dev.reason?.includes('headroom')) statusKeys.push('waiting_headroom');
+      if (dev.reason?.includes('budget')) statusKeys.push('budget_exhausted');
+      if (dev.reason?.includes('overshoot')) statusKeys.push('capacity_overshoot');
+      if (dev.reason?.includes('measurement')) statusKeys.push('waiting_measurement');
+
+      // Price-related status
+      if (dev.priceEffect === 'boost') statusKeys.push('price_cheap');
+      if (dev.priceEffect === 'limit') statusKeys.push('price_expensive');
+
+      // Swap blocking status - only for devices that are actually blocked by swap logic
+      if (dev.reason?.includes('swapped out for') || dev.reason?.includes('pending swap target')) {
+        statusKeys.push('swap_blocked');
+      }
+
+      // Swap pending status - only for higher priority devices that are swap targets
+      if (this.pendingSwapTargets.has(dev.id)) {
+        statusKeys.push('swap_pending');
+      }
+
+      // Assign the derived state and status
+      dev.stateKey = stateKey;
+      dev.statusKeys = [...new Set(statusKeys)];
+    }
+
     // Sort devices by priority ascending (priority 1 = most important, shown first)
     planDevices.sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
@@ -1121,6 +1182,11 @@ module.exports = class PelsApp extends Homey.App {
   private getPriorityForDevice(deviceId: string): number {
     const mode = this.operatingMode || 'Home';
     return this.capacityPriorities[mode]?.[deviceId] ?? 100;
+  }
+
+  private getShedBehavior(deviceId: string): { action: ShedAction; temperature: number | null } {
+    // Temperature shed functionality removed - always return turn_off
+    return { action: 'turn_off', temperature: null };
   }
 
   private resolveModeName(name: string): string {

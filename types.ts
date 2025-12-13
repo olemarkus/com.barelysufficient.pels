@@ -15,6 +15,8 @@ export interface TargetDeviceSnapshot {
     lastUpdated?: number;
 }
 
+export type ShedAction = 'turn_off';
+
 export interface Logger {
     log: (...args: unknown[]) => void;
     debug: (...args: unknown[]) => void;

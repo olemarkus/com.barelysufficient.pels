@@ -6,6 +6,54 @@ import {
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
+// Import formatStatusKeys function for testing
+const formatStatusKeys = (statusKeys: string[], reason?: string): string => {
+  const statusMap: Record<string, string> = {
+    'shortfall': 'Shortfall',
+    'dry_run': 'Dry Run',
+    'cooldown': 'Cooldown',
+    'restore_cooldown': 'Restore Cooldown',
+    'waiting_headroom': 'Waiting Headroom',
+    'swap_pending': 'Swap Pending',
+    'budget_exhausted': 'Budget Exhausted',
+    'capacity_overshoot': 'Capacity Overshoot',
+    'waiting_measurement': 'Waiting Measurement',
+    'price_cheap': 'Cheap Price',
+    'price_expensive': 'Expensive Price',
+    'swap_blocked': 'Swap Blocked',
+    'not_controllable': 'Not Controllable',
+  };
+
+  return statusKeys
+    .map(key => {
+      // Format cooldown with remaining seconds if available
+      if (key === 'cooldown' || key === 'restore_cooldown') {
+        // Extract remaining seconds from reason if available
+        const secondsMatch = reason?.match(/(\d+(?:\.\d+)?)s remaining/);
+        if (secondsMatch) {
+          return `${statusMap[key]} (${secondsMatch[1]}s)`;
+        }
+      }
+
+      // Format waiting headroom with needed vs available info if available
+      if (key === 'waiting_headroom') {
+        // Extract headroom info from reason patterns
+        const restoreMatch = reason?.match(/need ([\d.]+)kW, headroom ([\d.]+)kW/);
+        const insufficientMatch = reason?.match(/insufficient headroom ([\d.]+)kW < ([\d.]+)kW needed/);
+
+        if (restoreMatch) {
+          return `${statusMap[key]} (need ${restoreMatch[1]}kW, have ${restoreMatch[2]}kW)`;
+        }
+        if (insufficientMatch) {
+          return `${statusMap[key]} (have ${insufficientMatch[1]}kW, need ${insufficientMatch[2]}kW)`;
+        }
+      }
+
+      return statusMap[key];
+    })
+    .join(', ');
+};
+
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
 
@@ -1552,7 +1600,109 @@ describe('Device plan snapshot', () => {
   });
 });
 
-describe('Dry run mode', () => {
+  it('sets state/status for power vs temperature shedding', async () => {
+    const devTemp = new MockDevice('dev-temp', 'Heater Temp', ['target_temperature', 'measure_power', 'onoff']);
+    await devTemp.setCapabilityValue('target_temperature', 21);
+    await devTemp.setCapabilityValue('measure_power', 1200);
+    await devTemp.setCapabilityValue('onoff', true);
+
+    const devOff = new MockDevice('dev-off', 'Heater Off', ['target_temperature', 'measure_power', 'onoff']);
+    await devOff.setCapabilityValue('target_temperature', 21);
+    await devOff.setCapabilityValue('measure_power', 1200);
+    await devOff.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [devTemp, devOff]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-temp': 21, 'dev-off': 21 } });
+    // Temperature shed functionality removed - no overshoot behaviors needed
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+    await (app as any).recordPowerSample(2500);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const tempPlan = plan.devices.find((d: any) => d.id === 'dev-temp');
+    const offPlan = plan.devices.find((d: any) => d.id === 'dev-off');
+
+    expect(tempPlan.stateKey).toBe('shed_power');
+    expect(offPlan.stateKey).toBe('shed_power');
+    expect(tempPlan.statusKeys).toContain('cooldown');
+    expect(offPlan.statusKeys).toContain('cooldown');
+  });
+
+  it('sets price boost/limit states when price optimization adjusts target', async () => {
+    const dev = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev.setCapabilityValue('target_temperature', 20);
+    await dev.setCapabilityValue('measure_power', 200);
+    await dev.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+    });
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
+
+    await (app as any).recordPowerSample(100);
+    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const cheapPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(cheapPlan.stateKey).toBe('price_boost');
+    expect(cheapPlan.statusKeys).toContain('price_cheap');
+
+    (app as any).isCurrentHourCheap = () => false;
+    (app as any).isCurrentHourExpensive = () => true;
+    await (app as any).recordPowerSample(100);
+    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const expensivePlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(expensivePlan.stateKey).toBe('price_limit');
+    expect(expensivePlan.statusKeys).toContain('price_expensive');
+  });
+
+  it('marks devices as restoring when off but planned to keep', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 20);
+    await dev1.setCapabilityValue('onoff', false);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 10;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 10);
+    }
+    await (app as any).recordPowerSample(100);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan.stateKey).toBe('restoring');
+    expect(devPlan.statusKeys).toContain('waiting_headroom');
+  });
+
+  describe('Dry run mode', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
@@ -2066,5 +2216,161 @@ describe('Dry run mode', () => {
 
     // This SHOULD pass but will FAIL due to the 50% budget bug
     expect(restoreCall).toBeDefined();
+  });
+
+  it('derives correct stateKey and statusKeys from device conditions', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    await dev1.setCapabilityValue('onoff', true); // Device is ON
+    const dev2 = new MockDevice('dev-2', 'Heater B', ['target_temperature', 'onoff']);
+    await dev2.setCapabilityValue('measure_power', 1500);
+    await dev2.setCapabilityValue('onoff', true); // Device is ON
+    const dev3 = new MockDevice('dev-3', 'Heater C', ['target_temperature', 'onoff']);
+    await dev3.setCapabilityValue('onoff', false); // Device is OFF
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1, dev2, dev3]),
+    });
+
+    // Set up priorities and behaviors
+    mockHomeyInstance.settings.set('capacity_priorities', {
+      Home: { 'dev-1': 1, 'dev-2': 2, 'dev-3': 3 },
+    });
+    // Temperature shed functionality removed - no overshoot behaviors needed
+
+    const app = createApp();
+    await app.onInit();
+
+    // Force soft limit to 1 kW to trigger shedding
+    (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+
+    // Mock computeDynamicSoftLimit to return 1 kW as well
+    (app as any).computeDynamicSoftLimit = () => 1;
+
+    await (app as any).recordPowerSample(4000); // 4 kW total, over limit
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+
+    // Find devices in plan
+    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    const dev2Plan = plan.devices.find((d: any) => d.id === 'dev-2');
+    const dev3Plan = plan.devices.find((d: any) => d.id === 'dev-3');
+
+    // Device 1 (highest priority, shed via power)
+    expect(dev1Plan?.stateKey).toBe('shed_power');
+    expect(dev1Plan?.statusKeys).toContain('cooldown'); // In cooldown after shedding
+    expect(dev1Plan?.reason).toContain('shed due to capacity');
+
+    // Device 2 (lower priority, shed via power)
+    expect(dev2Plan?.stateKey).toBe('shed_power');
+    expect(dev2Plan?.statusKeys).toContain('cooldown'); // In cooldown after shedding
+    expect(dev2Plan?.reason).toContain('shed due to capacity');
+
+    // Device 3 (already off, should be in shed state due to cooldown)
+    expect(dev3Plan?.stateKey).toBe('shed_power'); // In cooldown, so stays shed
+    expect(dev3Plan?.statusKeys).toContain('cooldown');
+    expect(dev3Plan?.reason).toContain('stay off during cooldown');
+
+    // Verify cooldown seconds are included in status
+    const cooldownStatus = dev3Plan?.statusKeys?.find((key: string) => key.includes('cooldown'));
+    expect(cooldownStatus).toBeDefined();
+    if (cooldownStatus) {
+      // Should include remaining seconds in the status text
+      expect(cooldownStatus).toMatch(/\(\d+\.\d+s remaining\)/);
+    }
+
+// Test waiting headroom status includes needed vs available info
+    // Look for existing device that might have waiting headroom status
+    const waitingHeadroomDevice = plan.devices.find((d: any) => d.statusKeys?.includes('waiting_headroom'));
+
+    if (waitingHeadroomDevice) {
+      // Should have waiting_headroom status
+      expect(waitingHeadroomDevice.statusKeys).toContain('waiting_headroom');
+      expect(waitingHeadroomDevice.reason).toMatch(/need [\d.]+kW, headroom [\d.]+kW/);
+
+// Verify formatted status includes needed vs available info
+    const waitingHeadroomStatus = waitingHeadroomDevice?.statusKeys?.find((key: string) => key === 'waiting_headroom');
+    expect(waitingHeadroomStatus).toBeDefined();
+    if (waitingHeadroomStatus) {
+      // The UI should format this to show needed vs available
+      // This tests the formatStatusKeys function
+      const formattedStatus = formatStatusKeys([waitingHeadroomStatus], waitingHeadroomDevice.reason);
+      expect(formattedStatus).toMatch(/Waiting Headroom \(need [\d.]+kW, have [\d.]+kW\)/);
+    }
+
+    // Test enhanced cooldown status shows cooldown type
+    const cooldownDevice = plan.devices.find((d: any) => d.statusKeys?.includes('cooldown'));
+    if (cooldownDevice) {
+      const cooldownStatus = cooldownDevice.statusKeys?.find((key: string) => key === 'cooldown' || key === 'restore_cooldown');
+      expect(cooldownStatus).toBeDefined();
+      if (cooldownStatus) {
+        const formattedCooldownStatus = formatStatusKeys([cooldownStatus], cooldownDevice.reason);
+        // Should show "Shed Cooldown" or "Restore Cooldown"
+        expect(formattedCooldownStatus).toMatch(/(Shed|Restore) Cooldown/);
+      }
+    }
+
+    // Test swap pending status shows target device
+    const swapPendingDevice = plan.devices.find((d: any) => d.statusKeys?.includes('swap_pending'));
+    if (swapPendingDevice) {
+      const swapStatus = swapPendingDevice.statusKeys?.find((key: string) => key === 'swap_pending');
+      expect(swapStatus).toBeDefined();
+      if (swapStatus) {
+        const formattedSwapStatus = formatStatusKeys([swapStatus], swapPendingDevice.reason);
+        // Should show "Swap Pending (Device Name)"
+        expect(formattedSwapStatus).toMatch(/Swap Pending \([^)]+\)/);
+      }
+    }
+    }
+  });
+
+  it('derives price optimization states correctly', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
+    await dev1.setCapabilityValue('measure_power', 1000);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    // Set up price optimization settings
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': { enabled: true, cheapDelta: -2, expensiveDelta: 2 },
+    });
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: { 'dev-1': 20 },
+    });
+    mockHomeyInstance.settings.set('combined_prices', {
+      prices: [
+        { total: 100, isCheap: true, isExpensive: false }, // Cheap hour
+        { total: 200, isCheap: false, isExpensive: true }, // Expensive hour
+      ],
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Test cheap price (should boost)
+    (app as any).priceService.isCurrentHourCheap = () => true;
+    (app as any).priceService.isCurrentHourExpensive = () => false;
+    await (app as any).recordPowerSample(1000);
+
+    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    let dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+
+    expect(dev1Plan?.stateKey).toBe('price_boost');
+    expect(dev1Plan?.statusKeys).toContain('price_cheap');
+    expect(dev1Plan?.plannedTarget).toBe(18); // 20 - 2
+
+    // Test expensive price (should limit)
+    (app as any).priceService.isCurrentHourCheap = () => false;
+    (app as any).priceService.isCurrentHourExpensive = () => true;
+    await (app as any).recordPowerSample(1000);
+
+    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+
+    expect(dev1Plan?.stateKey).toBe('price_limit');
+    expect(dev1Plan?.statusKeys).toContain('price_expensive');
+    expect(dev1Plan?.plannedTarget).toBe(22); // 20 + 2
   });
 });

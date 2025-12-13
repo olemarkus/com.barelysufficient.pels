@@ -1401,3 +1401,50 @@ input[type="text"]:focus {
   font-size: 13px;
   font-style: italic;
 }
+
+/* Plan state and status styling */
+.plan-state {
+  font-weight: var(--font-weight-semibold);
+  padding: var(--spacing-1) var(--spacing-1);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.plan-state-normal {
+  background: var(--success-subtle);
+  color: var(--success);
+}
+
+.plan-state-shed_power {
+  background: var(--danger-subtle);
+  color: var(--danger);
+}
+
+.plan-state-restoring {
+  background: var(--warning-subtle);
+  color: var(--warning);
+}
+
+.plan-state-price_boost {
+  background: var(--success-subtle);
+  color: var(--success);
+}
+
+.plan-state-price_limit {
+  background: var(--warning-subtle);
+  color: var(--warning);
+}
+
+.plan-state-not_controllable,
+.plan-state-swap_blocked {
+  background: var(--muted-subtle);
+  color: var(--muted);
+}
+
+.plan-status {
+  font-size: var(--font-size-sm);
+  color: var(--muted);
+  font-style: italic;
+}
