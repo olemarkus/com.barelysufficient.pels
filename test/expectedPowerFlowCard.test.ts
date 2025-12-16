@@ -108,16 +108,24 @@ describe('Expected power flow card', () => {
     const snapOverride = snapshotOverride.find((d) => d.id === 'dev-3');
     expect(snapOverride?.powerKw).toBeCloseTo(1.5);
 
-    // Now report a measurement (later timestamp) - should take precedence
+    // Now report a measurement (later timestamp) - should NOT lower the expected value
     await device.setCapabilityValue('measure_power', 900);
     await (app as any).refreshTargetDevicesSnapshot();
     const snapshotMeasured = (app as any).latestTargetSnapshot as Array<{ id: string; powerKw?: number }>;
     const snapMeasured = snapshotMeasured.find((d) => d.id === 'dev-3');
-    expect(snapMeasured?.powerKw).toBeCloseTo(0.9);
+    expect(snapMeasured?.powerKw).toBeCloseTo(1.5); // Still 1.5kW because 0.9 < 1.5
+
+    // But if measurement exceeds override, it should update
+    await device.setCapabilityValue('measure_power', 1600);
+    await (app as any).refreshTargetDevicesSnapshot();
+    const snapshotHigh = (app as any).latestTargetSnapshot as Array<{ id: string; powerKw?: number }>;
+    const snapHigh = snapshotHigh.find((d) => d.id === 'dev-3');
+    expect(snapHigh?.powerKw).toBeCloseTo(1.6);
 
     // Clear overrides and measurements -> fallback to 1kW
     Object.keys((app as any).expectedPowerKwOverrides).forEach((k) => delete (app as any).expectedPowerKwOverrides[k]);
     Object.keys((app as any).lastMeasuredPowerKw).forEach((k) => delete (app as any).lastMeasuredPowerKw[k]);
+    Object.keys((app as any).lastKnownPowerKw).forEach((k) => delete (app as any).lastKnownPowerKw[k]);
     const snapshotFallback = (app as any).parseDevicesForTests([
       {
         id: 'dev-3',

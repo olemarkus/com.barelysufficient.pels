@@ -4,6 +4,7 @@ export interface TargetDeviceSnapshot {
     targets: Array<{ id: string; value: unknown; unit: string }>;
     powerKw?: number;
     expectedPowerKw?: number;
+    expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'default';
     loadKw?: number;
     priority?: number;
     currentOn?: boolean;

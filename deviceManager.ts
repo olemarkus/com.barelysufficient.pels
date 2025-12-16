@@ -212,7 +212,6 @@ export class DeviceManager {
                     ? capabilityObj.measure_temperature.value
                     : undefined;
                 const powerRaw = capabilityObj.measure_power?.value;
-                const isOn = capabilityObj.onoff?.value === true;
                 let powerKw: number | undefined;
                 let expectedPowerKw: number | undefined;
                 const expectedOverride = this.powerState.expectedPowerKwOverrides[deviceId];
@@ -229,40 +228,80 @@ export class DeviceManager {
                 if (loadW && loadW > 0) {
                     powerKw = loadW / 1000;
                     expectedPowerKw = powerKw;
-                    this.powerState.lastKnownPowerKw[deviceId] = powerKw;
-                    this.logger.debug(`Power estimate: using settings.load for ${deviceLabel}: ${powerKw.toFixed(3)} kW`);
-                } else {
-                    if (typeof powerRaw === 'number' && Number.isFinite(powerRaw) && powerRaw <= MIN_SIGNIFICANT_POWER_W) {
-                        this.logger.debug(`Power estimate: ignoring low reading for ${deviceLabel}: ${powerRaw} W (<= ${MIN_SIGNIFICANT_POWER_W} W threshold)`);
-                    }
-                    if (typeof powerRaw === 'number' && Number.isFinite(powerRaw) && powerRaw > MIN_SIGNIFICANT_POWER_W) {
-                        const measuredKw = powerRaw / 1000;
-                        measuredPowerKw = measuredKw;
-                        this.powerState.lastMeasuredPowerKw[deviceId] = { kw: measuredKw, ts: now };
-                        // Track this as the last known power for this device (when on and drawing)
-                        if (isOn && measuredKw > MIN_SIGNIFICANT_POWER_W / 1000) {
-                            this.powerState.lastKnownPowerKw[deviceId] = measuredKw;
-                        }
-                        this.logger.debug(`Power estimate: captured measured power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW`);
+                    // Note: 'load-setting' is also a valid basis for lastKnownPowerKw if we haven't seen better
+                    if (!this.powerState.lastKnownPowerKw[deviceId] || this.powerState.lastKnownPowerKw[deviceId] < powerKw) {
+                        this.powerState.lastKnownPowerKw[deviceId] = powerKw;
                     }
 
-                    const measured = this.powerState.lastMeasuredPowerKw[deviceId];
-                    if (!measuredPowerKw && measured) {
-                        measuredPowerKw = measured.kw;
-                    }
+                    // Check for overrides on top of load setting
                     const override = expectedOverride;
-                    if (measured && (!override || measured.ts >= override.ts)) {
-                        powerKw = measured.kw;
-                        expectedPowerKw = measured.kw;
-                        this.logger.debug(`Power estimate: using last measured for ${deviceLabel}: ${measured.kw.toFixed(3)} kW`);
-                    } else if (override) {
+                    if (override) {
+                        // Safety: if override is lower than load, we trust the user set it manually.
+                        // If override is higher, we trust that too.
                         powerKw = override.kw;
                         expectedPowerKw = override.kw;
-                        this.logger.debug(`Power estimate: using override for ${deviceLabel}: ${override.kw.toFixed(3)} kW`);
+                        this.logger.debug(`Power estimate: using override (manual) for ${deviceLabel}: ${override.kw.toFixed(3)} kW`);
+                        device.expectedPowerSource = 'manual';
+                    } else {
+                        this.logger.debug(`Power estimate: using settings.load for ${deviceLabel}: ${powerKw.toFixed(3)} kW`);
+                        device.expectedPowerSource = 'load-setting';
+                    }
+                } else {
+                    let measuredKw: number | undefined;
+                    if (typeof powerRaw === 'number' && Number.isFinite(powerRaw)) {
+                        if (powerRaw > MIN_SIGNIFICANT_POWER_W) {
+                            measuredKw = powerRaw / 1000;
+                            measuredPowerKw = measuredKw;
+                            this.powerState.lastMeasuredPowerKw[deviceId] = { kw: measuredKw, ts: now };
+
+                            // MONOTONIC UPDATE: Update peak tracker if measurement is higher.
+                            const previousPeak = this.powerState.lastKnownPowerKw[deviceId] || 0;
+                            if (measuredKw > previousPeak) {
+                                this.powerState.lastKnownPowerKw[deviceId] = measuredKw;
+                                this.logger.debug(`Power estimate: updated peak power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW (was ${previousPeak.toFixed(3)} kW)`);
+                            }
+                        } else {
+                            this.logger.debug(`Power estimate: ignoring low reading for ${deviceLabel}: ${powerRaw} W`);
+                        }
+                    }
+
+                    // Calculate Expected Power
+                    // Priority 1: Manual Override
+                    // Priority 2: Peak Measured (lastKnownPowerKw)
+                    // Priority 3: Default 1kW
+                    const override = expectedOverride;
+                    const peak = this.powerState.lastKnownPowerKw[deviceId];
+
+                    if (override) {
+                        expectedPowerKw = override.kw;
+
+                        // Safety check: if current measured peak is HIGHER than override, use peak (monotonic safety).
+                        const effectivePeak = this.powerState.lastKnownPowerKw[deviceId] || 0;
+                        if (effectivePeak > override.kw) {
+                            expectedPowerKw = effectivePeak;
+                            device.expectedPowerSource = 'measured-peak';
+                            this.logger.debug(`Power estimate: inferred peak ${effectivePeak} > override ${override.kw} for ${deviceLabel}`);
+                        } else {
+                            expectedPowerKw = override.kw;
+                            device.expectedPowerSource = 'manual';
+                            this.logger.debug(`Power estimate: using override for ${deviceLabel}: ${override.kw.toFixed(3)} kW`);
+                        }
+                    } else if (peak) {
+                        expectedPowerKw = peak;
+                        powerKw = peak;
+                        device.expectedPowerSource = 'measured-peak';
+                        this.logger.debug(`Power estimate: using peak measured for ${deviceLabel}: ${peak.toFixed(3)} kW`);
                     } else {
                         powerKw = 1;
                         expectedPowerKw = undefined; // Unknown estimate shown as "Unknown" in UI
+                        device.expectedPowerSource = 'default';
                         this.logger.debug(`Power estimate: fallback 1 kW for ${deviceLabel} (no measured/override/load)`);
+                    }
+
+                    // `powerKw` represents the potential maximum draw for shedding logic.
+                    // It should align with `expectedPowerKw`.
+                    if (expectedPowerKw !== undefined) {
+                        powerKw = expectedPowerKw;
                     }
                 }
 
@@ -293,6 +332,7 @@ export class DeviceManager {
                     targets,
                     powerKw,
                     expectedPowerKw,
+                    expectedPowerSource: device.expectedPowerSource,
                     loadKw: loadW && loadW > 0 ? loadW / 1000 : undefined,
                     priority: this.providers.getPriority ? this.providers.getPriority(deviceId) : undefined,
                     currentOn,
