@@ -184,8 +184,10 @@ describe('Device plan snapshot', () => {
   });
 
   it('ignores non-controllable devices when planning shedding', async () => {
-    const controllable = new MockDevice('dev-ctl', 'Heater A', ['target_temperature']);
-    const nonCtl = new MockDevice('dev-non', 'Heater B', ['target_temperature']);
+    const controllable = new MockDevice('dev-ctl', 'Heater A', ['target_temperature', 'measure_power']);
+    const nonCtl = new MockDevice('dev-non', 'Heater B', ['target_temperature', 'measure_power']);
+    await controllable.setCapabilityValue('measure_power', 2000);
+    await nonCtl.setCapabilityValue('measure_power', 2000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [controllable, nonCtl]),
     });
@@ -238,7 +240,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('keeps device shed until headroom exceeds restore margin', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 2000);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -266,9 +268,11 @@ describe('Device plan snapshot', () => {
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
     // Large headroom should allow restoration.
-    (app as any).computeDynamicSoftLimit = () => 2;
+    // Need at least 1kW (fallback) + 0.2kW margin = 1.2kW headroom.
+    // Total 1.1kW. Soft limit needs to be > 2.3kW.
+    (app as any).computeDynamicSoftLimit = () => 2.5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2.5);
     }
     await (app as any).recordPowerSample(1100);
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
@@ -571,6 +575,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 1,
+        measuredPowerKw: 1, // Required for shedding logic to see it as effective
         currentOn: true,
         controllable: true,
       },
@@ -1704,6 +1709,7 @@ describe('Dry run mode', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 2,
+        measuredPowerKw: 2,
         currentOn: true,
         controllable: true,
       },

@@ -778,7 +778,9 @@ module.exports = class PelsApp extends Homey.App {
         .filter((d) => d.controllable !== false && d.currentOn !== false)
         .map((d) => {
           const priority = this.getPriorityForDevice(d.id);
-          const power = typeof d.powerKw === 'number' && d.powerKw > 0 ? d.powerKw : 1; // fallback when unknown
+          // SHEDDING: Use actual measured consumption (what we gain by shedding)
+          // Default to 0 if unknown (can't gain power from 0W or unknown)
+          const power = d.measuredPowerKw ?? 0;
           return { ...d, priority, effectivePower: power };
         })
         .sort((a, b) => {
@@ -798,6 +800,9 @@ module.exports = class PelsApp extends Homey.App {
       const totalSheddable = candidates.reduce((sum, c) => sum + ((c as any).effectivePower as number), 0);
       this.log(`Plan: overshoot=${needed.toFixed(2)}kW, candidates=${candidates.length}, totalSheddable=${totalSheddable.toFixed(2)}kW`);
       for (const c of candidates) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
+        if ((c as any).effectivePower <= 0) continue;
+
         if (remaining <= 0) break;
         shedSet.add(c.id);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
@@ -1011,7 +1016,9 @@ module.exports = class PelsApp extends Homey.App {
           }
         }
 
-        const devPower = dev.powerKw && dev.powerKw > 0 ? dev.powerKw : 1;
+        // RESTORE: Use EXPECTED consumption (what we lose by restoring)
+        // Fallback: measured > 0, else 1kW default
+        const devPower = dev.expectedPowerKw ?? (dev.measuredPowerKw && dev.measuredPowerKw > 0 ? dev.measuredPowerKw : 1.0);
         // Need enough headroom to restore AND keep a safety buffer afterward
         const needed = devPower + restoreHysteresis;
 
@@ -1032,6 +1039,17 @@ module.exports = class PelsApp extends Homey.App {
             continue;
           }
 
+          // Force 'shed' if we are not restoring, to prevent it from turning on if desired state is ON
+          // (Secondary guard mentioned in comments)
+          if (dev.plannedTarget !== null || dev.currentTarget !== null) {
+            dev.plannedState = 'shed';
+            dev.reason = 'stay off (insufficient headroom to restore)';
+          } else {
+            // If no desired target, 'keep' implies staying off (current state)
+            dev.reason = 'stay off (insufficient headroom)';
+          }
+
+          // Try to find a swap candidate to shed
           let potentialHeadroom = availableHeadroom;
           const toShed: typeof onDevices = [];
 
