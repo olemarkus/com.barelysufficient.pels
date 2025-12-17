@@ -511,6 +511,42 @@ describe('Device plan snapshot', () => {
     expect(parsed[0].targets[0].value).toBe(22);
   });
 
+  it('uses expected power for shedding when measured power is unavailable', async () => {
+    const app = createApp();
+    await app.onInit();
+
+    // Force a small soft limit so the sample power triggers an overshoot.
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+
+    // Snapshot contains a controllable, powered-on device with known expected draw but no live measurement.
+    (app as any).setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        powerKw: 1.2,
+        expectedPowerKw: 1.2,
+        currentOn: true,
+        controllable: true,
+      },
+    ]);
+
+    const logSpy = jest.spyOn(app as any, 'log');
+
+    await (app as any).recordPowerSample(2000); // 2 kW total, above the 0.5 kW soft limit
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devicePlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devicePlan?.plannedState).toBe('shed');
+
+    const planLog = logSpy.mock.calls.map((args) => args.join(' ')).find((line) => line.includes('Plan: overshoot'));
+    expect(planLog).toBeDefined();
+    expect(planLog).not.toContain('totalSheddable=0.00kW');
+  });
+
   it('does not count already-off devices toward shedding need', async () => {
     const devOn = new MockDevice('dev-on', 'On Device', ['target_temperature', 'onoff', 'measure_power']);
     const devOff = new MockDevice('dev-off', 'Off Device', ['target_temperature', 'onoff', 'measure_power']);
@@ -926,6 +962,22 @@ describe('Device plan snapshot', () => {
     const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
     const device = snapshot.find((d: any) => d.id === 'dev-1');
     expect(device.powerKw).toBeCloseTo(1.2, 3);
+  });
+
+  it('interprets settings.load = 0 as 1 kW', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
+    dev1.setSettings({ load: 0 });
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
+    const device = snapshot.find((d: any) => d.id === 'dev-1');
+    expect(device.powerKw).toBe(1);
   });
 
   it('includes Hoiax water heater in device snapshot with target_temperature', async () => {

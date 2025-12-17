@@ -778,9 +778,16 @@ module.exports = class PelsApp extends Homey.App {
         .filter((d) => d.controllable !== false && d.currentOn !== false)
         .map((d) => {
           const priority = this.getPriorityForDevice(d.id);
-          // SHEDDING: Use actual measured consumption (what we gain by shedding)
-          // Default to 0 if unknown (can't gain power from 0W or unknown)
-          const power = d.measuredPowerKw ?? 0;
+          let power: number;
+          if (typeof d.measuredPowerKw === 'number') {
+            power = Math.max(0, d.measuredPowerKw);
+          } else if (typeof d.expectedPowerKw === 'number' && d.expectedPowerKw > 0) {
+            power = d.expectedPowerKw;
+          } else if (typeof d.powerKw === 'number' && d.powerKw > 0) {
+            power = d.powerKw;
+          } else {
+            power = 1;
+          }
           return { ...d, priority, effectivePower: power };
         })
         .sort((a, b) => {
