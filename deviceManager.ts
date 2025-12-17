@@ -273,14 +273,12 @@ export class DeviceManager {
                     const peak = this.powerState.lastKnownPowerKw[deviceId];
 
                     if (override) {
-                        expectedPowerKw = override.kw;
-
                         // Safety check: if current measured peak is HIGHER than override, use peak (monotonic safety).
-                        const effectivePeak = this.powerState.lastKnownPowerKw[deviceId] || 0;
-                        if (effectivePeak > override.kw) {
-                            expectedPowerKw = effectivePeak;
+                        const peakValue = peak || 0;
+                        if (peakValue > override.kw) {
+                            expectedPowerKw = peakValue;
                             device.expectedPowerSource = 'measured-peak';
-                            this.logger.debug(`Power estimate: inferred peak ${effectivePeak} > override ${override.kw} for ${deviceLabel}`);
+                            this.logger.debug(`Power estimate: inferred peak ${peakValue.toFixed(3)} kW > override ${override.kw.toFixed(3)} kW for ${deviceLabel}`);
                         } else {
                             expectedPowerKw = override.kw;
                             device.expectedPowerSource = 'manual';
