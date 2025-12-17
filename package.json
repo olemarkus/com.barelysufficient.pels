@@ -28,8 +28,7 @@
     "parseuri": "3.0.2"
   },
   "dependencies": {
-    "homey-api": "^3.14.22",
-    "sortablejs": "^1.15.6"
+    "homey-api": "^3.14.22"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -51,6 +50,7 @@
     "jest-environment-jsdom": "^30.2.0",
     "lint-staged": "^16.2.7",
     "puppeteer": "^24.32.0",
+    "sortablejs": "^1.15.6",
     "style-dictionary": "^5.1.1",
     "ts-jest": "^29.4.6",
     "typescript": "^5.9.3",
