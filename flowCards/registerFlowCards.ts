@@ -133,7 +133,7 @@ function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {
     const expectedPowerKwStr = deviceSnap?.expectedPowerKw !== undefined ? deviceSnap.expectedPowerKw.toFixed(2) : 'unknown';
     const sourceStr = deviceSnap?.expectedPowerSource ? ` (${deviceSnap.expectedPowerSource})` : '';
 
-    deps.log(
+    deps.logDebug(
       `Headroom check for device "${deviceName}": `
       + `soft limit=${softLimit.toFixed(2)}kW, `
       + `current power=${currentPower?.toFixed(2) ?? 'unknown'}kW, `
