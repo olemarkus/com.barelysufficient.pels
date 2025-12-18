@@ -567,15 +567,20 @@ module.exports = class PelsApp extends Homey.App {
     }
 
     try {
-      // Prefer HomeyAPI client if available (handles auth/paths).
-      let devices: Record<string, unknown> | Array<unknown> | undefined;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- HomeyAPI types unavailable here
-      const homeyApi = this.deviceManager.getHomeyApi();
-      if (homeyApi?.devices?.getDevices) {
-        devices = await homeyApi.devices.getDevices();
-      } else {
-        devices = await this.homey.api.get('manager/devices');
+      // Prefer HomeyAPI client; if not ready, retry init once and log.
+      let homeyApi = this.deviceManager.getHomeyApi();
+      if (!homeyApi?.devices?.getDevices) {
+        this.error('HomeyAPI not ready for load lookup, retrying init');
+        await this.deviceManager.init();
+        homeyApi = this.deviceManager.getHomeyApi();
       }
+
+      if (!homeyApi?.devices?.getDevices) {
+        this.error('HomeyAPI still not ready for load lookup; skipping load lookup');
+        return null;
+      }
+
+      const devices = await homeyApi.devices.getDevices();
       const list = (Array.isArray(devices) ? devices : Object.values(devices || {})) as Array<{
         id?: string;
         data?: { id?: string };
