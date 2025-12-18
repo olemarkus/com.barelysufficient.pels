@@ -279,7 +279,7 @@ module.exports = class PelsApp extends Homey.App {
       }
       await this.overheadToken.setValue(overhead ?? 0);
     } catch (error) {
-      this.logDebug('Failed to create/update capacity_overhead token', error as Error);
+      this.error('Failed to create/update capacity_overhead token', error as Error);
     }
   }
 
@@ -567,7 +567,15 @@ module.exports = class PelsApp extends Homey.App {
     }
 
     try {
-      const devices = await this.homey.api.get('manager/devices');
+      // Prefer HomeyAPI client if available (handles auth/paths).
+      let devices: Record<string, unknown> | Array<unknown> | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- HomeyAPI types unavailable here
+      const homeyApi = (this.deviceManager as any)?.homeyApi;
+      if (homeyApi?.devices?.getDevices) {
+        devices = await homeyApi.devices.getDevices();
+      } else {
+        devices = await this.homey.api.get('manager/devices');
+      }
       const list = (Array.isArray(devices) ? devices : Object.values(devices || {})) as Array<{
         id?: string;
         data?: { id?: string };
@@ -580,11 +588,7 @@ module.exports = class PelsApp extends Homey.App {
     } catch (error) {
       const errObj = error as { status?: number; response?: { status?: number } };
       const maybeStatus = errObj?.status ?? errObj?.response?.status;
-      this.logDebug(
-        'Failed to read device via manager/devices for load:',
-        (error as Error)?.message || error,
-        maybeStatus ? `(status ${maybeStatus})` : '',
-      );
+      this.error('Failed to read device via manager/devices for load:', (error as Error)?.message || error, maybeStatus ? `(status ${maybeStatus})` : '');
     }
 
     return null;
