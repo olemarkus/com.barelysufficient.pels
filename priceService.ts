@@ -121,7 +121,7 @@ export default class PriceService {
       const data = await response.json();
 
       if (!Array.isArray(data)) {
-        this.log('Nettleie: Unexpected response format from NVE API');
+        this.errorLog?.('Nettleie: Unexpected response format from NVE API');
         return;
       }
 
@@ -306,7 +306,7 @@ export default class PriceService {
       const data = await httpsGetJson(url, { log: this.log });
 
       if (!Array.isArray(data)) {
-        this.log('Spot prices: Unexpected response format');
+        this.errorLog?.('Spot prices: Unexpected response format');
         return [];
       }
 
