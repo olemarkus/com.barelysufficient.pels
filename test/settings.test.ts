@@ -617,6 +617,180 @@ describe('Plan sorting', () => {
     ]);
   });
 
+  it('shows planned state lines for devices', async () => {
+    const planSnapshot = {
+      meta: {
+        totalKw: 5.1,
+        softLimitKw: 7.5,
+        headroomKw: 2.4,
+      },
+      devices: [
+        { id: 'a2', name: 'Alpha Two', priority: 2, currentState: 'on', plannedState: 'keep' },
+        { id: 'b1', name: 'Bravo One', priority: 1, currentState: 'on', plannedState: 'shed' },
+        { id: 'a1', name: 'Alpha One', priority: 1, currentState: 'on', plannedState: 'keep' },
+      ],
+    };
+
+    // @ts-expect-error expose mock Homey
+    global.Homey = {
+      ready: jest.fn().mockResolvedValue(undefined),
+      set: jest.fn((key, val, cb) => cb && cb(null)),
+      get: jest.fn((key, cb) => {
+        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
+        if (key === 'target_devices_snapshot') return cb(null, []);
+        return cb(null, null);
+      }),
+    };
+
+    await loadSettingsScript(100);
+
+    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
+    planTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const deviceRows = document.querySelectorAll('#plan-list .device-row');
+    const deviceNames = Array.from(deviceRows).map(
+      (row) => row.querySelector('.device-row__name')?.textContent,
+    );
+    expect(deviceNames).toEqual(['Bravo One', 'Alpha One', 'Alpha Two']); // priority order
+
+    const stateValues = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
+      .filter((line) => line.querySelector('.plan-label')?.textContent === 'State')
+      .map((line) => line.querySelector('span:last-child')?.textContent);
+    expect(stateValues).toContain('Shed');
+  });
+
+  it('shows measured and expected power in usage line when available', async () => {
+    const planSnapshot = {
+      meta: {
+        totalKw: 3.3,
+        softLimitKw: 9.0,
+        headroomKw: 5.7,
+      },
+      devices: [
+        {
+          id: 'device-1',
+          name: 'Heater',
+          priority: 1,
+          currentState: 'on',
+          plannedState: 'keep',
+          measuredPowerKw: 1.23,
+          expectedPowerKw: 2.34,
+        },
+      ],
+    };
+
+    // @ts-expect-error expose mock Homey
+    global.Homey = {
+      ready: jest.fn().mockResolvedValue(undefined),
+      set: jest.fn((key, val, cb) => cb && cb(null)),
+      get: jest.fn((key, cb) => {
+        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
+        if (key === 'target_devices_snapshot') return cb(null, []);
+        return cb(null, null);
+      }),
+    };
+
+    await loadSettingsScript(100);
+
+    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
+    planTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
+      .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
+      .map((line) => line.querySelector('span:last-child')?.textContent || '');
+
+    expect(usageLines[0]).toContain('current 1.23 kW / expected 2.34 kW');
+  });
+
+  it('shows expected power when device is off and only expected is known', async () => {
+    const planSnapshot = {
+      meta: {
+        totalKw: 1.0,
+        softLimitKw: 9.0,
+        headroomKw: 8.0,
+      },
+      devices: [
+        {
+          id: 'device-2',
+          name: 'Radiator',
+          priority: 1,
+          currentState: 'off',
+          plannedState: 'keep',
+          expectedPowerKw: 1.5,
+        },
+      ],
+    };
+
+    // @ts-expect-error expose mock Homey
+    global.Homey = {
+      ready: jest.fn().mockResolvedValue(undefined),
+      set: jest.fn((key, val, cb) => cb && cb(null)),
+      get: jest.fn((key, cb) => {
+        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
+        if (key === 'target_devices_snapshot') return cb(null, []);
+        return cb(null, null);
+      }),
+    };
+
+    await loadSettingsScript(100);
+
+    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
+    planTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
+      .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
+      .map((line) => line.querySelector('span:last-child')?.textContent || '');
+
+    expect(usageLines[0]).toBe('expected 1.50 kW');
+  });
+
+  it('shows measured 0 with expected power when device is on but not drawing', async () => {
+    const planSnapshot = {
+      meta: {
+        totalKw: 2.0,
+        softLimitKw: 9.0,
+        headroomKw: 7.0,
+      },
+      devices: [
+        {
+          id: 'device-3',
+          name: 'Idle Thermostat',
+          priority: 1,
+          currentState: 'on',
+          plannedState: 'keep',
+          measuredPowerKw: 0,
+          expectedPowerKw: 0.12,
+        },
+      ],
+    };
+
+    // @ts-expect-error expose mock Homey
+    global.Homey = {
+      ready: jest.fn().mockResolvedValue(undefined),
+      set: jest.fn((key, val, cb) => cb && cb(null)),
+      get: jest.fn((key, cb) => {
+        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
+        if (key === 'target_devices_snapshot') return cb(null, []);
+        return cb(null, null);
+      }),
+    };
+
+    await loadSettingsScript(100);
+
+    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
+    planTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
+      .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
+      .map((line) => line.querySelector('span:last-child')?.textContent || '');
+
+    expect(usageLines[0]).toBe('current 0.00 kW / expected 0.12 kW');
+  });
+
   it('savePriorities assigns priority 1 to top device', () => {
     // Verify savePriorities logic: top item = priority 1 (most important, shed last)
     const rows = ['dev-1', 'dev-2', 'dev-3']; // DOM order: top to bottom

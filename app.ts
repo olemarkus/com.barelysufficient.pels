@@ -943,7 +943,11 @@ module.exports = class PelsApp extends Homey.App {
     const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
     const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
     const sinceRestore = this.lastRestoreMs ? Date.now() - this.lastRestoreMs : null;
-    const inCooldown = (sinceShedding !== null && sinceShedding < SHED_COOLDOWN_MS) || (sinceOvershoot !== null && sinceOvershoot < SHED_COOLDOWN_MS);
+    const cooldownSince = [sinceShedding, sinceOvershoot].filter((v) => v !== null) as number[];
+    const cooldownRemainingMs = cooldownSince.length
+      ? Math.max(0, SHED_COOLDOWN_MS - Math.min(...cooldownSince))
+      : 0;
+    const inCooldown = cooldownRemainingMs > 0;
     const inRestoreCooldown = sinceRestore !== null && sinceRestore < RESTORE_COOLDOWN_MS;
 
     // Clean up stale swap tracking - if a swap couldn't complete within timeout, release the blocked devices
@@ -1145,7 +1149,7 @@ module.exports = class PelsApp extends Homey.App {
         dev.reason = sheddingActive
           ? 'stay off while shedding is active'
           : inCooldown
-            ? `stay off during cooldown (${Math.max(0, SHED_COOLDOWN_MS - (sinceShedding ?? sinceOvershoot ?? 0)) / 1000}s remaining)`
+            ? `stay off during cooldown (${(cooldownRemainingMs / 1000).toFixed(1)}s remaining)`
             : `stay off (waiting for power to stabilize after last restore, ${Math.max(0, RESTORE_COOLDOWN_MS - (sinceRestore ?? 0)) / 1000}s remaining)`;
         this.logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) - ${dev.reason}`);
       }
@@ -1370,7 +1374,11 @@ module.exports = class PelsApp extends Homey.App {
         const neededForDevice = plannedPower + restoreMargin + extraBuffer;
         const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
         const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
-        const inCooldown = (sinceShedding !== null && sinceShedding < SHED_COOLDOWN_MS) || (sinceOvershoot !== null && sinceOvershoot < SHED_COOLDOWN_MS);
+        const cooldownSince = [sinceShedding, sinceOvershoot].filter((v) => v !== null) as number[];
+        const cooldownRemainingMs = cooldownSince.length
+          ? Math.max(0, SHED_COOLDOWN_MS - Math.min(...cooldownSince))
+          : 0;
+        const inCooldown = cooldownRemainingMs > 0;
         // Do not restore devices while shedding is active, in shortfall, during cooldown, when headroom is unknown or near zero,
         // or when there is insufficient headroom for this device plus buffers.
         // Note: We don't need a separate "restore budget" because:
@@ -1379,7 +1387,13 @@ module.exports = class PelsApp extends Homey.App {
         // 3. headroom < neededForDevice ensures we have enough margin
         if (sheddingActive || inShortfall || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice) {
           /* eslint-disable no-nested-ternary, max-len -- Clear state-dependent reason logging */
-          const reason = sheddingActive ? 'shedding active' : inShortfall ? 'in shortfall' : inCooldown ? 'cooldown' : 'insufficient headroom';
+          const reason = sheddingActive
+            ? 'shedding active'
+            : inShortfall
+              ? 'in shortfall'
+              : inCooldown
+                ? `cooldown (${(cooldownRemainingMs / 1000).toFixed(1)}s remaining)`
+                : 'insufficient headroom';
           this.log(`Capacity: keeping ${name} off (${reason})`);
           this.logDebug(
             `  → need ${neededForDevice.toFixed(2)}kW, headroom ${headroom === null ? 'unknown' : headroom.toFixed(2)}kW, device ~${plannedPower.toFixed(2)}kW`,
