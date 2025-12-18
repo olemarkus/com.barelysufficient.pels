@@ -67,6 +67,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     const q = (query || '').toLowerCase();
     return Array.from(deps.getAllModes())
       .filter((m) => !q || m.toLowerCase().includes(q))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
       .map((m) => ({ id: m, name: m }));
   });
 
@@ -194,6 +195,7 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const q = (query || '').toLowerCase();
     return Array.from(deps.getAllModes())
       .filter((m) => !q || m.toLowerCase().includes(q))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
       .map((m) => ({ id: m, name: m }));
   });
 
@@ -223,6 +225,7 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const q = (query || '').toLowerCase();
     return Array.from(deps.getAllModes())
       .filter((m) => !q || m.toLowerCase().includes(q))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
       .map((m) => ({ id: m, name: m }));
   });
 }
