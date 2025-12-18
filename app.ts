@@ -9,7 +9,6 @@ import { createSettingsHandler } from './settingsHandlers';
 import { PriceLevel } from './priceLevels';
 import { registerFlowCards } from './flowCards/registerFlowCards';
 
-const DEBUG_LOG = false;
 const OPERATING_MODE_SETTING = 'operating_mode';
 
 // Timing constants for shedding/restore behavior
@@ -42,6 +41,7 @@ module.exports = class PelsApp extends Homey.App {
   private lastOvershootMs: number | null = null;
   private lastRestoreMs: number | null = null; // Track when we last restored a device
   private inShortfall = false; // Track if we're currently in a capacity shortfall state
+  private debugLoggingEnabled = false;
   // Track devices that were swapped out: swappedOutDeviceId -> higherPriorityDeviceId
   // These devices should not be restored until the higher-priority device they were swapped for is restored
   private swappedOutFor: Record<string, string> = {};
@@ -89,6 +89,9 @@ module.exports = class PelsApp extends Homey.App {
   async onInit() {
     this.log('PELS has been initialized');
 
+    // Debug logging is opt-in per session; always start disabled.
+    this.debugLoggingEnabled = false;
+    this.homey.settings.set('debug_logging_enabled', false);
     this.loadCapacitySettings();
     this.deviceManager = new DeviceManager(this, {
       log: this.log.bind(this),
@@ -138,6 +141,7 @@ module.exports = class PelsApp extends Homey.App {
       priceService: this.priceService,
       updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
       updateOverheadToken: (value) => void this.updateOverheadToken(value),
+      updateDebugLoggingEnabled: (logChange) => this.updateDebugLoggingEnabled(logChange),
       errorLog: (message: string, error: unknown) => this.error(message, error as Error),
     });
     this.homey.settings.on('set', (key: string) => {
@@ -187,7 +191,7 @@ module.exports = class PelsApp extends Homey.App {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Debug logging accepts any arguments
   private logDebug(...args: any[]): void {
-    if (DEBUG_LOG) this.log(...args);
+    if (this.debugLoggingEnabled) this.log(...args);
   }
 
   private updatePriceOptimizationEnabled(logChange = false): void {
@@ -195,6 +199,14 @@ module.exports = class PelsApp extends Homey.App {
     this.priceOptimizationEnabled = enabled !== false; // Default to true
     if (logChange) {
       this.log(`Price optimization ${this.priceOptimizationEnabled ? 'enabled' : 'disabled'}`);
+    }
+  }
+
+  private updateDebugLoggingEnabled(logChange = false): void {
+    const enabled = this.homey.settings.get('debug_logging_enabled');
+    this.debugLoggingEnabled = enabled === true;
+    if (logChange) {
+      this.log(`Debug logging ${this.debugLoggingEnabled ? 'enabled' : 'disabled'}`);
     }
   }
 
@@ -566,7 +578,13 @@ module.exports = class PelsApp extends Homey.App {
         return device.settings.load;
       }
     } catch (error) {
-      this.logDebug('Failed to read device via manager/devices for load:', (error as Error)?.message || error);
+      const errObj = error as { status?: number; response?: { status?: number } };
+      const maybeStatus = errObj?.status ?? errObj?.response?.status;
+      this.logDebug(
+        'Failed to read device via manager/devices for load:',
+        (error as Error)?.message || error,
+        maybeStatus ? `(status ${maybeStatus})` : '',
+      );
     }
 
     return null;

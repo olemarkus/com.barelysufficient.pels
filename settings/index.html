@@ -21,6 +21,7 @@
           <div class="tab-overflow-menu" hidden>
             <button class="tab" data-tab="power" role="tab" aria-selected="false">Power usage</button>
             <button class="tab" data-tab="plan" role="tab" aria-selected="false">Plan</button>
+            <button class="tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</button>
           </div>
         </div>
       </div>
@@ -191,6 +192,22 @@
       <div class="list__footer">
         <button type="button" class="btn secondary" id="plan-refresh-button">Refresh plan</button>
         <p class="muted">Plan is recalculated when power usage updates or when you refresh devices.</p>
+      </div>
+    </section>
+
+    <section class="card panel hidden" id="advanced-panel" data-panel="advanced">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Advanced</p>
+          <h2>Diagnostics</h2>
+        </div>
+      </div>
+      <div class="form-grid">
+        <label class="field checkbox-field">
+          <input id="debug-logging-enabled" name="debug_logging_enabled" type="checkbox">
+          <span class="field__label">Enable debug logging (resets to off on app start)</span>
+        </label>
+        <p class="muted">Use only for troubleshooting. Debug logging is always disabled when the app restarts.</p>
       </div>
     </section>
 
