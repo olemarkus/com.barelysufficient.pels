@@ -91,6 +91,7 @@ const priceOptimizationList = qs('#price-optimization-list');
 const priceOptimizationEmpty = qs('#price-optimization-empty');
 const priceOptimizationSection = qs('#price-optimization-section');
 const priceOptimizationEnabledCheckbox = document.querySelector('#price-optimization-enabled') as HTMLInputElement;
+const debugLoggingEnabledCheckbox = document.querySelector('#debug-logging-enabled') as HTMLInputElement;
 
 const OPERATING_MODE_KEY = 'operating_mode';
 
@@ -666,6 +667,13 @@ const loadCapacitySettings = async () => {
     capacityDryRunInput.checked = isDryRun;
   }
   updateDryRunBanner(isDryRun);
+};
+
+const loadAdvancedSettings = async () => {
+  const debugEnabled = await getSetting('debug_logging_enabled');
+  if (debugLoggingEnabledCheckbox) {
+    debugLoggingEnabledCheckbox.checked = debugEnabled === true;
+  }
 };
 
 const saveCapacitySettings = async () => {
@@ -2070,6 +2078,13 @@ const boot = async () => {
     nettleieRefreshButton?.addEventListener('click', async () => {
       await setSetting('refresh_nettleie', Date.now());
       await refreshNettleie();
+    });
+
+    // Advanced tab handlers
+    await loadAdvancedSettings();
+    debugLoggingEnabledCheckbox?.addEventListener('change', async () => {
+      await setSetting('debug_logging_enabled', debugLoggingEnabledCheckbox.checked);
+      await showToast(debugLoggingEnabledCheckbox.checked ? 'Debug logging enabled (resets on restart).' : 'Debug logging disabled.', 'ok');
     });
   } catch (error) {
     console.error(error);
