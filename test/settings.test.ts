@@ -560,6 +560,19 @@ describe('Plan sorting', () => {
     buildDom();
   });
 
+  const setupPlanHomeyMock = (planSnapshot: any) => {
+    // @ts-expect-error expose mock Homey
+    global.Homey = {
+      ready: jest.fn().mockResolvedValue(undefined),
+      set: jest.fn((key, val, cb) => cb && cb(null)),
+      get: jest.fn((key, cb) => {
+        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
+        if (key === 'target_devices_snapshot') return cb(null, []);
+        return cb(null, null);
+      }),
+    };
+  };
+
   it('sorts devices by priority ascending within each zone (priority 1 = most important, first)', async () => {
     // Note: This test verifies the settings UI sorting - backend sorting is tested in plan.test.ts
     const planSnapshot = {
@@ -581,16 +594,7 @@ describe('Plan sorting', () => {
       ],
     };
 
-    // @ts-expect-error expose mock Homey
-    global.Homey = {
-      ready: jest.fn().mockResolvedValue(undefined),
-      set: jest.fn((key, val, cb) => cb && cb(null)),
-      get: jest.fn((key, cb) => {
-        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
-        if (key === 'target_devices_snapshot') return cb(null, []);
-        return cb(null, null);
-      }),
-    };
+    setupPlanHomeyMock(planSnapshot);
 
     await loadSettingsScript(100);
 
@@ -631,16 +635,7 @@ describe('Plan sorting', () => {
       ],
     };
 
-    // @ts-expect-error expose mock Homey
-    global.Homey = {
-      ready: jest.fn().mockResolvedValue(undefined),
-      set: jest.fn((key, val, cb) => cb && cb(null)),
-      get: jest.fn((key, cb) => {
-        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
-        if (key === 'target_devices_snapshot') return cb(null, []);
-        return cb(null, null);
-      }),
-    };
+    setupPlanHomeyMock(planSnapshot);
 
     await loadSettingsScript(100);
 
@@ -680,16 +675,7 @@ describe('Plan sorting', () => {
       ],
     };
 
-    // @ts-expect-error expose mock Homey
-    global.Homey = {
-      ready: jest.fn().mockResolvedValue(undefined),
-      set: jest.fn((key, val, cb) => cb && cb(null)),
-      get: jest.fn((key, cb) => {
-        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
-        if (key === 'target_devices_snapshot') return cb(null, []);
-        return cb(null, null);
-      }),
-    };
+    setupPlanHomeyMock(planSnapshot);
 
     await loadSettingsScript(100);
 
@@ -723,16 +709,7 @@ describe('Plan sorting', () => {
       ],
     };
 
-    // @ts-expect-error expose mock Homey
-    global.Homey = {
-      ready: jest.fn().mockResolvedValue(undefined),
-      set: jest.fn((key, val, cb) => cb && cb(null)),
-      get: jest.fn((key, cb) => {
-        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
-        if (key === 'target_devices_snapshot') return cb(null, []);
-        return cb(null, null);
-      }),
-    };
+    setupPlanHomeyMock(planSnapshot);
 
     await loadSettingsScript(100);
 

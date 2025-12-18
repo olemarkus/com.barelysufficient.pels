@@ -1029,7 +1029,10 @@ const renderPlan = (plan) => {
       metaWrap.className = 'device-row__target plan-row__meta';
 
       // Only render temperature line if device has a target/temperature
-      if (dev.plannedTarget !== undefined || dev.currentTarget !== undefined || dev.currentTemperature !== undefined) {
+      const hasTempData = dev.plannedTarget !== null && dev.plannedTarget !== undefined
+        || dev.currentTarget !== null && dev.currentTarget !== undefined
+        || dev.currentTemperature !== null && dev.currentTemperature !== undefined;
+      if (hasTempData) {
         const tempLine = document.createElement('div');
         tempLine.className = 'plan-meta-line';
         const currentTemp = typeof dev.currentTemperature === 'number' ? `${dev.currentTemperature.toFixed(1)}°` : '–';
@@ -1050,7 +1053,8 @@ const renderPlan = (plan) => {
       powerLine.className = 'plan-meta-line';
       const currentPower = dev.currentState || 'unknown';
       const plannedPower = dev.plannedState === 'shed' ? 'off' : dev.plannedState === 'keep' ? currentPower : dev.plannedState || 'keep';
-      const powerText = currentPower === 'on' || currentPower === 'off' ? currentPower : plannedPower;
+      const powerChanging = currentPower !== plannedPower;
+      const powerText = powerChanging ? `${currentPower} → ${plannedPower}` : currentPower;
       const powerLabel = document.createElement('span');
       powerLabel.className = 'plan-label';
       powerLabel.textContent = 'Power';
