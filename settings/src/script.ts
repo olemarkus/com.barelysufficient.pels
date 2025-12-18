@@ -737,11 +737,12 @@ const renderModeOptions = () => {
   Object.keys(capacityPriorities || {}).forEach((m) => modes.add(m));
   Object.keys(modeTargets || {}).forEach((m) => modes.add(m));
   if (modes.size === 0) modes.add('Home');
+  const sortedModes = Array.from(modes).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
   // Mode editor dropdown - shows editingMode as selected
   if (modeSelect) {
     modeSelect.innerHTML = '';
-    Array.from(modes).forEach((m) => {
+    sortedModes.forEach((m) => {
       const opt = document.createElement('option');
       opt.value = m;
       opt.textContent = m;
@@ -753,7 +754,7 @@ const renderModeOptions = () => {
   // Active mode dropdown - shows activeMode as selected
   if (activeModeSelect) {
     activeModeSelect.innerHTML = '';
-    Array.from(modes).forEach((m) => {
+    sortedModes.forEach((m) => {
       const opt = document.createElement('option');
       opt.value = m;
       opt.textContent = m;
