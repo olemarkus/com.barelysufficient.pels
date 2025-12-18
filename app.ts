@@ -570,7 +570,7 @@ module.exports = class PelsApp extends Homey.App {
       // Prefer HomeyAPI client if available (handles auth/paths).
       let devices: Record<string, unknown> | Array<unknown> | undefined;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- HomeyAPI types unavailable here
-      const homeyApi = (this.deviceManager as any)?.homeyApi;
+      const homeyApi = this.deviceManager.getHomeyApi();
       if (homeyApi?.devices?.getDevices) {
         devices = await homeyApi.devices.getDevices();
       } else {
