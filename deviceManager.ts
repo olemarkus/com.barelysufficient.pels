@@ -7,6 +7,16 @@ const { HomeyAPI } = require('homey-api');
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
 const MIN_SIGNIFICANT_POWER_W = 50;
 
+type HomeyApiDevicesClient = {
+    getDevices?: () => Promise<Record<string, unknown> | Array<unknown>>;
+    setCapabilityValue?: (args: { deviceId: string; capabilityId: string; value: unknown }) => Promise<void>;
+    getDevice?: (args: { id: string }) => Promise<unknown>;
+};
+
+type HomeyApiClient = {
+    devices?: HomeyApiDevicesClient;
+};
+
 type PowerEstimateState = {
     expectedPowerKwOverrides?: Record<string, { kw: number; ts: number }>;
     lastKnownPowerKw?: Record<string, number>;
@@ -14,8 +24,7 @@ type PowerEstimateState = {
 };
 
 export class DeviceManager {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private homeyApi?: any;
+    private homeyApi?: HomeyApiClient;
     private logger: Logger;
     private homey: Homey.App;
     private latestSnapshot: TargetDeviceSnapshot[] = [];
@@ -53,6 +62,11 @@ export class DeviceManager {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     parseDeviceListForTests(list: any[]): TargetDeviceSnapshot[] {
         return this.parseDeviceList(list);
+    }
+
+    // Expose HomeyAPI instance for consumers that need direct access (e.g., app load lookups)
+    getHomeyApi(): HomeyApiClient | undefined {
+        return this.homeyApi;
     }
 
     async init(): Promise<void> {
@@ -108,9 +122,10 @@ export class DeviceManager {
     }
 
     async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<void> {
-        if (!this.homeyApi || !this.homeyApi.devices) throw new Error('HomeyAPI not ready');
+        const setCapabilityValue = this.homeyApi?.devices?.setCapabilityValue;
+        if (!setCapabilityValue) throw new Error('HomeyAPI not ready');
 
-        await this.homeyApi.devices.setCapabilityValue({
+        await setCapabilityValue({
             deviceId,
             capabilityId,
             value,
@@ -162,9 +177,10 @@ export class DeviceManager {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private async fetchDevices(): Promise<any[]> {
-        if (this.homeyApi?.devices) {
+        const devicesApi = this.homeyApi?.devices;
+        if (devicesApi?.getDevices) {
             try {
-                const devicesObj = await this.homeyApi.devices.getDevices();
+                const devicesObj = await devicesApi.getDevices();
                 this.logger.debug(`HomeyAPI returned ${Object.keys(devicesObj || {}).length} devices`);
                 return Object.values(devicesObj || {});
             } catch (error) {
