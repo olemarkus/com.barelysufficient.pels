@@ -194,6 +194,17 @@ module.exports = class PelsApp extends Homey.App {
     if (this.debugLoggingEnabled) this.log(...args);
   }
 
+  private getCooldownState(): { cooldownRemainingMs: number; inCooldown: boolean } {
+    const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
+    const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
+    const cooldownSince = [sinceShedding, sinceOvershoot].filter((v) => v !== null) as number[];
+    const cooldownRemainingMs = cooldownSince.length
+      ? Math.max(0, SHED_COOLDOWN_MS - Math.min(...cooldownSince))
+      : 0;
+    const inCooldown = cooldownRemainingMs > 0;
+    return { cooldownRemainingMs, inCooldown };
+  }
+
   private updatePriceOptimizationEnabled(logChange = false): void {
     const enabled = this.homey.settings.get('price_optimization_enabled');
     this.priceOptimizationEnabled = enabled !== false; // Default to true
@@ -940,14 +951,8 @@ module.exports = class PelsApp extends Homey.App {
     // Also limit cumulative restore to 50% of available headroom to prevent oscillation.
     // Also respect cooldown period after shedding to avoid rapid on/off cycles.
     // Also wait after restoring a device to let the power measurement stabilize before restoring more.
-    const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
-    const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
     const sinceRestore = this.lastRestoreMs ? Date.now() - this.lastRestoreMs : null;
-    const cooldownSince = [sinceShedding, sinceOvershoot].filter((v) => v !== null) as number[];
-    const cooldownRemainingMs = cooldownSince.length
-      ? Math.max(0, SHED_COOLDOWN_MS - Math.min(...cooldownSince))
-      : 0;
-    const inCooldown = cooldownRemainingMs > 0;
+    const { cooldownRemainingMs, inCooldown } = this.getCooldownState();
     const inRestoreCooldown = sinceRestore !== null && sinceRestore < RESTORE_COOLDOWN_MS;
 
     // Clean up stale swap tracking - if a swap couldn't complete within timeout, release the blocked devices
@@ -1372,13 +1377,7 @@ module.exports = class PelsApp extends Homey.App {
         const plannedPower = (dev as any).powerKw && (dev as any).powerKw > 0 ? (dev as any).powerKw : 1;
         const extraBuffer = Math.max(0.2, restoreMargin); // add a little hysteresis for restores
         const neededForDevice = plannedPower + restoreMargin + extraBuffer;
-        const sinceShedding = this.lastSheddingMs ? Date.now() - this.lastSheddingMs : null;
-        const sinceOvershoot = this.lastOvershootMs ? Date.now() - this.lastOvershootMs : null;
-        const cooldownSince = [sinceShedding, sinceOvershoot].filter((v) => v !== null) as number[];
-        const cooldownRemainingMs = cooldownSince.length
-          ? Math.max(0, SHED_COOLDOWN_MS - Math.min(...cooldownSince))
-          : 0;
-        const inCooldown = cooldownRemainingMs > 0;
+        const { cooldownRemainingMs, inCooldown } = this.getCooldownState();
         // Do not restore devices while shedding is active, in shortfall, during cooldown, when headroom is unknown or near zero,
         // or when there is insufficient headroom for this device plus buffers.
         // Note: We don't need a separate "restore budget" because:
