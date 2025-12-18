@@ -1017,88 +1017,97 @@ const renderPlan = (plan) => {
   const sortedDevices = [...plan.devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
   sortedDevices.forEach((dev) => {
-    const row = document.createElement('div');
-    row.className = 'device-row';
-    row.dataset.deviceId = dev.id;
+      const row = document.createElement('div');
+      row.className = 'device-row plan-row';
+      row.dataset.deviceId = dev.id;
 
-    const name = document.createElement('div');
-    name.className = 'device-row__name';
-    name.textContent = dev.name;
+      const name = document.createElement('div');
+      name.className = 'device-row__name';
+      name.textContent = dev.name;
 
-    const metaWrap = document.createElement('div');
-    metaWrap.className = 'device-row__target plan-row__meta';
+      const metaWrap = document.createElement('div');
+      metaWrap.className = 'device-row__target plan-row__meta';
 
-    const tempLine = document.createElement('div');
-    tempLine.className = 'plan-meta-line';
-    const currentTemp = typeof dev.currentTemperature === 'number' ? `${dev.currentTemperature.toFixed(1)}°` : '–';
-    const targetTemp = dev.currentTarget ?? '–';
-    const plannedTemp = dev.plannedTarget ?? '–';
-    const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
-    const targetText = targetChanging ? `${targetTemp}° → ${plannedTemp}°` : `${targetTemp}°`;
-    const tempLabel = document.createElement('span');
-    tempLabel.className = 'plan-label';
-    tempLabel.textContent = 'Temperature';
-    const tempValue = document.createElement('span');
-    tempValue.textContent = `${currentTemp} / target ${targetText}`;
-    tempLine.append(tempLabel, tempValue);
+      // Only render temperature line if device has a target/temperature
+      if (dev.plannedTarget !== undefined || dev.currentTarget !== undefined || dev.currentTemperature !== undefined) {
+        const tempLine = document.createElement('div');
+        tempLine.className = 'plan-meta-line';
+        const currentTemp = typeof dev.currentTemperature === 'number' ? `${dev.currentTemperature.toFixed(1)}°` : '–';
+        const targetTemp = dev.currentTarget ?? '–';
+        const plannedTemp = dev.plannedTarget ?? '–';
+        const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
+        const targetText = targetChanging ? `${targetTemp}° → ${plannedTemp}°` : `${targetTemp}°`;
+        const tempLabel = document.createElement('span');
+        tempLabel.className = 'plan-label';
+        tempLabel.textContent = 'Temperature';
+        const tempValue = document.createElement('span');
+        tempValue.textContent = `${currentTemp} / target ${targetText}`;
+        tempLine.append(tempLabel, tempValue);
+        metaWrap.appendChild(tempLine);
+      }
 
-    const powerLine = document.createElement('div');
-    powerLine.className = 'plan-meta-line';
-    const currentPower = dev.currentState || 'unknown';
-    const plannedPower
-      = dev.plannedState === 'shed'
-        ? 'off'
-        : dev.plannedState === 'keep'
-          ? currentPower
-          : dev.plannedState || 'keep';
-    const powerChanging = currentPower !== plannedPower;
-    const powerText = powerChanging ? `${currentPower} → ${plannedPower}` : currentPower;
-    const powerLabel = document.createElement('span');
-    powerLabel.className = 'plan-label';
-    powerLabel.textContent = 'Power';
-    const powerValue = document.createElement('span');
-    powerValue.textContent = powerText;
-    powerLine.append(powerLabel, powerValue);
+      const powerLine = document.createElement('div');
+      powerLine.className = 'plan-meta-line';
+      const currentPower = dev.currentState || 'unknown';
+      const plannedPower = dev.plannedState === 'shed' ? 'off' : dev.plannedState === 'keep' ? currentPower : dev.plannedState || 'keep';
+      const powerText = currentPower === 'on' || currentPower === 'off' ? currentPower : plannedPower;
+      const powerLabel = document.createElement('span');
+      powerLabel.className = 'plan-label';
+      powerLabel.textContent = 'Power';
+      const powerValue = document.createElement('span');
+      powerValue.textContent = powerText;
+      powerLine.append(powerLabel, powerValue);
 
-    const usageLine = document.createElement('div');
-    usageLine.className = 'plan-meta-line';
-    const usageLabel = document.createElement('span');
-    usageLabel.className = 'plan-label';
-    usageLabel.textContent = 'Usage';
-    const usageValue = document.createElement('span');
-    const measuredKw = (dev as any).measuredPowerKw;
-    const expectedKw = (dev as any).expectedPowerKw;
-    const hasMeasured = Number.isFinite(measuredKw) && measuredKw > 0.01;
-    const hasExpected = Number.isFinite(expectedKw) && expectedKw > 0.01;
+      const stateLine = document.createElement('div');
+      stateLine.className = 'plan-meta-line';
+      const stateLabel = document.createElement('span');
+      stateLabel.className = 'plan-label';
+      stateLabel.textContent = 'State';
+      const stateValue = document.createElement('span');
+      let stateText = 'Unknown';
+      if (dev.plannedState === 'shed') stateText = 'Shed';
+      else if (dev.plannedState === 'keep') {
+        stateText = (dev.currentState === 'off' || dev.currentState === 'unknown') ? 'Restoring' : 'Keep';
+      }
+      stateValue.textContent = stateText;
+      stateLine.append(stateLabel, stateValue);
 
-    let usageText = 'Unknown';
-    if (hasMeasured && hasExpected) {
-      const diff = Math.abs(measuredKw - expectedKw);
-      usageText = diff < 0.01
-        ? `${measuredKw.toFixed(2)} kW`
-        : `${measuredKw.toFixed(2)} kW / ${expectedKw.toFixed(2)} kW expected`;
-    } else if (hasMeasured) {
-      usageText = `${measuredKw.toFixed(2)} kW`;
-    } else if (hasExpected) {
-      usageText = `${expectedKw.toFixed(2)} kW expected`;
-    }
+      const usageLine = document.createElement('div');
+      usageLine.className = 'plan-meta-line';
+      const usageLabel = document.createElement('span');
+      usageLabel.className = 'plan-label';
+      usageLabel.textContent = 'Usage';
+      const usageValue = document.createElement('span');
+      const measuredKw = (dev as any).measuredPowerKw;
+      const expectedKw = (dev as any).expectedPowerKw;
+      const hasMeasured = Number.isFinite(measuredKw);
+      const hasExpected = Number.isFinite(expectedKw);
 
-    usageValue.textContent = usageText;
-    usageLine.append(usageLabel, usageValue);
+      let usageText = 'Unknown';
+      if (hasExpected && hasMeasured) {
+        usageText = `current ${measuredKw.toFixed(2)} kW / expected ${expectedKw.toFixed(2)} kW`;
+      } else if (hasExpected) {
+        usageText = `expected ${expectedKw.toFixed(2)} kW`;
+      } else if (hasMeasured) {
+        usageText = `current ${measuredKw.toFixed(2)} kW`;
+      }
 
-    const reasonLine = document.createElement('div');
-    reasonLine.className = 'plan-meta-line';
-    const reasonLabel = document.createElement('span');
-    reasonLabel.className = 'plan-label';
-    reasonLabel.textContent = 'Reason';
-    const reasonValue = document.createElement('span');
-    reasonValue.textContent = dev.reason || 'Plan unchanged';
-    reasonLine.append(reasonLabel, reasonValue);
+      usageValue.textContent = usageText;
+      usageLine.append(usageLabel, usageValue);
 
-    metaWrap.append(name, tempLine, powerLine, usageLine, reasonLine);
+      const statusLine = document.createElement('div');
+      statusLine.className = 'plan-meta-line';
+      const statusLabel = document.createElement('span');
+      statusLabel.className = 'plan-label';
+      statusLabel.textContent = 'Status';
+      const statusValue = document.createElement('span');
+      statusValue.textContent = dev.reason || 'Waiting for headroom';
+      statusLine.append(statusLabel, statusValue);
 
-    row.append(metaWrap);
-    planList.appendChild(row);
+      metaWrap.append(powerLine, stateLine, usageLine, statusLine);
+
+      row.append(name, metaWrap);
+      planList.appendChild(row);
   });
 };
 
