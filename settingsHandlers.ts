@@ -5,7 +5,6 @@ import PriceService from './priceService';
 export interface SettingsHandlerDeps {
   homey: Homey.App['homey'];
   loadCapacitySettings: () => void;
-  applyDeviceTargetsForMode: (mode: string) => Promise<void>;
   rebuildPlanFromCache: () => void;
   refreshTargetDevicesSnapshot: () => Promise<void>;
   loadPowerTracker: () => void;
@@ -26,13 +25,12 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       case 'mode_device_targets':
       case 'operating_mode': {
         deps.loadCapacitySettings();
-        const mode = deps.homey.settings.get('operating_mode') || 'Home';
-        if (!deps.getCapacityDryRun()) {
-          deps.applyDeviceTargetsForMode(mode).catch((error: Error) => {
-            deps.errorLog('Failed to apply per-mode device targets', error);
-          });
-        }
-        deps.rebuildPlanFromCache();
+        deps.refreshTargetDevicesSnapshot().then(() => {
+          deps.rebuildPlanFromCache();
+        }).catch((error: Error) => {
+          deps.errorLog('Failed to refresh devices after mode target change', error);
+          deps.rebuildPlanFromCache();
+        });
         break;
       }
       case 'mode_aliases':
@@ -95,6 +93,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
         break;
       case 'price_optimization_enabled':
         deps.updatePriceOptimizationEnabled(true);
+        deps.rebuildPlanFromCache();
         break;
       case 'debug_logging_enabled':
         deps.updateDebugLoggingEnabled(true);

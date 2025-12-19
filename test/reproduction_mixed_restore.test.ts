@@ -96,12 +96,8 @@ describe('Mixed Type Restoration Throttling', () => {
         await (app as any).recordPowerSample(5000);
 
         let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-        console.log('Plan Devices IDs:', plan?.devices?.map((d: any) => d.id));
         const d1 = plan.devices.find((d: any) => d.id === 'dev-1');
         const d2 = plan.devices.find((d: any) => d.id === 'dev-2');
-
-        if (!d1) console.log('d1 is missing');
-        if (!d2) console.log('d2 is missing');
 
         // Verify both are shed
         expect(d1.plannedState).toBe('shed'); // Heater Off
@@ -132,8 +128,6 @@ describe('Mixed Type Restoration Throttling', () => {
         const d1Restored = d1Codes.plannedState !== 'shed';
         const d2Restored = d2Codes.plannedState !== 'shed';
 
-        console.log(`Cycle 1: D1(Off) Restored=${d1Restored}, D2(Temp) Restored=${d2Restored}`);
-
         // Throttling check
         expect(d1Restored && d2Restored).toBe(false);
         expect(d1Restored || d2Restored).toBe(true);
@@ -152,8 +146,6 @@ describe('Mixed Type Restoration Throttling', () => {
 
         const d1RestoredC2 = d1Cycles2.plannedState !== 'shed';
         const d2RestoredC2 = d2Cycles2.plannedState !== 'shed';
-
-        console.log(`Cycle 2: D1(Off) Restored=${d1RestoredC2}, D2(Temp) Restored=${d2RestoredC2}`);
 
         // The one that WAS shed should STAY shed (Cooldown)
         if (d1Restored) {
