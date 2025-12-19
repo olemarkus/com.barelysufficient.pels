@@ -45,6 +45,6 @@
     "en": "Upgrade the plan UI with more structured details"
   },
   "1.5.0": {
-    "en": "Added configurable overshoot shedding per device (turn off vs minimum temperature), plus updated UI and docs to support it."
+    "en": "Gate sheds and swaps on measurements"
   }
 }
