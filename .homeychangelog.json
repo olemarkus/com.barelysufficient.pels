@@ -49,5 +49,8 @@
   },
   "1.5.2": {
     "en": "Gate sheds and swaps on measurements"
+  },
+  "1.5.3": {
+    "en": "Coordinated price optimization and capacity planning, plus various bug‑fix tests and safeguards."
   }
 }
