@@ -101,6 +101,12 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
         break;
       case 'enable_evcharger_handling':
         deps.updateEvChargerHandlingEnabled(true);
+        deps.refreshTargetDevicesSnapshot().then(() => {
+          deps.rebuildPlanFromCache();
+        }).catch((error: Error) => {
+          deps.errorLog('Failed to refresh devices after EV charger handling change', error);
+          deps.rebuildPlanFromCache();
+        });
         break;
       default:
         break;

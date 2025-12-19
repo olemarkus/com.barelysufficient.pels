@@ -168,6 +168,7 @@ module.exports = class PelsApp extends Homey.App {
     }, {
       getPriority: (id) => this.getPriorityForDevice(id),
       getControllable: (id) => this.controllableDevices[id] ?? true,
+      allowDevicesWithoutTargets: () => this.evChargerHandlingEnabled,
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
       lastKnownPowerKw: this.lastKnownPowerKw,

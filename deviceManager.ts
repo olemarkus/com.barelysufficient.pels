@@ -33,11 +33,13 @@ export class DeviceManager {
     private providers: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
+        allowDevicesWithoutTargets?: () => boolean;
     } = {};
 
     constructor(homey: Homey.App, logger: Logger, providers?: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
+        allowDevicesWithoutTargets?: () => boolean;
     }, powerState?: PowerEstimateState) {
         this.homey = homey;
         this.logger = logger;
@@ -320,7 +322,14 @@ export class DeviceManager {
 
                 const targetCaps = capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
                 if (targetCaps.length === 0) {
-                    return null;
+                    const allowNonTargets = this.providers.allowDevicesWithoutTargets?.() ?? false;
+                    const deviceClass = (device.class || '').toString().toLowerCase();
+                    const isEvChargerLike = deviceClass === 'evcharger'
+                        || capabilities.includes('evcharger_charging')
+                        || capabilities.includes('evcharger_charging_state');
+                    if (!allowNonTargets || !isEvChargerLike) {
+                        return null;
+                    }
                 }
 
                 const capabilityValues = capabilities.reduce<Record<string, unknown>>((acc, capId) => {

@@ -3243,6 +3243,34 @@ describe('Dry run mode', () => {
     });
   });
 
+  it('includes EV chargers without target capabilities when feature flag enabled', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+    mockHomeyInstance.settings.set('capacity_limit_kw', 1);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 0.5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+    }
+
+    await (app as any).recordPowerSample(2000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan).toBeTruthy();
+    expect(devPlan.plannedState).toBe('shed');
+  });
+
   it('blocks start attempts when charger state is disconnected and unblocks on state change', async () => {
     const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
 
