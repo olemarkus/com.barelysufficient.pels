@@ -894,6 +894,139 @@ describe('Device plan snapshot', () => {
     expect(shedSpy).toHaveBeenCalledWith('dev-2', 'Heater B', undefined);
   });
 
+  it('does not shed additional devices without a new power sample after an initial shed', async () => {
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+        priority: 1,
+      },
+      {
+        id: 'dev-2',
+        name: 'Heater B',
+        targets: [],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+        priority: 10,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(2000, 1000);
+
+    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const initialShed = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
+    expect(initialShed).toEqual(['dev-2']);
+
+    // Simulate the shed device turning off, but no new measurement arrives.
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+        priority: 1,
+      },
+      {
+        id: 'dev-2',
+        name: 'Heater B',
+        targets: [],
+        powerKw: 1,
+        currentOn: false,
+        controllable: true,
+        priority: 10,
+      },
+    ]);
+
+    (app as any).rebuildPlanFromCache();
+    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(dev1Plan?.plannedState).toBe('keep');
+  });
+
+  it('allows additional shedding after a new power sample arrives', async () => {
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+        priority: 1,
+      },
+      {
+        id: 'dev-2',
+        name: 'Heater B',
+        targets: [],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+        priority: 10,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(2000, 1000);
+
+    // Simulate the first shed taking effect.
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+        priority: 1,
+      },
+      {
+        id: 'dev-2',
+        name: 'Heater B',
+        targets: [],
+        powerKw: 1,
+        currentOn: false,
+        controllable: true,
+        priority: 10,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(2000, 2000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(dev1Plan?.plannedState).toBe('shed');
+  });
+
   it('throttles repeated shedding commands for the same device', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
     await dev1.setCapabilityValue('onoff', true);
