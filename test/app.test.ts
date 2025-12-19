@@ -173,6 +173,8 @@ describe('MyApp initialization', () => {
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
+    await flushPromises();
+    await flushPromises();
 
     // Verify setCapabilityValue was called to apply the target
     expect(setCapSpy).toHaveBeenCalledWith({
@@ -215,6 +217,8 @@ describe('MyApp initialization', () => {
 
     // Changing the operating_mode setting should not apply targets in dry run
     mockHomeyInstance.settings.set('operating_mode', 'Away');
+    await flushPromises();
+    await flushPromises();
 
     expect(setCapSpy).not.toHaveBeenCalled();
   });
@@ -231,12 +235,6 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await app.onInit();
-
-    // Reset device to 20 to ensure applyDeviceTargetsForMode has work to do
-    // (onInit might have synced it to 19 already via applyPriceOptimization)
-    await heater.setCapabilityValue('target_temperature', 20);
-    // Also update the internal snapshot so the app knows it's 20
-    (app as any).updateLocalSnapshot('dev-1', { target: 20 });
 
     const setCapSpy = jest.fn().mockImplementation(async (args) => {
       if (args.deviceId === 'dev-1' && args.capabilityId === 'target_temperature') {
@@ -260,17 +258,21 @@ describe('MyApp initialization', () => {
       },
     };
 
-    // First apply should set target to 19.
-    await (app as any).applyDeviceTargetsForMode('Home');
-    // Snapshot is updated internally; second apply should skip because target matches.
-    await (app as any).applyDeviceTargetsForMode('Home');
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
+        currentOn: true,
+        controllable: true,
+        powerKw: 1,
+      },
+    ]);
 
-    expect(setCapSpy).toHaveBeenCalledTimes(1);
-    expect(setCapSpy).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
-      value: 19,
-    });
+    (app as any).rebuildPlanFromCache();
+    await flushPromises();
+
+    expect(setCapSpy).not.toHaveBeenCalled();
   });
 
   it('reapplies targets when set_capacity_mode is invoked with the current mode (not dry-run)', async () => {
@@ -313,6 +315,8 @@ describe('MyApp initialization', () => {
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Home' }); // same mode, should reapply because of drift
+    await flushPromises();
+    await flushPromises();
 
     expect(setCapSpy).toHaveBeenCalledWith({
       deviceId: 'dev-1',

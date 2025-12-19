@@ -58,6 +58,8 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
 
     // Clear events from initialization
     mockHomeyInstance.api.clearRealtimeEvents();
@@ -94,6 +96,8 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
 
     // Deterministic soft limit for the test.
     (app as any).computeDynamicSoftLimit = () => 9;
@@ -385,8 +389,8 @@ describe('Device plan snapshot', () => {
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
 
-    // Apply mode targets while device is shed; should be skipped.
-    await (app as any).applyDeviceTargetsForMode('Home');
+    await (app as any).refreshTargetDevicesSnapshot();
+    (app as any).rebuildPlanFromCache();
 
     // Rebuild plan to reflect current snapshot.
     (app as any).computeDynamicSoftLimit = () => 5;
@@ -1320,6 +1324,8 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
 
     app.setSnapshotForTests([
       {
@@ -1644,8 +1650,24 @@ describe('Device plan snapshot', () => {
     // Trigger mode change via flow card
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
+    app.setSnapshotForTests([
+      {
+        id: 'hoiax-1',
+        name: 'Connected 300',
+        targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        powerKw: 3,
+        currentOn: true,
+        controllable: true,
+      },
+    ]);
+    (app as any).rebuildPlanFromCache();
 
-    // Verify target temperature was set to 45°C
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'hoiax-1');
+    expect(devPlan?.plannedTarget).toBe(45);
+
+    setSpy.mockClear();
+    await (app as any).applyPlanActions(plan);
     expect(setSpy).toHaveBeenCalledWith({
       deviceId: 'hoiax-1',
       capabilityId: 'target_temperature',
@@ -2504,7 +2526,7 @@ describe('Dry run mode', () => {
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(20);
   });
 
-  it('logs preview message for mode targets in dry run mode', async () => {
+  it('builds plan targets for mode changes in dry run mode', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 20);
     await dev1.setCapabilityValue('onoff', true);
@@ -2519,18 +2541,13 @@ describe('Dry run mode', () => {
     });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
 
-    // Capture logs
-    const logCalls: string[] = [];
-
     const app = createApp();
-    jest.spyOn(app as any, 'log').mockImplementation((...args: unknown[]) => {
-      logCalls.push(String(args[0]));
-    });
-
     await app.onInit();
 
-    // Should have logged a dry-run preview message
-    expect(logCalls.some((msg) => msg.includes('Dry-run'))).toBe(true);
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedTarget).toBe(22);
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(20);
   });
 
   it('does not actuate price optimization in dry run mode', async () => {
@@ -2554,6 +2571,7 @@ describe('Dry run mode', () => {
         expensiveDelta: -5,
       },
     });
+    mockHomeyInstance.settings.set('price_optimization_enabled', true);
     // Make current hour cheap
     const now = new Date();
     now.setHours(3, 30, 0, 0);
@@ -2577,6 +2595,8 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
 
     // Temperature should NOT have been changed in dry run mode
     // (would be 65 if price optimization was applied: 55 + 10)
@@ -2604,9 +2624,12 @@ describe('Dry run mode', () => {
         expensiveDelta: -5,
       },
     });
+    mockHomeyInstance.settings.set('price_optimization_enabled', true);
 
     const app = createApp();
     await app.onInit();
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
 
     // Verify dry run is enabled by default
     expect((app as any).capacityDryRun).toBe(true);
@@ -2633,6 +2656,133 @@ describe('Dry run mode', () => {
     // Temperature should NOT have been changed in dry run mode
     // (would be 65 if price optimization was applied: 55 + 10)
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(55);
+  });
+
+  it('price optimization uses current operating mode targets in plan', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 40);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: { 'dev-1': 55 },
+      Away: { 'dev-1': 45 },
+    });
+    mockHomeyInstance.settings.set('operating_mode', 'Away');
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': {
+        enabled: true,
+        cheapDelta: 5,
+        expensiveDelta: -5,
+      },
+    });
+    mockHomeyInstance.settings.set('price_optimization_enabled', true);
+
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    const nextHour = new Date(now.getTime() + 60 * 60 * 1000);
+    mockHomeyInstance.settings.set('electricity_prices', [
+      { startsAt: now.toISOString(), total: 10, currency: 'NOK' },
+      { startsAt: nextHour.toISOString(), total: 100, currency: 'NOK' },
+    ]);
+    mockHomeyInstance.settings.set('nettleie_data', []);
+
+    const app = createApp();
+    await app.onInit();
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [{ id: 'target_temperature', value: 40, unit: '°C' }],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+      },
+    ]);
+    (app as any).rebuildPlanFromCache();
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan.plannedTarget).toBe(50);
+  });
+
+  it('price optimization is overridden by temperature-based shedding', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 55);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: { 'dev-1': 55 },
+    });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': {
+        enabled: true,
+        cheapDelta: 10,
+        expensiveDelta: -5,
+      },
+    });
+    mockHomeyInstance.settings.set('price_optimization_enabled', true);
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'dev-1': { action: 'set_temperature', temperature: 12 },
+    });
+    mockHomeyInstance.settings.set('capacity_limit_kw', 2);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
+
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    const nextHour = new Date(now.getTime() + 60 * 60 * 1000);
+    mockHomeyInstance.settings.set('electricity_prices', [
+      { startsAt: now.toISOString(), total: 10, currency: 'NOK' },
+      { startsAt: nextHour.toISOString(), total: 100, currency: 'NOK' },
+    ]);
+    mockHomeyInstance.settings.set('nettleie_data', []);
+
+    const app = createApp();
+    await app.onInit();
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [{ id: 'target_temperature', value: 55, unit: '°C' }],
+        powerKw: 2,
+        currentOn: true,
+        controllable: true,
+      },
+    ]);
+
+    (app as any).rebuildPlanFromCache();
+    const preShedPlan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const preShedDevice = preShedPlan.devices.find((d: any) => d.id === 'dev-1');
+    expect(preShedDevice.plannedTarget).toBe(65);
+
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    await (app as any).recordPowerSample(4000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan.plannedState).toBe('shed');
+    expect(devPlan.shedAction).toBe('set_temperature');
+    expect(devPlan.plannedTarget).toBe(12);
   });
 
   it('plan reason should reflect actual restore status when blocked by shortfall', async () => {
@@ -2799,7 +2949,15 @@ describe('Dry run mode', () => {
       'dev-1': { action: 'set_temperature', temperature: 15 },
       'dev-2': { action: 'set_temperature', temperature: 15 },
     });
+    mockHomeyInstance.settings.set('capacity_priorities', {
+      Home: {
+        'dev-1': 10,
+        'dev-2': 1,
+      },
+    });
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20, 'dev-2': 20 } });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -2815,14 +2973,31 @@ describe('Dry run mode', () => {
     }
     await (app as any).recordPowerSample(2000);
 
-    // Verify dev-1 or dev-2 is shed to 15C.
+    // Verify dev-1 is shed first due to lower priority (higher number).
     const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
-    const shedCount1 = plan1.devices.filter((d: any) => d.plannedState === 'shed').length;
-    expect(shedCount1).toBeGreaterThanOrEqual(1);
-
-    // We assume dev-1 was shed (or dev-2). Let's say dev-1.
+    const dev1Plan1 = plan1.devices.find((d: any) => d.id === 'dev-1');
+    expect(dev1Plan1.plannedState).toBe('shed');
     // Manually update dev-1 to reflect it reached 15C.
     await dev1.setCapabilityValue('target_temperature', 15);
+    // Refresh snapshot so the plan sees the new shed temperature.
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [{ id: 'target_temperature', value: 15, unit: '°C' }],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+      },
+      {
+        id: 'dev-2',
+        name: 'Heater B',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        powerKw: 1,
+        currentOn: true,
+        controllable: true,
+      },
+    ]);
 
     // 3. Trigger another overshoot.
     // Total power still 2kW (heater might still run at lower temp).
@@ -2832,25 +3007,22 @@ describe('Dry run mode', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
 
-    // Spy on log to catch "Plan: ..."
-    const logSpy = jest.spyOn((app as any), 'log');
+    // Ensure we don't skip shedding due to same-measurement throttling.
+    (app as any).lastShedPlanMeasurementTs = null;
 
     await (app as any).recordPowerSample(2000);
 
-    // Check logs for candidate count
-    const planLogs = logSpy.mock.calls.filter(args => typeof args[0] === 'string' && args[0].startsWith('Plan:'));
-    const lastPlanLog = planLogs[planLogs.length - 1][0] as string;
-
-    // Extract candidate count from log "Plan: overshoot=..., candidates=X, ..."
-    const match = lastPlanLog.match(/candidates=(\d+)/);
-    const candidateCount = match ? parseInt(match[1], 10) : -1;
-
     // Expectations:
-    // dev-1 is already at shed temp (15C). It should NOT be a candidate.
-    // dev-2 is at normal temp (20C). It SHOULD be a candidate.
-    // So candidates should be 1.
-
-    expect(candidateCount).toBe(1);
+    // dev-1 is already at shed temp (15C). It should NOT be shed again.
+    // dev-2 is at normal temp (20C). It SHOULD be shed.
+    const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const dev1Plan = plan2.devices.find((d: any) => d.id === 'dev-1');
+    const dev2Plan = plan2.devices.find((d: any) => d.id === 'dev-2');
+    // dev-1 stays at shed temperature (still marked as shed in plan),
+    // while dev-2 is the additional shed candidate.
+    expect(dev1Plan.plannedState).toBe('shed');
+    expect(dev1Plan.plannedTarget).toBe(15);
+    expect(dev2Plan.plannedState).toBe('shed');
   });
 
 

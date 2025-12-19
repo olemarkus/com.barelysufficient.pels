@@ -15,6 +15,7 @@ export const setAllowConsoleError = (allow: boolean): void => {
 
 // Fail fast on any console.error during tests to catch unexpected errors
 let consoleErrorSpy: jest.SpyInstance;
+let consoleLogSpy: jest.SpyInstance;
 const originalConsoleError = console.error;
 beforeAll(() => {
   // Provide a basic fetch stub for libraries that expect it (homey-api)
@@ -37,10 +38,13 @@ beforeAll(() => {
     if (allowConsoleError) return;
     originalConsoleError(...args);
   });
+
+  consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 
 afterAll(() => {
   consoleErrorSpy.mockRestore();
+  consoleLogSpy.mockRestore();
   // Ensure all timers are cleaned up after all tests complete
   jest.useRealTimers();
 });

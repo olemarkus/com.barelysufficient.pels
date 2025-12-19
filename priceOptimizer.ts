@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Homey APIs are untyped */
 import { CombinedHourlyPrice } from './priceService';
-import { TargetDeviceSnapshot } from './types';
 import { PriceLevel } from './priceLevels';
 
 export interface PriceOptimizationSettings {
@@ -18,15 +17,10 @@ export interface PriceOptimizerDeps {
     getCurrentHourPriceInfo: () => string;
   };
   getSettings: () => Record<string, PriceOptimizationSettings>;
-  getSnapshot: () => TargetDeviceSnapshot[];
-  getOperatingMode: () => string;
-  getModeDeviceTargets: () => Record<string, Record<string, number>>;
-  isDryRun: () => boolean;
   isEnabled: () => boolean;
   getThresholdPercent: () => number;
   getMinDiffOre: () => number;
-  setDeviceTarget: (deviceId: string, capabilityId: string, value: number) => Promise<void>;
-  updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
+  rebuildPlan: (reason: string) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -50,7 +44,6 @@ export class PriceOptimizer {
       return;
     }
 
-    const snapshot = this.deps.getSnapshot();
     const resolvedLevel = this.deps.priceStatus.getCurrentLevel();
     const isCheap = resolvedLevel === PriceLevel.CHEAP || this.deps.priceStatus.isCurrentHourCheap();
     const isExpensive = resolvedLevel === PriceLevel.EXPENSIVE || this.deps.priceStatus.isCurrentHourExpensive();
@@ -70,57 +63,7 @@ export class PriceOptimizer {
       + `isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`,
     );
 
-    const priceState = isCheap ? PriceLevel.CHEAP : isExpensive ? PriceLevel.EXPENSIVE : PriceLevel.NORMAL;
-    const priceStateStr = priceState;
-    const modeTargets = this.deps.getModeDeviceTargets();
-    const currentMode = this.deps.getOperatingMode() || 'Home';
-
-    for (const [deviceId, config] of Object.entries(settings)) {
-      if (!config.enabled) continue;
-
-      const device = snapshot.find((d) => d.id === deviceId);
-      if (!device || !device.targets || device.targets.length === 0) {
-        this.deps.logDebug(`Price optimization: Device ${device?.name || deviceId} not found or has no target capability`);
-        continue;
-      }
-
-      const baseTemp = modeTargets[currentMode]?.[deviceId];
-      if (baseTemp === undefined) {
-        this.deps.logDebug(`Price optimization: No mode target for ${device.name} in mode ${currentMode}`);
-        continue;
-      }
-
-      let targetTemp = baseTemp;
-      if (isCheap && config.cheapDelta) {
-        targetTemp = baseTemp + config.cheapDelta;
-      } else if (isExpensive && config.expensiveDelta) {
-        targetTemp = baseTemp + config.expensiveDelta;
-      }
-
-      const targetCap = device.targets[0].id;
-      const currentTarget = device.targets[0].value;
-
-      if (currentTarget === targetTemp) {
-        this.deps.logDebug(`Price optimization: ${device.name} already at ${targetTemp}°C`);
-        continue;
-      }
-
-      const deltaInfo = isCheap ? `+${config.cheapDelta}` : isExpensive ? `${config.expensiveDelta}` : '0';
-    const priceInfo = this.deps.priceStatus.getCurrentHourPriceInfo();
-
-      if (this.deps.isDryRun()) {
-        this.deps.log(`Price optimization (dry run): Would set ${device.name} to ${targetTemp}°C (${priceStateStr} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
-        continue;
-      }
-
-      try {
-        await this.deps.setDeviceTarget(deviceId, targetCap, targetTemp);
-        this.deps.log(`Price optimization: Set ${device.name} to ${targetTemp}°C (${priceStateStr} hour, delta ${deltaInfo}, base ${baseTemp}°C, ${priceInfo})`);
-        this.deps.updateLocalSnapshot(deviceId, { target: targetTemp });
-      } catch (error) {
-        this.deps.error(`Price optimization: Failed to set ${device.name} to ${targetTemp}°C`, error);
-      }
-    }
+    this.deps.rebuildPlan(`price optimization (${isCheap ? 'cheap' : isExpensive ? 'expensive' : 'normal'} hour)`);
   }
 
   async start(): Promise<void> {

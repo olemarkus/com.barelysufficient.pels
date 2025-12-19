@@ -184,7 +184,6 @@ module.exports = class PelsApp extends Homey.App {
     this.settingsHandler = createSettingsHandler({
       homey: this.homey,
       loadCapacitySettings: () => this.loadCapacitySettings(),
-      applyDeviceTargetsForMode: (mode) => this.applyDeviceTargetsForMode(mode),
       rebuildPlanFromCache: () => this.rebuildPlanFromCache(),
       refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
       loadPowerTracker: () => this.loadPowerTracker(),
@@ -211,11 +210,6 @@ module.exports = class PelsApp extends Homey.App {
     void this.updateOverheadToken();
     await this.refreshTargetDevicesSnapshot();
     this.rebuildPlanFromCache(); // Build initial plan after snapshot is loaded
-    if (this.capacityDryRun) {
-      this.previewDeviceTargetsForMode(this.operatingMode);
-    } else {
-      await this.applyDeviceTargetsForMode(this.operatingMode);
-    }
     this.lastNotifiedOperatingMode = this.operatingMode;
     this.registerFlowCards();
     this.startPeriodicSnapshotRefresh();
@@ -404,14 +398,9 @@ module.exports = class PelsApp extends Homey.App {
     this.operatingMode = resolved;
     this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
     this.homey.settings.set('mode_alias_used', rawMode !== resolved ? rawMode : null);
-    // rebuildPlanFromCache() is triggered by the settings listener, no need to call it twice
-    if (previousMode && previousMode.toLowerCase() === resolved.toLowerCase() && !this.capacityDryRun) {
-      this.logDebug(`Mode '${resolved}' already active; reapplying targets to correct drift`);
-    }
-    if (this.capacityDryRun) {
-      this.previewDeviceTargetsForMode(resolved);
-    } else {
-      await this.applyDeviceTargetsForMode(resolved);
+    // rebuildPlanFromCache() is triggered by the settings listener.
+    if (previousMode && previousMode.toLowerCase() === resolved.toLowerCase()) {
+      this.logDebug(`Mode '${resolved}' already active; plan will re-sync targets to correct drift`);
     }
     this.notifyOperatingModeChanged(resolved);
   }
@@ -426,86 +415,6 @@ module.exports = class PelsApp extends Homey.App {
   private getCurrentPriceLevel(): PriceLevel {
     const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
     return (status?.priceLevel || this.lastNotifiedPriceLevel) as PriceLevel;
-  }
-
-  private previewDeviceTargetsForMode(mode: string): void {
-    const targets = this.modeDeviceTargets[mode];
-    if (!targets || typeof targets !== 'object') {
-      this.log(`Dry-run mode change: no device targets configured for mode ${mode}`);
-      return;
-    }
-    this.deviceManager.previewDeviceTargets(targets, `mode ${mode}`);
-  }
-
-  private async applyDeviceTargetsForMode(mode: string): Promise<void> {
-    const targetsSetting = (this.homey.settings.get('mode_device_targets') || {}) as Record<string, Record<string, number>>;
-    let targets: Record<string, number> | undefined = this.modeDeviceTargets[mode] || targetsSetting[mode];
-    if (!targets) {
-      // Refresh from settings in case in-memory state is stale
-      this.loadCapacitySettings();
-      targets = this.modeDeviceTargets[mode] || this.homey.settings.get('mode_device_targets')?.[mode];
-    }
-    if (!targets) {
-      const match = Object.entries(this.modeDeviceTargets || {}).find(([k]) => k.toLowerCase() === mode.toLowerCase())
-        || Object.entries(targetsSetting || {}).find(([k]) => k.toLowerCase() === mode.toLowerCase());
-      targets = match?.[1] as Record<string, number> | undefined;
-    }
-    if (!targets || typeof targets !== 'object') {
-      this.log(`No device targets configured for mode ${mode}`);
-      return;
-    }
-    const targetMap: Record<string, number> = targets;
-    await this.refreshTargetDevicesSnapshot();
-
-    for (const device of this.latestTargetSnapshot) {
-      const targetValue = targetMap[device.id];
-      if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
-
-      const targetCap = device.targets?.[0]?.id;
-      if (!targetCap) continue;
-
-      const currentTargetValRaw = device.targets?.[0]?.value;
-      const currentTargetVal = typeof currentTargetValRaw === 'number' ? currentTargetValRaw : null;
-
-      // Do not override shed devices (including min-temp sheds) while they are held shed.
-      // Only block if device is actually at shed temperature, not just planned to be shed.
-      const shedBehavior = this.getShedBehavior(device.id);
-      const isMinTempShed = shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null;
-      if (isMinTempShed && currentTargetVal === shedBehavior.temperature) {
-        this.logDebug(`Skipping mode target for ${device.name} (${device.id}) because it is at shed temperature ${shedBehavior.temperature}°C`);
-        continue;
-      }
-
-      if (currentTargetVal !== null && currentTargetVal === targetValue) {
-        this.logDebug(`Skipping mode target for ${device.name} (${device.id}) because it is already at ${targetValue}`);
-        continue;
-      }
-
-      const wasAtShedTemp = isMinTempShed && currentTargetVal === shedBehavior.temperature;
-      const isRestoring = wasAtShedTemp && targetValue > (currentTargetVal as number);
-
-      try {
-        // Prefer an injected HomeyAPI client (tests can set either this.homeyApi or deviceManager.homeyApi)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- HomeyAPI lacks types
-        const api = this.homeyApi ?? (this.deviceManager as any)?.homeyApi;
-        if (api?.devices?.setCapabilityValue) {
-          await api.devices.setCapabilityValue({
-            deviceId: device.id,
-            capabilityId: targetCap,
-            value: targetValue,
-          });
-        } else {
-          await this.deviceManager.setCapability(device.id, targetCap, targetValue);
-        }
-        this.log(`Set ${targetCap} for ${device.name} to ${targetValue} (mode: ${mode})`);
-        this.updateLocalSnapshot(device.id, { target: targetValue });
-        if (isRestoring) {
-          this.lastRestoreMs = Date.now();
-        }
-      } catch (error) {
-        this.error(`Failed to set ${targetCap} for ${device.name}`, error);
-      }
-    }
   }
 
   private startPeriodicSnapshotRefresh(): void {
@@ -648,15 +557,13 @@ module.exports = class PelsApp extends Homey.App {
         getCurrentHourPriceInfo: () => this.getCurrentHourPriceInfo(),
       },
       getSettings: () => this.priceOptimizationSettings,
-      getSnapshot: () => this.latestTargetSnapshot ?? [],
-      getOperatingMode: () => this.operatingMode,
-      getModeDeviceTargets: () => this.modeDeviceTargets,
-      isDryRun: () => this.capacityDryRun,
       isEnabled: () => this.priceOptimizationEnabled,
       getThresholdPercent: () => this.homey.settings.get('price_threshold_percent') ?? 25,
       getMinDiffOre: () => this.homey.settings.get('price_min_diff_ore') ?? 0,
-      setDeviceTarget: (deviceId, capabilityId, value) => this.deviceManager.setCapability(deviceId, capabilityId, value),
-      updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+      rebuildPlan: (reason) => {
+        this.logDebug(`Price optimization: triggering plan rebuild (${reason})`);
+        this.rebuildPlanFromCache();
+      },
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (...args: unknown[]) => this.logDebug(...args),
       error: (...args: unknown[]) => this.error(...args),
@@ -664,7 +571,7 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   /**
-   * Apply price optimization to all configured devices (delegated).
+   * Apply price optimization to all configured devices (delegated via plan rebuild).
    */
   private async applyPriceOptimization(): Promise<void> {
     await this.priceOptimizer?.applyOnce();
@@ -1029,7 +936,7 @@ module.exports = class PelsApp extends Homey.App {
 
       // Apply price optimization delta if configured for this device
       const priceOptConfig = this.priceOptimizationSettings[dev.id];
-      if (plannedTarget !== null && priceOptConfig?.enabled) {
+      if (this.priceOptimizationEnabled && plannedTarget !== null && priceOptConfig?.enabled) {
         const isCheap = this.isCurrentHourCheap();
         const isExpensive = this.isCurrentHourExpensive();
         if (isCheap && priceOptConfig.cheapDelta) {
