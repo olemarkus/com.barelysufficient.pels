@@ -63,6 +63,7 @@ Note: Do not run `homey` CLI commands - these deploy to hardware and should be r
 ## Writing Tests
 
 - Tests use `test/mocks/homey.ts` - if you use a new Homey API, add it to the mock
+- For bug fixes, add a test that reproduces the bug before implementing the fix
 - Create app instance with `new PelsApp()` and call `await app.onInit()`
 - Access internal state via `(app as any).propertyName` when needed
 - Mock time with `jest.useFakeTimers()` for time-dependent tests
