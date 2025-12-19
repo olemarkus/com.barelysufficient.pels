@@ -88,6 +88,7 @@ module.exports = class PelsApp extends Homey.App {
   private lastRestoreMs: number | null = null; // Track when we last restored a device
   private lastPlannedShedIds: Set<string> = new Set();
   private lastShedPlanMeasurementTs: number | null = null;
+  private lastSwapPlanMeasurementTs: Record<string, number> = {};
   private inShortfall = false; // Track if we're currently in a capacity shortfall state
   private debugLoggingEnabled = false;
   // Track devices that were swapped out: swappedOutDeviceId -> higherPriorityDeviceId
@@ -1118,6 +1119,7 @@ module.exports = class PelsApp extends Homey.App {
     // Also respect cooldown period after shedding to avoid rapid on/off cycles.
     // Also wait after restoring a device to let the power measurement stabilize before restoring more.
     const nowTs = Date.now();
+    const measurementTs = this.powerTracker.lastTimestamp ?? null;
     const sinceRestore = this.lastRestoreMs ? nowTs - this.lastRestoreMs : null;
     const sinceShedding = this.lastSheddingMs ? nowTs - this.lastSheddingMs : null;
     const sinceOvershoot = this.lastOvershootMs ? nowTs - this.lastOvershootMs : null;
@@ -1251,6 +1253,12 @@ module.exports = class PelsApp extends Homey.App {
           // Not enough headroom or budget - try to swap with lower priority ON devices
           const devPriority = dev.priority ?? 100;
 
+          if (measurementTs !== null && this.lastSwapPlanMeasurementTs[dev.id] === measurementTs) {
+            dev.plannedState = 'shed';
+            dev.reason = 'stay off (waiting for new measurement before swap)';
+            this.logDebug(`Plan: skipping ${dev.name} - waiting for new measurement before swap`);
+            continue;
+          }
           // Check if this device is already a pending swap target - don't re-plan the same swap
           if (this.pendingSwapTargets.has(dev.id)) {
             dev.plannedState = 'shed';
@@ -1300,6 +1308,9 @@ module.exports = class PelsApp extends Homey.App {
             // Track this device as a pending swap target - no lower-priority device should restore first
             this.pendingSwapTargets.add(dev.id);
             this.pendingSwapTimestamps[dev.id] = Date.now();
+            if (measurementTs !== null) {
+              this.lastSwapPlanMeasurementTs[dev.id] = measurementTs;
+            }
             for (const shedDev of toShed) {
               shedDev.plannedState = 'shed';
               shedDev.reason = `swapped out for higher priority ${dev.name} (p${devPriority})`;

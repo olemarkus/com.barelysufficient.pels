@@ -956,6 +956,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
+    (app as any).lastRestoreMs = Date.now() - 60000;
     (app as any).rebuildPlanFromCache();
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -2162,6 +2163,99 @@ describe('Device plan snapshot', () => {
     // BUG: Without the fix, this would be 1 (re-planning the same swap)
     // With the fix, this should be 0 (swap already pending)
     expect(swapApprovedAfterSecond).toBe(0);
+  });
+
+  it('does not attempt another swap for the same target without a new measurement', async () => {
+    const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await highPri.setCapabilityValue('measure_power', 1500);
+    await highPri.setCapabilityValue('onoff', false);
+
+    const lowPri = new MockDevice('dev-low', 'Low Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await lowPri.setCapabilityValue('measure_power', 1200);
+    await lowPri.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [highPri, lowPri]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 4;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+    }
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.sheddingActive = false;
+    }
+
+    await (app as any).recordPowerSample(3000, 1000);
+
+    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
+
+    // Simulate swap state being cleared without a new measurement.
+    (app as any).pendingSwapTargets.clear();
+    (app as any).pendingSwapTimestamps = {};
+    (app as any).swappedOutFor = {};
+
+    (app as any).rebuildPlanFromCache();
+    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('keep');
+  });
+
+  it('allows swaps again after a new measurement arrives', async () => {
+    const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await highPri.setCapabilityValue('measure_power', 1500);
+    await highPri.setCapabilityValue('onoff', false);
+
+    const lowPri = new MockDevice('dev-low', 'Low Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await lowPri.setCapabilityValue('measure_power', 1200);
+    await lowPri.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [highPri, lowPri]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 4;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+    }
+    (app as any).lastSheddingMs = null;
+    (app as any).lastOvershootMs = null;
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.sheddingActive = false;
+    }
+
+    await (app as any).recordPowerSample(3000, 1000);
+
+    // Clear swap state without a new measurement.
+    (app as any).pendingSwapTargets.clear();
+    (app as any).pendingSwapTimestamps = {};
+    (app as any).swappedOutFor = {};
+
+    (app as any).lastRestoreMs = Date.now() - 60000;
+    await (app as any).recordPowerSample(3000, 2000);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
   });
 });
 
