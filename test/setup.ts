@@ -33,9 +33,9 @@ beforeAll(() => {
   }
 
   consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation((...args) => {
-    originalConsoleError(...args);
-    // Keep stderr logging but do not fail tests; allowConsoleError flag is kept for future tightening
+    // Suppress known/expected console errors when explicitly allowed.
     if (allowConsoleError) return;
+    originalConsoleError(...args);
   });
 });
 

@@ -141,6 +141,10 @@ const createMockHttpsResponse = (statusCode: number, data: any) => {
 
 describe('Spot price fetching', () => {
   let mockHttpsGet: jest.Mock;
+  let allowConsoleErrorUntilCleanup = false;
+  // Use require to avoid ESM extension issues in TS tests
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { setAllowConsoleError } = require('./setup');
 
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
@@ -158,6 +162,10 @@ describe('Spot price fetching', () => {
   afterEach(async () => {
     await cleanupApps();
     jest.clearAllTimers();
+    if (allowConsoleErrorUntilCleanup) {
+      setAllowConsoleError(false);
+      allowConsoleErrorUntilCleanup = false;
+    }
   });
 
   it('fetches and transforms spot prices from hvakosterstrommen.no', async () => {
@@ -323,19 +331,15 @@ describe('Spot price fetching', () => {
       return req;
     });
 
-    // Use require to avoid ESM extension issues in TS tests
-    const { setAllowConsoleError } = require('./setup');
     setAllowConsoleError(true);
-    try {
-      const app = createApp();
-      await app.onInit();
+    allowConsoleErrorUntilCleanup = true;
 
-      // Should not throw
-      mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
-      await flushPromises();
-    } finally {
-      setAllowConsoleError(false);
-    }
+    const app = createApp();
+    await app.onInit();
+
+    // Should not throw
+    mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
+    await flushPromises();
 
     // No prices stored due to error
     const prices = mockHomeyInstance.settings.get('electricity_prices');
