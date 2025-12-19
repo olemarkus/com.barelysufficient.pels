@@ -87,6 +87,7 @@ module.exports = class PelsApp extends Homey.App {
   private lastOvershootMs: number | null = null;
   private lastRestoreMs: number | null = null; // Track when we last restored a device
   private lastPlannedShedIds: Set<string> = new Set();
+  private lastShedPlanMeasurementTs: number | null = null;
   private inShortfall = false; // Track if we're currently in a capacity shortfall state
   private debugLoggingEnabled = false;
   // Track devices that were swapped out: swappedOutDeviceId -> higherPriorityDeviceId
@@ -899,84 +900,94 @@ module.exports = class PelsApp extends Homey.App {
     const shedReasons = new Map<string, string>();
     const restoreMarginPlanning = Math.max(0.1, this.capacitySettings.marginKw || 0);
     if (headroom !== null && headroom < 0) {
+      const measurementTs = this.powerTracker.lastTimestamp ?? null;
+      const alreadyShedThisSample = measurementTs !== null && measurementTs === this.lastShedPlanMeasurementTs;
+      if (alreadyShedThisSample) {
+        this.logDebug('Plan: skipping additional shedding until a new power measurement arrives');
+      }
       const needed = -headroom;
-      this.logDebug(
-        `Planning shed: soft=${softLimit.toFixed(3)} headroom=${headroom.toFixed(
-          3,
-        )} total=${total === null ? 'unknown' : total.toFixed(3)}`,
-      );
-      const nowTs = Date.now();
-      const candidates = devices
-        .filter((d) => d.controllable !== false && d.currentOn !== false)
-        .map((d) => {
-          const priority = this.getPriorityForDevice(d.id);
-          let power: number;
-          if (typeof d.measuredPowerKw === 'number') {
-            power = Math.max(0, d.measuredPowerKw);
-          } else if (typeof d.expectedPowerKw === 'number' && d.expectedPowerKw > 0) {
-            power = d.expectedPowerKw;
-          } else if (typeof d.powerKw === 'number' && d.powerKw > 0) {
-            power = d.powerKw;
-          } else {
-            power = 1;
-          }
-          return { ...d, priority, effectivePower: power };
-        })
-        .filter((d) => {
-          // Check if device is effectively shed (at shed temperature)
-          const shedBehavior = this.getShedBehavior(d.id);
-          if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
-            const currentTarget = d.targets?.[0]?.value;
-            if (typeof currentTarget === 'number' && currentTarget === shedBehavior.temperature) {
+      if (!alreadyShedThisSample) {
+        this.logDebug(
+          `Planning shed: soft=${softLimit.toFixed(3)} headroom=${headroom.toFixed(
+            3,
+          )} total=${total === null ? 'unknown' : total.toFixed(3)}`,
+        );
+        const nowTs = Date.now();
+        const candidates = devices
+          .filter((d) => d.controllable !== false && d.currentOn !== false)
+          .map((d) => {
+            const priority = this.getPriorityForDevice(d.id);
+            let power: number;
+            if (typeof d.measuredPowerKw === 'number') {
+              power = Math.max(0, d.measuredPowerKw);
+            } else if (typeof d.expectedPowerKw === 'number' && d.expectedPowerKw > 0) {
+              power = d.expectedPowerKw;
+            } else if (typeof d.powerKw === 'number' && d.powerKw > 0) {
+              power = d.powerKw;
+            } else {
+              power = 1;
+            }
+            return { ...d, priority, effectivePower: power };
+          })
+          .filter((d) => {
+            // Check if device is effectively shed (at shed temperature)
+            const shedBehavior = this.getShedBehavior(d.id);
+            if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
+              const currentTarget = d.targets?.[0]?.value;
+              if (typeof currentTarget === 'number' && currentTarget === shedBehavior.temperature) {
+                return false;
+              }
+            }
+            return true;
+          })
+          .filter((d) => {
+            const lastRestore = this.lastDeviceRestoreMs[d.id];
+            if (!lastRestore) return true;
+            const sinceRestoreMs = nowTs - lastRestore;
+            const recentlyRestored = sinceRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
+            const overshootSevere = needed > RECENT_RESTORE_OVERSHOOT_BYPASS_KW;
+            if (recentlyRestored && !overshootSevere) {
+              this.logDebug(
+                `Plan: protecting ${d.name} from shedding (recently restored ${Math.round(sinceRestoreMs / 1000)}s ago, overshoot ${needed.toFixed(2)}kW)`,
+              );
               return false;
             }
+            return true;
+          })
+          .sort((a, b) => {
+            // Sort by priority descending: higher number = less important = shed first
+            // Priority 1 = most important = shed last
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
+            const pa = (a as any).priority ?? 100;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
+            const pb = (b as any).priority ?? 100;
+            if (pa !== pb) return pb - pa; // Higher number sheds first
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
+            return (b as any).effectivePower - (a as any).effectivePower;
+          });
+
+        let remaining = needed;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
+        const totalSheddable = candidates.reduce((sum, c) => sum + ((c as any).effectivePower as number), 0);
+        this.log(`Plan: overshoot=${needed.toFixed(2)}kW, candidates=${candidates.length}, totalSheddable=${totalSheddable.toFixed(2)}kW`);
+        for (const c of candidates) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
+          if ((c as any).effectivePower <= 0) continue;
+
+          if (remaining <= 0) break;
+          shedSet.add(c.id);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
+          shedReasons.set(c.id, 'shed due to capacity');
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
+          remaining -= (c as any).effectivePower as number;
+        }
+
+        if (shedSet.size > 0) {
+          this.lastOvershootMs = Date.now();
+          if (measurementTs !== null) {
+            this.lastShedPlanMeasurementTs = measurementTs;
           }
-          return true;
-        })
-        .filter((d) => {
-          const lastRestore = this.lastDeviceRestoreMs[d.id];
-          if (!lastRestore) return true;
-          const sinceRestoreMs = nowTs - lastRestore;
-          const recentlyRestored = sinceRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
-          const overshootSevere = needed > RECENT_RESTORE_OVERSHOOT_BYPASS_KW;
-          if (recentlyRestored && !overshootSevere) {
-            this.logDebug(
-              `Plan: protecting ${d.name} from shedding (recently restored ${Math.round(sinceRestoreMs / 1000)}s ago, overshoot ${needed.toFixed(2)}kW)`,
-            );
-            return false;
-          }
-          return true;
-        })
-        .sort((a, b) => {
-          // Sort by priority descending: higher number = less important = shed first
-          // Priority 1 = most important = shed last
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
-          const pa = (a as any).priority ?? 100;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
-          const pb = (b as any).priority ?? 100;
-          if (pa !== pb) return pb - pa; // Higher number sheds first
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
-          return (b as any).effectivePower - (a as any).effectivePower;
-        });
-
-      let remaining = needed;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
-      const totalSheddable = candidates.reduce((sum, c) => sum + ((c as any).effectivePower as number), 0);
-      this.log(`Plan: overshoot=${needed.toFixed(2)}kW, candidates=${candidates.length}, totalSheddable=${totalSheddable.toFixed(2)}kW`);
-      for (const c of candidates) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
-        if ((c as any).effectivePower <= 0) continue;
-
-        if (remaining <= 0) break;
-        shedSet.add(c.id);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
-        shedReasons.set(c.id, 'shed due to capacity');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extended device object with effectivePower
-        remaining -= (c as any).effectivePower as number;
-      }
-
-      if (shedSet.size > 0) {
-        this.lastOvershootMs = Date.now();
+        }
       }
     }
 
