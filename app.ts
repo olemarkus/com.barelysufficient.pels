@@ -21,6 +21,8 @@ const RECENT_RESTORE_SHED_GRACE_MS = 3 * 60 * 1000; // Avoid re-shedding a fresh
 const RECENT_RESTORE_OVERSHOOT_BYPASS_KW = 0.5; // Allow immediate re-shed if overshoot is >= 0.5 kW
 const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // Refresh device snapshot every 5 minutes
+const EVCHARGER_COOLDOWN_BASE_MS = 10 * 1000; // Base cooldown for charger start/stop retries
+const EVCHARGER_COOLDOWN_MAX_MS = 5 * 60 * 1000; // Cap cooldown at 5 minutes
 
 type ShedAction = 'turn_off' | 'set_temperature';
 
@@ -46,6 +48,14 @@ type DevicePlanDevice = {
   currentTemperature?: number;
   shedAction?: ShedAction;
   shedTemperature?: number | null;
+};
+
+type EvChargerControlState = {
+  lastState?: string | null;
+  blockedReason?: string;
+  blockedSince?: number;
+  cooldownUntil?: number;
+  failureCount: number;
 };
 
 type DevicePlan = {
@@ -91,6 +101,8 @@ module.exports = class PelsApp extends Homey.App {
   private lastSwapPlanMeasurementTs: Record<string, number> = {};
   private inShortfall = false; // Track if we're currently in a capacity shortfall state
   private debugLoggingEnabled = false;
+  private evChargerHandlingEnabled = false;
+  private evChargerControlStates: Record<string, EvChargerControlState> = {};
   // Track devices that were swapped out: swappedOutDeviceId -> higherPriorityDeviceId
   // These devices should not be restored until the higher-priority device they were swapped for is restored
   private swappedOutFor: Record<string, string> = {};
@@ -144,7 +156,11 @@ module.exports = class PelsApp extends Homey.App {
     // Debug logging is opt-in per session; always start disabled.
     this.debugLoggingEnabled = false;
     this.homey.settings.set('debug_logging_enabled', false);
+    if (this.homey.settings.get('enable_evcharger_handling') === undefined) {
+      this.homey.settings.set('enable_evcharger_handling', false);
+    }
     this.loadCapacitySettings();
+    this.updateEvChargerHandlingEnabled();
     this.deviceManager = new DeviceManager(this, {
       log: this.log.bind(this),
       debug: this.logDebug.bind(this),
@@ -195,6 +211,7 @@ module.exports = class PelsApp extends Homey.App {
       updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
       updateOverheadToken: (value) => void this.updateOverheadToken(value),
       updateDebugLoggingEnabled: (logChange) => this.updateDebugLoggingEnabled(logChange),
+      updateEvChargerHandlingEnabled: (logChange) => this.updateEvChargerHandlingEnabled(logChange),
       errorLog: (message: string, error: unknown) => this.error(message, error as Error),
     });
     this.homey.settings.on('set', (key: string) => {
@@ -258,6 +275,14 @@ module.exports = class PelsApp extends Homey.App {
     this.priceOptimizationEnabled = enabled !== false; // Default to true
     if (logChange) {
       this.log(`Price optimization ${this.priceOptimizationEnabled ? 'enabled' : 'disabled'}`);
+    }
+  }
+
+  private updateEvChargerHandlingEnabled(logChange = false): void {
+    const enabled = this.homey.settings.get('enable_evcharger_handling');
+    this.evChargerHandlingEnabled = enabled === true;
+    if (logChange) {
+      this.log(`EV charger handling ${this.evChargerHandlingEnabled ? 'enabled' : 'disabled'}`);
     }
   }
 
@@ -1557,12 +1582,12 @@ module.exports = class PelsApp extends Homey.App {
         }
       }
       try {
-        await this.deviceManager.setCapability(deviceId, 'onoff', false);
-
-        this.log(`Capacity: turned off ${name} (${reason || 'shedding'})`);
-        this.updateLocalSnapshot(deviceId, { on: false });
-        this.lastSheddingMs = now;
-        this.lastDeviceShedMs[deviceId] = now;
+        const didSet = await this.setDevicePowerState(deviceId, false, name);
+        if (didSet) {
+          this.log(`Capacity: turned off ${name} (${reason || 'shedding'})`);
+          this.lastSheddingMs = now;
+          this.lastDeviceShedMs[deviceId] = now;
+        }
       } catch (error) {
         this.error(`Failed to turn off ${name} via DeviceManager`, error);
       }
@@ -1606,6 +1631,135 @@ module.exports = class PelsApp extends Homey.App {
     this.homey.notifications.createNotification({
       excerpt: 'Capacity shortfall **resolved**. Load is back within limits.',
     }).catch((err: Error) => this.error('Failed to create shortfall cleared notification', err));
+  }
+
+  private getEvChargerControlState(deviceId: string): EvChargerControlState {
+    if (!this.evChargerControlStates[deviceId]) {
+      this.evChargerControlStates[deviceId] = { failureCount: 0 };
+    }
+    return this.evChargerControlStates[deviceId];
+  }
+
+  private isEvChargerLike(snapshot?: TargetDeviceSnapshot): boolean {
+    if (!snapshot) return false;
+    if ((snapshot.deviceClass || '').toLowerCase() === 'evcharger') return true;
+    const caps = snapshot.capabilities || [];
+    return caps.includes('evcharger_charging') || caps.includes('evcharger_charging_state');
+  }
+
+  private getEvChargerChargingCapability(snapshot?: TargetDeviceSnapshot): string | null {
+    if (!snapshot) return null;
+    return snapshot.capabilities?.includes('evcharger_charging') ? 'evcharger_charging' : null;
+  }
+
+  private getEvChargerChargingState(snapshot?: TargetDeviceSnapshot): string | null {
+    const state = snapshot?.capabilityValues?.evcharger_charging_state;
+    return typeof state === 'string' ? state : null;
+  }
+
+  private isEvChargerBlockedState(state: string | null): boolean {
+    if (!state) return false;
+    const normalized = state.toLowerCase();
+    return normalized.includes('disconnect')
+      || normalized.includes('unplug')
+      || normalized.includes('not_connected')
+      || normalized.includes('not connected')
+      || normalized.includes('unavailable');
+  }
+
+  private maybeUnblockEvCharger(state: EvChargerControlState, stateValue: string | null, deviceId: string, name: string): void {
+    if (!state.blockedReason) {
+      state.lastState = stateValue;
+      return;
+    }
+    const blockedNow = this.isEvChargerBlockedState(stateValue);
+    const stateChanged = stateValue !== state.lastState;
+    if (!blockedNow && stateChanged) {
+      this.log(`EV charger: unblocked ${name} (${deviceId})`);
+      state.blockedReason = undefined;
+      state.blockedSince = undefined;
+      state.failureCount = 0;
+    }
+    state.lastState = stateValue;
+  }
+
+  private blockEvCharger(state: EvChargerControlState, deviceId: string, name: string, reason: string, stateValue: string | null): void {
+    if (state.blockedReason !== reason) {
+      state.blockedReason = reason;
+      state.blockedSince = Date.now();
+      this.log(`EV charger: blocking ${name} (${deviceId}) - ${reason}${stateValue ? ` (state: ${stateValue})` : ''}`);
+    }
+    state.lastState = stateValue;
+  }
+
+  private setEvChargerCooldown(state: EvChargerControlState, deviceId: string, name: string, reason: string): void {
+    const previousUntil = state.cooldownUntil;
+    const backoffSteps = Math.max(1, state.failureCount);
+    const cooldownMs = Math.min(EVCHARGER_COOLDOWN_MAX_MS, EVCHARGER_COOLDOWN_BASE_MS * (2 ** (backoffSteps - 1)));
+    const nextUntil = Date.now() + cooldownMs;
+    state.cooldownUntil = nextUntil;
+    if (!previousUntil || nextUntil > previousUntil) {
+      this.log(`EV charger: cooldown ${name} (${deviceId}) for ${(cooldownMs / 1000).toFixed(0)}s (${reason})`);
+    }
+  }
+
+  private classifyEvChargerError(error: unknown): { isDisconnected: boolean; isTimeout: boolean; message: string } {
+    const message = error instanceof Error ? error.message : String(error);
+    const errorObj = error as { errorCodeName?: unknown; errorCode?: unknown; message?: unknown } | null;
+    const errorCodeName = errorObj && typeof errorObj.errorCodeName === 'string' ? errorObj.errorCodeName : '';
+    const errorCode = errorObj && typeof errorObj.errorCode === 'number' ? errorObj.errorCode : null;
+    const messageLower = message.toLowerCase();
+    const isDisconnected = errorCodeName === 'ChargerDisconnected'
+      || errorCode === 410
+      || messageLower.includes('charger disconnected');
+    const isTimeout = messageLower.includes('timeout') || messageLower.includes('timed out');
+    return { isDisconnected, isTimeout, message };
+  }
+
+  private async setDevicePowerState(deviceId: string, desiredOn: boolean, name: string): Promise<boolean> {
+    const snapshot = this.latestTargetSnapshot.find((d) => d.id === deviceId);
+    if (!this.evChargerHandlingEnabled || !this.isEvChargerLike(snapshot)) {
+      await this.deviceManager.setCapability(deviceId, 'onoff', desiredOn);
+      this.updateLocalSnapshot(deviceId, { on: desiredOn });
+      return true;
+    }
+
+    const stateValue = this.getEvChargerChargingState(snapshot);
+    const controlState = this.getEvChargerControlState(deviceId);
+    this.maybeUnblockEvCharger(controlState, stateValue, deviceId, name);
+
+    const now = Date.now();
+    if (controlState.cooldownUntil && now < controlState.cooldownUntil) return false;
+
+    if (desiredOn) {
+      if (controlState.blockedReason) return false;
+      if (this.isEvChargerBlockedState(stateValue)) {
+        this.blockEvCharger(controlState, deviceId, name, 'state not ready', stateValue);
+        return false;
+      }
+    }
+
+    const chargingCap = this.getEvChargerChargingCapability(snapshot);
+    const capabilityId = chargingCap ?? 'onoff';
+
+    try {
+      await this.deviceManager.setCapability(deviceId, capabilityId, desiredOn);
+      this.updateLocalSnapshot(deviceId, { on: desiredOn });
+      controlState.failureCount = 0;
+      controlState.cooldownUntil = undefined;
+      return true;
+    } catch (error) {
+      const classification = this.classifyEvChargerError(error);
+      if (desiredOn && classification.isDisconnected) {
+        this.blockEvCharger(controlState, deviceId, name, 'charger disconnected', stateValue);
+        return false;
+      }
+      controlState.failureCount += 1;
+      if (classification.isTimeout || controlState.failureCount >= 2) {
+        this.setEvChargerCooldown(controlState, deviceId, name, classification.message || 'error');
+      }
+      return false;
+    }
   }
 
   // eslint-disable-next-line max-len -- Plan structure has dynamic target values
@@ -1713,13 +1867,15 @@ module.exports = class PelsApp extends Homey.App {
         this.pendingRestores.add(dev.id);
         try {
           try {
-            await this.deviceManager.setCapability(dev.id, 'onoff', true);
-            this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
-            this.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
-            this.lastDeviceRestoreMs[dev.id] = this.lastRestoreMs;
-            // Clear this device from pending swap targets if it was one
-            this.pendingSwapTargets.delete(dev.id);
-            delete this.pendingSwapTimestamps[dev.id];
+            const didSet = await this.setDevicePowerState(dev.id, true, name);
+            if (didSet) {
+              this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
+              this.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
+              this.lastDeviceRestoreMs[dev.id] = this.lastRestoreMs;
+              // Clear this device from pending swap targets if it was one
+              this.pendingSwapTargets.delete(dev.id);
+              delete this.pendingSwapTimestamps[dev.id];
+            }
           } catch (error) {
             this.error(`Failed to turn on ${name} via DeviceManager`, error);
           }

@@ -3162,4 +3162,224 @@ describe('Dry run mode', () => {
     // Also verify that at least one IS restored (not both shed)
     expect(shedDevicesAfterRestore.length).toBeLessThan(2);
   });
+
+  it('uses onoff when EV charger handling is disabled', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    await dev1.setCapabilityValue('onoff', false);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'onoff'],
+        capabilityValues: {},
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+
+    expect(mockSetCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+    });
+  });
+
+  it('uses evcharger_charging when EV charger handling is enabled', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    await dev1.setCapabilityValue('onoff', false);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'onoff'],
+        capabilityValues: {},
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+
+    expect(mockSetCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'evcharger_charging',
+      value: true,
+    });
+  });
+
+  it('blocks start attempts when charger state is disconnected and unblocks on state change', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'onoff'],
+        capabilityValues: { evcharger_charging_state: 'disconnected' },
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+    expect(mockSetCapability).not.toHaveBeenCalled();
+    const state = (app as any).evChargerControlStates['dev-1'];
+    expect(state?.blockedReason).toBeTruthy();
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'onoff'],
+        capabilityValues: { evcharger_charging_state: 'ready' },
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+    expect(mockSetCapability).toHaveBeenCalledTimes(1);
+    expect(state?.blockedReason).toBeUndefined();
+  });
+
+  it('blocks retries after ChargerDisconnected errors', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    const mockSetCapability = jest.fn().mockRejectedValue({ errorCodeName: 'ChargerDisconnected', message: 'Charger disconnected' });
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'onoff'],
+        capabilityValues: { evcharger_charging_state: 'ready' },
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+    await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+
+    expect(mockSetCapability).toHaveBeenCalledTimes(1);
+    const state = (app as any).evChargerControlStates['dev-1'];
+    expect(state?.blockedReason).toBe('charger disconnected');
+  });
+
+  it('applies cooldown after timeouts and retries after cooldown', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    const mockSetCapability = jest.fn()
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'onoff'],
+        capabilityValues: {},
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+
+    let now = 1000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+      const state = (app as any).evChargerControlStates['dev-1'];
+      expect(state?.cooldownUntil).toBeTruthy();
+
+      now = (state.cooldownUntil as number) - 1000;
+      await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+
+      now = (state.cooldownUntil as number) + 1000;
+      await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(mockSetCapability).toHaveBeenCalledTimes(2);
+  });
 });

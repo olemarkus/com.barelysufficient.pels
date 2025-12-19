@@ -16,6 +16,7 @@ export interface SettingsHandlerDeps {
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => void;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
+  updateEvChargerHandlingEnabled: (logChange?: boolean) => void;
   errorLog: (message: string, error: unknown) => void;
 }
 
@@ -97,6 +98,9 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
         break;
       case 'debug_logging_enabled':
         deps.updateDebugLoggingEnabled(true);
+        break;
+      case 'enable_evcharger_handling':
+        deps.updateEvChargerHandlingEnabled(true);
         break;
       default:
         break;

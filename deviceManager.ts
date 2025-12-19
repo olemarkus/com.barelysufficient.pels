@@ -323,6 +323,12 @@ export class DeviceManager {
                     return null;
                 }
 
+                const capabilityValues = capabilities.reduce<Record<string, unknown>>((acc, capId) => {
+                    const value = capabilityObj[capId]?.value;
+                    if (value !== undefined) acc[capId] = value;
+                    return acc;
+                }, {});
+
                 const targets = targetCaps.map((capId) => ({
                     id: capId,
                     value: capabilityObj[capId]?.value ?? null,
@@ -357,6 +363,8 @@ export class DeviceManager {
                         || 'Unknown',
                     controllable: this.providers.getControllable ? this.providers.getControllable(deviceId) : undefined,
                     capabilities,
+                    capabilityValues,
+                    deviceClass: (device as { class?: string }).class,
                 };
             })
             .filter(Boolean) as TargetDeviceSnapshot[];

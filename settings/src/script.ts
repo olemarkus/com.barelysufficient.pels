@@ -92,6 +92,7 @@ const priceOptimizationEmpty = qs('#price-optimization-empty');
 const priceOptimizationSection = qs('#price-optimization-section');
 const priceOptimizationEnabledCheckbox = document.querySelector('#price-optimization-enabled') as HTMLInputElement;
 const debugLoggingEnabledCheckbox = document.querySelector('#debug-logging-enabled') as HTMLInputElement;
+const evChargerHandlingCheckbox = document.querySelector('#enable-evcharger-handling') as HTMLInputElement;
 
 const OPERATING_MODE_KEY = 'operating_mode';
 
@@ -682,6 +683,10 @@ const loadAdvancedSettings = async () => {
   const debugEnabled = await getSetting('debug_logging_enabled');
   if (debugLoggingEnabledCheckbox) {
     debugLoggingEnabledCheckbox.checked = debugEnabled === true;
+  }
+  const evChargerEnabled = await getSetting('enable_evcharger_handling');
+  if (evChargerHandlingCheckbox) {
+    evChargerHandlingCheckbox.checked = evChargerEnabled === true;
   }
 };
 
@@ -2187,6 +2192,10 @@ const boot = async () => {
     debugLoggingEnabledCheckbox?.addEventListener('change', async () => {
       await setSetting('debug_logging_enabled', debugLoggingEnabledCheckbox.checked);
       await showToast(debugLoggingEnabledCheckbox.checked ? 'Debug logging enabled (resets on restart).' : 'Debug logging disabled.', 'ok');
+    });
+    evChargerHandlingCheckbox?.addEventListener('change', async () => {
+      await setSetting('enable_evcharger_handling', evChargerHandlingCheckbox.checked);
+      await showToast(evChargerHandlingCheckbox.checked ? 'EV charger handling enabled.' : 'EV charger handling disabled.', 'ok');
     });
   } catch (error) {
     console.error(error);
