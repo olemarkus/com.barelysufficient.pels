@@ -163,6 +163,7 @@ export const mockHomeyInstance = {
     },
   },
   flow: {
+    _tokens: {} as Record<string, { value: any }>,
     _actionCardListeners: {} as Record<string, (args: any) => Promise<any>>,
     _conditionCardListeners: {} as Record<string, (args: any) => Promise<any>>,
     _triggerCardRunListeners: {} as Record<string, (args: any, state: any) => Promise<any>>,
@@ -170,6 +171,14 @@ export const mockHomeyInstance = {
     _actionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
     _conditionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
     _triggerCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
+    createToken: async (id: string, { value }: { value: any }) => {
+      mockHomeyInstance.flow._tokens[id] = { value };
+      return {
+        setValue: async (nextValue: any) => {
+          mockHomeyInstance.flow._tokens[id].value = nextValue;
+        },
+      };
+    },
     getActionCard: (cardId: string) => ({
       registerRunListener: (listener: (args: any) => Promise<any>) => {
         mockHomeyInstance.flow._actionCardListeners[cardId] = listener;

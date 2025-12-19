@@ -147,4 +147,49 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         // Should auto-bump to 3.5 kW
         expect(snapshot[0].expectedPowerKw).toBe(3.5);
     });
+
+    it('should drop expected power when measured settles to the override', async () => {
+        await deviceManager.init();
+        const deviceId = 'dev1';
+
+        // Initial measured power is 3.0 kW.
+        mockGetDevices.mockResolvedValue({
+            [deviceId]: {
+                id: deviceId,
+                name: 'Heater',
+                capabilities: ['measure_power', 'target_temperature'],
+                capabilitiesObj: {
+                    measure_power: { value: 3000, id: 'measure_power' },
+                    target_temperature: { value: 20, id: 'target_temperature' },
+                },
+            },
+        });
+
+        await deviceManager.refreshSnapshot();
+        let snapshot = deviceManager.getSnapshot();
+        expect(snapshot[0].expectedPowerKw).toBe(3.0);
+
+        // User sets expected power to 2.0 kW while measured is still 3.0 kW.
+        expectedPowerKwOverrides[deviceId] = { kw: 2.0, ts: Date.now() };
+        await deviceManager.refreshSnapshot();
+        snapshot = deviceManager.getSnapshot();
+        expect(snapshot[0].expectedPowerKw).toBe(3.0);
+
+        // Measured power settles to 2.0 kW.
+        mockGetDevices.mockResolvedValue({
+            [deviceId]: {
+                id: deviceId,
+                name: 'Heater',
+                capabilities: ['measure_power', 'target_temperature'],
+                capabilitiesObj: {
+                    measure_power: { value: 2000, id: 'measure_power' },
+                    target_temperature: { value: 20, id: 'target_temperature' },
+                },
+            },
+        });
+
+        await deviceManager.refreshSnapshot();
+        snapshot = deviceManager.getSnapshot();
+        expect(snapshot[0].expectedPowerKw).toBe(2.0);
+    });
 });

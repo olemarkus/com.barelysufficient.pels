@@ -282,19 +282,18 @@ export class DeviceManager {
                     }
 
                     // Calculate Expected Power
-                    // Priority 1: Manual Override
+                    // Priority 1: Manual Override (bounded by current measured if higher)
                     // Priority 2: Peak Measured (lastKnownPowerKw)
                     // Priority 3: Default 1kW
                     const override = expectedOverride;
                     const peak = this.powerState.lastKnownPowerKw[deviceId];
 
                     if (override) {
-                        // Safety check: if current measured peak is HIGHER than override, use peak (monotonic safety).
-                        const peakValue = peak || 0;
-                        if (peakValue > override.kw) {
-                            expectedPowerKw = peakValue;
+                        const measuredValue = measuredKw ?? 0;
+                        if (measuredKw !== undefined && measuredValue > override.kw) {
+                            expectedPowerKw = measuredValue;
                             device.expectedPowerSource = 'measured-peak';
-                            this.logger.debug(`Power estimate: inferred peak ${peakValue.toFixed(3)} kW > override ${override.kw.toFixed(3)} kW for ${deviceLabel}`);
+                            this.logger.debug(`Power estimate: current ${measuredValue.toFixed(3)} kW > override ${override.kw.toFixed(3)} kW for ${deviceLabel}`);
                         } else {
                             expectedPowerKw = override.kw;
                             device.expectedPowerSource = 'manual';
