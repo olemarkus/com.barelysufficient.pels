@@ -2127,6 +2127,8 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
+    const errorSpy = jest.spyOn(Object.getPrototypeOf(app), 'error').mockImplementation(() => {});
+
     // Mock HomeyAPI to simulate timeout (shedding fails)
     (app as any).deviceManager.homeyApi = {
       devices: {
@@ -2163,6 +2165,7 @@ describe('Device plan snapshot', () => {
     // BUG: Without the fix, this would be 1 (re-planning the same swap)
     // With the fix, this should be 0 (swap already pending)
     expect(swapApprovedAfterSecond).toBe(0);
+    errorSpy.mockRestore();
   });
 
   it('does not attempt another swap for the same target without a new measurement', async () => {
