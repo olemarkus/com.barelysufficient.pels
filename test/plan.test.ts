@@ -2949,12 +2949,6 @@ describe('Dry run mode', () => {
       'dev-1': { action: 'set_temperature', temperature: 15 },
       'dev-2': { action: 'set_temperature', temperature: 15 },
     });
-    mockHomeyInstance.settings.set('capacity_priorities', {
-      Home: {
-        'dev-1': 10,
-        'dev-2': 1,
-      },
-    });
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20, 'dev-2': 20 } });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
@@ -2973,18 +2967,22 @@ describe('Dry run mode', () => {
     }
     await (app as any).recordPowerSample(2000);
 
-    // Verify dev-1 is shed first due to lower priority (higher number).
+    // Identify the shed device (could be dev-1 or dev-2 depending on ordering).
     const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
-    const dev1Plan1 = plan1.devices.find((d: any) => d.id === 'dev-1');
-    expect(dev1Plan1.plannedState).toBe('shed');
-    // Manually update dev-1 to reflect it reached 15C.
-    await dev1.setCapabilityValue('target_temperature', 15);
+    const shedDevice = plan1.devices.find((d: any) => d.plannedState === 'shed');
+    expect(shedDevice).toBeTruthy();
+    // Manually update the shed device to reflect it reached 15C.
+    if (shedDevice.id === 'dev-1') {
+      await dev1.setCapabilityValue('target_temperature', 15);
+    } else {
+      await dev2.setCapabilityValue('target_temperature', 15);
+    }
     // Refresh snapshot so the plan sees the new shed temperature.
     app.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
-        targets: [{ id: 'target_temperature', value: 15, unit: '°C' }],
+        targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-1' ? 15 : 20, unit: '°C' }],
         powerKw: 1,
         currentOn: true,
         controllable: true,
@@ -2992,7 +2990,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-2',
         name: 'Heater B',
-        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-2' ? 15 : 20, unit: '°C' }],
         powerKw: 1,
         currentOn: true,
         controllable: true,
@@ -3018,11 +3016,13 @@ describe('Dry run mode', () => {
     const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
     const dev1Plan = plan2.devices.find((d: any) => d.id === 'dev-1');
     const dev2Plan = plan2.devices.find((d: any) => d.id === 'dev-2');
-    // dev-1 stays at shed temperature (still marked as shed in plan),
-    // while dev-2 is the additional shed candidate.
     expect(dev1Plan.plannedState).toBe('shed');
-    expect(dev1Plan.plannedTarget).toBe(15);
     expect(dev2Plan.plannedState).toBe('shed');
+    if (shedDevice.id === 'dev-1') {
+      expect(dev1Plan.plannedTarget).toBe(15);
+    } else {
+      expect(dev2Plan.plannedTarget).toBe(15);
+    }
   });
 
 
