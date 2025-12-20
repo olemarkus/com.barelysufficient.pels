@@ -316,7 +316,7 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
-    expect(devPlan?.reason).toBe('temperature lowered while in capacity shortfall');
+    expect(devPlan?.reason).toContain('shortfall (need');
   });
 
   it('keeps a min-temperature shed device marked as shed during cooldown even if its target was overwritten', async () => {
@@ -444,7 +444,7 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
     expect(devPlan?.plannedTarget).toBe(16);
-    expect(devPlan?.reason).toContain('stay shed during cooldown before restore');
+    expect(devPlan?.reason).toContain('cooldown (shedding');
   });
 
   it('restores minimum-temperature shedding after cooldown with normal reason and targets', async () => {
@@ -513,7 +513,7 @@ describe('Device plan snapshot', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
-    expect(devPlan?.reason).toContain('stay shed during cooldown before restore');
+    expect(devPlan?.reason).toContain('cooldown (shedding');
   });
 
   it('does not start shedding cooldown when no devices can be shed', async () => {
@@ -1815,7 +1815,7 @@ describe('Device plan snapshot', () => {
 
     // High priority should stay off - not enough headroom even with swap
     expect(highPriPlan?.plannedState).toBe('shed');
-    expect(highPriPlan?.reason).toContain('no lower-priority devices to swap');
+    expect(highPriPlan?.reason).toContain('insufficient headroom');
 
     // Low priority should stay ON - it wasn't swapped out because swap wouldn't help
     expect(lowPriPlan?.plannedState).toBe('keep');
@@ -1939,7 +1939,7 @@ describe('Device plan snapshot', () => {
     // Lower priority device COULD restore (has enough headroom)
     // But should be blocked because swap target is pending
     expect(lowerPriPlan?.plannedState).toBe('shed');
-    expect(lowerPriPlan?.reason).toContain('swap target');
+    expect(lowerPriPlan?.reason).toContain('swap pending');
   });
 
   it('clears stale swap tracking after timeout (60 seconds)', async () => {
