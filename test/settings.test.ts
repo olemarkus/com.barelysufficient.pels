@@ -652,7 +652,7 @@ describe('Plan sorting', () => {
     const stateValues = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
       .filter((line) => line.querySelector('.plan-label')?.textContent === 'State')
       .map((line) => line.querySelector('span:last-child')?.textContent);
-    expect(stateValues).toContain('Shed');
+    expect(stateValues).toContain('Shed (powered off)');
   });
 
   it('shows measured and expected power in usage line when available', async () => {

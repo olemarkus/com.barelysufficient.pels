@@ -253,6 +253,16 @@ module.exports = class PelsApp extends Homey.App {
     return { cooldownRemainingMs, inCooldown };
   }
 
+  private getEstimatedPowerForRestore(dev: {
+    expectedPowerKw?: number;
+    measuredPowerKw?: number;
+    powerKw?: number;
+  }): number {
+    if (typeof dev.expectedPowerKw === 'number') return dev.expectedPowerKw;
+    if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
+    return dev.powerKw ?? 1;
+  }
+
   private updatePriceOptimizationEnabled(logChange = false): void {
     const enabled = this.homey.settings.get('price_optimization_enabled');
     this.priceOptimizationEnabled = enabled !== false; // Default to true
@@ -1150,7 +1160,7 @@ module.exports = class PelsApp extends Homey.App {
 
         // RESTORE: Use EXPECTED consumption (what we lose by restoring)
         // Fallback: measured > 0, else 1kW default
-        const devPower = dev.expectedPowerKw ?? (dev.measuredPowerKw && dev.measuredPowerKw > 0 ? dev.measuredPowerKw : 1.0);
+        const devPower = this.getEstimatedPowerForRestore(dev);
         // Need enough headroom to restore AND keep a safety buffer afterward
         const baseNeeded = devPower + restoreHysteresis;
         const needed = recentlyShed
@@ -1350,8 +1360,7 @@ module.exports = class PelsApp extends Homey.App {
 
       if (guardInShortfall && !isSwapReason && !isBudgetReason) {
         if (!dev.reason?.startsWith('shortfall (')) {
-          const estimatedPower = dev.expectedPowerKw
-            ?? (dev.measuredPowerKw && dev.measuredPowerKw > 0 ? dev.measuredPowerKw : (dev.powerKw ?? 1));
+          const estimatedPower = this.getEstimatedPowerForRestore(dev);
           const estimatedNeed = estimatedPower + restoreHysteresis;
           dev.reason = `shortfall (${formatNeedHeadroom(estimatedNeed, headroomRaw)})`;
         }
