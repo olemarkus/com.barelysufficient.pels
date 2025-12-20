@@ -1092,7 +1092,11 @@ const renderPlan = (plan) => {
       stateLabel.textContent = 'State';
       const stateValue = document.createElement('span');
       let stateText = 'Unknown';
-      if (dev.plannedState === 'shed') stateText = 'Shed';
+      if (dev.plannedState === 'shed') {
+        stateText = dev.shedAction === 'set_temperature'
+          ? 'Shed (lowered temperature)'
+          : 'Shed (powered off)';
+      }
       else if (dev.plannedState === 'keep') {
         stateText = (dev.currentState === 'off' || dev.currentState === 'unknown') ? 'Restoring' : 'Keep';
       }
