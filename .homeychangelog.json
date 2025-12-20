@@ -52,5 +52,8 @@
   },
   "1.5.3": {
     "en": "Coordinated price optimization and capacity planning, plus various bug‑fix tests and safeguards."
+  },
+  "1.5.4": {
+    "en": "Improved plan behavior and clarity: plan status reasons simplified, shed temps validated on repeated overshoot, and power estimation unified for restore logic."
   }
 }
