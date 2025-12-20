@@ -1651,8 +1651,7 @@ module.exports = class PelsApp extends Homey.App {
     if (!snapshot) return false;
     const caps = snapshot.capabilities || [];
     return caps.includes('evcharger_charging')
-      && caps.includes('evcharger_charging_state')
-      && caps.includes('charger_status');
+      && caps.includes('evcharger_charging_state');
   }
 
   private getEvChargerChargingCapability(snapshot?: TargetDeviceSnapshot): string | null {
@@ -1670,6 +1669,8 @@ module.exports = class PelsApp extends Homey.App {
     const normalized = state.toLowerCase();
     return normalized.includes('disconnect')
       || normalized.includes('unplug')
+      || normalized.includes('not_plugged')
+      || normalized.includes('not plugged')
       || normalized.includes('not_connected')
       || normalized.includes('not connected')
       || normalized.includes('unavailable');
@@ -1734,13 +1735,27 @@ module.exports = class PelsApp extends Homey.App {
 
     const stateValue = this.getEvChargerChargingState(snapshot);
     const controlState = this.getEvChargerControlState(deviceId);
+    this.logDebug(
+      `EV charger: action ${desiredOn ? 'start' : 'stop'} for ${name} (${deviceId}) state=${stateValue ?? 'unknown'}`,
+    );
     this.maybeUnblockEvCharger(controlState, stateValue, deviceId, name);
 
     const now = Date.now();
-    if (desiredOn && controlState.cooldownUntil && now < controlState.cooldownUntil) return false;
+    if (desiredOn && controlState.cooldownUntil && now < controlState.cooldownUntil) {
+      const remainingMs = controlState.cooldownUntil - now;
+      this.logDebug(
+        `EV charger: skip start ${name} (${deviceId}), cooldown ${(remainingMs / 1000).toFixed(1)}s remaining`,
+      );
+      return false;
+    }
 
     if (desiredOn) {
-      if (controlState.blockedReason) return false;
+      if (controlState.blockedReason) {
+        this.logDebug(
+          `EV charger: skip start ${name} (${deviceId}), blocked (${controlState.blockedReason})`,
+        );
+        return false;
+      }
       if (this.isEvChargerBlockedState(stateValue)) {
         this.blockEvCharger(controlState, deviceId, name, 'state not ready', stateValue);
         return false;
@@ -1750,14 +1765,21 @@ module.exports = class PelsApp extends Homey.App {
     const chargingCap = this.getEvChargerChargingCapability(snapshot);
     const capabilityId = chargingCap ?? 'onoff';
 
+    this.logDebug(
+      `EV charger: set ${capabilityId}=${desiredOn} for ${name} (${deviceId})`,
+    );
     try {
       await this.deviceManager.setCapability(deviceId, capabilityId, desiredOn);
       this.updateLocalSnapshot(deviceId, { on: desiredOn });
       controlState.failureCount = 0;
       controlState.cooldownUntil = undefined;
+      this.logDebug(`EV charger: ${desiredOn ? 'started' : 'stopped'} ${name} (${deviceId})`);
       return true;
     } catch (error) {
       const classification = this.classifyEvChargerError(error);
+      this.logDebug(
+        `EV charger: ${desiredOn ? 'start' : 'stop'} failed for ${name} (${deviceId}) - ${classification.message}`,
+      );
       if (desiredOn && classification.isDisconnected) {
         this.blockEvCharger(controlState, deviceId, name, 'charger disconnected', stateValue);
         return false;

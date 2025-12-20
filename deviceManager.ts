@@ -324,8 +324,7 @@ export class DeviceManager {
                 if (targetCaps.length === 0) {
                     const allowNonTargets = this.providers.allowDevicesWithoutTargets?.() ?? false;
                     const isEvChargerLike = capabilities.includes('evcharger_charging')
-                        && capabilities.includes('evcharger_charging_state')
-                        && capabilities.includes('charger_status');
+                        && capabilities.includes('evcharger_charging_state');
                     if (!allowNonTargets || !isEvChargerLike) {
                         return null;
                     }
