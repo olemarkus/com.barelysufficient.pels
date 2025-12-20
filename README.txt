@@ -1,3 +1,5 @@
 PELS (Pris- og Effektstyrt Energilagringssystem) helps you optimize energy usage in your home by managing when your largest energy consumers run. Currently it focuses on capacity management—staying within your power limits by intelligently shedding load from lower-priority devices when consumption approaches your limit. Future updates will add price-based control, heating water and thermal mass when electricity is cheap.
 
 Set your capacity limit, assign priorities to your thermostats and water heaters, and let PELS handle the rest. When power consumption approaches your limit, it sheds load from the lowest priority devices first, restoring them automatically when headroom becomes available. You can define different modes like Home, Away, or Night, each with their own temperature targets and priorities, and switch between them through Flows or the built-in mode indicator device.
+
+Advanced: EV charger handling is available behind a feature flag ("Enable EV charger handling" in the Advanced tab). It is off by default and only affects charger-like devices when enabled.

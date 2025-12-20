@@ -33,11 +33,13 @@ export class DeviceManager {
     private providers: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
+        allowDevicesWithoutTargets?: () => boolean;
     } = {};
 
     constructor(homey: Homey.App, logger: Logger, providers?: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
+        allowDevicesWithoutTargets?: () => boolean;
     }, powerState?: PowerEstimateState) {
         this.homey = homey;
         this.logger = logger;
@@ -320,8 +322,19 @@ export class DeviceManager {
 
                 const targetCaps = capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
                 if (targetCaps.length === 0) {
-                    return null;
+                    const allowNonTargets = this.providers.allowDevicesWithoutTargets?.() ?? false;
+                    const isEvChargerLike = capabilities.includes('evcharger_charging')
+                        && capabilities.includes('evcharger_charging_state');
+                    if (!allowNonTargets || !isEvChargerLike) {
+                        return null;
+                    }
                 }
+
+                const capabilityValues = capabilities.reduce<Record<string, unknown>>((acc, capId) => {
+                    const value = capabilityObj[capId]?.value;
+                    if (value !== undefined) acc[capId] = value;
+                    return acc;
+                }, {});
 
                 const targets = targetCaps.map((capId) => ({
                     id: capId,
@@ -357,6 +370,8 @@ export class DeviceManager {
                         || 'Unknown',
                     controllable: this.providers.getControllable ? this.providers.getControllable(deviceId) : undefined,
                     capabilities,
+                    capabilityValues,
+                    deviceClass: (device as { class?: string }).class,
                 };
             })
             .filter(Boolean) as TargetDeviceSnapshot[];

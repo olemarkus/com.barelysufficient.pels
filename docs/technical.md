@@ -196,3 +196,4 @@ PELS controls devices through Homey's local API. Cloud-only devices may have add
 ## Future Work / TODOs
 
 - Pricing strategies: current implementation assumes Norwegian spot + nettleie model. Introduce a pluggable price strategy interface (e.g., `PriceStrategy` with inputs for spot, tariffs, provider surcharges, taxes/VAT) so non-NO regions can drop in their own calculators without touching control logic. Keep aggregation/token outputs stable while swapping strategies.
+- EV charger price optimization: use EV charge target/battery meter to set target percentage (e.g. 50% normal, 100% cheap). Needs a real EV session to validate.

@@ -13,6 +13,8 @@ export interface TargetDeviceSnapshot {
     zone?: string;
     controllable?: boolean;
     capabilities?: string[];
+    capabilityValues?: Record<string, unknown>;
+    deviceClass?: string;
     lastUpdated?: number;
 }
 

@@ -16,6 +16,7 @@ export interface SettingsHandlerDeps {
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => void;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
+  updateEvChargerHandlingEnabled: (logChange?: boolean) => void;
   errorLog: (message: string, error: unknown) => void;
 }
 
@@ -97,6 +98,15 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
         break;
       case 'debug_logging_enabled':
         deps.updateDebugLoggingEnabled(true);
+        break;
+      case 'enable_evcharger_handling':
+        deps.updateEvChargerHandlingEnabled(true);
+        deps.refreshTargetDevicesSnapshot().then(() => {
+          deps.rebuildPlanFromCache();
+        }).catch((error: Error) => {
+          deps.errorLog('Failed to refresh devices after EV charger handling change', error);
+          deps.rebuildPlanFromCache();
+        });
         break;
       default:
         break;
