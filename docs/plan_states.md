@@ -24,7 +24,7 @@ This document describes how the Plan tab derives device state and the status tex
   - plannedState = "shed", reason = "shed due to capacity"
 - Hourly budget exhausted:
   - plannedState = "shed"
-  - reason = "shed due to exhausted hourly energy budget"
+  - reason = "shed due to hourly budget"
 - Device is off and can be restored:
   - If not in shortfall and enough headroom:
     - plannedState = "keep"
@@ -69,8 +69,6 @@ Parentheses indicate dynamic values.
 - swapped out for NAME
 - insufficient headroom (need XkW, headroom YkW)
 - shedding active
-- cooldown (shedding, Ss remaining)
-- cooldown (restore, Ss remaining)
 - restore throttled
 
 ## State vs Status
