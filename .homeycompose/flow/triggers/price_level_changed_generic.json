@@ -1,0 +1,18 @@
+{
+  "title": {
+    "en": "Price level changed"
+  },
+  "titleFormatted": {
+    "en": "Price level changed"
+  },
+  "tokens": [
+    {
+      "name": "level",
+      "type": "string",
+      "title": {
+        "en": "Price level"
+      }
+    }
+  ],
+  "id": "price_level_changed_generic"
+}

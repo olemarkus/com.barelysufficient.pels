@@ -10,6 +10,8 @@ import { PriceLevel } from './priceLevels';
 import { registerFlowCards } from './flowCards/registerFlowCards';
 
 const OPERATING_MODE_SETTING = 'operating_mode';
+const PRICE_LOGIC_SOURCE_SETTING = 'price_logic_source';
+const EXTERNAL_PRICE_LEVEL_SETTING = 'external_price_level';
 
 // Timing constants for shedding/restore behavior
 const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before considering restores
@@ -118,6 +120,8 @@ module.exports = class PelsApp extends Homey.App {
   // Flow token exposing capacity overhead (margin) in kW
   // Flow token exposing capacity overhead (margin) in kW
   private overheadToken?: Homey.FlowToken;
+  // Flow token exposing the current price level
+  private priceLevelToken?: Homey.FlowToken;
   // Track last measured power reading with timestamp to compare recency
   private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   // Price optimization settings per device: { deviceId: { enabled, cheapDelta, expensiveDelta } }
@@ -129,6 +133,7 @@ module.exports = class PelsApp extends Homey.App {
   private settingsHandler?: (key: string) => void;
   private lastNotifiedOperatingMode = 'Home';
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
+  private lastPriceLogicSource = 'internal';
 
   // Delegated to DeviceManager
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
@@ -193,6 +198,7 @@ module.exports = class PelsApp extends Homey.App {
       loadPriceOptimizationSettings: () => this.loadPriceOptimizationSettings(),
       priceService: this.priceService,
       updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
+      updatePriceLogicSource: (logChange) => this.updatePriceLogicSource(logChange),
       updateOverheadToken: (value) => void this.updateOverheadToken(value),
       updateDebugLoggingEnabled: (logChange) => this.updateDebugLoggingEnabled(logChange),
       errorLog: (message: string, error: unknown) => this.error(message, error as Error),
@@ -213,10 +219,13 @@ module.exports = class PelsApp extends Homey.App {
     this.lastNotifiedOperatingMode = this.operatingMode;
     this.registerFlowCards();
     this.startPeriodicSnapshotRefresh();
-    // Refresh prices (will use cache if we have today's data, and update combined_prices)
-    await this.priceService.refreshSpotPrices();
-    await this.priceService.refreshNettleieData();
-    this.startPriceRefresh();
+    this.lastPriceLogicSource = this.getPriceLogicSource();
+    if (!this.isExternalPriceLogic()) {
+      // Refresh prices (will use cache if we have today's data, and update combined_prices)
+      await this.priceService.refreshSpotPrices();
+      await this.priceService.refreshNettleieData();
+      this.startPriceRefresh();
+    }
     await this.startPriceOptimization();
   }
 
@@ -229,10 +238,7 @@ module.exports = class PelsApp extends Homey.App {
       clearInterval(this.snapshotRefreshInterval);
       this.snapshotRefreshInterval = undefined;
     }
-    if (this.priceRefreshInterval) {
-      clearInterval(this.priceRefreshInterval);
-      this.priceRefreshInterval = undefined;
-    }
+    this.stopPriceRefresh();
     this.priceOptimizer?.stop();
     // Guard no longer needs cleanup (no interval)
   }
@@ -266,6 +272,70 @@ module.exports = class PelsApp extends Homey.App {
     this.debugLoggingEnabled = enabled === true;
     if (logChange) {
       this.log(`Debug logging ${this.debugLoggingEnabled ? 'enabled' : 'disabled'}`);
+    }
+  }
+
+  private getPriceLogicSource(): string {
+    const source = this.homey.settings.get(PRICE_LOGIC_SOURCE_SETTING);
+    return typeof source === 'string' && source.trim() ? source.trim() : 'internal';
+  }
+
+  private isExternalPriceLogic(): boolean {
+    return this.getPriceLogicSource() === 'external';
+  }
+
+  private getExternalPriceLevel(): PriceLevel {
+    const raw = this.homey.settings.get(EXTERNAL_PRICE_LEVEL_SETTING);
+    const normalized = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+    if (Object.values(PriceLevel).includes(normalized as PriceLevel)) {
+      return normalized as PriceLevel;
+    }
+    return PriceLevel.UNKNOWN;
+  }
+
+  private updatePriceLogicSource(logChange = false): void {
+    const source = this.getPriceLogicSource();
+    if (logChange && source !== this.lastPriceLogicSource) {
+      this.log(`Price logic source set to ${source === 'external' ? 'external flow' : 'internal (spot prices)'}`);
+    }
+    this.lastPriceLogicSource = source;
+    if (source === 'external') {
+      this.stopPriceRefresh();
+    } else {
+      this.startPriceRefresh();
+      this.priceService.refreshSpotPrices().catch((error: Error) => {
+        this.error('Failed to refresh spot prices', error);
+      });
+      this.priceService.refreshNettleieData().catch((error: Error) => {
+        this.error('Failed to refresh nettleie data', error);
+      });
+    }
+    this.rebuildPlanFromCache();
+  }
+
+  private setExternalPriceLevel(level: PriceLevel): void {
+    const previous = this.getExternalPriceLevel();
+    const normalized = Object.values(PriceLevel).includes(level) ? level : PriceLevel.UNKNOWN;
+    this.homey.settings.set(EXTERNAL_PRICE_LEVEL_SETTING, normalized);
+    this.log(`External price level set to ${normalized}`);
+    if (this.isExternalPriceLogic() && normalized !== previous) {
+      this.lastNotifiedPriceLevel = normalized;
+      void this.updatePriceLevelToken(normalized);
+      const card = this.homey.flow?.getTriggerCard?.('price_level_changed');
+      if (card) {
+        card
+          .trigger({ level: normalized }, { priceLevel: normalized })
+          .catch((err: Error) => this.error('Failed to trigger price_level_changed', err));
+      }
+      const genericCard = this.homey.flow?.getTriggerCard?.('price_level_changed_generic');
+      if (genericCard) {
+        genericCard
+          .trigger({ level: normalized }, { priceLevel: normalized })
+          .catch((err: Error) => this.error('Failed to trigger price_level_changed_generic', err));
+      }
+    }
+    if (!this.isExternalPriceLogic()) {
+      this.logDebug(`External price level set to ${normalized} (ignored while internal price logic is active)`);
     }
   }
 
@@ -349,6 +419,39 @@ module.exports = class PelsApp extends Homey.App {
     this.homey.settings.set('power_tracker_state', this.powerTracker);
   }
 
+  private async ensurePriceLevelToken(level: PriceLevel): Promise<Homey.FlowToken | null> {
+    if (this.priceLevelToken) return this.priceLevelToken;
+    try {
+      this.priceLevelToken = await this.homey.flow.createToken('pels_price_level', {
+        type: 'string',
+        title: 'Price level',
+        value: level,
+      });
+      return this.priceLevelToken;
+    } catch (error) {
+      const err = error as { statusCode?: number };
+      const flowWithTokens = this.homey.flow as Homey.App['homey']['flow'] & {
+        getToken?: (id: string) => Promise<Homey.FlowToken>;
+      };
+      if (err?.statusCode === 409 && typeof flowWithTokens.getToken === 'function') {
+        this.priceLevelToken = await flowWithTokens.getToken('pels_price_level');
+        return this.priceLevelToken ?? null;
+      }
+      this.error('Failed to create pels_price_level token', error as Error);
+    }
+    return null;
+  }
+
+  private async updatePriceLevelToken(level: PriceLevel): Promise<void> {
+    try {
+      const token = await this.ensurePriceLevelToken(level);
+      if (!token) return;
+      await token.setValue(level);
+    } catch (error) {
+      this.error('Failed to update pels_price_level token', error as Error);
+    }
+  }
+
   private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
     await recordPowerSample({
       state: this.powerTracker,
@@ -373,6 +476,7 @@ module.exports = class PelsApp extends Homey.App {
       getCurrentOperatingMode: () => this.operatingMode,
       handleOperatingModeChange: (rawMode) => this.handleOperatingModeChange(rawMode),
       getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
+      setExternalPriceLevel: (level) => this.setExternalPriceLevel(level),
       recordPowerSample: (powerW) => this.recordPowerSample(powerW),
       getCapacityGuard: () => this.capacityGuard,
       getHeadroom: () => this.capacityGuard?.getHeadroom() ?? null,
@@ -413,6 +517,9 @@ module.exports = class PelsApp extends Homey.App {
   }
 
   private getCurrentPriceLevel(): PriceLevel {
+    if (this.isExternalPriceLogic()) {
+      return this.getExternalPriceLevel();
+    }
     const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
     return (status?.priceLevel || this.lastNotifiedPriceLevel) as PriceLevel;
   }
@@ -530,6 +637,9 @@ module.exports = class PelsApp extends Homey.App {
    * Check if the current hour is cheap (25% below average).
    */
   private isCurrentHourCheap(): boolean {
+    if (this.isExternalPriceLogic()) {
+      return this.getExternalPriceLevel() === PriceLevel.CHEAP;
+    }
     return this.priceService.isCurrentHourCheap();
   }
 
@@ -537,6 +647,9 @@ module.exports = class PelsApp extends Homey.App {
    * Check if the current hour is expensive (25% above average).
    */
   private isCurrentHourExpensive(): boolean {
+    if (this.isExternalPriceLogic()) {
+      return this.getExternalPriceLevel() === PriceLevel.EXPENSIVE;
+    }
     return this.priceService.isCurrentHourExpensive();
   }
 
@@ -544,6 +657,10 @@ module.exports = class PelsApp extends Homey.App {
    * Get a human-readable price info for the current hour.
    */
   private getCurrentHourPriceInfo(): string {
+    if (this.isExternalPriceLogic()) {
+      const level = this.getExternalPriceLevel();
+      return `External price level: ${level}`;
+    }
     return this.priceService.getCurrentHourPriceInfo();
   }
 
@@ -587,6 +704,14 @@ module.exports = class PelsApp extends Homey.App {
    * Note: Initial fetch is done in onInit before this is called.
    */
   private startPriceRefresh(): void {
+    if (this.isExternalPriceLogic()) {
+      this.logDebug('Price refresh skipped: external price logic selected');
+      return;
+    }
+    if (this.priceRefreshInterval) {
+      clearInterval(this.priceRefreshInterval);
+      this.priceRefreshInterval = undefined;
+    }
     // Refresh prices every 3 hours
     const refreshIntervalMs = 3 * 60 * 60 * 1000;
 
@@ -598,6 +723,13 @@ module.exports = class PelsApp extends Homey.App {
         this.error('Failed to refresh nettleie data', error);
       });
     }, refreshIntervalMs);
+  }
+
+  private stopPriceRefresh(): void {
+    if (this.priceRefreshInterval) {
+      clearInterval(this.priceRefreshInterval);
+      this.priceRefreshInterval = undefined;
+    }
   }
 
   private async getDeviceLoadSetting(deviceId: string): Promise<number | null> {
@@ -716,14 +848,18 @@ module.exports = class PelsApp extends Homey.App {
 
   private updatePelsStatus(plan: DevicePlan): void {
     // Compute price level
-    const isCheap = this.isCurrentHourCheap();
-    const isExpensive = this.isCurrentHourExpensive();
     let priceLevel: PriceLevel = PriceLevel.UNKNOWN;
-    const prices = this.homey.settings.get('combined_prices') as { prices?: Array<{ total: number }> } | null;
-    if (prices?.prices && prices.prices.length > 0) {
-      if (isCheap) priceLevel = PriceLevel.CHEAP;
-      else if (isExpensive) priceLevel = PriceLevel.EXPENSIVE;
-      else priceLevel = PriceLevel.NORMAL;
+    if (this.isExternalPriceLogic()) {
+      priceLevel = this.getExternalPriceLevel();
+    } else {
+      const isCheap = this.isCurrentHourCheap();
+      const isExpensive = this.isCurrentHourExpensive();
+      const prices = this.homey.settings.get('combined_prices') as { prices?: Array<{ total: number }> } | null;
+      if (prices?.prices && prices.prices.length > 0) {
+        if (isCheap) priceLevel = PriceLevel.CHEAP;
+        else if (isExpensive) priceLevel = PriceLevel.EXPENSIVE;
+        else priceLevel = PriceLevel.NORMAL;
+      }
     }
 
     const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
@@ -750,6 +886,7 @@ module.exports = class PelsApp extends Homey.App {
     };
 
     this.homey.settings.set('pels_status', status);
+    void this.updatePriceLevelToken(priceLevel);
 
     // Trigger price level changed flow card if price level changed
     if (priceLevel !== this.lastNotifiedPriceLevel) {
@@ -759,6 +896,12 @@ module.exports = class PelsApp extends Homey.App {
         card
           .trigger({ level: priceLevel }, { priceLevel })
           .catch((err: Error) => this.error('Failed to trigger price_level_changed', err));
+      }
+      const genericCard = this.homey.flow?.getTriggerCard?.('price_level_changed_generic');
+      if (genericCard) {
+        genericCard
+          .trigger({ level: priceLevel }, { priceLevel })
+          .catch((err: Error) => this.error('Failed to trigger price_level_changed_generic', err));
       }
     }
   }

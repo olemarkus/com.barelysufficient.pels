@@ -75,6 +75,9 @@ const priorityEmpty = qs('#priority-empty');
 const priceList = qs('#price-list');
 const priceEmpty = qs('#price-empty');
 const priceStatusBadge = qs('#price-status-badge');
+const priceLogicSourceSelect = document.querySelector('#price-logic-source') as HTMLSelectElement;
+const priceSourceInternal = qs('#price-source-internal');
+const priceSourceExternalNote = qs('#price-source-external-note');
 const priceSettingsForm = document.querySelector('#price-settings-form') as HTMLFormElement;
 const priceAreaSelect = document.querySelector('#price-area') as HTMLSelectElement;
 const providerSurchargeInput = document.querySelector('#provider-surcharge') as HTMLInputElement;
@@ -1163,13 +1166,31 @@ interface CombinedPriceData {
   lastFetched?: string;
 }
 
+const updatePriceSourceUI = () => {
+  const source = priceLogicSourceSelect?.value || 'internal';
+  const isExternal = source === 'external';
+  if (priceSourceInternal) priceSourceInternal.hidden = isExternal;
+  if (priceSourceExternalNote) priceSourceExternalNote.hidden = !isExternal;
+  if (priceList) priceList.hidden = isExternal;
+  if (priceEmpty) priceEmpty.hidden = isExternal;
+  if (priceRefreshButton) priceRefreshButton.disabled = isExternal;
+  if (priceStatusBadge && isExternal) {
+    priceStatusBadge.textContent = 'External';
+    priceStatusBadge.classList.remove('ok', 'warn');
+  }
+};
+
 const loadPriceSettings = async () => {
+  const priceLogicSource = await getSetting('price_logic_source');
   const priceArea = await getSetting('price_area');
   const providerSurcharge = await getSetting('provider_surcharge');
   const thresholdPercent = await getSetting('price_threshold_percent');
   const minDiffOre = await getSetting('price_min_diff_ore');
   const priceOptEnabled = await getSetting('price_optimization_enabled');
 
+  if (priceLogicSourceSelect) {
+    priceLogicSourceSelect.value = typeof priceLogicSource === 'string' ? priceLogicSource : 'internal';
+  }
   if (priceAreaSelect) {
     priceAreaSelect.value = typeof priceArea === 'string' ? priceArea : 'NO1';
   }
@@ -1186,13 +1207,18 @@ const loadPriceSettings = async () => {
     // Default to true if not set
     priceOptimizationEnabledCheckbox.checked = priceOptEnabled !== false;
   }
+  updatePriceSourceUI();
 };
 
 const savePriceSettings = async () => {
+  const priceLogicSource = priceLogicSourceSelect?.value || 'internal';
   const priceArea = priceAreaSelect?.value || 'NO1';
   const providerSurcharge = parseFloat(providerSurchargeInput?.value || '0') || 0;
   const thresholdPercent = parseInt(priceThresholdInput?.value || '25', 10) || 25;
   const minDiffOre = parseInt(priceMinDiffInput?.value || '0', 10) || 0;
+
+  await setSetting('price_logic_source', priceLogicSource);
+  updatePriceSourceUI();
 
   // Validate price area (whitelist of allowed values)
   const validPriceAreas = ['NO1', 'NO2', 'NO3', 'NO4', 'NO5'];
@@ -1219,9 +1245,11 @@ const savePriceSettings = async () => {
   await setSetting('price_min_diff_ore', minDiffOre);
   await showToast('Price settings saved.', 'ok');
 
-  // Trigger refresh of spot prices
-  await setSetting('refresh_spot_prices', Date.now());
-  await refreshPrices();
+  if (priceLogicSource !== 'external') {
+    // Trigger refresh of spot prices
+    await setSetting('refresh_spot_prices', Date.now());
+    await refreshPrices();
+  }
 };
 
 const getPriceData = async (): Promise<CombinedPriceData | null> => {
@@ -1444,6 +1472,10 @@ const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceCl
 
 const refreshPrices = async () => {
   try {
+    if (priceLogicSourceSelect?.value === 'external') {
+      updatePriceSourceUI();
+      return;
+    }
     const prices = await getPriceData();
     renderPrices(prices);
   } catch (error) {
@@ -1968,6 +2000,9 @@ const boot = async () => {
             refreshPrices().catch(() => {});
           }
         }
+        if (key === 'price_logic_source') {
+          loadPriceSettings().catch(() => {});
+        }
         if (key === OPERATING_MODE_KEY) {
           // Mode changed externally (e.g., via Flow) - refresh only active mode dropdown
           refreshActiveMode().catch(() => {});
@@ -2154,6 +2189,7 @@ const boot = async () => {
     providerSurchargeInput?.addEventListener('change', autoSavePriceSettings);
     priceThresholdInput?.addEventListener('change', autoSavePriceSettings);
     priceMinDiffInput?.addEventListener('change', autoSavePriceSettings);
+    priceLogicSourceSelect?.addEventListener('change', autoSavePriceSettings);
     priceSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
     priceRefreshButton?.addEventListener('click', async () => {
       await setSetting('refresh_spot_prices', Date.now());

@@ -14,6 +14,7 @@ export interface SettingsHandlerDeps {
   loadPriceOptimizationSettings: () => void;
   priceService: PriceService;
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
+  updatePriceLogicSource: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => void;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   errorLog: (message: string, error: unknown) => void;
@@ -93,6 +94,12 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
         break;
       case 'price_optimization_enabled':
         deps.updatePriceOptimizationEnabled(true);
+        deps.rebuildPlanFromCache();
+        break;
+      case 'price_logic_source':
+        deps.updatePriceLogicSource(true);
+        break;
+      case 'external_price_level':
         deps.rebuildPlanFromCache();
         break;
       case 'debug_logging_enabled':

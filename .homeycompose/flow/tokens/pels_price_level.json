@@ -1,0 +1,7 @@
+{
+  "id": "pels_price_level",
+  "type": "string",
+  "title": {
+    "en": "Price level"
+  }
+}
