@@ -1078,6 +1078,7 @@ const renderPlan = (plan) => {
       const hasTempData = dev.plannedTarget !== null && dev.plannedTarget !== undefined
         || dev.currentTarget !== null && dev.currentTarget !== undefined
         || dev.currentTemperature !== null && dev.currentTemperature !== undefined;
+      const hasChargerState = !hasTempData && dev.chargerState !== null && dev.chargerState !== undefined;
       if (hasTempData) {
         const tempLine = document.createElement('div');
         tempLine.className = 'plan-meta-line';
@@ -1093,6 +1094,16 @@ const renderPlan = (plan) => {
         tempValue.textContent = `${currentTemp} / target ${targetText}`;
         tempLine.append(tempLabel, tempValue);
         metaWrap.appendChild(tempLine);
+      } else if (hasChargerState) {
+        const chargerLine = document.createElement('div');
+        chargerLine.className = 'plan-meta-line';
+        const chargerLabel = document.createElement('span');
+        chargerLabel.className = 'plan-label';
+        chargerLabel.textContent = 'Charger';
+        const chargerValue = document.createElement('span');
+        chargerValue.textContent = String(dev.chargerState ?? '–');
+        chargerLine.append(chargerLabel, chargerValue);
+        metaWrap.appendChild(chargerLine);
       }
 
       const powerLine = document.createElement('div');

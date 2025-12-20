@@ -3342,6 +3342,125 @@ describe('Dry run mode', () => {
     expect(state?.blockedReason).toBeUndefined();
   });
 
+  it('treats plugged_out as a blocked EV charger state', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'onoff'],
+        capabilityValues: { evcharger_charging_state: 'plugged_out' },
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).setDevicePowerState('dev-1', true, 'Charger');
+    expect(mockSetCapability).not.toHaveBeenCalled();
+    const state = (app as any).evChargerControlStates['dev-1'];
+    expect(state?.blockedReason).toBeTruthy();
+  });
+
+  it('does not start restore cooldown when EV charger is blocked', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 5;
+    (app as any).capacityGuard = {
+      getLastTotalPower: () => 0,
+      isSheddingActive: () => false,
+      getRestoreMargin: () => 0.2,
+      isInShortfall: () => false,
+      setSheddingActive: () => {},
+      checkShortfall: () => {},
+    };
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'onoff'],
+        capabilityValues: { evcharger_charging_state: 'plugged_out' },
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+
+    const plan = (app as any).buildDevicePlanSnapshot((app as any).latestTargetSnapshot);
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+
+    expect((app as any).lastRestoreMs).toBeNull();
+    expect(devPlan?.plannedState).toBe('keep');
+    expect(devPlan?.reason).toContain('restore blocked');
+  });
+
+  it('keeps blocked EV chargers in restore state during global restore cooldown', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 5;
+    (app as any).capacityGuard = {
+      getLastTotalPower: () => 0,
+      isSheddingActive: () => false,
+      getRestoreMargin: () => 0.2,
+      isInShortfall: () => false,
+      setSheddingActive: () => {},
+      checkShortfall: () => {},
+    };
+
+    (app as any).lastRestoreMs = Date.now();
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'onoff'],
+        capabilityValues: { evcharger_charging_state: 'plugged_out' },
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+
+    const plan = (app as any).buildDevicePlanSnapshot((app as any).latestTargetSnapshot);
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+
+    expect(devPlan?.plannedState).toBe('keep');
+    expect(devPlan?.reason).toContain('restore blocked');
+  });
+
   it('blocks retries after ChargerDisconnected errors', async () => {
     const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
 

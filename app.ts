@@ -38,6 +38,7 @@ type DevicePlanDevice = {
   plannedState: string;
   currentTarget: unknown;
   plannedTarget: number | null;
+  chargerState?: string | null;
   priority?: number;
   powerKw?: number;
   expectedPowerKw?: number;
@@ -795,20 +796,9 @@ module.exports = class PelsApp extends Homey.App {
     }
   }
 
-  private buildDevicePlanSnapshot(devices: Array<{
-    id: string;
-    name: string;
-    targets: Array<{ id: string; value: unknown; unit: string }>;
-    powerKw?: number;
-    expectedPowerKw?: number;
-    measuredPowerKw?: number;
-    priority?: number;
-    currentOn?: boolean;
-    zone?: string;
-    controllable?: boolean;
-    currentTemperature?: number;
-  }>): DevicePlan {
+  private buildDevicePlanSnapshot(devices: TargetDeviceSnapshot[]): DevicePlan {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
+    const deviceById = new Map<string, TargetDeviceSnapshot>(devices.map((dev) => [dev.id, dev]));
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
     const softLimit = this.computeDynamicSoftLimit();
 
@@ -979,6 +969,9 @@ module.exports = class PelsApp extends Homey.App {
       }
 
       const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
+      const chargerState = typeof dev.capabilityValues?.evcharger_charging_state === 'string'
+        ? dev.capabilityValues.evcharger_charging_state
+        : null;
       // eslint-disable-next-line no-nested-ternary -- Clear boolean-to-state mapping
       const currentState = typeof dev.currentOn === 'boolean' ? (dev.currentOn ? 'on' : 'off') : 'unknown';
       const controllable = dev.controllable !== false;
@@ -1039,6 +1032,7 @@ module.exports = class PelsApp extends Homey.App {
         plannedState,
         currentTarget,
         plannedTarget,
+        chargerState,
         priority,
         powerKw: dev.powerKw,
         expectedPowerKw: dev.expectedPowerKw,
@@ -1183,6 +1177,17 @@ module.exports = class PelsApp extends Homey.App {
           ? Math.max(baseNeeded * RECENT_SHED_RESTORE_MULTIPLIER, baseNeeded + RECENT_SHED_EXTRA_BUFFER_KW)
           : baseNeeded;
 
+        const snapshot = deviceById.get(dev.id);
+        const blockedReason = this.evChargerHandlingEnabled && this.isEvChargerLike(snapshot)
+          ? (this.evChargerControlStates[dev.id]?.blockedReason
+            || (this.isEvChargerBlockedState(this.getEvChargerChargingState(snapshot)) ? 'state not ready' : null))
+          : null;
+
+        if (blockedReason) {
+          dev.reason = `restore blocked (${blockedReason})`;
+          continue;
+        }
+
         if (availableHeadroom >= needed) {
           // Enough headroom - restore this device
           availableHeadroom -= needed; // Reserve the hysteresis buffer (with any extra cushion)
@@ -1277,6 +1282,15 @@ module.exports = class PelsApp extends Homey.App {
       const offDevices = planDevices
         .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed');
       for (const dev of offDevices) {
+        const snapshot = deviceById.get(dev.id);
+        const blockedReason = this.evChargerHandlingEnabled && this.isEvChargerLike(snapshot)
+          ? (this.evChargerControlStates[dev.id]?.blockedReason
+            || (this.isEvChargerBlockedState(this.getEvChargerChargingState(snapshot)) ? 'state not ready' : null))
+          : null;
+        if (blockedReason) {
+          dev.reason = `restore blocked (${blockedReason})`;
+          continue;
+        }
         dev.plannedState = 'shed';
         const defaultReason = shedReasons.get(dev.id) || 'shed due to capacity';
         // eslint-disable-next-line no-nested-ternary -- Clear state-dependent reason selection
@@ -1669,6 +1683,7 @@ module.exports = class PelsApp extends Homey.App {
     const normalized = state.toLowerCase();
     return normalized.includes('disconnect')
       || normalized.includes('unplug')
+      || normalized.includes('plugged_out')
       || normalized.includes('not_plugged')
       || normalized.includes('not plugged')
       || normalized.includes('not_connected')
