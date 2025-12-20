@@ -3271,6 +3271,26 @@ describe('Dry run mode', () => {
     expect(devPlan.plannedState).toBe('shed');
   });
 
+  it('defaults EV charger devices to off for capacity and price when flag enabled', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    const controllables = mockHomeyInstance.settings.get('controllable_devices');
+    expect(controllables?.['dev-1']).toBe(false);
+
+    const priceSettings = mockHomeyInstance.settings.get('price_optimization_settings');
+    expect(priceSettings?.['dev-1']?.enabled).toBe(false);
+  });
+
   it('blocks start attempts when charger state is disconnected and unblocks on state change', async () => {
     const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
 

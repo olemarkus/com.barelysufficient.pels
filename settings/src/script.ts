@@ -103,7 +103,11 @@ const deviceDetailTitle = qs('#device-detail-title');
 const deviceDetailClose = qs('#device-detail-close') as HTMLButtonElement;
 const deviceDetailControllable = document.querySelector('#device-detail-controllable') as HTMLInputElement;
 const deviceDetailPriceOpt = document.querySelector('#device-detail-price-opt') as HTMLInputElement;
+const deviceDetailPriceOptRow = qs('#device-detail-price-opt-row');
+const deviceDetailPriceOptNote = qs('#device-detail-price-opt-note');
 const deviceDetailModes = qs('#device-detail-modes');
+const deviceDetailModesSection = qs('#device-detail-modes-section');
+const deviceDetailModesNote = qs('#device-detail-modes-note');
 const deviceDetailDeltaSection = qs('#device-detail-delta-section');
 const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement;
 const deviceDetailExpensiveDelta = document.querySelector('#device-detail-expensive-delta') as HTMLInputElement;
@@ -112,6 +116,7 @@ const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
 const deviceDetailShedTemp = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
 
 let currentDetailDeviceId: string | null = null;
+let currentDetailHasTemp = false;
 
 // Norwegian grid companies with organization numbers and counties
 // Data from NVE nettleietariffer API
@@ -279,6 +284,8 @@ const setBusy = (busy) => {
   refreshButton.disabled = busy;
 };
 
+const hasTemperatureTarget = (device) => Array.isArray(device?.targets) && device.targets.length > 0;
+
 const renderDevices = (devices) => {
   deviceList.innerHTML = '';
 
@@ -311,6 +318,8 @@ const renderDevices = (devices) => {
     });
     ctrlLabel.append(ctrlInput);
 
+    const hasTemp = hasTemperatureTarget(device);
+
     // Price optimization checkbox (icon only)
     const priceOptLabel = document.createElement('label');
     priceOptLabel.className = 'checkbox-icon';
@@ -318,8 +327,10 @@ const renderDevices = (devices) => {
     const priceOptInput = document.createElement('input');
     priceOptInput.type = 'checkbox';
     const config = priceOptimizationSettings[device.id];
-    priceOptInput.checked = config?.enabled || false;
+    priceOptInput.checked = hasTemp && (config?.enabled || false);
+    priceOptInput.disabled = !hasTemp;
     priceOptInput.addEventListener('change', async () => {
+      if (!hasTemp) return;
       if (!priceOptimizationSettings[device.id]) {
         priceOptimizationSettings[device.id] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
       }
@@ -328,6 +339,9 @@ const renderDevices = (devices) => {
       renderPriceOptimization(latestDevices);
     });
     priceOptLabel.append(priceOptInput);
+    if (!hasTemp) {
+      priceOptLabel.style.visibility = 'hidden';
+    }
 
     // Make the name clickable to open device detail
     nameWrap.style.cursor = 'pointer';
@@ -819,28 +833,39 @@ const renderPriorities = (devices) => {
 
     const controls = document.createElement('div');
     controls.className = 'device-row__target mode-row__inputs';
-    const desired = getDesiredTarget(device);
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.step = '0.5';
-    input.inputMode = 'decimal';
-    input.placeholder = 'Desired °C';
-    input.value = desired === null ? '' : desired.toString();
-    input.dataset.deviceId = device.id;
-    input.className = 'mode-target-input';
-    input.addEventListener('change', () => {
-      applyTargetChange(device.id, input.value);
-    });
+    const hasTemp = hasTemperatureTarget(device);
+    const desired = hasTemp ? getDesiredTarget(device) : null;
+    let input: HTMLInputElement | null = null;
+    let targetNode: HTMLElement;
+    if (hasTemp) {
+      input = document.createElement('input');
+      input.type = 'number';
+      input.step = '0.5';
+      input.inputMode = 'decimal';
+      input.placeholder = 'Desired °C';
+      input.value = desired === null ? '' : desired.toString();
+      input.dataset.deviceId = device.id;
+      input.className = 'mode-target-input';
+      input.addEventListener('change', () => {
+        applyTargetChange(device.id, input.value);
+      });
+      targetNode = input;
+    } else {
+      const placeholder = document.createElement('span');
+      placeholder.className = 'mode-target-input muted';
+      placeholder.textContent = '—';
+      targetNode = placeholder;
+    }
     const badge = document.createElement('span');
     badge.className = 'chip priority-badge';
     badge.textContent = '…';
-    controls.append(input, badge);
+    controls.append(targetNode, badge);
 
     const badgeWrap = document.createElement('div');
     badgeWrap.className = 'mode-row__inputs';
     badgeWrap.appendChild(badge);
 
-    row.append(handle, name, input, badgeWrap);
+    row.append(handle, name, targetNode, badgeWrap);
     priorityList.appendChild(row);
   });
 
@@ -1573,6 +1598,7 @@ const renderPriceOptimization = (devices: any[]) => {
 
   // Filter to only show devices with price optimization enabled
   const enabledDevices = (devices || []).filter((device) => {
+    if (!hasTemperatureTarget(device)) return false;
     const config = priceOptimizationSettings[device.id];
     return config?.enabled === true;
   });
@@ -1661,6 +1687,7 @@ const openDeviceDetail = (deviceId: string) => {
   if (deviceDetailTitle) {
     deviceDetailTitle.textContent = device.name;
   }
+  currentDetailHasTemp = hasTemperatureTarget(device);
 
   // Set control checkboxes
   if (deviceDetailControllable) {
@@ -1670,11 +1697,26 @@ const openDeviceDetail = (deviceId: string) => {
   const priceConfig = priceOptimizationSettings[deviceId];
   if (deviceDetailPriceOpt) {
     deviceDetailPriceOpt.checked = priceConfig?.enabled || false;
+    deviceDetailPriceOpt.disabled = !currentDetailHasTemp;
+  }
+  if (deviceDetailPriceOptRow) {
+    deviceDetailPriceOptRow.style.display = currentDetailHasTemp ? '' : 'none';
+  }
+  if (deviceDetailPriceOptNote) {
+    deviceDetailPriceOptNote.style.display = currentDetailHasTemp ? '' : 'none';
   }
 
   const shedConfig = shedBehaviors[deviceId];
   if (deviceDetailShedAction) {
     deviceDetailShedAction.value = shedConfig?.action || 'turn_off';
+    const tempOption = deviceDetailShedAction.querySelector('option[value="set_temperature"]') as HTMLOptionElement | null;
+    if (tempOption) {
+      tempOption.disabled = !currentDetailHasTemp;
+      tempOption.hidden = !currentDetailHasTemp;
+    }
+    if (!currentDetailHasTemp) {
+      deviceDetailShedAction.value = 'turn_off';
+    }
   }
   if (deviceDetailShedTemp) {
     const temp = shedConfig?.temperature;
@@ -1695,6 +1737,12 @@ const openDeviceDetail = (deviceId: string) => {
   // Show/hide delta section based on price optimization enabled
   updateDeltaSectionVisibility();
   updateShedTempVisibility();
+  if (deviceDetailModesSection) {
+    deviceDetailModesSection.style.display = currentDetailHasTemp ? '' : 'none';
+  }
+  if (deviceDetailModesNote) {
+    deviceDetailModesNote.style.display = currentDetailHasTemp ? '' : 'none';
+  }
 
   // Show panel
   if (deviceDetailOverlay) {
@@ -1711,7 +1759,7 @@ const closeDeviceDetail = () => {
 
 const updateDeltaSectionVisibility = () => {
   if (deviceDetailDeltaSection && deviceDetailPriceOpt) {
-    deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.checked ? 'block' : 'none';
+    deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.checked && currentDetailHasTemp ? 'block' : 'none';
   }
 };
 
@@ -1728,9 +1776,9 @@ const getShedDefaultTemp = (deviceId: string | null): number => {
 const updateShedTempVisibility = () => {
   if (!deviceDetailShedAction || !deviceDetailShedTempRow) return;
   const isTemp = deviceDetailShedAction.value === 'set_temperature';
-  deviceDetailShedTempRow.hidden = !isTemp;
+  deviceDetailShedTempRow.hidden = !isTemp || !currentDetailHasTemp;
   if (deviceDetailShedTemp) {
-    deviceDetailShedTemp.disabled = !isTemp;
+    deviceDetailShedTemp.disabled = !isTemp || !currentDetailHasTemp;
     if (isTemp && !deviceDetailShedTemp.value) {
       const fallback = getShedDefaultTemp(currentDetailDeviceId);
       deviceDetailShedTemp.value = fallback.toString();
@@ -1741,6 +1789,13 @@ const updateShedTempVisibility = () => {
 const renderDeviceDetailModes = (device: any) => {
   if (!deviceDetailModes) return;
   deviceDetailModes.innerHTML = '';
+  if (!hasTemperatureTarget(device)) {
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = 'No temperature control capability available for this device.';
+    deviceDetailModes.appendChild(note);
+    return;
+  }
 
   // Collect all modes
   const modes = new Set([activeMode]);

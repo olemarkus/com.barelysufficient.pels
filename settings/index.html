@@ -366,11 +366,11 @@
             </label>
             <p class="muted">Allow PELS to adjust this device based on power capacity limits.</p>
             
-            <label class="checkbox-field">
+            <label class="checkbox-field" id="device-detail-price-opt-row">
               <input type="checkbox" id="device-detail-price-opt">
               <span>Price-based control</span>
             </label>
-            <p class="muted">Adjust temperature based on electricity price fluctuations.</p>
+            <p class="muted" id="device-detail-price-opt-note">Adjust temperature based on electricity price fluctuations.</p>
 
             <label class="field">
               <span class="field__label">When shedding</span>
@@ -388,9 +388,9 @@
           </div>
         </section>
         
-        <section class="detail-section">
+        <section class="detail-section" id="device-detail-modes-section">
           <h3>Temperature per mode</h3>
-          <p class="muted">Set the target temperature for each mode. PELS will set this when the mode is active.</p>
+          <p class="muted" id="device-detail-modes-note">Set the target temperature for each mode. PELS will set this when the mode is active.</p>
           <div id="device-detail-modes" class="detail-mode-list"></div>
         </section>
         

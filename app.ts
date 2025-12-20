@@ -139,6 +139,7 @@ module.exports = class PelsApp extends Homey.App {
     expensiveDelta: number;
   }> = {};
   private settingsHandler?: (key: string) => void;
+  private suppressSettingsHandler = false;
   private lastNotifiedOperatingMode = 'Home';
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
@@ -216,6 +217,7 @@ module.exports = class PelsApp extends Homey.App {
       errorLog: (message: string, error: unknown) => this.error(message, error as Error),
     });
     this.homey.settings.on('set', (key: string) => {
+      if (this.suppressSettingsHandler) return;
       this.settingsHandler?.(key);
       if (key === OPERATING_MODE_SETTING) {
         this.notifyOperatingModeChanged(this.operatingMode);
@@ -512,9 +514,13 @@ module.exports = class PelsApp extends Homey.App {
 
     await this.deviceManager.refreshSnapshot();
     const snapshot = this.deviceManager.getSnapshot();
+    const defaultsChanged = this.applyEvChargerDefaults(snapshot);
 
     this.homey.settings.set('target_devices_snapshot', snapshot);
     this.logDebug(`Stored snapshot with ${snapshot.length} devices`);
+    if (defaultsChanged) {
+      this.rebuildPlanFromCache();
+    }
     // Note: We don't call buildDevicePlanSnapshot() here - plan building happens
     // in rebuildPlanFromCache() which is called during recordPowerSample().
     // This prevents duplicate plan builds when periodic refresh coincides with power samples.
@@ -1761,6 +1767,37 @@ module.exports = class PelsApp extends Homey.App {
       }
       return false;
     }
+  }
+
+  private applyEvChargerDefaults(snapshot: TargetDeviceSnapshot[]): boolean {
+    if (!this.evChargerHandlingEnabled) return false;
+    let changed = false;
+    const updatedControllables = { ...this.controllableDevices };
+    const updatedPriceSettings = { ...this.priceOptimizationSettings };
+
+    for (const device of snapshot) {
+      if (!this.isEvChargerLike(device)) continue;
+      if (updatedControllables[device.id] === undefined) {
+        updatedControllables[device.id] = false;
+        changed = true;
+      }
+      if (!updatedPriceSettings[device.id]) {
+        updatedPriceSettings[device.id] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
+        changed = true;
+      }
+    }
+
+    if (!changed) return false;
+    this.controllableDevices = updatedControllables;
+    this.priceOptimizationSettings = updatedPriceSettings;
+    this.suppressSettingsHandler = true;
+    try {
+      this.homey.settings.set('controllable_devices', updatedControllables);
+      this.homey.settings.set('price_optimization_settings', updatedPriceSettings);
+    } finally {
+      this.suppressSettingsHandler = false;
+    }
+    return true;
   }
 
   // eslint-disable-next-line max-len -- Plan structure has dynamic target values
