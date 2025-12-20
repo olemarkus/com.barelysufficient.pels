@@ -29,6 +29,7 @@ export interface FlowCardDeps {
   getCurrentOperatingMode: () => string;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getCurrentPriceLevel: () => PriceLevel;
+  setExternalPriceLevel: (level: PriceLevel) => void;
   recordPowerSample: (powerW: number) => Promise<void>;
   getCapacityGuard: () => CapacityGuard | undefined;
   getHeadroom: () => number | null;
@@ -86,6 +87,9 @@ export function registerFlowCards(deps: FlowCardDeps): void {
       .map((opt) => ({ id: opt.id, name: opt.name }));
   });
 
+  const priceLevelChangedGenericTrigger = homey.flow.getTriggerCard('price_level_changed_generic');
+  priceLevelChangedGenericTrigger.registerRunListener(async () => true);
+
   const priceLevelIsCond = homey.flow.getConditionCard('price_level_is');
   priceLevelIsCond.registerRunListener(async (args: { level: string | { id: string; name: string } }) => {
     const argLevelValue = typeof args.level === 'object' && args.level !== null ? args.level.id : args.level;
@@ -94,6 +98,20 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     return chosenLevel === currentLevel;
   });
   priceLevelIsCond.registerArgumentAutocompleteListener('level', async (query: string) => {
+    const q = (query || '').toLowerCase();
+    return PRICE_LEVEL_OPTIONS.filter((opt) => !q || opt.name.toLowerCase().includes(q));
+  });
+
+  const setPriceLevelAction = homey.flow.getActionCard('set_price_level');
+  setPriceLevelAction.registerRunListener(async (args: { level: string | { id: string; name: string } }) => {
+    const argLevelValue = typeof args.level === 'object' && args.level !== null ? args.level.id : args.level;
+    const chosenLevelRaw = (argLevelValue || '').trim().toLowerCase();
+    const chosenLevel = (chosenLevelRaw || PriceLevel.UNKNOWN) as PriceLevel;
+    deps.log(`Flow: set external price level to ${chosenLevel}`);
+    deps.setExternalPriceLevel(chosenLevel);
+    return true;
+  });
+  setPriceLevelAction.registerArgumentAutocompleteListener('level', async (query: string) => {
     const q = (query || '').toLowerCase();
     return PRICE_LEVEL_OPTIONS.filter((opt) => !q || opt.name.toLowerCase().includes(q));
   });

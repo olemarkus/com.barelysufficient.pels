@@ -104,7 +104,34 @@
             }
           }
         ],
+        "tokens": [
+          {
+            "name": "level",
+            "type": "string",
+            "title": {
+              "en": "Price level"
+            }
+          }
+        ],
         "id": "price_level_changed"
+      },
+      {
+        "title": {
+          "en": "Price level changed"
+        },
+        "titleFormatted": {
+          "en": "Price level changed"
+        },
+        "tokens": [
+          {
+            "name": "level",
+            "type": "string",
+            "title": {
+              "en": "Price level"
+            }
+          }
+        ],
+        "id": "price_level_changed_generic"
       }
     ],
     "conditions": [
@@ -319,6 +346,33 @@
           }
         ],
         "id": "set_expected_power_usage"
+      },
+      {
+        "title": {
+          "en": "Set price level"
+        },
+        "titleFormatted": {
+          "en": "Set price level to [[level]]"
+        },
+        "args": [
+          {
+            "name": "level",
+            "type": "autocomplete",
+            "title": {
+              "en": "Price level"
+            },
+            "placeholder": {
+              "en": "Choose a price level"
+            },
+            "example": {
+              "en": "Cheap"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Use this with external price logic to feed PELS the current price mode from your own source."
+        },
+        "id": "set_price_level"
       }
     ]
   },

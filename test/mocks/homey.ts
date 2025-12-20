@@ -179,6 +179,15 @@ export const mockHomeyInstance = {
         },
       };
     },
+    getToken: async (id: string) => {
+      const token = mockHomeyInstance.flow._tokens[id];
+      if (!token) throw new Error(`token ${id} not found`);
+      return {
+        setValue: async (nextValue: any) => {
+          mockHomeyInstance.flow._tokens[id].value = nextValue;
+        },
+      };
+    },
     getActionCard: (cardId: string) => ({
       registerRunListener: (listener: (args: any) => Promise<any>) => {
         mockHomeyInstance.flow._actionCardListeners[cardId] = listener;

@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Price level changed to"
+    "en": "Set price level"
   },
   "titleFormatted": {
-    "en": "Price level changed to [[level]]"
+    "en": "Set price level to [[level]]"
   },
   "args": [
     {
@@ -20,14 +20,7 @@
       }
     }
   ],
-  "tokens": [
-    {
-      "name": "level",
-      "type": "string",
-      "title": {
-        "en": "Price level"
-      }
-    }
-  ],
-  "id": "price_level_changed"
+  "hint": {
+    "en": "Use this with external price logic to feed PELS the current price mode from your own source."
+  }
 }
