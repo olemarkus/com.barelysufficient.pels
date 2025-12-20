@@ -3018,11 +3018,8 @@ describe('Dry run mode', () => {
     const dev2Plan = plan2.devices.find((d: any) => d.id === 'dev-2');
     expect(dev1Plan.plannedState).toBe('shed');
     expect(dev2Plan.plannedState).toBe('shed');
-    if (shedDevice.id === 'dev-1') {
-      expect(dev1Plan.plannedTarget).toBe(15);
-    } else {
-      expect(dev2Plan.plannedTarget).toBe(15);
-    }
+    expect(dev1Plan.plannedTarget).toBe(15);
+    expect(dev2Plan.plannedTarget).toBe(15);
   });
 
 
