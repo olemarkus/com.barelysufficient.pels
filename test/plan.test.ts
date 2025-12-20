@@ -3410,4 +3410,53 @@ describe('Dry run mode', () => {
 
     expect(mockSetCapability).toHaveBeenCalledTimes(2);
   });
+
+  it('allows stop commands during cooldown', async () => {
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('enable_evcharger_handling', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Charger',
+        capabilities: ['evcharger_charging', 'onoff'],
+        capabilityValues: {},
+        currentOn: true,
+        controllable: true,
+      },
+    ]);
+
+    const now = 1000;
+    const controlState = (app as any).getEvChargerControlState('dev-1');
+    controlState.cooldownUntil = now + 60000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    try {
+      await (app as any).setDevicePowerState('dev-1', false, 'Charger');
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(mockSetCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'evcharger_charging',
+      value: false,
+    });
+  });
 });

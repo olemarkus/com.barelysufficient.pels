@@ -1730,7 +1730,7 @@ module.exports = class PelsApp extends Homey.App {
     this.maybeUnblockEvCharger(controlState, stateValue, deviceId, name);
 
     const now = Date.now();
-    if (controlState.cooldownUntil && now < controlState.cooldownUntil) return false;
+    if (desiredOn && controlState.cooldownUntil && now < controlState.cooldownUntil) return false;
 
     if (desiredOn) {
       if (controlState.blockedReason) return false;
