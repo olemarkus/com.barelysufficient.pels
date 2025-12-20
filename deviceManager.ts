@@ -323,10 +323,9 @@ export class DeviceManager {
                 const targetCaps = capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
                 if (targetCaps.length === 0) {
                     const allowNonTargets = this.providers.allowDevicesWithoutTargets?.() ?? false;
-                    const deviceClass = (device.class || '').toString().toLowerCase();
-                    const isEvChargerLike = deviceClass === 'evcharger'
-                        || capabilities.includes('evcharger_charging')
-                        || capabilities.includes('evcharger_charging_state');
+                    const isEvChargerLike = capabilities.includes('evcharger_charging')
+                        && capabilities.includes('evcharger_charging_state')
+                        && capabilities.includes('charger_status');
                     if (!allowNonTargets || !isEvChargerLike) {
                         return null;
                     }

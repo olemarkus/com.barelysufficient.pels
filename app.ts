@@ -1649,9 +1649,10 @@ module.exports = class PelsApp extends Homey.App {
 
   private isEvChargerLike(snapshot?: TargetDeviceSnapshot): boolean {
     if (!snapshot) return false;
-    if ((snapshot.deviceClass || '').toLowerCase() === 'evcharger') return true;
     const caps = snapshot.capabilities || [];
-    return caps.includes('evcharger_charging') || caps.includes('evcharger_charging_state');
+    return caps.includes('evcharger_charging')
+      && caps.includes('evcharger_charging_state')
+      && caps.includes('charger_status');
   }
 
   private getEvChargerChargingCapability(snapshot?: TargetDeviceSnapshot): string | null {

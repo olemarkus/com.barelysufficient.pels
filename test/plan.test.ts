@@ -3164,7 +3164,7 @@ describe('Dry run mode', () => {
   });
 
   it('uses onoff when EV charger handling is disabled', async () => {
-    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff']);
     await dev1.setCapabilityValue('onoff', false);
 
     setMockDrivers({
@@ -3180,7 +3180,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-1',
         name: 'Charger',
-        capabilities: ['evcharger_charging', 'onoff'],
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff'],
         capabilityValues: {},
         currentOn: false,
         controllable: true,
@@ -3204,7 +3204,7 @@ describe('Dry run mode', () => {
   });
 
   it('uses evcharger_charging when EV charger handling is enabled', async () => {
-    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff']);
     await dev1.setCapabilityValue('onoff', false);
 
     setMockDrivers({
@@ -3220,7 +3220,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-1',
         name: 'Charger',
-        capabilities: ['evcharger_charging', 'onoff'],
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff'],
         capabilityValues: {},
         currentOn: false,
         controllable: true,
@@ -3244,7 +3244,7 @@ describe('Dry run mode', () => {
   });
 
   it('includes EV chargers without target capabilities when feature flag enabled', async () => {
-    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff']);
     await dev1.setCapabilityValue('onoff', true);
 
     setMockDrivers({
@@ -3272,7 +3272,7 @@ describe('Dry run mode', () => {
   });
 
   it('defaults EV charger devices to off for capacity and price when flag enabled', async () => {
-    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff']);
     await dev1.setCapabilityValue('onoff', true);
 
     setMockDrivers({
@@ -3292,7 +3292,7 @@ describe('Dry run mode', () => {
   });
 
   it('blocks start attempts when charger state is disconnected and unblocks on state change', async () => {
-    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff']);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -3314,7 +3314,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-1',
         name: 'Charger',
-        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'onoff'],
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff'],
         capabilityValues: { evcharger_charging_state: 'disconnected' },
         currentOn: false,
         controllable: true,
@@ -3330,7 +3330,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-1',
         name: 'Charger',
-        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'onoff'],
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff'],
         capabilityValues: { evcharger_charging_state: 'ready' },
         currentOn: false,
         controllable: true,
@@ -3343,7 +3343,7 @@ describe('Dry run mode', () => {
   });
 
   it('blocks retries after ChargerDisconnected errors', async () => {
-    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff']);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -3365,7 +3365,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-1',
         name: 'Charger',
-        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'onoff'],
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff'],
         capabilityValues: { evcharger_charging_state: 'ready' },
         currentOn: false,
         controllable: true,
@@ -3381,7 +3381,7 @@ describe('Dry run mode', () => {
   });
 
   it('applies cooldown after timeouts and retries after cooldown', async () => {
-    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff']);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -3405,7 +3405,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-1',
         name: 'Charger',
-        capabilities: ['evcharger_charging', 'onoff'],
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff'],
         capabilityValues: {},
         currentOn: false,
         controllable: true,
@@ -3432,7 +3432,7 @@ describe('Dry run mode', () => {
   });
 
   it('allows stop commands during cooldown', async () => {
-    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'onoff']);
+    const dev1 = new MockDevice('dev-1', 'Charger', ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff']);
     await dev1.setCapabilityValue('onoff', true);
 
     setMockDrivers({
@@ -3448,7 +3448,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-1',
         name: 'Charger',
-        capabilities: ['evcharger_charging', 'onoff'],
+        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'charger_status', 'onoff'],
         capabilityValues: {},
         currentOn: true,
         controllable: true,
