@@ -238,10 +238,9 @@ class PelsApp extends Homey.App {
     if (isFiniteNumber(limit)) this.capacitySettings.limitKw = limit;
     if (isFiniteNumber(margin)) this.capacitySettings.marginKw = margin;
     if (isStringMap(modeAliases)) {
-      this.modeAliases = Object.entries(modeAliases).reduce<Record<string, string>>((acc, [k, v]) => ({
-        ...acc,
-        [k.toLowerCase()]: v,
-      }), {});
+      this.modeAliases = Object.fromEntries(
+        Object.entries(modeAliases).map(([k, v]) => [k.toLowerCase(), v]),
+      );
     }
     if (typeof modeRaw === 'string' && modeRaw.length > 0) {
       const resolvedMode = resolveModeNameHelper(modeRaw, this.modeAliases);

@@ -25,20 +25,20 @@ export function getAllModes(
 
 export function normalizeShedBehaviors(input: unknown): Record<string, ShedBehavior> {
   if (!isRecord(input)) return {};
-  return Object.keys(input).reduce<Record<string, ShedBehavior>>((acc, deviceId) => {
-    const raw = input[deviceId];
-    if (!raw || typeof raw !== 'object') return acc;
+  const entries = Object.entries(input).flatMap(([deviceId, raw]) => {
+    if (!raw || typeof raw !== 'object') return [];
     const candidate = raw as { action?: unknown; temperature?: unknown };
     const action: ShedAction = candidate.action === 'set_temperature' ? 'set_temperature' : 'turn_off';
     const tempRaw = candidate.temperature;
     const temperature = typeof tempRaw === 'number' && Number.isFinite(tempRaw)
       ? Math.max(-50, Math.min(50, tempRaw))
       : undefined;
-    const next = action === 'set_temperature' && typeof temperature === 'number'
+    const behavior = action === 'set_temperature' && typeof temperature === 'number'
       ? { action, temperature }
       : { action };
-    return { ...acc, [deviceId]: next };
-  }, {});
+    return [[deviceId, behavior]];
+  });
+  return Object.fromEntries(entries);
 }
 
 export function getShedBehavior(
