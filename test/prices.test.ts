@@ -25,6 +25,21 @@ jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', '
 // Helper to wait for async operations
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
+const createErroringRequest = () => {
+  const req: any = {
+    on: jest.fn(),
+    setTimeout: jest.fn(),
+    destroy: jest.fn(),
+  };
+  req.on.mockImplementation((event: string, handler: Function) => {
+    if (event === 'error') {
+      handler(new Error('Network error'));
+    }
+    return req;
+  });
+  return req;
+};
+
 // Mock response data structures based on real API responses
 const mockHvakosterStrommenResponse = [
   {
@@ -143,7 +158,6 @@ describe('Spot price fetching', () => {
   let mockHttpsGet: jest.Mock;
   let allowConsoleErrorUntilCleanup = false;
   // Use require to avoid ESM extension issues in TS tests
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { setAllowConsoleError } = require('./setup');
 
   beforeEach(() => {
@@ -317,19 +331,7 @@ describe('Spot price fetching', () => {
 
     mockHomeyInstance.settings.set('price_area', 'NO1');
 
-    mockHttpsGet.mockImplementation((_url: string, _options: any, _callback: Function) => {
-      const req: any = {
-        on: jest.fn((event: string, handler: Function): any => {
-          if (event === 'error') {
-            handler(new Error('Network error'));
-          }
-          return req;
-        }),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
-      };
-      return req;
-    });
+    mockHttpsGet.mockImplementation(() => createErroringRequest());
 
     setAllowConsoleError(true);
     allowConsoleErrorUntilCleanup = true;

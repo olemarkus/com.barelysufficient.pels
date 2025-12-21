@@ -99,4 +99,4 @@ class PelsInsightsDevice extends Homey.Device {
   }
 }
 
-module.exports = PelsInsightsDevice;
+export = PelsInsightsDevice;

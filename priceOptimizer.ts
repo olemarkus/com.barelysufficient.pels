@@ -1,14 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- Homey APIs are untyped */
 import { CombinedHourlyPrice } from './priceService';
 import { PriceLevel } from './priceLevels';
 
-export interface PriceOptimizationSettings {
+export type PriceOptimizationSettings = {
   enabled: boolean;
   cheapDelta: number;
   expensiveDelta: number;
-}
+};
 
-export interface PriceOptimizerDeps {
+export type PriceOptimizerDeps = {
   priceStatus: {
     getCurrentLevel: () => PriceLevel;
     isCurrentHourCheap: () => boolean;
@@ -24,7 +23,7 @@ export interface PriceOptimizerDeps {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
-}
+};
 
 export class PriceOptimizer {
   private interval?: ReturnType<typeof setInterval>;
@@ -63,7 +62,13 @@ export class PriceOptimizer {
       + `isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`,
     );
 
-    this.deps.rebuildPlan(`price optimization (${isCheap ? 'cheap' : isExpensive ? 'expensive' : 'normal'} hour)`);
+    let hourLabel = 'normal';
+    if (isCheap) {
+      hourLabel = 'cheap';
+    } else if (isExpensive) {
+      hourLabel = 'expensive';
+    }
+    this.deps.rebuildPlan(`price optimization (${hourLabel} hour)`);
   }
 
   async start(): Promise<void> {

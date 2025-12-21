@@ -66,7 +66,6 @@ const buildDom = () => {
 
 const loadSettingsScript = async (delay = 50) => {
   // Use require to avoid Node --experimental-vm-modules requirement for dynamic import under Jest 30
-  // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
   require('../settings/script.js');
   await new Promise((resolve) => setTimeout(resolve, delay));
 };

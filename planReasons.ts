@@ -1,0 +1,358 @@
+import type { DevicePlanDevice } from './planTypes';
+import type { PlanEngineState } from './planState';
+import { sortByPriorityAsc } from './planSort';
+
+export type ShedHoldParams = {
+  planDevices: DevicePlanDevice[];
+  state: PlanEngineState;
+  shedReasons: Map<string, string>;
+  inShedWindow: boolean;
+  inCooldown: boolean;
+  activeOvershoot: boolean;
+  restoreHysteresis: number;
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+  restoredThisCycle: Set<string>;
+  shedCooldownRemainingSec: number | null;
+  holdDuringRestoreCooldown: boolean;
+  getShedBehavior: (deviceId: string) => { action: 'turn_off' | 'set_temperature'; temperature: number | null };
+};
+
+export function applyShedTemperatureHold(params: ShedHoldParams): {
+  planDevices: DevicePlanDevice[];
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+} {
+  const {
+    planDevices,
+    state,
+    shedReasons,
+    inShedWindow,
+    inCooldown,
+    activeOvershoot,
+    restoreHysteresis,
+    availableHeadroom,
+    restoredOneThisCycle,
+    restoredThisCycle,
+    shedCooldownRemainingSec,
+    holdDuringRestoreCooldown,
+    getShedBehavior,
+  } = params;
+
+  let headroom = availableHeadroom;
+  let restoredOne = restoredOneThisCycle;
+  let nextDevices: DevicePlanDevice[] = [];
+
+  for (const dev of planDevices) {
+    const behavior = getShedBehavior(dev.id);
+    const result = applyHoldToDevice({
+      dev,
+      behavior,
+      state,
+      shedReasons,
+      inShedWindow,
+      inCooldown,
+      activeOvershoot,
+      restoreHysteresis,
+      availableHeadroom: headroom,
+      restoredOneThisCycle: restoredOne,
+      restoredThisCycle,
+      shedCooldownRemainingSec,
+      holdDuringRestoreCooldown,
+    });
+    headroom = result.availableHeadroom;
+    restoredOne = result.restoredOneThisCycle;
+    nextDevices = [...nextDevices, result.device];
+  }
+
+  return {
+    planDevices: nextDevices,
+    availableHeadroom: headroom,
+    restoredOneThisCycle: restoredOne,
+  };
+}
+
+export function normalizeShedReasons(params: {
+  planDevices: DevicePlanDevice[];
+  shedReasons: Map<string, string>;
+  guardInShortfall: boolean;
+  headroomRaw: number | null;
+  restoreHysteresis: number;
+  inCooldown: boolean;
+  activeOvershoot: boolean;
+  inRestoreCooldown: boolean;
+  shedCooldownRemainingSec: number | null;
+  restoreCooldownRemainingSec: number | null;
+}): DevicePlanDevice[] {
+  const {
+    planDevices,
+    shedReasons,
+    guardInShortfall,
+    headroomRaw,
+    restoreHysteresis,
+    inCooldown,
+    activeOvershoot,
+    inRestoreCooldown,
+    shedCooldownRemainingSec,
+    restoreCooldownRemainingSec,
+  } = params;
+
+  return planDevices.map((dev) => normalizeDeviceReason({
+    dev,
+    shedReasons,
+    guardInShortfall,
+    headroomRaw,
+    restoreHysteresis,
+    inCooldown,
+    activeOvershoot,
+    inRestoreCooldown,
+    shedCooldownRemainingSec,
+    restoreCooldownRemainingSec,
+  }));
+}
+
+export function finalizePlanDevices(planDevices: DevicePlanDevice[]): {
+  planDevices: DevicePlanDevice[];
+  lastPlannedShedIds: Set<string>;
+} {
+  const sorted = sortByPriorityAsc(planDevices);
+  const lastPlannedShedIds = new Set(sorted.filter((d) => d.plannedState === 'shed').map((d) => d.id));
+  return { planDevices: sorted, lastPlannedShedIds };
+}
+
+function estimateRestorePower(dev: DevicePlanDevice): number {
+  if (typeof dev.expectedPowerKw === 'number') return dev.expectedPowerKw;
+  if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
+  return dev.powerKw ?? 1;
+}
+
+function shouldNormalizeReason(reason: string | undefined): boolean {
+  if (!reason) return true;
+  return reason.startsWith('keep (') || reason.startsWith('restore (need') || reason.startsWith('set to ');
+}
+
+function getBaseShedReason(
+  dev: DevicePlanDevice,
+  shedReasons: Map<string, string>,
+  activeOvershoot: boolean,
+  inCooldown: boolean,
+  shedCooldownRemainingSec: number | null,
+): string {
+  const isSwapReason = typeof dev.reason === 'string'
+    && (dev.reason.includes('swapped out') || dev.reason.includes('swap pending'));
+  const hasSpecialReason = typeof dev.reason === 'string'
+    && (dev.reason.includes('shortfall') || isSwapReason || dev.reason.includes('hourly budget'));
+  const baseReason = shedReasons.get(dev.id)
+    || (hasSpecialReason && dev.reason)
+    || 'shed due to capacity';
+  if (inCooldown && !activeOvershoot && !dev.reason?.includes('swap')) {
+    return `cooldown (shedding, ${shedCooldownRemainingSec ?? 0}s remaining)`;
+  }
+  return baseReason;
+}
+
+function applyHoldToDevice(params: {
+  dev: DevicePlanDevice;
+  behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null };
+  state: PlanEngineState;
+  shedReasons: Map<string, string>;
+  inShedWindow: boolean;
+  inCooldown: boolean;
+  activeOvershoot: boolean;
+  restoreHysteresis: number;
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+  restoredThisCycle: Set<string>;
+  shedCooldownRemainingSec: number | null;
+  holdDuringRestoreCooldown: boolean;
+}): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const {
+    dev,
+    behavior,
+    state,
+    shedReasons,
+    inShedWindow,
+    inCooldown,
+    activeOvershoot,
+    restoreHysteresis,
+    availableHeadroom,
+    restoredOneThisCycle,
+    restoredThisCycle,
+    shedCooldownRemainingSec,
+    holdDuringRestoreCooldown,
+  } = params;
+
+  if (behavior.action !== 'set_temperature' || behavior.temperature === null) {
+    return { device: dev, availableHeadroom, restoredOneThisCycle };
+  }
+
+  const atMinTemp = Number(dev.currentTarget) === behavior.temperature || Number(dev.plannedTarget) === behavior.temperature;
+  const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
+  const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
+  const shouldHold = (inShedWindow || holdDuringRestoreCooldown)
+    && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan);
+
+  if (!shouldHold && wasShedLastPlan) {
+    if (availableHeadroom < restoreHysteresis) {
+      const reason = `insufficient headroom (need ${restoreHysteresis.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`;
+      return applyHoldUpdate(dev, behavior, reason, availableHeadroom, restoredOneThisCycle);
+    }
+    if (restoredOneThisCycle) {
+      return applyHoldUpdate(dev, behavior, 'restore throttled', availableHeadroom, restoredOneThisCycle);
+    }
+    restoredThisCycle.add(dev.id);
+    return {
+      device: dev,
+      availableHeadroom: availableHeadroom - restoreHysteresis,
+      restoredOneThisCycle: true,
+    };
+  }
+
+  if (!shouldHold) {
+    return { device: dev, availableHeadroom, restoredOneThisCycle };
+  }
+
+  const baseReason = getBaseShedReason(dev, shedReasons, activeOvershoot, inCooldown, shedCooldownRemainingSec);
+  return applyHoldUpdate(dev, behavior, baseReason, availableHeadroom, restoredOneThisCycle);
+}
+
+function normalizeDeviceReason(params: {
+  dev: DevicePlanDevice;
+  shedReasons: Map<string, string>;
+  guardInShortfall: boolean;
+  headroomRaw: number | null;
+  restoreHysteresis: number;
+  inCooldown: boolean;
+  activeOvershoot: boolean;
+  inRestoreCooldown: boolean;
+  shedCooldownRemainingSec: number | null;
+  restoreCooldownRemainingSec: number | null;
+}): DevicePlanDevice {
+  const {
+    dev,
+    shedReasons,
+    guardInShortfall,
+    headroomRaw,
+    restoreHysteresis,
+    inCooldown,
+    activeOvershoot,
+    inRestoreCooldown,
+    shedCooldownRemainingSec,
+    restoreCooldownRemainingSec,
+  } = params;
+
+  if (dev.plannedState !== 'shed') return dev;
+
+  const reasonFlags = getReasonFlags(dev.reason);
+  const baseReason = buildBaseReason(dev, shedReasons);
+
+  const shortfallReason = maybeApplyShortfallReason({
+    dev,
+    guardInShortfall,
+    reasonFlags,
+    headroomRaw,
+    restoreHysteresis,
+  });
+  if (shortfallReason) return { ...dev, reason: shortfallReason };
+
+  const cooldownReason = maybeApplyCooldownReason({
+    reasonFlags,
+    inCooldown,
+    activeOvershoot,
+    shedCooldownRemainingSec,
+    inRestoreCooldown,
+    restoreCooldownRemainingSec,
+  });
+  if (cooldownReason) return { ...dev, reason: cooldownReason };
+
+  if (shouldNormalizeReason(dev.reason)) {
+    return { ...dev, reason: baseReason };
+  }
+  return dev;
+}
+
+function applyHoldUpdate(
+  dev: DevicePlanDevice,
+  behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null },
+  reason: string,
+  availableHeadroom: number,
+  restoredOneThisCycle: boolean,
+): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
+  return {
+    device: {
+      ...dev,
+      plannedState: 'shed',
+      shedAction: 'set_temperature',
+      shedTemperature: behavior.temperature,
+      plannedTarget: behavior.temperature,
+      reason,
+    },
+    availableHeadroom,
+    restoredOneThisCycle,
+  };
+}
+
+function getReasonFlags(reason: string | undefined): {
+  isSwapReason: boolean;
+  isBudgetReason: boolean;
+  isShortfallReason: boolean;
+} {
+  return {
+    isSwapReason: Boolean(reason && (reason.includes('swap pending') || reason.includes('swapped out'))),
+    isBudgetReason: Boolean(reason && reason.includes('hourly budget')),
+    isShortfallReason: Boolean(reason && reason.includes('shortfall')),
+  };
+}
+
+function buildBaseReason(
+  dev: DevicePlanDevice,
+  shedReasons: Map<string, string>,
+): string {
+  const keepReason = dev.reason
+    && !dev.reason.startsWith('keep (')
+    && !dev.reason.startsWith('restore (need')
+    && !dev.reason.startsWith('set to ')
+    ? dev.reason
+    : null;
+  return shedReasons.get(dev.id) || keepReason || 'shed due to capacity';
+}
+
+function maybeApplyShortfallReason(params: {
+  dev: DevicePlanDevice;
+  guardInShortfall: boolean;
+  reasonFlags: { isSwapReason: boolean; isBudgetReason: boolean; isShortfallReason: boolean };
+  headroomRaw: number | null;
+  restoreHysteresis: number;
+}): string | null {
+  const { dev, guardInShortfall, reasonFlags, headroomRaw, restoreHysteresis } = params;
+  if (!guardInShortfall || reasonFlags.isSwapReason || reasonFlags.isBudgetReason) return null;
+  if (dev.reason?.startsWith('shortfall (')) return null;
+  const estimatedPower = estimateRestorePower(dev);
+  const estimatedNeed = estimatedPower + restoreHysteresis;
+  return `shortfall (need ${estimatedNeed.toFixed(2)}kW, headroom ${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`;
+}
+
+function maybeApplyCooldownReason(params: {
+  reasonFlags: { isSwapReason: boolean; isBudgetReason: boolean; isShortfallReason: boolean };
+  inCooldown: boolean;
+  activeOvershoot: boolean;
+  shedCooldownRemainingSec: number | null;
+  inRestoreCooldown: boolean;
+  restoreCooldownRemainingSec: number | null;
+}): string | null {
+  const {
+    reasonFlags,
+    inCooldown,
+    activeOvershoot,
+    shedCooldownRemainingSec,
+    inRestoreCooldown,
+    restoreCooldownRemainingSec,
+  } = params;
+  if (inCooldown && !activeOvershoot && !reasonFlags.isSwapReason) {
+    return `cooldown (shedding, ${shedCooldownRemainingSec ?? 0}s remaining)`;
+  }
+    if (inRestoreCooldown && !activeOvershoot && !reasonFlags.isSwapReason && !reasonFlags.isBudgetReason && !reasonFlags.isShortfallReason) {
+    return `cooldown (restore, ${restoreCooldownRemainingSec ?? 0}s remaining)`;
+  }
+  return null;
+}

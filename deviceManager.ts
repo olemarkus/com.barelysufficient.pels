@@ -1,14 +1,16 @@
 import Homey from 'homey';
-import { Logger, TargetDeviceSnapshot } from './types';
+import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from './types';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { HomeyAPI } = require('homey-api');
+type HomeyApiConstructor = {
+    createAppAPI: (opts: { homey: Homey.App['homey']; debug?: ((...args: unknown[]) => void) | null }) => Promise<HomeyApiClient>;
+};
+const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
 const MIN_SIGNIFICANT_POWER_W = 50;
 
 type HomeyApiDevicesClient = {
-    getDevices?: () => Promise<Record<string, unknown> | Array<unknown>>;
+    getDevices?: () => Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]>;
     setCapabilityValue?: (args: { deviceId: string; capabilityId: string; value: unknown }) => Promise<void>;
     getDevice?: (args: { id: string }) => Promise<unknown>;
 };
@@ -21,6 +23,16 @@ type PowerEstimateState = {
     expectedPowerKwOverrides?: Record<string, { kw: number; ts: number }>;
     lastKnownPowerKw?: Record<string, number>;
     lastMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
+};
+
+type CapabilityValue = { value?: unknown; units?: string };
+
+type PowerEstimateResult = {
+    powerKw?: number;
+    expectedPowerKw?: number;
+    expectedPowerSource?: TargetDeviceSnapshot['expectedPowerSource'];
+    measuredPowerKw?: number;
+    loadKw?: number;
 };
 
 export class DeviceManager {
@@ -59,8 +71,7 @@ export class DeviceManager {
     }
 
     // Test helper: reuse parsing logic
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    parseDeviceListForTests(list: any[]): TargetDeviceSnapshot[] {
+    parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
         return this.parseDeviceList(list);
     }
 
@@ -75,8 +86,7 @@ export class DeviceManager {
         // Access the underlying Homey instance from the App instance
         // In real app and MockApp, this is this.homey.homey
         // In unit tests with POJO mock, this.homey IS the Homey instance mock
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const homeyInstance = (this.homey as any).homey || this.homey as any;
+        const homeyInstance = this.resolveHomeyInstance(this.homey);
 
         if (
             !homeyInstance
@@ -175,14 +185,14 @@ export class DeviceManager {
         }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private async fetchDevices(): Promise<any[]> {
+    private async fetchDevices(): Promise<HomeyDeviceLike[]> {
         const devicesApi = this.homeyApi?.devices;
         if (devicesApi?.getDevices) {
             try {
                 const devicesObj = await devicesApi.getDevices();
-                this.logger.debug(`HomeyAPI returned ${Object.keys(devicesObj || {}).length} devices`);
-                return Object.values(devicesObj || {});
+                const list = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj || {});
+                this.logger.debug(`HomeyAPI returned ${list.length} devices`);
+                return list;
             } catch (error) {
                 this.logger.debug('HomeyAPI.getDevices failed, falling back to raw API', error as Error);
             }
@@ -190,16 +200,14 @@ export class DeviceManager {
 
         // Fallback to manager/devices then /devices
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const devices: any = await (this.homey as any).api?.get?.('manager/devices');
+            const devices = await this.getRawDevices('manager/devices');
             const list = Array.isArray(devices) ? devices : Object.values(devices || {});
             this.logger.debug(`Manager API returned ${list.length} devices`);
             return list;
         } catch (err) {
             this.logger.debug('Manager API manager/devices failed, retrying devices', err as Error);
             try {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const devices: any = await (this.homey as any).api?.get?.('devices');
+                const devices = await this.getRawDevices('devices');
                 const list = Array.isArray(devices) ? devices : Object.values(devices || {});
                 this.logger.debug(`Manager API devices returned ${list.length} devices`);
                 return list;
@@ -210,155 +218,300 @@ export class DeviceManager {
         }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, max-len -- Homey device objects have no TypeScript definitions
-    private parseDeviceList(list: any[]): TargetDeviceSnapshot[] {
+    private parseDeviceList(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
         const now = Date.now();
         return list
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .map((device: any) => {
-                const deviceId = device.id || device.data?.id;
-                if (!deviceId) {
-                    this.logger.error('Device missing ID, skipping:', device.name || 'unknown');
-                    return null;
-                }
-
-                const capabilities: string[] = device.capabilities || [];
-                const capabilityObj = device.capabilitiesObj || {};
-                const currentTemperature = typeof capabilityObj.measure_temperature?.value === 'number'
-                    ? capabilityObj.measure_temperature.value
-                    : undefined;
-                const powerRaw = capabilityObj.measure_power?.value;
-                let powerKw: number | undefined;
-                let expectedPowerKw: number | undefined;
-                const expectedOverride = this.powerState.expectedPowerKwOverrides[deviceId];
-                let measuredPowerKw: number | undefined;
-                const deviceLabel = device.name ? `${device.name} (${deviceId})` : deviceId;
-
-                // Priority for power estimates:
-                // 1. settings.load (configured expected load)
-                // 2. Most recent of:
-                //    - measured power (measure_power), tracked with timestamp
-                //    - expectedPowerKwOverrides (temporary override set via flow)
-                // 3. Default fallback: 1 kW
-                const loadW = typeof device.settings?.load === 'number' ? device.settings.load : undefined;
-                if (loadW && loadW > 0) {
-                    powerKw = loadW / 1000;
-                    expectedPowerKw = powerKw;
-                    // Note: 'load-setting' is also a valid basis for lastKnownPowerKw if we haven't seen better
-                    if (!this.powerState.lastKnownPowerKw[deviceId] || this.powerState.lastKnownPowerKw[deviceId] < powerKw) {
-                        this.powerState.lastKnownPowerKw[deviceId] = powerKw;
-                    }
-
-                    // Check for overrides on top of load setting
-                    const override = expectedOverride;
-                    if (override) {
-                        // Safety: if override is lower than load, we trust the user set it manually.
-                        // If override is higher, we trust that too.
-                        powerKw = override.kw;
-                        expectedPowerKw = override.kw;
-                        this.logger.debug(`Power estimate: using override (manual) for ${deviceLabel}: ${override.kw.toFixed(3)} kW`);
-                        device.expectedPowerSource = 'manual';
-                    } else {
-                        this.logger.debug(`Power estimate: using settings.load for ${deviceLabel}: ${powerKw.toFixed(3)} kW`);
-                        device.expectedPowerSource = 'load-setting';
-                    }
-                } else {
-                    let measuredKw: number | undefined;
-                    if (typeof powerRaw === 'number' && Number.isFinite(powerRaw)) {
-                        if (powerRaw > MIN_SIGNIFICANT_POWER_W) {
-                            measuredKw = powerRaw / 1000;
-                            measuredPowerKw = measuredKw;
-                            this.powerState.lastMeasuredPowerKw[deviceId] = { kw: measuredKw, ts: now };
-
-                            // MONOTONIC UPDATE: Update peak tracker if measurement is higher.
-                            const previousPeak = this.powerState.lastKnownPowerKw[deviceId] || 0;
-                            if (measuredKw > previousPeak) {
-                                this.powerState.lastKnownPowerKw[deviceId] = measuredKw;
-                                this.logger.debug(`Power estimate: updated peak power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW (was ${previousPeak.toFixed(3)} kW)`);
-                            }
-                        } else {
-                            this.logger.debug(`Power estimate: ignoring low reading for ${deviceLabel}: ${powerRaw} W`);
-                        }
-                    }
-
-                    // Calculate Expected Power
-                    // Priority 1: Manual Override (bounded by current measured if higher)
-                    // Priority 2: Peak Measured (lastKnownPowerKw)
-                    // Priority 3: Default 1kW
-                    const override = expectedOverride;
-                    const peak = this.powerState.lastKnownPowerKw[deviceId];
-
-                    if (override) {
-                        const measuredValue = measuredKw ?? 0;
-                        if (measuredKw !== undefined && measuredValue > override.kw) {
-                            expectedPowerKw = measuredValue;
-                            device.expectedPowerSource = 'measured-peak';
-                            this.logger.debug(`Power estimate: current ${measuredValue.toFixed(3)} kW > override ${override.kw.toFixed(3)} kW for ${deviceLabel}`);
-                        } else {
-                            expectedPowerKw = override.kw;
-                            device.expectedPowerSource = 'manual';
-                            this.logger.debug(`Power estimate: using override for ${deviceLabel}: ${override.kw.toFixed(3)} kW`);
-                        }
-                    } else if (peak) {
-                        expectedPowerKw = peak;
-                        powerKw = peak;
-                        device.expectedPowerSource = 'measured-peak';
-                        this.logger.debug(`Power estimate: using peak measured for ${deviceLabel}: ${peak.toFixed(3)} kW`);
-                    } else {
-                        powerKw = 1;
-                        expectedPowerKw = undefined; // Unknown estimate shown as "Unknown" in UI
-                        device.expectedPowerSource = 'default';
-                        this.logger.debug(`Power estimate: fallback 1 kW for ${deviceLabel} (no measured/override/load)`);
-                    }
-
-                    // `powerKw` represents the potential maximum draw for shedding logic.
-                    // It should align with `expectedPowerKw`.
-                    if (expectedPowerKw !== undefined) {
-                        powerKw = expectedPowerKw;
-                    }
-                }
-
-                const targetCaps = capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
-                if (targetCaps.length === 0) {
-                    return null;
-                }
-
-                const targets = targetCaps.map((capId) => ({
-                    id: capId,
-                    value: capabilityObj[capId]?.value ?? null,
-                    unit: capabilityObj[capId]?.units || '°C',
-                }));
-
-                // Determine if device is ON:
-                // 1. Check explicit onoff capability
-                // 2. Fall back to checking if device is drawing significant power (>50W)
-                let currentOn: boolean | undefined;
-                if (typeof capabilityObj.onoff?.value === 'boolean') {
-                    currentOn = capabilityObj.onoff.value;
-                } else if (typeof powerRaw === 'number' && powerRaw > 50) {
-                    currentOn = true;
-                }
-
-                return {
-                    id: deviceId,
-                    name: device.name,
-                    targets,
-                    powerKw,
-                    expectedPowerKw,
-                    expectedPowerSource: device.expectedPowerSource,
-                    loadKw: loadW && loadW > 0 ? loadW / 1000 : undefined,
-                    priority: this.providers.getPriority ? this.providers.getPriority(deviceId) : undefined,
-                    currentOn,
-                    currentTemperature,
-                    measuredPowerKw,
-                    zone: device.zone?.name
-                        || (typeof device.zone === 'string' ? device.zone : undefined)
-                        || device.zoneName
-                        || 'Unknown',
-                    controllable: this.providers.getControllable ? this.providers.getControllable(deviceId) : undefined,
-                    capabilities,
-                };
-            })
+            .map((device) => this.parseDevice(device, now))
             .filter(Boolean) as TargetDeviceSnapshot[];
+    }
+
+    private parseDevice(device: HomeyDeviceLike, now: number): TargetDeviceSnapshot | null {
+        const deviceId = this.getDeviceId(device);
+        if (!deviceId) {
+            this.logger.error('Device missing ID, skipping:', device.name || 'unknown');
+            return null;
+        }
+        const deviceLabel = this.getDeviceLabel(device, deviceId);
+        const capabilities = this.getCapabilities(device);
+        const capabilityObj = this.getCapabilityObj(device);
+        const currentTemperature = this.getCurrentTemperature(capabilityObj);
+        const powerRaw = capabilityObj.measure_power?.value;
+        const powerEstimate = this.getPowerEstimate({
+            device,
+            deviceId,
+            deviceLabel,
+            powerRaw,
+            now,
+        });
+        const targetCaps = this.getTargetCaps(capabilities);
+        if (targetCaps.length === 0) {
+            return null;
+        }
+        const targets = this.buildTargets(targetCaps, capabilityObj);
+        const currentOn = this.getCurrentOn(capabilityObj, powerRaw);
+        const zone = this.getZoneLabel(device);
+
+        return {
+            id: deviceId,
+            name: device.name ?? deviceId,
+            targets,
+            powerKw: powerEstimate.powerKw,
+            expectedPowerKw: powerEstimate.expectedPowerKw,
+            expectedPowerSource: powerEstimate.expectedPowerSource,
+            loadKw: powerEstimate.loadKw,
+            priority: this.providers.getPriority ? this.providers.getPriority(deviceId) : undefined,
+            currentOn,
+            currentTemperature,
+            measuredPowerKw: powerEstimate.measuredPowerKw,
+            zone,
+            controllable: this.providers.getControllable ? this.providers.getControllable(deviceId) : undefined,
+            capabilities,
+        };
+    }
+
+    private getDeviceId(device: HomeyDeviceLike): string | null {
+        return device.id || device.data?.id || null;
+    }
+
+    private getDeviceLabel(device: HomeyDeviceLike, deviceId: string): string {
+        return device.name ? `${device.name} (${deviceId})` : deviceId;
+    }
+
+    private getCapabilities(device: HomeyDeviceLike): string[] {
+        return Array.isArray(device.capabilities) ? device.capabilities : [];
+    }
+
+    private getCapabilityObj(device: HomeyDeviceLike): Record<string, CapabilityValue> {
+        if (device.capabilitiesObj && typeof device.capabilitiesObj === 'object') {
+            return device.capabilitiesObj as Record<string, CapabilityValue>;
+        }
+        return {};
+    }
+
+    private getCurrentTemperature(capabilityObj: Record<string, CapabilityValue>): number | undefined {
+        const temp = capabilityObj.measure_temperature?.value;
+        return typeof temp === 'number' ? temp : undefined;
+    }
+
+    private getTargetCaps(capabilities: string[]): string[] {
+        return capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
+    }
+
+    private buildTargets(targetCaps: string[], capabilityObj: Record<string, CapabilityValue>): TargetDeviceSnapshot['targets'] {
+        return targetCaps.map((capId) => ({
+            id: capId,
+            value: capabilityObj[capId]?.value ?? null,
+            unit: capabilityObj[capId]?.units || '°C',
+        }));
+    }
+
+    private getCurrentOn(capabilityObj: Record<string, CapabilityValue>, powerRaw: unknown): boolean | undefined {
+        if (typeof capabilityObj.onoff?.value === 'boolean') {
+            return capabilityObj.onoff.value;
+        }
+        if (typeof powerRaw === 'number' && powerRaw > 50) {
+            return true;
+        }
+        return undefined;
+    }
+
+    private getZoneLabel(device: HomeyDeviceLike): string {
+        const zone = device.zone;
+        if (zone && typeof zone === 'object' && 'name' in zone) {
+            const name = (zone as { name?: unknown }).name;
+            if (typeof name === 'string' && name) {
+                return name;
+            }
+        }
+        if (typeof zone === 'string' && zone) {
+            return zone;
+        }
+        const zoneName = device.zoneName;
+        if (typeof zoneName === 'string' && zoneName) {
+            return zoneName;
+        }
+        return 'Unknown';
+    }
+
+    private getPowerEstimate(params: {
+        device: HomeyDeviceLike;
+        deviceId: string;
+        deviceLabel: string;
+        powerRaw: unknown;
+        now: number;
+    }): PowerEstimateResult {
+        const { device, deviceId, deviceLabel, powerRaw, now } = params;
+        const loadW = this.getLoadSettingWatts(device);
+        const expectedOverride = this.powerState.expectedPowerKwOverrides[deviceId];
+
+        if (loadW !== null) {
+            return this.getPowerFromLoad({
+                deviceId,
+                deviceLabel,
+                loadW,
+                expectedOverride,
+            });
+        }
+        return this.getPowerFromMeasurement({
+            deviceId,
+            deviceLabel,
+            powerRaw,
+            expectedOverride,
+            now,
+        });
+    }
+
+    private getLoadSettingWatts(device: HomeyDeviceLike): number | null {
+        const loadW = typeof device.settings?.load === 'number' ? device.settings.load : null;
+        return loadW && loadW > 0 ? loadW : null;
+    }
+
+    private getPowerFromLoad(params: {
+        deviceId: string;
+        deviceLabel: string;
+        loadW: number;
+        expectedOverride?: { kw: number; ts: number };
+    }): PowerEstimateResult {
+        const { deviceId, deviceLabel, loadW, expectedOverride } = params;
+        const loadKw = loadW / 1000;
+        this.updateLastKnownPower(deviceId, loadKw, deviceLabel);
+
+        if (expectedOverride) {
+            this.logger.debug(`Power estimate: using override (manual) for ${deviceLabel}: ${expectedOverride.kw.toFixed(3)} kW`);
+            return {
+                powerKw: expectedOverride.kw,
+                expectedPowerKw: expectedOverride.kw,
+                expectedPowerSource: 'manual',
+                loadKw,
+            };
+        }
+        this.logger.debug(`Power estimate: using settings.load for ${deviceLabel}: ${loadKw.toFixed(3)} kW`);
+        return {
+            powerKw: loadKw,
+            expectedPowerKw: loadKw,
+            expectedPowerSource: 'load-setting',
+            loadKw,
+        };
+    }
+
+    private getPowerFromMeasurement(params: {
+        deviceId: string;
+        deviceLabel: string;
+        powerRaw: unknown;
+        expectedOverride?: { kw: number; ts: number };
+        now: number;
+    }): PowerEstimateResult {
+        const { deviceId, deviceLabel, powerRaw, expectedOverride, now } = params;
+        const measured = this.getMeasuredPowerKw({
+            deviceId,
+            deviceLabel,
+            powerRaw,
+            now,
+        });
+        const peak = this.powerState.lastKnownPowerKw[deviceId];
+
+        if (expectedOverride) {
+            return this.resolveOverrideEstimate({
+                deviceLabel,
+                expectedOverride,
+                measuredKw: measured.measuredKw,
+            });
+        }
+        if (peak) {
+            this.logger.debug(`Power estimate: using peak measured for ${deviceLabel}: ${peak.toFixed(3)} kW`);
+            return {
+                powerKw: peak,
+                expectedPowerKw: peak,
+                expectedPowerSource: 'measured-peak',
+                measuredPowerKw: measured.measuredPowerKw,
+            };
+        }
+        this.logger.debug(`Power estimate: fallback 1 kW for ${deviceLabel} (no measured/override/load)`);
+        return {
+            powerKw: 1,
+            expectedPowerKw: undefined,
+            expectedPowerSource: 'default',
+            measuredPowerKw: measured.measuredPowerKw,
+        };
+    }
+
+    private getMeasuredPowerKw(params: {
+        deviceId: string;
+        deviceLabel: string;
+        powerRaw: unknown;
+        now: number;
+    }): { measuredKw?: number; measuredPowerKw?: number } {
+        const { deviceId, deviceLabel, powerRaw, now } = params;
+        if (typeof powerRaw !== 'number' || !Number.isFinite(powerRaw)) {
+            return {};
+        }
+        if (powerRaw > MIN_SIGNIFICANT_POWER_W) {
+            const measuredKw = powerRaw / 1000;
+            this.powerState.lastMeasuredPowerKw[deviceId] = { kw: measuredKw, ts: now };
+            this.updateLastKnownPower(deviceId, measuredKw, deviceLabel);
+            return { measuredKw, measuredPowerKw: measuredKw };
+        }
+        this.logger.debug(`Power estimate: ignoring low reading for ${deviceLabel}: ${powerRaw} W`);
+        return {};
+    }
+
+    private resolveOverrideEstimate(params: {
+        deviceLabel: string;
+        expectedOverride: { kw: number; ts: number };
+        measuredKw?: number;
+    }): PowerEstimateResult {
+        const { deviceLabel, expectedOverride, measuredKw } = params;
+        const measuredValue = measuredKw ?? 0;
+        if (measuredKw !== undefined && measuredValue > expectedOverride.kw) {
+            this.logger.debug(`Power estimate: current ${measuredValue.toFixed(3)} kW > override ${expectedOverride.kw.toFixed(3)} kW for ${deviceLabel}`);
+            return {
+                powerKw: measuredValue,
+                expectedPowerKw: measuredValue,
+                expectedPowerSource: 'measured-peak',
+                measuredPowerKw: measuredKw,
+            };
+        }
+        this.logger.debug(`Power estimate: using override for ${deviceLabel}: ${expectedOverride.kw.toFixed(3)} kW`);
+        return {
+            powerKw: expectedOverride.kw,
+            expectedPowerKw: expectedOverride.kw,
+            expectedPowerSource: 'manual',
+            measuredPowerKw: measuredKw,
+        };
+    }
+
+    private updateLastKnownPower(deviceId: string, measuredKw: number, deviceLabel: string): void {
+        const previousPeak = this.powerState.lastKnownPowerKw[deviceId] || 0;
+        if (measuredKw > previousPeak) {
+            this.powerState.lastKnownPowerKw[deviceId] = measuredKw;
+            this.logger.debug(`Power estimate: updated peak power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW (was ${previousPeak.toFixed(3)} kW)`);
+        }
+    }
+
+    private resolveHomeyInstance(homey: Homey.App): Homey.App['homey'] {
+        if (this.isHomeyAppWrapper(homey)) {
+            return homey.homey;
+        }
+        return homey as unknown as Homey.App['homey'];
+    }
+
+    private isHomeyAppWrapper(value: unknown): value is { homey: Homey.App['homey'] } {
+        return typeof value === 'object' && value !== null && 'homey' in value;
+    }
+
+    private async getRawDevices(path: string): Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]> {
+        const api = this.extractHomeyApi(this.homey);
+        if (!api?.get) {
+            throw new Error('Homey API client not available');
+        }
+        const data = await api.get(path);
+        if (Array.isArray(data)) return data as HomeyDeviceLike[];
+        if (typeof data === 'object' && data !== null) return data as Record<string, HomeyDeviceLike>;
+        return [];
+    }
+
+    private extractHomeyApi(homey: Homey.App): { get?: (path: string) => Promise<unknown> } | undefined {
+        const homeyInstance = this.resolveHomeyInstance(homey);
+        return (homeyInstance as { api?: { get?: (path: string) => Promise<unknown> } }).api;
     }
 }

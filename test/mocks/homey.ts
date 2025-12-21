@@ -237,13 +237,11 @@ class MockApp {
 
   log(...args: any[]) {
     /* istanbul ignore next */
-    // eslint-disable-next-line no-console
     console.log(...args);
   }
 
   error(...args: any[]) {
     /* istanbul ignore next */
-    // eslint-disable-next-line no-console
     console.error(...args);
   }
 }

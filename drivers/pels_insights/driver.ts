@@ -18,4 +18,4 @@ class PelsInsightsDriver extends Homey.Driver {
   }
 }
 
-module.exports = PelsInsightsDriver;
+export = PelsInsightsDriver;
