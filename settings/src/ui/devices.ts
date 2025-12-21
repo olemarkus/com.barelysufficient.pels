@@ -69,7 +69,7 @@ export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
     priceOptLabel.append(priceOptInput);
 
     const controls = document.createElement('div');
-    controls.className = 'device-row__controls';
+    controls.className = 'control-row__inputs';
     controls.append(ctrlLabel, priceOptLabel);
 
     row.append(nameWrap, controls);

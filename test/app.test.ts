@@ -5,6 +5,12 @@ import {
   MockDriver,
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
+import {
+  CAPACITY_DRY_RUN,
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  OPERATING_MODE_SETTING,
+} from '../settingsKeys';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -63,7 +69,7 @@ describe('MyApp initialization', () => {
     expect(result).toBe(true);
 
     // Verify mode was persisted to settings
-    expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Away');
+    expect(mockHomeyInstance.settings.get(OPERATING_MODE_SETTING)).toBe('Away');
 
     // Verify internal state was updated
     expect((app as any).operatingMode).toBe('Away');
@@ -84,6 +90,95 @@ describe('MyApp initialization', () => {
     await expect(setModeListener({ mode: '   ' })).rejects.toThrow('Mode must be provided');
   });
 
+  it('set_capacity_limit flow card updates the guard limit', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const capacityGuard = (app as any).capacityGuard;
+    const setLimitSpy = jest.spyOn(capacityGuard, 'setLimit');
+
+    const setLimitListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_limit'];
+    expect(setLimitListener).toBeDefined();
+
+    const result = await setLimitListener({ limit_kw: 5 });
+    expect(result).toBe(true);
+    expect(setLimitSpy).toHaveBeenCalledWith(5);
+  });
+
+  it('set_capacity_limit flow card rejects invalid values', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const setLimitListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_limit'];
+    await expect(setLimitListener({ limit_kw: -1 })).rejects.toThrow('Limit must be a positive number (kW).');
+    await expect(setLimitListener({ limit_kw: 0 })).rejects.toThrow('Limit must be a positive number (kW).');
+    await expect(setLimitListener({ limit_kw: NaN })).rejects.toThrow('Limit must be a positive number (kW).');
+  });
+
+  it('set_capacity_limit updates plan headroom immediately after a change', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await heater.setCapabilityValue('measure_power', 2000);
+    await heater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.2);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    const now = Date.now();
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0, 0, 0);
+    const bucketKey = hourStart.toISOString();
+    (app as any).powerTracker = {
+      buckets: {
+        [bucketKey]: 1.3,
+      },
+      lastTimestamp: now,
+      lastPowerW: 2000,
+    };
+
+    await (app as any).recordPowerSample(2000, now);
+    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    let devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('keep');
+
+    const setLimitListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_limit'];
+    await setLimitListener({ limit_kw: 1.5 });
+    await flushPromises();
+
+    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+
+    (app as any).planEngine.state.lastSheddingMs = null;
+    (app as any).planEngine.state.lastOvershootMs = null;
+    if ((app as any).capacityGuard) {
+      (app as any).capacityGuard.sheddingActive = false;
+    }
+
+    await setLimitListener({ limit_kw: 4 });
+    await flushPromises();
+
+    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('keep');
+  });
+
   it('set_capacity_mode flow card handles autocomplete object format', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
@@ -99,7 +194,7 @@ describe('MyApp initialization', () => {
     const result = await setModeListener({ mode: { id: 'Away', name: 'Away' } });
     expect(result).toBe(true);
 
-    expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Away');
+    expect(mockHomeyInstance.settings.get(OPERATING_MODE_SETTING)).toBe('Away');
     expect((app as any).operatingMode).toBe('Away');
   });
 
@@ -147,7 +242,7 @@ describe('MyApp initialization', () => {
 
     // Set up mode targets before init
     mockHomeyInstance.settings.set('mode_device_targets', { Away: { 'dev-1': 16 } });
-    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
 
     const app = createApp();
     await app.onInit();
@@ -191,7 +286,7 @@ describe('MyApp initialization', () => {
     });
 
     mockHomeyInstance.settings.set('mode_device_targets', { Away: { 'dev-1': 16 } });
-    mockHomeyInstance.settings.set('capacity_dry_run', true);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
 
     const app = createApp();
     await app.onInit();
@@ -216,7 +311,7 @@ describe('MyApp initialization', () => {
     (app as any).deviceManager.homeyApi = homeyApiStub;
 
     // Changing the operating_mode setting should not apply targets in dry run
-    mockHomeyInstance.settings.set('operating_mode', 'Away');
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Away');
     await flushPromises();
     await flushPromises();
 
@@ -230,7 +325,7 @@ describe('MyApp initialization', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
 
     const app = createApp();
@@ -282,9 +377,9 @@ describe('MyApp initialization', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
-    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
 
     const app = createApp();
     await app.onInit();
@@ -334,8 +429,8 @@ describe('MyApp initialization', () => {
 
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 } });
-    mockHomeyInstance.settings.set('operating_mode', 'Home');
-    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
 
     const app = createApp();
     await app.onInit();
@@ -345,7 +440,7 @@ describe('MyApp initialization', () => {
     const renamedPriorities = { Cozy: { 'dev-1': 3 } };
     mockHomeyInstance.settings.set('mode_device_targets', renamedTargets);
     mockHomeyInstance.settings.set('capacity_priorities', renamedPriorities);
-    mockHomeyInstance.settings.set('operating_mode', 'Cozy');
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Cozy');
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Cozy' });
     await flushPromises();
     await flushPromises();
@@ -353,7 +448,7 @@ describe('MyApp initialization', () => {
     // Settings should only contain the renamed mode
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual(renamedTargets);
     expect(mockHomeyInstance.settings.get('capacity_priorities')).toEqual(renamedPriorities);
-    expect(mockHomeyInstance.settings.get('operating_mode')).toBe('Cozy');
+    expect(mockHomeyInstance.settings.get(OPERATING_MODE_SETTING)).toBe('Cozy');
 
     // Internal state should use the renamed mode and drop the old one
     expect((app as any).operatingMode).toBe('Cozy');
@@ -382,7 +477,7 @@ describe('MyApp initialization', () => {
 
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 } });
-    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
 
     const app = createApp();
     await app.onInit();
@@ -390,7 +485,7 @@ describe('MyApp initialization', () => {
     // Simulate renaming Home -> Cozy in settings (UI migration)
     mockHomeyInstance.settings.set('mode_device_targets', { Cozy: { 'dev-1': 20 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Cozy: { 'dev-1': 3 } });
-    mockHomeyInstance.settings.set('operating_mode', 'Cozy');
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Cozy');
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Cozy' });
     await flushPromises();
 
@@ -410,7 +505,7 @@ describe('MyApp initialization', () => {
 
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 }, Away: { 'dev-1': 18 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 }, Away: { 'dev-1': 2 } });
-    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
 
     const app = createApp();
     await app.onInit();
@@ -418,7 +513,7 @@ describe('MyApp initialization', () => {
     // Simulate a swap: Home -> Work, Away -> Home (so "Work" takes the old Home data)
     mockHomeyInstance.settings.set('mode_device_targets', { Work: { 'dev-1': 20 }, Home: { 'dev-1': 18 } });
     mockHomeyInstance.settings.set('capacity_priorities', { Work: { 'dev-1': 3 }, Home: { 'dev-1': 2 } });
-    mockHomeyInstance.settings.set('operating_mode', 'Work'); // active mode is the renamed former Home
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Work'); // active mode is the renamed former Home
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Work', away: 'Home' });
     await flushPromises();
 
@@ -457,8 +552,8 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     // Set capacity limit to 5 kW with 0 margin -> sustainable rate = 5 kW
-    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
-    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 5);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
 
     const app = createApp();
     await app.onInit();
@@ -499,8 +594,8 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     // Set capacity limit to 5 kW with 0 margin -> sustainable rate = 5 kW
-    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
-    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 5);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
 
     const app = createApp();
     await app.onInit();
@@ -532,8 +627,8 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     // Set capacity limit to 5 kW with 0 margin -> sustainable rate = 5 kW
-    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
-    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 5);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
 
     const app = createApp();
     await app.onInit();
@@ -568,8 +663,8 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     // Set capacity limit to 7 kW with 0.3 margin -> sustainable rate = 6.7 kW
-    mockHomeyInstance.settings.set('capacity_limit_kw', 7);
-    mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 7);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.3);
 
     const app = createApp();
     await app.onInit();
@@ -605,8 +700,8 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     // Set capacity limit to 7 kW with 0.3 margin -> sustainable rate = 6.7 kW
-    mockHomeyInstance.settings.set('capacity_limit_kw', 7);
-    mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 7);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.3);
 
     const app = createApp();
     await app.onInit();
@@ -641,8 +736,8 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     // Set capacity limit to 7 kW with 0.3 margin -> sustainable rate = 6.7 kW
-    mockHomeyInstance.settings.set('capacity_limit_kw', 7);
-    mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 7);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.3);
 
     const app = createApp();
     await app.onInit();
@@ -694,7 +789,7 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     // Enable dry-run mode
-    mockHomeyInstance.settings.set('capacity_dry_run', true);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
     // Set up priorities so the device is in the plan
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
 

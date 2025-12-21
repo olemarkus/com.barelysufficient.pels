@@ -30,6 +30,12 @@ import { refreshDevices, renderDevices } from './devices';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
 import {
+  CAPACITY_DRY_RUN,
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  OPERATING_MODE_SETTING,
+} from '../../../settingsKeys';
+import {
   initModeHandlers,
   loadModeAndPriorities,
   refreshActiveMode,
@@ -92,6 +98,9 @@ const initRealtimeListeners = () => {
   });
 
   homey.on('settings.set', (key) => {
+    if (key === CAPACITY_LIMIT_KW || key === CAPACITY_MARGIN_KW || key === CAPACITY_DRY_RUN) {
+      loadCapacitySettings().catch(() => {});
+    }
     if (key === 'device_plan_snapshot') {
       const planPanel = document.querySelector('#plan-panel');
       if (planPanel && !planPanel.classList.contains('hidden')) {
@@ -104,7 +113,7 @@ const initRealtimeListeners = () => {
         refreshPrices().catch(() => {});
       }
     }
-    if (key === 'operating_mode') {
+    if (key === OPERATING_MODE_SETTING) {
       refreshActiveMode().catch(() => {});
     }
     if (key === 'overshoot_behaviors') {
