@@ -1,5 +1,11 @@
 import Homey from 'homey';
 import CapacityGuard from './capacityGuard';
+import {
+  CAPACITY_DRY_RUN,
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  OPERATING_MODE_SETTING,
+} from './settingsKeys';
 export type PriceServiceLike = {
   refreshNettleieData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
@@ -25,7 +31,7 @@ export type SettingsHandlerDeps = {
 export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) => Promise<void> {
   const handlers: Record<string, () => Promise<void>> = {
     mode_device_targets: async () => handleModeTargetsChange(deps),
-    operating_mode: async () => handleModeTargetsChange(deps),
+    [OPERATING_MODE_SETTING]: async () => handleModeTargetsChange(deps),
     mode_aliases: async () => deps.loadCapacitySettings(),
     capacity_priorities: async () => {
       deps.loadCapacitySettings();
@@ -36,9 +42,9 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after controllable change');
     },
     power_tracker_state: async () => deps.loadPowerTracker(),
-    capacity_limit_kw: async () => handleCapacityLimitChange(deps),
-    capacity_margin_kw: async () => handleCapacityLimitChange(deps),
-    capacity_dry_run: async () => {
+    [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),
+    [CAPACITY_MARGIN_KW]: async () => handleCapacityLimitChange(deps),
+    [CAPACITY_DRY_RUN]: async () => {
       deps.loadCapacitySettings();
       await deps.rebuildPlanFromCache();
     },

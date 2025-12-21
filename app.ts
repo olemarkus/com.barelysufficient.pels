@@ -20,6 +20,12 @@ import {
   resolveModeName as resolveModeNameHelper,
 } from './capacityHelpers';
 import {
+  CAPACITY_DRY_RUN,
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  OPERATING_MODE_SETTING,
+} from './settingsKeys';
+import {
   isBooleanMap,
   isFiniteNumber,
   isModeDeviceTargets,
@@ -27,8 +33,6 @@ import {
   isPrioritySettings,
   isStringMap,
 } from './appTypeGuards';
-
-const OPERATING_MODE_SETTING = 'operating_mode';
 
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 class PelsApp extends Homey.App {
@@ -227,13 +231,13 @@ class PelsApp extends Homey.App {
   }
 
   private loadCapacitySettings(): void {
-    const limit = this.homey.settings.get('capacity_limit_kw') as unknown;
-    const margin = this.homey.settings.get('capacity_margin_kw') as unknown;
+    const limit = this.homey.settings.get(CAPACITY_LIMIT_KW) as unknown;
+    const margin = this.homey.settings.get(CAPACITY_MARGIN_KW) as unknown;
     const modeRaw = this.homey.settings.get(OPERATING_MODE_SETTING) as unknown;
     const modeAliases = this.homey.settings.get('mode_aliases') as unknown;
     const priorities = this.homey.settings.get('capacity_priorities') as unknown;
     const modeTargets = this.homey.settings.get('mode_device_targets') as unknown;
-    const dryRun = this.homey.settings.get('capacity_dry_run') as unknown;
+    const dryRun = this.homey.settings.get(CAPACITY_DRY_RUN) as unknown;
     const controllables = this.homey.settings.get('controllable_devices') as unknown;
     const rawShedBehaviors = this.homey.settings.get('overshoot_behaviors') as unknown;
     if (isFiniteNumber(limit)) this.capacitySettings.limitKw = limit;

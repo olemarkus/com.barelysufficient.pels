@@ -2,6 +2,7 @@ import { PriceLevel, PRICE_LEVEL_OPTIONS } from '../priceLevels';
 import CapacityGuard from '../capacityGuard';
 import { FlowHomeyLike, TargetDeviceSnapshot } from '../types';
 import { registerExpectedPowerCard } from './expectedPower';
+import { CAPACITY_LIMIT_KW } from '../settingsKeys';
 
 type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
 
@@ -124,7 +125,11 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     if (!Number.isFinite(limit) || limit <= 0) {
       throw new Error('Limit must be a positive number (kW).');
     }
+    const previous = deps.homey.settings.get(CAPACITY_LIMIT_KW);
+    deps.homey.settings.set(CAPACITY_LIMIT_KW, limit);
     deps.setCapacityLimit(limit);
+    const previousText = typeof previous === 'number' ? `${previous} kW` : 'unset';
+    deps.log(`Flow: capacity limit set to ${limit} kW (was ${previousText})`);
     return true;
   });
 

@@ -1,4 +1,5 @@
 import Homey from 'homey';
+import { OPERATING_MODE_SETTING } from '../../settingsKeys';
 
 class PelsInsightsDevice extends Homey.Device {
   async onInit(): Promise<void> {
@@ -25,15 +26,15 @@ class PelsInsightsDevice extends Homey.Device {
     }
 
     // Initialize from current settings
-    const initialMode = (this.homey.settings.get('operating_mode') as string) || 'home';
+    const initialMode = (this.homey.settings.get(OPERATING_MODE_SETTING) as string) || 'home';
     await this.updateMode(initialMode);
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
     await this.updateFromStatus();
 
     // Listen for settings changes
     this.homey.settings.on('set', async (key: string) => {
-      if (key === 'operating_mode') {
-        const mode = (this.homey.settings.get('operating_mode') as string) || 'home';
+      if (key === OPERATING_MODE_SETTING) {
+        const mode = (this.homey.settings.get(OPERATING_MODE_SETTING) as string) || 'home';
         await this.updateMode(mode);
       }
       if (key === 'capacity_in_shortfall') {

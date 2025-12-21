@@ -11,13 +11,12 @@ import {
   renameModeButton,
 } from './dom';
 import { getSetting, setSetting } from './homey';
+import { OPERATING_MODE_SETTING } from '../../../settingsKeys';
 import { showToast } from './toast';
 import { state } from './state';
 
-export const OPERATING_MODE_KEY = 'operating_mode';
-
 export const loadModeAndPriorities = async () => {
-  const mode = await getSetting(OPERATING_MODE_KEY);
+  const mode = await getSetting(OPERATING_MODE_SETTING);
   const priorities = await getSetting('capacity_priorities');
   const targets = await getSetting('mode_device_targets');
   const controllables = await getSetting('controllable_devices');
@@ -45,7 +44,7 @@ export const loadModeAndPriorities = async () => {
 };
 
 export const refreshActiveMode = async () => {
-  const mode = await getSetting(OPERATING_MODE_KEY);
+  const mode = await getSetting(OPERATING_MODE_SETTING);
   state.activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
   if (activeModeSelect) {
     activeModeSelect.value = state.activeMode;
@@ -170,7 +169,7 @@ export const setActiveMode = (mode: string) => {
   const next = (mode || '').trim() || 'Home';
   state.activeMode = next;
   renderModeOptions();
-  setSetting(OPERATING_MODE_KEY, state.activeMode).catch(() => {});
+  setSetting(OPERATING_MODE_SETTING, state.activeMode).catch(() => {});
 };
 
 export const setEditingMode = (mode: string) => {
@@ -199,7 +198,7 @@ export const renameMode = async (oldName: string, newName: string) => {
   state.modeAliases[oldKey.toLowerCase()] = newKey;
   if (state.activeMode === oldKey) {
     state.activeMode = newKey;
-    await setSetting(OPERATING_MODE_KEY, state.activeMode);
+    await setSetting(OPERATING_MODE_SETTING, state.activeMode);
   }
   if (state.editingMode === oldKey) state.editingMode = newKey;
   await setSetting('capacity_priorities', state.capacityPriorities);
@@ -347,7 +346,7 @@ const handleDeleteMode = async () => {
   if (state.modeTargets[mode]) delete state.modeTargets[mode];
   if (state.activeMode === mode) {
     state.activeMode = 'Home';
-    await setSetting(OPERATING_MODE_KEY, state.activeMode);
+    await setSetting(OPERATING_MODE_SETTING, state.activeMode);
   }
   state.editingMode = 'Home';
   renderModeOptions();

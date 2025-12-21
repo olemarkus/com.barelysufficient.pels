@@ -7,6 +7,7 @@ import {
   debugLoggingEnabledCheckbox,
 } from './dom';
 import { getSetting, setSetting } from './homey';
+import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../../settingsKeys';
 import { showToast } from './toast';
 
 const STALE_DATA_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -35,9 +36,9 @@ export const loadStaleDataStatus = async () => {
 };
 
 export const loadCapacitySettings = async () => {
-  const limit = await getSetting('capacity_limit_kw');
-  const margin = await getSetting('capacity_margin_kw');
-  const dryRun = await getSetting('capacity_dry_run');
+  const limit = await getSetting(CAPACITY_LIMIT_KW);
+  const margin = await getSetting(CAPACITY_MARGIN_KW);
+  const dryRun = await getSetting(CAPACITY_DRY_RUN);
   const fallbackLimit = 10;
   const fallbackMargin = 0.2;
   capacityLimitInput.value = typeof limit === 'number' ? limit.toString() : fallbackLimit.toString();
@@ -62,9 +63,9 @@ export const saveCapacitySettings = async () => {
   if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
   if (margin > limit) throw new Error('Margin cannot exceed the limit.');
 
-  await setSetting('capacity_limit_kw', limit);
-  await setSetting('capacity_margin_kw', margin);
-  await setSetting('capacity_dry_run', dryRun);
+  await setSetting(CAPACITY_LIMIT_KW, limit);
+  await setSetting(CAPACITY_MARGIN_KW, margin);
+  await setSetting(CAPACITY_DRY_RUN, dryRun);
   updateDryRunBanner(dryRun);
   await showToast('Capacity settings saved.', 'ok');
 };
