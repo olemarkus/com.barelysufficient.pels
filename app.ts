@@ -59,7 +59,7 @@ class PelsApp extends Homey.App {
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
   private overheadToken?: Homey.FlowToken;
   private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
-  private settingsHandler?: (key: string) => void;
+  private settingsHandler?: (key: string) => Promise<void>;
   private lastNotifiedOperatingMode = 'Home';
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
@@ -143,12 +143,12 @@ class PelsApp extends Homey.App {
       loadPriceOptimizationSettings: () => this.loadPriceOptimizationSettings(),
       priceService: this.priceCoordinator,
       updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
-      updateOverheadToken: (value) => void this.updateOverheadToken(value),
+      updateOverheadToken: (value) => this.updateOverheadToken(value),
       updateDebugLoggingEnabled: (logChange) => this.updateDebugLoggingEnabled(logChange),
       errorLog: (message: string, error: unknown) => this.error(message, error as Error),
     });
-    this.homey.settings.on('set', (key: string) => {
-      this.settingsHandler?.(key);
+    this.homey.settings.on('set', async (key: string) => {
+      await this.settingsHandler?.(key);
       if (key === OPERATING_MODE_SETTING) {
         this.notifyOperatingModeChanged(this.operatingMode);
       }

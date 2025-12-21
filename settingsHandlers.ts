@@ -8,7 +8,7 @@ export type PriceServiceLike = {
 export type SettingsHandlerDeps = {
   homey: Homey.App['homey'];
   loadCapacitySettings: () => void;
-  rebuildPlanFromCache: () => void;
+  rebuildPlanFromCache: () => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
   loadPowerTracker: () => void;
   getCapacityGuard: () => CapacityGuard | undefined;
@@ -17,89 +17,99 @@ export type SettingsHandlerDeps = {
   loadPriceOptimizationSettings: () => void;
   priceService: PriceServiceLike;
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
-  updateOverheadToken: (value?: number) => void;
+  updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   errorLog: (message: string, error: unknown) => void;
 };
 
-export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) => void {
-  const handlers: Record<string, () => void> = {
-    mode_device_targets: () => handleModeTargetsChange(deps),
-    operating_mode: () => handleModeTargetsChange(deps),
-    mode_aliases: () => deps.loadCapacitySettings(),
-    capacity_priorities: () => {
+export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) => Promise<void> {
+  const handlers: Record<string, () => Promise<void>> = {
+    mode_device_targets: async () => handleModeTargetsChange(deps),
+    operating_mode: async () => handleModeTargetsChange(deps),
+    mode_aliases: async () => deps.loadCapacitySettings(),
+    capacity_priorities: async () => {
       deps.loadCapacitySettings();
-      deps.rebuildPlanFromCache();
+      await deps.rebuildPlanFromCache();
     },
-    controllable_devices: () => {
+    controllable_devices: async () => {
       deps.loadCapacitySettings();
-      refreshSnapshotWithLog(deps, 'Failed to refresh devices after controllable change');
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after controllable change');
     },
-    power_tracker_state: () => deps.loadPowerTracker(),
-    capacity_limit_kw: () => handleCapacityLimitChange(deps),
-    capacity_margin_kw: () => handleCapacityLimitChange(deps),
-    capacity_dry_run: () => {
+    power_tracker_state: async () => deps.loadPowerTracker(),
+    capacity_limit_kw: async () => handleCapacityLimitChange(deps),
+    capacity_margin_kw: async () => handleCapacityLimitChange(deps),
+    capacity_dry_run: async () => {
       deps.loadCapacitySettings();
-      deps.rebuildPlanFromCache();
+      await deps.rebuildPlanFromCache();
     },
-    refresh_target_devices_snapshot: () => {
-      refreshSnapshotWithLog(deps, 'Failed to refresh target devices snapshot');
+    refresh_target_devices_snapshot: async () => {
+      await refreshSnapshotWithLog(deps, 'Failed to refresh target devices snapshot');
     },
-    refresh_nettleie: () => {
-      deps.priceService.refreshNettleieData(true).catch((error: Error) => {
+    refresh_nettleie: async () => {
+      try {
+        await deps.priceService.refreshNettleieData(true);
+      } catch (error) {
         deps.errorLog('Failed to refresh nettleie data', error);
-      });
+      }
     },
-    refresh_spot_prices: () => {
-      deps.priceService.refreshSpotPrices(true).catch((error: Error) => {
+    refresh_spot_prices: async () => {
+      try {
+        await deps.priceService.refreshSpotPrices(true);
+      } catch (error) {
         deps.errorLog('Failed to refresh spot prices', error);
-      });
+      }
     },
-    price_optimization_settings: () => {
+    price_optimization_settings: async () => {
       deps.loadPriceOptimizationSettings();
-      refreshSnapshotWithLog(deps, 'Failed to refresh plan after price optimization settings change');
+      await refreshSnapshotWithLog(deps, 'Failed to refresh plan after price optimization settings change');
     },
-    overshoot_behaviors: () => {
+    overshoot_behaviors: async () => {
       deps.loadCapacitySettings();
-      deps.rebuildPlanFromCache();
+      await deps.rebuildPlanFromCache();
     },
-    price_optimization_enabled: () => {
+    price_optimization_enabled: async () => {
       deps.updatePriceOptimizationEnabled(true);
-      deps.rebuildPlanFromCache();
+      await deps.rebuildPlanFromCache();
     },
-    debug_logging_enabled: () => deps.updateDebugLoggingEnabled(true),
+    debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
   };
 
-  return (key: string) => {
+  let queue = Promise.resolve();
+  return async (key: string) => {
     const handler = handlers[key];
-    if (handler) {
-      handler();
-    }
+    if (!handler) return;
+    queue = queue.then(() => handler()).catch((error) => {
+      deps.errorLog('Settings handler failed', error);
+    });
+    await queue;
   };
 }
 
-function handleModeTargetsChange(deps: SettingsHandlerDeps): void {
+async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.loadCapacitySettings();
-  deps.refreshTargetDevicesSnapshot().then(() => {
-    deps.rebuildPlanFromCache();
-  }).catch((error: Error) => {
+  try {
+    await deps.refreshTargetDevicesSnapshot();
+    await deps.rebuildPlanFromCache();
+  } catch (error) {
     deps.errorLog('Failed to refresh devices after mode target change', error);
-    deps.rebuildPlanFromCache();
-  });
+    await deps.rebuildPlanFromCache();
+  }
 }
 
-function handleCapacityLimitChange(deps: SettingsHandlerDeps): void {
+async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.loadCapacitySettings();
   const guard = deps.getCapacityGuard();
   const { limitKw, marginKw } = deps.getCapacitySettings();
   guard?.setLimit(limitKw);
   guard?.setSoftMargin(marginKw);
-  deps.updateOverheadToken(marginKw);
-  deps.rebuildPlanFromCache();
+  await deps.updateOverheadToken(marginKw);
+  await deps.rebuildPlanFromCache();
 }
 
-function refreshSnapshotWithLog(deps: SettingsHandlerDeps, message: string): void {
-  deps.refreshTargetDevicesSnapshot().catch((error: Error) => {
+async function refreshSnapshotWithLog(deps: SettingsHandlerDeps, message: string): Promise<void> {
+  try {
+    await deps.refreshTargetDevicesSnapshot();
+  } catch (error) {
     deps.errorLog(message, error);
-  });
+  }
 }
