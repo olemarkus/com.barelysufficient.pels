@@ -55,5 +55,8 @@
   },
   "1.5.4": {
     "en": "Improved plan behavior and clarity: plan status reasons simplified, shed temps validated on repeated overshoot, and power estimation unified for restore logic."
+  },
+  "1.5.5": {
+    "en": "Large refactor of the codebase and various bugfixes."
   }
 }
