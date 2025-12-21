@@ -9,6 +9,7 @@ import {
   RESTORE_COOLDOWN_MS,
   SHED_COOLDOWN_MS,
 } from './planConstants';
+import { getShedCooldownState } from './planTiming';
 import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
 import {
   SwapState,
@@ -116,10 +117,14 @@ function buildRestoreTiming(
   const nowTs = Date.now();
   const measurementTs = powerTracker.lastTimestamp ?? null;
   const sinceRestore = state.lastRestoreMs ? nowTs - state.lastRestoreMs : null;
-  const sinceShedding = state.lastSheddingMs ? nowTs - state.lastSheddingMs : null;
-  const sinceOvershoot = state.lastOvershootMs ? nowTs - state.lastOvershootMs : null;
-  const cooldownRemainingMs = getCooldownRemainingMs(sinceShedding, sinceOvershoot);
-  const inCooldown = cooldownRemainingMs !== null && cooldownRemainingMs > 0;
+  const cooldown = getShedCooldownState({
+    lastSheddingMs: state.lastSheddingMs,
+    lastOvershootMs: state.lastOvershootMs,
+    nowTs,
+    cooldownMs: SHED_COOLDOWN_MS,
+  });
+  const cooldownRemainingMs = cooldown.cooldownRemainingMs;
+  const inCooldown = cooldown.inCooldown;
   const inRestoreCooldown = sinceRestore !== null && sinceRestore < RESTORE_COOLDOWN_MS;
   const activeOvershoot = headroomRaw !== null && headroomRaw < 0;
   const restoreCooldownSeconds = sinceRestore !== null
@@ -141,16 +146,6 @@ function buildRestoreTiming(
     measurementTs,
     nowTs,
   };
-}
-
-function getCooldownRemainingMs(
-  sinceShedding: number | null,
-  sinceOvershoot: number | null,
-): number | null {
-  const parts = [sinceShedding, sinceOvershoot].filter((v) => v !== null) as number[];
-  if (parts.length === 0) return null;
-  const min = Math.min(...parts);
-  return Math.max(0, SHED_COOLDOWN_MS - min);
 }
 
 function shouldPlanRestores(
