@@ -6,15 +6,7 @@
     "isolatedModules": true
   },
   "include": [
-    "app.ts",
-    "capacityGuard.ts",
-    "httpClient.ts",
-    "powerTracker.ts",
-    "priceOptimizer.ts",
-    "priceService.ts",
-    "settingsHandlers.ts",
-    "drivers/**/*.ts",
-    "test/**/*.ts"
+    "**/*.ts"
   ],
   "exclude": [
     "node_modules",
