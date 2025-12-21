@@ -3,7 +3,7 @@ import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './moc
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Mock types for internal App state
-interface InternalApp {
+type InternalApp = {
     latestTargetSnapshot: Array<{
         id: string;
         measuredPowerKw?: number;
@@ -28,7 +28,7 @@ interface InternalApp {
         isInShortfall: () => boolean;
         getRestoreMargin: () => number;
     } | undefined;
-}
+};
 
 describe('Shed vs Restore Logic', () => {
     beforeEach(() => {
@@ -165,9 +165,9 @@ describe('Shed vs Restore Logic', () => {
         };
         (app as any).capacityGuard = mockGuard;
         // Mock timing so cooldowns don't block
-        (app as any).lastSheddingMs = 0;
-        (app as any).lastOvershootMs = 0;
-        (app as any).lastRestoreMs = 0;
+        (app as any).planEngine.state.lastSheddingMs = 0;
+        (app as any).planEngine.state.lastOvershootMs = 0;
+        (app as any).planEngine.state.lastRestoreMs = 0;
 
         const devices = (app as any).targetDevices;
         // Mock desired state (e.g. thermostat set to 22) to imply it "wants" to be ON

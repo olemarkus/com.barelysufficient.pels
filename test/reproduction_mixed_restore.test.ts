@@ -81,10 +81,10 @@ describe('Mixed Type Restoration Throttling', () => {
         await app.onInit();
 
         // Reset timers
-        (app as any).lastSheddingMs = 0;
-        (app as any).lastOvershootMs = 0;
-        (app as any).lastRestoreMs = 0;
-        (app as any).lastDeviceShedMs = {};
+        (app as any).planEngine.state.lastSheddingMs = 0;
+        (app as any).planEngine.state.lastOvershootMs = 0;
+        (app as any).planEngine.state.lastRestoreMs = 0;
+        (app as any).planEngine.state.lastDeviceShedMs = {};
     });
 
     test('should throttle restoration and enforce cooldown between mixed device types', async () => {

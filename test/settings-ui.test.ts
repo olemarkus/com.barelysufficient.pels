@@ -217,7 +217,14 @@ describe('Settings UI', () => {
       const mainTabs = await page.$$('.tabs > .tab');
       expect(mainTabs.length).toBeGreaterThanOrEqual(3);
 
-      const tabTexts = await page.$$eval('.tabs > .tab', (els) => els.map((el) => el.textContent?.trim()));
+      const tabTexts = await page.$$eval('.tabs > .tab', (els) => {
+        const texts: string[] = [];
+        for (const el of els) {
+          const text = el.textContent?.trim();
+          if (text) texts.push(text);
+        }
+        return texts;
+      });
       expect(tabTexts).toContain('Devices');
       expect(tabTexts).toContain('Modes');
       expect(tabTexts).toContain('Price');
@@ -374,11 +381,11 @@ describe('Settings UI', () => {
       const touchActionIssues = await page.evaluate(() => {
         const issues: string[] = [];
         const draggableRows = document.querySelectorAll('.draggable');
-        draggableRows.forEach((row) => {
+        for (const row of Array.from(draggableRows)) {
           if (getComputedStyle(row).touchAction === 'none') {
             issues.push('draggable row has touch-action: none');
           }
-        });
+        }
         return issues;
       });
 
@@ -490,7 +497,13 @@ describe('Settings UI', () => {
       });
       expect(hasOverflow).toBe(false);
 
-      const inputValues = await page.$$eval('.mode-target-input', (els) => els.map((el) => (el as HTMLInputElement).value));
+      const inputValues = await page.$$eval('.mode-target-input', (els) => {
+        const values: string[] = [];
+        for (const el of els) {
+          values.push((el as HTMLInputElement).value);
+        }
+        return values;
+      });
       expect(inputValues).toContain('22.5');
       expect(inputValues).toContain('24.5');
       expect(inputValues).toContain('19.5');
@@ -503,10 +516,16 @@ describe('Settings UI', () => {
     });
 
     test('tabs have proper ARIA attributes', async () => {
-      const tabs = await page.$$eval('.tab', (els) => els.map((el) => ({
-        role: el.getAttribute('role'),
-        ariaSelected: el.getAttribute('aria-selected'),
-      })));
+      const tabs = await page.$$eval('.tab', (els) => {
+        const tabEntries: Array<{ role: string | null; ariaSelected: string | null }> = [];
+        for (const el of els) {
+          tabEntries.push({
+            role: el.getAttribute('role'),
+            ariaSelected: el.getAttribute('aria-selected'),
+          });
+        }
+        return tabEntries;
+      });
 
       tabs.forEach((tab) => {
         expect(tab.role).toBe('tab');
@@ -839,7 +858,13 @@ describe('Settings UI', () => {
     });
 
     test('inputs fit within viewport at 480px', async () => {
-      const inputRights = await page.$$eval('.price-optimization-row .price-opt-input', (els) => els.map((el) => el.getBoundingClientRect().right));
+      const inputRights = await page.$$eval('.price-optimization-row .price-opt-input', (els) => {
+        const rights: number[] = [];
+        for (const el of els) {
+          rights.push(el.getBoundingClientRect().right);
+        }
+        return rights;
+      });
 
       for (const right of inputRights) {
         expect(right).toBeLessThanOrEqual(480);
@@ -852,10 +877,10 @@ describe('Settings UI', () => {
         const inputs = row.querySelectorAll('input[type="number"]');
         const checkbox = row.querySelector('input[type="checkbox"]');
         return {
-          hasName: !!name,
+          hasName: Boolean(name),
           nameText: name?.textContent,
           inputCount: inputs.length,
-          hasCheckbox: !!checkbox,
+          hasCheckbox: Boolean(checkbox),
         };
       });
 
@@ -1131,8 +1156,8 @@ describe('Settings UI', () => {
         const closeBtn = el.querySelector('#device-detail-close');
         const title = el.querySelector('#device-detail-title');
         return {
-          hasCloseBtn: !!closeBtn,
-          hasTitle: !!title,
+          hasCloseBtn: Boolean(closeBtn),
+          hasTitle: Boolean(title),
         };
       });
 

@@ -59,11 +59,15 @@ wOz5QAZ+2n1q4TlApJzBfwFrCDg=
 // Combined CA bundle for pinned hosts
 export const PINNED_CA_BUNDLE = `${COMODO_AAA_ROOT_CA}\n${SSL_COM_TRANSIT_CA}`;
 
-export interface HttpsJsonOptions {
+export type HttpsJsonOptions = {
   allowInsecureFallback?: boolean;
   log?: (...args: unknown[]) => void;
   pinnedHosts?: string[];
   timeoutMs?: number;
+};
+
+class NotFoundError extends Error {
+  public readonly statusCode = 404;
 }
 
 /**
@@ -92,9 +96,7 @@ export function httpsGetJson(url: string, options: HttpsJsonOptions = {}): Promi
         },
         (res) => {
           if (res.statusCode === 404) {
-            const err = new Error('Not found') as Error & { statusCode: number };
-            err.statusCode = 404;
-            reject(err);
+            reject(new NotFoundError('Not found'));
             return;
           }
           if (res.statusCode !== 200) {

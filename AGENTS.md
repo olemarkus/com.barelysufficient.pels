@@ -19,7 +19,7 @@ PELS helps users stay within their electricity capacity limits (effekttariff) by
 ## Project Structure
 
 ```
-app.ts              # Main app - ALL core logic lives here (intentionally monolithic)
+app.ts              # Main app
 capacityGuard.ts    # Capacity state container (headroom, shortfall logic), used by Plan
 drivers/            # Homey device drivers (pels_insights virtual device)
 settings/           # Settings UI (separate TypeScript build)

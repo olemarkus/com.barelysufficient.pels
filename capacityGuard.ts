@@ -3,7 +3,7 @@ type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
 type SoftLimitProvider = () => number | null;
 type ShortfallThresholdProvider = () => number | null;
 
-export interface CapacityGuardOptions {
+export type CapacityGuardOptions = {
   limitKw?: number;
   softMarginKw?: number;
   restoreMarginKw?: number;
@@ -11,9 +11,8 @@ export interface CapacityGuardOptions {
   onSheddingEnd?: TriggerCallback;
   onShortfall?: ShortfallCallback;
   onShortfallCleared?: TriggerCallback;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
-  log?: (...args: any[]) => void;
-}
+  log?: (...args: unknown[]) => void;
+};
 
 /**
  * CapacityGuard - State container for capacity management.
@@ -44,8 +43,7 @@ export default class CapacityGuard {
   private softLimitProvider?: SoftLimitProvider;
   private shortfallThresholdProvider?: ShortfallThresholdProvider;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic logging callbacks
-  private log?: (...args: any[]) => void;
+  private log?: (...args: unknown[]) => void;
 
   constructor(options: CapacityGuardOptions = {}) {
     this.limitKw = options.limitKw ?? 10;
@@ -153,35 +151,51 @@ export default class CapacityGuard {
 
     // Enter shortfall if over threshold AND no candidates left
     if (thresholdExceeded && !hasCandidates && !this.inShortfall) {
-      this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW`);
-      this.inShortfall = true;
-      this.shortfallClearStartTime = null;
-      await this.onShortfall?.(deficitKw);
+      await this.enterShortfall(deficitKw);
       return;
     }
 
     // Check for shortfall clearing (requires sustained positive headroom)
     if (this.inShortfall) {
-      const thresholdHeadroom = shortfallThreshold - (this.mainPowerKw ?? 0);
+      await this.maybeClearShortfall(shortfallThreshold);
+    }
+  }
 
-      if (thresholdHeadroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
-        const now = Date.now();
-        if (this.shortfallClearStartTime === null) {
-          this.shortfallClearStartTime = now;
-          this.log?.('Guard: positive headroom detected, waiting for sustained period before clearing shortfall');
-        } else if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
-          this.log?.('Guard: shortfall cleared (sustained positive headroom)');
-          this.inShortfall = false;
-          this.shortfallClearStartTime = null;
-          await this.onShortfallCleared?.();
-        }
-      } else {
-        // Headroom dropped - reset timer
-        if (this.shortfallClearStartTime !== null) {
-          this.log?.('Guard: headroom dropped, resetting shortfall clear timer');
-          this.shortfallClearStartTime = null;
-        }
-      }
+  private async enterShortfall(deficitKw: number): Promise<void> {
+    this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW`);
+    this.inShortfall = true;
+    this.shortfallClearStartTime = null;
+    await this.onShortfall?.(deficitKw);
+  }
+
+  private async maybeClearShortfall(shortfallThreshold: number): Promise<void> {
+    const thresholdHeadroom = shortfallThreshold - (this.mainPowerKw ?? 0);
+    if (thresholdHeadroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
+      await this.updateShortfallClearTimer();
+      return;
+    }
+    this.resetShortfallClearTimer();
+  }
+
+  private async updateShortfallClearTimer(): Promise<void> {
+    const now = Date.now();
+    if (this.shortfallClearStartTime === null) {
+      this.shortfallClearStartTime = now;
+      this.log?.('Guard: positive headroom detected, waiting for sustained period before clearing shortfall');
+      return;
+    }
+    if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
+      this.log?.('Guard: shortfall cleared (sustained positive headroom)');
+      this.inShortfall = false;
+      this.shortfallClearStartTime = null;
+      await this.onShortfallCleared?.();
+    }
+  }
+
+  private resetShortfallClearTimer(): void {
+    if (this.shortfallClearStartTime !== null) {
+      this.log?.('Guard: headroom dropped, resetting shortfall clear timer');
+      this.shortfallClearStartTime = null;
     }
   }
 }

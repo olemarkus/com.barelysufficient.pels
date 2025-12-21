@@ -27,18 +27,14 @@ describe('DeviceManager', () => {
         homeyMock = mockHomeyInstance as unknown as Homey.App;
 
         // Mock Homey API/Cloud/Platform properties required for init checks
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (homeyMock as any).api = {
             getOwnerApiToken: jest.fn().mockReturnValue('mock-token'),
             getLocalUrl: jest.fn().mockReturnValue('http://localhost'),
         };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (homeyMock as any).cloud = {
             getHomeyId: jest.fn().mockReturnValue('mock-id'),
         };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (homeyMock as any).platform = 'local';
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (homeyMock as any).platformVersion = '2.0.0';
 
         loggerMock = {
@@ -57,7 +53,6 @@ describe('DeviceManager', () => {
         });
 
         it('skips initialization if checks fail', async () => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (homeyMock as any).api = undefined;
             await deviceManager.init();
             expect(require('homey-api').HomeyAPI.createAppAPI).not.toHaveBeenCalled();

@@ -66,7 +66,7 @@ describe('Price level flow cards', () => {
 
   it('emits price_level_changed with state when level flips', () => {
     const app = createApp();
-    (app as any).priceService = {
+    (app as any).priceCoordinator = {
       isCurrentHourCheap: () => true,
       isCurrentHourExpensive: () => false,
     };
