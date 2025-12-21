@@ -60,6 +60,7 @@ class PelsApp extends Homey.App {
   private overheadToken?: Homey.FlowToken;
   private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   private settingsHandler?: (key: string) => Promise<void>;
+  private rebuildPlanQueue: Promise<void> = Promise.resolve();
   private lastNotifiedOperatingMode = 'Home';
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
@@ -345,6 +346,9 @@ class PelsApp extends Homey.App {
   }
 
   private startPeriodicSnapshotRefresh(): void {
+    if (this.snapshotRefreshInterval) {
+      clearInterval(this.snapshotRefreshInterval);
+    }
     this.snapshotRefreshInterval = setInterval(() => {
       this.refreshTargetDevicesSnapshot().catch((error: Error) => {
         this.error('Periodic snapshot refresh failed', error);
@@ -410,6 +414,13 @@ class PelsApp extends Homey.App {
   }
 
   private async rebuildPlanFromCache(): Promise<void> {
+    this.rebuildPlanQueue = this.rebuildPlanQueue.then(() => this.performPlanRebuild()).catch((error) => {
+      this.error('Failed to rebuild plan', error as Error);
+    });
+    await this.rebuildPlanQueue;
+  }
+
+  private async performPlanRebuild(): Promise<void> {
     const plan = this.buildDevicePlanSnapshot(this.latestTargetSnapshot ?? []);
     const signature = buildPlanSignature(plan);
     if (signature !== this.lastPlanSignature) {

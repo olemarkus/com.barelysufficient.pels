@@ -14,12 +14,13 @@ export type PriceOptimizerDeps = {
     isCurrentHourExpensive: () => boolean;
     getCombinedHourlyPrices: () => CombinedHourlyPrice[];
     getCurrentHourPriceInfo: () => string;
+    getCurrentHourStartMs: () => number;
   };
   getSettings: () => Record<string, PriceOptimizationSettings>;
   isEnabled: () => boolean;
   getThresholdPercent: () => number;
   getMinDiffOre: () => number;
-  rebuildPlan: (reason: string) => void;
+  rebuildPlan: (reason: string) => Promise<void>;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -48,10 +49,8 @@ export class PriceOptimizer {
     const isExpensive = resolvedLevel === PriceLevel.EXPENSIVE || this.deps.priceStatus.isCurrentHourExpensive();
 
     const prices = this.deps.priceStatus.getCombinedHourlyPrices();
-    const now = new Date();
-    const currentHourStart = new Date(now);
-    currentHourStart.setMinutes(0, 0, 0);
-    const currentPrice = prices.find((p) => new Date(p.startsAt).getTime() === currentHourStart.getTime());
+    const currentHourStartMs = this.deps.priceStatus.getCurrentHourStartMs();
+    const currentPrice = prices.find((p) => new Date(p.startsAt).getTime() === currentHourStartMs);
     const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
     const thresholdPercent = this.deps.getThresholdPercent();
     const minDiffOre = this.deps.getMinDiffOre();
@@ -68,10 +67,11 @@ export class PriceOptimizer {
     } else if (isExpensive) {
       hourLabel = 'expensive';
     }
-    this.deps.rebuildPlan(`price optimization (${hourLabel} hour)`);
+    await this.deps.rebuildPlan(`price optimization (${hourLabel} hour)`);
   }
 
   async start(): Promise<void> {
+    this.stop();
     await this.applyOnce();
     this.scheduleHourly();
   }

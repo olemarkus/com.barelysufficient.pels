@@ -9,7 +9,7 @@ import {
   formatDateInHomeyTimezone,
   getDayOfWeekInHomeyTimezone,
   getHourInHomeyTimezone,
-  truncateToHour,
+  truncateToHourInHomeyTimezone,
 } from '../powerTracker';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
@@ -41,7 +41,7 @@ describe('power tracker integration', () => {
     await app['recordPowerSample'](1000, start);
     await app['recordPowerSample'](1000, start + 30 * 60 * 1000);
 
-    const bucketKey = new Date(truncateToHour(start)).toISOString();
+    const bucketKey = new Date(truncateToHourInHomeyTimezone(mockHomeyInstance as any, start)).toISOString();
     const state = mockHomeyInstance.settings.get('power_tracker_state');
     expect(state.buckets[bucketKey]).toBeCloseTo(0.5, 3);
   });
@@ -64,7 +64,7 @@ describe('power tracker integration', () => {
     // Create data that is 35 days old (older than 30-day hourly retention)
     const now = Date.now();
     const oldTimestamp = now - (35 * 24 * 60 * 60 * 1000); // 35 days ago
-    const oldHourStart = oldTimestamp - (oldTimestamp % (60 * 60 * 1000));
+    const oldHourStart = truncateToHourInHomeyTimezone(mockHomeyInstance as any, oldTimestamp);
     const oldBucketKey = new Date(oldHourStart).toISOString();
     const oldDateKey = formatDateInHomeyTimezone(mockHomeyInstance as any, new Date(oldHourStart));
 

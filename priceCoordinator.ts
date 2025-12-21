@@ -6,7 +6,7 @@ import PriceService from './priceService';
 export type PriceCoordinatorDeps = {
   homey: Homey.App['homey'];
   getCurrentPriceLevel: () => PriceLevel;
-  rebuildPlanFromCache: (reason: string) => void;
+  rebuildPlanFromCache: (reason: string) => Promise<void>;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -63,14 +63,15 @@ export class PriceCoordinator {
         isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
         getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
         getCurrentHourPriceInfo: () => this.getCurrentHourPriceInfo(),
+        getCurrentHourStartMs: () => this.getCurrentHourStartMs(),
       },
       getSettings: () => this.priceOptimizationSettings,
       isEnabled: () => this.priceOptimizationEnabled,
       getThresholdPercent: () => this.deps.homey.settings.get('price_threshold_percent') ?? 25,
       getMinDiffOre: () => this.deps.homey.settings.get('price_min_diff_ore') ?? 0,
-      rebuildPlan: (reason) => {
+      rebuildPlan: async (reason) => {
         this.deps.logDebug(`Price optimization: triggering plan rebuild (${reason})`);
-        this.deps.rebuildPlanFromCache(reason);
+        await this.deps.rebuildPlanFromCache(reason);
       },
       log: (...args: unknown[]) => this.deps.log(...args),
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
@@ -98,6 +99,9 @@ export class PriceCoordinator {
     // Refresh prices every 3 hours
     const refreshIntervalMs = 3 * 60 * 60 * 1000;
 
+    if (this.priceRefreshInterval) {
+      clearInterval(this.priceRefreshInterval);
+    }
     this.priceRefreshInterval = setInterval(() => {
       this.priceService.refreshSpotPrices().catch((error: Error) => {
         this.deps.error('Failed to refresh spot prices', error);
@@ -138,6 +142,10 @@ export class PriceCoordinator {
 
   getCurrentHourPriceInfo(): string {
     return this.priceService.getCurrentHourPriceInfo();
+  }
+
+  getCurrentHourStartMs(): number {
+    return this.priceService.getCurrentHourStartMs();
   }
 }
 
