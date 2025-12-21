@@ -236,7 +236,7 @@ export class DeviceManager {
         const capabilityObj = this.getCapabilityObj(device);
         const currentTemperature = this.getCurrentTemperature(capabilityObj);
         const powerRaw = capabilityObj.measure_power?.value;
-        const powerEstimate = this.getPowerEstimate({
+        const powerEstimate = this.updateAndGetPowerEstimate({
             device,
             deviceId,
             deviceLabel,
@@ -333,7 +333,7 @@ export class DeviceManager {
         return 'Unknown';
     }
 
-    private getPowerEstimate(params: {
+    private updateAndGetPowerEstimate(params: {
         device: HomeyDeviceLike;
         deviceId: string;
         deviceLabel: string;

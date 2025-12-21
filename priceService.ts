@@ -326,12 +326,10 @@ export default class PriceService {
 
   private getCurrentHourPrice(prices: CombinedHourlyPrice[]): CombinedHourlyPrice | null {
     if (prices.length === 0) return null;
-    const now = new Date();
-    const currentHourStart = new Date(now);
-    currentHourStart.setMinutes(0, 0, 0);
+    const nowMs = Date.now();
     return prices.find((p) => {
-      const hourStart = new Date(p.startsAt);
-      return hourStart.getTime() === currentHourStart.getTime();
+      const hourStart = new Date(p.startsAt).getTime();
+      return nowMs >= hourStart && nowMs < hourStart + 60 * 60 * 1000;
     }) || null;
   }
 
@@ -413,6 +411,49 @@ export default class PriceService {
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
+    }
+  }
+
+  getCurrentHourStartMs(): number {
+    const current = this.getCurrentHourPrice(this.getCombinedHourlyPrices());
+    if (current) return new Date(current.startsAt).getTime();
+    return this.getHourStartInHomeyTimezone(new Date());
+  }
+
+  private getHourStartInHomeyTimezone(date: Date): number {
+    const timezone = this.homey.clock.getTimezone();
+    try {
+      const formatter = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+      const parts = formatter.formatToParts(date);
+      const getPart = (type: Intl.DateTimeFormatPartTypes) => {
+        const part = parts.find((entry) => entry.type === type);
+        return part ? part.value : '';
+      };
+      const year = Number(getPart('year'));
+      const month = Number(getPart('month'));
+      const day = Number(getPart('day'));
+      const hour = Number(getPart('hour'));
+      const minute = Number(getPart('minute'));
+      const second = Number(getPart('second'));
+      if ([year, month, day, hour, minute, second].some((value) => !Number.isFinite(value))) {
+        throw new Error('Invalid date parts');
+      }
+      const utcCandidate = Date.UTC(year, month - 1, day, hour, minute, second);
+      const offsetMs = utcCandidate - date.getTime();
+      return Date.UTC(year, month - 1, day, hour, 0, 0, 0) - offsetMs;
+    } catch {
+      const fallback = new Date(date);
+      fallback.setMinutes(0, 0, 0);
+      return fallback.getTime();
     }
   }
 }

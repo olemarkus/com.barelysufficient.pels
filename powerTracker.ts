@@ -18,7 +18,7 @@ export type RecordPowerSampleParams = {
   nowMs?: number;
   homey: Homey.App['homey'];
   capacityGuard?: CapacityGuard;
-  rebuildPlanFromCache: () => void;
+  rebuildPlanFromCache: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
 };
 
@@ -131,10 +131,42 @@ export function aggregateAndPruneHistory(
   };
 }
 
-export function truncateToHour(timestamp: number): number {
+export function truncateToHourInHomeyTimezone(homey: Homey.App['homey'], timestamp: number): number {
   const date = new Date(timestamp);
-  date.setMinutes(0, 0, 0);
-  return date.getTime();
+  const timezone = homey.clock.getTimezone();
+  try {
+    const formatter = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(date);
+    const getPart = (type: Intl.DateTimeFormatPartTypes) => {
+      const part = parts.find((entry) => entry.type === type);
+      return part ? part.value : '';
+    };
+    const year = Number(getPart('year'));
+    const month = Number(getPart('month'));
+    const day = Number(getPart('day'));
+    const hour = Number(getPart('hour'));
+    const minute = Number(getPart('minute'));
+    const second = Number(getPart('second'));
+    if ([year, month, day, hour, minute, second].some((value) => !Number.isFinite(value))) {
+      throw new Error('Invalid date parts');
+    }
+    const utcCandidate = Date.UTC(year, month - 1, day, hour, minute, second);
+    const offsetMs = utcCandidate - date.getTime();
+    return Date.UTC(year, month - 1, day, hour, 0, 0, 0) - offsetMs;
+  } catch {
+    const fallback = new Date(timestamp);
+    fallback.setMinutes(0, 0, 0);
+    return fallback.getTime();
+  }
 }
 
 export async function recordPowerSample(params: RecordPowerSampleParams): Promise<void> {
@@ -145,15 +177,15 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     capacityGuard,
     rebuildPlanFromCache,
     saveState,
-    homey: _homey,
+    homey,
   } = params;
 
-  let nextBuckets = state.buckets || {};
+  const nextBuckets = new Map<string, number>(Object.entries(state.buckets || {}));
 
   if (typeof state.lastTimestamp !== 'number' || typeof state.lastPowerW !== 'number') {
     const nextState: PowerTrackerState = {
       ...state,
-      buckets: nextBuckets,
+      buckets: Object.fromEntries(nextBuckets),
       lastTimestamp: nowMs,
       lastPowerW: currentPowerW,
     };
@@ -169,13 +201,13 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   let currentTs = previousTs;
 
   while (remainingMs > 0) {
-    const hourStart = truncateToHour(currentTs);
+    const hourStart = truncateToHourInHomeyTimezone(homey, currentTs);
     const hourEnd = hourStart + 60 * 60 * 1000;
     const segmentMs = Math.min(remainingMs, hourEnd - currentTs);
     const energyKWh = (previousPower / 1000) * (segmentMs / 3600000);
     const bucketKey = new Date(hourStart).toISOString();
-    const nextValue = (nextBuckets[bucketKey] || 0) + energyKWh;
-    nextBuckets = { ...nextBuckets, [bucketKey]: nextValue };
+    const nextValue = (nextBuckets.get(bucketKey) || 0) + energyKWh;
+    nextBuckets.set(bucketKey, nextValue);
 
     remainingMs -= segmentMs;
     currentTs += segmentMs;
@@ -183,7 +215,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
 
   const nextState: PowerTrackerState = {
     ...state,
-    buckets: nextBuckets,
+    buckets: Object.fromEntries(nextBuckets),
     lastTimestamp: nowMs,
     lastPowerW: currentPowerW,
   };

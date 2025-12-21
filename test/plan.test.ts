@@ -392,7 +392,7 @@ describe('Device plan snapshot', () => {
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
 
     await (app as any).refreshTargetDevicesSnapshot();
-    (app as any).rebuildPlanFromCache();
+    await (app as any).rebuildPlanFromCache();
 
     // Rebuild plan to reflect current snapshot.
     (app as any).computeDynamicSoftLimit = () => 5;
@@ -963,7 +963,7 @@ describe('Device plan snapshot', () => {
     ]);
 
     (app as any).planEngine.state.lastRestoreMs = Date.now() - 60000;
-    (app as any).rebuildPlanFromCache();
+    await (app as any).rebuildPlanFromCache();
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
@@ -1662,14 +1662,12 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
     ]);
-    (app as any).rebuildPlanFromCache();
+    await (app as any).rebuildPlanFromCache();
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'hoiax-1');
     expect(devPlan?.plannedTarget).toBe(45);
 
-    setSpy.mockClear();
-    await (app as any).applyPlanActions(plan);
     expect(setSpy).toHaveBeenCalledWith({
       deviceId: 'hoiax-1',
       capabilityId: 'target_temperature',
@@ -2234,7 +2232,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.pendingSwapTimestamps = {};
     (app as any).planEngine.state.swappedOutFor = {};
 
-    (app as any).rebuildPlanFromCache();
+    await (app as any).rebuildPlanFromCache();
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('keep');
   });
@@ -2710,7 +2708,7 @@ describe('Dry run mode', () => {
         controllable: true,
       },
     ]);
-    (app as any).rebuildPlanFromCache();
+    await (app as any).rebuildPlanFromCache();
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -2770,7 +2768,7 @@ describe('Dry run mode', () => {
       },
     ]);
 
-    (app as any).rebuildPlanFromCache();
+    await (app as any).rebuildPlanFromCache();
     const preShedPlan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const preShedDevice = preShedPlan.devices.find((d: any) => d.id === 'dev-1');
     expect(preShedDevice.plannedTarget).toBe(65);
@@ -2930,6 +2928,55 @@ describe('Dry run mode', () => {
 
     // This SHOULD pass but will FAIL due to the 50% budget bug
     expect(restoreCall).toBeDefined();
+  });
+
+  it('restores when headroom meets minimum hysteresis with small margin', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 1000); // 1.0 kW
+    await dev1.setCapabilityValue('onoff', false); // Currently OFF
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_limit_kw', 3);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0.05); // small margin -> restoreMargin = 0.1, hysteresis = 0.2
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 2.25;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2.25);
+    }
+
+    (app as any).planEngine.state.lastSheddingMs = null;
+    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+
+    await (app as any).recordPowerSample(1000); // 1.0 kW total -> headroom 1.25 kW
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(dev1Plan?.plannedState).toBe('keep');
+
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    await (app as any).applyPlanActions(plan);
+
+    expect(mockSetCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+    });
   });
 
 

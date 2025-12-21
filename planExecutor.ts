@@ -219,8 +219,8 @@ export class PlanExecutor {
     const inShortfall = this.capacityGuard?.isInShortfall() === true;
     const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
     const plannedPower = typeof dev.powerKw === 'number' && dev.powerKw > 0 ? dev.powerKw : 1;
-    const extraBuffer = Math.max(0.2, restoreMargin); // add a little hysteresis for restores
-    const baseNeededForDevice = plannedPower + restoreMargin + extraBuffer;
+    const restoreHysteresis = Math.max(0.2, restoreMargin * 2);
+    const baseNeededForDevice = plannedPower + restoreHysteresis;
     const lastDeviceShed = this.state.lastDeviceShedMs[dev.id];
     const recentlyShed = Boolean(
       lastDeviceShed && Date.now() - lastDeviceShed < RECENT_SHED_RESTORE_BACKOFF_MS,
