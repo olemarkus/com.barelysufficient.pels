@@ -9,6 +9,8 @@ import { createApp, cleanupApps } from './utils/appTestUtils';
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
 
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 // Factory for creating a Hoiax Connected 300 water heater mock
 function createHoiaxWaterHeater(id: string, name: string = 'Connected 300') {
   const device = new MockDevice(id, name, [
@@ -2473,12 +2475,14 @@ describe('Dry run mode', () => {
 
     // Change setting to disable dry run
     mockHomeyInstance.settings.set('capacity_dry_run', false);
+    await flushPromises();
 
     // Verify the app picked up the change
     expect((app as any).capacityDryRun).toBe(false);
 
     // Change back to dry run
     mockHomeyInstance.settings.set('capacity_dry_run', true);
+    await flushPromises();
     expect((app as any).capacityDryRun).toBe(true);
   });
 
