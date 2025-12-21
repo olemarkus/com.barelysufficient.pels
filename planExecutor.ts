@@ -10,6 +10,7 @@ import {
   RECENT_SHED_RESTORE_MULTIPLIER,
   SHED_COOLDOWN_MS,
 } from './planConstants';
+import { getShedCooldownState } from './planTiming';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -79,14 +80,13 @@ export class PlanExecutor {
   }
 
   private getCooldownState(): { cooldownRemainingMs: number; inCooldown: boolean } {
-    const sinceShedding = this.state.lastSheddingMs ? Date.now() - this.state.lastSheddingMs : null;
-    const sinceOvershoot = this.state.lastOvershootMs ? Date.now() - this.state.lastOvershootMs : null;
-    const cooldownSince = [sinceShedding, sinceOvershoot].filter((v) => v !== null) as number[];
-    const cooldownRemainingMs = cooldownSince.length
-      ? Math.max(0, SHED_COOLDOWN_MS - Math.min(...cooldownSince))
-      : 0;
-    const inCooldown = cooldownRemainingMs > 0;
-    return { cooldownRemainingMs, inCooldown };
+    const cooldown = getShedCooldownState({
+      lastSheddingMs: this.state.lastSheddingMs,
+      lastOvershootMs: this.state.lastOvershootMs,
+      cooldownMs: SHED_COOLDOWN_MS,
+    });
+    const cooldownRemainingMs = cooldown.cooldownRemainingMs ?? 0;
+    return { cooldownRemainingMs, inCooldown: cooldown.inCooldown };
   }
 
   private async applyShedAction(dev: DevicePlan['devices'][number]): Promise<boolean> {
