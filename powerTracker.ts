@@ -30,6 +30,12 @@ function shouldResetSampling(previousTs: number, nowMs: number): boolean {
   return previousTs < MIN_VALID_TIMESTAMP_MS || elapsedMs < 0 || elapsedMs > MAX_SAMPLE_GAP_MS;
 }
 
+function shouldResetSamplingState(state: PowerTrackerState, nowMs: number): boolean {
+  const { lastTimestamp, lastPowerW } = state;
+  if (typeof lastTimestamp !== 'number' || typeof lastPowerW !== 'number') return true;
+  return shouldResetSampling(lastTimestamp, nowMs);
+}
+
 function buildNextPowerState(params: {
   state: PowerTrackerState;
   nextBuckets: Map<string, number>;
@@ -61,7 +67,7 @@ async function persistPowerSample(params: {
   } = params;
   if (capacityGuard) capacityGuard.reportTotalPower(currentPowerW / 1000);
   saveState(nextState);
-  await Promise.resolve(rebuildPlanFromCache());
+  await rebuildPlanFromCache();
 }
 
 export function formatDateInHomeyTimezone(homey: Homey.App['homey'], date: Date): string {
@@ -220,7 +226,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
 
   const nextBuckets = new Map<string, number>(Object.entries(state.buckets || {}));
 
-  if (typeof state.lastTimestamp !== 'number' || typeof state.lastPowerW !== 'number') {
+  if (shouldResetSamplingState(state, nowMs)) {
     const nextState = buildNextPowerState({
       state,
       nextBuckets,
@@ -237,25 +243,9 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     return;
   }
 
-  const previousTs = state.lastTimestamp;
-  const previousPower = state.lastPowerW;
+  const previousTs = state.lastTimestamp as number;
+  const previousPower = state.lastPowerW as number;
   let remainingMs = nowMs - previousTs;
-  if (shouldResetSampling(previousTs, nowMs)) {
-    const nextState = buildNextPowerState({
-      state,
-      nextBuckets,
-      nowMs,
-      currentPowerW,
-    });
-    await persistPowerSample({
-      nextState,
-      currentPowerW,
-      capacityGuard,
-      saveState,
-      rebuildPlanFromCache,
-    });
-    return;
-  }
   let currentTs = previousTs;
 
   while (remainingMs > 0) {
