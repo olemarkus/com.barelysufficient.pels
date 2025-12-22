@@ -22,6 +22,48 @@ export type RecordPowerSampleParams = {
   saveState: (state: PowerTrackerState) => void;
 };
 
+const MIN_VALID_TIMESTAMP_MS = 100000000000;
+const MAX_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
+
+function shouldResetSampling(previousTs: number, nowMs: number): boolean {
+  const elapsedMs = nowMs - previousTs;
+  return previousTs < MIN_VALID_TIMESTAMP_MS || elapsedMs < 0 || elapsedMs > MAX_SAMPLE_GAP_MS;
+}
+
+function buildNextPowerState(params: {
+  state: PowerTrackerState;
+  nextBuckets: Map<string, number>;
+  nowMs: number;
+  currentPowerW: number;
+}): PowerTrackerState {
+  const { state, nextBuckets, nowMs, currentPowerW } = params;
+  return {
+    ...state,
+    buckets: Object.fromEntries(nextBuckets),
+    lastTimestamp: nowMs,
+    lastPowerW: currentPowerW,
+  };
+}
+
+async function persistPowerSample(params: {
+  nextState: PowerTrackerState;
+  currentPowerW: number;
+  capacityGuard?: CapacityGuard;
+  saveState: (state: PowerTrackerState) => void;
+  rebuildPlanFromCache: () => Promise<void>;
+}): Promise<void> {
+  const {
+    nextState,
+    currentPowerW,
+    capacityGuard,
+    saveState,
+    rebuildPlanFromCache,
+  } = params;
+  if (capacityGuard) capacityGuard.reportTotalPower(currentPowerW / 1000);
+  saveState(nextState);
+  await Promise.resolve(rebuildPlanFromCache());
+}
+
 export function formatDateInHomeyTimezone(homey: Homey.App['homey'], date: Date): string {
   const timezone = homey.clock.getTimezone();
   try {
@@ -83,9 +125,11 @@ export function aggregateAndPruneHistory(
   const hourlyThreshold = now - hourlyRetentionMs;
   const dailyThreshold = now - dailyRetentionMs;
 
-  let nextDailyTotals: Record<string, number> = state.dailyTotals || {};
-  let nextHourlyAverages: Record<string, { sum: number; count: number }> = state.hourlyAverages || {};
-  let nextBuckets: Record<string, number> = {};
+  const nextDailyTotals = new Map<string, number>(Object.entries(state.dailyTotals || {}));
+  const nextHourlyAverages = new Map<string, { sum: number; count: number }>(
+    Object.entries(state.hourlyAverages || {}) as Array<[string, { sum: number; count: number }]>,
+  );
+  const nextBuckets = new Map<string, number>();
 
   for (const [isoKey, kWh] of Object.entries(state.buckets)) {
     const timestamp = new Date(isoKey).getTime();
@@ -97,37 +141,31 @@ export function aggregateAndPruneHistory(
       const hourOfDay = getHourInHomeyTimezone(homey, date);
       const dateKey = formatDateInHomeyTimezone(homey, date);
 
-      nextDailyTotals = {
-        ...nextDailyTotals,
-        [dateKey]: (nextDailyTotals[dateKey] || 0) + kWh,
-      };
+      nextDailyTotals.set(dateKey, (nextDailyTotals.get(dateKey) || 0) + kWh);
 
       const patternKey = `${dayOfWeek}_${hourOfDay}`;
-      const existingPattern = nextHourlyAverages[patternKey] || { sum: 0, count: 0 };
-      nextHourlyAverages = {
-        ...nextHourlyAverages,
-        [patternKey]: {
-          sum: existingPattern.sum + kWh,
-          count: existingPattern.count + 1,
-        },
-      };
+      const existingPattern = nextHourlyAverages.get(patternKey) || { sum: 0, count: 0 };
+      nextHourlyAverages.set(patternKey, {
+        sum: existingPattern.sum + kWh,
+        count: existingPattern.count + 1,
+      });
       continue;
     }
-    nextBuckets = { ...nextBuckets, [isoKey]: kWh };
+    nextBuckets.set(isoKey, kWh);
   }
 
-  const prunedDailyTotals = Object.fromEntries(
-    Object.entries(nextDailyTotals).filter(([dateKey]) => {
-      const timestamp = new Date(dateKey).getTime();
-      return Number.isNaN(timestamp) ? true : timestamp >= dailyThreshold;
-    }),
-  );
+  for (const dateKey of nextDailyTotals.keys()) {
+    const timestamp = new Date(dateKey).getTime();
+    if (!Number.isNaN(timestamp) && timestamp < dailyThreshold) {
+      nextDailyTotals.delete(dateKey);
+    }
+  }
 
   return {
     ...state,
-    buckets: nextBuckets,
-    dailyTotals: prunedDailyTotals,
-    hourlyAverages: nextHourlyAverages,
+    buckets: Object.fromEntries(nextBuckets),
+    dailyTotals: Object.fromEntries(nextDailyTotals),
+    hourlyAverages: Object.fromEntries(nextHourlyAverages),
   };
 }
 
@@ -183,21 +221,41 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   const nextBuckets = new Map<string, number>(Object.entries(state.buckets || {}));
 
   if (typeof state.lastTimestamp !== 'number' || typeof state.lastPowerW !== 'number') {
-    const nextState: PowerTrackerState = {
-      ...state,
-      buckets: Object.fromEntries(nextBuckets),
-      lastTimestamp: nowMs,
-      lastPowerW: currentPowerW,
-    };
-    if (capacityGuard) capacityGuard.reportTotalPower(currentPowerW / 1000);
-    saveState(nextState);
-    await Promise.resolve(rebuildPlanFromCache());
+    const nextState = buildNextPowerState({
+      state,
+      nextBuckets,
+      nowMs,
+      currentPowerW,
+    });
+    await persistPowerSample({
+      nextState,
+      currentPowerW,
+      capacityGuard,
+      saveState,
+      rebuildPlanFromCache,
+    });
     return;
   }
 
   const previousTs = state.lastTimestamp;
   const previousPower = state.lastPowerW;
   let remainingMs = nowMs - previousTs;
+  if (shouldResetSampling(previousTs, nowMs)) {
+    const nextState = buildNextPowerState({
+      state,
+      nextBuckets,
+      nowMs,
+      currentPowerW,
+    });
+    await persistPowerSample({
+      nextState,
+      currentPowerW,
+      capacityGuard,
+      saveState,
+      rebuildPlanFromCache,
+    });
+    return;
+  }
   let currentTs = previousTs;
 
   while (remainingMs > 0) {
@@ -213,13 +271,17 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     currentTs += segmentMs;
   }
 
-  const nextState: PowerTrackerState = {
-    ...state,
-    buckets: Object.fromEntries(nextBuckets),
-    lastTimestamp: nowMs,
-    lastPowerW: currentPowerW,
-  };
-  if (capacityGuard) capacityGuard.reportTotalPower(currentPowerW / 1000);
-  saveState(nextState);
-  await Promise.resolve(rebuildPlanFromCache());
+  const nextState = buildNextPowerState({
+    state,
+    nextBuckets,
+    nowMs,
+    currentPowerW,
+  });
+  await persistPowerSample({
+    nextState,
+    currentPowerW,
+    capacityGuard,
+    saveState,
+    rebuildPlanFromCache,
+  });
 }
