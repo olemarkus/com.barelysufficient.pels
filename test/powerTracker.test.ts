@@ -6,9 +6,9 @@ import {
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 import {
-  formatDateInHomeyTimezone,
-  getDayOfWeekInHomeyTimezone,
-  getHourInHomeyTimezone,
+  formatDateUtc,
+  getUtcDayOfWeek,
+  getUtcHour,
   recordPowerSample,
   truncateToHourInHomeyTimezone,
 } from '../powerTracker';
@@ -67,7 +67,7 @@ describe('power tracker integration', () => {
     const oldTimestamp = now - (35 * 24 * 60 * 60 * 1000); // 35 days ago
     const oldHourStart = truncateToHourInHomeyTimezone(mockHomeyInstance as any, oldTimestamp);
     const oldBucketKey = new Date(oldHourStart).toISOString();
-    const oldDateKey = formatDateInHomeyTimezone(mockHomeyInstance as any, new Date(oldHourStart));
+    const oldDateKey = formatDateUtc(new Date(oldHourStart));
 
     // Manually set old data in powerTracker
     app['powerTracker'] = {
@@ -91,7 +91,7 @@ describe('power tracker integration', () => {
 
     // Should be in hourly averages pattern
     const date = new Date(oldHourStart);
-    const patternKey = `${getDayOfWeekInHomeyTimezone(mockHomeyInstance as any, date)}_${getHourInHomeyTimezone(mockHomeyInstance as any, date)}`;
+    const patternKey = `${getUtcDayOfWeek(date)}_${getUtcHour(date)}`;
     expect(state.hourlyAverages[patternKey]).toBeDefined();
     expect(state.hourlyAverages[patternKey].sum).toBeCloseTo(1.5, 3);
     expect(state.hourlyAverages[patternKey].count).toBe(1);

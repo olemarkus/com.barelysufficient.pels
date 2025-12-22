@@ -1,5 +1,6 @@
 import type CapacityGuard from './capacityGuard';
 import type { PowerTrackerState } from './powerTracker';
+import { getHourBucketKey } from './powerTracker';
 
 export function buildPeriodicStatusLog(params: {
   capacityGuard?: CapacityGuard;
@@ -40,11 +41,7 @@ function formatHeadroomPart(headroom: number | null): string | null {
 }
 
 function getCurrentHourUsage(powerTracker: PowerTrackerState): { usedKWh: number } {
-  const now = Date.now();
-  const date = new Date(now);
-  date.setMinutes(0, 0, 0);
-  const hourStart = date.getTime();
-  const bucketKey = new Date(hourStart).toISOString();
+  const bucketKey = getHourBucketKey();
   const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
   return { usedKWh };
 }

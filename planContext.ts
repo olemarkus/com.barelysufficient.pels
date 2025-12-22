@@ -1,5 +1,6 @@
 import CapacityGuard from './capacityGuard';
 import type { PowerTrackerState } from './powerTracker';
+import { getHourBucketKey } from './powerTracker';
 import type { PlanInputDevice } from './planTypes';
 
 export type PlanContext = {
@@ -38,12 +39,11 @@ export function buildPlanContext(params: {
 
   // Compute used/budget kWh for this hour
   const budgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
-  const now = Date.now();
-  const hourStart = new Date(now);
-  hourStart.setMinutes(0, 0, 0);
-  const bucketKey = hourStart.toISOString();
+  const bucketKey = getHourBucketKey();
   const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
-  const hourEnd = hourStart.getTime() + 60 * 60 * 1000;
+  const now = Date.now();
+  const hourStart = new Date(bucketKey).getTime();
+  const hourEnd = hourStart + 60 * 60 * 1000;
   const minutesRemaining = Math.max(0, (hourEnd - now) / 60000);
 
   const headroomRaw = total === null ? null : softLimit - total;

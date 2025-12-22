@@ -70,58 +70,23 @@ async function persistPowerSample(params: {
   await rebuildPlanFromCache();
 }
 
-export function formatDateInHomeyTimezone(homey: Homey.App['homey'], date: Date): string {
-  const timezone = homey.clock.getTimezone();
-  try {
-    const formatter = new Intl.DateTimeFormat('sv-SE', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    return formatter.format(date);
-  } catch {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
+export function formatDateUtc(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
-export function getHourInHomeyTimezone(homey: Homey.App['homey'], date: Date): number {
-  const timezone = homey.clock.getTimezone();
-  try {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: 'numeric',
-      hour12: false,
-    });
-    return parseInt(formatter.format(date), 10);
-  } catch {
-    return date.getHours();
-  }
+export function getUtcHour(date: Date): number {
+  return date.getUTCHours();
 }
 
-export function getDayOfWeekInHomeyTimezone(homey: Homey.App['homey'], date: Date): number {
-  const timezone = homey.clock.getTimezone();
-  try {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      weekday: 'short',
-    });
-    const weekday = formatter.format(date);
-    const days: Record<string, number> = {
-      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-    };
-    return days[weekday] ?? date.getDay();
-  } catch {
-    return date.getDay();
-  }
+export function getUtcDayOfWeek(date: Date): number {
+  return date.getUTCDay();
 }
 
 export function aggregateAndPruneHistory(
   state: PowerTrackerState,
-  homey: Homey.App['homey'],
 ): PowerTrackerState {
   if (!state.buckets) return state;
 
@@ -143,9 +108,9 @@ export function aggregateAndPruneHistory(
 
     if (timestamp < hourlyThreshold) {
       const date = new Date(isoKey);
-      const dayOfWeek = getDayOfWeekInHomeyTimezone(homey, date);
-      const hourOfDay = getHourInHomeyTimezone(homey, date);
-      const dateKey = formatDateInHomeyTimezone(homey, date);
+      const dayOfWeek = getUtcDayOfWeek(date);
+      const hourOfDay = getUtcHour(date);
+      const dateKey = formatDateUtc(date);
 
       nextDailyTotals.set(dateKey, (nextDailyTotals.get(dateKey) || 0) + kWh);
 
@@ -213,6 +178,24 @@ export function truncateToHourInHomeyTimezone(homey: Homey.App['homey'], timesta
   }
 }
 
+export function truncateToUtcHour(timestamp: number): number {
+  const date = new Date(timestamp);
+  return Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    date.getUTCHours(),
+    0,
+    0,
+    0,
+  );
+}
+
+export function getHourBucketKey(nowMs: number = Date.now()): string {
+  const hourStart = truncateToUtcHour(nowMs);
+  return new Date(hourStart).toISOString();
+}
+
 export async function recordPowerSample(params: RecordPowerSampleParams): Promise<void> {
   const {
     state,
@@ -221,7 +204,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     capacityGuard,
     rebuildPlanFromCache,
     saveState,
-    homey,
+    homey: _homey,
   } = params;
 
   const nextBuckets = new Map<string, number>(Object.entries(state.buckets || {}));
@@ -249,7 +232,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   let currentTs = previousTs;
 
   while (remainingMs > 0) {
-    const hourStart = truncateToHourInHomeyTimezone(homey, currentTs);
+    const hourStart = truncateToUtcHour(currentTs);
     const hourEnd = hourStart + 60 * 60 * 1000;
     const segmentMs = Math.min(remainingMs, hourEnd - currentTs);
     const energyKWh = (previousPower / 1000) * (segmentMs / 3600000);
