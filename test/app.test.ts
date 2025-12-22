@@ -11,6 +11,7 @@ import {
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
 } from '../settingsKeys';
+import { getHourBucketKey } from '../powerTracker';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -605,10 +606,12 @@ describe('computeDynamicSoftLimit', () => {
       buckets: {},
     };
 
-    // Set the bucket to have 4.9 kWh used (almost exhausted budget)
     const now = new Date();
-    now.setMinutes(0, 0, 0);
-    const bucketKey = now.toISOString();
+    const nowMs = now.getTime();
+    jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+
+    // Set the bucket to have 4.9 kWh used (almost exhausted budget)
+    const bucketKey = getHourBucketKey(nowMs);
     (app as any).powerTracker.buckets[bucketKey] = 4.9;
 
     const softLimit = (app as any).computeDynamicSoftLimit();
@@ -618,6 +621,7 @@ describe('computeDynamicSoftLimit', () => {
     // The cap (5 kW) doesn't apply because burst rate is already lower
     expect(softLimit).toBeLessThan(5);
     expect(softLimit).toBeGreaterThanOrEqual(0);
+    jest.restoreAllMocks();
   });
 
   it('returns sustainable rate at start of hour with full budget', async () => {

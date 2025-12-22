@@ -1,4 +1,5 @@
 import type { PowerTrackerState } from './powerTracker';
+import { getHourBucketKey } from './powerTracker';
 
 export function computeDynamicSoftLimit(params: {
   capacitySettings: { limitKw: number; marginKw: number };
@@ -12,14 +13,12 @@ export function computeDynamicSoftLimit(params: {
   if (netBudgetKWh <= 0) return { allowedKw: 0, hourlyBudgetExhausted: false };
 
   const now = Date.now();
-  const date = new Date(now);
-  date.setMinutes(0, 0, 0);
-  const hourStart = date.getTime();
+  const bucketKey = getHourBucketKey(now);
+  const hourStart = new Date(bucketKey).getTime();
   const hourEnd = hourStart + 60 * 60 * 1000;
   const remainingMs = hourEnd - now;
   const remainingHours = Math.max(remainingMs / 3600000, 10 / 60); // floor at 10 minutes to avoid extreme burst rates
 
-  const bucketKey = new Date(hourStart).toISOString();
   const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
   const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
   const hourlyBudgetExhausted = remainingKWh <= 0;
@@ -60,14 +59,12 @@ export function computeShortfallThreshold(params: {
   if (netBudgetKWh <= 0) return 0;
 
   const now = Date.now();
-  const date = new Date(now);
-  date.setMinutes(0, 0, 0);
-  const hourStart = date.getTime();
+  const bucketKey = getHourBucketKey(now);
+  const hourStart = new Date(bucketKey).getTime();
   const hourEnd = hourStart + 60 * 60 * 1000;
   const remainingMs = hourEnd - now;
   const remainingHours = Math.max(remainingMs / 3600000, 0.01);
 
-  const bucketKey = new Date(hourStart).toISOString();
   const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
   const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
 

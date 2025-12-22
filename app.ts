@@ -281,7 +281,7 @@ class PelsApp extends Homey.App {
   }
 
   private savePowerTracker(nextState: PowerTrackerState = this.powerTracker): void {
-    const pruned = aggregateAndPruneHistory(nextState, this.homey);
+    const pruned = aggregateAndPruneHistory(nextState);
     this.powerTracker = pruned;
     this.homey.settings.set('power_tracker_state', pruned);
   }
