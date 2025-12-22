@@ -9,6 +9,7 @@ import {
   formatDateInHomeyTimezone,
   getDayOfWeekInHomeyTimezone,
   getHourInHomeyTimezone,
+  recordPowerSample,
   truncateToHourInHomeyTimezone,
 } from '../powerTracker';
 
@@ -120,5 +121,33 @@ describe('power tracker integration', () => {
 
     // Recent hourly bucket should still exist
     expect(state.buckets[recentBucketKey]).toBeCloseTo(2.0, 3);
+  });
+
+  it('resets sampling when lastTimestamp looks like seconds', async () => {
+    const state = {
+      lastTimestamp: 1700000000,
+      lastPowerW: 500,
+      buckets: {},
+    };
+    const saveState = jest.fn();
+    const rebuildPlanFromCache = jest.fn();
+    const nowMs = 1700000000000;
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 1000,
+      nowMs,
+      homey: mockHomeyInstance as any,
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    expect(saveState).toHaveBeenCalledTimes(1);
+    const saved = saveState.mock.calls[0][0];
+    expect(saved.lastTimestamp).toBe(nowMs);
+    expect(saved.lastPowerW).toBe(1000);
+    expect(saved.buckets).toEqual({});
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 });

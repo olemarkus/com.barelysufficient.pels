@@ -35,6 +35,7 @@ import {
 } from './appTypeGuards';
 
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
 
@@ -56,7 +57,6 @@ class PelsApp extends Homey.App {
   private deviceManager!: DeviceManager;
   private planEngine!: PlanEngine;
   private defaultComputeDynamicSoftLimit?: () => number;
-
   private lastPlanSignature = '';
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
   private lastKnownPowerKw: Record<string, number> = {};
@@ -67,11 +67,12 @@ class PelsApp extends Homey.App {
   private rebuildPlanQueue: Promise<void> = Promise.resolve();
   private lastNotifiedOperatingMode = 'Home';
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
-
+  private lastPowerSamplePlanRebuildMs = 0;
+  private pendingPowerSampleRebuild?: Promise<void>;
+  private powerSampleRebuildTimer?: ReturnType<typeof setTimeout>;
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     this.deviceManager.updateLocalSnapshot(deviceId, updates);
   }
-
   async onInit() {
     this.log('PELS has been initialized');
 
@@ -173,15 +174,17 @@ class PelsApp extends Homey.App {
     this.startPriceRefresh();
     await this.startPriceOptimization();
   }
-
   async onUninit(): Promise<void> {
     if (this.snapshotRefreshInterval) {
       clearInterval(this.snapshotRefreshInterval);
       this.snapshotRefreshInterval = undefined;
     }
+    if (this.powerSampleRebuildTimer) {
+      clearTimeout(this.powerSampleRebuildTimer);
+      this.powerSampleRebuildTimer = undefined;
+    }
     this.priceCoordinator.stop();
   }
-
   private logDebug(...args: unknown[]): void {
     if (this.debugLoggingEnabled) this.log(...args);
   }
@@ -196,7 +199,6 @@ class PelsApp extends Homey.App {
   private updatePriceOptimizationEnabled(logChange = false): void {
     this.priceCoordinator.updatePriceOptimizationEnabled(logChange);
   }
-
   private get priceOptimizationEnabled(): boolean {
     return this.priceCoordinator.getPriceOptimizationEnabled();
   }
@@ -260,9 +262,7 @@ class PelsApp extends Homey.App {
     void this.updateOverheadToken(this.capacitySettings.marginKw);
   }
 
-  private loadPriceOptimizationSettings(): void {
-    this.priceCoordinator.loadPriceOptimizationSettings();
-  }
+  private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
 
   private async updateOverheadToken(value?: number): Promise<void> {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;
@@ -292,10 +292,35 @@ class PelsApp extends Homey.App {
       currentPowerW,
       nowMs,
       capacityGuard: this.capacityGuard,
-      rebuildPlanFromCache: () => this.rebuildPlanFromCache(),
+      rebuildPlanFromCache: () => this.schedulePlanRebuildFromPowerSample(),
       saveState: (state) => this.savePowerTracker(state),
       homey: this.homey,
     });
+  }
+
+  private schedulePlanRebuildFromPowerSample(): Promise<void> {
+    const now = Date.now();
+    const elapsedMs = now - this.lastPowerSamplePlanRebuildMs;
+    if (elapsedMs >= POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS) {
+      this.lastPowerSamplePlanRebuildMs = now;
+      return this.rebuildPlanFromCache();
+    }
+    if (!this.pendingPowerSampleRebuild) {
+      const waitMs = Math.max(0, POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS - elapsedMs);
+      this.pendingPowerSampleRebuild = new Promise((resolve) => {
+        this.powerSampleRebuildTimer = setTimeout(() => {
+          this.powerSampleRebuildTimer = undefined;
+          this.lastPowerSamplePlanRebuildMs = Date.now();
+          this.rebuildPlanFromCache()
+            .catch((error) => this.error('Failed to rebuild plan after power sample', error as Error))
+            .finally(() => {
+              this.pendingPowerSampleRebuild = undefined;
+              resolve();
+            });
+        }, waitMs);
+      });
+    }
+    return this.pendingPowerSampleRebuild;
   }
 
   private registerFlowCards(): void {
