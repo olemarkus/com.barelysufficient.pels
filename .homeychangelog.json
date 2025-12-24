@@ -61,5 +61,8 @@
   },
   "1.5.6": {
     "en": "Fix crash due to excessive CPU usage and converted more internals to use UTC."
+  },
+  "1.5.7": {
+    "en": "Make statistics actually work."
   }
 }
