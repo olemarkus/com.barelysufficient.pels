@@ -1,12 +1,13 @@
 import { buildPeriodicStatusLog } from '../periodicStatus';
-import { getHourBucketKey, recordPowerSample } from '../powerTracker';
+import { recordPowerSample } from '../powerTracker';
+import { getHourBucketKey } from '../dateUtils';
 import { mockHomeyInstance } from './mocks/homey';
 
 describe('periodic status used kWh', () => {
   it('reports usage from current hour bucket in Homey timezone', async () => {
     const state = {};
     const saveState = (nextState: any) => Object.assign(state, nextState);
-    const rebuildPlanFromCache = async () => {};
+    const rebuildPlanFromCache = async () => { };
 
     const sampleStart = Date.UTC(2025, 0, 1, 0, 30, 0);
     await recordPowerSample({

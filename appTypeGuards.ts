@@ -30,9 +30,10 @@ export function isPowerTrackerState(value: unknown): value is PowerTrackerState 
   if (!value || typeof value !== 'object') return false;
   const state = value as PowerTrackerState;
   const bucketsOk = state.buckets === undefined || typeof state.buckets === 'object';
+  const budgetsOk = state.hourlyBudgets === undefined || typeof state.hourlyBudgets === 'object';
   const dailyOk = state.dailyTotals === undefined || typeof state.dailyTotals === 'object';
   const averagesOk = state.hourlyAverages === undefined || typeof state.hourlyAverages === 'object';
   const lastPowerOk = state.lastPowerW === undefined || typeof state.lastPowerW === 'number';
   const lastTsOk = state.lastTimestamp === undefined || typeof state.lastTimestamp === 'number';
-  return bucketsOk && dailyOk && averagesOk && lastPowerOk && lastTsOk;
+  return bucketsOk && budgetsOk && dailyOk && averagesOk && lastPowerOk && lastTsOk;
 }

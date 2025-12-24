@@ -4,7 +4,6 @@ import {
   panels,
   refreshButton,
   planRefreshButton,
-  resetStatsButton,
   priceSettingsForm,
   priceAreaSelect,
   providerSurchargeInput,
@@ -24,10 +23,11 @@ import {
   priorityForm,
   debugLoggingEnabledCheckbox,
 } from './dom';
-import { getHomeyClient, setSetting, waitForHomey } from './homey';
+import { getHomeyClient, getSetting, setSetting, waitForHomey } from './homey';
 import { showToast, showToastError } from './toast';
 import { refreshDevices, renderDevices } from './devices';
-import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
+import { getPowerUsage, renderPowerStats, renderPowerUsage, PowerTracker } from './power';
+import { getHourBucketKey } from '../../../dateUtils';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
 import {
   CAPACITY_DRY_RUN,
@@ -72,10 +72,10 @@ const showTab = (tabId: string) => {
     panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
   });
   if (tabId === 'plan') {
-    refreshPlan().catch(() => {});
+    refreshPlan().catch(() => { });
   }
   if (tabId === 'price') {
-    refreshPrices().catch(() => {});
+    refreshPrices().catch(() => { });
   }
 };
 
@@ -93,31 +93,31 @@ const initRealtimeListeners = () => {
   homey.on('prices_updated', () => {
     const pricesPanel = document.querySelector('#price-panel');
     if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
-      refreshPrices().catch(() => {});
+      refreshPrices().catch(() => { });
     }
   });
 
   homey.on('settings.set', (key) => {
     if (key === CAPACITY_LIMIT_KW || key === CAPACITY_MARGIN_KW || key === CAPACITY_DRY_RUN) {
-      loadCapacitySettings().catch(() => {});
+      loadCapacitySettings().catch(() => { });
     }
     if (key === 'device_plan_snapshot') {
       const planPanel = document.querySelector('#plan-panel');
       if (planPanel && !planPanel.classList.contains('hidden')) {
-        refreshPlan().catch(() => {});
+        refreshPlan().catch(() => { });
       }
     }
     if (key === 'combined_prices' || key === 'electricity_prices') {
       const pricesPanel = document.querySelector('#price-panel');
       if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
-        refreshPrices().catch(() => {});
+        refreshPrices().catch(() => { });
       }
     }
     if (key === OPERATING_MODE_SETTING) {
-      refreshActiveMode().catch(() => {});
+      refreshActiveMode().catch(() => { });
     }
     if (key === 'overshoot_behaviors') {
-      loadShedBehaviors().catch(() => {});
+      loadShedBehaviors().catch(() => { });
     }
   });
 };
@@ -162,16 +162,92 @@ const initCapacityHandlers = () => {
   });
   refreshButton.addEventListener('click', refreshDevices);
   planRefreshButton?.addEventListener('click', refreshPlan);
-  resetStatsButton?.addEventListener('click', async () => {
-    try {
-      await setSetting('power_tracker_state', {});
-      renderPowerUsage([]);
-      await renderPowerStats();
-      await showToast('Power stats reset.', 'ok');
-    } catch (error) {
-      await showToastError(error, 'Failed to reset stats.');
-    }
-  });
+  /* 2-step confirmation logic */
+  const resetStatsBtn = document.getElementById('reset-stats-button') as HTMLButtonElement;
+  if (resetStatsBtn) {
+    resetStatsBtn.addEventListener('click', () => handleResetStats(resetStatsBtn));
+  } else {
+    console.error('Reset stats button not found');
+  }
+};
+
+let resetTimeout: ReturnType<typeof setTimeout> | null = null;
+
+
+const calculateResetState = (currentState: PowerTracker): PowerTracker => {
+  const currentHourKey = getHourBucketKey();
+
+  const newBuckets: Record<string, number> = {};
+  if (currentState.buckets && currentState.buckets[currentHourKey] !== undefined) {
+    newBuckets[currentHourKey] = currentState.buckets[currentHourKey];
+  }
+
+  const newBudgets: Record<string, number> = {};
+  if (currentState.hourlyBudgets && currentState.hourlyBudgets[currentHourKey] !== undefined) {
+    newBudgets[currentHourKey] = currentState.hourlyBudgets[currentHourKey];
+  }
+
+  return {
+    ...currentState,
+    buckets: newBuckets,
+    hourlyBudgets: newBudgets,
+    dailyTotals: {},
+    hourlyAverages: {},
+    unreliablePeriods: [],
+  };
+};
+
+const handleResetStats = async (btn: HTMLButtonElement) => {
+  // Step 1: Request Confirmation
+  if (!btn.classList.contains('confirming')) {
+    console.log('Reset stats: requesting confirmation');
+    const b = btn;
+    b.textContent = '⚠️ Click again to confirm reset';
+    b.classList.add('confirming');
+    b.style.color = 'var(--homey-red, #f44336)'; // Visual feedback
+
+    if (resetTimeout) clearTimeout(resetTimeout);
+    resetTimeout = setTimeout(() => {
+      const el = btn;
+      el.textContent = 'Reset all stats';
+      el.classList.remove('confirming');
+      el.style.color = '';
+      resetTimeout = null;
+    }, 5000); // 5 seconds to confirm
+    return;
+  }
+
+  // Step 2: Execute Reset
+  console.log('Reset stats: checked and confirmed');
+  if (resetTimeout) clearTimeout(resetTimeout);
+  const b = btn;
+  b.textContent = 'Resetting...';
+
+  try {
+    const currentState = (await getSetting('power_tracker_state') as PowerTracker) || {};
+    const newState = calculateResetState(currentState);
+
+    await setSetting('power_tracker_state', newState);
+
+    // Refresh UI
+    renderPowerUsage(Object.entries(newState.buckets || {}).map(([hour, kWh]) => ({
+      hour: new Date(hour),
+      kWh,
+      budgetKWh: (newState.hourlyBudgets || {})[hour],
+    })));
+    await renderPowerStats();
+    await showToast('Power stats reset (current hour preserved).', 'ok');
+    console.log('Reset complete');
+  } catch (error) {
+    console.error('Reset failed:', error);
+    await showToastError(error, 'Failed to reset stats.');
+  } finally {
+    const el = btn;
+    el.textContent = 'Reset all stats';
+    el.classList.remove('confirming');
+    el.style.color = '';
+    resetTimeout = null;
+  }
 };
 
 const initPriceHandlers = () => {

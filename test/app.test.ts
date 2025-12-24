@@ -11,7 +11,7 @@ import {
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
 } from '../settingsKeys';
-import { getHourBucketKey } from '../powerTracker';
+import { getHourBucketKey } from '../dateUtils';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 

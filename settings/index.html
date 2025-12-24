@@ -34,7 +34,7 @@
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
       <span class="banner__icon">⚠️</span>
-      <span class="banner__text">No power data received recently. Check your Flow that reports power usage.</span>
+      <span id="stale-data-text" class="banner__text">No power data received recently. Check your Flow that reports power usage.</span>
     </div>
 
     <section class="card panel" id="devices-panel" data-panel="devices">
@@ -147,7 +147,7 @@
 
           <h4>Typical usage by time of day</h4>
           <div id="hourly-pattern" class="hourly-pattern"></div>
-          <p class="muted">Average kWh per hour based on historical data.</p>
+          <p class="muted" id="hourly-pattern-meta">Average kWh per hour based on historical data.</p>
         </div>
       </details>
 
@@ -165,9 +165,14 @@
       <details class="settings-collapse">
         <summary>
           <h3>⏱️ Hourly detail</h3>
-          <span class="collapse-hint">Today's hours</span>
+          <span class="collapse-hint">Week view</span>
         </summary>
         <div class="collapse-content">
+          <div class="hourly-nav">
+            <button type="button" class="btn ghost" id="power-week-prev">Prev week</button>
+            <div id="power-week-label" class="muted">This week</div>
+            <button type="button" class="btn ghost" id="power-week-next">Next week</button>
+          </div>
           <div id="power-list" class="device-list" role="list"></div>
           <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the "Report power usage" Flow action.</p>
         </div>

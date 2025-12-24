@@ -5,6 +5,7 @@ import { PlanEngine } from './planEngine';
 import { DevicePlan, PlanInputDevice, ShedAction, ShedBehavior } from './planTypes';
 import { FlowHomeyLike, HomeyDeviceLike, TargetDeviceSnapshot } from './types';
 import { PriceCoordinator } from './priceCoordinator';
+import { PriceOptimizationSettings } from './priceOptimizer';
 import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './powerTracker';
 import { createSettingsHandler } from './settingsHandlers';
 import { PriceLevel } from './priceLevels';
@@ -40,11 +41,7 @@ class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
 
   private capacityGuard?: CapacityGuard;
-  private capacitySettings = {
-    limitKw: 10,
-    marginKw: 0.2,
-  };
-
+  private capacitySettings = { limitKw: 10, marginKw: 0.2 };
   private capacityDryRun = true;
   private operatingMode = 'Home';
   private modeAliases: Record<string, string> = {};
@@ -70,6 +67,7 @@ class PelsApp extends Homey.App {
   private lastPowerSamplePlanRebuildMs = 0;
   private pendingPowerSampleRebuild?: Promise<void>;
   private powerSampleRebuildTimer?: ReturnType<typeof setTimeout>;
+  private heartbeatInterval?: ReturnType<typeof setInterval>;
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     this.deviceManager.updateLocalSnapshot(deviceId, updates);
   }
@@ -119,8 +117,8 @@ class PelsApp extends Homey.App {
       getCapacityDryRun: () => this.capacityDryRun,
       getOperatingMode: () => this.operatingMode,
       getModeDeviceTargets: () => this.modeDeviceTargets,
-      getPriceOptimizationEnabled: () => this.priceCoordinator.getPriceOptimizationEnabled(),
-      getPriceOptimizationSettings: () => this.priceCoordinator.getPriceOptimizationSettings(),
+      getPriceOptimizationEnabled: () => this.getPriceOptimizationEnabled(),
+      getPriceOptimizationSettings: () => this.getPriceOptimizationSettings(),
       isCurrentHourCheap: () => this.isCurrentHourCheap(),
       isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
       getPowerTracker: () => this.powerTracker,
@@ -162,7 +160,8 @@ class PelsApp extends Homey.App {
 
     this.loadPowerTracker();
     this.loadPriceOptimizationSettings();
-    this.initPriceOptimizer();
+    this.priceCoordinator.initOptimizer();
+    this.startHeartbeat();
     void this.updateOverheadToken();
     await this.refreshTargetDevicesSnapshot();
     await this.rebuildPlanFromCache();
@@ -183,10 +182,22 @@ class PelsApp extends Homey.App {
       clearTimeout(this.powerSampleRebuildTimer);
       this.powerSampleRebuildTimer = undefined;
     }
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = undefined;
+    }
     this.priceCoordinator.stop();
   }
   private logDebug(...args: unknown[]): void {
     if (this.debugLoggingEnabled) this.log(...args);
+  }
+
+  private startHeartbeat(): void {
+    const updateHeartbeat = () => {
+      this.homey.settings.set('app_heartbeat', Date.now());
+    };
+    updateHeartbeat();
+    this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
   }
 
   private getDynamicSoftLimitOverride(): number | null {
@@ -287,11 +298,13 @@ class PelsApp extends Homey.App {
   }
 
   private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
+    const hourBudgetKWh = Math.max(0, this.capacitySettings.limitKw - this.capacitySettings.marginKw);
     await recordPowerSample({
       state: this.powerTracker,
       currentPowerW,
       nowMs,
       capacityGuard: this.capacityGuard,
+      hourBudgetKWh,
       rebuildPlanFromCache: () => this.schedulePlanRebuildFromPowerSample(),
       saveState: (state) => this.savePowerTracker(state),
       homey: this.homey,
@@ -350,15 +363,11 @@ class PelsApp extends Homey.App {
   private async handleOperatingModeChange(rawMode: string): Promise<void> {
     const resolved = resolveModeNameHelper(rawMode, this.modeAliases);
     const previousMode = this.operatingMode;
-    if (resolved !== rawMode) {
-      this.logDebug(`Mode '${rawMode}' resolved via alias to '${resolved}'. Flows using the old name should be updated.`);
-    }
+    if (resolved !== rawMode) this.logDebug(`Mode '${rawMode}' resolved via alias to '${resolved}'`);
     this.operatingMode = resolved;
     this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
     this.homey.settings.set('mode_alias_used', rawMode !== resolved ? rawMode : null);
-    if (previousMode && previousMode.toLowerCase() === resolved.toLowerCase()) {
-      this.logDebug(`Mode '${resolved}' already active; plan will re-sync targets to correct drift`);
-    }
+    if (previousMode?.toLowerCase() === resolved.toLowerCase()) this.logDebug(`Mode '${resolved}' already active`);
     this.notifyOperatingModeChanged(resolved);
   }
 
@@ -375,60 +384,45 @@ class PelsApp extends Homey.App {
   }
 
   private startPeriodicSnapshotRefresh(): void {
-    if (this.snapshotRefreshInterval) {
-      clearInterval(this.snapshotRefreshInterval);
-    }
+    if (this.snapshotRefreshInterval) clearInterval(this.snapshotRefreshInterval);
     this.snapshotRefreshInterval = setInterval(() => {
-      this.refreshTargetDevicesSnapshot().catch((error: Error) => {
-        this.error('Periodic snapshot refresh failed', error);
-      });
+      this.refreshTargetDevicesSnapshot().catch((e) => this.error('Periodic snapshot refresh failed', e));
       this.logPeriodicStatus();
     }, SNAPSHOT_REFRESH_INTERVAL_MS);
   }
 
   private logPeriodicStatus(): void {
-    const status = buildPeriodicStatusLog({
+    this.log(buildPeriodicStatusLog({
       capacityGuard: this.capacityGuard,
       powerTracker: this.powerTracker,
       capacitySettings: this.capacitySettings,
       operatingMode: this.operatingMode,
       capacityDryRun: this.capacityDryRun,
-    });
-    this.log(status);
+    }));
   }
 
-  private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
-    return this.deviceManager ? this.deviceManager.getSnapshot() : [];
-  }
-
-  setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
-    this.deviceManager.setSnapshotForTests(snapshot);
-  }
-
-  parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
-    return this.deviceManager.parseDeviceListForTests(list);
-  }
+  private get latestTargetSnapshot(): TargetDeviceSnapshot[] { return this.deviceManager?.getSnapshot() ?? []; }
+  setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.deviceManager.setSnapshotForTests(snapshot); }
+  parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] { return this.deviceManager.parseDeviceListForTests(list); }
 
   private async refreshTargetDevicesSnapshot(): Promise<void> {
     this.logDebug('Refreshing target devices snapshot');
-
     await this.deviceManager.refreshSnapshot();
-    const snapshot = this.deviceManager.getSnapshot();
-
-    this.homey.settings.set('target_devices_snapshot', snapshot);
-    this.logDebug(`Stored snapshot with ${snapshot.length} devices`);
+    this.homey.settings.set('target_devices_snapshot', this.deviceManager.getSnapshot());
   }
 
-  private async refreshNettleieData(forceRefresh = false): Promise<void> { return this.priceCoordinator.refreshNettleieData(forceRefresh); }
+  private async refreshNettleieData(forceRefresh = false): Promise<void> { await this.priceCoordinator.refreshNettleieData(forceRefresh); }
   private updateCombinedPrices(): void { this.priceCoordinator.updateCombinedPrices(); }
-  private async refreshSpotPrices(forceRefresh = false): Promise<void> { return this.priceCoordinator.refreshSpotPrices(forceRefresh); }
-  private getCombinedHourlyPrices() { return this.priceCoordinator.getCombinedHourlyPrices(); }
+  private async refreshSpotPrices(forceRefresh = false): Promise<void> { await this.priceCoordinator.refreshSpotPrices(forceRefresh); }
+  private getCombinedHourlyPrices(): unknown { return this.priceCoordinator.getCombinedHourlyPrices(); }
+  private getPriceOptimizationEnabled(): boolean { return this.priceCoordinator.getPriceOptimizationEnabled(); }
+  private getPriceOptimizationSettings(): Record<string, PriceOptimizationSettings> { return this.priceCoordinator.getPriceOptimizationSettings(); }
   private findCheapestHours(count: number): string[] { return this.priceCoordinator.findCheapestHours(count); }
   private isCurrentHourCheap(): boolean { return this.priceCoordinator.isCurrentHourCheap(); }
   private isCurrentHourExpensive(): boolean { return this.priceCoordinator.isCurrentHourExpensive(); }
   private getCurrentHourPriceInfo(): string { return this.priceCoordinator.getCurrentHourPriceInfo(); }
-  private initPriceOptimizer(): void { this.priceCoordinator.initOptimizer(); }
-  private async applyPriceOptimization(): Promise<void> { return this.priceCoordinator.applyPriceOptimization(); }
+  private initPriceOptimizer() { this.priceCoordinator.initOptimizer(); }
+  private async applyPriceOptimization() { return this.priceCoordinator.applyPriceOptimization(); }
   private async startPriceOptimization(): Promise<void> { return this.priceCoordinator.startPriceOptimization(); }
   private startPriceRefresh(): void { this.priceCoordinator.startPriceRefresh(); }
 
