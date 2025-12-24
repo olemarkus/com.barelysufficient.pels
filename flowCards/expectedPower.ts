@@ -1,4 +1,4 @@
-import { FlowCard, FlowHomeyLike, TargetDeviceSnapshot } from '../types';
+import { FlowCard, FlowHomeyLike, TargetDeviceSnapshot } from '../lib/utils/types';
 
 type DeviceRef = string | { id?: string; name?: string; data?: { id?: string } };
 

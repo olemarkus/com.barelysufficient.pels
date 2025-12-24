@@ -1,5 +1,5 @@
 import Homey from 'homey';
-import CapacityGuard from './capacityGuard';
+import CapacityGuard from '../core/capacityGuard';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,

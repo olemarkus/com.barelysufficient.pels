@@ -85,7 +85,7 @@ describe('Shed vs Restore Logic', () => {
 
         // Run calculation
         const devices = (app as any).targetDevices;
-        const plan = (app as any).buildDevicePlanSnapshot(devices);
+        const plan = await (app as any).buildDevicePlanSnapshot(devices);
 
         // Analysis:
         // Needed 2.0kW.
@@ -127,7 +127,7 @@ describe('Shed vs Restore Logic', () => {
         (app as any).capacityGuard = mockGuard;
 
         const devices = (app as any).targetDevices;
-        const plan = (app as any).buildDevicePlanSnapshot(devices);
+        const plan = await (app as any).buildDevicePlanSnapshot(devices);
 
         // D offers 0.5kW. C offers 0.0kW.
         // D should be shed because C helps nothing.
@@ -174,7 +174,7 @@ describe('Shed vs Restore Logic', () => {
         (app as any).modeDeviceTargets = { 'Home': { 'dev-E': 22 } };
         (app as any).operatingMode = 'Home';
 
-        const plan = (app as any).buildDevicePlanSnapshot(devices);
+        const plan = await (app as any).buildDevicePlanSnapshot(devices);
         const devE = plan.devices.find((d: any) => d.id === 'dev-E');
 
         // Should NOT be 'keep' (which means turn on if desired).

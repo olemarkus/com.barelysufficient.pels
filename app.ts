@@ -1,31 +1,31 @@
 import Homey from 'homey';
-import CapacityGuard from './capacityGuard';
-import { DeviceManager } from './deviceManager';
-import { PlanEngine } from './planEngine';
-import { DevicePlan, PlanInputDevice, ShedAction, ShedBehavior } from './planTypes';
-import { FlowHomeyLike, HomeyDeviceLike, TargetDeviceSnapshot } from './types';
-import { PriceCoordinator } from './priceCoordinator';
-import { PriceOptimizationSettings } from './priceOptimizer';
-import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './powerTracker';
-import { createSettingsHandler } from './settingsHandlers';
-import { PriceLevel } from './priceLevels';
+import CapacityGuard from './lib/core/capacityGuard';
+import { DeviceManager } from './lib/core/deviceManager';
+import { PlanEngine } from './lib/plan/planEngine';
+import { DevicePlan, PlanInputDevice, ShedAction, ShedBehavior } from './lib/plan/planTypes';
+import { FlowHomeyLike, HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
+import { PriceCoordinator } from './lib/price/priceCoordinator';
+import { PriceOptimizationSettings } from './lib/price/priceOptimizer';
+import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './lib/core/powerTracker';
+import { createSettingsHandler } from './lib/utils/settingsHandlers';
+import { PriceLevel } from './lib/price/priceLevels';
 import { registerFlowCards } from './flowCards/registerFlowCards';
-import { buildPlanChangeLines, buildPlanSignature } from './planLogging';
-import { buildPeriodicStatusLog } from './periodicStatus';
-import { getDeviceLoadSetting } from './deviceLoad';
-import { buildPelsStatus } from './pelsStatus';
+import { buildPlanChangeLines, buildPlanSignature } from './lib/plan/planLogging';
+import { buildPeriodicStatusLog } from './lib/core/periodicStatus';
+import { getDeviceLoadSetting } from './lib/core/deviceLoad';
+import { buildPelsStatus } from './lib/core/pelsStatus';
 import {
   getAllModes as getAllModesHelper,
   getShedBehavior as getShedBehaviorHelper,
   normalizeShedBehaviors as normalizeShedBehaviorsHelper,
   resolveModeName as resolveModeNameHelper,
-} from './capacityHelpers';
+} from './lib/utils/capacityHelpers';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
-} from './settingsKeys';
+} from './lib/utils/settingsKeys';
 import {
   isBooleanMap,
   isFiniteNumber,
@@ -33,7 +33,7 @@ import {
   isPowerTrackerState,
   isPrioritySettings,
   isStringMap,
-} from './appTypeGuards';
+} from './lib/utils/appTypeGuards';
 
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
@@ -325,7 +325,10 @@ class PelsApp extends Homey.App {
           this.powerSampleRebuildTimer = undefined;
           this.lastPowerSamplePlanRebuildMs = Date.now();
           this.rebuildPlanFromCache()
-            .catch((error) => this.error('Failed to rebuild plan after power sample', error as Error))
+            .catch((error) => {
+              // Log error but don't throw - state is already persisted
+              this.error('PowerTracker: Failed to rebuild plan after power sample:', error as Error);
+            })
             .finally(() => {
               this.pendingPowerSampleRebuild = undefined;
               resolve();
@@ -444,7 +447,7 @@ class PelsApp extends Homey.App {
   }
 
   private async performPlanRebuild(): Promise<void> {
-    const plan = this.buildDevicePlanSnapshot(this.latestTargetSnapshot ?? []);
+    const plan = await this.buildDevicePlanSnapshot(this.latestTargetSnapshot ?? []);
     const signature = buildPlanSignature(plan);
     if (signature !== this.lastPlanSignature) {
       try {
@@ -458,10 +461,11 @@ class PelsApp extends Homey.App {
       this.lastPlanSignature = signature;
     }
     this.homey.settings.set('device_plan_snapshot', plan);
-    const realtime = this.homey.api?.realtime as unknown;
+    // Type-safe realtime API access with validation
+    const realtime = this.homey.api?.realtime;
     if (typeof realtime === 'function') {
       const emit = realtime as (event: string, data: unknown) => Promise<unknown>;
-      emit('plan_updated', plan).catch(() => { });
+      emit('plan_updated', plan).catch((err) => this.error('Failed to emit plan_updated event', err as Error));
     }
     this.updatePelsStatus(plan);
     const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
@@ -499,7 +503,7 @@ class PelsApp extends Homey.App {
     }
   }
 
-  private buildDevicePlanSnapshot(devices: PlanInputDevice[]): DevicePlan {
+  private async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     return this.planEngine.buildDevicePlanSnapshot(devices);
   }
 

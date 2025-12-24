@@ -1,5 +1,5 @@
 import Sortable from 'sortablejs';
-import type { TargetDeviceSnapshot } from '../../../types';
+import type { TargetDeviceSnapshot } from '../../../lib/utils/types';
 import {
   modeSelect,
   activeModeSelect,
@@ -11,8 +11,8 @@ import {
   renameModeButton,
 } from './dom';
 import { getSetting, setSetting } from './homey';
-import { OPERATING_MODE_SETTING } from '../../../settingsKeys';
-import { showToast } from './toast';
+import { OPERATING_MODE_SETTING } from '../../../lib/utils/settingsKeys';
+import { showToast, showToastError } from './toast';
 import { state } from './state';
 
 export const loadModeAndPriorities = async () => {
@@ -169,7 +169,7 @@ export const setActiveMode = (mode: string) => {
   const next = (mode || '').trim() || 'Home';
   state.activeMode = next;
   renderModeOptions();
-  setSetting(OPERATING_MODE_SETTING, state.activeMode).catch(() => {});
+  setSetting(OPERATING_MODE_SETTING, state.activeMode).catch((err) => showToastError(err as Error, 'Failed to set active mode.'));
 };
 
 export const setEditingMode = (mode: string) => {
@@ -298,10 +298,10 @@ const getTargetTemplate = (
   templateMode: string,
 ) => (
   (storedTargets && storedTargets[templateMode])
-    || (storedTargets && storedTargets.Home)
-    || state.modeTargets[templateMode]
-    || state.modeTargets.Home
-    || {}
+  || (storedTargets && storedTargets.Home)
+  || state.modeTargets[templateMode]
+  || state.modeTargets.Home
+  || {}
 );
 
 const handleAddMode = async () => {

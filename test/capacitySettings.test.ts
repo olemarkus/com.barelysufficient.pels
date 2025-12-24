@@ -11,7 +11,7 @@ jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', '
 
 // Mock CapacityGuard to capture limit updates.
 const capacityGuardInstances: any[] = [];
-jest.mock('../capacityGuard', () => {
+jest.mock('../lib/core/capacityGuard', () => {
   return class MockCapacityGuard {
     public setLimit = jest.fn();
     public setSoftMargin = jest.fn();

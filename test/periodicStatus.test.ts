@@ -1,6 +1,6 @@
-import { buildPeriodicStatusLog } from '../periodicStatus';
-import { recordPowerSample } from '../powerTracker';
-import { getHourBucketKey } from '../dateUtils';
+import { buildPeriodicStatusLog } from '../lib/core/periodicStatus';
+import { recordPowerSample } from '../lib/core/powerTracker';
+import { getHourBucketKey } from '../lib/utils/dateUtils';
 import { mockHomeyInstance } from './mocks/homey';
 
 describe('periodic status used kWh', () => {

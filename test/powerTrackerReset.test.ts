@@ -1,5 +1,5 @@
-import { PowerTrackerState } from '../powerTracker';
-import { getHourBucketKey } from '../dateUtils';
+import { PowerTrackerState } from '../lib/core/powerTracker';
+import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 // Replicating the logic we plan to use in the frontend
 function getResetState(state: PowerTrackerState, nowMs: number): PowerTrackerState {

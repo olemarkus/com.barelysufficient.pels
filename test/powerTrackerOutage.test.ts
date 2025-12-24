@@ -1,7 +1,7 @@
 import {
     recordPowerSample,
     PowerTrackerState,
-} from '../powerTracker';
+} from '../lib/core/powerTracker';
 
 // Mock dependencies
 const mockHomey = {
@@ -15,7 +15,7 @@ const mockSaveState = jest.fn();
 
 describe('PowerTracker Outage Tracking', () => {
     let state: PowerTrackerState;
-    const now = Date.now();
+    const now = new Date('2025-01-01T12:00:00Z').getTime();
 
     beforeEach(() => {
         state = {

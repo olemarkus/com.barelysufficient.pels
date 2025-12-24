@@ -8,7 +8,7 @@ import {
   debugLoggingEnabledCheckbox,
 } from './dom';
 import { getSetting, setSetting } from './homey';
-import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../../settingsKeys';
+import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../../lib/utils/settingsKeys';
 import { showToast } from './toast';
 
 const STALE_DATA_THRESHOLD_MS = 60 * 1000;

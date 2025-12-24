@@ -1,4 +1,4 @@
-import type { ShedAction, ShedBehavior } from './planTypes';
+import type { ShedAction, ShedBehavior } from '../plan/planTypes';
 
 export function resolveModeName(name: string, modeAliases: Record<string, string>): string {
   const current = (name || '').trim();

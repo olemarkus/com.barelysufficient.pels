@@ -27,14 +27,14 @@ import { getHomeyClient, getSetting, setSetting, waitForHomey } from './homey';
 import { showToast, showToastError } from './toast';
 import { refreshDevices, renderDevices } from './devices';
 import { getPowerUsage, renderPowerStats, renderPowerUsage, PowerTracker } from './power';
-import { getHourBucketKey } from '../../../dateUtils';
+import { getHourBucketKey } from '../../../lib/utils/dateUtils';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
-} from '../../../settingsKeys';
+} from '../../../lib/utils/settingsKeys';
 import {
   initModeHandlers,
   loadModeAndPriorities,

@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../../types';
+import type { TargetDeviceSnapshot } from '../../../lib/utils/types';
 
 export type ShedAction = 'turn_off' | 'set_temperature';
 export type ShedBehavior = {

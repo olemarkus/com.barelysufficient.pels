@@ -1,5 +1,5 @@
 import Homey from 'homey';
-import { httpsGetJson } from './httpClient';
+import { httpsGetJson } from '../utils/httpClient';
 
 export type CombinedHourlyPrice = {
   startsAt: string;
@@ -15,7 +15,7 @@ export default class PriceService {
     private log: (...args: unknown[]) => void,
     private logDebug: (...args: unknown[]) => void,
     private errorLog?: (...args: unknown[]) => void,
-  ) {}
+  ) { }
 
   private getSettingValue(key: string): unknown {
     return this.homey.settings.get(key) as unknown;
@@ -29,7 +29,7 @@ export default class PriceService {
   private emitRealtime(event: string, payload: unknown): void {
     const api = (this.homey as { api?: { realtime?: (evt: string, data: unknown) => Promise<void> } }).api;
     if (!api?.realtime) return;
-    api.realtime(event, payload).catch(() => {});
+    api.realtime(event, payload).catch((err) => this.errorLog?.('Failed to emit realtime event', event, err));
   }
 
   async refreshSpotPrices(forceRefresh = false): Promise<void> {

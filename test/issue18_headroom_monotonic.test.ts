@@ -1,5 +1,5 @@
 
-import { DeviceManager } from '../deviceManager';
+import { DeviceManager } from '../lib/core/deviceManager';
 import { mockHomeyInstance } from './mocks/homey';
 import Homey from 'homey';
 

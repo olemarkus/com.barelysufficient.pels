@@ -1,4 +1,4 @@
-import type { PowerTrackerState } from './powerTracker';
+import type { PowerTrackerState } from '../core/powerTracker';
 
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
