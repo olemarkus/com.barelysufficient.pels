@@ -1,5 +1,5 @@
 import Homey from 'homey';
-import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from './types';
+import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 
 type HomeyApiConstructor = {
     createAppAPI: (opts: { homey: Homey.App['homey']; debug?: ((...args: unknown[]) => void) | null }) => Promise<HomeyApiClient>;

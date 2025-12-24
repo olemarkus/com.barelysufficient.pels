@@ -1,5 +1,5 @@
 import Homey from 'homey';
-import { OPERATING_MODE_SETTING } from '../../settingsKeys';
+import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 
 class PelsInsightsDevice extends Homey.Device {
   async onInit(): Promise<void> {

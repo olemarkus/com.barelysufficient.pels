@@ -1,6 +1,6 @@
-import CapacityGuard from './capacityGuard';
-import type { PowerTrackerState } from './powerTracker';
-import { getHourBucketKey } from './dateUtils';
+import CapacityGuard from '../core/capacityGuard';
+import type { PowerTrackerState } from '../core/powerTracker';
+import { getHourBucketKey } from '../utils/dateUtils';
 import type { PlanInputDevice } from './planTypes';
 
 export type PlanContext = {

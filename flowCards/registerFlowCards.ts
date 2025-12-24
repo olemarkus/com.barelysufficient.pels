@@ -1,8 +1,8 @@
-import { PriceLevel, PRICE_LEVEL_OPTIONS } from '../priceLevels';
-import CapacityGuard from '../capacityGuard';
-import { FlowHomeyLike, TargetDeviceSnapshot } from '../types';
+import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
+import CapacityGuard from '../lib/core/capacityGuard';
+import { FlowHomeyLike, TargetDeviceSnapshot } from '../lib/utils/types';
 import { registerExpectedPowerCard } from './expectedPower';
-import { CAPACITY_LIMIT_KW } from '../settingsKeys';
+import { CAPACITY_LIMIT_KW } from '../lib/utils/settingsKeys';
 
 type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
 
@@ -184,8 +184,8 @@ function getModeOptions(deps: FlowCardDeps, query: string): Array<{ id: string; 
 function getPriceLevelOptions(query: string): Array<{ id: string; name: string }> {
   const q = (query || '').toLowerCase();
   return PRICE_LEVEL_OPTIONS
-    .filter((opt) => !q || opt.name.toLowerCase().includes(q))
-    .map((opt) => ({ id: opt.id, name: opt.name }));
+    .filter((opt: PriceLevelOption) => !q || opt.name.toLowerCase().includes(q))
+    .map((opt: PriceLevelOption) => ({ id: opt.id, name: opt.name }));
 }
 
 function getDeviceIdFromArg(arg: DeviceArg): string {

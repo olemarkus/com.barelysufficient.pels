@@ -1,7 +1,7 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
-import type { PowerTrackerState } from './powerTracker';
+import type { PowerTrackerState } from '../core/powerTracker';
 import {
   RECENT_SHED_EXTRA_BUFFER_KW,
   RECENT_SHED_RESTORE_BACKOFF_MS,

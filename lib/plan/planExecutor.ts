@@ -1,8 +1,8 @@
 import Homey from 'homey';
-import CapacityGuard from './capacityGuard';
-import { DeviceManager } from './deviceManager';
+import CapacityGuard from '../core/capacityGuard';
+import { DeviceManager } from '../core/deviceManager';
 import type { DevicePlan, ShedAction } from './planTypes';
-import type { TargetDeviceSnapshot } from './types';
+import type { TargetDeviceSnapshot } from '../utils/types';
 import type { PlanEngineState } from './planState';
 import {
   RECENT_SHED_EXTRA_BUFFER_KW,

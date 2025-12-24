@@ -1,7 +1,7 @@
 import Homey from 'homey';
-import CapacityGuard from './capacityGuard';
-import { DeviceManager } from './deviceManager';
-import type { PowerTrackerState } from './powerTracker';
+import CapacityGuard from '../core/capacityGuard';
+import { DeviceManager } from '../core/deviceManager';
+import type { PowerTrackerState } from '../core/powerTracker';
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
 import { PlanExecutor, PlanExecutorDeps } from './planExecutor';
@@ -76,7 +76,7 @@ export class PlanEngine {
     this.executor = new PlanExecutor(executorDeps, this.state);
   }
 
-  public buildDevicePlanSnapshot(devices: PlanInputDevice[]): DevicePlan {
+  public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     return this.builder.buildDevicePlanSnapshot(devices);
   }
 

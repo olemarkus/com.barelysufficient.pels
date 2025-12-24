@@ -818,7 +818,7 @@ describe('Device plan snapshot', () => {
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
     // Simulate device now off, but headroom still below need (2.5 + margin).
-    plan = (app as any).buildDevicePlanSnapshot([
+    plan = await (app as any).buildDevicePlanSnapshot([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -2149,7 +2149,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    const errorSpy = jest.spyOn(Object.getPrototypeOf(app), 'error').mockImplementation(() => {});
+    const errorSpy = jest.spyOn(Object.getPrototypeOf(app), 'error').mockImplementation(() => { });
 
     // Mock HomeyAPI to simulate timeout (shedding fails)
     (app as any).deviceManager.homeyApi = {

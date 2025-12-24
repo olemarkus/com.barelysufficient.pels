@@ -1,5 +1,5 @@
-import type { PowerTrackerState } from './powerTracker';
-import { getHourBucketKey } from './dateUtils';
+import type { PowerTrackerState } from '../core/powerTracker';
+import { getHourBucketKey } from '../utils/dateUtils';
 
 export function computeDynamicSoftLimit(params: {
   capacitySettings: { limitKw: number; marginKw: number };

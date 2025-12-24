@@ -11,7 +11,7 @@ import {
   getUtcHour,
   recordPowerSample,
   truncateToHourInHomeyTimezone,
-} from '../powerTracker';
+} from '../lib/core/powerTracker';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });

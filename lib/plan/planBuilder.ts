@@ -1,6 +1,6 @@
 import Homey from 'homey';
-import CapacityGuard from './capacityGuard';
-import type { PowerTrackerState } from './powerTracker';
+import CapacityGuard from '../core/capacityGuard';
+import type { PowerTrackerState } from '../core/powerTracker';
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
@@ -33,7 +33,7 @@ export type PlanBuilderDeps = {
 };
 
 export class PlanBuilder {
-  constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) {}
+  constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) { }
 
   private get capacityGuard(): CapacityGuard | undefined {
     return this.deps.getCapacityGuard();
@@ -91,7 +91,7 @@ export class PlanBuilder {
     });
   }
 
-  public buildDevicePlanSnapshot(devices: PlanInputDevice[]): DevicePlan {
+  public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
     const softLimit = this.computeDynamicSoftLimit();
     const context = buildPlanContext({
@@ -104,7 +104,7 @@ export class PlanBuilder {
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
     });
 
-    const sheddingPlan = buildSheddingPlan(context, this.state, {
+    const sheddingPlan = await buildSheddingPlan(context, this.state, {
       capacityGuard: this.capacityGuard,
       powerTracker: this.powerTracker,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),

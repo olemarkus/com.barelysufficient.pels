@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../../types';
+import type { TargetDeviceSnapshot } from '../../../lib/utils/types';
 import {
   deviceDetailOverlay,
   deviceDetailTitle,

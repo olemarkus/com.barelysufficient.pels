@@ -1,4 +1,4 @@
-import { PriceLevel, PRICE_LEVEL_OPTIONS, getPriceLevelFromTitle, getPriceLevelTitle } from '../priceLevels';
+import { PriceLevel, PRICE_LEVEL_OPTIONS, getPriceLevelFromTitle, getPriceLevelTitle } from '../lib/price/priceLevels';
 import { mockHomeyInstance } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 

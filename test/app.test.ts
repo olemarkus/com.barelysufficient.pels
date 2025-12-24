@@ -10,8 +10,8 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   OPERATING_MODE_SETTING,
-} from '../settingsKeys';
-import { getHourBucketKey } from '../dateUtils';
+} from '../lib/utils/settingsKeys';
+import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 

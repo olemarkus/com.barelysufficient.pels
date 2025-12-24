@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../../types';
+import type { TargetDeviceSnapshot } from '../../../lib/utils/types';
 import { deviceList, emptyState, refreshButton } from './dom';
 import { getSetting, pollSetting, setSetting } from './homey';
 import { showToast } from './toast';

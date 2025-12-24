@@ -1,4 +1,4 @@
-import CapacityGuard from '../capacityGuard';
+import CapacityGuard from '../lib/core/capacityGuard';
 
 describe('CapacityGuard', () => {
   let originalNow: () => number;

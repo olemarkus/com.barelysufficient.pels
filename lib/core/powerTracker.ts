@@ -1,6 +1,6 @@
 import Homey from 'homey';
 import CapacityGuard from './capacityGuard';
-import { truncateToUtcHour, getHourBucketKey } from './dateUtils';
+import { truncateToUtcHour, getHourBucketKey } from '../utils/dateUtils';
 
 export const HOURLY_RETENTION_DAYS = 30; // Keep detailed hourly data for 30 days
 export const DAILY_RETENTION_DAYS = 365; // Keep daily totals for 1 year
@@ -75,7 +75,12 @@ async function persistPowerSample(params: {
   } = params;
   if (capacityGuard) capacityGuard.reportTotalPower(currentPowerW / 1000);
   saveState(nextState);
-  await rebuildPlanFromCache();
+  try {
+    await rebuildPlanFromCache();
+  } catch (error) {
+    // Log error but don't throw - state is already persisted
+    console.error('PowerTracker: Failed to rebuild plan after power sample:', error);
+  }
 }
 
 export function formatDateUtc(date: Date): string {

@@ -1,5 +1,5 @@
-import { PriceLevel } from './priceLevels';
-import type { DevicePlan } from './planTypes';
+import { PriceLevel } from '../price/priceLevels';
+import type { DevicePlan } from '../plan/planTypes';
 
 export function buildPelsStatus(params: {
   plan: DevicePlan;
@@ -7,15 +7,17 @@ export function buildPelsStatus(params: {
   isExpensive: boolean;
   combinedPrices: unknown;
   lastPowerUpdate: number | null;
-}): { status: {
-  headroomKw: number | null;
-  hourlyUsageKwh: number;
-  shedding: boolean;
-  priceLevel: PriceLevel;
-  devicesOn: number;
-  devicesOff: number;
-  lastPowerUpdate: number | null;
-}; priceLevel: PriceLevel } {
+}): {
+  status: {
+    headroomKw: number | null;
+    hourlyUsageKwh: number;
+    shedding: boolean;
+    priceLevel: PriceLevel;
+    devicesOn: number;
+    devicesOff: number;
+    lastPowerUpdate: number | null;
+  }; priceLevel: PriceLevel
+} {
   const { plan, isCheap, isExpensive, combinedPrices, lastPowerUpdate } = params;
   const priceLevel = resolvePriceLevel({ isCheap, isExpensive, combinedPrices });
   const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');

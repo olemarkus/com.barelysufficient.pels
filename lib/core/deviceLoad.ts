@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from './types';
+import type { TargetDeviceSnapshot } from '../utils/types';
 
 type HomeyApiLike = {
   devices?: {

@@ -1,5 +1,5 @@
-import CapacityGuard from './capacityGuard';
-import type { PowerTrackerState } from './powerTracker';
+import CapacityGuard from '../core/capacityGuard';
+import type { PowerTrackerState } from '../core/powerTracker';
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
@@ -37,13 +37,13 @@ type ShedCandidateParams = {
   deps: SheddingDeps;
 };
 
-export function buildSheddingPlan(
+export async function buildSheddingPlan(
   context: PlanContext,
   state: PlanEngineState,
   deps: SheddingDeps,
-): SheddingPlan {
+): Promise<SheddingPlan> {
   const { shedSet, shedReasons, updates } = planShedding(context, state, deps);
-  const guardResult = updateGuardState({
+  const guardResult = await updateGuardState({
     headroom: context.headroom,
     devices: context.devices,
     shedSet,
@@ -81,9 +81,13 @@ function planShedding(
     return { shedSet, shedReasons, updates: {} };
   }
 
-  const needed = -context.headroom!;
+  // Type narrowing: headroom is guaranteed to be non-null here due to shouldPlanShedding check
+  if (context.headroom === null) {
+    return { shedSet, shedReasons, updates: {} };
+  }
+  const needed = -context.headroom;
   deps.logDebug(
-    `Planning shed: soft=${context.softLimit.toFixed(3)} headroom=${context.headroom!.toFixed(
+    `Planning shed: soft=${context.softLimit.toFixed(3)} headroom=${context.headroom.toFixed(
       3,
     )} total=${context.total === null ? 'unknown' : context.total.toFixed(3)}`,
   );
@@ -194,18 +198,18 @@ function selectShedDevices(
   return { shedSet, shedReasons };
 }
 
-function updateGuardState(params: {
+async function updateGuardState(params: {
   headroom: number | null;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   capacityGuard: CapacityGuard | undefined;
-}): { sheddingActive: boolean } {
+}): Promise<{ sheddingActive: boolean }> {
   const { headroom, devices, shedSet, capacityGuard } = params;
   if (shouldActivateShedding(headroom, shedSet)) {
     const remainingCandidates = countRemainingCandidates(devices, shedSet, headroom);
     const deficitKw = headroom !== null ? -headroom : 0;
-    void capacityGuard?.setSheddingActive(true);
-    void capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
+    await capacityGuard?.setSheddingActive(true);
+    await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
     return { sheddingActive: true };
   }
 
@@ -213,9 +217,9 @@ function updateGuardState(params: {
   const canDisable = headroom !== null && headroom >= restoreMargin;
   const current = capacityGuard?.isSheddingActive() ?? false;
   if (canDisable) {
-    void capacityGuard?.setSheddingActive(false);
+    await capacityGuard?.setSheddingActive(false);
   }
-  void capacityGuard?.checkShortfall(true, 0);
+  await capacityGuard?.checkShortfall(true, 0);
   return { sheddingActive: canDisable ? false : current };
 }
 
