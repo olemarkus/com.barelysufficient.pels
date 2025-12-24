@@ -4,13 +4,15 @@ import {
   capacityDryRunInput,
   dryRunBanner,
   staleDataBanner,
+  staleDataBannerText,
   debugLoggingEnabledCheckbox,
 } from './dom';
 import { getSetting, setSetting } from './homey';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../../settingsKeys';
 import { showToast } from './toast';
 
-const STALE_DATA_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+const STALE_DATA_THRESHOLD_MS = 60 * 1000;
+const HEARTBEAT_THRESHOLD_MS = 90 * 1000;
 
 const updateDryRunBanner = (isDryRun: boolean) => {
   if (dryRunBanner) {
@@ -18,21 +20,38 @@ const updateDryRunBanner = (isDryRun: boolean) => {
   }
 };
 
-const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
+const updateStaleDataBanner = (lastPowerUpdate: number | null, lastHeartbeat: number | null) => {
   if (!staleDataBanner) return;
+  const now = Date.now();
+  if (typeof lastHeartbeat === 'number' && (now - lastHeartbeat) > HEARTBEAT_THRESHOLD_MS) {
+    staleDataBanner.hidden = false;
+    if (staleDataBannerText) {
+      staleDataBannerText.textContent = 'App heartbeat missing. PELS may not be running.';
+    }
+    return;
+  }
   if (lastPowerUpdate === null) {
     // No data ever received - show warning
     staleDataBanner.hidden = false;
+    if (staleDataBannerText) {
+      staleDataBannerText.textContent = 'No power data received yet. Check your Flow that reports power usage.';
+    }
     return;
   }
-  const now = Date.now();
   const isStale = (now - lastPowerUpdate) > STALE_DATA_THRESHOLD_MS;
   staleDataBanner.hidden = !isStale;
+  if (staleDataBannerText && isStale) {
+    staleDataBannerText.textContent = 'No power data received in the last minute. Check your Flow that reports power usage.';
+  }
 };
 
 export const loadStaleDataStatus = async () => {
-  const status = await getSetting('pels_status') as { lastPowerUpdate?: number | null } | null;
-  updateStaleDataBanner(status?.lastPowerUpdate ?? null);
+  const [status, heartbeat] = await Promise.all([
+    getSetting('pels_status'),
+    getSetting('app_heartbeat'),
+  ]);
+  const typedStatus = status as { lastPowerUpdate?: number | null } | null;
+  updateStaleDataBanner(typedStatus?.lastPowerUpdate ?? null, typeof heartbeat === 'number' ? heartbeat : null);
 };
 
 export const loadCapacitySettings = async () => {

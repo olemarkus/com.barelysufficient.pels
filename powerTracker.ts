@@ -1,5 +1,6 @@
 import Homey from 'homey';
 import CapacityGuard from './capacityGuard';
+import { truncateToUtcHour, getHourBucketKey } from './dateUtils';
 
 export const HOURLY_RETENTION_DAYS = 30; // Keep detailed hourly data for 30 days
 export const DAILY_RETENTION_DAYS = 365; // Keep daily totals for 1 year
@@ -8,8 +9,10 @@ export type PowerTrackerState = {
   lastPowerW?: number;
   lastTimestamp?: number;
   buckets?: Record<string, number>; // Hourly data (ISO timestamp -> kWh)
+  hourlyBudgets?: Record<string, number>; // Hourly budget snapshot (ISO timestamp -> kWh)
   dailyTotals?: Record<string, number>; // Daily totals (YYYY-MM-DD -> kWh)
   hourlyAverages?: Record<string, { sum: number; count: number }>; // day-hour pattern (0-6_0-23 -> { sum, count })
+  unreliablePeriods?: Array<{ start: number; end: number }>; // Periods where data is missing/unreliable
 };
 
 export type RecordPowerSampleParams = {
@@ -18,6 +21,7 @@ export type RecordPowerSampleParams = {
   nowMs?: number;
   homey: Homey.App['homey'];
   capacityGuard?: CapacityGuard;
+  hourBudgetKWh?: number;
   rebuildPlanFromCache: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
 };
@@ -39,15 +43,19 @@ function shouldResetSamplingState(state: PowerTrackerState, nowMs: number): bool
 function buildNextPowerState(params: {
   state: PowerTrackerState;
   nextBuckets: Map<string, number>;
+  nextBudgets: Map<string, number>;
   nowMs: number;
   currentPowerW: number;
+  unreliablePeriods?: Array<{ start: number; end: number }>;
 }): PowerTrackerState {
-  const { state, nextBuckets, nowMs, currentPowerW } = params;
+  const { state, nextBuckets, nextBudgets, nowMs, currentPowerW, unreliablePeriods } = params;
   return {
     ...state,
     buckets: Object.fromEntries(nextBuckets),
+    hourlyBudgets: Object.fromEntries(nextBudgets),
     lastTimestamp: nowMs,
     lastPowerW: currentPowerW,
+    unreliablePeriods: unreliablePeriods || state.unreliablePeriods,
   };
 }
 
@@ -85,6 +93,38 @@ export function getUtcDayOfWeek(date: Date): number {
   return date.getUTCDay();
 }
 
+const processDayHourBuckets = (
+  dayHourBuckets: Map<string, number[]>,
+  averages: Map<string, { sum: number; count: number }>,
+) => {
+  for (const [dateKey, hours] of dayHourBuckets.entries()) {
+    const date = new Date(`${dateKey}T00:00:00.000Z`);
+    const dayOfWeek = getUtcDayOfWeek(date);
+    for (let hour = 0; hour < 24; hour += 1) {
+      const patternKey = `${dayOfWeek}_${hour}`;
+      const existingPattern = averages.get(patternKey) || { sum: 0, count: 0 };
+      averages.set(patternKey, {
+        sum: existingPattern.sum + hours[hour],
+        count: existingPattern.count + 1,
+      });
+    }
+  }
+};
+
+const pruneDailyTotals = (
+  totals: Map<string, number>,
+  threshold: number,
+) => {
+  const next = new Map<string, number>(totals);
+  for (const dateKey of next.keys()) {
+    const timestamp = new Date(dateKey).getTime();
+    if (!Number.isNaN(timestamp) && timestamp < threshold) {
+      next.delete(dateKey);
+    }
+  }
+  return next;
+};
+
 export function aggregateAndPruneHistory(
   state: PowerTrackerState,
 ): PowerTrackerState {
@@ -92,15 +132,15 @@ export function aggregateAndPruneHistory(
 
   const now = Date.now();
   const hourlyRetentionMs = HOURLY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-  const dailyRetentionMs = DAILY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const hourlyThreshold = now - hourlyRetentionMs;
-  const dailyThreshold = now - dailyRetentionMs;
 
   const nextDailyTotals = new Map<string, number>(Object.entries(state.dailyTotals || {}));
   const nextHourlyAverages = new Map<string, { sum: number; count: number }>(
     Object.entries(state.hourlyAverages || {}) as Array<[string, { sum: number; count: number }]>,
   );
   const nextBuckets = new Map<string, number>();
+  const nextBudgets = new Map<string, number>();
+  const dayHourBuckets = new Map<string, number[]>();
 
   for (const [isoKey, kWh] of Object.entries(state.buckets)) {
     const timestamp = new Date(isoKey).getTime();
@@ -108,35 +148,31 @@ export function aggregateAndPruneHistory(
 
     if (timestamp < hourlyThreshold) {
       const date = new Date(isoKey);
-      const dayOfWeek = getUtcDayOfWeek(date);
-      const hourOfDay = getUtcHour(date);
       const dateKey = formatDateUtc(date);
-
+      const hourOfDay = getUtcHour(date);
+      const hours = dayHourBuckets.get(dateKey) || Array.from({ length: 24 }, () => 0);
+      const nextHours = hours.map((hourValue, index) => (index === hourOfDay ? hourValue + kWh : hourValue));
+      dayHourBuckets.set(dateKey, nextHours);
       nextDailyTotals.set(dateKey, (nextDailyTotals.get(dateKey) || 0) + kWh);
-
-      const patternKey = `${dayOfWeek}_${hourOfDay}`;
-      const existingPattern = nextHourlyAverages.get(patternKey) || { sum: 0, count: 0 };
-      nextHourlyAverages.set(patternKey, {
-        sum: existingPattern.sum + kWh,
-        count: existingPattern.count + 1,
-      });
-      continue;
-    }
-    nextBuckets.set(isoKey, kWh);
-  }
-
-  for (const dateKey of nextDailyTotals.keys()) {
-    const timestamp = new Date(dateKey).getTime();
-    if (!Number.isNaN(timestamp) && timestamp < dailyThreshold) {
-      nextDailyTotals.delete(dateKey);
+    } else {
+      nextBuckets.set(isoKey, kWh);
+      const budget = (state.hourlyBudgets || {})[isoKey];
+      if (budget !== undefined) nextBudgets.set(isoKey, budget);
     }
   }
+
+  processDayHourBuckets(dayHourBuckets, nextHourlyAverages);
+
+  const dailyRetentionMs = DAILY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const prunedDaily = pruneDailyTotals(nextDailyTotals, now - dailyRetentionMs);
 
   return {
     ...state,
     buckets: Object.fromEntries(nextBuckets),
-    dailyTotals: Object.fromEntries(nextDailyTotals),
+    hourlyBudgets: Object.fromEntries(nextBudgets),
+    dailyTotals: Object.fromEntries(prunedDaily),
     hourlyAverages: Object.fromEntries(nextHourlyAverages),
+    unreliablePeriods: (state.unreliablePeriods || []).filter((p) => p.end >= hourlyThreshold),
   };
 }
 
@@ -178,83 +214,82 @@ export function truncateToHourInHomeyTimezone(homey: Homey.App['homey'], timesta
   }
 }
 
-export function truncateToUtcHour(timestamp: number): number {
-  const date = new Date(timestamp);
-  return Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate(),
-    date.getUTCHours(),
-    0,
-    0,
-    0,
-  );
-}
 
-export function getHourBucketKey(nowMs: number = Date.now()): string {
-  const hourStart = truncateToUtcHour(nowMs);
-  return new Date(hourStart).toISOString();
-}
+const calculateEnergyAcrossBoundaries = (params: {
+  startTs: number;
+  endTs: number;
+  powerW: number;
+  buckets: Map<string, number>;
+  budgets: Map<string, number>;
+  budgetKWh: number | null;
+}) => {
+  const { startTs, endTs, powerW, buckets, budgets, budgetKWh } = params;
+  let currentTs = startTs;
+  let remainingMs = endTs - startTs;
+
+  while (remainingMs > 0) {
+    const hourStart = truncateToUtcHour(currentTs);
+    const hourEnd = hourStart + 60 * 60 * 1000;
+    const segmentMs = Math.min(remainingMs, hourEnd - currentTs);
+    const energyKWh = (powerW / 1000) * (segmentMs / 3600000);
+    const bucketKey = new Date(hourStart).toISOString();
+
+    buckets.set(bucketKey, (buckets.get(bucketKey) || 0) + energyKWh);
+    if (budgetKWh !== null) {
+      budgets.set(bucketKey, budgetKWh);
+    }
+
+    remainingMs -= segmentMs;
+    currentTs += segmentMs;
+  }
+};
 
 export async function recordPowerSample(params: RecordPowerSampleParams): Promise<void> {
   const {
-    state,
-    currentPowerW,
-    nowMs = Date.now(),
-    capacityGuard,
-    rebuildPlanFromCache,
-    saveState,
-    homey: _homey,
+    state, currentPowerW, nowMs = Date.now(), capacityGuard,
+    hourBudgetKWh, rebuildPlanFromCache, saveState,
   } = params;
 
   const nextBuckets = new Map<string, number>(Object.entries(state.buckets || {}));
+  const nextBudgets = new Map<string, number>(Object.entries(state.hourlyBudgets || {}));
+  const budgetKWh = typeof hourBudgetKWh === 'number' ? hourBudgetKWh : null;
+  if (budgetKWh !== null) {
+    nextBudgets.set(getHourBucketKey(nowMs), budgetKWh);
+  }
 
   if (shouldResetSamplingState(state, nowMs)) {
     const nextState = buildNextPowerState({
-      state,
-      nextBuckets,
-      nowMs,
-      currentPowerW,
+      state, nextBuckets, nextBudgets, nowMs, currentPowerW,
     });
     await persistPowerSample({
-      nextState,
-      currentPowerW,
-      capacityGuard,
-      saveState,
-      rebuildPlanFromCache,
+      nextState, currentPowerW, capacityGuard, saveState, rebuildPlanFromCache,
     });
     return;
   }
 
   const previousTs = state.lastTimestamp as number;
   const previousPower = state.lastPowerW as number;
-  let remainingMs = nowMs - previousTs;
-  let currentTs = previousTs;
+  const gapDuration = nowMs - previousTs;
+  const crossesHour = truncateToUtcHour(previousTs) !== truncateToUtcHour(nowMs);
+  const oneMinGap = gapDuration > 60 * 1000;
 
-  while (remainingMs > 0) {
-    const hourStart = truncateToUtcHour(currentTs);
-    const hourEnd = hourStart + 60 * 60 * 1000;
-    const segmentMs = Math.min(remainingMs, hourEnd - currentTs);
-    const energyKWh = (previousPower / 1000) * (segmentMs / 3600000);
-    const bucketKey = new Date(hourStart).toISOString();
-    const nextValue = (nextBuckets.get(bucketKey) || 0) + energyKWh;
-    nextBuckets.set(bucketKey, nextValue);
+  const unreliablePeriods = (gapDuration > 60 * 60 * 1000 || (oneMinGap && crossesHour))
+    ? [...(state.unreliablePeriods || []), { start: previousTs, end: nowMs }]
+    : state.unreliablePeriods;
 
-    remainingMs -= segmentMs;
-    currentTs += segmentMs;
-  }
+  calculateEnergyAcrossBoundaries({
+    startTs: previousTs,
+    endTs: nowMs,
+    powerW: previousPower,
+    buckets: nextBuckets,
+    budgets: nextBudgets,
+    budgetKWh,
+  });
 
   const nextState = buildNextPowerState({
-    state,
-    nextBuckets,
-    nowMs,
-    currentPowerW,
+    state, nextBuckets, nextBudgets, nowMs, currentPowerW, unreliablePeriods,
   });
   await persistPowerSample({
-    nextState,
-    currentPowerW,
-    capacityGuard,
-    saveState,
-    rebuildPlanFromCache,
+    nextState, currentPowerW, capacityGuard, saveState, rebuildPlanFromCache,
   });
 }

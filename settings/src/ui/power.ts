@@ -1,6 +1,9 @@
 import {
   powerList,
   powerEmpty,
+  powerWeekPrev,
+  powerWeekNext,
+  powerWeekLabel,
   dailyList,
   dailyEmpty,
   usageToday,
@@ -9,18 +12,23 @@ import {
   usageWeekdayAvg,
   usageWeekendAvg,
   hourlyPattern,
+  hourlyPatternMeta,
 } from './dom';
 import { getSetting } from './homey';
 
-type PowerTracker = {
+export type PowerTracker = {
   buckets?: Record<string, number>;
+  hourlyBudgets?: Record<string, number>;
   dailyTotals?: Record<string, number>;
   hourlyAverages?: Record<string, { sum: number; count: number }>;
+  unreliablePeriods?: Array<{ start: number; end: number }>;
 };
 
 type PowerUsageEntry = {
   hour: Date;
   kWh: number;
+  budgetKWh?: number;
+  unreliable?: boolean;
 };
 
 type PowerStatsSummary = {
@@ -30,6 +38,7 @@ type PowerStatsSummary = {
   weekdayAvg: number;
   weekendAvg: number;
   hourlyPattern: { hour: number; avg: number }[];
+  hourlyPatternMeta: string;
   dailyHistory: { date: string; kWh: number }[];
   hasPatternData: boolean;
 };
@@ -41,17 +50,56 @@ const getEmptyPowerStats = (): PowerStatsSummary => ({
   weekdayAvg: 0,
   weekendAvg: 0,
   hourlyPattern: [],
+  hourlyPatternMeta: 'Average kWh per hour based on historical data.',
   dailyHistory: [],
   hasPatternData: false,
 });
 
+const getDerivedDailyTotals = (buckets: Record<string, number> | undefined) => {
+  const totals: Record<string, number> = {};
+  if (!buckets) return totals;
+  for (const [iso, kWh] of Object.entries(buckets)) {
+    const dateKey = iso.slice(0, 10);
+    totals[dateKey] = (totals[dateKey] || 0) + kWh;
+  }
+  return totals;
+};
+
+const getDerivedHourlyAverages = (buckets: Record<string, number> | undefined) => {
+  const averages: Record<string, { sum: number; count: number }> = {};
+  if (!buckets) return averages;
+  for (const [iso, kWh] of Object.entries(buckets)) {
+    const date = new Date(iso);
+    const key = `${date.getUTCDay()}_${date.getUTCHours()}`;
+    const existing = averages[key] || { sum: 0, count: 0 };
+    averages[key] = { sum: existing.sum + kWh, count: existing.count + 1 };
+  }
+  return averages;
+};
+
+const getHourlyPatternMeta = (buckets: Record<string, number> | undefined) => {
+  if (!buckets || Object.keys(buckets).length === 0) {
+    return 'Average kWh per hour based on historical data.';
+  }
+  const times = Object.keys(buckets)
+    .map((iso) => new Date(iso).getTime())
+    .filter((ts) => Number.isFinite(ts));
+  if (!times.length) return 'Average kWh per hour based on historical data.';
+  const minTs = Math.min(...times);
+  const maxTs = Math.max(...times);
+  const days = Math.max(1, Math.round((maxTs - minTs) / (24 * 60 * 60 * 1000)) + 1);
+  const start = new Date(minTs).toISOString().slice(0, 10);
+  const end = new Date(maxTs).toISOString().slice(0, 10);
+  return `Average kWh per hour based on ${days} days (${start}–${end} UTC).`;
+};
+
 const getPowerTimeContext = (now: Date) => {
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const todayKey = new Date(todayStart).toISOString().slice(0, 10);
-  const dayOfWeek = now.getDay();
+  const dayOfWeek = now.getUTCDay();
   const diffToMonday = (dayOfWeek + 6) % 7;
-  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const weekStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffToMonday));
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   return { todayKey, todayStart, weekStart, monthStart };
 };
 
@@ -116,23 +164,21 @@ const getWeekMonthTotals = (
   };
 };
 
-const getWeekdayWeekendAverages = (tracker: PowerTracker) => {
+const getWeekdayWeekendAverages = (dailyTotals: Record<string, number>) => {
   let weekdaySum = 0;
   let weekdayCount = 0;
   let weekendSum = 0;
   let weekendCount = 0;
 
-  if (tracker.dailyTotals) {
-    for (const [dateKey, kWh] of Object.entries(tracker.dailyTotals)) {
-      const date = new Date(dateKey);
-      const day = date.getDay();
-      if (day === 0 || day === 6) {
-        weekendSum += kWh;
-        weekendCount += 1;
-      } else {
-        weekdaySum += kWh;
-        weekdayCount += 1;
-      }
+  for (const [dateKey, kWh] of Object.entries(dailyTotals)) {
+    const date = new Date(dateKey);
+    const day = date.getUTCDay();
+    if (day === 0 || day === 6) {
+      weekendSum += kWh;
+      weekendCount += 1;
+    } else {
+      weekdaySum += kWh;
+      weekdayCount += 1;
     }
   }
 
@@ -143,26 +189,67 @@ const getWeekdayWeekendAverages = (tracker: PowerTracker) => {
   return { weekdayAvg, weekendAvg, hasPatternData };
 };
 
-const buildHourlyPattern = (tracker: PowerTracker): { hour: number; avg: number }[] => {
+const buildHourlyPattern = (hourlyAverages: Record<string, { sum: number; count: number }>): { hour: number; avg: number }[] => {
   const entries: { hour: number; avg: number }[] = [];
-  if (!tracker.hourlyAverages) return entries;
-  for (const [hourStr, data] of Object.entries(tracker.hourlyAverages)) {
-    const hour = parseInt(hourStr, 10);
+  if (!hourlyAverages) return entries;
+  const totals = new Map<number, { sum: number; count: number }>();
+  for (const [patternKey, data] of Object.entries(hourlyAverages)) {
+    const [, hourStr] = patternKey.split('_');
+    const hour = Number(hourStr);
     if (!Number.isFinite(hour) || hour < 0 || hour > 23) continue;
+    const existing = totals.get(hour) || { sum: 0, count: 0 };
+    totals.set(hour, { sum: existing.sum + data.sum, count: existing.count + data.count });
+  }
+  for (const [hour, data] of totals.entries()) {
     const avg = data.count > 0 ? data.sum / data.count : 0;
     entries.push({ hour, avg });
   }
   return entries.sort((a, b) => a.hour - b.hour);
 };
 
-const buildDailyHistory = (tracker: PowerTracker, todayKey: string): { date: string; kWh: number }[] => {
+const buildDailyHistory = (dailyTotals: Record<string, number>, todayKey: string): { date: string; kWh: number }[] => {
   const entries: { date: string; kWh: number }[] = [];
-  if (!tracker.dailyTotals) return entries;
-  for (const [dateKey, kWh] of Object.entries(tracker.dailyTotals)) {
+  if (!dailyTotals) return entries;
+  for (const [dateKey, kWh] of Object.entries(dailyTotals)) {
     if (dateKey === todayKey) continue;
     entries.push({ date: dateKey, kWh });
   }
   return entries.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 14);
+};
+
+let powerUsageWeekOffset = 0;
+let powerUsageEntries: PowerUsageEntry[] = [];
+let powerUsageNavReady = false;
+
+const getUtcWeekRange = (now: Date, weekOffset: number) => {
+  const day = now.getUTCDay();
+  const diffToMonday = (day + 6) % 7;
+  const mondayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffToMonday);
+  const startMs = mondayStart + weekOffset * 7 * 24 * 60 * 60 * 1000;
+  const endMs = startMs + 7 * 24 * 60 * 60 * 1000;
+  return { startMs, endMs };
+};
+
+const formatWeekLabel = (startMs: number, endMs: number) => {
+  const start = new Date(startMs);
+  const end = new Date(endMs - 1);
+  const startText = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const endText = end.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return `${startText}–${endText}`;
+};
+
+const ensurePowerUsageNav = () => {
+  if (powerUsageNavReady || !powerWeekPrev || !powerWeekNext || !powerWeekLabel) return;
+  powerUsageNavReady = true;
+  powerWeekPrev.addEventListener('click', () => {
+    powerUsageWeekOffset -= 1;
+    renderPowerUsage(powerUsageEntries);
+  });
+  powerWeekNext.addEventListener('click', () => {
+    if (powerUsageWeekOffset >= 0) return;
+    powerUsageWeekOffset += 1;
+    renderPowerUsage(powerUsageEntries);
+  });
 };
 
 const renderPowerSummary = (stats: PowerStatsSummary) => {
@@ -194,6 +281,7 @@ const renderPowerAverages = (stats: PowerStatsSummary) => {
 const renderHourlyPattern = (stats: PowerStatsSummary) => {
   if (!hourlyPattern) return;
   hourlyPattern.innerHTML = '';
+  if (hourlyPatternMeta) hourlyPatternMeta.textContent = stats.hourlyPatternMeta;
   if (!stats.hasPatternData) {
     const message = document.createElement('div');
     message.className = 'hourly-pattern__empty';
@@ -203,35 +291,52 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
   }
 
   const maxAvg = Math.max(...stats.hourlyPattern.map(p => p.avg), 0.1);
-  for (const { hour, avg } of stats.hourlyPattern) {
+  stats.hourlyPattern.forEach(({ hour, avg }) => {
+    const row = document.createElement('div');
+    row.className = 'hourly-row';
+
+    const label = document.createElement('div');
+    label.className = 'hourly-row__label';
+    label.textContent = `${hour.toString().padStart(2, '0')}:00`;
+
     const bar = document.createElement('div');
-    bar.className = 'hourly-pattern__bar';
-    bar.style.height = `${(avg / maxAvg) * 100}%`;
+    bar.className = 'hourly-row__bar';
     bar.title = `${hour}:00 - ${avg.toFixed(2)} kWh`;
+    const fill = document.createElement('div');
+    fill.className = 'hourly-row__bar-fill';
+    fill.style.width = `${Math.max(4, (avg / maxAvg) * 100)}%`;
 
-    const label = document.createElement('span');
-    label.className = 'hourly-pattern__label';
-    label.textContent = hour.toString();
+    const value = document.createElement('div');
+    value.className = 'hourly-row__value';
+    value.textContent = `${avg.toFixed(2)} kWh`;
 
-    bar.appendChild(label);
-    hourlyPattern.appendChild(bar);
-  }
+    bar.appendChild(fill);
+    row.append(label, bar, value);
+    hourlyPattern.appendChild(row);
+  });
 };
 
-const buildDailyHistoryRow = (entry: { date: string; kWh: number }) => {
+const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: number) => {
   const row = document.createElement('div');
-  row.className = 'daily-row';
+  row.className = 'daily-row daily-row--chart';
 
   const dateEl = document.createElement('div');
   dateEl.className = 'daily-row__date';
   const date = new Date(entry.date);
   dateEl.textContent = date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 
+  const bar = document.createElement('div');
+  bar.className = 'daily-row__bar';
+  const fill = document.createElement('div');
+  fill.className = 'daily-row__bar-fill';
+  fill.style.width = `${Math.max(4, (entry.kWh / maxKWh) * 100)}%`;
+  bar.appendChild(fill);
+
   const val = document.createElement('div');
   val.className = 'daily-row__value';
   val.textContent = `${entry.kWh.toFixed(1)} kWh`;
 
-  row.append(dateEl, val);
+  row.append(dateEl, bar, val);
   return row;
 };
 
@@ -243,8 +348,9 @@ const renderDailyHistory = (stats: PowerStatsSummary) => {
     return;
   }
   dailyEmpty.hidden = true;
+  const maxKWh = Math.max(...stats.dailyHistory.map((entry) => entry.kWh), 0.1);
   stats.dailyHistory.forEach((entry) => {
-    dailyList.appendChild(buildDailyHistoryRow(entry));
+    dailyList.appendChild(buildDailyHistoryRow(entry, maxKWh));
   });
 };
 
@@ -257,10 +363,17 @@ const getPowerStats = async (): Promise<PowerStatsSummary> => {
   const now = new Date();
   const timeContext = getPowerTimeContext(now);
   const today = getTodayUsage(tracker, timeContext.todayStart);
-  const totals = getWeekMonthTotals(tracker, timeContext, today);
-  const averages = getWeekdayWeekendAverages(tracker);
-  const hourlyPattern = buildHourlyPattern(tracker);
-  const dailyHistory = buildDailyHistory(tracker, timeContext.todayKey);
+  const derivedDailyTotals = Object.keys(tracker.dailyTotals || {}).length
+    ? tracker.dailyTotals as Record<string, number>
+    : getDerivedDailyTotals(tracker.buckets);
+  const derivedHourlyAverages = Object.keys(tracker.hourlyAverages || {}).length
+    ? tracker.hourlyAverages as Record<string, { sum: number; count: number }>
+    : getDerivedHourlyAverages(tracker.buckets);
+  const totals = getWeekMonthTotals({ ...tracker, dailyTotals: derivedDailyTotals }, timeContext, today);
+  const averages = getWeekdayWeekendAverages(derivedDailyTotals);
+  const hourlyPattern = buildHourlyPattern(derivedHourlyAverages);
+  const hourlyPatternMeta = getHourlyPatternMeta(tracker.buckets);
+  const dailyHistory = buildDailyHistory(derivedDailyTotals, timeContext.todayKey);
 
   return {
     today,
@@ -269,6 +382,7 @@ const getPowerStats = async (): Promise<PowerStatsSummary> => {
     weekdayAvg: averages.weekdayAvg,
     weekendAvg: averages.weekendAvg,
     hourlyPattern,
+    hourlyPatternMeta,
     dailyHistory,
     hasPatternData: averages.hasPatternData,
   };
@@ -278,12 +392,19 @@ export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
   const tracker = await getSetting('power_tracker_state') as PowerTracker | null;
   if (!tracker || typeof tracker !== 'object' || !tracker.buckets) return [];
 
+  const unreliablePeriods = tracker.unreliablePeriods || [];
+
   return Object.entries(tracker.buckets)
     .map(([iso, value]) => {
       const date = new Date(iso);
+      const start = date.getTime();
+      const end = start + 3600000;
+      const isUnreliable = unreliablePeriods.some((p) => p.start < end && p.end > start);
       return {
         hour: date,
         kWh: Number(value) || 0,
+        budgetKWh: tracker.hourlyBudgets?.[iso],
+        unreliable: isUnreliable,
       };
     })
     .sort((a, b) => a.hour.getTime() - b.hour.getTime());
@@ -298,34 +419,117 @@ export const renderPowerStats = async () => {
 };
 
 export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
+  powerUsageEntries = entries;
+  ensurePowerUsageNav();
+  const now = new Date(Date.now());
+  const range = getUtcWeekRange(now, powerUsageWeekOffset);
+  if (powerWeekLabel) powerWeekLabel.textContent = formatWeekLabel(range.startMs, range.endMs);
+  if (powerWeekNext) powerWeekNext.disabled = powerUsageWeekOffset >= 0;
+  if (powerWeekPrev) powerWeekPrev.disabled = false;
+
+  const filtered = entries.filter((entry) => {
+    const ts = entry.hour.getTime();
+    return ts >= range.startMs && ts < range.endMs;
+  });
+  const grouped = filtered.reduce((acc, entry) => {
+    const dateKey = entry.hour.toISOString().slice(0, 10);
+    if (!acc.has(dateKey)) acc.set(dateKey, []);
+    acc.get(dateKey)?.push(entry);
+    return acc;
+  }, new Map<string, PowerUsageEntry[]>());
   powerList.innerHTML = '';
-  if (!entries.length) {
+  if (!filtered.length) {
     powerEmpty.hidden = false;
     return;
   }
 
   powerEmpty.hidden = true;
-  entries.forEach((entry) => {
-    const row = document.createElement('div');
-    row.className = 'device-row';
-    row.setAttribute('role', 'listitem');
+  const fragment = document.createDocumentFragment();
+  Array.from(grouped.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([dateKey, dayEntries]) => {
+      const header = document.createElement('div');
+      header.className = 'list__header power-day-header';
+      const headerLabel = document.createElement('span');
+      headerLabel.className = 'pill';
+      headerLabel.textContent = new Date(dateKey).toLocaleDateString([], {
+        weekday: 'short', month: 'short', day: 'numeric',
+      });
+      header.appendChild(headerLabel);
+      fragment.appendChild(header);
 
-    const hour = document.createElement('div');
-    hour.className = 'device-row__name';
-    hour.textContent = entry.hour.toLocaleString();
+      dayEntries
+        .sort((a, b) => a.hour.getTime() - b.hour.getTime())
+        .forEach((entry) => {
+          fragment.appendChild(createPowerRow(entry));
+        });
+    });
+  powerList.appendChild(fragment);
+};
 
-    const val = document.createElement('div');
-    val.className = 'device-row__target';
-    const chip = document.createElement('span');
-    chip.className = 'chip';
-    const strong = document.createElement('strong');
-    strong.textContent = 'Energy';
-    const span = document.createElement('span');
-    span.textContent = `${entry.kWh.toFixed(3)} kWh`;
-    chip.append(strong, span);
-    val.appendChild(chip);
+const createChip = (label: string, value: string, className = ''): HTMLElement => {
+  const chip = document.createElement('span');
+  chip.className = `chip ${className}`;
+  const strong = document.createElement('strong');
+  strong.textContent = label;
+  const span = document.createElement('span');
+  span.textContent = value;
+  chip.append(strong, span);
+  return chip;
+};
 
-    row.append(hour, val);
-    powerList.appendChild(row);
-  });
+const createTimeLabel = (date: Date): string => {
+  const start = date;
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const time = `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const day = start.toLocaleDateString([], { weekday: 'short' });
+  return `${day} ${time}`;
+};
+
+const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => {
+  const meter = document.createElement('div');
+  meter.className = 'power-meter';
+  const ratio = budget ? Math.min(1, kWh / budget) : 0;
+  const fill = document.createElement('div');
+  fill.className = `power-meter__fill${budget && kWh > budget ? ' power-meter__fill--alert' : ''}`;
+  fill.style.width = `${Math.max(4, ratio * 100)}%`;
+  meter.appendChild(fill);
+  return meter;
+};
+
+const createPowerRow = (entry: PowerUsageEntry): HTMLElement => {
+  const row = document.createElement('div');
+  row.className = 'device-row power-row';
+  row.setAttribute('role', 'listitem');
+
+  const hourEl = document.createElement('div');
+  hourEl.className = 'power-row__name';
+  hourEl.textContent = createTimeLabel(entry.hour);
+
+  const val = document.createElement('div');
+  val.className = 'power-row__target';
+
+  const budget = typeof entry.budgetKWh === 'number' && entry.budgetKWh > 0 ? entry.budgetKWh : null;
+  val.appendChild(createPowerMeter(entry.kWh, budget));
+
+  const chips = document.createElement('div');
+  chips.className = 'power-row__chips';
+  chips.appendChild(createChip('Energy', `${entry.kWh.toFixed(2)} kWh`));
+
+  if (budget !== null) {
+    const alert = entry.kWh > budget;
+    chips.appendChild(createChip(
+      alert ? 'Over cap' : 'Under cap',
+      `${budget.toFixed(2)} kWh`,
+      alert ? 'chip--alert' : 'chip--ok',
+    ));
+  }
+
+  if (entry.unreliable) {
+    chips.appendChild(createChip('Unreliable data', '', 'chip--alert'));
+  }
+  val.appendChild(chips);
+
+  row.append(hourEl, val);
+  return row;
 };

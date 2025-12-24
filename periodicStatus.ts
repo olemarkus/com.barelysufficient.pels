@@ -1,6 +1,6 @@
 import type CapacityGuard from './capacityGuard';
 import type { PowerTrackerState } from './powerTracker';
-import { getHourBucketKey } from './powerTracker';
+import { getHourBucketKey } from './dateUtils';
 
 export function buildPeriodicStatusLog(params: {
   capacityGuard?: CapacityGuard;

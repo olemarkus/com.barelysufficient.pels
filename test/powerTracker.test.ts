@@ -150,4 +150,37 @@ describe('power tracker integration', () => {
     expect(saved.buckets).toEqual({});
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
+
+  it('splits energy across hour boundary when samples are delayed', async () => {
+    const state = {};
+    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const rebuildPlanFromCache = jest.fn();
+    const start = Date.UTC(2025, 0, 1, 0, 50, 0);
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 3600,
+      nowMs: start,
+      homey: mockHomeyInstance as any,
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 3600,
+      nowMs: start + 20 * 60 * 1000,
+      homey: mockHomeyInstance as any,
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    const bucket0 = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
+    const bucket1 = new Date(Date.UTC(2025, 0, 1, 1, 0, 0)).toISOString();
+    const snapshot = state as any;
+    expect(snapshot.buckets[bucket0]).toBeCloseTo(0.6, 3);
+    expect(snapshot.buckets[bucket1]).toBeCloseTo(0.6, 3);
+  });
 });
