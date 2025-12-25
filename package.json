@@ -1,6 +1,9 @@
 {
   "name": "com.barelysufficient.pels",
   "version": "1.1.1",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc && npm run build:tokens && npm run build:settings",
     "build:tokens": "style-dictionary build --config style-dictionary.config.mjs",
@@ -32,10 +35,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@tsconfig/node16": "^16.1.8",
+    "@tsconfig/node22": "^22.0.5",
     "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.10.1",
+    "@types/node": "^22.19.3",
     "@types/puppeteer": "^7.0.4",
     "@types/sortablejs": "^1.15.9",
     "@typescript-eslint/eslint-plugin": "^8.48.1",

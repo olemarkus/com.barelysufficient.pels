@@ -75,12 +75,7 @@ async function persistPowerSample(params: {
   } = params;
   if (capacityGuard) capacityGuard.reportTotalPower(currentPowerW / 1000);
   saveState(nextState);
-  try {
-    await rebuildPlanFromCache();
-  } catch (error) {
-    // Log error but don't throw - state is already persisted
-    console.error('PowerTracker: Failed to rebuild plan after power sample:', error);
-  }
+  await rebuildPlanFromCache();
 }
 
 export function formatDateUtc(date: Date): string {
