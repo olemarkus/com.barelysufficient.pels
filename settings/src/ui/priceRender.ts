@@ -1,6 +1,7 @@
 import { priceList, priceEmpty, priceStatusBadge } from './dom';
 import { getTimeAgo } from './utils';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
+import { createDeviceRow } from './components';
 
 const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   if (!priceStatusBadge) return;
@@ -255,23 +256,18 @@ const buildPriceChip = (entry: PriceEntry, priceClass: string) => {
 };
 
 const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceClass: string) => {
-  const row = document.createElement('div');
-  row.className = 'device-row price-row';
-  row.setAttribute('role', 'listitem');
-
   const entryTime = new Date(entry.startsAt);
   const isCurrentHour = entryTime.getTime() === currentHour.getTime();
+
+  const row = createDeviceRow({
+    name: formatPriceTimeLabel(entryTime, currentHour, now),
+    className: 'price-row',
+    controls: [buildPriceChip(entry, priceClass)],
+    controlsClassName: 'device-row__target',
+  });
+
   if (isCurrentHour) row.classList.add('current-hour');
 
-  const timeWrap = document.createElement('div');
-  timeWrap.className = 'device-row__name';
-  timeWrap.textContent = formatPriceTimeLabel(entryTime, currentHour, now);
-
-  const priceWrap = document.createElement('div');
-  priceWrap.className = 'device-row__target';
-  priceWrap.appendChild(buildPriceChip(entry, priceClass));
-
-  row.append(timeWrap, priceWrap);
   return row;
 };
 

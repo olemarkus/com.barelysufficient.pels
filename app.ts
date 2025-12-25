@@ -461,11 +461,13 @@ class PelsApp extends Homey.App {
       this.lastPlanSignature = signature;
     }
     this.homey.settings.set('device_plan_snapshot', plan);
-    // Type-safe realtime API access with validation
-    const realtime = this.homey.api?.realtime;
+
+    // Call realtime bound to this.homey.api to avoid context issues
+    const api = this.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
+    const realtime = api?.realtime;
     if (typeof realtime === 'function') {
-      const emit = realtime as (event: string, data: unknown) => Promise<unknown>;
-      emit('plan_updated', plan).catch((err) => this.error('Failed to emit plan_updated event', err as Error));
+      realtime.call(api, 'plan_updated', plan)
+        .catch((err: unknown) => this.error('Failed to emit plan_updated event', err as Error));
     }
     this.updatePelsStatus(plan);
     const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');

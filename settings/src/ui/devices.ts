@@ -6,6 +6,7 @@ import { state } from './state';
 import { renderPriorities } from './modes';
 import { refreshPlan } from './plan';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './prices';
+import { createDeviceRow, createCheckboxLabel, renderList } from './components';
 
 const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
   const snapshot = await getSetting('target_devices_snapshot');
@@ -20,67 +21,43 @@ const setBusy = (busy: boolean) => {
   refreshButton.disabled = busy;
 };
 
-export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
-  deviceList.innerHTML = '';
-
-  if (!devices.length) {
-    emptyState.hidden = false;
-    return;
-  }
-
-  emptyState.hidden = true;
-
-  devices.forEach((device) => {
-    const row = document.createElement('div');
-    row.className = 'device-row control-row';
-    row.setAttribute('role', 'listitem');
-
-    const nameWrap = document.createElement('div');
-    nameWrap.className = 'device-row__name';
-    nameWrap.textContent = device.name;
-
-    const ctrlLabel = document.createElement('label');
-    ctrlLabel.className = 'checkbox-icon';
-    ctrlLabel.title = 'Capacity-based control';
-    const ctrlInput = document.createElement('input');
-    ctrlInput.type = 'checkbox';
-    ctrlInput.checked = state.controllableMap[device.id] !== false;
-    ctrlInput.addEventListener('change', async () => {
-      state.controllableMap[device.id] = ctrlInput.checked;
+const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
+  const ctrlCheckbox = createCheckboxLabel({
+    title: 'Capacity-based control',
+    checked: state.controllableMap[device.id] !== false,
+    onChange: async (checked) => {
+      state.controllableMap[device.id] = checked;
       await setSetting('controllable_devices', state.controllableMap);
-    });
-    ctrlLabel.append(ctrlInput);
+    },
+  });
 
-    const priceOptLabel = document.createElement('label');
-    priceOptLabel.className = 'checkbox-icon';
-    priceOptLabel.title = 'Price-based control';
-    const priceOptInput = document.createElement('input');
-    priceOptInput.type = 'checkbox';
-    const config = state.priceOptimizationSettings[device.id];
-    priceOptInput.checked = config?.enabled || false;
-    priceOptInput.addEventListener('change', async () => {
+  const priceOptCheckbox = createCheckboxLabel({
+    title: 'Price-based control',
+    checked: state.priceOptimizationSettings[device.id]?.enabled || false,
+    onChange: async (checked) => {
       if (!state.priceOptimizationSettings[device.id]) {
         state.priceOptimizationSettings[device.id] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
       }
-      state.priceOptimizationSettings[device.id].enabled = priceOptInput.checked;
+      state.priceOptimizationSettings[device.id].enabled = checked;
       await savePriceOptimizationSettings();
       renderPriceOptimization(state.latestDevices);
-    });
-    priceOptLabel.append(priceOptInput);
+    },
+  });
 
-    const controls = document.createElement('div');
-    controls.className = 'control-row__inputs';
-    controls.append(ctrlLabel, priceOptLabel);
-
-    row.append(nameWrap, controls);
-    row.addEventListener('click', (event) => {
-      if ((event.target as HTMLElement).tagName === 'INPUT') return;
+  return createDeviceRow({
+    id: device.id,
+    name: device.name,
+    className: 'control-row',
+    controls: [ctrlCheckbox, priceOptCheckbox],
+    onClick: () => {
       const openEvent = new CustomEvent('open-device-detail', { detail: { deviceId: device.id } });
       document.dispatchEvent(openEvent);
-    });
-
-    deviceList.appendChild(row);
+    },
   });
+};
+
+export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
+  renderList(deviceList, emptyState, devices, buildDeviceRowItem);
 };
 
 export const refreshDevices = async () => {

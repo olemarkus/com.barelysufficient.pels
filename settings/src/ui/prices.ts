@@ -20,6 +20,7 @@ import { defaultPriceOptimizationConfig, state } from './state';
 import { gridCompanies } from './gridCompanies';
 import { renderPrices } from './priceRender';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
+import { createDeviceRow, createNumberInput } from './components';
 
 type NettleieEntry = {
   time: number;
@@ -227,54 +228,43 @@ const ensurePriceOptimizationConfig = (deviceId: string) => {
   return state.priceOptimizationSettings[deviceId];
 };
 
-const buildPriceOptimizationRow = (device: TargetDeviceSnapshot) => {
+const buildPriceOptimizationRow = (device: TargetDeviceSnapshot): HTMLElement => {
   const config = getPriceOptimizationConfig(device.id);
 
-  const row = document.createElement('div');
-  row.className = 'device-row price-optimization-row';
-  row.setAttribute('role', 'listitem');
-  row.dataset.deviceId = device.id;
-
-  const nameWrap = document.createElement('div');
-  nameWrap.className = 'device-row__name';
-  nameWrap.textContent = device.name;
-
-  const cheapInput = document.createElement('input');
-  cheapInput.type = 'number';
-  cheapInput.step = '0.5';
-  cheapInput.min = '-20';
-  cheapInput.max = '20';
-  cheapInput.className = 'price-opt-input';
-  cheapInput.value = (config.cheapDelta ?? 5).toString();
-  cheapInput.title = 'Temperature adjustment during cheap hours (e.g., +5 to boost)';
-  cheapInput.addEventListener('change', async () => {
-    const val = parseFloat(cheapInput.value);
-    if (Number.isFinite(val)) {
+  const cheapInput = createNumberInput({
+    value: config.cheapDelta ?? 5,
+    min: -20,
+    max: 20,
+    step: 0.5,
+    className: 'price-opt-input',
+    title: 'Temperature adjustment during cheap hours (e.g., +5 to boost)',
+    onChange: async (val) => {
       const nextConfig = ensurePriceOptimizationConfig(device.id);
       nextConfig.cheapDelta = val;
       await savePriceOptimizationSettings();
-    }
+    },
   });
 
-  const expensiveInput = document.createElement('input');
-  expensiveInput.type = 'number';
-  expensiveInput.step = '0.5';
-  expensiveInput.min = '-20';
-  expensiveInput.max = '20';
-  expensiveInput.className = 'price-opt-input';
-  expensiveInput.value = (config.expensiveDelta ?? -5).toString();
-  expensiveInput.title = 'Temperature adjustment during expensive hours (e.g., -5 to reduce)';
-  expensiveInput.addEventListener('change', async () => {
-    const val = parseFloat(expensiveInput.value);
-    if (Number.isFinite(val)) {
+  const expensiveInput = createNumberInput({
+    value: config.expensiveDelta ?? -5,
+    min: -20,
+    max: 20,
+    step: 0.5,
+    className: 'price-opt-input',
+    title: 'Temperature adjustment during expensive hours (e.g., -5 to reduce)',
+    onChange: async (val) => {
       const nextConfig = ensurePriceOptimizationConfig(device.id);
       nextConfig.expensiveDelta = val;
       await savePriceOptimizationSettings();
-    }
+    },
   });
 
-  row.append(nameWrap, cheapInput, expensiveInput);
-  return row;
+  return createDeviceRow({
+    id: device.id,
+    name: device.name,
+    className: 'price-optimization-row',
+    controls: [cheapInput, expensiveInput],
+  });
 };
 
 export const renderPriceOptimization = (devices: TargetDeviceSnapshot[]) => {

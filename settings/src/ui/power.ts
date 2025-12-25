@@ -15,6 +15,7 @@ import {
   hourlyPatternMeta,
 } from './dom';
 import { getSetting } from './homey';
+import { createDeviceRow, createUsageBar } from './components';
 
 export type PowerTracker = {
   buckets?: Record<string, number>;
@@ -299,18 +300,18 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
     label.className = 'hourly-row__label';
     label.textContent = `${hour.toString().padStart(2, '0')}:00`;
 
-    const bar = document.createElement('div');
-    bar.className = 'hourly-row__bar';
-    bar.title = `${hour}:00 - ${avg.toFixed(2)} kWh`;
-    const fill = document.createElement('div');
-    fill.className = 'hourly-row__bar-fill';
-    fill.style.width = `${Math.max(4, (avg / maxAvg) * 100)}%`;
+    const bar = createUsageBar({
+      value: avg,
+      max: maxAvg,
+      minFillPct: 4,
+      className: 'hourly-row__bar',
+      fillClassName: 'hourly-row__bar-fill',
+      title: `${hour}:00 - ${avg.toFixed(2)} kWh`,
+    });
 
     const value = document.createElement('div');
     value.className = 'hourly-row__value';
     value.textContent = `${avg.toFixed(2)} kWh`;
-
-    bar.appendChild(fill);
     row.append(label, bar, value);
     hourlyPattern.appendChild(row);
   });
@@ -325,12 +326,13 @@ const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: numb
   const date = new Date(entry.date);
   dateEl.textContent = date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 
-  const bar = document.createElement('div');
-  bar.className = 'daily-row__bar';
-  const fill = document.createElement('div');
-  fill.className = 'daily-row__bar-fill';
-  fill.style.width = `${Math.max(4, (entry.kWh / maxKWh) * 100)}%`;
-  bar.appendChild(fill);
+  const bar = createUsageBar({
+    value: entry.kWh,
+    max: maxKWh,
+    minFillPct: 4,
+    className: 'daily-row__bar',
+    fillClassName: 'daily-row__bar-fill',
+  });
 
   const val = document.createElement('div');
   val.className = 'daily-row__value';
@@ -486,50 +488,40 @@ const createTimeLabel = (date: Date): string => {
   return `${day} ${time}`;
 };
 
-const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => {
-  const meter = document.createElement('div');
-  meter.className = 'power-meter';
-  const ratio = budget ? Math.min(1, kWh / budget) : 0;
-  const fill = document.createElement('div');
-  fill.className = `power-meter__fill${budget && kWh > budget ? ' power-meter__fill--alert' : ''}`;
-  fill.style.width = `${Math.max(4, ratio * 100)}%`;
-  meter.appendChild(fill);
-  return meter;
-};
+const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => (
+  createUsageBar({
+    value: kWh,
+    max: budget ?? kWh,
+    minFillPct: 4,
+    className: 'power-meter usage-bar--lg',
+    fillClassName: budget && kWh > budget ? 'power-meter__fill power-meter__fill--alert' : 'power-meter__fill',
+    labelClassName: 'power-meter__label',
+    labelText: budget !== null
+      ? `${kWh.toFixed(2)} / ${budget.toFixed(2)} kWh`
+      : `${kWh.toFixed(2)} kWh`,
+    title: budget !== null
+      ? `${kWh > budget ? 'Over' : 'Under'} cap: ${kWh.toFixed(2)} / ${budget.toFixed(2)} kWh`
+      : `Energy ${kWh.toFixed(2)} kWh`,
+  })
+);
 
 const createPowerRow = (entry: PowerUsageEntry): HTMLElement => {
-  const row = document.createElement('div');
-  row.className = 'device-row power-row';
-  row.setAttribute('role', 'listitem');
-
-  const hourEl = document.createElement('div');
-  hourEl.className = 'power-row__name';
-  hourEl.textContent = createTimeLabel(entry.hour);
-
-  const val = document.createElement('div');
-  val.className = 'power-row__target';
-
   const budget = typeof entry.budgetKWh === 'number' && entry.budgetKWh > 0 ? entry.budgetKWh : null;
-  val.appendChild(createPowerMeter(entry.kWh, budget));
+  const meter = createPowerMeter(entry.kWh, budget);
 
-  const chips = document.createElement('div');
-  chips.className = 'power-row__chips';
-  chips.appendChild(createChip('Energy', `${entry.kWh.toFixed(2)} kWh`));
-
-  if (budget !== null) {
-    const alert = entry.kWh > budget;
-    chips.appendChild(createChip(
-      alert ? 'Over cap' : 'Under cap',
-      `${budget.toFixed(2)} kWh`,
-      alert ? 'chip--alert' : 'chip--ok',
-    ));
-  }
-
+  const controls: HTMLElement[] = [meter];
   if (entry.unreliable) {
+    const chips = document.createElement('div');
+    chips.className = 'power-row__chips';
     chips.appendChild(createChip('Unreliable data', '', 'chip--alert'));
+    controls.push(chips);
   }
-  val.appendChild(chips);
 
-  row.append(hourEl, val);
-  return row;
+  return createDeviceRow({
+    name: createTimeLabel(entry.hour),
+    className: 'power-row',
+    nameClassName: 'power-row__name',
+    controls,
+    controlsClassName: 'device-row__target power-row__target',
+  });
 };

@@ -1,5 +1,6 @@
 import { planList, planEmpty, planMeta } from './dom';
 import { getSetting } from './homey';
+import { createMetaLine } from './components';
 
 type PlanDeviceSnapshot = {
   id: string;
@@ -74,18 +75,6 @@ const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
   });
 };
 
-const createPlanMetaLine = (label: string, value: string) => {
-  const line = document.createElement('div');
-  line.className = 'plan-meta-line';
-  const labelEl = document.createElement('span');
-  labelEl.className = 'plan-label';
-  labelEl.textContent = label;
-  const valueEl = document.createElement('span');
-  valueEl.textContent = value;
-  line.append(labelEl, valueEl);
-  return line;
-};
-
 const hasPlanTempData = (dev: PlanDeviceSnapshot) => dev.plannedTarget !== null && dev.plannedTarget !== undefined
   || dev.currentTarget !== null && dev.currentTarget !== undefined
   || dev.currentTemperature !== null && dev.currentTemperature !== undefined;
@@ -101,7 +90,7 @@ const buildPlanTemperatureLine = (dev: PlanDeviceSnapshot) => {
   const plannedTarget = typeof dev.plannedTarget === 'number' ? `${dev.plannedTarget}°` : '–';
   const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
   const targetText = targetChanging ? `${currentTarget} → ${plannedTarget}` : currentTarget;
-  return createPlanMetaLine('Temperature', `${currentTemp} / target ${targetText}`);
+  return createMetaLine('Temperature', `${currentTemp} / target ${targetText}`);
 };
 
 const buildPlanPowerLine = (dev: PlanDeviceSnapshot) => {
@@ -117,7 +106,7 @@ const buildPlanPowerLine = (dev: PlanDeviceSnapshot) => {
   }
   const powerChanging = plannedPowerState !== currentPower;
   const powerText = powerChanging ? `${currentPower} → ${plannedPowerState}` : plannedPowerState;
-  return createPlanMetaLine('Power', powerText);
+  return createMetaLine('Power', powerText);
 };
 
 const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
@@ -129,7 +118,7 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
   } else if (dev.plannedState === 'keep') {
     stateText = (dev.currentState === 'off' || dev.currentState === 'unknown') ? 'Restoring' : 'Keep';
   }
-  return createPlanMetaLine('State', stateText);
+  return createMetaLine('State', stateText);
 };
 
 const buildPlanUsageLine = (dev: PlanDeviceSnapshot) => {
@@ -147,14 +136,15 @@ const buildPlanUsageLine = (dev: PlanDeviceSnapshot) => {
     usageText = `current ${measuredKw.toFixed(2)} kW`;
   }
 
-  return createPlanMetaLine('Usage', usageText);
+  return createMetaLine('Usage', usageText);
 };
 
-const buildPlanStatusLine = (dev: PlanDeviceSnapshot) => createPlanMetaLine('Status', dev.reason || 'Waiting for headroom');
+const buildPlanStatusLine = (dev: PlanDeviceSnapshot) => createMetaLine('Status', dev.reason || 'Waiting for headroom');
 
 const buildPlanRow = (dev: PlanDeviceSnapshot) => {
   const row = document.createElement('div');
   row.className = 'device-row plan-row';
+  row.setAttribute('role', 'listitem');
   row.dataset.deviceId = dev.id;
 
   const name = document.createElement('div');
