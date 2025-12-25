@@ -94,6 +94,7 @@ hr {
   --info: var(--color-semantic-info);
   --radius: var(--radius-lg);
   --font-sans: var(--font-family-sans);
+  --temp-input-width: 80px;
   
   /* Panel variants for different contexts */
   --panel-bg: var(--color-surface-1);
@@ -452,33 +453,35 @@ input:focus-visible {
 
 .muted {
   color: var(--muted);
-  margin: 8px 0 0;
+  margin: var(--spacing-2) 0 0;
 }
 
 .list__header,
 .device-row {
   display: block;
-  gap: 8px;
+  gap: var(--spacing-2);
   align-items: center;
-  padding: 10px 0;
+  padding: var(--spacing-2) 0;
   border-bottom: 1px solid var(--panel-border);
 }
 
 .tight-list .device-row {
-  padding: 6px 0;
+  padding: var(--spacing-1) 0;
 }
 
 .control-row {
   display: grid;
   grid-template-columns: 1fr 40px 40px;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-2);
 }
 
+.device-row__inputs,
 .control-row__inputs {
   display: contents;
 }
 
+.device-row__inputs .checkbox-icon,
 .control-row__inputs .checkbox-icon {
   display: flex;
   justify-content: center;
@@ -489,12 +492,12 @@ input:focus-visible {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) 80px 44px;
   align-items: center;
-  gap: 4px;
+  gap: var(--spacing-1);
 }
 
 .mode-row__inputs {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--spacing-1);
   align-items: center;
   flex-wrap: nowrap;
   white-space: nowrap;
@@ -504,7 +507,7 @@ input:focus-visible {
 
 .drag-handle {
   cursor: grab;
-  padding: 4px 6px;
+  padding: var(--spacing-1) var(--spacing-2);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface-4);
@@ -566,7 +569,7 @@ input:focus-visible {
 
 .plan-meta-line {
   display: flex;
-  gap: 6px;
+  gap: var(--spacing-1);
   align-items: center;
 }
 
@@ -582,7 +585,7 @@ input:focus-visible {
 
 .device-row__name {
   font-weight: 700;
-  margin-bottom: 4px;
+  margin-bottom: var(--spacing-1);
 }
 
 .device-row__target {
@@ -619,29 +622,66 @@ input:focus-visible {
   gap: 8px;
 }
 
-.power-meter {
+.usage-bar {
   position: relative;
-  height: 8px;
+  display: block;
+  width: 100%;
+  height: 10px;
   background: var(--color-surface-4);
   border-radius: var(--radius-full);
   overflow: hidden;
   border: 1px solid var(--panel-border);
 }
 
-.power-meter__fill {
+.usage-bar--lg {
+  height: 12px;
+}
+
+.usage-bar__fill {
   height: 100%;
-  background: var(--color-state-success-bg);
   transition: width var(--transition-fast);
+}
+
+.usage-bar__label {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + var(--spacing-1));
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+  background: var(--color-surface-5);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.power-meter {
+  position: relative;
+  width: 100%;
+}
+
+.power-meter__fill {
+  background: var(--color-state-success-bg);
 }
 
 .power-meter__fill--alert {
   background: var(--color-state-warning-bg);
 }
 
+.power-meter:hover .usage-bar__label,
+.power-meter:active .usage-bar__label {
+  opacity: 1;
+}
+
 .mode-target-input {
-  width: 80px; /* fits xx.5 values + spinner */
-  padding: 6px 8px !important;
-  font-size: 14px;
+  width: var(--temp-input-width);
+  padding: var(--spacing-1) 28px var(--spacing-1) var(--spacing-2) !important;
+  font-size: var(--font-size-sm);
   flex: 0 0 auto;
 }
 
@@ -1069,19 +1109,20 @@ input[type="text"]:focus {
 }
 
 /* Price optimization inputs */
+#price-optimization-section {
+  --price-opt-input-width: var(--temp-input-width);
+}
+
+.price-optimization-header,
 .device-row.price-optimization-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) var(--price-opt-input-width) var(--price-opt-input-width);
+  gap: var(--spacing-1);
   align-items: center;
 }
 
 .price-optimization-header {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 8px;
-  align-items: center;
-  padding: 10px 0;
+  padding: var(--spacing-2) 0;
   border-bottom: 1px solid var(--panel-border);
 }
 
@@ -1089,16 +1130,17 @@ input[type="text"]:focus {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  margin: 0;
 }
 
 .price-optimization-header .header-delta {
-  width: 70px;
+  width: var(--price-opt-input-width);
   text-align: center;
 }
 
 .price-opt-input {
-  width: 70px;
-  padding: var(--spacing-2) var(--spacing-2);
+  width: var(--price-opt-input-width);
+  padding: var(--spacing-1) 28px var(--spacing-1) var(--spacing-2);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-strong);
   background: var(--color-surface-4);
@@ -1444,19 +1486,8 @@ input[type="text"]:focus {
   color: var(--text-secondary);
 }
 
-.hourly-row__bar {
-  position: relative;
-  height: 10px;
-  background: var(--color-surface-4);
-  border-radius: var(--radius-full);
-  border: 1px solid var(--panel-border);
-  overflow: hidden;
-}
-
 .hourly-row__bar-fill {
-  height: 100%;
   background: var(--accent);
-  transition: width var(--transition-fast);
 }
 
 .hourly-row__value {
@@ -1486,17 +1517,6 @@ input[type="text"]:focus {
   align-items: center;
 }
 
-.daily-row__bar {
-  position: relative;
-  height: 10px;
-  background: var(--color-surface-4);
-  border-radius: var(--radius-full);
-  border: 1px solid var(--panel-border);
-  overflow: hidden;
-}
-
 .daily-row__bar-fill {
-  height: 100%;
   background: var(--accent);
-  transition: width var(--transition-fast);
 }

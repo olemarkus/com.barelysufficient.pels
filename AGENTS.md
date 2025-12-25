@@ -76,6 +76,11 @@ Note: Do not run `homey` CLI commands - these deploy to hardware and should be r
 - Flow card arguments use snake_case (Homey convention)
 - Prefer explicit types over `any`, but `homey-api` responses need `any`
 
+## Performance Constraints
+
+- Memory footprint matters; keep PSS low and avoid retaining large objects or DOM trees
+- CPU usage should be minimal; avoid unnecessary polling, heavy loops, or redundant renders
+
 ## Common Pitfalls
 
 - **Two Homey packages**: `homey` (SDK) vs `homey-api` (device control) - don't confuse them

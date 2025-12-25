@@ -14,6 +14,7 @@ import { getSetting, setSetting } from './homey';
 import { OPERATING_MODE_SETTING } from '../../../lib/utils/settingsKeys';
 import { showToast, showToastError } from './toast';
 import { state } from './state';
+import { createDragHandle } from './components';
 
 export const loadModeAndPriorities = async () => {
   const mode = await getSetting(OPERATING_MODE_SETTING);
@@ -85,19 +86,6 @@ const getPriorityRows = (): HTMLElement[] => (
   Array.from(priorityList?.querySelectorAll<HTMLElement>('.device-row') || [])
 );
 
-const buildDragHandle = () => {
-  const handle = document.createElement('span');
-  handle.className = 'drag-handle';
-  handle.innerHTML = [
-    '<svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">',
-    '<circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/>',
-    '<circle cx="3" cy="8" r="1.5"/><circle cx="9" cy="8" r="1.5"/>',
-    '<circle cx="3" cy="13" r="1.5"/><circle cx="9" cy="13" r="1.5"/>',
-    '</svg>',
-  ].join('');
-  return handle;
-};
-
 export const getPriority = (deviceId: string) => {
   const mode = state.editingMode || 'Home';
   return state.capacityPriorities[mode]?.[deviceId] ?? 100;
@@ -143,7 +131,7 @@ const buildPriorityRow = (device: TargetDeviceSnapshot) => {
   badgeWrap.className = 'mode-row__inputs';
   badgeWrap.appendChild(badge);
 
-  row.append(buildDragHandle(), name, input, badgeWrap);
+  row.append(createDragHandle(), name, input, badgeWrap);
   return row;
 };
 
