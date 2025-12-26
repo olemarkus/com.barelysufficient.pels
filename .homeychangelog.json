@@ -64,5 +64,8 @@
   },
   "1.5.7": {
     "en": "Make statistics actually work."
+  },
+  "1.5.8": {
+    "en": "Improved settings UI power usage visuals and labels, now using Homey’s timezone. Settings UI errors are logged to Homey. Plan view usage and clarity improvements."
   }
 }
