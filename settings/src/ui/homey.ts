@@ -5,6 +5,12 @@ export type HomeySettingsClient = {
   get: (key: string, cb: HomeyCallback<unknown>) => void;
   set: (key: string, value: unknown, cb: HomeyCallback<void>) => void;
   on?: (event: string, cb: (...args: unknown[]) => void) => void;
+  clock?: {
+    getTimezone?: () => string;
+  };
+  i18n?: {
+    getTimezone?: () => string;
+  };
 };
 
 // Homey global injected by runtime.
@@ -20,6 +26,14 @@ export const getHomeyClient = () => homeyClient;
 
 export const setHomeyClient = (client: HomeySettingsClient | null) => {
   homeyClient = client;
+};
+
+export const getHomeyTimezone = () => {
+  const clockTz = homeyClient?.clock?.getTimezone?.();
+  if (typeof clockTz === 'string' && clockTz.trim()) return clockTz;
+  const i18nTz = homeyClient?.i18n?.getTimezone?.();
+  if (typeof i18nTz === 'string' && i18nTz.trim()) return i18nTz;
+  return 'UTC';
 };
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

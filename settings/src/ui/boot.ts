@@ -78,10 +78,9 @@ const showTab = (tabId: string) => {
     refreshPrices().catch((err) => console.error('Failed to refresh prices:', err));
   }
   if (tabId === 'power') {
-    getPowerUsage()
-      .then((usage) => renderPowerUsage(usage))
-      .catch(() => { });
-    renderPowerStats().catch(() => { });
+    refreshPowerData().catch((error) => {
+      showToastError(error, 'Failed to refresh power data.');
+    });
   }
 };
 
@@ -127,11 +126,16 @@ const handlePriceUpdate = () => {
 const handlePowerUpdate = () => {
   const powerPanel = document.querySelector('#power-panel');
   if (powerPanel && !powerPanel.classList.contains('hidden')) {
-    getPowerUsage()
-      .then((usage) => renderPowerUsage(usage))
-      .catch(() => { });
-    renderPowerStats().catch(() => { });
+    refreshPowerData().catch((error) => {
+      showToastError(error, 'Failed to refresh power data.');
+    });
   }
+};
+
+const refreshPowerData = async () => {
+  const usage = await getPowerUsage();
+  renderPowerUsage(usage);
+  await renderPowerStats();
 };
 
 const handleSettingsUpdate = (key: string) => {
