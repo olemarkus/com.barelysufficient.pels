@@ -4,6 +4,8 @@
  * Shared component factory functions for consistent UI across all tabs.
  */
 
+import { logSettingsError } from './logging';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -187,7 +189,9 @@ export const createCheckboxLabel = (options: CheckboxOptions): HTMLElement => {
     input.addEventListener('change', () => {
         const result = onChange(input.checked);
         if (result instanceof Promise) {
-            result.catch(console.error);
+            result.catch((error) => {
+                void logSettingsError('Checkbox action failed', error, 'components');
+            });
         }
     });
 
@@ -215,7 +219,9 @@ export const createNumberInput = (options: NumberInputOptions): HTMLInputElement
         if (Number.isFinite(val)) {
             const result = onChange(val);
             if (result instanceof Promise) {
-                result.catch(console.error);
+                result.catch((error) => {
+                    void logSettingsError('Number input action failed', error, 'components');
+                });
             }
         }
     });
@@ -243,7 +249,9 @@ export const createSelectInput = (options: SelectInputOptions): HTMLSelectElemen
     select.addEventListener('change', () => {
         const result = onChange(select.value);
         if (result instanceof Promise) {
-            result.catch(console.error);
+            result.catch((error) => {
+                void logSettingsError('Select input action failed', error, 'components');
+            });
         }
     });
 

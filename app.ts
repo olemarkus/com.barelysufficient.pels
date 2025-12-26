@@ -149,6 +149,7 @@ class PelsApp extends Homey.App {
       updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
       updateOverheadToken: (value) => this.updateOverheadToken(value),
       updateDebugLoggingEnabled: (logChange) => this.updateDebugLoggingEnabled(logChange),
+      log: (message: string) => this.log(message),
       errorLog: (message: string, error: unknown) => this.error(message, error as Error),
     });
     this.homey.settings.on('set', async (key: string) => {
@@ -174,18 +175,9 @@ class PelsApp extends Homey.App {
     await this.startPriceOptimization();
   }
   async onUninit(): Promise<void> {
-    if (this.snapshotRefreshInterval) {
-      clearInterval(this.snapshotRefreshInterval);
-      this.snapshotRefreshInterval = undefined;
-    }
-    if (this.powerSampleRebuildTimer) {
-      clearTimeout(this.powerSampleRebuildTimer);
-      this.powerSampleRebuildTimer = undefined;
-    }
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = undefined;
-    }
+    if (this.snapshotRefreshInterval) { clearInterval(this.snapshotRefreshInterval); this.snapshotRefreshInterval = undefined; }
+    if (this.powerSampleRebuildTimer) { clearTimeout(this.powerSampleRebuildTimer); this.powerSampleRebuildTimer = undefined; }
+    if (this.heartbeatInterval) { clearInterval(this.heartbeatInterval); this.heartbeatInterval = undefined; }
     this.priceCoordinator.stop();
   }
   private logDebug(...args: unknown[]): void {
@@ -540,5 +532,6 @@ class PelsApp extends Homey.App {
   private async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
     return this.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
   }
+
 }
 export = PelsApp;

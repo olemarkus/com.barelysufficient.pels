@@ -15,6 +15,8 @@ import { OPERATING_MODE_SETTING } from '../../../lib/utils/settingsKeys';
 import { showToast, showToastError } from './toast';
 import { state } from './state';
 import { createDragHandle } from './components';
+import { logSettingsError } from './logging';
+import { createDragHandle } from './components';
 
 export const loadModeAndPriorities = async () => {
   const mode = await getSetting(OPERATING_MODE_SETTING);
@@ -153,11 +155,17 @@ export const renderPriorities = (devices: TargetDeviceSnapshot[]) => {
   refreshPriorityBadges();
 };
 
-export const setActiveMode = (mode: string) => {
+export const setActiveMode = async (mode: string) => {
   const next = (mode || '').trim() || 'Home';
   state.activeMode = next;
   renderModeOptions();
-  setSetting(OPERATING_MODE_SETTING, state.activeMode).catch((err) => showToastError(err as Error, 'Failed to set active mode.'));
+  try {
+    await setSetting(OPERATING_MODE_SETTING, state.activeMode);
+  } catch (error) {
+    await logSettingsError('Failed to set active mode', error, 'setActiveMode');
+    await showToastError(error as Error, 'Failed to set active mode.');
+    throw error;
+  }
 };
 
 export const setEditingMode = (mode: string) => {
@@ -233,29 +241,39 @@ const initSortable = () => {
 };
 
 export const savePriorities = async () => {
-  const mode = (modeSelect?.value || '').trim() || 'Home';
-  state.editingMode = mode;
-  const rows = getPriorityRows();
-  const modeMap = state.capacityPriorities[mode] || {};
-  rows.forEach((row, index) => {
-    const id = row.dataset.deviceId;
-    if (id) {
-      modeMap[id] = index + 1;
-    }
-  });
-  state.capacityPriorities[mode] = modeMap;
-  await setSetting('capacity_priorities', state.capacityPriorities);
-  await showToast(`Priorities saved for ${mode}.`, 'ok');
+  try {
+    const mode = (modeSelect?.value || '').trim() || 'Home';
+    state.editingMode = mode;
+    const rows = getPriorityRows();
+    const modeMap = state.capacityPriorities[mode] || {};
+    rows.forEach((row, index) => {
+      const id = row.dataset.deviceId;
+      if (id) {
+        modeMap[id] = index + 1;
+      }
+    });
+    state.capacityPriorities[mode] = modeMap;
+    await setSetting('capacity_priorities', state.capacityPriorities);
+    await showToast(`Priorities saved for ${mode}.`, 'ok');
+  } catch (error) {
+    await logSettingsError('Failed to save priorities', error, 'savePriorities');
+    await showToastError(error as Error, 'Failed to save priorities.');
+  }
 };
 
 export const applyTargetChange = async (deviceId: string, rawValue: string) => {
-  const mode = (modeSelect?.value || state.editingMode || 'Home').trim() || 'Home';
-  state.editingMode = mode;
-  const val = parseFloat(rawValue);
-  if (!Number.isFinite(val)) return;
-  if (!state.modeTargets[mode]) state.modeTargets[mode] = {};
-  state.modeTargets[mode][deviceId] = val;
-  await setSetting('mode_device_targets', state.modeTargets);
+  try {
+    const mode = (modeSelect?.value || state.editingMode || 'Home').trim() || 'Home';
+    state.editingMode = mode;
+    const val = parseFloat(rawValue);
+    if (!Number.isFinite(val)) return;
+    if (!state.modeTargets[mode]) state.modeTargets[mode] = {};
+    state.modeTargets[mode][deviceId] = val;
+    await setSetting('mode_device_targets', state.modeTargets);
+  } catch (error) {
+    await logSettingsError('Failed to update mode target', error, 'applyTargetChange');
+    await showToastError(error as Error, 'Failed to update mode target.');
+  }
 };
 
 const buildPrioritiesFromDevices = (devices: TargetDeviceSnapshot[]) => (
@@ -292,9 +310,7 @@ const getTargetTemplate = (
   || {}
 );
 
-const handleAddMode = async () => {
-  const mode = (modeNewInput?.value || '').trim();
-  if (!mode) return;
+const ensureModeTemplates = async (mode: string) => {
   if (Object.keys(state.capacityPriorities || {}).length === 0 || Object.keys(state.modeTargets || {}).length === 0) {
     await loadModeAndPriorities();
   }
@@ -318,38 +334,59 @@ const handleAddMode = async () => {
       [mode]: { ...templateTargets },
     };
   }
-  state.editingMode = mode;
-  renderModeOptions();
-  renderPriorities(state.latestDevices);
-  await setSetting('capacity_priorities', state.capacityPriorities);
-  await setSetting('mode_device_targets', state.modeTargets);
-  modeNewInput.value = '';
-  await showToast(`Added mode ${mode}`, 'ok');
+};
+
+const handleAddMode = async () => {
+  try {
+    const mode = (modeNewInput?.value || '').trim();
+    if (!mode) return;
+    await ensureModeTemplates(mode);
+    state.editingMode = mode;
+    renderModeOptions();
+    renderPriorities(state.latestDevices);
+    await setSetting('capacity_priorities', state.capacityPriorities);
+    await setSetting('mode_device_targets', state.modeTargets);
+    modeNewInput.value = '';
+    await showToast(`Added mode ${mode}`, 'ok');
+  } catch (error) {
+    await logSettingsError('Failed to add mode', error, 'handleAddMode');
+    await showToastError(error as Error, 'Failed to add mode.');
+  }
 };
 
 const handleDeleteMode = async () => {
-  const mode = modeSelect?.value || state.editingMode;
-  if (!mode || !state.capacityPriorities[mode]) return;
-  delete state.capacityPriorities[mode];
-  if (state.modeTargets[mode]) delete state.modeTargets[mode];
-  if (state.activeMode === mode) {
-    state.activeMode = 'Home';
-    await setSetting(OPERATING_MODE_SETTING, state.activeMode);
+  try {
+    const mode = modeSelect?.value || state.editingMode;
+    if (!mode || !state.capacityPriorities[mode]) return;
+    delete state.capacityPriorities[mode];
+    if (state.modeTargets[mode]) delete state.modeTargets[mode];
+    if (state.activeMode === mode) {
+      state.activeMode = 'Home';
+      await setSetting(OPERATING_MODE_SETTING, state.activeMode);
+    }
+    state.editingMode = 'Home';
+    renderModeOptions();
+    renderPriorities(state.latestDevices);
+    await setSetting('capacity_priorities', state.capacityPriorities);
+    await setSetting('mode_device_targets', state.modeTargets);
+    await showToast(`Deleted mode ${mode}`, 'warn');
+  } catch (error) {
+    await logSettingsError('Failed to delete mode', error, 'handleDeleteMode');
+    await showToastError(error as Error, 'Failed to delete mode.');
   }
-  state.editingMode = 'Home';
-  renderModeOptions();
-  renderPriorities(state.latestDevices);
-  await setSetting('capacity_priorities', state.capacityPriorities);
-  await setSetting('mode_device_targets', state.modeTargets);
-  await showToast(`Deleted mode ${mode}`, 'warn');
 };
 
 const handleRenameMode = async () => {
-  const oldMode = modeSelect?.value || state.editingMode;
-  const newMode = (modeNewInput?.value || '').trim();
-  if (!newMode) return;
-  await renameMode(oldMode, newMode);
-  modeNewInput.value = '';
+  try {
+    const oldMode = modeSelect?.value || state.editingMode;
+    const newMode = (modeNewInput?.value || '').trim();
+    if (!newMode) return;
+    await renameMode(oldMode, newMode);
+    modeNewInput.value = '';
+  } catch (error) {
+    await logSettingsError('Failed to rename mode', error, 'handleRenameMode');
+    await showToastError(error as Error, 'Failed to rename mode.');
+  }
 };
 
 export const initModeHandlers = () => {
@@ -359,8 +396,12 @@ export const initModeHandlers = () => {
   activeModeSelect?.addEventListener('change', async () => {
     const mode = (activeModeSelect?.value || '').trim();
     if (!mode) return;
-    setActiveMode(mode);
-    await showToast(`Active mode set to ${mode}`, 'ok');
+    try {
+      await setActiveMode(mode);
+      await showToast(`Active mode set to ${mode}`, 'ok');
+    } catch {
+      // setActiveMode already logged and toasted
+    }
   });
   addModeButton?.addEventListener('click', handleAddMode);
   deleteModeButton?.addEventListener('click', handleDeleteMode);

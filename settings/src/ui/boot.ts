@@ -56,6 +56,7 @@ import {
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
 import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail';
 import { state } from './state';
+import { flushSettingsLogs, logSettingsError, logSettingsInfo, logSettingsWarn } from './logging';
 
 const showTab = (tabId: string) => {
   const overflowMenu = document.querySelector('.tab-overflow-menu') as HTMLElement;
@@ -72,14 +73,19 @@ const showTab = (tabId: string) => {
     panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
   });
   if (tabId === 'plan') {
-    refreshPlan().catch(() => { });
+    refreshPlan().catch((error) => {
+      void logSettingsError('Failed to refresh plan', error, 'showTab');
+    });
   }
   if (tabId === 'price') {
-    refreshPrices().catch((err) => console.error('Failed to refresh prices:', err));
+    refreshPrices().catch((error) => {
+      void logSettingsError('Failed to refresh prices', error, 'showTab');
+    });
   }
   if (tabId === 'power') {
     refreshPowerData().catch((error) => {
-      showToastError(error, 'Failed to refresh power data.');
+      void logSettingsError('Failed to refresh power data', error, 'showTab');
+      void showToastError(error, 'Failed to refresh power data.');
     });
   }
 };
@@ -98,72 +104,56 @@ const initRealtimeListeners = () => {
   homey.on('prices_updated', () => {
     const pricesPanel = document.querySelector('#price-panel');
     if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
-      refreshPrices().catch(() => { });
+      refreshPrices().catch((error) => {
+        void logSettingsError('Failed to refresh prices', error, 'realtime prices_updated');
+      });
     }
   });
 
-  homey.on('settings.set', handleSettingsUpdate);
-};
-
-const handleCapacityUpdate = () => {
-  loadCapacitySettings().catch(() => { });
-};
-
-const handlePlanUpdate = () => {
-  const planPanel = document.querySelector('#plan-panel');
-  if (planPanel && !planPanel.classList.contains('hidden')) {
-    refreshPlan().catch(() => { });
-  }
-};
-
-const handlePriceUpdate = () => {
-  const pricesPanel = document.querySelector('#price-panel');
-  if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
-    refreshPrices().catch(() => { });
-  }
-};
-
-const handlePowerUpdate = () => {
-  const powerPanel = document.querySelector('#power-panel');
-  if (powerPanel && !powerPanel.classList.contains('hidden')) {
-    refreshPowerData().catch((error) => {
-      showToastError(error, 'Failed to refresh power data.');
-    });
-  }
+  homey.on('settings.set', (key) => {
+    if (key === CAPACITY_LIMIT_KW || key === CAPACITY_MARGIN_KW || key === CAPACITY_DRY_RUN) {
+      loadCapacitySettings().catch((error) => {
+        void logSettingsError('Failed to load capacity settings', error, 'settings.set');
+      });
+    }
+    if (key === 'device_plan_snapshot') {
+      const planPanel = document.querySelector('#plan-panel');
+      if (planPanel && !planPanel.classList.contains('hidden')) {
+        refreshPlan().catch((error) => {
+          void logSettingsError('Failed to refresh plan', error, 'settings.set');
+        });
+      }
+    }
+    if (key === 'combined_prices' || key === 'electricity_prices') {
+      const pricesPanel = document.querySelector('#price-panel');
+      if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
+        refreshPrices().catch((error) => {
+          void logSettingsError('Failed to refresh prices', error, 'settings.set');
+        });
+      }
+    }
+    if (key === OPERATING_MODE_SETTING) {
+      refreshActiveMode().catch((error) => {
+        void logSettingsError('Failed to refresh active mode', error, 'settings.set');
+      });
+    }
+    if (key === 'overshoot_behaviors') {
+      loadShedBehaviors().catch((error) => {
+        void logSettingsError('Failed to load shed behaviors', error, 'settings.set');
+      });
+    }
+    if (key === 'power_tracker_state') {
+      refreshPowerData().catch((error) => {
+        void logSettingsError('Failed to refresh power data', error, 'settings.set');
+      });
+    }
+  });
 };
 
 const refreshPowerData = async () => {
   const usage = await getPowerUsage();
   renderPowerUsage(usage);
   await renderPowerStats();
-};
-
-const handleSettingsUpdate = (key: string) => {
-  switch (key) {
-    case CAPACITY_LIMIT_KW:
-    case CAPACITY_MARGIN_KW:
-    case CAPACITY_DRY_RUN:
-      handleCapacityUpdate();
-      break;
-    case 'device_plan_snapshot':
-      handlePlanUpdate();
-      break;
-    case 'combined_prices':
-    case 'electricity_prices':
-      handlePriceUpdate();
-      break;
-    case OPERATING_MODE_SETTING:
-      refreshActiveMode().catch(() => { });
-      break;
-    case 'overshoot_behaviors':
-      loadShedBehaviors().catch(() => { });
-      break;
-    case 'power_tracker_state':
-      handlePowerUpdate();
-      break;
-    default:
-      break;
-  }
 };
 
 const initOverflowMenu = () => {
@@ -194,6 +184,7 @@ const initCapacityHandlers = () => {
     try {
       await saveCapacitySettings();
     } catch (error) {
+      await logSettingsError('Failed to save capacity settings', error, 'autoSaveCapacity');
       await showToastError(error, 'Failed to save capacity settings.');
     }
   };
@@ -205,13 +196,17 @@ const initCapacityHandlers = () => {
     event.preventDefault();
   });
   refreshButton.addEventListener('click', refreshDevices);
-  planRefreshButton?.addEventListener('click', refreshPlan);
+  planRefreshButton?.addEventListener('click', () => {
+    refreshPlan().catch((error) => {
+      void logSettingsError('Failed to refresh plan', error, 'planRefreshButton');
+    });
+  });
   /* 2-step confirmation logic */
   const resetStatsBtn = document.getElementById('reset-stats-button') as HTMLButtonElement;
   if (resetStatsBtn) {
     resetStatsBtn.addEventListener('click', () => handleResetStats(resetStatsBtn));
   } else {
-    console.error('Reset stats button not found');
+    void logSettingsWarn('Reset stats button not found', undefined, 'initCapacityHandlers');
   }
 };
 
@@ -244,7 +239,7 @@ const calculateResetState = (currentState: PowerTracker): PowerTracker => {
 const handleResetStats = async (btn: HTMLButtonElement) => {
   // Step 1: Request Confirmation
   if (!btn.classList.contains('confirming')) {
-    console.log('Reset stats: requesting confirmation');
+    await logSettingsInfo('Reset stats confirmation requested', 'handleResetStats');
     const b = btn;
     b.textContent = '⚠️ Click again to confirm reset';
     b.classList.add('confirming');
@@ -262,7 +257,7 @@ const handleResetStats = async (btn: HTMLButtonElement) => {
   }
 
   // Step 2: Execute Reset
-  console.log('Reset stats: checked and confirmed');
+  await logSettingsInfo('Reset stats confirmed', 'handleResetStats');
   if (resetTimeout) clearTimeout(resetTimeout);
   const b = btn;
   b.textContent = 'Resetting...';
@@ -281,9 +276,9 @@ const handleResetStats = async (btn: HTMLButtonElement) => {
     })));
     await renderPowerStats();
     await showToast('Power stats reset (current hour preserved).', 'ok');
-    console.log('Reset complete');
+    await logSettingsInfo('Reset stats completed', 'handleResetStats');
   } catch (error) {
-    console.error('Reset failed:', error);
+    await logSettingsError('Reset stats failed', error, 'handleResetStats');
     await showToastError(error, 'Failed to reset stats.');
   } finally {
     const el = btn;
@@ -299,6 +294,7 @@ const initPriceHandlers = () => {
     try {
       await savePriceSettings();
     } catch (error) {
+      await logSettingsError('Failed to save price settings', error, 'autoSavePriceSettings');
       await showToastError(error, 'Failed to save price settings.');
     }
   };
@@ -308,15 +304,25 @@ const initPriceHandlers = () => {
   priceMinDiffInput?.addEventListener('change', autoSavePriceSettings);
   priceSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
   priceRefreshButton?.addEventListener('click', async () => {
-    await setSetting('refresh_spot_prices', Date.now());
-    await refreshPrices();
+    try {
+      await setSetting('refresh_spot_prices', Date.now());
+      await refreshPrices();
+    } catch (error) {
+      await logSettingsError('Failed to refresh spot prices', error, 'priceRefreshButton');
+      await showToastError(error, 'Failed to refresh spot prices.');
+    }
   });
   priceOptimizationEnabledCheckbox?.addEventListener('change', async () => {
-    await setSetting('price_optimization_enabled', priceOptimizationEnabledCheckbox.checked);
-    await showToast(
-      priceOptimizationEnabledCheckbox.checked ? 'Price optimization enabled.' : 'Price optimization disabled.',
-      'ok',
-    );
+    try {
+      await setSetting('price_optimization_enabled', priceOptimizationEnabledCheckbox.checked);
+      await showToast(
+        priceOptimizationEnabledCheckbox.checked ? 'Price optimization enabled.' : 'Price optimization disabled.',
+        'ok',
+      );
+    } catch (error) {
+      await logSettingsError('Failed to update price optimization setting', error, 'priceOptimizationEnabledCheckbox');
+      await showToastError(error, 'Failed to update price optimization setting.');
+    }
   });
 };
 
@@ -325,6 +331,7 @@ const initNettleieHandlers = () => {
     try {
       await saveNettleieSettings();
     } catch (error) {
+      await logSettingsError('Failed to save grid tariff settings', error, 'autoSaveNettleieSettings');
       await showToastError(error, 'Failed to save grid tariff settings.');
     }
   };
@@ -335,20 +342,30 @@ const initNettleieHandlers = () => {
     updateGridCompanyOptions(nettleieFylkeSelect.value);
   });
   nettleieRefreshButton?.addEventListener('click', async () => {
-    await setSetting('refresh_nettleie', Date.now());
-    await refreshNettleie();
+    try {
+      await setSetting('refresh_nettleie', Date.now());
+      await refreshNettleie();
+    } catch (error) {
+      await logSettingsError('Failed to refresh grid tariffs', error, 'nettleieRefreshButton');
+      await showToastError(error, 'Failed to refresh grid tariffs.');
+    }
   });
 };
 
 const initAdvancedHandlers = () => {
   debugLoggingEnabledCheckbox?.addEventListener('change', async () => {
-    await setSetting('debug_logging_enabled', debugLoggingEnabledCheckbox.checked);
-    await showToast(
-      debugLoggingEnabledCheckbox.checked
-        ? 'Debug logging enabled (resets on restart).'
-        : 'Debug logging disabled.',
-      'ok',
-    );
+    try {
+      await setSetting('debug_logging_enabled', debugLoggingEnabledCheckbox.checked);
+      await showToast(
+        debugLoggingEnabledCheckbox.checked
+          ? 'Debug logging enabled (resets on restart).'
+          : 'Debug logging disabled.',
+        'ok',
+      );
+    } catch (error) {
+      await logSettingsError('Failed to update debug logging setting', error, 'debugLoggingEnabledCheckbox');
+      await showToastError(error, 'Failed to update debug logging setting.');
+    }
   });
 };
 
@@ -359,7 +376,11 @@ const loadInitialData = async () => {
   await renderPowerStats();
   await loadCapacitySettings();
   await loadStaleDataStatus();
-  setInterval(() => loadStaleDataStatus(), 30 * 1000);
+  setInterval(() => {
+    void loadStaleDataStatus().catch((error) => {
+      void logSettingsError('Failed to refresh stale data status', error, 'staleDataInterval');
+    });
+  }, 30 * 1000);
   await loadModeAndPriorities();
   await loadShedBehaviors();
   await loadPriceOptimizationSettings();
@@ -385,6 +406,7 @@ export const boot = async () => {
     }
 
     await found.ready();
+    await flushSettingsLogs();
 
     initRealtimeListeners();
     showTab('devices');
@@ -400,7 +422,7 @@ export const boot = async () => {
 
     await loadInitialData();
   } catch (error) {
-    console.error(error);
-    await showToastError(error, 'Unable to load settings. Check the console for details.');
+    await logSettingsError('Settings UI failed to load', error, 'boot');
+    await showToastError(error, 'Unable to load settings. Check Homey logs for details.');
   }
 };

@@ -15,12 +15,13 @@ import {
   priceStatusBadge,
 } from './dom';
 import { getSetting, setSetting } from './homey';
-import { showToast } from './toast';
+import { showToast, showToastError } from './toast';
 import { defaultPriceOptimizationConfig, state } from './state';
 import { gridCompanies } from './gridCompanies';
 import { renderPrices } from './priceRender';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { createDeviceRow, createNumberInput } from './components';
+import { logSettingsError } from './logging';
 
 type NettleieEntry = {
   time: number;
@@ -127,7 +128,7 @@ export const refreshPrices = async () => {
     const prices = await getPriceData();
     renderPrices(prices);
   } catch (error) {
-    console.error('Failed to load prices:', error);
+    await logSettingsError('Failed to load prices', error, 'refreshPrices');
     if (priceStatusBadge) {
       priceStatusBadge.textContent = 'Error';
       priceStatusBadge.classList.add('warn');
@@ -202,7 +203,7 @@ export const refreshNettleie = async () => {
   try {
     await getNettleieData();
   } catch (error) {
-    console.error('Failed to load nettleie:', error);
+    await logSettingsError('Failed to load nettleie', error, 'refreshNettleie');
   }
 };
 
@@ -241,7 +242,12 @@ const buildPriceOptimizationRow = (device: TargetDeviceSnapshot): HTMLElement =>
     onChange: async (val) => {
       const nextConfig = ensurePriceOptimizationConfig(device.id);
       nextConfig.cheapDelta = val;
-      await savePriceOptimizationSettings();
+      try {
+        await savePriceOptimizationSettings();
+      } catch (error) {
+        await logSettingsError('Failed to save cheap price delta', error, 'priceOptimizationRow');
+        await showToastError(error, 'Failed to save cheap price delta.');
+      }
     },
   });
 
@@ -255,7 +261,12 @@ const buildPriceOptimizationRow = (device: TargetDeviceSnapshot): HTMLElement =>
     onChange: async (val) => {
       const nextConfig = ensurePriceOptimizationConfig(device.id);
       nextConfig.expensiveDelta = val;
-      await savePriceOptimizationSettings();
+      try {
+        await savePriceOptimizationSettings();
+      } catch (error) {
+        await logSettingsError('Failed to save expensive price delta', error, 'priceOptimizationRow');
+        await showToastError(error, 'Failed to save expensive price delta.');
+      }
     },
   });
 
