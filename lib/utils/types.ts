@@ -24,6 +24,16 @@ export type Logger = {
 
 export type FlowAutocompleteResult = { id: string; name: string };
 
+export type SettingsUiLogLevel = 'info' | 'warn' | 'error';
+
+export type SettingsUiLogEntry = {
+    level: SettingsUiLogLevel;
+    message: string;
+    detail?: string;
+    context?: string;
+    timestamp: number;
+};
+
 export type FlowCard = {
     registerRunListener: (fn: (args: unknown, state?: unknown) => Promise<boolean> | boolean | void) => void;
     registerArgumentAutocompleteListener: (

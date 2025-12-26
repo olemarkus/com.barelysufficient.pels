@@ -1,5 +1,6 @@
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
+import type { SettingsUiLogEntry } from './types';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -25,6 +26,7 @@ export type SettingsHandlerDeps = {
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
+  log: (message: string) => void;
   errorLog: (message: string, error: unknown) => void;
 };
 
@@ -78,6 +80,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       await deps.rebuildPlanFromCache();
     },
     debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
+    settings_ui_log: async () => handleSettingsUiLog(deps),
   };
 
   let queue = Promise.resolve();
@@ -90,6 +93,30 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     await queue;
   };
 }
+
+const formatSettingsUiMessage = (entry: SettingsUiLogEntry) => {
+  const context = entry.context ? ` (${entry.context})` : '';
+  const detail = entry.detail ? ` - ${entry.detail}` : '';
+  return `Settings UI${context}: ${entry.message}${detail}`;
+};
+
+const handleSettingsUiLog = async (deps: SettingsHandlerDeps): Promise<void> => {
+  const raw = deps.homey.settings.get('settings_ui_log') as unknown;
+  if (!raw || typeof raw !== 'object') return;
+  const entry = raw as SettingsUiLogEntry;
+  if (!entry.level || !entry.message) return;
+
+  const message = formatSettingsUiMessage(entry);
+  if (entry.level === 'error') {
+    deps.errorLog(message, new Error(entry.detail || entry.message));
+  } else if (entry.level === 'warn') {
+    deps.log(`Warning: ${message}`);
+  } else {
+    deps.log(message);
+  }
+
+  deps.homey.settings.set('settings_ui_log', null);
+};
 
 async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.loadCapacitySettings();

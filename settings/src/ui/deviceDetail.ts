@@ -18,6 +18,8 @@ import { state, defaultPriceOptimizationConfig } from './state';
 import { renderDevices } from './devices';
 import { renderPriorities } from './modes';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './prices';
+import { showToastError } from './toast';
+import { logSettingsError } from './logging';
 
 let currentDetailDeviceId: string | null = null;
 
@@ -155,8 +157,13 @@ const buildDeviceDetailModeRow = (mode: string, device: TargetDeviceSnapshot) =>
     if (!isNaN(value)) {
       if (!state.modeTargets[mode]) state.modeTargets[mode] = {};
       state.modeTargets[mode][device.id] = value;
-      await setSetting('mode_device_targets', state.modeTargets);
-      renderPriorities(state.latestDevices);
+      try {
+        await setSetting('mode_device_targets', state.modeTargets);
+        renderPriorities(state.latestDevices);
+      } catch (error) {
+        await logSettingsError('Failed to update device target', error, 'device detail');
+        await showToastError(error, 'Failed to update device target.');
+      }
     }
   });
 
@@ -194,10 +201,14 @@ const saveShedBehavior = async () => {
 };
 
 export const loadShedBehaviors = async () => {
-  const behaviors = await getSetting('overshoot_behaviors');
-  state.shedBehaviors = behaviors && typeof behaviors === 'object'
-    ? behaviors as Record<string, { action: ShedAction; temperature?: number }>
-    : {};
+  try {
+    const behaviors = await getSetting('overshoot_behaviors');
+    state.shedBehaviors = behaviors && typeof behaviors === 'object'
+      ? behaviors as Record<string, { action: ShedAction; temperature?: number }>
+      : {};
+  } catch (error) {
+    await logSettingsError('Failed to load shed behaviors', error, 'loadShedBehaviors');
+  }
 };
 
 export const openDeviceDetail = (deviceId: string) => {
@@ -240,8 +251,13 @@ const initDeviceDetailControllableHandler = () => {
   deviceDetailControllable?.addEventListener('change', async () => {
     if (!currentDetailDeviceId) return;
     state.controllableMap[currentDetailDeviceId] = deviceDetailControllable.checked;
-    await setSetting('controllable_devices', state.controllableMap);
-    renderDevices(state.latestDevices);
+    try {
+      await setSetting('controllable_devices', state.controllableMap);
+      renderDevices(state.latestDevices);
+    } catch (error) {
+      await logSettingsError('Failed to update controllable device', error, 'device detail');
+      await showToastError(error, 'Failed to update controllable device.');
+    }
   });
 };
 
@@ -267,10 +283,15 @@ const initDeviceDetailPriceOptHandlers = () => {
     config.enabled = priceOptEnabled;
     config.cheapDelta = validCheapDelta ? cheapDelta : 5;
     config.expensiveDelta = validExpensiveDelta ? expensiveDelta : -5;
-    await savePriceOptimizationSettings();
-    renderDevices(state.latestDevices);
-    renderPriceOptimization(state.latestDevices);
-    updateDeltaSectionVisibility();
+    try {
+      await savePriceOptimizationSettings();
+      renderDevices(state.latestDevices);
+      renderPriceOptimization(state.latestDevices);
+      updateDeltaSectionVisibility();
+    } catch (error) {
+      await logSettingsError('Failed to save price optimization settings', error, 'device detail');
+      await showToastError(error, 'Failed to save price optimization settings.');
+    }
   };
 
   deviceDetailPriceOpt?.addEventListener('change', autoSavePriceOpt);
@@ -281,7 +302,12 @@ const initDeviceDetailPriceOptHandlers = () => {
 const initDeviceDetailShedHandlers = () => {
   const autoSaveShedBehavior = async () => {
     updateShedTempVisibility();
-    await saveShedBehavior();
+    try {
+      await saveShedBehavior();
+    } catch (error) {
+      await logSettingsError('Failed to save shed behavior', error, 'device detail');
+      await showToastError(error, 'Failed to save shed behavior.');
+    }
   };
   deviceDetailShedAction?.addEventListener('change', autoSaveShedBehavior);
   deviceDetailShedTemp?.addEventListener('change', autoSaveShedBehavior);
