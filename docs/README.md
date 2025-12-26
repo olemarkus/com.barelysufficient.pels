@@ -1,6 +1,10 @@
 # PELS - User Guide
 
-**PELS** (Pris- og Effektstyrt Energilagringssystem) is a Homey app that helps you optimize energy usage in your home. It manages when your largest energy consumers run, keeping you within power limits and taking advantage of cheaper electricity prices.
+**PELS** (Pris- og Effektstyrt Energilagringssystem) is a Homey app that helps you optimize energy usage in your home. It manages when your largest energy consumers run, keeping you within power limits and taking advantage of cheaper electricity prices (currently Norwegian prices only).
+
+For the short Homey App Store description, see `README.txt` in the repository root.
+
+Inspired by the Sparegris (Piggy Bank) Homey app.
 
 ## Table of Contents
 
@@ -18,7 +22,7 @@
   - [Triggers](#triggers)
   - [Conditions](#conditions)
   - [Actions](#actions)
-- [Mode Indicator Device](#mode-indicator-device)
+- [PELS Insights Device](#pels-insights-device)
 - [How It Works](#how-it-works)
 - [Tips & Best Practices](#tips--best-practices)
 
@@ -27,7 +31,7 @@
 ## Features
 
 - **Capacity Management** – Stay within your power limits by automatically shedding load from lower-priority devices when consumption approaches your limit
-- **Price Optimization** – Adjust device temperatures based on electricity prices (boost during cheap hours, reduce during expensive hours)
+- **Price Optimization** – Adjust device temperatures based on Norwegian electricity prices (boost during cheap hours, reduce during expensive hours)
 - **Multiple Modes** – Define different modes (Home, Away, Night, etc.) with their own temperature targets and device priorities
 - **Smart Load Shedding** – Intelligently selects which devices to turn off based on priority, and can swap lower-priority devices for higher-priority ones
 - **Automatic Recovery** – Restores devices when headroom becomes available
@@ -208,7 +212,7 @@ Configure electricity price sources and price-based optimization.
 
 | Setting | Description |
 |---------|-------------|
-| **Price area** | Your electricity price zone (NO1-NO5) |
+| **Price area** | Your electricity price zone (NO1-NO5). Price optimization currently supports Norway only. |
 | **Provider surcharge** | Your provider's markup on spot price (øre/kWh) |
 | **Price threshold (%)** | Hours below/above this % from average are marked cheap/expensive (default: 25%) |
 | **Minimum price difference** | Skip optimization if savings are less than this (øre/kWh). Avoids discomfort for minimal savings. |
@@ -232,8 +236,9 @@ For each device with price optimization enabled:
 
 | Card | Description |
 |------|-------------|
-| **Capacity guard: manual action needed** | Fires when PELS cannot reduce load enough – manual intervention required. The mode indicator device will also show a "Capacity shortfall" alarm. |
+| **Capacity guard: manual action needed** | Fires when PELS cannot reduce load enough – manual intervention required. The PELS Insights device will also show a "Capacity shortfall" alarm. |
 | **Operating mode changed to...** | Fires when the operating mode switches to the selected mode |
+| **Price level changed to...** | Fires when the price level changes (Cheap/Normal/Expensive/Unknown) |
 
 ### Conditions
 
@@ -242,6 +247,7 @@ For each device with price optimization enabled:
 | **Is there enough capacity?** | Check if there's capacity for a specified kW load |
 | **Is there headroom for device?** | Check if the current headroom plus the device's estimated draw can accommodate an extra kW amount (useful for EV chargers, water heaters, etc.) |
 | **Operating mode is...** | Check which mode is currently active |
+| **Price level is...** | Check the current price level (Cheap/Normal/Expensive/Unknown) |
 
 ### Actions
 
@@ -254,14 +260,14 @@ For each device with price optimization enabled:
 
 ---
 
-## Mode Indicator Device
+## PELS Insights Device
 
-PELS includes a virtual device called "Operating mode" that displays the currently active mode and capacity shortfall status.
+PELS includes a virtual device called "PELS Insights" that displays the currently active mode and capacity shortfall status.
 
-### Adding the Mode Indicator
+### Adding PELS Insights
 
 1. Go to **Devices** → **Add Device**
-2. Select **PELS** → **Operating mode**
+2. Select **PELS** → **PELS Insights**
 3. Add the device
 
 The device shows:
