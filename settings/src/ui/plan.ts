@@ -29,6 +29,8 @@ type PlanSnapshot = {
     usedKWh?: number;
     budgetKWh?: number;
     minutesRemaining?: number;
+    controlledKw?: number;
+    uncontrolledKw?: number;
   };
   devices?: PlanDeviceSnapshot[];
 };
@@ -41,15 +43,19 @@ const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => {
 
 const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): string[] | null => {
   if (!meta) return null;
-  const hasPowerMeta = typeof meta.totalKw === 'number'
-    && typeof meta.softLimitKw === 'number'
-    && typeof meta.headroomKw === 'number';
-  if (!hasPowerMeta) return null;
+  const { totalKw, softLimitKw, headroomKw } = meta;
+  if (typeof totalKw !== 'number' || typeof softLimitKw !== 'number' || typeof headroomKw !== 'number') {
+    return null;
+  }
 
-  const headroomAbs = Math.abs(meta.headroomKw).toFixed(1);
-  const headroomText = meta.headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
-  const powerText = `Now ${meta.totalKw.toFixed(1)}kW / Limit ${meta.softLimitKw.toFixed(1)}kW`;
+  const headroomAbs = Math.abs(headroomKw).toFixed(1);
+  const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
+  const powerText = `Now ${totalKw.toFixed(1)}kW / Limit ${softLimitKw.toFixed(1)}kW`;
   const lines = [powerText, headroomText];
+
+  if (typeof meta.controlledKw === 'number' && typeof meta.uncontrolledKw === 'number') {
+    lines.push(`Controlled ${meta.controlledKw.toFixed(2)}kW / Uncontrolled ${meta.uncontrolledKw.toFixed(2)}kW`);
+  }
 
   if (typeof meta.usedKWh === 'number' && typeof meta.budgetKWh === 'number') {
     lines.push(`This hour: ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)}kWh`);
@@ -124,16 +130,20 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
 const buildPlanUsageLine = (dev: PlanDeviceSnapshot) => {
   const measuredKw = dev.measuredPowerKw;
   const expectedKw = dev.expectedPowerKw;
-  const hasMeasured = Number.isFinite(measuredKw);
-  const hasExpected = Number.isFinite(expectedKw);
+  const hasMeasured = typeof measuredKw === 'number' && Number.isFinite(measuredKw);
+  const hasExpected = typeof expectedKw === 'number' && Number.isFinite(expectedKw);
 
   let usageText = 'Unknown';
   if (hasExpected && hasMeasured) {
-    usageText = `current ${measuredKw.toFixed(2)} kW / expected ${expectedKw.toFixed(2)} kW`;
+    const measuredText = measuredKw.toFixed(2);
+    const expectedText = expectedKw.toFixed(2);
+    usageText = measuredText === expectedText
+      ? `expected ${expectedText} kW`
+      : `current usage: ${measuredText} kW / expected ${expectedText} kW`;
   } else if (hasExpected) {
     usageText = `expected ${expectedKw.toFixed(2)} kW`;
   } else if (hasMeasured) {
-    usageText = `current ${measuredKw.toFixed(2)} kW`;
+    usageText = `current usage: ${measuredKw.toFixed(2)} kW`;
   }
 
   return createMetaLine('Usage', usageText);

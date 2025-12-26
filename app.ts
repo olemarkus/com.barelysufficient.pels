@@ -2,7 +2,9 @@ import Homey from 'homey';
 import CapacityGuard from './lib/core/capacityGuard';
 import { DeviceManager } from './lib/core/deviceManager';
 import { PlanEngine } from './lib/plan/planEngine';
-import { DevicePlan, PlanInputDevice, ShedAction, ShedBehavior } from './lib/plan/planTypes';
+import { DevicePlan, ShedAction, ShedBehavior } from './lib/plan/planTypes';
+import { sumControlledUsageKw } from './lib/plan/planUsage';
+import { PlanService } from './lib/plan/planService';
 import { FlowHomeyLike, HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PriceOptimizationSettings } from './lib/price/priceOptimizer';
@@ -10,10 +12,8 @@ import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from '
 import { createSettingsHandler } from './lib/utils/settingsHandlers';
 import { PriceLevel } from './lib/price/priceLevels';
 import { registerFlowCards } from './flowCards/registerFlowCards';
-import { buildPlanChangeLines, buildPlanSignature } from './lib/plan/planLogging';
 import { buildPeriodicStatusLog } from './lib/core/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
-import { buildPelsStatus } from './lib/core/pelsStatus';
 import {
   getAllModes as getAllModesHelper,
   getShedBehavior as getShedBehaviorHelper,
@@ -39,7 +39,6 @@ const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
-
   private capacityGuard?: CapacityGuard;
   private capacitySettings = { limitKw: 10, marginKw: 0.2 };
   private capacityDryRun = true;
@@ -53,15 +52,14 @@ class PelsApp extends Homey.App {
   private priceCoordinator!: PriceCoordinator;
   private deviceManager!: DeviceManager;
   private planEngine!: PlanEngine;
+  private planService!: PlanService;
   private defaultComputeDynamicSoftLimit?: () => number;
-  private lastPlanSignature = '';
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
   private lastKnownPowerKw: Record<string, number> = {};
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
   private overheadToken?: Homey.FlowToken;
   private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   private settingsHandler?: (key: string) => Promise<void>;
-  private rebuildPlanQueue: Promise<void> = Promise.resolve();
   private lastNotifiedOperatingMode = 'Home';
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
   private lastPowerSamplePlanRebuildMs = 0;
@@ -73,13 +71,12 @@ class PelsApp extends Homey.App {
   }
   async onInit() {
     this.log('PELS has been initialized');
-
     this.debugLoggingEnabled = false;
     this.homey.settings.set('debug_logging_enabled', false);
     this.priceCoordinator = new PriceCoordinator({
       homey: this.homey,
       getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
-      rebuildPlanFromCache: () => this.rebuildPlanFromCache(),
+      rebuildPlanFromCache: () => this.planService?.rebuildPlanFromCache() ?? Promise.resolve(),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (...args: unknown[]) => this.logDebug(...args),
       error: (...args: unknown[]) => this.error(...args),
@@ -131,6 +128,19 @@ class PelsApp extends Homey.App {
       logDebug: (...args: unknown[]) => this.logDebug(...args),
       error: (...args: unknown[]) => this.error(...args),
     });
+    this.planService = new PlanService({
+      homey: this.homey,
+      planEngine: this.planEngine,
+      getPlanDevices: () => this.latestTargetSnapshot,
+      getCapacityDryRun: () => this.capacityDryRun,
+      log: (...args: unknown[]) => this.log(...args),
+      logDebug: (...args: unknown[]) => this.logDebug(...args),
+      error: (...args: unknown[]) => this.error(...args),
+      isCurrentHourCheap: () => this.isCurrentHourCheap(),
+      isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
+      getCombinedPrices: () => this.homey.settings.get('combined_prices') as unknown,
+      getLastPowerUpdate: () => this.powerTracker.lastTimestamp ?? null,
+    });
     this.defaultComputeDynamicSoftLimit = this.computeDynamicSoftLimit;
     this.capacityGuard.setSoftLimitProvider(() => this.computeDynamicSoftLimit());
     this.capacityGuard.setShortfallThresholdProvider(() => this.computeShortfallThreshold());
@@ -138,7 +148,7 @@ class PelsApp extends Homey.App {
     this.settingsHandler = createSettingsHandler({
       homey: this.homey,
       loadCapacitySettings: () => this.loadCapacitySettings(),
-      rebuildPlanFromCache: () => this.rebuildPlanFromCache(),
+      rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache(),
       refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
       loadPowerTracker: () => this.loadPowerTracker(),
       getCapacityGuard: () => this.capacityGuard,
@@ -165,7 +175,7 @@ class PelsApp extends Homey.App {
     this.startHeartbeat();
     void this.updateOverheadToken();
     await this.refreshTargetDevicesSnapshot();
-    await this.rebuildPlanFromCache();
+    await this.planService.rebuildPlanFromCache();
     this.lastNotifiedOperatingMode = this.operatingMode;
     this.registerFlowCards();
     this.startPeriodicSnapshotRefresh();
@@ -183,7 +193,6 @@ class PelsApp extends Homey.App {
   private logDebug(...args: unknown[]): void {
     if (this.debugLoggingEnabled) this.log(...args);
   }
-
   private startHeartbeat(): void {
     const updateHeartbeat = () => {
       this.homey.settings.set('app_heartbeat', Date.now());
@@ -191,25 +200,21 @@ class PelsApp extends Homey.App {
     updateHeartbeat();
     this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
   }
-
   private getDynamicSoftLimitOverride(): number | null {
     if (!this.defaultComputeDynamicSoftLimit) return null;
     if (this.computeDynamicSoftLimit === this.defaultComputeDynamicSoftLimit) return null;
     const value = this.computeDynamicSoftLimit();
     return Number.isFinite(value) ? value : null;
   }
-
   private updatePriceOptimizationEnabled(logChange = false): void {
     this.priceCoordinator.updatePriceOptimizationEnabled(logChange);
   }
   private get priceOptimizationEnabled(): boolean {
     return this.priceCoordinator.getPriceOptimizationEnabled();
   }
-
   private get priceOptimizationSettings(): Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }> {
     return this.priceCoordinator.getPriceOptimizationSettings();
   }
-
   private updateDebugLoggingEnabled(logChange = false): void {
     const enabled = this.homey.settings.get('debug_logging_enabled') as unknown;
     this.debugLoggingEnabled = enabled === true;
@@ -217,7 +222,6 @@ class PelsApp extends Homey.App {
       this.log(`Debug logging ${this.debugLoggingEnabled ? 'enabled' : 'disabled'}`);
     }
   }
-
   private notifyOperatingModeChanged(mode: string): void {
     const trimmed = (mode || '').trim();
     if (!trimmed || this.lastNotifiedOperatingMode === trimmed) return;
@@ -227,14 +231,12 @@ class PelsApp extends Homey.App {
     }
     this.lastNotifiedOperatingMode = trimmed;
   }
-
   private loadPowerTracker(): void {
     const stored = this.homey.settings.get('power_tracker_state') as unknown;
     if (isPowerTrackerState(stored)) {
       this.powerTracker = stored;
     }
   }
-
   private loadCapacitySettings(): void {
     const limit = this.homey.settings.get(CAPACITY_LIMIT_KW) as unknown;
     const margin = this.homey.settings.get(CAPACITY_MARGIN_KW) as unknown;
@@ -264,9 +266,7 @@ class PelsApp extends Homey.App {
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.capacitySettings.marginKw);
   }
-
   private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
-
   private async updateOverheadToken(value?: number): Promise<void> {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;
     try {
@@ -282,18 +282,24 @@ class PelsApp extends Homey.App {
       this.error('Failed to create/update capacity_overhead token', error as Error);
     }
   }
-
   private savePowerTracker(nextState: PowerTrackerState = this.powerTracker): void {
     const pruned = aggregateAndPruneHistory(nextState);
     this.powerTracker = pruned;
     this.homey.settings.set('power_tracker_state', pruned);
   }
-
+  private getControlledPowerW(): number | undefined {
+    const snapshot = this.latestTargetSnapshot;
+    if (!snapshot || snapshot.length === 0) return undefined;
+    const totalKw = sumControlledUsageKw(snapshot);
+    return totalKw !== null ? Math.max(0, totalKw * 1000) : undefined;
+  }
   private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
     const hourBudgetKWh = Math.max(0, this.capacitySettings.limitKw - this.capacitySettings.marginKw);
+    const controlledPowerW = this.getControlledPowerW();
     await recordPowerSample({
       state: this.powerTracker,
       currentPowerW,
+      controlledPowerW,
       nowMs,
       capacityGuard: this.capacityGuard,
       hourBudgetKWh,
@@ -308,7 +314,7 @@ class PelsApp extends Homey.App {
     const elapsedMs = now - this.lastPowerSamplePlanRebuildMs;
     if (elapsedMs >= POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS) {
       this.lastPowerSamplePlanRebuildMs = now;
-      return this.rebuildPlanFromCache();
+      return this.planService.rebuildPlanFromCache();
     }
     if (!this.pendingPowerSampleRebuild) {
       const waitMs = Math.max(0, POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS - elapsedMs);
@@ -316,7 +322,7 @@ class PelsApp extends Homey.App {
         this.powerSampleRebuildTimer = setTimeout(() => {
           this.powerSampleRebuildTimer = undefined;
           this.lastPowerSamplePlanRebuildMs = Date.now();
-          this.rebuildPlanFromCache()
+          this.planService.rebuildPlanFromCache()
             .catch((error) => {
               // Log error but don't throw - state is already persisted
               this.error('PowerTracker: Failed to rebuild plan after power sample:', error as Error);
@@ -330,7 +336,6 @@ class PelsApp extends Homey.App {
     }
     return this.pendingPowerSampleRebuild;
   }
-
   private registerFlowCards(): void {
     registerFlowCards({
       homey: this.homey as FlowHomeyLike,
@@ -349,12 +354,11 @@ class PelsApp extends Homey.App {
       setExpectedOverride: (deviceId, kw) => {
         this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
       },
-      rebuildPlan: () => this.rebuildPlanFromCache(),
+      rebuildPlan: () => this.planService.rebuildPlanFromCache(),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (...args: unknown[]) => this.logDebug(...args),
     });
   }
-
   private async handleOperatingModeChange(rawMode: string): Promise<void> {
     const resolved = resolveModeNameHelper(rawMode, this.modeAliases);
     const previousMode = this.operatingMode;
@@ -365,19 +369,17 @@ class PelsApp extends Homey.App {
     if (previousMode?.toLowerCase() === resolved.toLowerCase()) this.logDebug(`Mode '${resolved}' already active`);
     this.notifyOperatingModeChanged(resolved);
   }
-
   private async getFlowSnapshot(): Promise<TargetDeviceSnapshot[]> {
     if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) {
       await this.refreshTargetDevicesSnapshot();
     }
     return this.latestTargetSnapshot;
   }
-
   private getCurrentPriceLevel(): PriceLevel {
     const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
-    return (status?.priceLevel || this.lastNotifiedPriceLevel) as PriceLevel;
+    const fallback = this.planService?.getLastNotifiedPriceLevel() ?? PriceLevel.UNKNOWN;
+    return (status?.priceLevel || fallback) as PriceLevel;
   }
-
   private startPeriodicSnapshotRefresh(): void {
     if (this.snapshotRefreshInterval) clearInterval(this.snapshotRefreshInterval);
     this.snapshotRefreshInterval = setInterval(() => {
@@ -385,7 +387,6 @@ class PelsApp extends Homey.App {
       this.logPeriodicStatus();
     }, SNAPSHOT_REFRESH_INTERVAL_MS);
   }
-
   private logPeriodicStatus(): void {
     this.log(buildPeriodicStatusLog({
       capacityGuard: this.capacityGuard,
@@ -431,76 +432,6 @@ class PelsApp extends Homey.App {
     });
   }
 
-  private async rebuildPlanFromCache(): Promise<void> {
-    this.rebuildPlanQueue = this.rebuildPlanQueue.then(() => this.performPlanRebuild()).catch((error) => {
-      this.error('Failed to rebuild plan', error as Error);
-    });
-    await this.rebuildPlanQueue;
-  }
-
-  private async performPlanRebuild(): Promise<void> {
-    const plan = await this.buildDevicePlanSnapshot(this.latestTargetSnapshot ?? []);
-    const signature = buildPlanSignature(plan);
-    if (signature !== this.lastPlanSignature) {
-      try {
-        const lines = buildPlanChangeLines(plan);
-        if (lines.length) {
-          this.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
-        }
-      } catch (err) {
-        this.logDebug('Plan updated (logging failed)', err);
-      }
-      this.lastPlanSignature = signature;
-    }
-    this.homey.settings.set('device_plan_snapshot', plan);
-
-    // Call realtime bound to this.homey.api to avoid context issues
-    const api = this.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
-    const realtime = api?.realtime;
-    if (typeof realtime === 'function') {
-      realtime.call(api, 'plan_updated', plan)
-        .catch((err: unknown) => this.error('Failed to emit plan_updated event', err as Error));
-    }
-    this.updatePelsStatus(plan);
-    const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
-    if (this.capacityDryRun && hasShedding) {
-      this.log('Dry run: shedding planned but not executed');
-    }
-    if (!this.capacityDryRun) {
-      try {
-        await this.applyPlanActions(plan);
-      } catch (error) {
-        this.error('Failed to apply plan actions', error as Error);
-      }
-    }
-  }
-
-  private updatePelsStatus(plan: DevicePlan): void {
-    const result = buildPelsStatus({
-      plan,
-      isCheap: this.isCurrentHourCheap(),
-      isExpensive: this.isCurrentHourExpensive(),
-      combinedPrices: this.homey.settings.get('combined_prices') as unknown,
-      lastPowerUpdate: this.powerTracker.lastTimestamp ?? null,
-    });
-
-    this.homey.settings.set('pels_status', result.status);
-
-    if (result.priceLevel !== this.lastNotifiedPriceLevel) {
-      this.lastNotifiedPriceLevel = result.priceLevel;
-      const card = this.homey.flow?.getTriggerCard?.('price_level_changed');
-      if (card) {
-        card
-          .trigger({ level: result.priceLevel }, { priceLevel: result.priceLevel })
-          .catch((err: Error) => this.error('Failed to trigger price_level_changed', err));
-      }
-    }
-  }
-
-  private async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
-    return this.planEngine.buildDevicePlanSnapshot(devices);
-  }
-
   private getPriorityForDevice(deviceId: string): number {
     const mode = this.operatingMode || 'Home';
     return this.capacityPriorities[mode]?.[deviceId] ?? 100;
@@ -519,18 +450,18 @@ class PelsApp extends Homey.App {
   }
 
   private computeDynamicSoftLimit(): number {
-    return this.planEngine.computeDynamicSoftLimit();
+    return this.planService.computeDynamicSoftLimit();
   }
 
   private computeShortfallThreshold(): number {
-    return this.planEngine.computeShortfallThreshold();
+    return this.planService.computeShortfallThreshold();
   }
 
-  private async handleShortfall(deficitKw: number): Promise<void> { return this.planEngine.handleShortfall(deficitKw); }
-  private async handleShortfallCleared(): Promise<void> { return this.planEngine.handleShortfallCleared(); }
-  private async applyPlanActions(plan: DevicePlan): Promise<void> { return this.planEngine.applyPlanActions(plan); }
+  private async handleShortfall(deficitKw: number): Promise<void> { return this.planService.handleShortfall(deficitKw); }
+  private async handleShortfallCleared(): Promise<void> { return this.planService.handleShortfallCleared(); }
+  private async applyPlanActions(plan: DevicePlan): Promise<void> { return this.planService.applyPlanActions(plan); }
   private async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
-    return this.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
+    return this.planService.applySheddingToDevice(deviceId, deviceName, reason);
   }
 
 }
