@@ -14,8 +14,18 @@ import {
   hourlyPattern,
   hourlyPatternMeta,
 } from './dom';
-import { getSetting } from './homey';
+import { getHomeyTimezone, getSetting } from './homey';
 import { createUsageBar } from './components';
+import {
+  formatDateInTimeZone,
+  formatTimeInTimeZone,
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+  getMonthStartInTimeZone,
+  getStartOfDayInTimeZone,
+  getWeekStartInTimeZone,
+  getZonedParts,
+} from './timezone';
 
 export type PowerTracker = {
   buckets?: Record<string, number>;
@@ -56,29 +66,31 @@ const getEmptyPowerStats = (): PowerStatsSummary => ({
   hasPatternData: false,
 });
 
-const getDerivedDailyTotals = (buckets: Record<string, number> | undefined) => {
+const getDerivedDailyTotals = (buckets: Record<string, number> | undefined, timeZone: string) => {
   const totals: Record<string, number> = {};
   if (!buckets) return totals;
   for (const [iso, kWh] of Object.entries(buckets)) {
-    const dateKey = iso.slice(0, 10);
+    const dateKey = getDateKeyInTimeZone(new Date(iso), timeZone);
     totals[dateKey] = (totals[dateKey] || 0) + kWh;
   }
   return totals;
 };
 
-const getDerivedHourlyAverages = (buckets: Record<string, number> | undefined) => {
+const getDerivedHourlyAverages = (buckets: Record<string, number> | undefined, timeZone: string) => {
   const averages: Record<string, { sum: number; count: number }> = {};
   if (!buckets) return averages;
   for (const [iso, kWh] of Object.entries(buckets)) {
     const date = new Date(iso);
-    const key = `${date.getUTCDay()}_${date.getUTCHours()}`;
+    const { year, month, day, hour } = getZonedParts(date, timeZone);
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const key = `${weekday}_${hour}`;
     const existing = averages[key] || { sum: 0, count: 0 };
     averages[key] = { sum: existing.sum + kWh, count: existing.count + 1 };
   }
   return averages;
 };
 
-const getHourlyPatternMeta = (buckets: Record<string, number> | undefined) => {
+const getHourlyPatternMeta = (buckets: Record<string, number> | undefined, timeZone: string) => {
   if (!buckets || Object.keys(buckets).length === 0) {
     return 'Average kWh per hour based on historical data.';
   }
@@ -89,18 +101,16 @@ const getHourlyPatternMeta = (buckets: Record<string, number> | undefined) => {
   const minTs = Math.min(...times);
   const maxTs = Math.max(...times);
   const days = Math.max(1, Math.round((maxTs - minTs) / (24 * 60 * 60 * 1000)) + 1);
-  const start = new Date(minTs).toISOString().slice(0, 10);
-  const end = new Date(maxTs).toISOString().slice(0, 10);
-  return `Average kWh per hour based on ${days} days (${start}–${end} UTC).`;
+  const start = getDateKeyInTimeZone(new Date(minTs), timeZone);
+  const end = getDateKeyInTimeZone(new Date(maxTs), timeZone);
+  return `Average kWh per hour based on ${days} days (${start}–${end} ${timeZone}).`;
 };
 
-const getPowerTimeContext = (now: Date) => {
-  const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const todayKey = new Date(todayStart).toISOString().slice(0, 10);
-  const dayOfWeek = now.getUTCDay();
-  const diffToMonday = (dayOfWeek + 6) % 7;
-  const weekStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffToMonday));
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+const getPowerTimeContext = (now: Date, timeZone: string) => {
+  const todayStart = getStartOfDayInTimeZone(now, timeZone);
+  const todayKey = getDateKeyInTimeZone(new Date(todayStart), timeZone);
+  const weekStart = getWeekStartInTimeZone(now, timeZone);
+  const monthStart = getMonthStartInTimeZone(now, timeZone);
   return { todayKey, todayStart, weekStart, monthStart };
 };
 
@@ -124,40 +134,42 @@ type PeriodTotals = {
 
 const sumDailyTotals = (
   dailyTotals: Record<string, number> | undefined,
-  timeContext: { todayKey: string; weekStart: Date; monthStart: Date },
+  timeContext: { todayKey: string; weekStart: number; monthStart: number },
+  timeZone: string,
 ): PeriodTotals => {
   const totals = { week: 0, month: 0 };
   if (!dailyTotals) return totals;
   for (const [dateKey, kWh] of Object.entries(dailyTotals)) {
-    const ts = new Date(dateKey).getTime();
+    const ts = getDateKeyStartMs(dateKey, timeZone);
     if (dateKey === timeContext.todayKey) continue;
-    if (ts >= timeContext.weekStart.getTime()) totals.week += kWh;
-    if (ts >= timeContext.monthStart.getTime()) totals.month += kWh;
+    if (ts >= timeContext.weekStart) totals.week += kWh;
+    if (ts >= timeContext.monthStart) totals.month += kWh;
   }
   return totals;
 };
 
 const sumBucketTotalsBeforeToday = (
   buckets: Record<string, number> | undefined,
-  timeContext: { todayStart: number; weekStart: Date; monthStart: Date },
+  timeContext: { todayStart: number; weekStart: number; monthStart: number },
 ): PeriodTotals => {
   const totals = { week: 0, month: 0 };
   if (!buckets) return totals;
   for (const [iso, kWh] of Object.entries(buckets)) {
     const ts = new Date(iso).getTime();
     if (ts >= timeContext.todayStart) continue;
-    if (ts >= timeContext.weekStart.getTime()) totals.week += kWh;
-    if (ts >= timeContext.monthStart.getTime()) totals.month += kWh;
+    if (ts >= timeContext.weekStart) totals.week += kWh;
+    if (ts >= timeContext.monthStart) totals.month += kWh;
   }
   return totals;
 };
 
 const getWeekMonthTotals = (
   tracker: PowerTracker,
-  timeContext: { todayKey: string; todayStart: number; weekStart: Date; monthStart: Date },
+  timeContext: { todayKey: string; todayStart: number; weekStart: number; monthStart: number },
   today: number,
+  timeZone: string,
 ) => {
-  const dailyTotals = sumDailyTotals(tracker.dailyTotals, timeContext);
+  const dailyTotals = sumDailyTotals(tracker.dailyTotals, timeContext, timeZone);
   const bucketTotals = sumBucketTotalsBeforeToday(tracker.buckets, timeContext);
   return {
     week: today + dailyTotals.week + bucketTotals.week,
@@ -165,15 +177,15 @@ const getWeekMonthTotals = (
   };
 };
 
-const getWeekdayWeekendAverages = (dailyTotals: Record<string, number>) => {
+const getWeekdayWeekendAverages = (dailyTotals: Record<string, number>, timeZone: string) => {
   let weekdaySum = 0;
   let weekdayCount = 0;
   let weekendSum = 0;
   let weekendCount = 0;
 
   for (const [dateKey, kWh] of Object.entries(dailyTotals)) {
-    const date = new Date(dateKey);
-    const day = date.getUTCDay();
+    const ts = getDateKeyStartMs(dateKey, timeZone);
+    const day = new Date(ts).getUTCDay();
     if (day === 0 || day === 6) {
       weekendSum += kWh;
       weekendCount += 1;
@@ -222,24 +234,18 @@ let powerUsageWeekOffset = 0;
 let powerUsageEntries: PowerUsageEntry[] = [];
 let powerUsageNavReady = false;
 
-const getUtcWeekRange = (now: Date, weekOffset: number) => {
-  const day = now.getUTCDay();
-  const diffToMonday = (day + 6) % 7;
-  const mondayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diffToMonday);
-  const startMs = mondayStart + weekOffset * 7 * 24 * 60 * 60 * 1000;
+const getTimeZoneWeekRange = (now: Date, weekOffset: number, timeZone: string) => {
+  const weekStart = getWeekStartInTimeZone(now, timeZone);
+  const startMs = weekStart + weekOffset * 7 * 24 * 60 * 60 * 1000;
   const endMs = startMs + 7 * 24 * 60 * 60 * 1000;
   return { startMs, endMs };
 };
 
-const formatUtcDate = (date: Date, options: Intl.DateTimeFormatOptions) => (
-  date.toLocaleDateString([], { timeZone: 'UTC', ...options })
-);
-
-const formatWeekLabel = (startMs: number, endMs: number) => {
+const formatWeekLabel = (startMs: number, endMs: number, timeZone: string) => {
   const start = new Date(startMs);
   const end = new Date(endMs - 1);
-  const startText = formatUtcDate(start, { month: 'short', day: 'numeric' });
-  const endText = formatUtcDate(end, { month: 'short', day: 'numeric' });
+  const startText = formatDateInTimeZone(start, { month: 'short', day: 'numeric' }, timeZone);
+  const endText = formatDateInTimeZone(end, { month: 'short', day: 'numeric' }, timeZone);
   return `${startText}–${endText}`;
 };
 
@@ -262,20 +268,20 @@ const updateSummaryLabel = (valueEl: HTMLElement | null, labelText: string) => {
   if (label) label.textContent = labelText;
 };
 
-const renderPowerSummary = (stats: PowerStatsSummary) => {
+const renderPowerSummary = (stats: PowerStatsSummary, timeZone: string) => {
   const now = new Date();
-  const todayText = formatUtcDate(now, { weekday: 'short', month: 'short', day: 'numeric' });
-  const weekRange = getUtcWeekRange(now, 0);
-  const weekText = `${formatWeekLabel(weekRange.startMs, weekRange.endMs)} UTC`;
-  const monthText = formatUtcDate(now, { month: 'short', year: 'numeric' });
+  const todayText = formatDateInTimeZone(now, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
+  const weekRange = getTimeZoneWeekRange(now, 0, timeZone);
+  const weekText = formatWeekLabel(weekRange.startMs, weekRange.endMs, timeZone);
+  const monthText = formatDateInTimeZone(now, { month: 'short', year: 'numeric' }, timeZone);
 
   if (usageToday) usageToday.textContent = `${stats.today.toFixed(1)} kWh`;
   if (usageWeek) usageWeek.textContent = `${stats.week.toFixed(1)} kWh`;
   if (usageMonth) usageMonth.textContent = `${stats.month.toFixed(1)} kWh`;
 
-  updateSummaryLabel(usageToday, `Today (${todayText} UTC)`);
+  updateSummaryLabel(usageToday, `Today (${todayText})`);
   updateSummaryLabel(usageWeek, `This week (${weekText})`);
-  updateSummaryLabel(usageMonth, `This month (${monthText} UTC)`);
+  updateSummaryLabel(usageMonth, `This month (${monthText})`);
 };
 
 const setSummaryValue = (element: HTMLElement, hasData: boolean, value: string) => {
@@ -298,7 +304,7 @@ const renderPowerAverages = (stats: PowerStatsSummary) => {
   }
 };
 
-const renderHourlyPattern = (stats: PowerStatsSummary) => {
+const renderHourlyPattern = (stats: PowerStatsSummary, timeZone: string) => {
   if (!hourlyPattern) return;
   hourlyPattern.innerHTML = '';
   if (hourlyPatternMeta) hourlyPatternMeta.textContent = stats.hourlyPatternMeta;
@@ -319,7 +325,7 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
     const end = new Date(start.getTime() + 60 * 60 * 1000);
     const label = document.createElement('div');
     label.className = 'usage-row__label';
-    label.textContent = `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    label.textContent = `${formatTimeInTimeZone(start, { hour: '2-digit', minute: '2-digit' }, timeZone)}–${formatTimeInTimeZone(end, { hour: '2-digit', minute: '2-digit' }, timeZone)}`;
 
     const bar = createUsageBar({
       value: avg,
@@ -339,14 +345,14 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
   });
 };
 
-const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: number) => {
+const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: number, timeZone: string) => {
   const row = document.createElement('div');
   row.className = 'usage-row usage-row--daily';
 
   const dateEl = document.createElement('div');
   dateEl.className = 'usage-row__label';
-  const date = new Date(entry.date);
-  dateEl.textContent = date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  const date = new Date(getDateKeyStartMs(entry.date, timeZone));
+  dateEl.textContent = formatDateInTimeZone(date, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
 
   const bar = createUsageBar({
     value: entry.kWh,
@@ -365,7 +371,7 @@ const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: numb
   return row;
 };
 
-const renderDailyHistory = (stats: PowerStatsSummary) => {
+const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
   if (!dailyList || !dailyEmpty) return;
   dailyList.innerHTML = '';
   if (!stats.dailyHistory.length) {
@@ -375,41 +381,45 @@ const renderDailyHistory = (stats: PowerStatsSummary) => {
   dailyEmpty.hidden = true;
   const maxKWh = Math.max(...stats.dailyHistory.map((entry) => entry.kWh), 0.1);
   stats.dailyHistory.forEach((entry) => {
-    dailyList.appendChild(buildDailyHistoryRow(entry, maxKWh));
+    dailyList.appendChild(buildDailyHistoryRow(entry, maxKWh, timeZone));
   });
 };
 
-const getPowerStats = async (): Promise<PowerStatsSummary> => {
+const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZone: string }> => {
   const tracker = await getSetting('power_tracker_state') as PowerTracker | null;
   if (!tracker || typeof tracker !== 'object') {
-    return getEmptyPowerStats();
+    return { stats: getEmptyPowerStats(), timeZone: getHomeyTimezone() };
   }
 
   const now = new Date();
-  const timeContext = getPowerTimeContext(now);
+  const timeZone = getHomeyTimezone();
+  const timeContext = getPowerTimeContext(now, timeZone);
   const today = getTodayUsage(tracker, timeContext.todayStart);
   const derivedDailyTotals = Object.keys(tracker.dailyTotals || {}).length
     ? tracker.dailyTotals as Record<string, number>
-    : getDerivedDailyTotals(tracker.buckets);
+    : getDerivedDailyTotals(tracker.buckets, timeZone);
   const derivedHourlyAverages = Object.keys(tracker.hourlyAverages || {}).length
     ? tracker.hourlyAverages as Record<string, { sum: number; count: number }>
-    : getDerivedHourlyAverages(tracker.buckets);
-  const totals = getWeekMonthTotals({ ...tracker, dailyTotals: derivedDailyTotals }, timeContext, today);
-  const averages = getWeekdayWeekendAverages(derivedDailyTotals);
+    : getDerivedHourlyAverages(tracker.buckets, timeZone);
+  const totals = getWeekMonthTotals({ ...tracker, dailyTotals: derivedDailyTotals }, timeContext, today, timeZone);
+  const averages = getWeekdayWeekendAverages(derivedDailyTotals, timeZone);
   const hourlyPattern = buildHourlyPattern(derivedHourlyAverages);
-  const hourlyPatternMeta = getHourlyPatternMeta(tracker.buckets);
+  const hourlyPatternMeta = getHourlyPatternMeta(tracker.buckets, timeZone);
   const dailyHistory = buildDailyHistory(derivedDailyTotals, timeContext.todayKey);
 
   return {
-    today,
-    week: totals.week,
-    month: totals.month,
-    weekdayAvg: averages.weekdayAvg,
-    weekendAvg: averages.weekendAvg,
-    hourlyPattern,
-    hourlyPatternMeta,
-    dailyHistory,
-    hasPatternData: averages.hasPatternData,
+    stats: {
+      today,
+      week: totals.week,
+      month: totals.month,
+      weekdayAvg: averages.weekdayAvg,
+      weekendAvg: averages.weekendAvg,
+      hourlyPattern,
+      hourlyPatternMeta,
+      dailyHistory,
+      hasPatternData: averages.hasPatternData,
+    },
+    timeZone,
   };
 };
 
@@ -436,19 +446,20 @@ export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
 };
 
 export const renderPowerStats = async () => {
-  const stats = await getPowerStats();
-  renderPowerSummary(stats);
+  const { stats, timeZone } = await getPowerStats();
+  renderPowerSummary(stats, timeZone);
   renderPowerAverages(stats);
-  renderHourlyPattern(stats);
-  renderDailyHistory(stats);
+  renderHourlyPattern(stats, timeZone);
+  renderDailyHistory(stats, timeZone);
 };
 
 export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
   powerUsageEntries = entries;
   ensurePowerUsageNav();
   const now = new Date(Date.now());
-  const range = getUtcWeekRange(now, powerUsageWeekOffset);
-  if (powerWeekLabel) powerWeekLabel.textContent = formatWeekLabel(range.startMs, range.endMs);
+  const timeZone = getHomeyTimezone();
+  const range = getTimeZoneWeekRange(now, powerUsageWeekOffset, timeZone);
+  if (powerWeekLabel) powerWeekLabel.textContent = formatWeekLabel(range.startMs, range.endMs, timeZone);
   if (powerWeekNext) powerWeekNext.disabled = powerUsageWeekOffset >= 0;
   if (powerWeekPrev) powerWeekPrev.disabled = false;
 
@@ -457,7 +468,7 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
     return ts >= range.startMs && ts < range.endMs;
   });
   const grouped = filtered.reduce((acc, entry) => {
-    const dateKey = entry.hour.toISOString().slice(0, 10);
+    const dateKey = getDateKeyInTimeZone(entry.hour, timeZone);
     if (!acc.has(dateKey)) acc.set(dateKey, []);
     acc.get(dateKey)?.push(entry);
     return acc;
@@ -477,25 +488,28 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
       header.className = 'list__header power-day-header';
       const headerLabel = document.createElement('span');
       headerLabel.className = 'pill';
-      headerLabel.textContent = new Date(dateKey).toLocaleDateString([], {
+      const headerDate = new Date(getDateKeyStartMs(dateKey, timeZone));
+      headerLabel.textContent = formatDateInTimeZone(headerDate, {
         weekday: 'short', month: 'short', day: 'numeric',
-      });
+      }, timeZone);
       header.appendChild(headerLabel);
       fragment.appendChild(header);
 
       dayEntries
         .sort((a, b) => a.hour.getTime() - b.hour.getTime())
         .forEach((entry) => {
-          fragment.appendChild(createPowerRow(entry));
+          fragment.appendChild(createPowerRow(entry, timeZone));
         });
     });
   powerList.appendChild(fragment);
 };
 
-const createTimeLabel = (date: Date): string => {
+const createTimeLabel = (date: Date, timeZone: string): string => {
   const start = date;
   const end = new Date(start.getTime() + 60 * 60 * 1000);
-  return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const startText = formatTimeInTimeZone(start, { hour: '2-digit', minute: '2-digit' }, timeZone);
+  const endText = formatTimeInTimeZone(end, { hour: '2-digit', minute: '2-digit' }, timeZone);
+  return `${startText}–${endText}`;
 };
 
 const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => (
@@ -517,14 +531,14 @@ const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => (
   })
 );
 
-const createPowerRow = (entry: PowerUsageEntry): HTMLElement => {
+const createPowerRow = (entry: PowerUsageEntry, timeZone: string): HTMLElement => {
   const row = document.createElement('div');
   row.className = 'usage-row usage-row--detail';
   row.setAttribute('role', 'listitem');
 
   const label = document.createElement('div');
   label.className = 'usage-row__label';
-  label.textContent = createTimeLabel(entry.hour);
+  label.textContent = createTimeLabel(entry.hour, timeZone);
 
   const budget = typeof entry.budgetKWh === 'number' && entry.budgetKWh > 0 ? entry.budgetKWh : null;
   const meter = createPowerMeter(entry.kWh, budget);
