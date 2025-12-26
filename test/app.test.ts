@@ -365,7 +365,7 @@ describe('MyApp initialization', () => {
       },
     ]);
 
-    (app as any).rebuildPlanFromCache();
+    (app as any).planService.rebuildPlanFromCache();
     await flushPromises();
 
     expect(setCapSpy).not.toHaveBeenCalled();

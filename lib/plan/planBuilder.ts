@@ -8,6 +8,7 @@ import { buildPlanContext } from './planContext';
 import { buildSheddingPlan } from './planShedding';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan } from './planRestore';
+import { sumControlledUsageKw } from './planUsage';
 import {
   applyShedTemperatureHold,
   finalizePlanDevices,
@@ -195,6 +196,11 @@ export class PlanBuilder {
     planDevices = finalized.planDevices;
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
 
+    const controlledKw = sumControlledUsageKw(planDevices);
+    const uncontrolledKw = typeof context.total === 'number' && controlledKw !== null
+      ? Math.max(0, context.total - controlledKw)
+      : undefined;
+
     return {
       meta: {
         totalKw: context.total,
@@ -204,6 +210,8 @@ export class PlanBuilder {
         usedKWh: context.usedKWh,
         budgetKWh: context.budgetKWh,
         minutesRemaining: context.minutesRemaining,
+        controlledKw: controlledKw ?? undefined,
+        uncontrolledKw,
       },
       devices: planDevices,
     };

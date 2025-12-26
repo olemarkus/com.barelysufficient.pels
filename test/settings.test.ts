@@ -686,7 +686,7 @@ describe('Plan sorting', () => {
       .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
       .map((line) => line.querySelector('span:last-child')?.textContent || '');
 
-    expect(usageLines[0]).toContain('current 1.23 kW / expected 2.34 kW');
+    expect(usageLines[0]).toContain('current usage: 1.23 kW / expected 2.34 kW');
   });
 
   it('shows expected power when device is off and only expected is known', async () => {
@@ -764,7 +764,7 @@ describe('Plan sorting', () => {
       .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
       .map((line) => line.querySelector('span:last-child')?.textContent || '');
 
-    expect(usageLines[0]).toBe('current 0.00 kW / expected 0.12 kW');
+    expect(usageLines[0]).toBe('current usage: 0.00 kW / expected 0.12 kW');
   });
 
   it('savePriorities assigns priority 1 to top device', () => {

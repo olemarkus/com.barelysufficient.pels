@@ -1,4 +1,5 @@
 import { PriceLevel, PRICE_LEVEL_OPTIONS, getPriceLevelFromTitle, getPriceLevelTitle } from '../lib/price/priceLevels';
+import { updatePelsStatusDirect } from '../lib/plan/planService';
 import { mockHomeyInstance } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
@@ -73,9 +74,18 @@ describe('Price level flow cards', () => {
     (app as any).registerFlowCards();
     mockHomeyInstance.settings.set('combined_prices', { prices: [{ total: 10 }] });
 
-    (app as any).updatePelsStatus({
-      meta: { totalKw: null, softLimitKw: 0, headroomKw: null },
-      devices: [],
+    updatePelsStatusDirect({
+      homey: mockHomeyInstance as any,
+      plan: {
+        meta: { totalKw: null, softLimitKw: 0, headroomKw: null },
+        devices: [],
+      },
+      isCheap: true,
+      isExpensive: false,
+      combinedPrices: mockHomeyInstance.settings.get('combined_prices'),
+      lastPowerUpdate: null,
+      lastNotifiedPriceLevel: PriceLevel.UNKNOWN,
+      error: jest.fn(),
     });
 
     const triggers = mockHomeyInstance.flow._triggerCardTriggers.price_level_changed;
