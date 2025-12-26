@@ -77,6 +77,12 @@ const showTab = (tabId: string) => {
   if (tabId === 'price') {
     refreshPrices().catch(() => { });
   }
+  if (tabId === 'power') {
+    getPowerUsage()
+      .then((usage) => renderPowerUsage(usage))
+      .catch(() => { });
+    renderPowerStats().catch(() => { });
+  }
 };
 
 const initRealtimeListeners = () => {
@@ -97,29 +103,63 @@ const initRealtimeListeners = () => {
     }
   });
 
-  homey.on('settings.set', (key) => {
-    if (key === CAPACITY_LIMIT_KW || key === CAPACITY_MARGIN_KW || key === CAPACITY_DRY_RUN) {
-      loadCapacitySettings().catch(() => { });
-    }
-    if (key === 'device_plan_snapshot') {
-      const planPanel = document.querySelector('#plan-panel');
-      if (planPanel && !planPanel.classList.contains('hidden')) {
-        refreshPlan().catch(() => { });
-      }
-    }
-    if (key === 'combined_prices' || key === 'electricity_prices') {
-      const pricesPanel = document.querySelector('#price-panel');
-      if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
-        refreshPrices().catch(() => { });
-      }
-    }
-    if (key === OPERATING_MODE_SETTING) {
+  homey.on('settings.set', handleSettingsUpdate);
+};
+
+const handleCapacityUpdate = () => {
+  loadCapacitySettings().catch(() => { });
+};
+
+const handlePlanUpdate = () => {
+  const planPanel = document.querySelector('#plan-panel');
+  if (planPanel && !planPanel.classList.contains('hidden')) {
+    refreshPlan().catch(() => { });
+  }
+};
+
+const handlePriceUpdate = () => {
+  const pricesPanel = document.querySelector('#price-panel');
+  if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
+    refreshPrices().catch(() => { });
+  }
+};
+
+const handlePowerUpdate = () => {
+  const powerPanel = document.querySelector('#power-panel');
+  if (powerPanel && !powerPanel.classList.contains('hidden')) {
+    getPowerUsage()
+      .then((usage) => renderPowerUsage(usage))
+      .catch(() => { });
+    renderPowerStats().catch(() => { });
+  }
+};
+
+const handleSettingsUpdate = (key: string) => {
+  switch (key) {
+    case CAPACITY_LIMIT_KW:
+    case CAPACITY_MARGIN_KW:
+    case CAPACITY_DRY_RUN:
+      handleCapacityUpdate();
+      break;
+    case 'device_plan_snapshot':
+      handlePlanUpdate();
+      break;
+    case 'combined_prices':
+    case 'electricity_prices':
+      handlePriceUpdate();
+      break;
+    case OPERATING_MODE_SETTING:
       refreshActiveMode().catch(() => { });
-    }
-    if (key === 'overshoot_behaviors') {
+      break;
+    case 'overshoot_behaviors':
       loadShedBehaviors().catch(() => { });
-    }
-  });
+      break;
+    case 'power_tracker_state':
+      handlePowerUpdate();
+      break;
+    default:
+      break;
+  }
 };
 
 const initOverflowMenu = () => {

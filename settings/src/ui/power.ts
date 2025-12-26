@@ -231,11 +231,15 @@ const getUtcWeekRange = (now: Date, weekOffset: number) => {
   return { startMs, endMs };
 };
 
+const formatUtcDate = (date: Date, options: Intl.DateTimeFormatOptions) => (
+  date.toLocaleDateString([], { timeZone: 'UTC', ...options })
+);
+
 const formatWeekLabel = (startMs: number, endMs: number) => {
   const start = new Date(startMs);
   const end = new Date(endMs - 1);
-  const startText = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  const endText = end.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const startText = formatUtcDate(start, { month: 'short', day: 'numeric' });
+  const endText = formatUtcDate(end, { month: 'short', day: 'numeric' });
   return `${startText}–${endText}`;
 };
 
@@ -253,10 +257,25 @@ const ensurePowerUsageNav = () => {
   });
 };
 
+const updateSummaryLabel = (valueEl: HTMLElement | null, labelText: string) => {
+  const label = valueEl?.closest('.summary-card')?.querySelector('.summary-label');
+  if (label) label.textContent = labelText;
+};
+
 const renderPowerSummary = (stats: PowerStatsSummary) => {
+  const now = new Date();
+  const todayText = formatUtcDate(now, { weekday: 'short', month: 'short', day: 'numeric' });
+  const weekRange = getUtcWeekRange(now, 0);
+  const weekText = `${formatWeekLabel(weekRange.startMs, weekRange.endMs)} UTC`;
+  const monthText = formatUtcDate(now, { month: 'short', year: 'numeric' });
+
   if (usageToday) usageToday.textContent = `${stats.today.toFixed(1)} kWh`;
   if (usageWeek) usageWeek.textContent = `${stats.week.toFixed(1)} kWh`;
   if (usageMonth) usageMonth.textContent = `${stats.month.toFixed(1)} kWh`;
+
+  updateSummaryLabel(usageToday, `Today (${todayText} UTC)`);
+  updateSummaryLabel(usageWeek, `This week (${weekText})`);
+  updateSummaryLabel(usageMonth, `This month (${monthText} UTC)`);
 };
 
 const setSummaryValue = (element: HTMLElement, hasData: boolean, value: string) => {
@@ -304,8 +323,9 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
       value: avg,
       max: maxAvg,
       minFillPct: 4,
-      className: 'hourly-row__bar',
-      fillClassName: 'hourly-row__bar-fill',
+      className: 'hourly-row__bar usage-bar--lg',
+      fillClassName: 'hourly-row__bar-fill usage-bar__fill--accent',
+      labelText: `${avg.toFixed(2)} kWh`,
       title: `${hour}:00 - ${avg.toFixed(2)} kWh`,
     });
 
@@ -330,8 +350,9 @@ const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: numb
     value: entry.kWh,
     max: maxKWh,
     minFillPct: 4,
-    className: 'daily-row__bar',
-    fillClassName: 'daily-row__bar-fill',
+    className: 'daily-row__bar usage-bar--lg',
+    fillClassName: 'daily-row__bar-fill usage-bar__fill--accent',
+    labelText: `${entry.kWh.toFixed(1)} kWh`,
   });
 
   const val = document.createElement('div');
