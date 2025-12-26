@@ -642,6 +642,10 @@ input:focus-visible {
   transition: width var(--transition-fast);
 }
 
+.usage-bar__fill--accent {
+  background: var(--accent);
+}
+
 .usage-bar__label {
   position: absolute;
   left: 50%;
@@ -673,8 +677,8 @@ input:focus-visible {
   background: var(--color-state-warning-bg);
 }
 
-.power-meter:hover .usage-bar__label,
-.power-meter:active .usage-bar__label {
+.usage-bar:hover .usage-bar__label,
+.usage-bar:active .usage-bar__label {
   opacity: 1;
 }
 
@@ -1497,9 +1501,6 @@ input[type="text"]:focus {
   color: var(--text);
 }
 
-.hourly-row:hover .hourly-row__bar-fill {
-  background: var(--accent-hover);
-}
 
 .hourly-pattern__empty {
   grid-column: 1 / -1;
