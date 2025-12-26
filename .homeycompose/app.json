@@ -18,13 +18,21 @@
     "climate"
   ],
   "source": "https://github.com/olemarkus/com.barelysufficient.pels",
-  "support": "https://github.com/olemarkus/com.barelysufficient.pels/issues",
+  "homepage": "https://github.com/olemarkus/com.barelysufficient.pels/blob/main/docs/README.md",
+  "support": "mailto:olemarkus@gmail.com",
+  "bugs": {
+    "url": "https://github.com/olemarkus/com.barelysufficient.pels/issues"
+  },
   "tags": {
     "en": [
       "capacity",
       "power limit",
       "energy price",
-      "temperature"
+      "temperature",
+      "spot price",
+      "grid tariff",
+      "energy optimization",
+      "power management"
     ]
   },
   "permissions": [
