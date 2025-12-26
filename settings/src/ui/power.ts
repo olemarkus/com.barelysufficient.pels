@@ -15,7 +15,7 @@ import {
   hourlyPatternMeta,
 } from './dom';
 import { getSetting } from './homey';
-import { createDeviceRow, createUsageBar } from './components';
+import { createUsageBar } from './components';
 
 export type PowerTracker = {
   buckets?: Record<string, number>;
@@ -313,24 +313,26 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
   const maxAvg = Math.max(...stats.hourlyPattern.map(p => p.avg), 0.1);
   stats.hourlyPattern.forEach(({ hour, avg }) => {
     const row = document.createElement('div');
-    row.className = 'hourly-row';
+    row.className = 'usage-row usage-row--pattern';
 
+    const start = new Date(Date.UTC(2000, 0, 1, hour, 0, 0));
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
     const label = document.createElement('div');
-    label.className = 'hourly-row__label';
-    label.textContent = `${hour.toString().padStart(2, '0')}:00`;
+    label.className = 'usage-row__label';
+    label.textContent = `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
     const bar = createUsageBar({
       value: avg,
       max: maxAvg,
       minFillPct: 4,
-      className: 'hourly-row__bar usage-bar--lg',
-      fillClassName: 'hourly-row__bar-fill usage-bar__fill--accent',
+      className: 'usage-row__bar usage-bar--lg',
+      fillClassName: 'usage-bar__fill--accent',
       labelText: `${avg.toFixed(2)} kWh`,
       title: `${hour}:00 - ${avg.toFixed(2)} kWh`,
     });
 
     const value = document.createElement('div');
-    value.className = 'hourly-row__value';
+    value.className = 'usage-row__value';
     value.textContent = `${avg.toFixed(2)} kWh`;
     row.append(label, bar, value);
     hourlyPattern.appendChild(row);
@@ -339,10 +341,10 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
 
 const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: number) => {
   const row = document.createElement('div');
-  row.className = 'daily-row daily-row--chart';
+  row.className = 'usage-row usage-row--daily';
 
   const dateEl = document.createElement('div');
-  dateEl.className = 'daily-row__date';
+  dateEl.className = 'usage-row__label';
   const date = new Date(entry.date);
   dateEl.textContent = date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 
@@ -350,13 +352,13 @@ const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: numb
     value: entry.kWh,
     max: maxKWh,
     minFillPct: 4,
-    className: 'daily-row__bar usage-bar--lg',
-    fillClassName: 'daily-row__bar-fill usage-bar__fill--accent',
+    className: 'usage-row__bar usage-bar--lg',
+    fillClassName: 'usage-bar__fill--accent',
     labelText: `${entry.kWh.toFixed(1)} kWh`,
   });
 
   const val = document.createElement('div');
-  val.className = 'daily-row__value';
+  val.className = 'usage-row__value';
   val.textContent = `${entry.kWh.toFixed(1)} kWh`;
 
   row.append(dateEl, bar, val);
@@ -490,23 +492,10 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
   powerList.appendChild(fragment);
 };
 
-const createChip = (label: string, value: string, className = ''): HTMLElement => {
-  const chip = document.createElement('span');
-  chip.className = `chip ${className}`;
-  const strong = document.createElement('strong');
-  strong.textContent = label;
-  const span = document.createElement('span');
-  span.textContent = value;
-  chip.append(strong, span);
-  return chip;
-};
-
 const createTimeLabel = (date: Date): string => {
   const start = date;
   const end = new Date(start.getTime() + 60 * 60 * 1000);
-  const time = `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  const day = start.toLocaleDateString([], { weekday: 'short' });
-  return `${day} ${time}`;
+  return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 };
 
 const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => (
@@ -515,7 +504,9 @@ const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => (
     max: budget ?? kWh,
     minFillPct: 4,
     className: 'power-meter usage-bar--lg',
-    fillClassName: budget && kWh > budget ? 'power-meter__fill power-meter__fill--alert' : 'power-meter__fill',
+    fillClassName: budget && kWh > budget
+      ? 'usage-bar__fill--accent power-meter__fill--alert'
+      : 'usage-bar__fill--accent',
     labelClassName: 'power-meter__label',
     labelText: budget !== null
       ? `${kWh.toFixed(2)} / ${budget.toFixed(2)} kWh`
@@ -527,22 +518,27 @@ const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => (
 );
 
 const createPowerRow = (entry: PowerUsageEntry): HTMLElement => {
+  const row = document.createElement('div');
+  row.className = 'usage-row usage-row--detail';
+  row.setAttribute('role', 'listitem');
+
+  const label = document.createElement('div');
+  label.className = 'usage-row__label';
+  label.textContent = createTimeLabel(entry.hour);
+
   const budget = typeof entry.budgetKWh === 'number' && entry.budgetKWh > 0 ? entry.budgetKWh : null;
   const meter = createPowerMeter(entry.kWh, budget);
+  meter.classList.add('usage-row__bar');
 
-  const controls: HTMLElement[] = [meter];
+  const value = document.createElement('div');
+  value.className = 'usage-row__value';
+  value.textContent = `${entry.kWh.toFixed(2)} kWh`;
+
   if (entry.unreliable) {
-    const chips = document.createElement('div');
-    chips.className = 'power-row__chips';
-    chips.appendChild(createChip('Unreliable data', '', 'chip--alert'));
-    controls.push(chips);
+    row.classList.add('usage-row--warn');
+    row.title = 'Unreliable data';
   }
 
-  return createDeviceRow({
-    name: createTimeLabel(entry.hour),
-    className: 'power-row',
-    nameClassName: 'power-row__name',
-    controls,
-    controlsClassName: 'device-row__target power-row__target',
-  });
+  row.append(label, meter, value);
+  return row;
 };
