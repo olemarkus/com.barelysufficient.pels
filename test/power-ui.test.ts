@@ -68,7 +68,7 @@ describe('power page stats (buckets-only)', () => {
     const { renderPowerStats } = require('../settings/src/ui/power') as typeof import('../settings/src/ui/power');
     await renderPowerStats();
 
-    const rows = document.querySelectorAll('.hourly-row');
+    const rows = document.querySelectorAll('.usage-row--pattern');
     expect(rows.length).toBeGreaterThan(0);
   });
 
@@ -79,7 +79,7 @@ describe('power page stats (buckets-only)', () => {
     const { renderPowerStats } = require('../settings/src/ui/power') as typeof import('../settings/src/ui/power');
     await renderPowerStats();
 
-    const rows = document.querySelectorAll('.daily-row');
+    const rows = document.querySelectorAll('.usage-row--daily');
     expect(rows.length).toBeGreaterThan(0);
   });
 
@@ -89,7 +89,7 @@ describe('power page stats (buckets-only)', () => {
     const { renderPowerUsage } = require('../settings/src/ui/power') as typeof import('../settings/src/ui/power');
     const entries = Object.entries(buckets).map(([iso, kWh]) => ({ hour: new Date(iso), kWh }));
     renderPowerUsage(entries);
-    const rows = document.querySelectorAll('.device-row');
+    const rows = document.querySelectorAll('.usage-row--detail');
     expect(rows.length).toBe(7 * 24);
     jest.restoreAllMocks();
   });

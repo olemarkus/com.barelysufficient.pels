@@ -114,8 +114,8 @@
 
       <details class="settings-collapse" open>
         <summary>
-          <h3>📊 Usage summary</h3>
-          <span class="collapse-hint">Daily totals and patterns</span>
+          <h3 class="section-title">📊 Usage summary</h3>
+          <span class="section-hint">Daily totals and patterns</span>
         </summary>
         <div class="collapse-content">
           <div id="usage-summary" class="usage-summary">
@@ -146,26 +146,26 @@
           </div>
 
           <h4>Typical usage by time of day</h4>
-          <div id="hourly-pattern" class="hourly-pattern"></div>
+          <div id="hourly-pattern" class="hourly-pattern usage-list"></div>
           <p class="muted" id="hourly-pattern-meta">Average kWh per hour based on historical data.</p>
         </div>
       </details>
 
       <details class="settings-collapse">
         <summary>
-          <h3>📅 Daily history</h3>
-          <span class="collapse-hint">Last 7 days</span>
+          <h3 class="section-title">📅 Daily history</h3>
+          <span class="section-hint">Last 14 days (UTC)</span>
         </summary>
         <div class="collapse-content">
-          <div id="daily-list" class="device-list" role="list"></div>
+          <div id="daily-list" class="device-list usage-list" role="list"></div>
           <p id="daily-empty" class="muted" hidden>No daily totals yet.</p>
         </div>
       </details>
 
       <details class="settings-collapse">
         <summary>
-          <h3>⏱️ Hourly detail</h3>
-          <span class="collapse-hint">Week view</span>
+          <h3 class="section-title">⏱️ Hourly detail</h3>
+          <span class="section-hint">Week view (UTC)</span>
         </summary>
         <div class="collapse-content">
           <div class="hourly-nav">
@@ -173,7 +173,7 @@
             <div id="power-week-label" class="muted">This week</div>
             <button type="button" class="btn ghost" id="power-week-next">Next week</button>
           </div>
-          <div id="power-list" class="device-list" role="list"></div>
+          <div id="power-list" class="device-list usage-list" role="list"></div>
           <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the "Report power usage" Flow action.</p>
         </div>
       </details>
@@ -238,8 +238,8 @@
       
       <details class="settings-collapse">
         <summary>
-          <h3>⚙️ Price settings</h3>
-          <span class="collapse-hint">Grid tariff & spot price configuration</span>
+          <h3 class="section-title">⚙️ Price settings</h3>
+          <span class="section-hint">Grid tariff & spot price configuration</span>
         </summary>
         <div class="collapse-content">
           <h4>Grid tariff (Nettleie)</h4>
@@ -324,7 +324,7 @@
 
       <div id="price-optimization-section">
         <div class="section-header">
-          <h3>Price optimization</h3>
+          <h3 class="section-title">Price optimization</h3>
         </div>
         <div class="price-info">
           <p class="muted">Adjust temperature based on electricity price. Deltas are applied to the current mode's target temperature.</p>
