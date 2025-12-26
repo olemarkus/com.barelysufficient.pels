@@ -10,7 +10,7 @@
     "en": "PELS"
   },
   "description": {
-    "en": "Price and capacity controlled energy storage system"
+    "en": "Save energy and money with automatic capacity control and price-aware load shifting."
   },
   "brandColor": "#7fd1ae",
   "category": [
@@ -46,8 +46,5 @@
   "author": {
     "name": "Ole Markus With",
     "email": "olemarkus@gmail.com"
-  },
-  "drivers": [
-    "pels_insights"
-  ]
+  }
 }
