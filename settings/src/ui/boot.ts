@@ -75,7 +75,7 @@ const showTab = (tabId: string) => {
     refreshPlan().catch(() => { });
   }
   if (tabId === 'price') {
-    refreshPrices().catch(() => { });
+    refreshPrices().catch((err) => console.error('Failed to refresh prices:', err));
   }
   if (tabId === 'power') {
     getPowerUsage()
