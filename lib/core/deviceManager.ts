@@ -345,12 +345,22 @@ export class DeviceManager {
         const expectedOverride = this.powerState.expectedPowerKwOverrides[deviceId];
 
         if (loadW !== null) {
-            return this.getPowerFromLoad({
+            const measured = this.getMeasuredPowerKw({
+                deviceId,
+                deviceLabel,
+                powerRaw,
+                now,
+            });
+            const loadEstimate = this.getPowerFromLoad({
                 deviceId,
                 deviceLabel,
                 loadW,
                 expectedOverride,
             });
+            return {
+                ...loadEstimate,
+                measuredPowerKw: measured.measuredPowerKw,
+            };
         }
         return this.getPowerFromMeasurement({
             deviceId,
@@ -444,6 +454,9 @@ export class DeviceManager {
         const { deviceId, deviceLabel, powerRaw, now } = params;
         if (typeof powerRaw !== 'number' || !Number.isFinite(powerRaw)) {
             return {};
+        }
+        if (powerRaw === 0) {
+            return { measuredKw: 0, measuredPowerKw: 0 };
         }
         if (powerRaw > MIN_SIGNIFICANT_POWER_W) {
             const measuredKw = powerRaw / 1000;

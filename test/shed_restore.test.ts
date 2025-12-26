@@ -16,7 +16,9 @@ type InternalApp = {
     capacitySettings: { marginKw?: number };
     capacityDryRun: boolean;
     priceOptimizationSettings: Record<string, any>;
-    buildDevicePlanSnapshot(): any;
+    planService: {
+        buildDevicePlanSnapshot: (devices: any[]) => Promise<any>;
+    };
     handleCapacityCheck(): Promise<void>;
     capacityGuard: {
         getHeadroom: () => number | null;
@@ -85,7 +87,7 @@ describe('Shed vs Restore Logic', () => {
 
         // Run calculation
         const devices = (app as any).targetDevices;
-        const plan = await (app as any).buildDevicePlanSnapshot(devices);
+        const plan = await (app as any).planService.buildDevicePlanSnapshot(devices);
 
         // Analysis:
         // Needed 2.0kW.
@@ -127,7 +129,7 @@ describe('Shed vs Restore Logic', () => {
         (app as any).capacityGuard = mockGuard;
 
         const devices = (app as any).targetDevices;
-        const plan = await (app as any).buildDevicePlanSnapshot(devices);
+        const plan = await (app as any).planService.buildDevicePlanSnapshot(devices);
 
         // D offers 0.5kW. C offers 0.0kW.
         // D should be shed because C helps nothing.
@@ -174,7 +176,7 @@ describe('Shed vs Restore Logic', () => {
         (app as any).modeDeviceTargets = { 'Home': { 'dev-E': 22 } };
         (app as any).operatingMode = 'Home';
 
-        const plan = await (app as any).buildDevicePlanSnapshot(devices);
+        const plan = await (app as any).planService.buildDevicePlanSnapshot(devices);
         const devE = plan.devices.find((d: any) => d.id === 'dev-E');
 
         // Should NOT be 'keep' (which means turn on if desired).

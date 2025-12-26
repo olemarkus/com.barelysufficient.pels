@@ -33,6 +33,8 @@ export type DevicePlan = {
     usedKWh?: number;
     budgetKWh?: number;
     minutesRemaining?: number;
+    controlledKw?: number;
+    uncontrolledKw?: number;
   };
   devices: DevicePlanDevice[];
 };

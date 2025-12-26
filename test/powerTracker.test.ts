@@ -183,4 +183,38 @@ describe('power tracker integration', () => {
     expect(snapshot.buckets[bucket0]).toBeCloseTo(0.6, 3);
     expect(snapshot.buckets[bucket1]).toBeCloseTo(0.6, 3);
   });
+
+  it('tracks controlled and uncontrolled buckets when provided', async () => {
+    const state = {};
+    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const rebuildPlanFromCache = jest.fn();
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 1000,
+      controlledPowerW: 600,
+      nowMs: start,
+      homey: mockHomeyInstance as any,
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 1000,
+      controlledPowerW: 600,
+      nowMs: start + 30 * 60 * 1000,
+      homey: mockHomeyInstance as any,
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    const bucketKey = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
+    const snapshot = state as any;
+    expect(snapshot.controlledBuckets[bucketKey]).toBeCloseTo(0.3, 3);
+    expect(snapshot.uncontrolledBuckets[bucketKey]).toBeCloseTo(0.2, 3);
+  });
 });

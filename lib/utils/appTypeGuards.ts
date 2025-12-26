@@ -29,11 +29,23 @@ export function isModeDeviceTargets(value: unknown): value is Record<string, Rec
 export function isPowerTrackerState(value: unknown): value is PowerTrackerState {
   if (!value || typeof value !== 'object') return false;
   const state = value as PowerTrackerState;
-  const bucketsOk = state.buckets === undefined || typeof state.buckets === 'object';
-  const budgetsOk = state.hourlyBudgets === undefined || typeof state.hourlyBudgets === 'object';
-  const dailyOk = state.dailyTotals === undefined || typeof state.dailyTotals === 'object';
-  const averagesOk = state.hourlyAverages === undefined || typeof state.hourlyAverages === 'object';
-  const lastPowerOk = state.lastPowerW === undefined || typeof state.lastPowerW === 'number';
-  const lastTsOk = state.lastTimestamp === undefined || typeof state.lastTimestamp === 'number';
-  return bucketsOk && budgetsOk && dailyOk && averagesOk && lastPowerOk && lastTsOk;
+  const isOptionalRecord = (entry: unknown) => entry === undefined || typeof entry === 'object';
+  const isOptionalNumber = (entry: unknown) => entry === undefined || typeof entry === 'number';
+  const checks = [
+    isOptionalRecord(state.buckets),
+    isOptionalRecord(state.hourlyBudgets),
+    isOptionalRecord(state.dailyTotals),
+    isOptionalRecord(state.hourlyAverages),
+    isOptionalRecord(state.controlledBuckets),
+    isOptionalRecord(state.uncontrolledBuckets),
+    isOptionalRecord(state.controlledDailyTotals),
+    isOptionalRecord(state.uncontrolledDailyTotals),
+    isOptionalRecord(state.controlledHourlyAverages),
+    isOptionalRecord(state.uncontrolledHourlyAverages),
+    isOptionalNumber(state.lastPowerW),
+    isOptionalNumber(state.lastControlledPowerW),
+    isOptionalNumber(state.lastUncontrolledPowerW),
+    isOptionalNumber(state.lastTimestamp),
+  ];
+  return checks.every(Boolean);
 }

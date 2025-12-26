@@ -392,7 +392,7 @@ describe('Device plan snapshot', () => {
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
 
     await (app as any).refreshTargetDevicesSnapshot();
-    await (app as any).rebuildPlanFromCache();
+    await (app as any).planService.rebuildPlanFromCache();
 
     // Rebuild plan to reflect current snapshot.
     (app as any).computeDynamicSoftLimit = () => 5;
@@ -818,7 +818,7 @@ describe('Device plan snapshot', () => {
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
     // Simulate device now off, but headroom still below need (2.5 + margin).
-    plan = await (app as any).buildDevicePlanSnapshot([
+    plan = await (app as any).planService.buildDevicePlanSnapshot([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -963,7 +963,7 @@ describe('Device plan snapshot', () => {
     ]);
 
     (app as any).planEngine.state.lastRestoreMs = Date.now() - 60000;
-    await (app as any).rebuildPlanFromCache();
+    await (app as any).planService.rebuildPlanFromCache();
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
@@ -1662,7 +1662,7 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
     ]);
-    await (app as any).rebuildPlanFromCache();
+    await (app as any).planService.rebuildPlanFromCache();
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'hoiax-1');
@@ -2232,7 +2232,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.pendingSwapTimestamps = {};
     (app as any).planEngine.state.swappedOutFor = {};
 
-    await (app as any).rebuildPlanFromCache();
+    await (app as any).planService.rebuildPlanFromCache();
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('keep');
   });
@@ -2708,7 +2708,7 @@ describe('Dry run mode', () => {
         controllable: true,
       },
     ]);
-    await (app as any).rebuildPlanFromCache();
+    await (app as any).planService.rebuildPlanFromCache();
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -2768,7 +2768,7 @@ describe('Dry run mode', () => {
       },
     ]);
 
-    await (app as any).rebuildPlanFromCache();
+    await (app as any).planService.rebuildPlanFromCache();
     const preShedPlan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const preShedDevice = preShedPlan.devices.find((d: any) => d.id === 'dev-1');
     expect(preShedDevice.plannedTarget).toBe(65);

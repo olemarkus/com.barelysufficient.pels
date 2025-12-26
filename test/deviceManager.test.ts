@@ -92,6 +92,29 @@ describe('DeviceManager', () => {
             expect(snapshot[0].currentOn).toBe(true);
         });
 
+        it('includes measured power zero when load setting is present', async () => {
+            await deviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_power', 'target_temperature'],
+                    capabilitiesObj: {
+                        measure_power: { value: 0, id: 'measure_power' },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
+                    },
+                    settings: { load: 600 },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            const snapshot = deviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.6, 3);
+            expect(snapshot[0].measuredPowerKw).toBe(0);
+        });
+
         it('uses providers to populate priority and controllable fields', async () => {
             const getPriority = jest.fn().mockReturnValue(1);
             const getControllable = jest.fn().mockReturnValue(false);
