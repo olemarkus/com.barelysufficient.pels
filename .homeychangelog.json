@@ -67,5 +67,8 @@
   },
   "1.5.8": {
     "en": "Improved settings UI power usage visuals and labels, now using Homey’s timezone. Settings UI errors are logged to Homey. Plan view usage and clarity improvements."
+  },
+  "1.5.9": {
+    "en": "Update app descriptions and doc fixes."
   }
 }
