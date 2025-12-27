@@ -14,6 +14,7 @@ import {
   finalizePlanDevices,
   normalizeShedReasons,
 } from './planReasons';
+import { getHourBucketKey } from '../utils/dateUtils';
 
 export type PlanBuilderDeps = {
   homey: Homey.App['homey'];
@@ -31,6 +32,11 @@ export type PlanBuilderDeps = {
   getDynamicSoftLimitOverride?: () => number | null;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
+};
+
+const getCurrentHourKWh = (buckets?: Record<string, number>): number | undefined => {
+  const value = buckets?.[getHourBucketKey()];
+  return typeof value === 'number' ? value : undefined;
 };
 
 export class PlanBuilder {
@@ -200,7 +206,6 @@ export class PlanBuilder {
     const uncontrolledKw = typeof context.total === 'number' && controlledKw !== null
       ? Math.max(0, context.total - controlledKw)
       : undefined;
-
     return {
       meta: {
         totalKw: context.total,
@@ -212,6 +217,8 @@ export class PlanBuilder {
         minutesRemaining: context.minutesRemaining,
         controlledKw: controlledKw ?? undefined,
         uncontrolledKw,
+        hourControlledKWh: getCurrentHourKWh(this.powerTracker.controlledBuckets),
+        hourUncontrolledKWh: getCurrentHourKWh(this.powerTracker.uncontrolledBuckets),
       },
       devices: planDevices,
     };

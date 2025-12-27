@@ -9,6 +9,8 @@
     "pels_shortfall",
     "pels_headroom",
     "pels_hourly_usage",
+    "pels_controlled_power",
+    "pels_uncontrolled_power",
     "pels_shedding",
     "pels_price_level",
     "pels_devices_on",

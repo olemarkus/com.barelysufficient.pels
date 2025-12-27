@@ -21,7 +21,12 @@ const getUsageText = () => {
 
 const getPlanMetaText = () => {
   const meta = document.querySelector('#plan-meta') as HTMLElement | null;
-  return meta ? Array.from(meta.children).map((el) => el.textContent?.trim()) : [];
+  if (!meta) return [];
+  const lineItems = Array.from(meta.querySelectorAll('.plan-meta-line-text'));
+  if (lineItems.length > 0) {
+    return lineItems.map((el) => el.textContent?.trim());
+  }
+  return Array.from(meta.children).map((el) => el.textContent?.trim());
 };
 
 describe('plan usage line', () => {

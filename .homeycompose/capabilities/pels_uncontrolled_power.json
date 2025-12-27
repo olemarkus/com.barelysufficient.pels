@@ -1,0 +1,17 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Uncontrolled load"
+  },
+  "desc": {
+    "en": "Current uncontrolled load"
+  },
+  "units": {
+    "en": "kW"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "decimals": 2
+}
