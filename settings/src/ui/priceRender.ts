@@ -19,6 +19,14 @@ const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   }
 };
 
+const HOUR_MS = 60 * 60 * 1000;
+
+const isCurrentHourEntry = (entryTime: Date, now: Date) => {
+  const start = entryTime.getTime();
+  const nowMs = now.getTime();
+  return nowMs >= start && nowMs < start + HOUR_MS;
+};
+
 const getCurrentHour = (now: Date, timeZone: string) => (
   new Date(getHourStartInTimeZone(now, timeZone))
 );
@@ -27,8 +35,8 @@ const getFuturePrices = (prices: PriceEntry[], currentHour: Date) => (
   prices.filter((price) => new Date(price.startsAt) >= currentHour)
 );
 
-const findCurrentEntry = (prices: PriceEntry[], currentHour: Date) => (
-  prices.find((price) => new Date(price.startsAt).getTime() === currentHour.getTime())
+const findCurrentEntry = (prices: PriceEntry[], now: Date) => (
+  prices.find((price) => isCurrentHourEntry(new Date(price.startsAt), now))
 );
 
 const getPriceIndicatorIcon = (tone: 'cheap' | 'expensive' | 'neutral') => {
@@ -101,7 +109,6 @@ const buildPriceSummarySection = (
 
 type PriceTimeContext = {
   now: Date;
-  currentHour: Date;
   timeZone: string;
 };
 
@@ -137,7 +144,6 @@ const buildPriceNotice = (className: string, text: string) => {
 
 type PriceRenderContext = {
   now: Date;
-  currentHour: Date;
   futurePrices: PriceEntry[];
   currentEntry?: PriceEntry;
   cheapHours: PriceEntry[];
@@ -158,9 +164,8 @@ const buildPriceRenderContext = (data: CombinedPriceData, timeZone: string): Pri
 
   return {
     now,
-    currentHour,
     futurePrices,
-    currentEntry: findCurrentEntry(futurePrices, currentHour),
+    currentEntry: findCurrentEntry(data.prices, now),
     cheapHours,
     expensiveHours,
     thresholdPct: data.thresholdPercent ?? 25,
@@ -233,14 +238,14 @@ const renderPriceNotices = (context: PriceRenderContext, data: CombinedPriceData
 };
 
 const formatPriceTimeLabel = (entryTime: Date, timeContext: PriceTimeContext) => {
-  const { currentHour, now, timeZone } = timeContext;
+  const { now, timeZone } = timeContext;
   const timeStr = formatTimeInTimeZone(entryTime, { hour: '2-digit', minute: '2-digit' }, timeZone);
   const entryKey = getDateKeyInTimeZone(entryTime, timeZone);
   const nowKey = getDateKeyInTimeZone(now, timeZone);
   const dateStr = entryKey !== nowKey
     ? ` (${formatDateInTimeZone(entryTime, { weekday: 'short' }, timeZone)})`
     : '';
-  const nowLabel = entryTime.getTime() === currentHour.getTime() ? ' ← now' : '';
+  const nowLabel = isCurrentHourEntry(entryTime, now) ? ' ← now' : '';
   return `${timeStr}${dateStr}${nowLabel}`;
 };
 
@@ -276,7 +281,7 @@ const buildPriceChip = (entry: PriceEntry, priceClass: string) => {
 
 const createPriceRow = (entry: PriceEntry, priceClass: string, timeContext: PriceTimeContext) => {
   const entryTime = new Date(entry.startsAt);
-  const isCurrentHour = entryTime.getTime() === timeContext.currentHour.getTime();
+  const isCurrentHour = isCurrentHourEntry(entryTime, timeContext.now);
 
   const row = createDeviceRow({
     name: formatPriceTimeLabel(entryTime, timeContext),

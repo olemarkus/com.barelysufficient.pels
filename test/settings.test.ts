@@ -78,6 +78,12 @@ describe('settings script', () => {
     global.Homey = {
       ready: jest.fn().mockResolvedValue(undefined),
       set: jest.fn((key, val, cb) => cb && cb(null)),
+      clock: {
+        getTimezone: () => 'UTC',
+      },
+      i18n: {
+        getTimezone: () => 'UTC',
+      },
       get: jest.fn((key, cb) => cb(null, [
         {
           id: 'dev-1',
@@ -350,20 +356,18 @@ describe('settings script', () => {
   it('displays cheap and expensive hours when combined_prices are available', async () => {
     // Create price data with some cheap and expensive hours
     const now = new Date();
-    const currentHour = now.getHours();
-    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const currentHourStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), 0, 0, 0);
+    const hourMs = 60 * 60 * 1000;
 
     // Create 48 hours of prices (today and tomorrow) with average around 100 øre
     // Make cheap hours in the future relative to current hour
     const prices: any[] = [];
     for (let hourOffset = 0; hourOffset < 48; hourOffset++) {
-      const date = new Date(baseDate);
-      date.setHours(hourOffset, 0, 0, 0);
+      const date = new Date(currentHourStartMs + hourOffset * hourMs);
       let total = 100; // Normal price
       // Make hours relative to current: current+1 to +3 cheap, current+6 to +8 expensive
-      const hoursFromNow = hourOffset - currentHour;
-      if (hoursFromNow >= 1 && hoursFromNow <= 3) total = 50; // Cheap hours
-      if (hoursFromNow >= 6 && hoursFromNow <= 8) total = 150; // Expensive hours
+      if (hourOffset >= 1 && hourOffset <= 3) total = 50; // Cheap hours
+      if (hourOffset >= 6 && hourOffset <= 8) total = 150; // Expensive hours
       prices.push({
         startsAt: date.toISOString(),
         total,
@@ -438,13 +442,13 @@ describe('settings script', () => {
   it('shows notice when all prices are within threshold', async () => {
     // Create price data where all prices are within 25% of average
     const now = new Date();
-    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const currentHourStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), 0, 0, 0);
+    const hourMs = 60 * 60 * 1000;
 
     // All prices around 100 øre (within 25% threshold)
     const prices: any[] = [];
     for (let hour = 0; hour < 24; hour++) {
-      const date = new Date(baseDate);
-      date.setHours(hour, 0, 0, 0);
+      const date = new Date(currentHourStartMs + hour * hourMs);
       // Vary between 85-115 øre (within 25% of 100 average)
       const total = 90 + (hour % 5) * 5;
       prices.push({
@@ -504,18 +508,16 @@ describe('settings script', () => {
   it('falls back to electricity_prices when combined_prices not available', async () => {
     // Create spot-only price data
     const now = new Date();
-    const currentHour = now.getHours();
-    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const currentHourStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), 0, 0, 0);
+    const hourMs = 60 * 60 * 1000;
 
     const spotPrices: any[] = [];
     for (let hour = 0; hour < 24; hour++) {
-      const date = new Date(baseDate);
-      date.setHours(hour, 0, 0, 0);
+      const date = new Date(currentHourStartMs + hour * hourMs);
       let total = 80;
       // Make cheap/expensive hours relative to current hour
-      const hoursFromNow = hour - currentHour;
-      if (hoursFromNow >= 1 && hoursFromNow <= 3) total = 40; // Cheap
-      if (hoursFromNow >= 6 && hoursFromNow <= 8) total = 120; // Expensive
+      if (hour >= 1 && hour <= 3) total = 40; // Cheap
+      if (hour >= 6 && hour <= 8) total = 120; // Expensive
       spotPrices.push({
         startsAt: date.toISOString(),
         total,

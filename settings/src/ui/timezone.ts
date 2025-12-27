@@ -82,8 +82,8 @@ export const formatTimeInTimeZone = (date: Date, options: Intl.DateTimeFormatOpt
 );
 
 export const getHourStartInTimeZone = (date: Date, timeZone: string) => {
-  const { year, month, day, hour, minute, second } = getZonedParts(date, timeZone);
-  const utcCandidate = Date.UTC(year, month - 1, day, hour, minute, second);
-  const offsetMs = utcCandidate - date.getTime();
-  return Date.UTC(year, month - 1, day, hour, 0, 0, 0) - offsetMs;
+  const { year, month, day, hour } = getZonedParts(date, timeZone);
+  const utcHour = Date.UTC(year, month - 1, day, hour, 0, 0, 0);
+  const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcHour), timeZone);
+  return utcHour - offsetMinutes * 60 * 1000;
 };
