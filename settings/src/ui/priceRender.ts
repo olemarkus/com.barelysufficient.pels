@@ -1,7 +1,14 @@
 import { priceList, priceEmpty, priceStatusBadge } from './dom';
 import { getTimeAgo } from './utils';
+import { getHomeyTimezone } from './homey';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { createDeviceRow } from './components';
+import {
+  formatDateInTimeZone,
+  formatTimeInTimeZone,
+  getDateKeyInTimeZone,
+  getHourStartInTimeZone,
+} from './timezone';
 
 const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   if (!priceStatusBadge) return;
@@ -12,11 +19,9 @@ const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   }
 };
 
-const getCurrentHour = (now: Date) => {
-  const currentHour = new Date(now);
-  currentHour.setMinutes(0, 0, 0);
-  return currentHour;
-};
+const getCurrentHour = (now: Date, timeZone: string) => (
+  new Date(getHourStartInTimeZone(now, timeZone))
+);
 
 const getFuturePrices = (prices: PriceEntry[], currentHour: Date) => (
   prices.filter((price) => new Date(price.startsAt) >= currentHour)
@@ -64,13 +69,14 @@ const buildPriceSummarySection = (
   cheapHours: PriceEntry[],
   expensiveHours: PriceEntry[],
   thresholdPct: number,
+  timeZone: string,
 ) => {
   const summarySection = document.createElement('div');
   summarySection.className = 'price-summary';
 
   if (cheapHours.length > 0) {
     const cheapest = cheapHours[0];
-    const cheapestTime = new Date(cheapest.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const cheapestTime = formatTimeInTimeZone(new Date(cheapest.startsAt), { hour: '2-digit', minute: '2-digit' }, timeZone);
     const detailText = `(cheapest: ${cheapest.total.toFixed(0)} øre at ${cheapestTime})`;
     summarySection.appendChild(buildPriceSummaryItem('cheap', cheapHours.length, 'cheap hour', detailText));
   } else {
@@ -81,7 +87,7 @@ const buildPriceSummarySection = (
 
   if (expensiveHours.length > 0) {
     const mostExpensive = expensiveHours[0];
-    const expensiveTime = new Date(mostExpensive.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const expensiveTime = formatTimeInTimeZone(new Date(mostExpensive.startsAt), { hour: '2-digit', minute: '2-digit' }, timeZone);
     const detailText = `(peak: ${mostExpensive.total.toFixed(0)} øre at ${expensiveTime})`;
     summarySection.appendChild(buildPriceSummaryItem('expensive', expensiveHours.length, 'expensive hour', detailText));
   } else {
@@ -93,12 +99,17 @@ const buildPriceSummarySection = (
   return summarySection;
 };
 
+type PriceTimeContext = {
+  now: Date;
+  currentHour: Date;
+  timeZone: string;
+};
+
 const buildPriceDetailsSection = (
   title: string,
   entries: PriceEntry[],
-  currentHour: Date,
-  now: Date,
   priceClass: string,
+  timeContext: PriceTimeContext,
 ) => {
   const details = document.createElement('details');
   details.className = 'price-details';
@@ -106,7 +117,7 @@ const buildPriceDetailsSection = (
   summary.textContent = title;
   details.appendChild(summary);
   entries.forEach((entry) => {
-    details.appendChild(createPriceRow(entry, currentHour, now, priceClass));
+    details.appendChild(createPriceRow(entry, priceClass, timeContext));
   });
   return details;
 };
@@ -133,11 +144,12 @@ type PriceRenderContext = {
   expensiveHours: PriceEntry[];
   thresholdPct: number;
   avgPrice: number;
+  timeZone: string;
 };
 
-const buildPriceRenderContext = (data: CombinedPriceData): PriceRenderContext | null => {
+const buildPriceRenderContext = (data: CombinedPriceData, timeZone: string): PriceRenderContext | null => {
   const now = new Date();
-  const currentHour = getCurrentHour(now);
+  const currentHour = getCurrentHour(now, timeZone);
   const futurePrices = getFuturePrices(data.prices, currentHour);
   if (futurePrices.length === 0) return null;
 
@@ -153,20 +165,25 @@ const buildPriceRenderContext = (data: CombinedPriceData): PriceRenderContext | 
     expensiveHours,
     thresholdPct: data.thresholdPercent ?? 25,
     avgPrice: data.avgPrice,
+    timeZone,
   };
 };
 
 const renderPriceSections = (context: PriceRenderContext) => {
-  priceList.appendChild(buildPriceSummarySection(context.cheapHours, context.expensiveHours, context.thresholdPct));
+  priceList.appendChild(buildPriceSummarySection(
+    context.cheapHours,
+    context.expensiveHours,
+    context.thresholdPct,
+    context.timeZone,
+  ));
 
   if (context.cheapHours.length > 0) {
     priceList.appendChild(
       buildPriceDetailsSection(
         `🟢 Cheap hours (${context.cheapHours.length})`,
         context.cheapHours,
-        context.currentHour,
-        context.now,
         'price-low',
+        context,
       ),
     );
   }
@@ -176,9 +193,8 @@ const renderPriceSections = (context: PriceRenderContext) => {
       buildPriceDetailsSection(
         `🔴 Expensive hours (${context.expensiveHours.length})`,
         context.expensiveHours,
-        context.currentHour,
-        context.now,
         'price-high',
+        context,
       ),
     );
   }
@@ -193,7 +209,7 @@ const renderPriceSections = (context: PriceRenderContext) => {
   allSummary.textContent = `📊 All prices (${context.futurePrices.length} hours, avg ${context.avgPrice.toFixed(0)} øre/kWh)`;
   allDetails.appendChild(allSummary);
   allEntries.forEach(({ entry, priceClass }) => {
-    allDetails.appendChild(createPriceRow(entry, context.currentHour, context.now, priceClass));
+    allDetails.appendChild(createPriceRow(entry, priceClass, context));
   });
   priceList.appendChild(allDetails);
 };
@@ -211,15 +227,18 @@ const renderPriceNotices = (context: PriceRenderContext, data: CombinedPriceData
 
   if (data.lastFetched) {
     const lastFetchedDate = new Date(data.lastFetched);
-    const timeAgo = getTimeAgo(lastFetchedDate, context.now);
+    const timeAgo = getTimeAgo(lastFetchedDate, context.now, context.timeZone);
     priceList.appendChild(buildPriceNotice('price-last-fetched', `Last updated: ${timeAgo}`));
   }
 };
 
-const formatPriceTimeLabel = (entryTime: Date, currentHour: Date, now: Date) => {
-  const timeStr = entryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const dateStr = entryTime.toDateString() !== now.toDateString()
-    ? ` (${entryTime.toLocaleDateString([], { weekday: 'short' })})`
+const formatPriceTimeLabel = (entryTime: Date, timeContext: PriceTimeContext) => {
+  const { currentHour, now, timeZone } = timeContext;
+  const timeStr = formatTimeInTimeZone(entryTime, { hour: '2-digit', minute: '2-digit' }, timeZone);
+  const entryKey = getDateKeyInTimeZone(entryTime, timeZone);
+  const nowKey = getDateKeyInTimeZone(now, timeZone);
+  const dateStr = entryKey !== nowKey
+    ? ` (${formatDateInTimeZone(entryTime, { weekday: 'short' }, timeZone)})`
     : '';
   const nowLabel = entryTime.getTime() === currentHour.getTime() ? ' ← now' : '';
   return `${timeStr}${dateStr}${nowLabel}`;
@@ -255,12 +274,12 @@ const buildPriceChip = (entry: PriceEntry, priceClass: string) => {
   return chip;
 };
 
-const createPriceRow = (entry: PriceEntry, currentHour: Date, now: Date, priceClass: string) => {
+const createPriceRow = (entry: PriceEntry, priceClass: string, timeContext: PriceTimeContext) => {
   const entryTime = new Date(entry.startsAt);
-  const isCurrentHour = entryTime.getTime() === currentHour.getTime();
+  const isCurrentHour = entryTime.getTime() === timeContext.currentHour.getTime();
 
   const row = createDeviceRow({
-    name: formatPriceTimeLabel(entryTime, currentHour, now),
+    name: formatPriceTimeLabel(entryTime, timeContext),
     className: 'price-row',
     controls: [buildPriceChip(entry, priceClass)],
     controlsClassName: 'device-row__target',
@@ -282,7 +301,8 @@ export const renderPrices = (data: CombinedPriceData | null) => {
   }
 
   if (priceEmpty) priceEmpty.hidden = true;
-  const context = buildPriceRenderContext(data);
+  const timeZone = getHomeyTimezone();
+  const context = buildPriceRenderContext(data, timeZone);
   if (!context) {
     if (priceEmpty) priceEmpty.hidden = false;
     return;

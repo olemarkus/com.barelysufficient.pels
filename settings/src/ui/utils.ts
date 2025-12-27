@@ -10,7 +10,7 @@ export const escapeHtml = (str: string): string => {
 /**
  * Get a human-readable "time ago" string.
  */
-export const getTimeAgo = (date: Date, now: Date): string => {
+export const getTimeAgo = (date: Date, now: Date, timeZone: string): string => {
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / (1000 * 60));
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -20,5 +20,5 @@ export const getTimeAgo = (date: Date, now: Date): string => {
   if (diffMins < 60) return `${diffMins} minutes ago`;
   if (diffHours === 1) return '1 hour ago';
   if (diffHours < 24) return `${diffHours} hours ago`;
-  return date.toLocaleString();
+  return date.toLocaleString([], { timeZone });
 };
