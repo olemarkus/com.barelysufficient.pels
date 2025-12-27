@@ -43,7 +43,12 @@ const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => {
   return plan as PlanSnapshot;
 };
 
-const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): string[] | null => {
+type PlanMetaLines = {
+  now: string[];
+  hour: string[];
+};
+
+const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null => {
   if (!meta) return null;
   const { totalKw, softLimitKw, headroomKw } = meta;
   if (typeof totalKw !== 'number' || typeof softLimitKw !== 'number' || typeof headroomKw !== 'number') {
@@ -53,41 +58,34 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): string[] | null => {
   const headroomAbs = Math.abs(headroomKw).toFixed(1);
   const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
   const powerText = `Now ${totalKw.toFixed(1)}kW / Limit ${softLimitKw.toFixed(1)}kW`;
-  const lines = [powerText, headroomText];
+  const nowLines = [powerText, headroomText];
+  const hourLines: string[] = [];
 
   if (typeof meta.controlledKw === 'number' && typeof meta.uncontrolledKw === 'number') {
-    lines.push(`Controlled ${meta.controlledKw.toFixed(2)}kW / Uncontrolled ${meta.uncontrolledKw.toFixed(2)}kW`);
+    nowLines.push(`Controlled ${meta.controlledKw.toFixed(2)}kW / Uncontrolled ${meta.uncontrolledKw.toFixed(2)}kW`);
   }
 
   if (typeof meta.usedKWh === 'number' && typeof meta.budgetKWh === 'number') {
-    lines.push(`Used ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)} kWh`);
+    hourLines.push(`Used ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)} kWh`);
   }
   if (typeof meta.hourControlledKWh === 'number' && typeof meta.hourUncontrolledKWh === 'number') {
-    lines.push(`Controlled ${meta.hourControlledKWh.toFixed(2)} / Uncontrolled ${meta.hourUncontrolledKWh.toFixed(2)} kWh`);
+    hourLines.push(`Controlled ${meta.hourControlledKWh.toFixed(2)} / Uncontrolled ${meta.hourUncontrolledKWh.toFixed(2)} kWh`);
   }
   if (typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10) {
-    lines.push('End of hour');
+    hourLines.push('End of hour');
   }
 
-  return lines;
+  return { now: nowLines, hour: hourLines };
 };
 
 const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
-  const lines = buildPlanMetaLines(meta);
-  if (!lines) {
+  const metaLines = buildPlanMetaLines(meta);
+  if (!metaLines) {
     planMeta.textContent = 'Awaiting data';
     return;
   }
 
-  const nowLines: string[] = [];
-  const hourLines: string[] = [];
-  lines.forEach((line) => {
-    if (line.includes('kWh') || line === 'End of hour') {
-      hourLines.push(line);
-    } else {
-      nowLines.push(line);
-    }
-  });
+  const { now: nowLines, hour: hourLines } = metaLines;
 
   planMeta.innerHTML = '';
   const addSection = (title: string, sectionLines: string[]) => {
