@@ -11,6 +11,8 @@ export function buildPelsStatus(params: {
   status: {
     headroomKw: number | null;
     hourlyUsageKwh: number;
+    controlledKw?: number;
+    uncontrolledKw?: number;
     shedding: boolean;
     priceLevel: PriceLevel;
     devicesOn: number;
@@ -27,6 +29,8 @@ export function buildPelsStatus(params: {
     status: {
       headroomKw: plan.meta.headroomKw,
       hourlyUsageKwh: plan.meta.usedKWh ?? 0,
+      controlledKw: plan.meta.controlledKw,
+      uncontrolledKw: plan.meta.uncontrolledKw,
       shedding: hasShedding,
       priceLevel,
       devicesOn,

@@ -8,6 +8,8 @@ class PelsInsightsDevice extends Homey.Device {
       'pels_shortfall',
       'pels_headroom',
       'pels_hourly_usage',
+      'pels_controlled_power',
+      'pels_uncontrolled_power',
       'pels_shedding',
       'pels_price_level',
       'pels_devices_on',
@@ -67,6 +69,8 @@ class PelsInsightsDevice extends Homey.Device {
     const status = this.homey.settings.get('pels_status') as {
       headroomKw?: number;
       hourlyUsageKwh?: number;
+      controlledKw?: number;
+      uncontrolledKw?: number;
       shedding?: boolean;
       priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
       devicesOn?: number;
@@ -81,6 +85,12 @@ class PelsInsightsDevice extends Homey.Device {
       }
       if (typeof status.hourlyUsageKwh === 'number') {
         await this.setCapabilityValue('pels_hourly_usage', status.hourlyUsageKwh);
+      }
+      if (typeof status.controlledKw === 'number') {
+        await this.setCapabilityValue('pels_controlled_power', status.controlledKw);
+      }
+      if (typeof status.uncontrolledKw === 'number') {
+        await this.setCapabilityValue('pels_uncontrolled_power', status.uncontrolledKw);
       }
       if (typeof status.shedding === 'boolean') {
         await this.setCapabilityValue('pels_shedding', status.shedding);

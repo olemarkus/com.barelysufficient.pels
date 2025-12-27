@@ -31,6 +31,8 @@ type PlanSnapshot = {
     minutesRemaining?: number;
     controlledKw?: number;
     uncontrolledKw?: number;
+    hourControlledKWh?: number;
+    hourUncontrolledKWh?: number;
   };
   devices?: PlanDeviceSnapshot[];
 };
@@ -58,7 +60,10 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): string[] | null => {
   }
 
   if (typeof meta.usedKWh === 'number' && typeof meta.budgetKWh === 'number') {
-    lines.push(`This hour: ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)}kWh`);
+    lines.push(`Used ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)} kWh`);
+  }
+  if (typeof meta.hourControlledKWh === 'number' && typeof meta.hourUncontrolledKWh === 'number') {
+    lines.push(`Controlled ${meta.hourControlledKWh.toFixed(2)} / Uncontrolled ${meta.hourUncontrolledKWh.toFixed(2)} kWh`);
   }
   if (typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10) {
     lines.push('End of hour');
@@ -73,12 +78,42 @@ const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
     planMeta.textContent = 'Awaiting data';
     return;
   }
-  planMeta.innerHTML = '';
+
+  const nowLines: string[] = [];
+  const hourLines: string[] = [];
   lines.forEach((line) => {
-    const div = document.createElement('div');
-    div.textContent = line;
-    planMeta.appendChild(div);
+    if (line.includes('kWh') || line === 'End of hour') {
+      hourLines.push(line);
+    } else {
+      nowLines.push(line);
+    }
   });
+
+  planMeta.innerHTML = '';
+  const addSection = (title: string, sectionLines: string[]) => {
+    if (sectionLines.length === 0) return;
+    const section = document.createElement('div');
+    section.className = 'plan-meta-section';
+    const heading = document.createElement('div');
+    heading.className = 'plan-meta-title';
+    heading.textContent = title;
+    section.appendChild(heading);
+    sectionLines.forEach((line) => {
+      const div = document.createElement('div');
+      div.className = 'plan-meta-line-text';
+      div.textContent = line;
+      section.appendChild(div);
+    });
+    planMeta.appendChild(section);
+  };
+
+  addSection('Now', nowLines);
+  if (nowLines.length && hourLines.length) {
+    const divider = document.createElement('div');
+    divider.className = 'plan-meta-divider';
+    planMeta.appendChild(divider);
+  }
+  addSection('This hour', hourLines);
 };
 
 const hasPlanTempData = (dev: PlanDeviceSnapshot) => dev.plannedTarget !== null && dev.plannedTarget !== undefined

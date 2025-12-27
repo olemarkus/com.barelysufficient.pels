@@ -437,6 +437,32 @@ input:focus-visible {
   font-size: var(--font-size-xs);
   line-height: var(--font-line-height-normal);
   text-align: right;
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.plan-meta-section {
+  display: grid;
+  gap: 2px;
+}
+
+.plan-meta-title {
+  font-size: var(--font-size-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.plan-meta-line-text {
+  color: var(--text);
+}
+
+.plan-meta-divider {
+  height: 1px;
+  background: var(--panel-border);
+  opacity: 0.6;
+  margin: 2px 0;
 }
 
 .pill.ok {
@@ -627,6 +653,7 @@ input:focus-visible {
   text-align: right;
   color: var(--text);
 }
+
 
 .usage-row--warn .usage-bar__fill--accent {
   background: var(--color-state-warning-bg);

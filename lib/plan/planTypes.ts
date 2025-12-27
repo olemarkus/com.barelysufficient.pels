@@ -35,6 +35,8 @@ export type DevicePlan = {
     minutesRemaining?: number;
     controlledKw?: number;
     uncontrolledKw?: number;
+    hourControlledKWh?: number;
+    hourUncontrolledKWh?: number;
   };
   devices: DevicePlanDevice[];
 };
