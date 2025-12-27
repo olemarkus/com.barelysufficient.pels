@@ -66,7 +66,7 @@ class PelsInsightsDevice extends Homey.Device {
   }
 
   async updateFromStatus(): Promise<void> {
-    const status = this.homey.settings.get('pels_status') as {
+    type StatusData = {
       headroomKw?: number;
       hourlyUsageKwh?: number;
       controlledKw?: number;
@@ -75,34 +75,34 @@ class PelsInsightsDevice extends Homey.Device {
       priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
       devicesOn?: number;
       devicesOff?: number;
-    } | null;
+    };
+    const status = this.homey.settings.get('pels_status') as StatusData | null;
 
     if (!status) return;
 
     try {
-      if (typeof status.headroomKw === 'number') {
-        await this.setCapabilityValue('pels_headroom', status.headroomKw);
-      }
-      if (typeof status.hourlyUsageKwh === 'number') {
-        await this.setCapabilityValue('pels_hourly_usage', status.hourlyUsageKwh);
-      }
-      if (typeof status.controlledKw === 'number') {
-        await this.setCapabilityValue('pels_controlled_power', status.controlledKw);
-      }
-      if (typeof status.uncontrolledKw === 'number') {
-        await this.setCapabilityValue('pels_uncontrolled_power', status.uncontrolledKw);
-      }
-      if (typeof status.shedding === 'boolean') {
-        await this.setCapabilityValue('pels_shedding', status.shedding);
-      }
-      if (status.priceLevel) {
-        await this.setCapabilityValue('pels_price_level', status.priceLevel);
-      }
-      if (typeof status.devicesOn === 'number') {
-        await this.setCapabilityValue('pels_devices_on', status.devicesOn);
-      }
-      if (typeof status.devicesOff === 'number') {
-        await this.setCapabilityValue('pels_devices_off', status.devicesOff);
+      const capabilityMap: Array<{ key: keyof StatusData; id: string; type: 'string' | 'number' | 'boolean' }> = [
+        { key: 'headroomKw', id: 'pels_headroom', type: 'number' },
+        { key: 'hourlyUsageKwh', id: 'pels_hourly_usage', type: 'number' },
+        { key: 'controlledKw', id: 'pels_controlled_power', type: 'number' },
+        { key: 'uncontrolledKw', id: 'pels_uncontrolled_power', type: 'number' },
+        { key: 'shedding', id: 'pels_shedding', type: 'boolean' },
+        { key: 'priceLevel', id: 'pels_price_level', type: 'string' },
+        { key: 'devicesOn', id: 'pels_devices_on', type: 'number' },
+        { key: 'devicesOff', id: 'pels_devices_off', type: 'number' },
+      ];
+
+      const shouldSetCapability = (value: unknown, type: 'string' | 'number' | 'boolean') => {
+        if (type === 'string') return typeof value === 'string' && value.length > 0;
+        if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
+        return typeof value === 'boolean';
+      };
+
+      for (const { key, id, type } of capabilityMap) {
+        const value = status[key];
+        if (shouldSetCapability(value, type)) {
+          await this.setCapabilityValue(id, value);
+        }
       }
     } catch (error) {
       this.error('Failed to update status capabilities', error);
