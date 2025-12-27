@@ -342,8 +342,6 @@
         "pels_shortfall",
         "pels_headroom",
         "pels_hourly_usage",
-        "pels_controlled_power",
-        "pels_uncontrolled_power",
         "pels_shedding",
         "pels_price_level",
         "pels_devices_on",
@@ -381,23 +379,6 @@
       "type": "string",
       "getable": true,
       "setable": false
-    },
-    "pels_controlled_power": {
-      "type": "number",
-      "title": {
-        "en": "Controlled load"
-      },
-      "desc": {
-        "en": "Current controlled load"
-      },
-      "units": {
-        "en": "kW"
-      },
-      "getable": true,
-      "setable": false,
-      "uiComponent": "sensor",
-      "insights": true,
-      "decimals": 2
     },
     "pels_devices_off": {
       "type": "number",
@@ -535,23 +516,6 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": false
-    },
-    "pels_uncontrolled_power": {
-      "type": "number",
-      "title": {
-        "en": "Uncontrolled load"
-      },
-      "desc": {
-        "en": "Current uncontrolled load"
-      },
-      "units": {
-        "en": "kW"
-      },
-      "getable": true,
-      "setable": false,
-      "uiComponent": "sensor",
-      "insights": true,
-      "decimals": 2
     }
   }
 }
