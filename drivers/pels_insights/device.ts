@@ -1,6 +1,40 @@
 import Homey from 'homey';
 import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 
+type StatusData = {
+  headroomKw?: number;
+  hourlyUsageKwh?: number;
+  controlledKw?: number;
+  uncontrolledKw?: number;
+  shedding?: boolean;
+  priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
+  devicesOn?: number;
+  devicesOff?: number;
+};
+
+type CapabilityEntry = {
+  key: keyof StatusData;
+  id: string;
+  type: 'string' | 'number' | 'boolean';
+};
+
+const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
+  { key: 'headroomKw', id: 'pels_headroom', type: 'number' },
+  { key: 'hourlyUsageKwh', id: 'pels_hourly_usage', type: 'number' },
+  { key: 'controlledKw', id: 'pels_controlled_power', type: 'number' },
+  { key: 'uncontrolledKw', id: 'pels_uncontrolled_power', type: 'number' },
+  { key: 'shedding', id: 'pels_shedding', type: 'boolean' },
+  { key: 'priceLevel', id: 'pels_price_level', type: 'string' },
+  { key: 'devicesOn', id: 'pels_devices_on', type: 'number' },
+  { key: 'devicesOff', id: 'pels_devices_off', type: 'number' },
+];
+
+const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
+  if (type === 'string') return typeof value === 'string' && value.length > 0;
+  if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
+  return typeof value === 'boolean';
+};
+
 class PelsInsightsDevice extends Homey.Device {
   async onInit(): Promise<void> {
     // Add capabilities if missing (for devices created before these were added)
@@ -66,39 +100,12 @@ class PelsInsightsDevice extends Homey.Device {
   }
 
   async updateFromStatus(): Promise<void> {
-    type StatusData = {
-      headroomKw?: number;
-      hourlyUsageKwh?: number;
-      controlledKw?: number;
-      uncontrolledKw?: number;
-      shedding?: boolean;
-      priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
-      devicesOn?: number;
-      devicesOff?: number;
-    };
     const status = this.homey.settings.get('pels_status') as StatusData | null;
 
     if (!status) return;
 
     try {
-      const capabilityMap: Array<{ key: keyof StatusData; id: string; type: 'string' | 'number' | 'boolean' }> = [
-        { key: 'headroomKw', id: 'pels_headroom', type: 'number' },
-        { key: 'hourlyUsageKwh', id: 'pels_hourly_usage', type: 'number' },
-        { key: 'controlledKw', id: 'pels_controlled_power', type: 'number' },
-        { key: 'uncontrolledKw', id: 'pels_uncontrolled_power', type: 'number' },
-        { key: 'shedding', id: 'pels_shedding', type: 'boolean' },
-        { key: 'priceLevel', id: 'pels_price_level', type: 'string' },
-        { key: 'devicesOn', id: 'pels_devices_on', type: 'number' },
-        { key: 'devicesOff', id: 'pels_devices_off', type: 'number' },
-      ];
-
-      const shouldSetCapability = (value: unknown, type: 'string' | 'number' | 'boolean') => {
-        if (type === 'string') return typeof value === 'string' && value.length > 0;
-        if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
-        return typeof value === 'boolean';
-      };
-
-      for (const { key, id, type } of capabilityMap) {
+      for (const { key, id, type } of STATUS_CAPABILITY_MAP) {
         const value = status[key];
         if (shouldSetCapability(value, type)) {
           await this.setCapabilityValue(id, value);
