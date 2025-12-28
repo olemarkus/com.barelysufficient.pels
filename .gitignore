@@ -1,6 +1,7 @@
 /env.json
 /node_modules/
 /.homeybuild/
+/app.json
 /settings/script.js
 /test/screenshots/*.png
 # Legacy eslint config (we use eslint.config.mjs flat config)
