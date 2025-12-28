@@ -19,6 +19,7 @@ import {
   exportSwapState,
 } from './planSwapState';
 import { getAggressivenessConfig } from '../dailyBudget/dailyBudgetManager';
+import { clamp } from '../utils/mathUtils';
 import { buildInsufficientHeadroomUpdate, buildSwapCandidates, estimateRestorePower } from './planRestoreSwap';
 
 export type RestoreDeps = {
@@ -471,8 +472,4 @@ function setDevice(
   const current = deviceMap.get(id);
   if (!current) return;
   deviceMap.set(id, { ...current, ...updates });
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }

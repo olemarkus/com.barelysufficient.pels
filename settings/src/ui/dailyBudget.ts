@@ -46,6 +46,8 @@ const formatPercent = (value: number) => (
   Number.isFinite(value) ? `${Math.round(value * 100)}%` : '--%'
 );
 
+let priceOptimizationEnabled = true;
+
 const setPillState = (enabled: boolean, exceeded: boolean) => {
   if (!dailyBudgetStatusPill) return;
   dailyBudgetStatusPill.classList.remove('ok', 'warn');
@@ -166,9 +168,25 @@ const renderDailyBudgetChips = (payload: DailyBudgetUiPayload) => {
     setChipState(dailyBudgetConfidence, confidenceLabel, payload.state.confidence >= 0.5);
   }
   if (dailyBudgetPriceShapingState) {
-    const label = payload.state.priceShapingActive ? 'Price shaping on' : 'Price shaping off';
-    const alert = !payload.state.priceShapingActive && payload.budget.enabled;
-    setChipState(dailyBudgetPriceShapingState, label, payload.state.priceShapingActive, alert);
+    const priceShapingEnabled = payload.budget.priceShapingEnabled;
+    const priceOptimizationOn = priceOptimizationEnabled;
+    let label = 'Price shaping off';
+    let active = false;
+    let alert = false;
+
+    if (!priceShapingEnabled) {
+      label = 'Price shaping off';
+    } else if (!priceOptimizationOn) {
+      label = 'Requires price optimization';
+    } else if (!payload.state.priceShapingActive) {
+      label = 'Waiting for prices';
+      alert = payload.budget.enabled;
+    } else {
+      label = 'Price shaping on';
+      active = true;
+    }
+
+    setChipState(dailyBudgetPriceShapingState, label, active, alert);
   }
   if (dailyBudgetFrozen) {
     dailyBudgetFrozen.hidden = !payload.state.frozen;
@@ -235,7 +253,13 @@ export const saveDailyBudgetSettings = async () => {
 
 export const refreshDailyBudgetPlan = async () => {
   try {
-    const payload = await callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget');
+    const [payload, priceOptEnabled] = await Promise.all([
+      callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
+      getSetting('price_optimization_enabled').catch(() => undefined),
+    ]);
+    if (priceOptEnabled !== undefined) {
+      priceOptimizationEnabled = priceOptEnabled !== false;
+    }
     renderDailyBudget(payload);
   } catch (error) {
     await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');

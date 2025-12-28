@@ -1,4 +1,5 @@
 import { getZonedParts } from '../utils/dateUtils';
+import { clamp } from '../utils/mathUtils';
 import type { DailyBudgetAggressiveness } from './dailyBudgetTypes';
 
 export type CombinedPriceEntry = {
@@ -250,8 +251,4 @@ function percentile(values: number[], ratio: number): number {
   if (values.length === 0) return 0;
   const index = Math.min(values.length - 1, Math.max(0, Math.floor(values.length * ratio)));
   return values[index];
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }

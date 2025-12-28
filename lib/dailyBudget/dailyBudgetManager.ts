@@ -16,6 +16,7 @@ import {
   sumArray,
 } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
+import { clamp } from '../utils/mathUtils';
 import {
   buildDayContext,
   buildDailyBudgetSnapshot,
@@ -432,13 +433,11 @@ export class DailyBudgetManager {
       this.deps.logDebug(`Daily budget: skip learning for ${previousDateKey} (0 kWh)`);
       return;
     }
-    const hourlyTotals = Array.from({ length: 24 }, (_, hour) => (
-      bucketStartUtcMs.reduce((sum, ts, index) => {
-        const bucketHour = getZonedParts(new Date(ts), timeZone).hour;
-        if (bucketHour !== hour) return sum;
-        return sum + (bucketUsage[index] ?? 0);
-      }, 0)
-    ));
+    const hourlyTotals = Array.from({ length: 24 }, () => 0);
+    bucketStartUtcMs.forEach((ts, index) => {
+      const bucketHour = getZonedParts(new Date(ts), timeZone).hour;
+      hourlyTotals[bucketHour] = (hourlyTotals[bucketHour] ?? 0) + (bucketUsage[index] ?? 0);
+    });
     const nextWeights = hourlyTotals.map((value) => value / totalKWh);
     this.updateProfile(nextWeights);
     this.state.frozen = false;
@@ -465,9 +464,6 @@ export class DailyBudgetManager {
   }
 
   private markDirty(force = false): void { this.dirty = true; if (force) this.lastPersistMs = 0; }
-}
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 function isDailyBudgetState(value: unknown): value is DailyBudgetState {
