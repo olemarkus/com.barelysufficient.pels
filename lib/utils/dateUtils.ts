@@ -2,6 +2,8 @@
  * Shared date utility functions for backend and frontend.
  */
 
+const timeZoneOffsetErrorLogged = new Set<string>();
+
 export function truncateToUtcHour(timestamp: number): number {
     const date = new Date(timestamp);
     return Date.UTC(
@@ -33,7 +35,12 @@ export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
         const hours = Number(match[1]);
         const minutes = match[2] ? Number(match[2]) : 0;
         return hours * 60 + Math.sign(hours) * minutes;
-    } catch {
+    } catch (error) {
+        if (!timeZoneOffsetErrorLogged.has(timeZone)) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(`getTimeZoneOffsetMinutes: failed to compute offset for ${timeZone}: ${message}`);
+            timeZoneOffsetErrorLogged.add(timeZone);
+        }
         return 0;
     }
 }
