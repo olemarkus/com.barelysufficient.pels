@@ -1,6 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
-import type { PlanContext } from './planContext';
+import type { DailyBudgetContext, PlanContext } from './planContext';
 import type { PowerTrackerState } from '../core/powerTracker';
 import {
   RECENT_SHED_EXTRA_BUFFER_KW,
@@ -18,6 +18,8 @@ import {
   cleanupStaleSwaps,
   exportSwapState,
 } from './planSwapState';
+import { getAggressivenessConfig } from '../dailyBudget/dailyBudgetManager';
+import { buildInsufficientHeadroomUpdate, buildSwapCandidates, estimateRestorePower } from './planRestoreSwap';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -55,6 +57,7 @@ export function applyRestorePlan(params: {
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapState = buildSwapState(state);
   const timing = buildRestoreTiming(state, context.headroomRaw, deps.powerTracker);
+  const budgetGate = resolveDailyBudgetGate(context.dailyBudget, planDevices);
 
   cleanupStaleSwaps(deviceMap, swapState, deps.log);
 
@@ -79,6 +82,7 @@ export function applyRestorePlan(params: {
         restoreHysteresis,
         restoredThisCycle,
         restoredOneThisCycle,
+        budgetGate,
         deps,
       });
       availableHeadroom = result.availableHeadroom;
@@ -97,6 +101,36 @@ export function applyRestorePlan(params: {
     restoredOneThisCycle,
     ...timing,
   };
+}
+
+type DailyBudgetGate = {
+  allowedPriority: number;
+  pressure: number;
+  reason: string;
+};
+
+function resolveDailyBudgetGate(
+  dailyBudget: DailyBudgetContext | undefined,
+  planDevices: DevicePlanDevice[],
+): DailyBudgetGate | null {
+  if (!dailyBudget?.enabled) return null;
+  const priorities = planDevices
+    .filter((dev) => dev.controllable !== false)
+    .map((dev) => dev.priority ?? 100);
+  if (priorities.length === 0) return null;
+  const minPriority = Math.min(...priorities);
+  const maxPriority = Math.max(...priorities);
+  const { restoreExponent } = getAggressivenessConfig(dailyBudget.aggressiveness);
+  const ratio = Math.pow(1 - clamp(dailyBudget.pressure, 0, 1), restoreExponent);
+  const allowedPriority = Math.round(minPriority + (maxPriority - minPriority) * ratio);
+  if (allowedPriority >= maxPriority) return null;
+  const reason = `daily budget (pressure ${(dailyBudget.pressure * 100).toFixed(0)}%)`;
+  return { allowedPriority, pressure: dailyBudget.pressure, reason };
+}
+
+function shouldAllowDailyBudgetRestore(dev: DevicePlanDevice, gate: DailyBudgetGate): boolean {
+  const priority = dev.priority ?? 100;
+  return priority <= gate.allowedPriority;
 }
 
 function buildRestoreTiming(
@@ -186,6 +220,7 @@ function planRestoreForDevice(params: {
   restoreHysteresis: number;
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
+  budgetGate: DailyBudgetGate | null;
   deps: RestoreDeps;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
@@ -199,6 +234,7 @@ function planRestoreForDevice(params: {
     restoreHysteresis,
     restoredThisCycle,
     restoredOneThisCycle,
+    budgetGate,
     deps,
   } = params;
 
@@ -207,6 +243,15 @@ function planRestoreForDevice(params: {
       plannedState: 'shed',
       reason: `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`,
     });
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  if (budgetGate && !shouldAllowDailyBudgetRestore(dev, budgetGate)) {
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'shed',
+      reason: budgetGate.reason,
+    });
+    deps.logDebug(`Plan: blocking restore of ${dev.name} - ${budgetGate.reason}`);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -390,81 +435,6 @@ function attemptSwapRestore(params: {
   return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
 }
 
-function buildSwapCandidates(params: {
-  dev: DevicePlanDevice;
-  onDevices: DevicePlanDevice[];
-  state: PlanEngineState;
-  availableHeadroom: number;
-  needed: number;
-  restoredThisCycle: Set<string>;
-}): {
-  ready: boolean;
-  toShed: DevicePlanDevice[];
-  potentialHeadroom: number;
-  shedNames: string;
-  shedPower: string;
-  availableHeadroom: number;
-  reason: string;
-} {
-  const {
-    dev,
-    onDevices,
-    state,
-    availableHeadroom,
-    needed,
-    restoredThisCycle,
-  } = params;
-  let potentialHeadroom = availableHeadroom;
-  let toShed: DevicePlanDevice[] = [];
-  for (const onDev of onDevices) {
-    if ((onDev.priority ?? 100) <= (dev.priority ?? 100)) break;
-    if (onDev.plannedState === 'shed') continue;
-    if (state.swappedOutFor[onDev.id]) continue;
-    if (restoredThisCycle.has(onDev.id)) continue;
-    const onDevPower = onDev.powerKw && onDev.powerKw > 0 ? onDev.powerKw : 1;
-    toShed = [...toShed, onDev];
-    potentialHeadroom += onDevPower;
-    if (potentialHeadroom >= needed) break;
-  }
-  if (potentialHeadroom < needed || toShed.length === 0) {
-    return {
-      ready: false,
-      toShed,
-      potentialHeadroom,
-      shedNames: '',
-      shedPower: '0.00',
-      availableHeadroom,
-      reason: `insufficient headroom (need ${needed.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`,
-    };
-  }
-  const shedNames = toShed.map((d) => d.name).join(', ');
-  const shedPower = toShed.reduce((sum, d) => sum + (d.powerKw ?? 1), 0).toFixed(2);
-  return {
-    ready: true,
-    toShed,
-    potentialHeadroom,
-    shedNames,
-    shedPower,
-    availableHeadroom,
-    reason: '',
-  };
-}
-
-function buildInsufficientHeadroomUpdate(
-  dev: DevicePlanDevice,
-  needed: number,
-  availableHeadroom: number,
-): Partial<DevicePlanDevice> {
-  const reason = `insufficient headroom (need ${needed.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`;
-  return { plannedState: 'shed', reason };
-}
-
-function estimateRestorePower(dev: DevicePlanDevice): number {
-  if (typeof dev.expectedPowerKw === 'number') return dev.expectedPowerKw;
-  if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
-  return dev.powerKw ?? 1;
-}
-
 function markOffDevicesStayOff(
   deviceMap: Map<string, DevicePlanDevice>,
   timing: { activeOvershoot: boolean; inCooldown: boolean; restoreCooldownSeconds: number; shedCooldownRemainingSec: number | null },
@@ -501,4 +471,8 @@ function setDevice(
   const current = deviceMap.get(id);
   if (!current) return;
   deviceMap.set(id, { ...current, ...updates });
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

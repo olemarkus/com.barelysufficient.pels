@@ -1,0 +1,37 @@
+{
+  "type": "enum",
+  "title": {
+    "en": "Limit reason"
+  },
+  "desc": {
+    "en": "Why PELS is currently limiting device restores or shedding"
+  },
+  "getable": true,
+  "setable": false,
+  "values": [
+    {
+      "id": "none",
+      "title": {
+        "en": "None"
+      }
+    },
+    {
+      "id": "hourly",
+      "title": {
+        "en": "Hourly limit"
+      }
+    },
+    {
+      "id": "daily",
+      "title": {
+        "en": "Daily budget"
+      }
+    },
+    {
+      "id": "both",
+      "title": {
+        "en": "Both"
+      }
+    }
+  ]
+}

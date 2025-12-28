@@ -5,6 +5,11 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  DAILY_BUDGET_AGGRESSIVENESS,
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
+  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  DAILY_BUDGET_RESET,
   OPERATING_MODE_SETTING,
 } from './settingsKeys';
 export type PriceServiceLike = {
@@ -22,6 +27,9 @@ export type SettingsHandlerDeps = {
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
   loadPriceOptimizationSettings: () => void;
+  loadDailyBudgetSettings: () => void;
+  updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
+  resetDailyBudgetLearning: () => void;
   priceService: PriceServiceLike;
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => Promise<void>;
@@ -71,12 +79,24 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       deps.loadPriceOptimizationSettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh plan after price optimization settings change');
     },
+    [DAILY_BUDGET_ENABLED]: async () => handleDailyBudgetChange(deps),
+    [DAILY_BUDGET_KWH]: async () => handleDailyBudgetChange(deps),
+    [DAILY_BUDGET_AGGRESSIVENESS]: async () => handleDailyBudgetChange(deps),
+    [DAILY_BUDGET_PRICE_SHAPING_ENABLED]: async () => handleDailyBudgetChange(deps),
+    combined_prices: async () => handleDailyBudgetPriceChange(deps),
     overshoot_behaviors: async () => {
       deps.loadCapacitySettings();
       await deps.rebuildPlanFromCache();
     },
     price_optimization_enabled: async () => {
       deps.updatePriceOptimizationEnabled(true);
+      deps.updateDailyBudgetState({ forcePlanRebuild: true });
+      await deps.rebuildPlanFromCache();
+    },
+    [DAILY_BUDGET_RESET]: async () => {
+      deps.resetDailyBudgetLearning();
+      deps.updateDailyBudgetState({ forcePlanRebuild: true });
+      deps.homey.settings.set(DAILY_BUDGET_RESET, null);
       await deps.rebuildPlanFromCache();
     },
     debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
@@ -136,6 +156,17 @@ async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<voi
   guard?.setLimit(limitKw);
   guard?.setSoftMargin(marginKw);
   await deps.updateOverheadToken(marginKw);
+  await deps.rebuildPlanFromCache();
+}
+
+async function handleDailyBudgetChange(deps: SettingsHandlerDeps): Promise<void> {
+  deps.loadDailyBudgetSettings();
+  deps.updateDailyBudgetState({ forcePlanRebuild: true });
+  await deps.rebuildPlanFromCache();
+}
+
+async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<void> {
+  deps.updateDailyBudgetState({ forcePlanRebuild: true });
   await deps.rebuildPlanFromCache();
 }
 

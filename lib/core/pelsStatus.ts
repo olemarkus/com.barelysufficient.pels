@@ -11,6 +11,12 @@ export function buildPelsStatus(params: {
   status: {
     headroomKw: number | null;
     hourlyUsageKwh: number;
+    dailyBudgetUsedKwh?: number;
+    dailyBudgetAllowedKwhNow?: number;
+    dailyBudgetRemainingKwh?: number;
+    dailyBudgetPressure?: number;
+    dailyBudgetExceeded?: boolean;
+    limitReason?: 'none' | 'hourly' | 'daily' | 'both';
     controlledKw?: number;
     uncontrolledKw?: number;
     shedding: boolean;
@@ -24,11 +30,18 @@ export function buildPelsStatus(params: {
   const priceLevel = resolvePriceLevel({ isCheap, isExpensive, combinedPrices });
   const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
   const { devicesOn, devicesOff } = countDevices(plan);
+  const limitReason = resolveLimitReason(plan);
 
   return {
     status: {
       headroomKw: plan.meta.headroomKw,
       hourlyUsageKwh: plan.meta.usedKWh ?? 0,
+      dailyBudgetUsedKwh: plan.meta.dailyBudgetUsedKWh,
+      dailyBudgetAllowedKwhNow: plan.meta.dailyBudgetAllowedKWhNow,
+      dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh,
+      dailyBudgetPressure: plan.meta.dailyBudgetPressure,
+      dailyBudgetExceeded: plan.meta.dailyBudgetExceeded,
+      limitReason,
       controlledKw: plan.meta.controlledKw,
       uncontrolledKw: plan.meta.uncontrolledKw,
       shedding: hasShedding,
@@ -70,4 +83,16 @@ function hasPrices(value: unknown): value is { prices: Array<{ total: number }> 
   if (!value || typeof value !== 'object') return false;
   const record = value as { prices?: unknown };
   return Array.isArray(record.prices) && record.prices.length > 0;
+}
+
+function resolveLimitReason(plan: DevicePlan): 'none' | 'hourly' | 'daily' | 'both' {
+  const dailyLimited = plan.devices.some((d) => d.plannedState === 'shed' && d.reason?.includes('daily budget'));
+  const hourlyLimited = Boolean(plan.meta.hourlyBudgetExhausted)
+    || (plan.meta.headroomKw !== null && plan.meta.headroomKw < 0)
+    || plan.devices.some((d) => d.plannedState === 'shed' && !d.reason?.includes('daily budget'));
+
+  if (dailyLimited && hourlyLimited) return 'both';
+  if (dailyLimited) return 'daily';
+  if (hourlyLimited) return 'hourly';
+  return 'none';
 }

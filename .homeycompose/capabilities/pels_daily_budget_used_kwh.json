@@ -1,0 +1,17 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Daily budget used"
+  },
+  "desc": {
+    "en": "kWh used so far today (daily budget)"
+  },
+  "units": {
+    "en": "kWh"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "decimals": 2
+}

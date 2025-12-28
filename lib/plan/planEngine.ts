@@ -6,6 +6,7 @@ import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
 import { PlanExecutor, PlanExecutorDeps } from './planExecutor';
 import { createPlanEngineState, PlanEngineState } from './planState';
+import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -20,6 +21,7 @@ export type PlanEngineDeps = {
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   getPowerTracker: () => PowerTrackerState;
+  getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
   getPriorityForDevice: (deviceId: string) => number;
   getDynamicSoftLimitOverride?: () => number | null;
@@ -50,6 +52,7 @@ export class PlanEngine {
       isCurrentHourCheap: deps.isCurrentHourCheap,
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
       getPowerTracker: deps.getPowerTracker,
+      getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
       getPriorityForDevice: deps.getPriorityForDevice,
       getShedBehavior: deps.getShedBehavior,
       getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
