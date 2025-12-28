@@ -1,0 +1,17 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Daily budget allowed now"
+  },
+  "desc": {
+    "en": "kWh allowed so far today by the daily budget plan"
+  },
+  "units": {
+    "en": "kWh"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "decimals": 2
+}

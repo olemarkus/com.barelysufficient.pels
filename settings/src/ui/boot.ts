@@ -53,6 +53,11 @@ import {
   loadPriceOptimizationSettings,
   renderPriceOptimization,
 } from './prices';
+import {
+  initDailyBudgetHandlers,
+  loadDailyBudgetSettings,
+  refreshDailyBudgetPlan,
+} from './dailyBudget';
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
 import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail';
 import { state } from './state';
@@ -87,12 +92,31 @@ const showTab = (tabId: string) => {
       void logSettingsError('Failed to refresh power data', error, 'showTab');
       void showToastError(error, 'Failed to refresh power data.');
     });
+    refreshDailyBudgetPlan().catch((error) => {
+      void logSettingsError('Failed to refresh daily budget', error, 'showTab');
+    });
   }
 };
 
 const initRealtimeListeners = () => {
   const homey = getHomeyClient();
   if (!homey || typeof homey.on !== 'function') return;
+
+  const refreshPlanIfVisible = () => {
+    const planPanel = document.querySelector('#plan-panel');
+    if (!planPanel || planPanel.classList.contains('hidden')) return;
+    refreshPlan().catch((error) => {
+      void logSettingsError('Failed to refresh plan', error, 'settings.set');
+    });
+  };
+
+  const refreshPricesIfVisible = () => {
+    const pricesPanel = document.querySelector('#price-panel');
+    if (!pricesPanel || pricesPanel.classList.contains('hidden')) return;
+    refreshPrices().catch((error) => {
+      void logSettingsError('Failed to refresh prices', error, 'settings.set');
+    });
+  };
 
   homey.on('plan_updated', (plan) => {
     const planPanel = document.querySelector('#plan-panel');
@@ -110,44 +134,69 @@ const initRealtimeListeners = () => {
     }
   });
 
-  homey.on('settings.set', (key) => {
+  const dailyBudgetRefreshKeys = new Set([
+    'daily_budget_enabled',
+    'daily_budget_kwh',
+    'daily_budget_aggressiveness',
+    'daily_budget_price_shaping_enabled',
+    'daily_budget_reset',
+    'combined_prices',
+    'price_optimization_enabled',
+  ]);
+
+  const dailyBudgetSettingsKeys = new Set([
+    'daily_budget_enabled',
+    'daily_budget_kwh',
+    'daily_budget_aggressiveness',
+    'daily_budget_price_shaping_enabled',
+  ]);
+
+  const handleSettingsSet = (key: string) => {
     if (key === CAPACITY_LIMIT_KW || key === CAPACITY_MARGIN_KW || key === CAPACITY_DRY_RUN) {
       loadCapacitySettings().catch((error) => {
         void logSettingsError('Failed to load capacity settings', error, 'settings.set');
       });
     }
+
     if (key === 'device_plan_snapshot') {
-      const planPanel = document.querySelector('#plan-panel');
-      if (planPanel && !planPanel.classList.contains('hidden')) {
-        refreshPlan().catch((error) => {
-          void logSettingsError('Failed to refresh plan', error, 'settings.set');
-        });
-      }
+      refreshPlanIfVisible();
     }
+
     if (key === 'combined_prices' || key === 'electricity_prices') {
-      const pricesPanel = document.querySelector('#price-panel');
-      if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
-        refreshPrices().catch((error) => {
-          void logSettingsError('Failed to refresh prices', error, 'settings.set');
-        });
-      }
+      refreshPricesIfVisible();
     }
+
     if (key === OPERATING_MODE_SETTING) {
       refreshActiveMode().catch((error) => {
         void logSettingsError('Failed to refresh active mode', error, 'settings.set');
       });
     }
+
     if (key === 'overshoot_behaviors') {
       loadShedBehaviors().catch((error) => {
         void logSettingsError('Failed to load shed behaviors', error, 'settings.set');
       });
     }
+
     if (key === 'power_tracker_state') {
       refreshPowerData().catch((error) => {
         void logSettingsError('Failed to refresh power data', error, 'settings.set');
       });
     }
-  });
+
+    if (dailyBudgetRefreshKeys.has(key)) {
+      if (dailyBudgetSettingsKeys.has(key)) {
+        loadDailyBudgetSettings().catch((error) => {
+          void logSettingsError('Failed to load daily budget settings', error, 'settings.set');
+        });
+      }
+      refreshDailyBudgetPlan().catch((error) => {
+        void logSettingsError('Failed to refresh daily budget', error, 'settings.set');
+      });
+    }
+  };
+
+  homey.on('settings.set', handleSettingsSet);
 };
 
 const refreshPowerData = async () => {
@@ -375,6 +424,7 @@ const loadInitialData = async () => {
   renderPowerUsage(usage);
   await renderPowerStats();
   await loadCapacitySettings();
+  await loadDailyBudgetSettings();
   await loadStaleDataStatus();
   setInterval(() => {
     void loadStaleDataStatus().catch((error) => {
@@ -392,6 +442,7 @@ const loadInitialData = async () => {
   await refreshPrices();
   await loadNettleieSettings();
   await refreshNettleie();
+  await refreshDailyBudgetPlan();
   await loadAdvancedSettings();
 };
 
@@ -416,11 +467,21 @@ export const boot = async () => {
     initDeviceDetailHandlers();
     initModeHandlers();
     initCapacityHandlers();
+    initDailyBudgetHandlers();
     initPriceHandlers();
     initNettleieHandlers();
     initAdvancedHandlers();
 
     await loadInitialData();
+
+    setInterval(() => {
+      const powerPanel = document.querySelector('#power-panel');
+      if (powerPanel && !powerPanel.classList.contains('hidden')) {
+        refreshDailyBudgetPlan().catch((error) => {
+          void logSettingsError('Failed to refresh daily budget', error, 'dailyBudgetInterval');
+        });
+      }
+    }, 60 * 1000);
   } catch (error) {
     await logSettingsError('Settings UI failed to load', error, 'boot');
     await showToastError(error, 'Unable to load settings. Check Homey logs for details.');

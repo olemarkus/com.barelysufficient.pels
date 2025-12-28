@@ -2,6 +2,18 @@ import CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 import type { PlanInputDevice } from './planTypes';
+import type { DailyBudgetAggressiveness } from '../dailyBudget/dailyBudgetTypes';
+
+export type DailyBudgetContext = {
+  enabled: boolean;
+  pressure: number;
+  aggressiveness: DailyBudgetAggressiveness;
+  usedNowKWh: number;
+  allowedNowKWh: number;
+  remainingKWh: number;
+  exceeded: boolean;
+  frozen: boolean;
+};
 
 export type PlanContext = {
   devices: PlanInputDevice[];
@@ -14,6 +26,7 @@ export type PlanContext = {
   headroomRaw: number | null;
   headroom: number | null;
   restoreMarginPlanning: number;
+  dailyBudget?: DailyBudgetContext;
 };
 
 export function buildPlanContext(params: {
@@ -24,6 +37,7 @@ export function buildPlanContext(params: {
   softLimit: number;
   desiredForMode: Record<string, number>;
   hourlyBudgetExhausted: boolean;
+  dailyBudget?: DailyBudgetContext;
 }): PlanContext {
   const {
     devices,
@@ -33,6 +47,7 @@ export function buildPlanContext(params: {
     softLimit,
     desiredForMode,
     hourlyBudgetExhausted,
+    dailyBudget,
   } = params;
 
   const total = capacityGuard ? capacityGuard.getLastTotalPower() : null;
@@ -67,5 +82,6 @@ export function buildPlanContext(params: {
     headroomRaw,
     headroom,
     restoreMarginPlanning: Math.max(0.1, capacitySettings.marginKw || 0),
+    dailyBudget,
   };
 }

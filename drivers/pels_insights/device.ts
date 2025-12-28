@@ -4,6 +4,12 @@ import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 type StatusData = {
   headroomKw?: number;
   hourlyUsageKwh?: number;
+  dailyBudgetUsedKwh?: number;
+  dailyBudgetAllowedKwhNow?: number;
+  dailyBudgetRemainingKwh?: number;
+  dailyBudgetPressure?: number;
+  dailyBudgetExceeded?: boolean;
+  limitReason?: 'none' | 'hourly' | 'daily' | 'both';
   controlledKw?: number;
   uncontrolledKw?: number;
   shedding?: boolean;
@@ -21,6 +27,12 @@ type CapabilityEntry = {
 const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
   { key: 'headroomKw', id: 'pels_headroom', type: 'number' },
   { key: 'hourlyUsageKwh', id: 'pels_hourly_usage', type: 'number' },
+  { key: 'dailyBudgetUsedKwh', id: 'pels_daily_budget_used_kwh', type: 'number' },
+  { key: 'dailyBudgetAllowedKwhNow', id: 'pels_daily_budget_allowed_kwh_now', type: 'number' },
+  { key: 'dailyBudgetRemainingKwh', id: 'pels_daily_budget_remaining_kwh', type: 'number' },
+  { key: 'dailyBudgetPressure', id: 'pels_daily_budget_pressure', type: 'number' },
+  { key: 'dailyBudgetExceeded', id: 'pels_daily_budget_exceeded', type: 'boolean' },
+  { key: 'limitReason', id: 'pels_limit_reason', type: 'string' },
   { key: 'controlledKw', id: 'pels_controlled_power', type: 'number' },
   { key: 'uncontrolledKw', id: 'pels_uncontrolled_power', type: 'number' },
   { key: 'shedding', id: 'pels_shedding', type: 'boolean' },
@@ -42,6 +54,12 @@ class PelsInsightsDevice extends Homey.Device {
       'pels_shortfall',
       'pels_headroom',
       'pels_hourly_usage',
+      'pels_daily_budget_used_kwh',
+      'pels_daily_budget_allowed_kwh_now',
+      'pels_daily_budget_remaining_kwh',
+      'pels_daily_budget_pressure',
+      'pels_daily_budget_exceeded',
+      'pels_limit_reason',
       'pels_controlled_power',
       'pels_uncontrolled_power',
       'pels_shedding',

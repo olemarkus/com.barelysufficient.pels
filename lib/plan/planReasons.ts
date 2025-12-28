@@ -141,7 +141,10 @@ function getBaseShedReason(
   const isSwapReason = typeof dev.reason === 'string'
     && (dev.reason.includes('swapped out') || dev.reason.includes('swap pending'));
   const hasSpecialReason = typeof dev.reason === 'string'
-    && (dev.reason.includes('shortfall') || isSwapReason || dev.reason.includes('hourly budget'));
+    && (dev.reason.includes('shortfall')
+      || isSwapReason
+      || dev.reason.includes('hourly budget')
+      || dev.reason.includes('daily budget'));
   const baseReason = shedReasons.get(dev.id)
     || (hasSpecialReason && dev.reason)
     || 'shed due to capacity';
@@ -299,7 +302,7 @@ function getReasonFlags(reason: string | undefined): {
 } {
   return {
     isSwapReason: Boolean(reason && (reason.includes('swap pending') || reason.includes('swapped out'))),
-    isBudgetReason: Boolean(reason && reason.includes('hourly budget')),
+    isBudgetReason: Boolean(reason && (reason.includes('hourly budget') || reason.includes('daily budget'))),
     isShortfallReason: Boolean(reason && reason.includes('shortfall')),
   };
 }

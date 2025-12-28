@@ -1,0 +1,13 @@
+{
+  "type": "boolean",
+  "title": {
+    "en": "Daily budget exceeded"
+  },
+  "desc": {
+    "en": "Whether the daily budget plan has been exceeded"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true
+}

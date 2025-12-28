@@ -1,13 +1,13 @@
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
-import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
+import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
-import { buildPlanContext } from './planContext';
-import { buildSheddingPlan } from './planShedding';
+import { buildPlanContext, type PlanContext } from './planContext';
+import { buildSheddingPlan, type SheddingPlan } from './planShedding';
 import { buildInitialPlanDevices } from './planDevices';
-import { applyRestorePlan } from './planRestore';
+import { applyRestorePlan, type RestorePlanResult } from './planRestore';
 import { sumControlledUsageKw } from './planUsage';
 import {
   applyShedTemperatureHold,
@@ -15,6 +15,7 @@ import {
   normalizeShedReasons,
 } from './planReasons';
 import { getHourBucketKey } from '../utils/dateUtils';
+import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 
 export type PlanBuilderDeps = {
   homey: Homey.App['homey'];
@@ -27,6 +28,7 @@ export type PlanBuilderDeps = {
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   getPowerTracker: () => PowerTrackerState;
+  getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
   getDynamicSoftLimitOverride?: () => number | null;
@@ -70,6 +72,10 @@ export class PlanBuilder {
     return this.deps.getPowerTracker();
   }
 
+  private get dailyBudgetSnapshot(): DailyBudgetUiPayload | null {
+    return this.deps.getDailyBudgetSnapshot?.() ?? null;
+  }
+
   public computeDynamicSoftLimit(): number {
     const override = this.deps.getDynamicSoftLimitOverride?.();
     if (typeof override === 'number' && Number.isFinite(override)) {
@@ -101,6 +107,7 @@ export class PlanBuilder {
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
     const softLimit = this.computeDynamicSoftLimit();
+    const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
     const context = buildPlanContext({
       devices,
       capacityGuard: this.capacityGuard,
@@ -109,6 +116,7 @@ export class PlanBuilder {
       softLimit,
       desiredForMode,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
+      dailyBudget: this.buildDailyBudgetContext(dailyBudgetSnapshot),
     });
 
     const sheddingPlan = await buildSheddingPlan(context, this.state, {
@@ -119,16 +127,7 @@ export class PlanBuilder {
       log: (...args: unknown[]) => this.deps.log(...args),
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
     });
-    if (sheddingPlan.updates.lastOvershootMs !== undefined) {
-      this.state.lastOvershootMs = sheddingPlan.updates.lastOvershootMs;
-    }
-    if (sheddingPlan.updates.lastShedPlanMeasurementTs !== undefined) {
-      this.state.lastShedPlanMeasurementTs = sheddingPlan.updates.lastShedPlanMeasurementTs;
-    }
-    if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
-      this.state.inShortfall = sheddingPlan.guardInShortfall;
-      this.deps.homey.settings.set('capacity_in_shortfall', sheddingPlan.guardInShortfall);
-    }
+    this.applySheddingUpdates(sheddingPlan);
 
     let planDevices = buildInitialPlanDevices({
       context,
@@ -146,23 +145,12 @@ export class PlanBuilder {
       },
     });
 
-    const restoreResult = applyRestorePlan({
+    const restoreResult = this.applyRestorePlanAndUpdateState({
       planDevices,
       context,
-      state: this.state,
       sheddingActive: sheddingPlan.sheddingActive,
-      deps: {
-        powerTracker: this.powerTracker,
-        getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-        log: (...args: unknown[]) => this.deps.log(...args),
-        logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
-      },
     });
     planDevices = restoreResult.planDevices;
-    this.state.pendingSwapTargets = restoreResult.stateUpdates.pendingSwapTargets;
-    this.state.pendingSwapTimestamps = restoreResult.stateUpdates.pendingSwapTimestamps;
-    this.state.swappedOutFor = restoreResult.stateUpdates.swappedOutFor;
-    this.state.lastSwapPlanMeasurementTs = restoreResult.stateUpdates.lastSwapPlanMeasurementTs;
 
     const holdResult = applyShedTemperatureHold({
       planDevices,
@@ -202,25 +190,90 @@ export class PlanBuilder {
     planDevices = finalized.planDevices;
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
 
+    return {
+      meta: this.buildPlanMeta(context, planDevices, dailyBudgetSnapshot),
+      devices: planDevices,
+    };
+  }
+
+  private buildDailyBudgetContext(snapshot: DailyBudgetUiPayload | null): PlanContext['dailyBudget'] | undefined {
+    if (!snapshot) return undefined;
+    return {
+      enabled: snapshot.budget.enabled,
+      pressure: snapshot.state.pressure,
+      aggressiveness: snapshot.budget.aggressiveness,
+      usedNowKWh: snapshot.state.usedNowKWh,
+      allowedNowKWh: snapshot.state.allowedNowKWh,
+      remainingKWh: snapshot.state.remainingKWh,
+      exceeded: snapshot.state.exceeded,
+      frozen: snapshot.state.frozen,
+    };
+  }
+
+  private applySheddingUpdates(sheddingPlan: SheddingPlan): void {
+    if (sheddingPlan.updates.lastOvershootMs !== undefined) {
+      this.state.lastOvershootMs = sheddingPlan.updates.lastOvershootMs;
+    }
+    if (sheddingPlan.updates.lastShedPlanMeasurementTs !== undefined) {
+      this.state.lastShedPlanMeasurementTs = sheddingPlan.updates.lastShedPlanMeasurementTs;
+    }
+    if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
+      this.state.inShortfall = sheddingPlan.guardInShortfall;
+      this.deps.homey.settings.set('capacity_in_shortfall', sheddingPlan.guardInShortfall);
+    }
+  }
+
+  private applyRestorePlanAndUpdateState(params: {
+    planDevices: DevicePlanDevice[];
+    context: PlanContext;
+    sheddingActive: boolean;
+  }): RestorePlanResult {
+    const { planDevices, context, sheddingActive } = params;
+    const restoreResult = applyRestorePlan({
+      planDevices,
+      context,
+      state: this.state,
+      sheddingActive,
+      deps: {
+        powerTracker: this.powerTracker,
+        getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
+        log: (...args: unknown[]) => this.deps.log(...args),
+        logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+      },
+    });
+    this.state.pendingSwapTargets = restoreResult.stateUpdates.pendingSwapTargets;
+    this.state.pendingSwapTimestamps = restoreResult.stateUpdates.pendingSwapTimestamps;
+    this.state.swappedOutFor = restoreResult.stateUpdates.swappedOutFor;
+    this.state.lastSwapPlanMeasurementTs = restoreResult.stateUpdates.lastSwapPlanMeasurementTs;
+    return restoreResult;
+  }
+
+  private buildPlanMeta(
+    context: PlanContext,
+    planDevices: DevicePlanDevice[],
+    dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+  ): DevicePlan['meta'] {
     const controlledKw = sumControlledUsageKw(planDevices);
     const uncontrolledKw = typeof context.total === 'number' && controlledKw !== null
       ? Math.max(0, context.total - controlledKw)
       : undefined;
     return {
-      meta: {
-        totalKw: context.total,
-        softLimitKw: context.softLimit,
-        headroomKw: context.headroom,
-        hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
-        usedKWh: context.usedKWh,
-        budgetKWh: context.budgetKWh,
-        minutesRemaining: context.minutesRemaining,
-        controlledKw: controlledKw ?? undefined,
-        uncontrolledKw,
-        hourControlledKWh: getCurrentHourKWh(this.powerTracker.controlledBuckets),
-        hourUncontrolledKWh: getCurrentHourKWh(this.powerTracker.uncontrolledBuckets),
-      },
-      devices: planDevices,
+      totalKw: context.total,
+      softLimitKw: context.softLimit,
+      headroomKw: context.headroom,
+      hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
+      usedKWh: context.usedKWh,
+      budgetKWh: context.budgetKWh,
+      minutesRemaining: context.minutesRemaining,
+      controlledKw: controlledKw ?? undefined,
+      uncontrolledKw,
+      hourControlledKWh: getCurrentHourKWh(this.powerTracker.controlledBuckets),
+      hourUncontrolledKWh: getCurrentHourKWh(this.powerTracker.uncontrolledBuckets),
+      dailyBudgetUsedKWh: dailyBudgetSnapshot?.state.usedNowKWh,
+      dailyBudgetAllowedKWhNow: dailyBudgetSnapshot?.state.allowedNowKWh,
+      dailyBudgetRemainingKWh: dailyBudgetSnapshot?.state.remainingKWh,
+      dailyBudgetPressure: dailyBudgetSnapshot?.state.pressure,
+      dailyBudgetExceeded: dailyBudgetSnapshot?.state.exceeded,
     };
   }
 }

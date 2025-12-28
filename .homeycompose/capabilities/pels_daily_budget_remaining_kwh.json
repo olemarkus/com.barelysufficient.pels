@@ -1,0 +1,17 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Daily budget remaining"
+  },
+  "desc": {
+    "en": "Remaining kWh in the daily budget (can be negative)"
+  },
+  "units": {
+    "en": "kWh"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "decimals": 2
+}

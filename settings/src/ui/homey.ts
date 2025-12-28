@@ -4,6 +4,7 @@ export type HomeySettingsClient = {
   ready: () => Promise<void>;
   get: (key: string, cb: HomeyCallback<unknown>) => void;
   set: (key: string, value: unknown, cb: HomeyCallback<void>) => void;
+  api?: (method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: string, body: unknown, cb: HomeyCallback<unknown>) => void;
   on?: (event: string, cb: (...args: unknown[]) => void) => void;
   clock?: {
     getTimezone?: () => string;
@@ -75,6 +76,28 @@ export const setSetting = (key: string, value: unknown): Promise<void> => {
       }
       resolve();
     });
+  });
+};
+
+export const callApi = <T>(method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: string, body?: unknown): Promise<T> => {
+  const client = homeyClient;
+  const api = client?.api;
+  if (!api || typeof api !== 'function') {
+    return Promise.reject(new Error('Homey API not available'));
+  }
+  return new Promise((resolve, reject) => {
+    const callback: HomeyCallback<unknown> = (err, value) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(value as T);
+    };
+    if (method === 'GET' || method === 'DELETE') {
+      api(method, uri, null, callback);
+      return;
+    }
+    api(method, uri, body ?? {}, callback);
   });
 };
 
