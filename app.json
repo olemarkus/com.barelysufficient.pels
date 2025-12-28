@@ -342,6 +342,12 @@
         "pels_shortfall",
         "pels_headroom",
         "pels_hourly_usage",
+        "pels_daily_budget_used_kwh",
+        "pels_daily_budget_allowed_kwh_now",
+        "pels_daily_budget_remaining_kwh",
+        "pels_daily_budget_pressure",
+        "pels_daily_budget_exceeded",
+        "pels_limit_reason",
         "pels_controlled_power",
         "pels_uncontrolled_power",
         "pels_shedding",
@@ -392,6 +398,84 @@
       },
       "units": {
         "en": "kW"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_daily_budget_allowed_kwh_now": {
+      "type": "number",
+      "title": {
+        "en": "Daily budget allowed now"
+      },
+      "desc": {
+        "en": "kWh allowed so far today by the daily budget plan"
+      },
+      "units": {
+        "en": "kWh"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_daily_budget_exceeded": {
+      "type": "boolean",
+      "title": {
+        "en": "Daily budget exceeded"
+      },
+      "desc": {
+        "en": "Whether the daily budget plan has been exceeded"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true
+    },
+    "pels_daily_budget_pressure": {
+      "type": "number",
+      "title": {
+        "en": "Daily budget pressure"
+      },
+      "desc": {
+        "en": "Daily budget pressure (0-1)"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_daily_budget_remaining_kwh": {
+      "type": "number",
+      "title": {
+        "en": "Daily budget remaining"
+      },
+      "desc": {
+        "en": "Remaining kWh in the daily budget (can be negative)"
+      },
+      "units": {
+        "en": "kWh"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_daily_budget_used_kwh": {
+      "type": "number",
+      "title": {
+        "en": "Daily budget used"
+      },
+      "desc": {
+        "en": "kWh used so far today (daily budget)"
+      },
+      "units": {
+        "en": "kWh"
       },
       "getable": true,
       "setable": false,
@@ -471,6 +555,43 @@
       "type": "string",
       "getable": true,
       "setable": false
+    },
+    "pels_limit_reason": {
+      "type": "enum",
+      "title": {
+        "en": "Limit reason"
+      },
+      "desc": {
+        "en": "Why PELS is currently limiting device restores or shedding"
+      },
+      "getable": true,
+      "setable": false,
+      "values": [
+        {
+          "id": "none",
+          "title": {
+            "en": "None"
+          }
+        },
+        {
+          "id": "hourly",
+          "title": {
+            "en": "Hourly limit"
+          }
+        },
+        {
+          "id": "daily",
+          "title": {
+            "en": "Daily budget"
+          }
+        },
+        {
+          "id": "both",
+          "title": {
+            "en": "Both"
+          }
+        }
+      ]
     },
     "pels_price_level": {
       "type": "enum",
