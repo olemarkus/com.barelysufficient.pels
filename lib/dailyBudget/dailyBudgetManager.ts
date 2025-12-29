@@ -5,7 +5,6 @@ import {
   getZonedParts,
 } from '../utils/dateUtils';
 import {
-  buildAllowedCumKWh,
   buildDefaultProfile,
   buildPlan,
   buildPriceDebugData,
@@ -19,7 +18,9 @@ import type { CombinedPriceData } from './dailyBudgetMath';
 import { clamp } from '../utils/mathUtils';
 import {
   buildDayContext,
+  buildBucketUsage,
   buildDailyBudgetSnapshot,
+  computePlanDeviation,
   computeBudgetState,
 } from './dailyBudgetState';
 import type { DayContext, PriceData } from './dailyBudgetState';
@@ -89,6 +90,7 @@ export class DailyBudgetManager {
     combinedPrices?: CombinedPriceData | null;
     priceOptimizationEnabled: boolean;
     forcePlanRebuild?: boolean;
+    capacityBudgetKWh?: number;
   }): DailyBudgetUpdate {
     const {
       nowMs = Date.now(),
@@ -98,6 +100,7 @@ export class DailyBudgetManager {
       combinedPrices,
       priceOptimizationEnabled,
       forcePlanRebuild,
+      capacityBudgetKWh,
     } = params;
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker });
@@ -123,9 +126,11 @@ export class DailyBudgetManager {
       settings,
       enabled,
       planStateMismatch: planState.planStateMismatch,
+      existingPlan: planState.existingPlan,
       combinedPrices,
       priceOptimizationEnabled,
       forcePlanRebuild,
+      capacityBudgetKWh,
     });
 
     const budget = computeBudgetState({
@@ -171,6 +176,7 @@ export class DailyBudgetManager {
 
     this.state.dateKey = context.dateKey;
     this.state.dayStartUtcMs = context.dayStartUtcMs;
+    this.state.lastUsedNowKWh = context.usedNowKWh;
     this.markDirty();
 
     const shouldPersist = this.shouldPersist(context.nowMs);
@@ -245,10 +251,15 @@ export class DailyBudgetManager {
     if (!enabled || !existingPlan) {
       return { deviationExisting: 0 };
     }
-    const existingAllowedCumKWh = buildAllowedCumKWh(existingPlan, dailyBudgetKWh);
-    const existingAllowedNowKWh = existingAllowedCumKWh[context.currentBucketIndex] ?? 0;
+    const { deviationKWh } = computePlanDeviation({
+      enabled,
+      plannedKWh: existingPlan,
+      dailyBudgetKWh,
+      currentBucketIndex: context.currentBucketIndex,
+      usedNowKWh: context.usedNowKWh,
+    });
     return {
-      deviationExisting: context.usedNowKWh - existingAllowedNowKWh,
+      deviationExisting: deviationKWh,
     };
   }
 
@@ -270,72 +281,115 @@ export class DailyBudgetManager {
     settings: DailyBudgetSettings;
     enabled: boolean;
     planStateMismatch: boolean;
+    existingPlan: number[] | null;
     combinedPrices?: CombinedPriceData | null;
     priceOptimizationEnabled: boolean;
     forcePlanRebuild?: boolean;
+    capacityBudgetKWh?: number;
   }): PlanResult {
-    const {
-      context,
-      settings,
-      enabled,
-      planStateMismatch,
-      combinedPrices,
-      priceOptimizationEnabled,
-      forcePlanRebuild,
-    } = params;
-
-    const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
-    const shouldRebuildPlan = enabled && !this.state.frozen && (
-      planStateMismatch
-      || forcePlanRebuild
-      || this.state.lastPlanBucketStartUtcMs !== currentBucketStartUtcMs
-      || context.nowMs - this.lastPlanRebuildMs >= PLAN_REBUILD_INTERVAL_MS
-    );
-
-    let priceData: PriceData = { priceShapingActive: false };
+    const { context, enabled } = params;
+    const shouldRebuildPlan = this.shouldRebuildPlan(params);
+    const shouldLog = enabled && shouldRebuildPlan;
 
     if (enabled && shouldRebuildPlan) {
-      const buildResult = buildPlan({
-        bucketStartUtcMs: context.bucketStartUtcMs,
-        bucketUsage: context.bucketUsage,
-        currentBucketIndex: context.currentBucketIndex,
-        usedNowKWh: context.usedNowKWh,
-        dailyBudgetKWh: settings.dailyBudgetKWh,
-        profileWeights: this.getEffectiveProfile(),
-        timeZone: context.timeZone,
-        combinedPrices,
-        priceOptimizationEnabled,
-        priceShapingEnabled: settings.priceShapingEnabled,
-        previousPlannedKWh: this.state.plannedKWh,
-      });
-      this.state.plannedKWh = buildResult.plannedKWh;
-      this.state.lastPlanBucketStartUtcMs = currentBucketStartUtcMs;
-      this.state.dayStartUtcMs = context.dayStartUtcMs;
-      this.lastPlanRebuildMs = context.nowMs;
-      priceData = {
-        prices: buildResult.price,
-        priceFactors: buildResult.priceFactor,
-        priceShapingActive: buildResult.priceShapingActive,
+      const rebuilt = this.rebuildPlan(params);
+      return {
+        plannedKWh: rebuilt.plannedKWh,
+        priceData: rebuilt.priceData,
+        shouldLog,
       };
-      this.markDirty();
-    } else if (enabled && this.state.plannedKWh) {
-      priceData = buildPriceDebugData({
-        bucketStartUtcMs: context.bucketStartUtcMs,
-        currentBucketIndex: context.currentBucketIndex,
-        combinedPrices,
-        priceOptimizationEnabled,
-        priceShapingEnabled: settings.priceShapingEnabled,
-      });
     }
 
+    const priceData = this.resolvePriceData(params);
     const plannedKWh = enabled && this.state.plannedKWh
       ? this.state.plannedKWh
       : context.bucketUsage.map(() => 0);
+    return { plannedKWh, priceData, shouldLog };
+  }
+
+  private shouldRebuildPlan(params: {
+    context: DayContext;
+    enabled: boolean;
+    planStateMismatch: boolean;
+    forcePlanRebuild?: boolean;
+  }): boolean {
+    const { context, enabled, planStateMismatch, forcePlanRebuild } = params;
+    if (!enabled || this.state.frozen) return false;
+    const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
+    const lastUsedNowKWh = this.state.lastUsedNowKWh;
+    const usageChanged = typeof lastUsedNowKWh === 'number'
+      && Math.abs(context.usedNowKWh - lastUsedNowKWh) > 0.001;
+    return (
+      planStateMismatch
+      || Boolean(forcePlanRebuild)
+      || usageChanged
+      || this.state.lastPlanBucketStartUtcMs !== currentBucketStartUtcMs
+      || context.nowMs - this.lastPlanRebuildMs >= PLAN_REBUILD_INTERVAL_MS
+    );
+  }
+
+  private rebuildPlan(params: {
+    context: DayContext;
+    settings: DailyBudgetSettings;
+    existingPlan: number[] | null;
+    combinedPrices?: CombinedPriceData | null;
+    priceOptimizationEnabled: boolean;
+    capacityBudgetKWh?: number;
+  }): { plannedKWh: number[]; priceData: PriceData } {
+    const {
+      context,
+      settings,
+      existingPlan,
+      combinedPrices,
+      priceOptimizationEnabled,
+      capacityBudgetKWh,
+    } = params;
+    const buildResult = buildPlan({
+      bucketStartUtcMs: context.bucketStartUtcMs,
+      bucketUsage: context.bucketUsage,
+      currentBucketIndex: context.currentBucketIndex,
+      usedNowKWh: context.usedNowKWh,
+      dailyBudgetKWh: settings.dailyBudgetKWh,
+      profileWeights: this.getEffectiveProfile(),
+      timeZone: context.timeZone,
+      combinedPrices,
+      priceOptimizationEnabled,
+      priceShapingEnabled: settings.priceShapingEnabled,
+      previousPlannedKWh: existingPlan ?? undefined,
+      capacityBudgetKWh,
+    });
+    const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
+    this.state.plannedKWh = buildResult.plannedKWh;
+    this.state.lastPlanBucketStartUtcMs = currentBucketStartUtcMs;
+    this.state.dayStartUtcMs = context.dayStartUtcMs;
+    this.lastPlanRebuildMs = context.nowMs;
+    this.markDirty();
     return {
-      plannedKWh,
-      priceData,
-      shouldLog: enabled && shouldRebuildPlan,
+      plannedKWh: buildResult.plannedKWh,
+      priceData: {
+        prices: buildResult.price,
+        priceFactors: buildResult.priceFactor,
+        priceShapingActive: buildResult.priceShapingActive,
+      },
     };
+  }
+
+  private resolvePriceData(params: {
+    context: DayContext;
+    settings: DailyBudgetSettings;
+    enabled: boolean;
+    combinedPrices?: CombinedPriceData | null;
+    priceOptimizationEnabled: boolean;
+  }): PriceData {
+    const { context, settings, enabled, combinedPrices, priceOptimizationEnabled } = params;
+    if (!enabled || !this.state.plannedKWh) return { priceShapingActive: false };
+    return buildPriceDebugData({
+      bucketStartUtcMs: context.bucketStartUtcMs,
+      currentBucketIndex: context.currentBucketIndex,
+      combinedPrices,
+      priceOptimizationEnabled,
+      priceShapingEnabled: settings.priceShapingEnabled,
+    });
   }
 
   private maybeFreezeFromDeviation(enabled: boolean, deviationKWh: number): void {
@@ -415,8 +469,7 @@ export class DailyBudgetManager {
       nextDayStartUtcMs: previousNextDayStartUtcMs,
       timeZone,
     });
-    const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
-    const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
+    const { bucketUsage } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
     const totalKWh = sumArray(bucketUsage);
     if (totalKWh <= 0) {
       this.state.frozen = false;

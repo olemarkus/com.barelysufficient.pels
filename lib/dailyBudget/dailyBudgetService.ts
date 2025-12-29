@@ -8,6 +8,7 @@ import {
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   DAILY_BUDGET_STATE,
 } from '../utils/settingsKeys';
+import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
 import type { DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
@@ -18,12 +19,11 @@ type DailyBudgetServiceDeps = {
   logDebug: (...args: unknown[]) => void;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
+  getCapacitySettings: () => { limitKw: number; marginKw: number };
 };
 
 export class DailyBudgetService {
   private manager: DailyBudgetManager;
-  private static readonly MIN_BUDGET_KWH = 20;
-  private static readonly MAX_BUDGET_KWH = 360;
   private settings: DailyBudgetSettings = {
     enabled: false,
     dailyBudgetKWh: 0,
@@ -51,7 +51,7 @@ export class DailyBudgetService {
     const rawBudget = isFiniteNumber(budgetKWh) ? Math.max(0, budgetKWh) : 0;
     const boundedBudget = rawBudget === 0
       ? 0
-      : Math.min(DailyBudgetService.MAX_BUDGET_KWH, Math.max(DailyBudgetService.MIN_BUDGET_KWH, rawBudget));
+      : Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, rawBudget));
     this.settings = {
       enabled: enabled === true,
       dailyBudgetKWh: boundedBudget,
@@ -78,6 +78,8 @@ export class DailyBudgetService {
     const nowMs = params.nowMs ?? Date.now();
     const timeZone = this.resolveTimeZone();
     const combinedPrices = this.deps.homey.settings.get('combined_prices') as CombinedPriceData | null;
+    const capacity = this.deps.getCapacitySettings();
+    const capacityBudgetKWh = Math.max(0, capacity.limitKw);
     try {
       const update = this.manager.update({
         nowMs,
@@ -87,6 +89,7 @@ export class DailyBudgetService {
         combinedPrices,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         forcePlanRebuild: params.forcePlanRebuild,
+        capacityBudgetKWh,
       });
       this.snapshot = update.snapshot;
       if (update.shouldPersist) {

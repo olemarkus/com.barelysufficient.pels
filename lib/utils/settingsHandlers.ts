@@ -10,6 +10,7 @@ import {
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   DAILY_BUDGET_RESET,
+  DEBUG_LOGGING_TOPICS,
   OPERATING_MODE_SETTING,
 } from './settingsKeys';
 export type PriceServiceLike = {
@@ -100,6 +101,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       await deps.rebuildPlanFromCache();
     },
     debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
+    [DEBUG_LOGGING_TOPICS]: async () => deps.updateDebugLoggingEnabled(true),
     settings_ui_log: async () => handleSettingsUiLog(deps),
   };
 
@@ -156,6 +158,7 @@ async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<voi
   guard?.setLimit(limitKw);
   guard?.setSoftMargin(marginKw);
   await deps.updateOverheadToken(marginKw);
+  deps.updateDailyBudgetState({ forcePlanRebuild: true });
   await deps.rebuildPlanFromCache();
 }
 

@@ -21,6 +21,7 @@ export type DailyBudgetState = {
   lastPlanUpdateMs?: number | null;
   pressure?: number;
   lastPressureUpdateMs?: number | null;
+  lastUsedNowKWh?: number;
   profile?: DailyBudgetProfile;
 };
 
@@ -40,6 +41,7 @@ export type DailyBudgetUiPayload = {
     usedNowKWh: number;
     allowedNowKWh: number;
     remainingKWh: number;
+    deviationKWh: number;
     pressure: number;
     exceeded: boolean;
     frozen: boolean;

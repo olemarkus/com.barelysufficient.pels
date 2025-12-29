@@ -1613,15 +1613,16 @@ input[type="text"]:focus {
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   gap: 4px;
-  font-size: var(--font-size-2xs);
+  font-size: var(--font-size-xs);
   color: var(--muted);
   text-align: center;
+  line-height: 1.2;
+  padding-top: 4px;
 }
 
 .daily-budget-label {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
 .daily-budget-meta {

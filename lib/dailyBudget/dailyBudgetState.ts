@@ -58,9 +58,8 @@ export const buildDayContext = (params: {
     nextDayStartUtcMs,
     timeZone,
   });
-  const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
+  const { bucketKeys, bucketUsage } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
   const currentBucketIndex = resolveCurrentBucketIndex(dayStartUtcMs, bucketStartUtcMs.length, nowMs);
-  const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
   const usedNowKWh = sumArray(bucketUsage);
   const currentBucketUsage = bucketUsage[currentBucketIndex] ?? 0;
 
@@ -79,6 +78,36 @@ export const buildDayContext = (params: {
   };
 };
 
+export const buildBucketUsage = (params: {
+  bucketStartUtcMs: number[];
+  powerTracker: PowerTrackerState;
+}): { bucketKeys: string[]; bucketUsage: number[] } => {
+  const { bucketStartUtcMs, powerTracker } = params;
+  const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
+  const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
+  return { bucketKeys, bucketUsage };
+};
+
+export const computePlanDeviation = (params: {
+  enabled: boolean;
+  plannedKWh: number[];
+  dailyBudgetKWh: number;
+  currentBucketIndex: number;
+  usedNowKWh: number;
+}): { allowedCumKWh: number[]; allowedNowKWh: number; deviationKWh: number } => {
+  const {
+    enabled,
+    plannedKWh,
+    dailyBudgetKWh,
+    currentBucketIndex,
+    usedNowKWh,
+  } = params;
+  const allowedCumKWh = buildAllowedCumKWh(plannedKWh, dailyBudgetKWh);
+  const allowedNowKWh = enabled ? allowedCumKWh[currentBucketIndex] ?? 0 : 0;
+  const deviationKWh = enabled ? usedNowKWh - allowedNowKWh : 0;
+  return { allowedCumKWh, allowedNowKWh, deviationKWh };
+};
+
 export const computeBudgetState = (params: {
   context: DayContext;
   enabled: boolean;
@@ -94,10 +123,14 @@ export const computeBudgetState = (params: {
     profileSampleCount,
   } = params;
   const plannedWeight = buildWeightsFromPlan(plannedKWh);
-  const allowedCumKWh = buildAllowedCumKWh(plannedKWh, dailyBudgetKWh);
-  const allowedNowKWh = enabled ? allowedCumKWh[context.currentBucketIndex] ?? 0 : 0;
+  const { allowedCumKWh, allowedNowKWh, deviationKWh } = computePlanDeviation({
+    enabled,
+    plannedKWh,
+    dailyBudgetKWh,
+    currentBucketIndex: context.currentBucketIndex,
+    usedNowKWh: context.usedNowKWh,
+  });
   const remainingKWh = enabled ? dailyBudgetKWh - context.usedNowKWh : 0;
-  const deviationKWh = enabled ? context.usedNowKWh - allowedNowKWh : 0;
   const confidence = getConfidence(profileSampleCount);
   const exceeded = enabled && (context.usedNowKWh > dailyBudgetKWh || deviationKWh > 0);
 
@@ -149,6 +182,7 @@ export const buildDailyBudgetSnapshot = (params: {
       usedNowKWh: context.usedNowKWh,
       allowedNowKWh: budget.allowedNowKWh,
       remainingKWh: budget.remainingKWh,
+      deviationKWh: budget.deviationKWh,
       pressure,
       exceeded: budget.exceeded,
       frozen,

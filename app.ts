@@ -16,27 +16,11 @@ import { buildPeriodicStatusLog } from './lib/core/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
-import {
-  getAllModes as getAllModesHelper,
-  getShedBehavior as getShedBehaviorHelper,
-  normalizeShedBehaviors as normalizeShedBehaviorsHelper,
-  resolveModeName as resolveModeNameHelper,
-} from './lib/utils/capacityHelpers';
-import {
-  CAPACITY_DRY_RUN,
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
-  OPERATING_MODE_SETTING,
-} from './lib/utils/settingsKeys';
-import {
-  isBooleanMap,
-  isFiniteNumber,
-  isModeDeviceTargets,
-  isPowerTrackerState,
-  isPrioritySettings,
-  isStringMap,
-} from './lib/utils/appTypeGuards';
-
+import { ALL_DEBUG_LOGGING_TOPICS, type DebugLoggingTopic, normalizeDebugLoggingTopics } from './lib/utils/debugLogging';
+import { getAllModes as getAllModesHelper, getShedBehavior as getShedBehaviorHelper, normalizeShedBehaviors as normalizeShedBehaviorsHelper,
+  resolveModeName as resolveModeNameHelper } from './lib/utils/capacityHelpers';
+import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEBUG_LOGGING_TOPICS, OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
+import { isBooleanMap, isFiniteNumber, isModeDeviceTargets, isPowerTrackerState, isPrioritySettings, isStringMap } from './lib/utils/appTypeGuards';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 class PelsApp extends Homey.App {
@@ -50,7 +34,7 @@ class PelsApp extends Homey.App {
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
   private controllableDevices: Record<string, boolean> = {};
   private shedBehaviors: Record<string, ShedBehavior> = {};
-  private debugLoggingEnabled = false;
+  private debugLoggingTopics = new Set<DebugLoggingTopic>();
   private dailyBudgetService!: DailyBudgetService;
   private priceCoordinator!: PriceCoordinator;
   private deviceManager!: DeviceManager;
@@ -72,7 +56,7 @@ class PelsApp extends Homey.App {
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void { this.deviceManager.updateLocalSnapshot(deviceId, updates); }
   async onInit() {
     this.log('PELS has been initialized');
-    this.resetDebugLogging();
+    this.updateDebugLoggingTopics();
     this.initPriceCoordinator();
     this.loadCapacitySettings();
     this.initDailyBudgetService();
@@ -84,9 +68,20 @@ class PelsApp extends Homey.App {
     this.initSettingsHandler();
     await this.startApp();
   }
-  private resetDebugLogging(): void {
-    this.debugLoggingEnabled = false;
-    this.homey.settings.set('debug_logging_enabled', false);
+  private updateDebugLoggingTopics(logChange = false): void {
+    const rawTopics = this.homey.settings.get(DEBUG_LOGGING_TOPICS) as unknown;
+    let enabledTopics = normalizeDebugLoggingTopics(rawTopics);
+    if (enabledTopics.length === 0) {
+      const legacyEnabled = this.homey.settings.get('debug_logging_enabled') as unknown;
+      if (legacyEnabled === true) {
+        enabledTopics = [...ALL_DEBUG_LOGGING_TOPICS];
+      }
+    }
+    this.debugLoggingTopics = new Set(enabledTopics);
+    if (logChange) {
+      const label = enabledTopics.length ? enabledTopics.join(', ') : 'disabled';
+      this.log(`Debug logging topics: ${label}`);
+    }
   }
   private initPriceCoordinator(): void {
     this.priceCoordinator = new PriceCoordinator({
@@ -94,7 +89,7 @@ class PelsApp extends Homey.App {
       getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
       rebuildPlanFromCache: () => this.planService?.rebuildPlanFromCache() ?? Promise.resolve(),
       log: (...args: unknown[]) => this.log(...args),
-      logDebug: (...args: unknown[]) => this.logDebug(...args),
+      logDebug: (...args: unknown[]) => this.logDebug('price', ...args),
       error: (...args: unknown[]) => this.error(...args),
     });
   }
@@ -102,9 +97,10 @@ class PelsApp extends Homey.App {
     this.dailyBudgetService = new DailyBudgetService({
       homey: this.homey,
       log: (...args: unknown[]) => this.log(...args),
-      logDebug: (...args: unknown[]) => this.logDebug(...args),
+      logDebug: (...args: unknown[]) => this.logDebug('daily_budget', ...args),
       getPowerTracker: () => this.powerTracker,
       getPriceOptimizationEnabled: () => this.getPriceOptimizationEnabled(),
+      getCapacitySettings: () => this.capacitySettings,
     });
     this.dailyBudgetService.loadSettings();
     this.dailyBudgetService.loadState();
@@ -112,7 +108,7 @@ class PelsApp extends Homey.App {
   private async initDeviceManager(): Promise<void> {
     this.deviceManager = new DeviceManager(this, {
       log: this.log.bind(this),
-      debug: this.logDebug.bind(this),
+      debug: (...args: unknown[]) => this.logDebug('devices', ...args),
       error: this.error.bind(this),
     }, {
       getPriority: (id) => this.getPriorityForDevice(id),
@@ -158,7 +154,7 @@ class PelsApp extends Homey.App {
       applySheddingToDevice: (deviceId, deviceName, reason) => this.applySheddingToDevice(deviceId, deviceName, reason),
       updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
       log: (...args: unknown[]) => this.log(...args),
-      logDebug: (...args: unknown[]) => this.logDebug(...args),
+      logDebug: (...args: unknown[]) => this.logDebug('plan', ...args),
       error: (...args: unknown[]) => this.error(...args),
     });
   }
@@ -169,7 +165,7 @@ class PelsApp extends Homey.App {
       getPlanDevices: () => this.latestTargetSnapshot,
       getCapacityDryRun: () => this.capacityDryRun,
       log: (...args: unknown[]) => this.log(...args),
-      logDebug: (...args: unknown[]) => this.logDebug(...args),
+      logDebug: (...args: unknown[]) => this.logDebug('plan', ...args),
       error: (...args: unknown[]) => this.error(...args),
       isCurrentHourCheap: () => this.isCurrentHourCheap(),
       isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
@@ -233,7 +229,10 @@ class PelsApp extends Homey.App {
     if (this.heartbeatInterval) { clearInterval(this.heartbeatInterval); this.heartbeatInterval = undefined; }
     this.priceCoordinator.stop();
   }
-  private logDebug(...args: unknown[]): void { if (this.debugLoggingEnabled) this.log(...args); }
+  private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
+    if (!this.debugLoggingTopics.has(topic)) return;
+    this.log(...args);
+  }
   private startHeartbeat(): void {
     const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now());
     updateHeartbeat();
@@ -247,11 +246,7 @@ class PelsApp extends Homey.App {
   private get priceOptimizationEnabled(): boolean { return this.priceCoordinator.getPriceOptimizationEnabled(); }
   private get priceOptimizationSettings(): Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }> { return this.priceCoordinator.getPriceOptimizationSettings(); }
   private updateDebugLoggingEnabled(logChange = false): void {
-    const enabled = this.homey.settings.get('debug_logging_enabled') as unknown;
-    this.debugLoggingEnabled = enabled === true;
-    if (logChange) {
-      this.log(`Debug logging ${this.debugLoggingEnabled ? 'enabled' : 'disabled'}`);
-    }
+    this.updateDebugLoggingTopics(logChange);
   }
   private notifyOperatingModeChanged(mode: string): void {
     const trimmed = (mode || '').trim();
@@ -316,9 +311,24 @@ class PelsApp extends Homey.App {
   private savePowerTracker(nextState: PowerTrackerState = this.powerTracker): void {
     const pruned = aggregateAndPruneHistory(nextState);
     this.powerTracker = pruned;
-    this.homey.settings.set('power_tracker_state', pruned);
     const nowMs = typeof pruned.lastTimestamp === 'number' ? pruned.lastTimestamp : Date.now();
-    this.dailyBudgetService.updateState({ nowMs });
+    this.dailyBudgetService.updateState({ nowMs, forcePlanRebuild: true });
+    this.recordDailyBudgetCap(this.dailyBudgetService.getSnapshot());
+    this.homey.settings.set('power_tracker_state', this.powerTracker);
+  }
+  private recordDailyBudgetCap(snapshot: DailyBudgetUiPayload | null): void {
+    if (!snapshot?.budget.enabled) return;
+    const planned = snapshot.buckets.plannedKWh;
+    const startUtc = snapshot.buckets.startUtc;
+    const index = snapshot.currentBucketIndex;
+    if (!Array.isArray(planned) || !Array.isArray(startUtc)) return;
+    if (index < 0 || index >= planned.length || index >= startUtc.length) return;
+    const plannedKWh = planned[index];
+    const bucketKey = startUtc[index];
+    if (!Number.isFinite(plannedKWh) || typeof bucketKey !== 'string') return;
+    const nextCaps = new Map<string, number>(Object.entries(this.powerTracker.dailyBudgetCaps || {}));
+    nextCaps.set(bucketKey, plannedKWh);
+    this.powerTracker.dailyBudgetCaps = Object.fromEntries(nextCaps);
   }
   private getControlledPowerW(): number | undefined {
     const snapshot = this.latestTargetSnapshot;
@@ -341,7 +351,6 @@ class PelsApp extends Homey.App {
       homey: this.homey,
     });
   }
-
   private schedulePlanRebuildFromPowerSample(): Promise<void> {
     const now = Date.now();
     const elapsedMs = now - this.lastPowerSamplePlanRebuildMs;
@@ -389,17 +398,19 @@ class PelsApp extends Homey.App {
       },
       rebuildPlan: () => this.planService.rebuildPlanFromCache(),
       log: (...args: unknown[]) => this.log(...args),
-      logDebug: (...args: unknown[]) => this.logDebug(...args),
+      logDebug: (...args: unknown[]) => this.logDebug('settings', ...args),
     });
   }
   private async handleOperatingModeChange(rawMode: string): Promise<void> {
     const resolved = resolveModeNameHelper(rawMode, this.modeAliases);
     const previousMode = this.operatingMode;
-    if (resolved !== rawMode) this.logDebug(`Mode '${rawMode}' resolved via alias to '${resolved}'`);
+    if (resolved !== rawMode) this.logDebug('settings', `Mode '${rawMode}' resolved via alias to '${resolved}'`);
     this.operatingMode = resolved;
     this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
     this.homey.settings.set('mode_alias_used', rawMode !== resolved ? rawMode : null);
-    if (previousMode?.toLowerCase() === resolved.toLowerCase()) this.logDebug(`Mode '${resolved}' already active`);
+    if (previousMode?.toLowerCase() === resolved.toLowerCase()) {
+      this.logDebug('settings', `Mode '${resolved}' already active`);
+    }
     this.notifyOperatingModeChanged(resolved);
   }
   private async getFlowSnapshot(): Promise<TargetDeviceSnapshot[]> {
@@ -422,24 +433,18 @@ class PelsApp extends Homey.App {
   }
   private logPeriodicStatus(): void {
     this.log(buildPeriodicStatusLog({
-      capacityGuard: this.capacityGuard,
-      powerTracker: this.powerTracker,
-      capacitySettings: this.capacitySettings,
-      operatingMode: this.operatingMode,
-      capacityDryRun: this.capacityDryRun,
+      capacityGuard: this.capacityGuard, powerTracker: this.powerTracker, capacitySettings: this.capacitySettings,
+      operatingMode: this.operatingMode, capacityDryRun: this.capacityDryRun,
     }));
   }
-
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] { return this.deviceManager?.getSnapshot() ?? []; }
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.deviceManager.setSnapshotForTests(snapshot); }
   parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] { return this.deviceManager.parseDeviceListForTests(list); }
-
   private async refreshTargetDevicesSnapshot(): Promise<void> {
-    this.logDebug('Refreshing target devices snapshot');
+    this.logDebug('devices', 'Refreshing target devices snapshot');
     await this.deviceManager.refreshSnapshot();
     this.homey.settings.set('target_devices_snapshot', this.deviceManager.getSnapshot());
   }
-
   private async refreshNettleieData(forceRefresh = false): Promise<void> { await this.priceCoordinator.refreshNettleieData(forceRefresh); }
   private updateCombinedPrices(): void { this.priceCoordinator.updateCombinedPrices(); }
   private async refreshSpotPrices(forceRefresh = false): Promise<void> { await this.priceCoordinator.refreshSpotPrices(forceRefresh); }
@@ -454,7 +459,6 @@ class PelsApp extends Homey.App {
   private async applyPriceOptimization() { return this.priceCoordinator.applyPriceOptimization(); }
   private async startPriceOptimization(): Promise<void> { return this.priceCoordinator.startPriceOptimization(); }
   private startPriceRefresh(): void { this.priceCoordinator.startPriceRefresh(); }
-
   private async getDeviceLoadSetting(deviceId: string): Promise<number | null> {
     return getDeviceLoadSetting({
       deviceId,
@@ -464,24 +468,19 @@ class PelsApp extends Homey.App {
       error: (...args: unknown[]) => this.error(...args),
     });
   }
-
   private getPriorityForDevice(deviceId: string): number {
     const mode = this.operatingMode || 'Home';
     return this.capacityPriorities[mode]?.[deviceId] ?? 100;
   }
-
   private resolveModeName(name: string): string {
     return resolveModeNameHelper(name, this.modeAliases);
   }
-
   private getAllModes(): Set<string> {
     return getAllModesHelper(this.operatingMode, this.capacityPriorities, this.modeDeviceTargets);
   }
-
   private getShedBehavior(deviceId: string): { action: ShedAction; temperature: number | null } {
     return getShedBehaviorHelper(deviceId, this.shedBehaviors);
   }
-
   private computeDynamicSoftLimit(): number {
     return this.planService.computeDynamicSoftLimit();
   }

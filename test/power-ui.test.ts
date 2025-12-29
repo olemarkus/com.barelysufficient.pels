@@ -16,7 +16,7 @@ const buildPowerDom = () => {
   `;
 };
 
-const installHomeyClient = (tracker: unknown) => {
+const installHomeyClient = (tracker: unknown, timeZone = 'UTC') => {
   const { setHomeyClient } = require('../settings/src/ui/homey') as typeof import('../settings/src/ui/homey');
   setHomeyClient({
     ready: async () => { },
@@ -29,6 +29,9 @@ const installHomeyClient = (tracker: unknown) => {
     },
     set: (_key, _value, cb) => cb(null),
     on: () => { },
+    clock: {
+      getTimezone: () => timeZone,
+    },
   });
 };
 
@@ -110,5 +113,27 @@ describe('power page stats (buckets-only)', () => {
     const titled = document.querySelectorAll('.power-meter[title*="cap"]');
     expect(titled.length).toBeGreaterThan(0);
     jest.restoreAllMocks();
+  });
+
+  it('matches daily budget today usage with the power summary total', async () => {
+    const { buildDayContext } = require('../lib/dailyBudget/dailyBudgetState') as typeof import('../lib/dailyBudget/dailyBudgetState');
+    const { getDateKeyInTimeZone, getDateKeyStartMs } = require('../lib/utils/dateUtils') as typeof import('../lib/utils/dateUtils');
+    const { getPowerStats } = require('../settings/src/ui/power') as typeof import('../settings/src/ui/power');
+
+    const timeZone = 'Europe/Oslo';
+    const nowMs = Date.UTC(2025, 0, 15, 12, 0, 0);
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(nowMs));
+
+    const dateKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
+    const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
+    const buckets = buildBuckets(new Date(dayStartMs).toISOString(), 6, 1.25);
+    installHomeyClient({ buckets }, timeZone);
+
+    const context = buildDayContext({ nowMs, timeZone, powerTracker: { buckets } });
+    const { stats } = await getPowerStats();
+
+    expect(stats.today).toBeCloseTo(context.usedNowKWh, 6);
+    jest.useRealTimers();
   });
 });

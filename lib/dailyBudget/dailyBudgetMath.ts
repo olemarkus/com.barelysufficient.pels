@@ -19,6 +19,7 @@ const AGGRESSIVENESS_CONFIG: Record<DailyBudgetAggressiveness, { pressureScale: 
 };
 const PREVIOUS_PLAN_BLEND_WEIGHT = 0.7;
 const NEW_PLAN_BLEND_WEIGHT = 1 - PREVIOUS_PLAN_BLEND_WEIGHT;
+const CAP_ALLOCATION_EPSILON = 1e-6;
 
 export function getConfidence(sampleCount: number): number {
   if (!Number.isFinite(sampleCount) || sampleCount <= 0) return 0;
@@ -72,6 +73,7 @@ export function buildPlan(params: {
   priceOptimizationEnabled: boolean;
   priceShapingEnabled: boolean;
   previousPlannedKWh?: number[];
+  capacityBudgetKWh?: number;
 }): {
   plannedKWh: number[];
   price?: Array<number | null>;
@@ -90,12 +92,17 @@ export function buildPlan(params: {
     priceOptimizationEnabled,
     priceShapingEnabled,
     previousPlannedKWh,
+    capacityBudgetKWh,
   } = params;
 
   const baseWeights = bucketStartUtcMs.map((ts) => {
     const hour = getZonedParts(new Date(ts), timeZone).hour;
     return profileWeights[hour] ?? 0;
   });
+  let normalizedDayWeights = normalizeWeights(baseWeights);
+  if (normalizedDayWeights.every((value) => value === 0)) {
+    normalizedDayWeights = normalizeWeights(baseWeights.map(() => 1));
+  }
 
   const priceShape = buildPriceFactors({
     bucketStartUtcMs,
@@ -119,8 +126,11 @@ export function buildPlan(params: {
     normalizedRemaining = normalizeWeights(fallback);
   }
 
-  if (previousPlannedKWh && previousPlannedKWh.length === bucketStartUtcMs.length) {
-    const previousRemaining = previousPlannedKWh.slice(currentBucketIndex);
+  const hasPreviousPlan = Array.isArray(previousPlannedKWh)
+    && previousPlannedKWh.length === bucketStartUtcMs.length;
+
+  if (hasPreviousPlan) {
+    const previousRemaining = (previousPlannedKWh as number[]).slice(currentBucketIndex);
     const previousWeights = normalizeWeights(previousRemaining);
     const blended = normalizedRemaining.map((value, index) => (
       previousWeights[index] !== undefined
@@ -133,11 +143,32 @@ export function buildPlan(params: {
   const remainingBudget = Math.max(0, dailyBudgetKWh - usedNowKWh);
   const usedInCurrent = bucketUsage[currentBucketIndex] ?? 0;
 
+  const hasCapacityCap = Number.isFinite(capacityBudgetKWh);
+  const capKWh = Math.max(0, capacityBudgetKWh ?? 0);
+  const remainingAllocations = hasCapacityCap
+    ? allocateBudgetWithCaps({
+      weights: normalizedRemaining,
+      totalKWh: remainingBudget,
+      caps: normalizedRemaining.map((_, index) => (
+        index === 0
+          ? Math.max(0, capKWh - usedInCurrent)
+          : capKWh
+      )),
+    })
+    : normalizedRemaining.map((weight) => remainingBudget * weight);
+
   const plannedKWh = bucketStartUtcMs.map((_, index) => {
-    if (index < currentBucketIndex) return bucketUsage[index] ?? 0;
-    const weight = normalizedRemaining[index - currentBucketIndex] ?? 0;
-    if (index === currentBucketIndex) return usedInCurrent + remainingBudget * weight;
-    return remainingBudget * weight;
+    if (index < currentBucketIndex) {
+      if (hasPreviousPlan) {
+        const previousValue = (previousPlannedKWh as number[])[index];
+        return Number.isFinite(previousValue) ? previousValue : bucketUsage[index] ?? 0;
+      }
+      const fallbackWeight = normalizedDayWeights[index] ?? 0;
+      return dailyBudgetKWh * fallbackWeight;
+    }
+    const allocation = remainingAllocations[index - currentBucketIndex] ?? 0;
+    if (index === currentBucketIndex) return usedInCurrent + allocation;
+    return allocation;
   });
 
   return {
@@ -146,6 +177,93 @@ export function buildPlan(params: {
     priceFactor: priceShape.priceFactors,
     priceShapingActive: priceShape.priceShapingActive,
   };
+}
+
+function allocateBudgetWithCaps(params: {
+  weights: number[];
+  totalKWh: number;
+  caps: number[];
+}): number[] {
+  const { weights, totalKWh, caps } = params;
+  const count = weights.length;
+  let allocations = Array.from({ length: count }, () => 0);
+  if (count === 0 || totalKWh <= 0) return allocations;
+  let remaining = totalKWh;
+  let active = weights
+    .map((_, index) => index)
+    .filter((index) => (caps[index] ?? 0) > CAP_ALLOCATION_EPSILON);
+  let guard = 0;
+
+  while (remaining > CAP_ALLOCATION_EPSILON && active.length > 0 && guard < count + 3) {
+    const weightSum = active.reduce((sum, index) => sum + (weights[index] ?? 0), 0);
+    if (weightSum <= CAP_ALLOCATION_EPSILON) {
+      const evenShare = remaining / active.length;
+      const result = active.reduce((acc, index) => {
+        const capRemaining = Math.max(0, (caps[index] ?? 0) - acc.allocations[index]);
+        const add = Math.min(capRemaining, evenShare);
+        const nextAllocations = acc.allocations.map((value, idx) => (
+          idx === index ? value + add : value
+        ));
+        const nextRemaining = acc.remaining - add;
+        const nextActive = capRemaining - add > CAP_ALLOCATION_EPSILON
+          ? acc.nextActive.concat(index)
+          : acc.nextActive;
+        return {
+          allocations: nextAllocations,
+          remaining: nextRemaining,
+          nextActive,
+        };
+      }, {
+        allocations,
+        remaining,
+        nextActive: [] as number[],
+      });
+      allocations = result.allocations;
+      remaining = result.remaining;
+      active = result.nextActive;
+      guard += 1;
+      continue;
+    }
+
+    const result = active.reduce((acc, index) => {
+      const share = remaining * ((weights[index] ?? 0) / weightSum);
+      const capRemaining = Math.max(0, (caps[index] ?? 0) - acc.allocations[index]);
+      if (capRemaining <= CAP_ALLOCATION_EPSILON) {
+        return {
+          ...acc,
+          overflow: acc.overflow + share,
+        };
+      }
+      if (share >= capRemaining - CAP_ALLOCATION_EPSILON) {
+        const nextAllocations = acc.allocations.map((value, idx) => (
+          idx === index ? value + capRemaining : value
+        ));
+        return {
+          allocations: nextAllocations,
+          overflow: acc.overflow + share - capRemaining,
+          nextActive: acc.nextActive,
+        };
+      }
+      const nextAllocations = acc.allocations.map((value, idx) => (
+        idx === index ? value + share : value
+      ));
+      return {
+        allocations: nextAllocations,
+        overflow: acc.overflow,
+        nextActive: acc.nextActive.concat(index),
+      };
+    }, {
+      allocations,
+      overflow: 0,
+      nextActive: [] as number[],
+    });
+    allocations = result.allocations;
+    remaining = result.overflow;
+    active = result.nextActive;
+    guard += 1;
+  }
+
+  return allocations;
 }
 
 export function buildPriceDebugData(params: {

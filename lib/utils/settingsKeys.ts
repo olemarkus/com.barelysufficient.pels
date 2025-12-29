@@ -8,3 +8,4 @@ export const DAILY_BUDGET_AGGRESSIVENESS = 'daily_budget_aggressiveness';
 export const DAILY_BUDGET_PRICE_SHAPING_ENABLED = 'daily_budget_price_shaping_enabled';
 export const DAILY_BUDGET_STATE = 'daily_budget_state';
 export const DAILY_BUDGET_RESET = 'daily_budget_reset';
+export const DEBUG_LOGGING_TOPICS = 'debug_logging_topics';
