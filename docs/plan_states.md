@@ -1,6 +1,6 @@
 # Plan States and Status Lines
 
-This document describes how the Plan tab derives device state and the status text shown per device.
+This document describes how the Overview tab derives device state and the status text shown per device.
 
 ## Core State Fields (per device)
 
@@ -12,7 +12,7 @@ This document describes how the Plan tab derives device state and the status tex
 - shedAction: "turn_off" | "set_temperature"
 - shedTemperature: number | null
 - plannedTarget: number | null (target temperature if applicable)
-- reason: string (shown as the Status line in the Plan tab)
+- reason: string (shown as the Status line in the Overview tab)
 
 ## State Transitions (high level)
 
@@ -44,9 +44,9 @@ This document describes how the Plan tab derives device state and the status tex
     - Lower-priority on devices are marked "shed" to free headroom.
     - The higher-priority device becomes a pending swap target until restored.
 
-## Plan Tab "State" Line (UI)
+## Overview Tab "State" Line (UI)
 
-The Plan tab shows a State line derived from plannedState and currentState:
+The Overview tab shows a State line derived from plannedState and currentState:
 
 - Shed (powered off): plannedState === "shed" and shedAction === "turn_off"
 - Shed (lowered temperature): plannedState === "shed" and shedAction === "set_temperature"
@@ -54,7 +54,7 @@ The Plan tab shows a State line derived from plannedState and currentState:
 - Keep: plannedState === "keep" and currentState is "on"
 - Unknown: fallback if state is not clear
 
-## Plan Tab "Status" Line (reason values)
+## Overview Tab "Status" Line (reason values)
 
 These are the strings assigned to reason in app.ts. The UI shows reason or "Waiting for headroom".
 Parentheses indicate dynamic values.

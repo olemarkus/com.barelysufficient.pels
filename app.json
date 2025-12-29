@@ -39,6 +39,12 @@
   "permissions": [
     "homey:manager:api"
   ],
+  "api": {
+    "get_daily_budget": {
+      "method": "GET",
+      "path": "/daily_budget"
+    }
+  },
   "images": {
     "small": "/assets/images/small.png",
     "large": "/assets/images/large.png",

@@ -10,17 +10,18 @@
   <main class="screen">
     <header class="hero">
       <p class="eyebrow">PELS · App control</p>
-      <h1>Energy overview</h1>
-      <p class="lede">Device targets and hourly power usage.</p>
+      <h1>Control center</h1>
+      <p class="lede">Manage devices, modes, budgets, and usage.</p>
       <div class="tabs" role="tablist">
-        <button class="tab active" data-tab="devices" role="tab" aria-selected="true">Devices</button>
+        <button class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
+        <button class="tab" data-tab="devices" role="tab" aria-selected="false">Devices</button>
         <button class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</button>
-        <button class="tab" data-tab="price" role="tab" aria-selected="false">Price</button>
+        <button class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</button>
         <div class="tab-overflow">
           <button class="tab-overflow-toggle" aria-label="More tabs" aria-expanded="false">☰</button>
           <div class="tab-overflow-menu" hidden>
-            <button class="tab" data-tab="power" role="tab" aria-selected="false">Power usage</button>
-            <button class="tab" data-tab="plan" role="tab" aria-selected="false">Plan</button>
+            <button class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</button>
+            <button class="tab" data-tab="price" role="tab" aria-selected="false">Price</button>
             <button class="tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</button>
           </div>
         </div>
@@ -37,7 +38,7 @@
       <span id="stale-data-text" class="banner__text">No power data received recently. Check your Flow that reports power usage.</span>
     </div>
 
-    <section class="card panel" id="devices-panel" data-panel="devices">
+    <section class="card panel hidden" id="devices-panel" data-panel="devices">
       <div class="card__header">
         <div>
           <p class="eyebrow">Devices</p>
@@ -89,11 +90,11 @@
       <p class="muted">Tip: Drag to reorder priorities (auto-saves). Temperatures save automatically when changed.</p>
     </section>
 
-    <section class="card panel hidden" id="power-panel" data-panel="power">
+    <section class="card panel hidden" id="budget-panel" data-panel="budget">
       <div class="card__header">
         <div>
-          <p class="eyebrow">Power usage</p>
-          <h2>Usage overview</h2>
+          <p class="eyebrow">Budget</p>
+          <h2>Capacity & daily budget</h2>
         </div>
       </div>
       <form id="capacity-form" class="form-grid">
@@ -207,6 +208,15 @@
           </div>
         </div>
       </details>
+    </section>
+
+    <section class="card panel hidden" id="usage-panel" data-panel="usage">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Usage</p>
+          <h2>History & patterns</h2>
+        </div>
+      </div>
 
       <details class="settings-collapse" open>
         <summary>
@@ -280,10 +290,10 @@
       </div>
     </section>
 
-    <section class="card panel hidden" id="plan-panel" data-panel="plan">
+    <section class="card panel" id="overview-panel" data-panel="overview">
       <div class="card__header">
         <div>
-          <p class="eyebrow">Plan</p>
+          <p class="eyebrow">Overview</p>
           <h2>Planned device states</h2>
         </div>
         <div class="pill" id="plan-meta">Awaiting data…</div>

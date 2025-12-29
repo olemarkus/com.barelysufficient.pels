@@ -56,7 +56,7 @@ for (let i = 0; i < 24; i++) {
   });
 }
 
-const tabs = ['devices', 'modes', 'power', 'plan', 'price'];
+const tabs = ['overview', 'devices', 'modes', 'budget', 'usage', 'price', 'advanced'];
 
 // Get browser from command line args: node screenshot-settings.js [firefox]
 const useFirefox = process.argv.includes('firefox');
@@ -92,7 +92,7 @@ const useFirefox = process.argv.includes('firefox');
       }
       
       // Update active tab styling
-      document.querySelectorAll('.tab-btn').forEach(btn => {
+      document.querySelectorAll('.tab').forEach(btn => {
         btn.classList.remove('active');
         if (btn.dataset.tab === tabName) {
           btn.classList.add('active');
@@ -138,8 +138,8 @@ const useFirefox = process.argv.includes('firefox');
         }
       }
 
-      // Render plan tab
-      if (tabName === 'plan') {
+      // Render overview tab
+      if (tabName === 'overview') {
         const list = document.getElementById('plan-list');
         const empty = document.getElementById('plan-empty');
         const meta = document.getElementById('plan-meta');
@@ -204,8 +204,8 @@ const useFirefox = process.argv.includes('firefox');
         }
       }
 
-      // Render power tab
-      if (tabName === 'power') {
+      // Render usage tab
+      if (tabName === 'usage') {
         const list = document.getElementById('power-list');
         const empty = document.getElementById('power-empty');
         if (list && empty) {

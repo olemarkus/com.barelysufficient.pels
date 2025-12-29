@@ -45,6 +45,8 @@ Daily budget disabled means PELS uses only the capacity based cap and price opti
 
 ## Settings
 
+The daily budget controls live in the **Budget** tab.
+
 - **Enable daily energy budget**: turns the feature on/off.
 - **Daily budget (kWh)**: target daily energy use. Range: 20–360 kWh.
 - **Aggressiveness**: controls how quickly the pressure indicator reacts to deviations (status signal).
@@ -53,7 +55,7 @@ Daily budget disabled means PELS uses only the capacity based cap and price opti
 
 ## Today Plan View
 
-The settings UI shows a "Today plan" chart and live stats:
+The Budget tab shows a "Today plan" chart and live stats:
 
 - **Used**: kWh used so far today (local time).
 - **Allowed now**: cumulative kWh that the plan allows up to the current hour.

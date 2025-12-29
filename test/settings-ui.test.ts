@@ -227,7 +227,8 @@ describe('Settings UI', () => {
       });
       expect(tabTexts).toContain('Devices');
       expect(tabTexts).toContain('Modes');
-      expect(tabTexts).toContain('Price');
+      expect(tabTexts).toContain('Overview');
+      expect(tabTexts).toContain('Budget');
 
       const overflowToggle = await page.$('.tab-overflow-toggle');
       expect(overflowToggle).toBeTruthy();
@@ -277,12 +278,12 @@ describe('Settings UI', () => {
       await setupPage();
     });
 
-    test('devices tab is active by default', async () => {
+    test('overview tab is active by default', async () => {
       const activeTab = await page.$eval('.tab.active', (el) => (el as HTMLElement).dataset.tab);
-      expect(activeTab).toBe('devices');
+      expect(activeTab).toBe('overview');
 
-      const devicesPanel = await page.$('#devices-panel');
-      const isHidden = await devicesPanel?.evaluate((el) => el.classList.contains('hidden'));
+      const overviewPanel = await page.$('#overview-panel');
+      const isHidden = await overviewPanel?.evaluate((el) => el.classList.contains('hidden'));
       expect(isHidden).toBe(false);
     });
 
@@ -303,7 +304,7 @@ describe('Settings UI', () => {
     });
 
     test('main tabs can be activated', async () => {
-      const mainTabIds = ['devices', 'modes', 'price'];
+      const mainTabIds = ['overview', 'devices', 'modes', 'budget'];
 
       for (const tabId of mainTabIds) {
         await page.click(`[data-tab="${tabId}"]`);
@@ -410,21 +411,8 @@ describe('Settings UI', () => {
     });
 
     test('capacity limit input accepts numeric values', async () => {
-      const toggleButton = await page.$('.tab-overflow-toggle');
-      if (toggleButton) {
-        await toggleButton.click();
-        await sleep(50);
-
-        await page.evaluate(() => {
-          const menu = document.querySelector('.tab-overflow-menu');
-          if (menu) {
-            menu.removeAttribute('hidden');
-            const powerItem = menu.querySelector('[data-tab="power"]') as HTMLElement;
-            if (powerItem) powerItem.click();
-          }
-        });
-        await sleep(50);
-      }
+      await page.click('[data-tab="budget"]');
+      await sleep(50);
 
       const input = await page.$('#capacity-limit');
       expect(input).toBeTruthy();
@@ -564,7 +552,13 @@ describe('Settings UI', () => {
     });
 
     test('price status badge shows state when on price tab', async () => {
-      await page.click('[data-tab="price"]');
+      await page.click('.tab-overflow-toggle');
+      await sleep(50);
+      await page.evaluate(() => {
+        const menu = document.querySelector('.tab-overflow-menu');
+        if (menu) menu.removeAttribute('hidden');
+      });
+      await page.click('.tab-overflow-menu [data-tab="price"]');
       await sleep(50);
 
       const badge = await page.$('#price-status-badge');
@@ -589,12 +583,12 @@ describe('Settings UI', () => {
           const tabs = document.querySelectorAll('.tab');
           const panels = document.querySelectorAll('.panel');
           tabs.forEach(tab => {
-            const isPlan = tab.dataset.tab === 'plan';
-            tab.classList.toggle('active', isPlan);
-            tab.setAttribute('aria-selected', isPlan ? 'true' : 'false');
+            const isOverview = tab.dataset.tab === 'overview';
+            tab.classList.toggle('active', isOverview);
+            tab.setAttribute('aria-selected', isOverview ? 'true' : 'false');
           });
           panels.forEach(p => {
-            p.classList.toggle('hidden', p.dataset.panel !== 'plan');
+            p.classList.toggle('hidden', p.dataset.panel !== 'overview');
           });
           
           const planList = document.getElementById('plan-list');
@@ -812,7 +806,13 @@ describe('Settings UI', () => {
   describe('Price optimization section', () => {
     beforeAll(async () => {
       await setupPage({ viewport: { width: 480, height: 800 } });
-      await page.click('.tab[data-tab="price"]');
+      await page.click('.tab-overflow-toggle');
+      await sleep(50);
+      await page.evaluate(() => {
+        const menu = document.querySelector('.tab-overflow-menu');
+        if (menu) menu.removeAttribute('hidden');
+      });
+      await page.click('.tab-overflow-menu [data-tab="price"]');
       await sleep(50);
     });
 
@@ -986,6 +986,14 @@ describe('Settings UI', () => {
                 p.classList.toggle('hidden', p.dataset.panel !== tab.dataset.tab);
               });
             });
+          });
+          tabs.forEach(tab => {
+            const isDevices = tab.dataset.tab === 'devices';
+            tab.classList.toggle('active', isDevices);
+            tab.setAttribute('aria-selected', isDevices ? 'true' : 'false');
+          });
+          panels.forEach(p => {
+            p.classList.toggle('hidden', p.dataset.panel !== 'devices');
           });
 
           const overshootSelect = document.getElementById('device-detail-overshoot');
