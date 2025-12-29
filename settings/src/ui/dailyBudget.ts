@@ -50,6 +50,12 @@ const MAX_DAILY_BUDGET_KWH = 360;
 
 let priceOptimizationEnabled = true;
 
+const applyDailyBudgetBounds = () => {
+  if (!dailyBudgetKwhInput) return;
+  dailyBudgetKwhInput.min = MIN_DAILY_BUDGET_KWH.toString();
+  dailyBudgetKwhInput.max = MAX_DAILY_BUDGET_KWH.toString();
+};
+
 const setPillState = (enabled: boolean, exceeded: boolean) => {
   if (!dailyBudgetStatusPill) return;
   dailyBudgetStatusPill.classList.remove('ok', 'warn');
@@ -243,6 +249,8 @@ export const loadDailyBudgetSettings = async () => {
     getSetting(DAILY_BUDGET_AGGRESSIVENESS),
     getSetting(DAILY_BUDGET_PRICE_SHAPING_ENABLED),
   ]);
+
+  applyDailyBudgetBounds();
 
   if (dailyBudgetEnabledInput) {
     dailyBudgetEnabledInput.checked = enabled === true;

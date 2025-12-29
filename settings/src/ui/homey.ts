@@ -104,6 +104,8 @@ export const callApi = <T>(method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: strin
       resolve(value as T);
     };
     if (method === 'GET' || method === 'DELETE') {
+      // Workaround for Homey SDK API inconsistencies: some versions expect
+      // a body/options object even for GET/DELETE, while others throw.
       try {
         api.call(client, method, uri, callback);
       } catch {
