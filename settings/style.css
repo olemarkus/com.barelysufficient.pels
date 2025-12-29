@@ -139,6 +139,7 @@ body {
 .tabs {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--spacing-2);
   margin-top: var(--spacing-3);
   background: var(--color-surface-1);

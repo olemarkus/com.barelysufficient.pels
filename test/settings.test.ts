@@ -6,11 +6,20 @@ const buildDom = () => {
     <div id="toast"></div>
     <div id="status-badge"></div>
     <div class="tabs">
-      <button class="tab active" data-tab="devices"></button>
-      <button class="tab" data-tab="power"></button>
-      <button class="tab" data-tab="plan"></button>
+      <button class="tab active" data-tab="overview"></button>
+      <button class="tab" data-tab="devices"></button>
+      <button class="tab" data-tab="modes"></button>
+      <button class="tab" data-tab="budget"></button>
+      <button class="tab" data-tab="usage"></button>
       <button class="tab" data-tab="price"></button>
+      <button class="tab" data-tab="advanced"></button>
     </div>
+    <section class="panel hidden" id="overview-panel" data-panel="overview">
+      <div id="plan-list"></div>
+      <p id="plan-empty" hidden></p>
+      <div id="plan-meta"></div>
+      <button id="plan-refresh-button"></button>
+    </section>
     <section class="panel" data-panel="devices">
       <form id="targets-form">
         <select id="target-mode-select"></select>
@@ -18,8 +27,7 @@ const buildDom = () => {
       <div id="device-list"></div>
       <p id="empty-state" hidden></p>
     </section>
-    <section class="panel hidden" data-panel="power">
-      <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"><input id="capacity-dry-run" type="checkbox"></form>
+    <section class="panel hidden" data-panel="modes">
       <form id="active-mode-form"><select id="active-mode-select"></select></form>
       <select id="mode-select"></select>
       <input id="mode-new">
@@ -29,14 +37,49 @@ const buildDom = () => {
       <form id="priority-form"></form>
       <div id="priority-list"></div>
       <p id="priority-empty" hidden></p>
+    </section>
+    <section class="panel hidden" data-panel="budget">
+      <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"><input id="capacity-dry-run" type="checkbox"></form>
+      <form id="daily-budget-form">
+        <input id="daily-budget-enabled" type="checkbox">
+        <input id="daily-budget-kwh">
+        <select id="daily-budget-aggressiveness"></select>
+        <input id="daily-budget-price-shaping" type="checkbox">
+      </form>
+      <div id="daily-budget-chart"></div>
+      <div id="daily-budget-bars"></div>
+      <div id="daily-budget-labels"></div>
+      <div id="daily-budget-legend"></div>
+      <div id="daily-budget-empty"></div>
+      <div id="daily-budget-status-pill"></div>
+      <div id="daily-budget-day"></div>
+      <div id="daily-budget-used"></div>
+      <div id="daily-budget-allowed"></div>
+      <div id="daily-budget-remaining"></div>
+      <div id="daily-budget-deviation"></div>
+      <div id="daily-budget-pressure"></div>
+      <div id="daily-budget-confidence"></div>
+      <div id="daily-budget-price-shaping-state"></div>
+      <div id="daily-budget-frozen"></div>
+      <button id="daily-budget-refresh-button"></button>
+      <button id="daily-budget-reset-button"></button>
+    </section>
+    <section class="panel hidden" data-panel="usage">
       <div id="power-list"></div>
       <p id="power-empty" hidden></p>
-    </section>
-    <section class="panel hidden" data-panel="plan">
-      <div id="plan-list"></div>
-      <p id="plan-empty" hidden></p>
-      <div id="plan-meta"></div>
-      <button id="plan-refresh-button"></button>
+      <button id="power-week-prev"></button>
+      <button id="power-week-next"></button>
+      <div id="power-week-label"></div>
+      <div id="daily-list"></div>
+      <p id="daily-empty" hidden></p>
+      <div id="hourly-pattern"></div>
+      <div id="hourly-pattern-meta"></div>
+      <div id="usage-summary"></div>
+      <div id="usage-today"></div>
+      <div id="usage-week"></div>
+      <div id="usage-month"></div>
+      <div id="usage-weekday-avg"></div>
+      <div id="usage-weekend-avg"></div>
     </section>
     <section class="panel hidden" id="price-panel" data-panel="price">
       <div id="price-status-badge">No data</div>
@@ -58,6 +101,9 @@ const buildDom = () => {
       <button id="nettleie-refresh-button"></button>
       <div id="price-optimization-list"></div>
       <p id="price-optimization-empty" hidden></p>
+    </section>
+    <section class="panel hidden" data-panel="advanced">
+      <input id="debug-logging-enabled" type="checkbox">
     </section>
     <button id="refresh-button"></button>
     <button id="reset-stats-button"></button>
@@ -599,9 +645,9 @@ describe('Plan sorting', () => {
 
     await loadSettingsScript(100);
 
-    // Switch to plan tab
-    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
-    planTab?.click();
+    // Switch to overview tab
+    const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
+    overviewTab?.click();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const planList = document.querySelector('#plan-list');
@@ -640,8 +686,8 @@ describe('Plan sorting', () => {
 
     await loadSettingsScript(100);
 
-    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
-    planTab?.click();
+    const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
+    overviewTab?.click();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const deviceRows = document.querySelectorAll('#plan-list .device-row');
@@ -680,8 +726,8 @@ describe('Plan sorting', () => {
 
     await loadSettingsScript(100);
 
-    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
-    planTab?.click();
+    const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
+    overviewTab?.click();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
@@ -714,8 +760,8 @@ describe('Plan sorting', () => {
 
     await loadSettingsScript(100);
 
-    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
-    planTab?.click();
+    const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
+    overviewTab?.click();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
@@ -758,8 +804,8 @@ describe('Plan sorting', () => {
 
     await loadSettingsScript(100);
 
-    const planTab = document.querySelector('[data-tab="plan"]') as HTMLButtonElement;
-    planTab?.click();
+    const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
+    overviewTab?.click();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))

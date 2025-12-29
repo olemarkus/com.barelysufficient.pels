@@ -77,7 +77,7 @@ const showTab = (tabId: string) => {
   panels.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
   });
-  if (tabId === 'plan') {
+  if (tabId === 'overview') {
     refreshPlan().catch((error) => {
       void logSettingsError('Failed to refresh plan', error, 'showTab');
     });
@@ -87,11 +87,13 @@ const showTab = (tabId: string) => {
       void logSettingsError('Failed to refresh prices', error, 'showTab');
     });
   }
-  if (tabId === 'power') {
+  if (tabId === 'usage') {
     refreshPowerData().catch((error) => {
       void logSettingsError('Failed to refresh power data', error, 'showTab');
       void showToastError(error, 'Failed to refresh power data.');
     });
+  }
+  if (tabId === 'budget') {
     refreshDailyBudgetPlan().catch((error) => {
       void logSettingsError('Failed to refresh daily budget', error, 'showTab');
     });
@@ -103,8 +105,8 @@ const initRealtimeListeners = () => {
   if (!homey || typeof homey.on !== 'function') return;
 
   const refreshPlanIfVisible = () => {
-    const planPanel = document.querySelector('#plan-panel');
-    if (!planPanel || planPanel.classList.contains('hidden')) return;
+    const overviewPanel = document.querySelector('#overview-panel');
+    if (!overviewPanel || overviewPanel.classList.contains('hidden')) return;
     refreshPlan().catch((error) => {
       void logSettingsError('Failed to refresh plan', error, 'settings.set');
     });
@@ -119,8 +121,8 @@ const initRealtimeListeners = () => {
   };
 
   homey.on('plan_updated', (plan) => {
-    const planPanel = document.querySelector('#plan-panel');
-    if (planPanel && !planPanel.classList.contains('hidden')) {
+    const overviewPanel = document.querySelector('#overview-panel');
+    if (overviewPanel && !overviewPanel.classList.contains('hidden')) {
       renderPlan(plan as PlanSnapshot | null);
     }
   });
@@ -460,7 +462,7 @@ export const boot = async () => {
     await flushSettingsLogs();
 
     initRealtimeListeners();
-    showTab('devices');
+    showTab('overview');
 
     initOverflowMenu();
     initTabHandlers();
@@ -475,8 +477,8 @@ export const boot = async () => {
     await loadInitialData();
 
     setInterval(() => {
-      const powerPanel = document.querySelector('#power-panel');
-      if (powerPanel && !powerPanel.classList.contains('hidden')) {
+      const budgetPanel = document.querySelector('#budget-panel');
+      if (budgetPanel && !budgetPanel.classList.contains('hidden')) {
         refreshDailyBudgetPlan().catch((error) => {
           void logSettingsError('Failed to refresh daily budget', error, 'dailyBudgetInterval');
         });

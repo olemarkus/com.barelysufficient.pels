@@ -15,10 +15,12 @@ Inspired by the Sparegris (Piggy Bank) Homey app.
 - [Configuration](#configuration)
   - [Devices Tab](#devices-tab)
   - [Modes Tab](#modes-tab)
-  - [Power Usage Tab](#power-usage-tab)
-  - [Daily Budget (Power Usage Tab)](#daily-budget-power-usage-tab)
-  - [Plan Tab](#plan-tab)
+  - [Overview Tab](#overview-tab)
+  - [Budget Tab](#budget-tab)
+  - [Daily Budget (Budget Tab)](#daily-budget-budget-tab)
+  - [Usage Tab](#usage-tab)
   - [Price Tab](#price-tab)
+  - [Advanced Tab](#advanced-tab)
 - [Flow Cards](#flow-cards)
   - [Triggers](#triggers)
   - [Conditions](#conditions)
@@ -88,7 +90,7 @@ After installation:
 
 ### Quick Setup
 
-1. **Set your capacity limit** in the Power Usage tab
+1. **Set your capacity limit** in the Budget tab
 2. **Mark devices as controllable** in the Devices tab
 3. **Set priorities and temperatures** for each mode in the Modes tab
 4. **Configure price settings** (optional) in the Price tab
@@ -161,36 +163,7 @@ For each controllable device in a mode:
 
 > **Tip:** Changes save automatically when you modify them.
 
-### Power Usage Tab
-
-Configure capacity management and view power consumption.
-
-#### Capacity Settings
-
-| Setting | Description |
-|---------|-------------|
-| **Capacity limit (kW)** | Your maximum power draw (typically your grid connection limit) |
-| **Soft margin (kW)** | Buffer zone before the hard limit. PELS starts shedding when you exceed (limit - margin) |
-| **Dry run** | When enabled, PELS calculates what it would do but doesn't actually control devices. Great for testing! |
-
-#### Usage Summary
-Shows energy consumption for today, the past week, and the past month.
-
-#### Usage Patterns
-Displays a heatmap showing your average power usage by hour of day and day of week, helping you identify consumption patterns.
-
-#### Hourly Totals
-Shows power consumption per hour for the last 30 days, derived from reported power samples. Older data is automatically aggregated into daily summaries.
-
-> **Important:** You must create a Flow to report power usage to PELS (see [Flow Cards](#flow-cards)).
-
-### Daily Budget (Power Usage Tab)
-
-The Daily Budget is a soft kWh/day guide that creates a daily usage based cap. The planner uses the smaller of that and the capacity based cap.
-
-For details on how the plan is built, how DST is handled, and what each value means, see `docs/daily_budget.md`.
-
-### Plan Tab
+### Overview Tab
 
 Shows the current plan – what PELS intends to do with each device based on current power consumption and settings.
 
@@ -202,6 +175,39 @@ Shows the current plan – what PELS intends to do with each device based on cur
 | **Usage** | Current measured power vs. expected power (fallback 1 kW if unknown) |
 
 Click **Refresh plan** to recalculate.
+
+### Budget Tab
+
+Configure capacity management and the daily budget.
+
+#### Capacity Settings
+
+| Setting | Description |
+|---------|-------------|
+| **Capacity limit (kW)** | Your maximum power draw (typically your grid connection limit) |
+| **Soft margin (kW)** | Buffer zone before the hard limit. PELS starts shedding when you exceed (limit - margin) |
+| **Dry run** | When enabled, PELS calculates what it would do but doesn't actually control devices. Great for testing! |
+
+### Daily Budget (Budget Tab)
+
+The Daily Budget is a soft kWh/day guide that creates a daily usage based cap. The planner uses the smaller of that and the capacity based cap.
+
+For details on how the plan is built, how DST is handled, and what each value means, see `docs/daily_budget.md`.
+
+### Usage Tab
+
+View power usage history and patterns.
+
+#### Usage Summary
+Shows energy consumption for today, the past week, and the past month.
+
+#### Usage Patterns
+Displays a heatmap showing your average power usage by hour of day and day of week, helping you identify consumption patterns.
+
+#### Hourly Totals
+Shows power consumption per hour for the last 30 days, derived from reported power samples. Older data is automatically aggregated into daily summaries.
+
+> **Important:** You must create a Flow to report power usage to PELS (see [Flow Cards](#flow-cards)).
 
 ### Price Tab
 
@@ -234,6 +240,14 @@ For each device with price optimization enabled:
 | **Expensive Δ** | Temperature adjustment during expensive hours (e.g., -3°C) |
 
 > **Example:** If your Away mode sets a water heater to 60°C, a Cheap Δ of +10 will boost it to 70°C during cheap hours.
+
+### Advanced Tab
+
+Diagnostics and debug toggles.
+
+| Setting | Description |
+|---------|-------------|
+| **Enable debug logging** | Turns on debug logs until the app restarts. Use for troubleshooting only. |
 
 ---
 
