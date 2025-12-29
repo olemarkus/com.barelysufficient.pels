@@ -44,6 +44,15 @@ const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
 };
 
 class PelsInsightsDevice extends Homey.Device {
+  private async removeDeprecatedCapability(capability: string): Promise<void> {
+    if (!this.hasCapability(capability)) return;
+    try {
+      await this.removeCapability(capability);
+    } catch (error) {
+      this.error(`Failed to remove deprecated capability ${capability}`, error);
+    }
+  }
+
   async onInit(): Promise<void> {
     // Add capabilities if missing (for devices created before these were added)
     const requiredCapabilities = [
@@ -69,12 +78,9 @@ class PelsInsightsDevice extends Homey.Device {
     }
 
     // Remove deprecated alarm_generic if present (replaced by pels_shortfall)
-    if (this.hasCapability('alarm_generic')) {
-      await this.removeCapability('alarm_generic');
-    }
-    if (this.hasCapability('pels_shedding')) {
-      await this.removeCapability('pels_shedding');
-    }
+    await this.removeDeprecatedCapability('alarm_generic');
+    await this.removeDeprecatedCapability('pels_shedding');
+    await this.removeDeprecatedCapability('pels_daily_budget_pressure');
 
     // Initialize from current settings
     const initialMode = (this.homey.settings.get(OPERATING_MODE_SETTING) as string) || 'home';

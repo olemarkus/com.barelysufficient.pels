@@ -1,0 +1,13 @@
+{
+  "type": "boolean",
+  "title": {
+    "en": "Shedding"
+  },
+  "desc": {
+    "en": "Deprecated: use devices shed count."
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": false
+}

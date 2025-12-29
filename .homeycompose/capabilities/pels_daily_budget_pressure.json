@@ -1,0 +1,14 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Daily budget pressure"
+  },
+  "desc": {
+    "en": "Deprecated: daily budget pressure signal."
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": false,
+  "decimals": 2
+}
