@@ -14,12 +14,10 @@ export function buildPelsStatus(params: {
     dailyBudgetUsedKwh?: number;
     dailyBudgetAllowedKwhNow?: number;
     dailyBudgetRemainingKwh?: number;
-    dailyBudgetPressure?: number;
     dailyBudgetExceeded?: boolean;
     limitReason?: 'none' | 'hourly' | 'daily' | 'both';
     controlledKw?: number;
     uncontrolledKw?: number;
-    shedding: boolean;
     priceLevel: PriceLevel;
     devicesOn: number;
     devicesOff: number;
@@ -28,7 +26,6 @@ export function buildPelsStatus(params: {
 } {
   const { plan, isCheap, isExpensive, combinedPrices, lastPowerUpdate } = params;
   const priceLevel = resolvePriceLevel({ isCheap, isExpensive, combinedPrices });
-  const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
   const { devicesOn, devicesOff } = countDevices(plan);
   const limitReason = resolveLimitReason(plan);
 
@@ -39,12 +36,10 @@ export function buildPelsStatus(params: {
       dailyBudgetUsedKwh: plan.meta.dailyBudgetUsedKWh,
       dailyBudgetAllowedKwhNow: plan.meta.dailyBudgetAllowedKWhNow,
       dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh,
-      dailyBudgetPressure: plan.meta.dailyBudgetPressure,
       dailyBudgetExceeded: plan.meta.dailyBudgetExceeded,
       limitReason,
       controlledKw: plan.meta.controlledKw,
       uncontrolledKw: plan.meta.uncontrolledKw,
-      shedding: hasShedding,
       priceLevel,
       devicesOn,
       devicesOff,
@@ -68,15 +63,8 @@ function resolvePriceLevel(params: {
 
 function countDevices(plan: DevicePlan): { devicesOn: number; devicesOff: number } {
   const controllable = plan.devices.filter((d) => d.controllable !== false);
-  const devicesOn = controllable.filter((d) => {
-    const treatedAsOff = d.plannedState === 'shed' && d.shedAction !== 'set_temperature';
-    return d.currentState === 'on' && !treatedAsOff;
-  }).length;
-  const devicesOff = controllable.filter((d) => {
-    const treatedAsOff = d.plannedState === 'shed' && d.shedAction !== 'set_temperature';
-    return d.currentState === 'off' || treatedAsOff;
-  }).length;
-  return { devicesOn, devicesOff };
+  const devicesShed = controllable.filter((d) => d.plannedState === 'shed').length;
+  return { devicesOn: controllable.length - devicesShed, devicesOff: devicesShed };
 }
 
 function hasPrices(value: unknown): value is { prices: Array<{ total: number }> } {

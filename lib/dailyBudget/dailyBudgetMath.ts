@@ -1,6 +1,5 @@
 import { getZonedParts } from '../utils/dateUtils';
 import { clamp } from '../utils/mathUtils';
-import type { DailyBudgetAggressiveness } from './dailyBudgetTypes';
 
 export type CombinedPriceEntry = {
   startsAt: string;
@@ -12,11 +11,6 @@ export type CombinedPriceData = {
   lastFetched?: string;
 };
 
-const AGGRESSIVENESS_CONFIG: Record<DailyBudgetAggressiveness, { pressureScale: number; restoreExponent: number }> = {
-  relaxed: { pressureScale: 0.2, restoreExponent: 0.7 },
-  balanced: { pressureScale: 0.12, restoreExponent: 1 },
-  strict: { pressureScale: 0.08, restoreExponent: 1.35 },
-};
 const PREVIOUS_PLAN_BLEND_WEIGHT = 0.7;
 const NEW_PLAN_BLEND_WEIGHT = 1 - PREVIOUS_PLAN_BLEND_WEIGHT;
 const CAP_ALLOCATION_EPSILON = 1e-6;
@@ -26,9 +20,6 @@ export function getConfidence(sampleCount: number): number {
   return clamp(sampleCount / 14, 0, 1);
 }
 
-export function getAggressivenessConfig(aggressiveness: DailyBudgetAggressiveness): { pressureScale: number; restoreExponent: number } {
-  return AGGRESSIVENESS_CONFIG[aggressiveness] ?? AGGRESSIVENESS_CONFIG.balanced;
-}
 
 export function blendProfiles(defaultWeights: number[], learnedWeights: number[], confidence: number): number[] {
   const safeConfidence = clamp(confidence, 0, 1);
@@ -74,6 +65,7 @@ export function buildPlan(params: {
   priceShapingEnabled: boolean;
   previousPlannedKWh?: number[];
   capacityBudgetKWh?: number;
+  lockCurrentBucket?: boolean;
 }): {
   plannedKWh: number[];
   price?: Array<number | null>;
@@ -93,16 +85,18 @@ export function buildPlan(params: {
     priceShapingEnabled,
     previousPlannedKWh,
     capacityBudgetKWh,
+    lockCurrentBucket,
   } = params;
 
-  const baseWeights = bucketStartUtcMs.map((ts) => {
-    const hour = getZonedParts(new Date(ts), timeZone).hour;
-    return profileWeights[hour] ?? 0;
-  });
-  let normalizedDayWeights = normalizeWeights(baseWeights);
-  if (normalizedDayWeights.every((value) => value === 0)) {
-    normalizedDayWeights = normalizeWeights(baseWeights.map(() => 1));
-  }
+  const hasPreviousPlan = Array.isArray(previousPlannedKWh)
+    && previousPlannedKWh.length === bucketStartUtcMs.length;
+  const shouldLockCurrent = Boolean(lockCurrentBucket) && hasPreviousPlan;
+  const remainingStartIndex = shouldLockCurrent
+    ? Math.min(currentBucketIndex + 1, bucketStartUtcMs.length)
+    : currentBucketIndex;
+
+  const baseWeights = buildHourWeights({ bucketStartUtcMs, profileWeights, timeZone });
+  const normalizedDayWeights = normalizeWeightsWithFallback(baseWeights);
 
   const priceShape = buildPriceFactors({
     bucketStartUtcMs,
@@ -112,63 +106,40 @@ export function buildPlan(params: {
     priceShapingEnabled,
   });
 
-  const remainingWeightsRaw = baseWeights.slice(currentBucketIndex);
-  const remainingWeights = priceShape.priceFactors?.length
-    ? remainingWeightsRaw.map((value, index) => {
-      const factor = priceShape.priceFactors?.[currentBucketIndex + index];
-      return typeof factor === 'number' ? value * factor : value;
-    })
-    : remainingWeightsRaw;
-
-  let normalizedRemaining = normalizeWeights(remainingWeights);
-  if (normalizedRemaining.every((value) => value === 0)) {
-    const fallback = remainingWeights.map(() => 1);
-    normalizedRemaining = normalizeWeights(fallback);
-  }
-
-  const hasPreviousPlan = Array.isArray(previousPlannedKWh)
-    && previousPlannedKWh.length === bucketStartUtcMs.length;
-
-  if (hasPreviousPlan) {
-    const previousRemaining = (previousPlannedKWh as number[]).slice(currentBucketIndex);
-    const previousWeights = normalizeWeights(previousRemaining);
-    const blended = normalizedRemaining.map((value, index) => (
-      previousWeights[index] !== undefined
-        ? previousWeights[index] * PREVIOUS_PLAN_BLEND_WEIGHT + value * NEW_PLAN_BLEND_WEIGHT
-        : value
-    ));
-    normalizedRemaining = normalizeWeights(blended);
-  }
-
-  const remainingBudget = Math.max(0, dailyBudgetKWh - usedNowKWh);
   const usedInCurrent = bucketUsage[currentBucketIndex] ?? 0;
-
-  const hasCapacityCap = Number.isFinite(capacityBudgetKWh);
-  const capKWh = Math.max(0, capacityBudgetKWh ?? 0);
-  const remainingAllocations = hasCapacityCap
-    ? allocateBudgetWithCaps({
-      weights: normalizedRemaining,
-      totalKWh: remainingBudget,
-      caps: normalizedRemaining.map((_, index) => (
-        index === 0
-          ? Math.max(0, capKWh - usedInCurrent)
-          : capKWh
-      )),
-    })
-    : normalizedRemaining.map((weight) => remainingBudget * weight);
-
-  const plannedKWh = bucketStartUtcMs.map((_, index) => {
-    if (index < currentBucketIndex) {
-      if (hasPreviousPlan) {
-        const previousValue = (previousPlannedKWh as number[])[index];
-        return Number.isFinite(previousValue) ? previousValue : bucketUsage[index] ?? 0;
-      }
-      const fallbackWeight = normalizedDayWeights[index] ?? 0;
-      return dailyBudgetKWh * fallbackWeight;
-    }
-    const allocation = remainingAllocations[index - currentBucketIndex] ?? 0;
-    if (index === currentBucketIndex) return usedInCurrent + allocation;
-    return allocation;
+  const normalizedRemaining = resolveRemainingWeights({
+    baseWeights,
+    remainingStartIndex,
+    priceFactors: priceShape.priceFactors,
+    previousPlannedKWh: hasPreviousPlan ? previousPlannedKWh : undefined,
+  });
+  const remainingBudgetForFuture = resolveRemainingBudgetForFuture({
+    dailyBudgetKWh,
+    usedNowKWh,
+    usedInCurrent,
+    currentBucketIndex,
+    previousPlannedKWh: hasPreviousPlan ? previousPlannedKWh : undefined,
+    shouldLockCurrent,
+  });
+  const remainingAllocations = resolveRemainingAllocations({
+    weights: normalizedRemaining,
+    remainingBudgetKWh: remainingBudgetForFuture,
+    capacityBudgetKWh,
+    usedInCurrent,
+    remainingStartIndex,
+    currentBucketIndex,
+  });
+  const plannedKWh = buildPlannedKWh({
+    bucketCount: bucketStartUtcMs.length,
+    bucketUsage,
+    currentBucketIndex,
+    usedInCurrent,
+    dailyBudgetKWh,
+    normalizedDayWeights,
+    previousPlannedKWh: hasPreviousPlan ? previousPlannedKWh : undefined,
+    shouldLockCurrent,
+    remainingStartIndex,
+    remainingAllocations,
   });
 
   return {
@@ -177,6 +148,157 @@ export function buildPlan(params: {
     priceFactor: priceShape.priceFactors,
     priceShapingActive: priceShape.priceShapingActive,
   };
+}
+
+function buildHourWeights(params: {
+  bucketStartUtcMs: number[];
+  profileWeights: number[];
+  timeZone: string;
+}): number[] {
+  const { bucketStartUtcMs, profileWeights, timeZone } = params;
+  return bucketStartUtcMs.map((ts) => {
+    const hour = getZonedParts(new Date(ts), timeZone).hour;
+    return profileWeights[hour] ?? 0;
+  });
+}
+
+function normalizeWeightsWithFallback(weights: number[]): number[] {
+  let normalized = normalizeWeights(weights);
+  if (normalized.every((value) => value === 0)) {
+    normalized = normalizeWeights(weights.map(() => 1));
+  }
+  return normalized;
+}
+
+function resolveRemainingWeights(params: {
+  baseWeights: number[];
+  remainingStartIndex: number;
+  priceFactors?: Array<number | null>;
+  previousPlannedKWh?: number[];
+}): number[] {
+  const {
+    baseWeights,
+    remainingStartIndex,
+    priceFactors,
+    previousPlannedKWh,
+  } = params;
+  const remainingWeightsRaw = baseWeights.slice(remainingStartIndex);
+  const remainingWeights = priceFactors?.length
+    ? remainingWeightsRaw.map((value, index) => {
+      const factor = priceFactors[remainingStartIndex + index];
+      return typeof factor === 'number' ? value * factor : value;
+    })
+    : remainingWeightsRaw;
+  let normalizedRemaining = normalizeWeightsWithFallback(remainingWeights);
+  if (previousPlannedKWh?.length) {
+    const previousRemaining = previousPlannedKWh.slice(remainingStartIndex);
+    const previousWeights = normalizeWeights(previousRemaining);
+    const blended = normalizedRemaining.map((value, index) => (
+      previousWeights[index] !== undefined
+        ? previousWeights[index] * PREVIOUS_PLAN_BLEND_WEIGHT + value * NEW_PLAN_BLEND_WEIGHT
+        : value
+    ));
+    normalizedRemaining = normalizeWeights(blended);
+  }
+  return normalizedRemaining;
+}
+
+function resolveRemainingBudgetForFuture(params: {
+  dailyBudgetKWh: number;
+  usedNowKWh: number;
+  usedInCurrent: number;
+  currentBucketIndex: number;
+  previousPlannedKWh?: number[];
+  shouldLockCurrent: boolean;
+}): number {
+  const {
+    dailyBudgetKWh,
+    usedNowKWh,
+    usedInCurrent,
+    currentBucketIndex,
+    previousPlannedKWh,
+    shouldLockCurrent,
+  } = params;
+  const remainingBudget = Math.max(0, dailyBudgetKWh - usedNowKWh);
+  if (!shouldLockCurrent || !previousPlannedKWh?.length) return remainingBudget;
+  const previousCurrent = previousPlannedKWh[currentBucketIndex];
+  const plannedCurrent = Number.isFinite(previousCurrent) ? previousCurrent : 0;
+  const reservedCurrent = Math.max(0, plannedCurrent - usedInCurrent);
+  return Math.max(0, remainingBudget - reservedCurrent);
+}
+
+function resolveRemainingAllocations(params: {
+  weights: number[];
+  remainingBudgetKWh: number;
+  capacityBudgetKWh?: number;
+  usedInCurrent: number;
+  remainingStartIndex: number;
+  currentBucketIndex: number;
+}): number[] {
+  const {
+    weights,
+    remainingBudgetKWh,
+    capacityBudgetKWh,
+    usedInCurrent,
+    remainingStartIndex,
+    currentBucketIndex,
+  } = params;
+  if (!Number.isFinite(capacityBudgetKWh)) {
+    return weights.map((weight) => remainingBudgetKWh * weight);
+  }
+  const capKWh = Math.max(0, capacityBudgetKWh ?? 0);
+  const caps = weights.map((_, index) => (
+    remainingStartIndex === currentBucketIndex && index === 0
+      ? Math.max(0, capKWh - usedInCurrent)
+      : capKWh
+  ));
+  return allocateBudgetWithCaps({ weights, totalKWh: remainingBudgetKWh, caps });
+}
+
+function buildPlannedKWh(params: {
+  bucketCount: number;
+  bucketUsage: number[];
+  currentBucketIndex: number;
+  usedInCurrent: number;
+  dailyBudgetKWh: number;
+  normalizedDayWeights: number[];
+  previousPlannedKWh?: number[];
+  shouldLockCurrent: boolean;
+  remainingStartIndex: number;
+  remainingAllocations: number[];
+}): number[] {
+  const {
+    bucketCount,
+    bucketUsage,
+    currentBucketIndex,
+    usedInCurrent,
+    dailyBudgetKWh,
+    normalizedDayWeights,
+    previousPlannedKWh,
+    shouldLockCurrent,
+    remainingStartIndex,
+    remainingAllocations,
+  } = params;
+  return Array.from({ length: bucketCount }, (_, index) => {
+    if (index < currentBucketIndex) {
+      if (previousPlannedKWh?.length) {
+        const previousValue = previousPlannedKWh[index];
+        return Number.isFinite(previousValue) ? previousValue : bucketUsage[index] ?? 0;
+      }
+      const fallbackWeight = normalizedDayWeights[index] ?? 0;
+      return dailyBudgetKWh * fallbackWeight;
+    }
+    if (index === currentBucketIndex) {
+      if (shouldLockCurrent && previousPlannedKWh?.length) {
+        const previousValue = previousPlannedKWh[index];
+        return Number.isFinite(previousValue) ? previousValue : usedInCurrent;
+      }
+      const allocation = remainingAllocations[0] ?? 0;
+      return usedInCurrent + allocation;
+    }
+    const allocation = remainingAllocations[index - remainingStartIndex] ?? 0;
+    return allocation;
+  });
 }
 
 function allocateBudgetWithCaps(params: {

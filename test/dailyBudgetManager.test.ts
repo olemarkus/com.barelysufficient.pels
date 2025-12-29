@@ -77,7 +77,6 @@ describe('daily budget planning', () => {
     const settings = {
       enabled: true,
       dailyBudgetKWh: 10,
-      aggressiveness: 'balanced' as const,
       priceShapingEnabled: false,
     };
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
@@ -107,7 +106,6 @@ describe('daily budget planning', () => {
     const settings = {
       enabled: true,
       dailyBudgetKWh: 10,
-      aggressiveness: 'balanced' as const,
       priceShapingEnabled: false,
     };
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
@@ -134,12 +132,11 @@ describe('daily budget planning', () => {
     expect(planned[update.snapshot.currentBucketIndex]).toBeGreaterThanOrEqual(0.5);
   });
 
-  it('rebuilds the plan when usage changes within the current hour', () => {
+  it('keeps the current bucket plan stable when usage changes within the hour', () => {
     const manager = buildManager();
     const settings = {
       enabled: true,
       dailyBudgetKWh: 10,
-      aggressiveness: 'balanced' as const,
       priceShapingEnabled: false,
     };
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
@@ -171,7 +168,7 @@ describe('daily budget planning', () => {
     });
     const secondPlanned = second.snapshot.buckets.plannedKWh[second.snapshot.currentBucketIndex];
 
-    expect(secondPlanned).toBeGreaterThan(firstPlanned);
+    expect(secondPlanned).toBeCloseTo(firstPlanned, 6);
   });
 
   it('preserves planned values for past buckets when rebuilding', () => {
@@ -179,7 +176,6 @@ describe('daily budget planning', () => {
     const settings = {
       enabled: true,
       dailyBudgetKWh: 10,
-      aggressiveness: 'balanced' as const,
       priceShapingEnabled: false,
     };
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 1, 30)), TZ);
@@ -217,7 +213,6 @@ describe('daily budget planning', () => {
     const settings = {
       enabled: true,
       dailyBudgetKWh: 8,
-      aggressiveness: 'balanced' as const,
       priceShapingEnabled: false,
     };
     const previousKey = '2024-01-14';
@@ -268,44 +263,12 @@ describe('daily budget price shaping', () => {
   });
 });
 
-describe('daily budget pressure smoothing', () => {
-  it('smooths pressure changes over time', () => {
-    const manager = buildManager();
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 1,
-      aggressiveness: 'balanced' as const,
-      priceShapingEnabled: false,
-    };
-    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
-    const bucketKey = new Date(dayStart).toISOString();
-    const update1 = manager.update({
-      nowMs: dayStart + 5 * 60 * 1000,
-      timeZone: TZ,
-      settings,
-      powerTracker: { buckets: { [bucketKey]: 2 } },
-      priceOptimizationEnabled: false,
-    });
-    const update2 = manager.update({
-      nowMs: dayStart + 6 * 60 * 1000,
-      timeZone: TZ,
-      settings,
-      powerTracker: { buckets: { [bucketKey]: 2 } },
-      priceOptimizationEnabled: false,
-    });
-    expect(update2.snapshot.state.pressure).toBeGreaterThan(0);
-    expect(update2.snapshot.state.pressure).toBeLessThanOrEqual(1);
-    expect(update2.snapshot.state.pressure).toBeGreaterThan(update1.snapshot.state.pressure);
-  });
-});
-
 describe('daily budget exceeded state', () => {
   it('freezes when usage exceeds the allowed curve', () => {
     const manager = buildManager();
     const settings = {
       enabled: true,
       dailyBudgetKWh: 1,
-      aggressiveness: 'balanced' as const,
       priceShapingEnabled: false,
     };
     const dayStart = getDateKeyStartMs('2024-01-15', TZ);
@@ -326,7 +289,6 @@ describe('daily budget exceeded state', () => {
     const settings = {
       enabled: true,
       dailyBudgetKWh: 10,
-      aggressiveness: 'balanced' as const,
       priceShapingEnabled: false,
     };
     const dayStart = getDateKeyStartMs('2024-01-15', TZ);

@@ -1,10 +1,10 @@
 {
   "type": "number",
   "title": {
-    "en": "Devices on"
+    "en": "Devices active"
   },
   "desc": {
-    "en": "Number of controlled devices currently running"
+    "en": "Number of controlled devices not currently shed"
   },
   "getable": true,
   "setable": false,

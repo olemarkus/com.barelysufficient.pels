@@ -8,14 +8,12 @@ import {
   buildDefaultProfile,
   buildPlan,
   buildPriceDebugData,
-  getAggressivenessConfig,
   getConfidence,
   normalizeWeights,
   blendProfiles,
   sumArray,
 } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
-import { clamp } from '../utils/mathUtils';
 import {
   buildDayContext,
   buildBucketUsage,
@@ -25,7 +23,6 @@ import {
 } from './dailyBudgetState';
 import type { DayContext, PriceData } from './dailyBudgetState';
 import type {
-  DailyBudgetAggressiveness,
   DailyBudgetSettings,
   DailyBudgetState,
   DailyBudgetUiPayload,
@@ -39,7 +36,6 @@ type DailyBudgetManagerDeps = {
 
 const PLAN_REBUILD_INTERVAL_MS = 60 * 60 * 1000;
 const STATE_PERSIST_INTERVAL_MS = 60 * 1000;
-const PRESSURE_SMOOTHING_TAU_MS = 5 * 60 * 1000;
 const DEFAULT_PROFILE = buildDefaultProfile();
 
 type ExistingPlanState = {
@@ -144,21 +140,11 @@ export class DailyBudgetManager {
     this.maybeFreezeFromDeviation(enabled, budget.deviationKWh);
     this.maybeUnfreezeFromDeviation(enabled, budget.deviationKWh);
 
-    const pressure = enabled
-      ? this.updatePressure({
-        nowMs: context.nowMs,
-        deviationKWh: budget.deviationKWh,
-        dailyBudgetKWh: settings.dailyBudgetKWh,
-        aggressiveness: settings.aggressiveness,
-      })
-      : 0;
-
     if (plan.shouldLog) {
       this.deps.logDebug(
         `Daily budget: used ${context.usedNowKWh.toFixed(2)} kWh, `
         + `allowed ${budget.allowedNowKWh.toFixed(2)} kWh, `
         + `remaining ${budget.remainingKWh.toFixed(2)} kWh, `
-        + `pressure ${(pressure * 100).toFixed(0)}%, `
         + `confidence ${budget.confidence.toFixed(2)}`,
       );
     }
@@ -170,7 +156,6 @@ export class DailyBudgetManager {
       plannedKWh: plan.plannedKWh,
       priceData: plan.priceData,
       budget,
-      pressure,
       frozen: Boolean(this.state.frozen),
     });
 
@@ -344,6 +329,8 @@ export class DailyBudgetManager {
       priceOptimizationEnabled,
       capacityBudgetKWh,
     } = params;
+    const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
+    const lockCurrentBucket = this.state.lastPlanBucketStartUtcMs === currentBucketStartUtcMs;
     const buildResult = buildPlan({
       bucketStartUtcMs: context.bucketStartUtcMs,
       bucketUsage: context.bucketUsage,
@@ -357,8 +344,8 @@ export class DailyBudgetManager {
       priceShapingEnabled: settings.priceShapingEnabled,
       previousPlannedKWh: existingPlan ?? undefined,
       capacityBudgetKWh,
+      lockCurrentBucket,
     });
-    const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
     this.state.plannedKWh = buildResult.plannedKWh;
     this.state.lastPlanBucketStartUtcMs = currentBucketStartUtcMs;
     this.state.dayStartUtcMs = context.dayStartUtcMs;
@@ -435,26 +422,6 @@ export class DailyBudgetManager {
     return blendProfiles(DEFAULT_PROFILE, learned, confidence);
   }
 
-  private updatePressure(params: {
-    nowMs: number;
-    deviationKWh: number;
-    dailyBudgetKWh: number;
-    aggressiveness: DailyBudgetAggressiveness;
-  }): number {
-    const { nowMs, deviationKWh, dailyBudgetKWh, aggressiveness } = params;
-    const config = getAggressivenessConfig(aggressiveness);
-    const scale = Math.max(0.05, dailyBudgetKWh * config.pressureScale);
-    const rawPressure = clamp(deviationKWh > 0 ? deviationKWh / scale : 0, 0, 1);
-    const lastPressure = this.state.pressure ?? 0;
-    const lastTs = this.state.lastPressureUpdateMs ?? nowMs;
-    const dtMs = Math.max(0, nowMs - lastTs);
-    const alpha = 1 - Math.exp(-dtMs / PRESSURE_SMOOTHING_TAU_MS);
-    const next = lastPressure + (rawPressure - lastPressure) * alpha;
-    this.state.pressure = clamp(next, 0, 1);
-    this.state.lastPressureUpdateMs = nowMs;
-    return this.state.pressure;
-  }
-
   private finalizePreviousDay(params: {
     timeZone: string;
     powerTracker: PowerTrackerState;
@@ -475,8 +442,6 @@ export class DailyBudgetManager {
       this.state.frozen = false;
       this.state.lastPlanBucketStartUtcMs = null;
       this.state.plannedKWh = [];
-      this.state.pressure = 0;
-      this.state.lastPressureUpdateMs = null;
       this.markDirty(true);
       this.deps.logDebug(`Daily budget: skip learning for ${previousDateKey} (0 kWh)`);
       return;
@@ -491,8 +456,6 @@ export class DailyBudgetManager {
     this.state.frozen = false;
     this.state.lastPlanBucketStartUtcMs = null;
     this.state.plannedKWh = [];
-    this.state.pressure = 0;
-    this.state.lastPressureUpdateMs = null;
     this.markDirty(true);
     this.deps.logDebug(`Daily budget: finalized ${previousDateKey} (${totalKWh.toFixed(2)} kWh)`);
   }
@@ -533,7 +496,6 @@ export {
   buildPriceDebugData,
   buildPriceFactors,
   buildWeightsFromPlan,
-  getAggressivenessConfig,
   getConfidence,
   normalizeWeights,
   resolveCurrentBucketIndex,

@@ -43,7 +43,6 @@ export type DevicePlan = {
     dailyBudgetUsedKWh?: number;
     dailyBudgetAllowedKWhNow?: number;
     dailyBudgetRemainingKWh?: number;
-    dailyBudgetPressure?: number;
     dailyBudgetExceeded?: boolean;
   };
   devices: DevicePlanDevice[];

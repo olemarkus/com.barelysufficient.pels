@@ -1,7 +1,7 @@
 export const DEBUG_LOGGING_TOPICS = [
   { id: 'plan', label: 'Plan engine', description: 'Shedding, restore, and soft-limit decisions.' },
   { id: 'price', label: 'Price optimization', description: 'Spot prices, tariffs, and price shaping.' },
-  { id: 'daily_budget', label: 'Daily budget', description: 'Daily plan, pressure, and rollover.' },
+  { id: 'daily_budget', label: 'Daily budget', description: 'Daily plan and rollover.' },
   { id: 'devices', label: 'Devices', description: 'Device snapshots and Homey API interactions.' },
   { id: 'settings', label: 'Settings', description: 'Settings changes and housekeeping.' },
 ] as const;

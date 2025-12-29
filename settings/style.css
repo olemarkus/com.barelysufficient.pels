@@ -455,6 +455,11 @@ input:focus-visible {
   font-weight: var(--font-weight-semibold);
 }
 
+.plan-meta-pill {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .plan-meta-line-text {
   color: var(--text);
 }

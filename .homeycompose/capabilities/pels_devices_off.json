@@ -1,10 +1,10 @@
 {
   "type": "number",
   "title": {
-    "en": "Devices off"
+    "en": "Devices shed"
   },
   "desc": {
-    "en": "Number of controlled devices currently off or shed"
+    "en": "Number of controlled devices currently shed (off or minimum temperature)"
   },
   "getable": true,
   "setable": false,

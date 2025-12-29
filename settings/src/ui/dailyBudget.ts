@@ -3,7 +3,6 @@ import {
   dailyBudgetForm,
   dailyBudgetEnabledInput,
   dailyBudgetKwhInput,
-  dailyBudgetAggressivenessSelect,
   dailyBudgetPriceShapingInput,
   dailyBudgetStatusPill,
   dailyBudgetDay,
@@ -11,7 +10,6 @@ import {
   dailyBudgetAllowed,
   dailyBudgetRemaining,
   dailyBudgetDeviation,
-  dailyBudgetPressure,
   dailyBudgetChart,
   dailyBudgetBars,
   dailyBudgetLabels,
@@ -27,7 +25,6 @@ import { callApi, getSetting, setSetting } from './homey';
 import { showToast, showToastError } from './toast';
 import { logSettingsError } from './logging';
 import {
-  DAILY_BUDGET_AGGRESSIVENESS,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -230,7 +227,6 @@ const renderDailyBudgetEmptyState = () => {
   if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = '-- kWh';
   if (dailyBudgetDeviation) dailyBudgetDeviation.textContent = '-- kWh';
   if (dailyBudgetDeviation) dailyBudgetDeviation.removeAttribute('title');
-  if (dailyBudgetPressure) dailyBudgetPressure.textContent = '--%';
   if (dailyBudgetConfidence) setChipState(dailyBudgetConfidence, 'Confidence --');
   if (dailyBudgetPriceShapingState) setChipState(dailyBudgetPriceShapingState, 'Price shaping --');
   if (dailyBudgetFrozen) {
@@ -254,7 +250,6 @@ const renderDailyBudgetStats = (payload: DailyBudgetUiPayload) => {
     dailyBudgetDeviation.textContent = formatSignedKWh(payload.state.deviationKWh);
     dailyBudgetDeviation.title = 'Deviation = used minus allowed so far. Positive means over plan.';
   }
-  if (dailyBudgetPressure) dailyBudgetPressure.textContent = formatPercent(payload.state.pressure);
 };
 
 const renderDailyBudgetChips = (payload: DailyBudgetUiPayload) => {
@@ -313,10 +308,9 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
 };
 
 export const loadDailyBudgetSettings = async () => {
-  const [enabled, dailyBudgetKWh, aggressiveness, priceShapingEnabled] = await Promise.all([
+  const [enabled, dailyBudgetKWh, priceShapingEnabled] = await Promise.all([
     getSetting(DAILY_BUDGET_ENABLED),
     getSetting(DAILY_BUDGET_KWH),
-    getSetting(DAILY_BUDGET_AGGRESSIVENESS),
     getSetting(DAILY_BUDGET_PRICE_SHAPING_ENABLED),
   ]);
 
@@ -329,9 +323,6 @@ export const loadDailyBudgetSettings = async () => {
     const raw = typeof dailyBudgetKWh === 'number' ? dailyBudgetKWh : MIN_DAILY_BUDGET_KWH;
     const bounded = Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, raw));
     dailyBudgetKwhInput.value = bounded.toString();
-  }
-  if (dailyBudgetAggressivenessSelect) {
-    dailyBudgetAggressivenessSelect.value = typeof aggressiveness === 'string' ? aggressiveness : 'balanced';
   }
   if (dailyBudgetPriceShapingInput) {
     dailyBudgetPriceShapingInput.checked = priceShapingEnabled !== false;
@@ -348,12 +339,10 @@ export const saveDailyBudgetSettings = async () => {
     throw new Error(`Daily budget must be between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
   }
   const boundedKwh = Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, kwhValue));
-  const aggressiveness = dailyBudgetAggressivenessSelect?.value || 'balanced';
   const priceShapingEnabled = dailyBudgetPriceShapingInput?.checked ?? true;
 
   await setSetting(DAILY_BUDGET_ENABLED, enabled);
   await setSetting(DAILY_BUDGET_KWH, boundedKwh);
-  await setSetting(DAILY_BUDGET_AGGRESSIVENESS, aggressiveness);
   await setSetting(DAILY_BUDGET_PRICE_SHAPING_ENABLED, priceShapingEnabled);
   await showToast('Daily budget settings saved.', 'ok');
 };
@@ -396,7 +385,6 @@ export const initDailyBudgetHandlers = () => {
 
   dailyBudgetEnabledInput?.addEventListener('change', autoSave);
   dailyBudgetKwhInput?.addEventListener('change', autoSave);
-  dailyBudgetAggressivenessSelect?.addEventListener('change', autoSave);
   dailyBudgetPriceShapingInput?.addEventListener('change', autoSave);
   dailyBudgetForm?.addEventListener('submit', (event) => event.preventDefault());
 

@@ -1,9 +1,6 @@
-export type DailyBudgetAggressiveness = 'relaxed' | 'balanced' | 'strict';
-
 export type DailyBudgetSettings = {
   enabled: boolean;
   dailyBudgetKWh: number;
-  aggressiveness: DailyBudgetAggressiveness;
   priceShapingEnabled: boolean;
 };
 
@@ -19,8 +16,6 @@ export type DailyBudgetState = {
   frozen?: boolean;
   lastPlanBucketStartUtcMs?: number | null;
   lastPlanUpdateMs?: number | null;
-  pressure?: number;
-  lastPressureUpdateMs?: number | null;
   lastUsedNowKWh?: number;
   profile?: DailyBudgetProfile;
 };
@@ -34,7 +29,6 @@ export type DailyBudgetUiPayload = {
   budget: {
     enabled: boolean;
     dailyBudgetKWh: number;
-    aggressiveness: DailyBudgetAggressiveness;
     priceShapingEnabled: boolean;
   };
   state: {
@@ -42,7 +36,6 @@ export type DailyBudgetUiPayload = {
     allowedNowKWh: number;
     remainingKWh: number;
     deviationKWh: number;
-    pressure: number;
     exceeded: boolean;
     frozen: boolean;
     confidence: number;
