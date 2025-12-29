@@ -160,6 +160,7 @@ export const buildDailyBudgetSnapshot = (params: {
       startLocalLabels: context.bucketStartLocalLabels,
       plannedWeight: budget.plannedWeight,
       plannedKWh,
+      actualKWh: context.bucketUsage,
       allowedCumKWh: budget.allowedCumKWh,
       price: priceData.prices,
       priceFactor: priceData.priceFactors,

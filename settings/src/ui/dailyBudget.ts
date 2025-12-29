@@ -15,8 +15,7 @@ import {
   dailyBudgetChart,
   dailyBudgetBars,
   dailyBudgetLabels,
-  dailyBudgetLine,
-  dailyBudgetLinePath,
+  dailyBudgetLegend,
   dailyBudgetEmpty,
   dailyBudgetConfidence,
   dailyBudgetPriceShapingState,
@@ -83,14 +82,19 @@ const resolveLabelEvery = (count: number) => {
 };
 
 const renderDailyBudgetChart = (payload: DailyBudgetUiPayload) => {
-  if (!dailyBudgetBars || !dailyBudgetLabels || !dailyBudgetLine || !dailyBudgetLinePath) return;
+  if (!dailyBudgetBars || !dailyBudgetLabels) return;
   const planned = payload.buckets.plannedKWh || [];
+  const actual = payload.buckets.actualKWh || [];
   const labels = payload.buckets.startLocalLabels || [];
   const count = planned.length;
   dailyBudgetBars.innerHTML = '';
   dailyBudgetLabels.innerHTML = '';
 
   const maxPlanned = planned.reduce((max, value) => Math.max(max, value), 0);
+  const maxActual = actual.reduce((max, value) => (
+    Number.isFinite(value) ? Math.max(max, value) : max
+  ), 0);
+  const maxValue = Math.max(maxPlanned, maxActual);
   const labelEvery = resolveLabelEvery(count);
 
   planned.forEach((value, index) => {
@@ -101,12 +105,30 @@ const renderDailyBudgetChart = (payload: DailyBudgetUiPayload) => {
 
     const fill = document.createElement('div');
     fill.className = 'daily-budget-bar__fill';
-    const heightPct = maxPlanned > 0 ? (value / maxPlanned) * 100 : 0;
+    const heightPct = maxValue > 0 ? (value / maxValue) * 100 : 0;
     fill.style.height = value > 0 ? `${Math.max(2, heightPct)}%` : '0%';
     bar.appendChild(fill);
 
+    const actualValue = actual[index];
+    const showActual = Number.isFinite(actualValue) && index <= payload.currentBucketIndex;
+    if (showActual) {
+      const dot = document.createElement('div');
+      dot.className = 'daily-budget-dot';
+      if (actualValue > value + 0.001) dot.classList.add('is-over');
+      const actualPct = maxValue > 0 ? (actualValue / maxValue) * 100 : 0;
+      dot.style.bottom = `${Math.max(0, Math.min(100, actualPct))}%`;
+      bar.appendChild(dot);
+    }
+
     const label = labels[index] ?? '';
-    bar.title = label ? `${label} · ${formatKWh(value)}` : formatKWh(value);
+    const titleParts = [];
+    if (label) titleParts.push(label);
+    titleParts.push(`Planned ${formatKWh(value)}`);
+    if (Number.isFinite(actualValue)) {
+      const actualLabel = index === payload.currentBucketIndex ? 'Actual so far' : 'Actual';
+      titleParts.push(`${actualLabel} ${formatKWh(actualValue)}`);
+    }
+    bar.title = titleParts.join(' · ');
 
     dailyBudgetBars.appendChild(bar);
 
@@ -116,35 +138,28 @@ const renderDailyBudgetChart = (payload: DailyBudgetUiPayload) => {
     dailyBudgetLabels.appendChild(axisLabel);
   });
 
-  if (payload.budget.dailyBudgetKWh <= 0 || count === 0) {
-    dailyBudgetLine.setAttribute('hidden', '');
-    return;
-  }
-
-  const maxAllowed = payload.budget.dailyBudgetKWh;
-  const points = payload.buckets.allowedCumKWh.map((value, index) => {
-    const x = count === 1 ? 0 : (index / (count - 1)) * 100;
-    const y = 100 - (maxAllowed > 0 ? (value / maxAllowed) * 100 : 0);
-    return `${x},${y}`;
-  }).join(' ');
-  dailyBudgetLinePath.setAttribute('points', points);
-  dailyBudgetLine.removeAttribute('hidden');
+  if (count === 0) return;
 };
 
 const renderDailyBudgetEmptyState = () => {
   if (!dailyBudgetChart || !dailyBudgetEmpty) return;
   dailyBudgetEmpty.hidden = false;
   dailyBudgetChart.hidden = true;
+  if (dailyBudgetLegend) dailyBudgetLegend.hidden = true;
   setPillState(false, false);
   if (dailyBudgetDay) dailyBudgetDay.textContent = '--';
   if (dailyBudgetUsed) dailyBudgetUsed.textContent = '-- kWh';
   if (dailyBudgetAllowed) dailyBudgetAllowed.textContent = '-- kWh';
   if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = '-- kWh';
   if (dailyBudgetDeviation) dailyBudgetDeviation.textContent = '-- kWh';
+  if (dailyBudgetDeviation) dailyBudgetDeviation.removeAttribute('title');
   if (dailyBudgetPressure) dailyBudgetPressure.textContent = '--%';
   if (dailyBudgetConfidence) setChipState(dailyBudgetConfidence, 'Confidence --');
   if (dailyBudgetPriceShapingState) setChipState(dailyBudgetPriceShapingState, 'Price shaping --');
-  if (dailyBudgetFrozen) dailyBudgetFrozen.hidden = true;
+  if (dailyBudgetFrozen) {
+    dailyBudgetFrozen.hidden = true;
+    dailyBudgetFrozen.removeAttribute('title');
+  }
 };
 
 const renderDailyBudgetHeader = (payload: DailyBudgetUiPayload) => {
@@ -161,6 +176,7 @@ const renderDailyBudgetStats = (payload: DailyBudgetUiPayload) => {
   if (dailyBudgetDeviation) {
     const deviation = payload.state.usedNowKWh - payload.state.allowedNowKWh;
     dailyBudgetDeviation.textContent = formatSignedKWh(deviation);
+    dailyBudgetDeviation.title = 'Deviation = used minus allowed so far. Positive means over plan.';
   }
   if (dailyBudgetPressure) dailyBudgetPressure.textContent = formatPercent(payload.state.pressure);
 };
@@ -195,6 +211,9 @@ const renderDailyBudgetChips = (payload: DailyBudgetUiPayload) => {
     dailyBudgetFrozen.hidden = !payload.state.frozen;
     if (payload.state.frozen) {
       setChipState(dailyBudgetFrozen, 'Plan frozen', false, true);
+      dailyBudgetFrozen.title = 'Plan frozen while over plan; resumes once you are back under.';
+    } else {
+      dailyBudgetFrozen.removeAttribute('title');
     }
   }
 };
@@ -208,6 +227,7 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
 
   dailyBudgetEmpty.hidden = true;
   dailyBudgetChart.hidden = false;
+  if (dailyBudgetLegend) dailyBudgetLegend.hidden = false;
   dailyBudgetChart.classList.toggle('is-disabled', !payload.budget.enabled);
 
   renderDailyBudgetHeader(payload);

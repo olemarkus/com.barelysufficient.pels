@@ -45,7 +45,6 @@ type ExistingPlanState = {
   planStateMismatch: boolean;
   existingPlan: number[] | null;
   deviationExisting: number;
-  deviationCompleted: number;
 };
 
 type PlanResult = {
@@ -117,7 +116,6 @@ export class DailyBudgetManager {
       enabled,
       existingPlan: planState.existingPlan,
       deviationExisting: planState.deviationExisting,
-      deviationCompleted: planState.deviationCompleted,
     });
 
     const plan = this.resolvePlan({
@@ -139,6 +137,7 @@ export class DailyBudgetManager {
     });
 
     this.maybeFreezeFromDeviation(enabled, budget.deviationKWh);
+    this.maybeUnfreezeFromDeviation(enabled, budget.deviationKWh);
 
     const pressure = enabled
       ? this.updatePressure({
@@ -218,7 +217,6 @@ export class DailyBudgetManager {
       planStateMismatch,
       existingPlan,
       deviationExisting: deviations.deviationExisting,
-      deviationCompleted: deviations.deviationCompleted,
     };
   }
 
@@ -242,24 +240,15 @@ export class DailyBudgetManager {
     enabled: boolean;
     existingPlan: number[] | null;
     dailyBudgetKWh: number;
-  }): { deviationExisting: number; deviationCompleted: number } {
+  }): { deviationExisting: number } {
     const { context, enabled, existingPlan, dailyBudgetKWh } = params;
     if (!enabled || !existingPlan) {
-      return { deviationExisting: 0, deviationCompleted: 0 };
+      return { deviationExisting: 0 };
     }
     const existingAllowedCumKWh = buildAllowedCumKWh(existingPlan, dailyBudgetKWh);
     const existingAllowedNowKWh = existingAllowedCumKWh[context.currentBucketIndex] ?? 0;
-    if (context.currentBucketIndex === 0) {
-      return {
-        deviationExisting: context.usedNowKWh - existingAllowedNowKWh,
-        deviationCompleted: 0,
-      };
-    }
-    const usedThroughPrev = context.usedNowKWh - context.currentBucketUsage;
-    const allowedThroughPrev = existingAllowedCumKWh[context.currentBucketIndex - 1] ?? 0;
     return {
       deviationExisting: context.usedNowKWh - existingAllowedNowKWh,
-      deviationCompleted: usedThroughPrev - allowedThroughPrev,
     };
   }
 
@@ -267,15 +256,13 @@ export class DailyBudgetManager {
     enabled: boolean;
     existingPlan: number[] | null;
     deviationExisting: number;
-    deviationCompleted: number;
   }): void {
-    const { enabled, existingPlan, deviationExisting, deviationCompleted } = params;
+    const { enabled, existingPlan, deviationExisting } = params;
     if (!enabled || !existingPlan || this.state.frozen) return;
-    if (deviationExisting <= 0 && deviationCompleted <= 0) return;
+    if (deviationExisting <= 0) return;
     this.state.frozen = true;
     this.markDirty(true);
-    const deviation = Math.max(deviationExisting, deviationCompleted);
-    this.deps.logDebug(`Daily budget: freeze plan (deviation ${deviation.toFixed(2)} kWh)`);
+    this.deps.logDebug(`Daily budget: freeze plan (deviation ${deviationExisting.toFixed(2)} kWh)`);
   }
 
   private resolvePlan(params: {
@@ -355,6 +342,14 @@ export class DailyBudgetManager {
     if (!enabled || deviationKWh <= 0 || this.state.frozen) return;
     this.state.frozen = true; this.markDirty(true);
     this.deps.logDebug(`Daily budget: freeze plan (deviation ${deviationKWh.toFixed(2)} kWh)`);
+  }
+
+  private maybeUnfreezeFromDeviation(enabled: boolean, deviationKWh: number): void {
+    if (!enabled || deviationKWh > 0 || !this.state.frozen) return;
+    this.state.frozen = false;
+    this.state.lastPlanBucketStartUtcMs = null;
+    this.markDirty(true);
+    this.deps.logDebug(`Daily budget: unfreeze plan (deviation ${deviationKWh.toFixed(2)} kWh)`);
   }
 
   private shouldPersist(nowMs: number): boolean {
