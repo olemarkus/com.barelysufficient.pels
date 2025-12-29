@@ -25,6 +25,9 @@ type PlanSnapshot = {
   meta?: {
     totalKw?: number;
     softLimitKw?: number;
+    capacitySoftLimitKw?: number;
+    dailySoftLimitKw?: number | null;
+    softLimitSource?: 'capacity' | 'daily' | 'both';
     headroomKw?: number;
     usedKWh?: number;
     budgetKWh?: number;
@@ -48,6 +51,21 @@ type PlanMetaLines = {
   hour: string[];
 };
 
+type PlanMeta = NonNullable<PlanSnapshot['meta']>;
+
+const getSoftLimitSourceLabel = (source?: PlanMeta['softLimitSource']) => {
+  if (source === 'daily') return 'Daily';
+  if (source === 'both') return 'Daily + capacity';
+  return 'Capacity';
+};
+
+const getSoftLimitSourceValue = (meta: PlanMeta, fallback: number) => {
+  if (meta.softLimitSource === 'daily' && typeof meta.dailySoftLimitKw === 'number') {
+    return meta.dailySoftLimitKw;
+  }
+  return fallback;
+};
+
 const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null => {
   if (!meta) return null;
   const { totalKw, softLimitKw, headroomKw } = meta;
@@ -58,7 +76,13 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
   const headroomAbs = Math.abs(headroomKw).toFixed(1);
   const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
   const powerText = `Now ${totalKw.toFixed(1)}kW / Limit ${softLimitKw.toFixed(1)}kW`;
-  const nowLines = [powerText, headroomText];
+  const nowLines = [powerText];
+  if (meta.softLimitSource) {
+    const sourceLabel = getSoftLimitSourceLabel(meta.softLimitSource);
+    const sourceLimit = getSoftLimitSourceValue(meta, softLimitKw);
+    nowLines.push(`Limiter ${sourceLabel} (${sourceLimit.toFixed(1)}kW)`);
+  }
+  nowLines.push(headroomText);
   const hourLines: string[] = [];
 
   if (typeof meta.controlledKw === 'number' && typeof meta.uncontrolledKw === 'number') {

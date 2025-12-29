@@ -21,6 +21,7 @@ This feature always uses the whole-home meter data that PELS already collects (t
 ## How the cap is applied
 
 PELS always computes the capacity based cap for the current hour. When daily budget is enabled, it also computes a daily usage based cap for the same hour. The planner then uses the smaller of those two caps when deciding shedding and restores.
+The daily usage based cap is capped at the capacity limit (before margin). The planner still uses the smaller of the capacity based cap and the daily usage based cap each hour.
 
 ## Examples (Scenarios)
 

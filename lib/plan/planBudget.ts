@@ -1,5 +1,5 @@
 import type { PowerTrackerState } from '../core/powerTracker';
-import { getHourBucketKey } from '../utils/dateUtils';
+import { getCurrentHourContext } from './planHourContext';
 
 const SUSTAINABLE_RATE_THRESHOLD_MIN = 10;
 const SUSTAINABLE_RATE_THRESHOLD_HOURS = SUSTAINABLE_RATE_THRESHOLD_MIN / 60;
@@ -16,13 +16,9 @@ export function computeDynamicSoftLimit(params: {
   if (netBudgetKWh <= 0) return { allowedKw: 0, hourlyBudgetExhausted: false };
 
   const now = Date.now();
-  const bucketKey = getHourBucketKey(now);
-  const hourStart = new Date(bucketKey).getTime();
-  const hourEnd = hourStart + 60 * 60 * 1000;
-  const remainingMs = hourEnd - now;
-  const remainingHours = Math.max(remainingMs / 3600000, SUSTAINABLE_RATE_THRESHOLD_HOURS);
-
-  const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
+  const hourContext = getCurrentHourContext(powerTracker, now);
+  const remainingHours = Math.max(hourContext.remainingHours, SUSTAINABLE_RATE_THRESHOLD_HOURS);
+  const usedKWh = hourContext.usedKWh;
   const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
   const hourlyBudgetExhausted = remainingKWh <= 0;
 
@@ -33,7 +29,7 @@ export function computeDynamicSoftLimit(params: {
   // This prevents the "end of hour burst" problem where devices ramp up
   // to use remaining budget, then immediately overshoot the next hour.
   // Earlier in the hour, allow the full burst rate since there's time to recover.
-  const minutesRemaining = remainingMs / 60000;
+  const minutesRemaining = hourContext.minutesRemaining;
   const sustainableRateKw = netBudgetKWh; // kWh/h = kW at steady state
   const allowedKw = minutesRemaining <= SUSTAINABLE_RATE_THRESHOLD_MIN
     ? Math.min(burstRateKw, sustainableRateKw)
@@ -101,13 +97,9 @@ export function computeShortfallThreshold(params: {
   if (netBudgetKWh <= 0) return 0;
 
   const now = Date.now();
-  const bucketKey = getHourBucketKey(now);
-  const hourStart = new Date(bucketKey).getTime();
-  const hourEnd = hourStart + 60 * 60 * 1000;
-  const remainingMs = hourEnd - now;
-  const remainingHours = Math.max(remainingMs / 3600000, 0.01);
-
-  const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
+  const hourContext = getCurrentHourContext(powerTracker, now);
+  const remainingHours = Math.max(hourContext.remainingHours, 0.01);
+  const usedKWh = hourContext.usedKWh;
   const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
 
   // Return the uncapped burst rate - this is the actual limit before we'd exceed hourly budget

@@ -102,6 +102,116 @@ describe('daily budget planning', () => {
     expect(update.snapshot.state.allowedNowKWh).toBeCloseTo(5, 3);
   });
 
+  it('caps planned buckets to the capacity budget per hour', () => {
+    const manager = buildManager();
+    const settings = {
+      enabled: true,
+      dailyBudgetKWh: 10,
+      aggressiveness: 'balanced' as const,
+      priceShapingEnabled: false,
+    };
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 30 * 60 * 1000;
+    const bucketKey = new Date(dayStart).toISOString();
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights([0.5, 0.5, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+    });
+    const update = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0.5 } },
+      priceOptimizationEnabled: false,
+      capacityBudgetKWh: 2,
+    });
+    const planned = update.snapshot.buckets.plannedKWh;
+    const maxPlanned = Math.max(...planned);
+    expect(maxPlanned).toBeLessThanOrEqual(2 + 1e-6);
+    expect(planned[update.snapshot.currentBucketIndex]).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it('rebuilds the plan when usage changes within the current hour', () => {
+    const manager = buildManager();
+    const settings = {
+      enabled: true,
+      dailyBudgetKWh: 10,
+      aggressiveness: 'balanced' as const,
+      priceShapingEnabled: false,
+    };
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 10 * 60 * 1000;
+    const bucketKey = new Date(dayStart).toISOString();
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights([0.5, 0.5, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+    });
+
+    const first = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+    const firstPlanned = first.snapshot.buckets.plannedKWh[first.snapshot.currentBucketIndex];
+
+    const second = manager.update({
+      nowMs: now + 2 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 2 } },
+      priceOptimizationEnabled: false,
+    });
+    const secondPlanned = second.snapshot.buckets.plannedKWh[second.snapshot.currentBucketIndex];
+
+    expect(secondPlanned).toBeGreaterThan(firstPlanned);
+  });
+
+  it('preserves planned values for past buckets when rebuilding', () => {
+    const manager = buildManager();
+    const settings = {
+      enabled: true,
+      dailyBudgetKWh: 10,
+      aggressiveness: 'balanced' as const,
+      priceShapingEnabled: false,
+    };
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 1, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 2.5 * 60 * 60 * 1000;
+    const bucketKey0 = new Date(dayStart).toISOString();
+    const bucketKey1 = new Date(dayStart + 60 * 60 * 1000).toISOString();
+    const previousPlan = Array.from({ length: 24 }, (_, index) => (index === 0 ? 0.5 : 1));
+
+    manager.loadState({
+      dateKey,
+      dayStartUtcMs: dayStart,
+      plannedKWh: previousPlan,
+      profile: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 1)),
+        sampleCount: 14,
+      },
+    });
+
+    const update = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey0]: 2, [bucketKey1]: 1.5 } },
+      priceOptimizationEnabled: false,
+      forcePlanRebuild: true,
+    });
+
+    expect(update.snapshot.buckets.plannedKWh[0]).toBeCloseTo(previousPlan[0], 6);
+    expect(update.snapshot.buckets.plannedKWh[1]).toBeCloseTo(previousPlan[1], 6);
+  });
+
   it('updates the learned profile on day rollover', () => {
     const manager = buildManager();
     const settings = {

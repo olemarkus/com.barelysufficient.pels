@@ -23,6 +23,7 @@ export function getHourBucketKey(nowMs: number = Date.now()): string {
 }
 
 export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
+    let primaryError: unknown = null;
     try {
         const parts = new Intl.DateTimeFormat('en-US', {
             timeZone,
@@ -31,14 +32,29 @@ export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
         }).formatToParts(date);
         const tzName = parts.find((part) => part.type === 'timeZoneName')?.value ?? '';
         const match = tzName.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
-        if (!match) return 0;
+        if (!match) throw new Error('Missing GMT offset');
         const hours = Number(match[1]);
         const minutes = match[2] ? Number(match[2]) : 0;
         return hours * 60 + Math.sign(hours) * minutes;
     } catch (error) {
+        primaryError = error;
+    }
+
+    try {
+        const parts = getZonedParts(date, timeZone);
+        if (![parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second].every(Number.isFinite)) {
+            throw new Error('Invalid zoned parts');
+        }
+        const utcCandidate = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+        return Math.round((utcCandidate - date.getTime()) / 60000);
+    } catch (fallbackError) {
         if (!timeZoneOffsetErrorLogged.has(timeZone)) {
-            const message = error instanceof Error ? error.message : String(error);
-            console.warn(`getTimeZoneOffsetMinutes: failed to compute offset for ${timeZone}: ${message}`);
+            const primaryMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
+            const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+            console.warn(
+                `getTimeZoneOffsetMinutes: failed to compute offset for ${timeZone}: `
+                + `${primaryMessage}; fallback failed: ${fallbackMessage}`,
+            );
             timeZoneOffsetErrorLogged.add(timeZone);
         }
         return 0;
@@ -92,6 +108,39 @@ export function getDateKeyStartMs(dateKey: string, timeZone: string): number {
     const utcMidnight = Date.UTC(year, month - 1, day, 0, 0, 0);
     const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcMidnight), timeZone);
     return utcMidnight - offsetMinutes * 60 * 1000;
+}
+
+export function getStartOfDayInTimeZone(date: Date, timeZone: string): number {
+    return getDateKeyStartMs(getDateKeyInTimeZone(date, timeZone), timeZone);
+}
+
+export function getWeekStartInTimeZone(date: Date, timeZone: string): number {
+    const { year, month, day } = getZonedParts(date, timeZone);
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const diffToMonday = (weekday + 6) % 7;
+    const weekStartDate = new Date(Date.UTC(year, month - 1, day - diffToMonday));
+    return getStartOfDayInTimeZone(weekStartDate, timeZone);
+}
+
+export function getMonthStartInTimeZone(date: Date, timeZone: string): number {
+    const { year, month } = getZonedParts(date, timeZone);
+    const monthStartDate = new Date(Date.UTC(year, month - 1, 1));
+    return getStartOfDayInTimeZone(monthStartDate, timeZone);
+}
+
+export function formatDateInTimeZone(date: Date, options: Intl.DateTimeFormatOptions, timeZone: string): string {
+    return date.toLocaleDateString([], { timeZone, ...options });
+}
+
+export function formatTimeInTimeZone(date: Date, options: Intl.DateTimeFormatOptions, timeZone: string): string {
+    return date.toLocaleTimeString([], { timeZone, ...options });
+}
+
+export function getHourStartInTimeZone(date: Date, timeZone: string): number {
+    const { year, month, day, hour } = getZonedParts(date, timeZone);
+    const utcHour = Date.UTC(year, month - 1, day, hour, 0, 0, 0);
+    const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcHour), timeZone);
+    return utcHour - offsetMinutes * 60 * 1000;
 }
 
 export function getLocalDayStartUtcMs(nowMs: number, timeZone: string): number {

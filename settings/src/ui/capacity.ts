@@ -5,10 +5,11 @@ import {
   dryRunBanner,
   staleDataBanner,
   staleDataBannerText,
-  debugLoggingEnabledCheckbox,
+  debugLoggingTopicInputs,
 } from './dom';
 import { getSetting, setSetting } from './homey';
-import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../../lib/utils/settingsKeys';
+import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEBUG_LOGGING_TOPICS } from '../../../lib/utils/settingsKeys';
+import { ALL_DEBUG_LOGGING_TOPICS, normalizeDebugLoggingTopics } from '../../../lib/utils/debugLogging';
 import { showToast } from './toast';
 
 const STALE_DATA_THRESHOLD_MS = 60 * 1000;
@@ -90,8 +91,17 @@ export const saveCapacitySettings = async () => {
 };
 
 export const loadAdvancedSettings = async () => {
-  const debugEnabled = await getSetting('debug_logging_enabled');
-  if (debugLoggingEnabledCheckbox) {
-    debugLoggingEnabledCheckbox.checked = debugEnabled === true;
+  const [topicsRaw, legacyEnabled] = await Promise.all([
+    getSetting(DEBUG_LOGGING_TOPICS),
+    getSetting('debug_logging_enabled'),
+  ]);
+  let enabledTopics = normalizeDebugLoggingTopics(topicsRaw);
+  if (enabledTopics.length === 0 && legacyEnabled === true) {
+    enabledTopics = [...ALL_DEBUG_LOGGING_TOPICS];
   }
+  debugLoggingTopicInputs.forEach((input) => {
+    const el = input;
+    const topic = el.dataset.debugTopic;
+    el.checked = typeof topic === 'string' && enabledTopics.includes(topic);
+  });
 };

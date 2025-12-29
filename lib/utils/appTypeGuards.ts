@@ -34,6 +34,7 @@ export function isPowerTrackerState(value: unknown): value is PowerTrackerState 
   const checks = [
     isOptionalRecord(state.buckets),
     isOptionalRecord(state.hourlyBudgets),
+    isOptionalRecord(state.dailyBudgetCaps),
     isOptionalRecord(state.dailyTotals),
     isOptionalRecord(state.hourlyAverages),
     isOptionalRecord(state.controlledBuckets),

@@ -247,7 +247,7 @@ Diagnostics and debug toggles.
 
 | Setting | Description |
 |---------|-------------|
-| **Enable debug logging** | Turns on debug logs until the app restarts. Use for troubleshooting only. |
+| **Debug logging topics** | Select which areas emit debug logs. Selections persist across restarts. |
 
 ---
 

@@ -16,6 +16,8 @@ import {
 } from './dom';
 import { getHomeyTimezone, getSetting } from './homey';
 import { createUsageBar } from './components';
+import type { PowerTrackerState } from '../../../lib/core/powerTracker';
+import { buildDayContext } from '../../../lib/dailyBudget/dailyBudgetState';
 import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
@@ -27,13 +29,7 @@ import {
   getZonedParts,
 } from './timezone';
 
-export type PowerTracker = {
-  buckets?: Record<string, number>;
-  hourlyBudgets?: Record<string, number>;
-  dailyTotals?: Record<string, number>;
-  hourlyAverages?: Record<string, { sum: number; count: number }>;
-  unreliablePeriods?: Array<{ start: number; end: number }>;
-};
+export type PowerTracker = PowerTrackerState;
 
 type PowerUsageEntry = {
   hour: Date;
@@ -112,19 +108,6 @@ const getPowerTimeContext = (now: Date, timeZone: string) => {
   const weekStart = getWeekStartInTimeZone(now, timeZone);
   const monthStart = getMonthStartInTimeZone(now, timeZone);
   return { todayKey, todayStart, weekStart, monthStart };
-};
-
-const getTodayUsage = (tracker: PowerTracker, todayStart: number) => {
-  let total = 0;
-  if (tracker.buckets) {
-    for (const [iso, kWh] of Object.entries(tracker.buckets)) {
-      const ts = new Date(iso).getTime();
-      if (ts >= todayStart) {
-        total += kWh;
-      }
-    }
-  }
-  return total;
 };
 
 type PeriodTotals = {
@@ -385,7 +368,7 @@ const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
   });
 };
 
-const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZone: string }> => {
+export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZone: string }> => {
   const tracker = await getSetting('power_tracker_state') as PowerTracker | null;
   if (!tracker || typeof tracker !== 'object') {
     return { stats: getEmptyPowerStats(), timeZone: getHomeyTimezone() };
@@ -394,7 +377,12 @@ const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZone: st
   const now = new Date();
   const timeZone = getHomeyTimezone();
   const timeContext = getPowerTimeContext(now, timeZone);
-  const today = getTodayUsage(tracker, timeContext.todayStart);
+  const dayContext = buildDayContext({
+    nowMs: now.getTime(),
+    timeZone,
+    powerTracker: tracker,
+  });
+  const today = dayContext.usedNowKWh;
   const derivedDailyTotals = Object.keys(tracker.dailyTotals || {}).length
     ? tracker.dailyTotals as Record<string, number>
     : getDerivedDailyTotals(tracker.buckets, timeZone);

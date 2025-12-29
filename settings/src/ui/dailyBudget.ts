@@ -33,6 +33,7 @@ import {
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   DAILY_BUDGET_RESET,
 } from '../../../lib/utils/settingsKeys';
+import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../../lib/dailyBudget/dailyBudgetConstants';
 
 const formatKWh = (value: number, digits = 2) => (
   Number.isFinite(value) ? `${value.toFixed(digits)} kWh` : '-- kWh'
@@ -44,9 +45,6 @@ const formatSignedKWh = (value: number, digits = 2) => {
 const formatPercent = (value: number) => (
   Number.isFinite(value) ? `${Math.round(value * 100)}%` : '--%'
 );
-
-const MIN_DAILY_BUDGET_KWH = 20;
-const MAX_DAILY_BUDGET_KWH = 360;
 
 let priceOptimizationEnabled = true;
 
@@ -87,6 +85,104 @@ const resolveLabelEvery = (count: number) => {
   return 1;
 };
 
+const formatHourLabel = (label: string) => {
+  if (!label) return '';
+  const trimmed = label.trim();
+  if (!trimmed) return '';
+  const separatorIndex = trimmed.indexOf(':');
+  if (separatorIndex > 0) return trimmed.slice(0, separatorIndex);
+  return trimmed;
+};
+
+const getChartMaxValue = (planned: number[], actual: number[]) => {
+  const maxPlanned = planned.reduce((max, value) => Math.max(max, value), 0);
+  const maxActual = actual.reduce((max, value) => (
+    Number.isFinite(value) ? Math.max(max, value) : max
+  ), 0);
+  return Math.max(maxPlanned, maxActual);
+};
+
+const buildDailyBudgetBarTitle = (params: {
+  label: string;
+  plannedKWh: number;
+  actualKWh: number | undefined;
+  isCurrent: boolean;
+}) => {
+  const { label, plannedKWh, actualKWh, isCurrent } = params;
+  const titleParts = [];
+  if (label) titleParts.push(label);
+  titleParts.push(`Planned ${formatKWh(plannedKWh)}`);
+  if (Number.isFinite(actualKWh)) {
+    const actualLabel = isCurrent ? 'Actual so far' : 'Actual';
+    titleParts.push(`${actualLabel} ${formatKWh(actualKWh)}`);
+  }
+  return titleParts.join(' · ');
+};
+
+const buildDailyBudgetBar = (params: {
+  value: number;
+  actualValue: number | undefined;
+  index: number;
+  payload: DailyBudgetUiPayload;
+  maxValue: number;
+  label: string;
+}) => {
+  const {
+    value,
+    actualValue,
+    index,
+    payload,
+    maxValue,
+    label,
+  } = params;
+  const bar = document.createElement('div');
+  bar.className = 'daily-budget-bar';
+  if (index < payload.currentBucketIndex) bar.classList.add('is-past');
+  if (index === payload.currentBucketIndex) bar.classList.add('is-current');
+
+  const fill = document.createElement('div');
+  fill.className = 'daily-budget-bar__fill';
+  const heightPct = maxValue > 0 ? (value / maxValue) * 100 : 0;
+  fill.style.height = value > 0 ? `${Math.max(2, heightPct)}%` : '0%';
+  bar.appendChild(fill);
+
+  const showActual = Number.isFinite(actualValue) && index <= payload.currentBucketIndex;
+  if (showActual) {
+    const dot = document.createElement('div');
+    dot.className = 'daily-budget-dot';
+    if ((actualValue as number) > value + 0.001) dot.classList.add('is-over');
+    const actualPct = maxValue > 0 ? ((actualValue as number) / maxValue) * 100 : 0;
+    dot.style.bottom = `${Math.max(0, Math.min(100, actualPct))}%`;
+    bar.appendChild(dot);
+  }
+
+  bar.title = buildDailyBudgetBarTitle({
+    label,
+    plannedKWh: value,
+    actualKWh: actualValue,
+    isCurrent: index === payload.currentBucketIndex,
+  });
+
+  return bar;
+};
+
+const buildDailyBudgetAxisLabel = (params: {
+  label: string;
+  index: number;
+  count: number;
+  labelEvery: number;
+}) => {
+  const { label, index, count, labelEvery } = params;
+  const axisLabel = document.createElement('div');
+  axisLabel.className = 'daily-budget-label';
+  const shortLabel = formatHourLabel(label);
+  axisLabel.textContent = (index % labelEvery === 0 || index === count - 1) ? shortLabel : '';
+  if (shortLabel && label && shortLabel !== label) {
+    axisLabel.title = label;
+  }
+  return axisLabel;
+};
+
 const renderDailyBudgetChart = (payload: DailyBudgetUiPayload) => {
   if (!dailyBudgetBars || !dailyBudgetLabels) return;
   const planned = payload.buckets.plannedKWh || [];
@@ -96,52 +192,27 @@ const renderDailyBudgetChart = (payload: DailyBudgetUiPayload) => {
   dailyBudgetBars.innerHTML = '';
   dailyBudgetLabels.innerHTML = '';
 
-  const maxPlanned = planned.reduce((max, value) => Math.max(max, value), 0);
-  const maxActual = actual.reduce((max, value) => (
-    Number.isFinite(value) ? Math.max(max, value) : max
-  ), 0);
-  const maxValue = Math.max(maxPlanned, maxActual);
+  const maxValue = getChartMaxValue(planned, actual);
   const labelEvery = resolveLabelEvery(count);
 
   planned.forEach((value, index) => {
-    const bar = document.createElement('div');
-    bar.className = 'daily-budget-bar';
-    if (index < payload.currentBucketIndex) bar.classList.add('is-past');
-    if (index === payload.currentBucketIndex) bar.classList.add('is-current');
-
-    const fill = document.createElement('div');
-    fill.className = 'daily-budget-bar__fill';
-    const heightPct = maxValue > 0 ? (value / maxValue) * 100 : 0;
-    fill.style.height = value > 0 ? `${Math.max(2, heightPct)}%` : '0%';
-    bar.appendChild(fill);
-
-    const actualValue = actual[index];
-    const showActual = Number.isFinite(actualValue) && index <= payload.currentBucketIndex;
-    if (showActual) {
-      const dot = document.createElement('div');
-      dot.className = 'daily-budget-dot';
-      if (actualValue > value + 0.001) dot.classList.add('is-over');
-      const actualPct = maxValue > 0 ? (actualValue / maxValue) * 100 : 0;
-      dot.style.bottom = `${Math.max(0, Math.min(100, actualPct))}%`;
-      bar.appendChild(dot);
-    }
-
     const label = labels[index] ?? '';
-    const titleParts = [];
-    if (label) titleParts.push(label);
-    titleParts.push(`Planned ${formatKWh(value)}`);
-    if (Number.isFinite(actualValue)) {
-      const actualLabel = index === payload.currentBucketIndex ? 'Actual so far' : 'Actual';
-      titleParts.push(`${actualLabel} ${formatKWh(actualValue)}`);
-    }
-    bar.title = titleParts.join(' · ');
-
+    const actualValue = actual[index];
+    const bar = buildDailyBudgetBar({
+      value,
+      actualValue,
+      index,
+      payload,
+      maxValue,
+      label,
+    });
     dailyBudgetBars.appendChild(bar);
-
-    const axisLabel = document.createElement('div');
-    axisLabel.className = 'daily-budget-label';
-    axisLabel.textContent = (index % labelEvery === 0 || index === count - 1) ? label : '';
-    dailyBudgetLabels.appendChild(axisLabel);
+    dailyBudgetLabels.appendChild(buildDailyBudgetAxisLabel({
+      label,
+      index,
+      count,
+      labelEvery,
+    }));
   });
 
   if (count === 0) return;
@@ -180,8 +251,7 @@ const renderDailyBudgetStats = (payload: DailyBudgetUiPayload) => {
   if (dailyBudgetAllowed) dailyBudgetAllowed.textContent = formatKWh(payload.state.allowedNowKWh);
   if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = formatKWh(payload.state.remainingKWh);
   if (dailyBudgetDeviation) {
-    const deviation = payload.state.usedNowKWh - payload.state.allowedNowKWh;
-    dailyBudgetDeviation.textContent = formatSignedKWh(deviation);
+    dailyBudgetDeviation.textContent = formatSignedKWh(payload.state.deviationKWh);
     dailyBudgetDeviation.title = 'Deviation = used minus allowed so far. Positive means over plan.';
   }
   if (dailyBudgetPressure) dailyBudgetPressure.textContent = formatPercent(payload.state.pressure);

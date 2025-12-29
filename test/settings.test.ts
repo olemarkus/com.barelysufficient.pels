@@ -103,7 +103,11 @@ const buildDom = () => {
       <p id="price-optimization-empty" hidden></p>
     </section>
     <section class="panel hidden" data-panel="advanced">
-      <input id="debug-logging-enabled" type="checkbox">
+      <input id="debug-topic-plan" data-debug-topic="plan" type="checkbox">
+      <input id="debug-topic-price" data-debug-topic="price" type="checkbox">
+      <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
+      <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">
+      <input id="debug-topic-settings" data-debug-topic="settings" type="checkbox">
     </section>
     <button id="refresh-button"></button>
     <button id="reset-stats-button"></button>

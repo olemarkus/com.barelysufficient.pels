@@ -82,7 +82,7 @@ export const priceOptimizationList = qs('#price-optimization-list');
 export const priceOptimizationEmpty = qs('#price-optimization-empty');
 export const priceOptimizationSection = qs('#price-optimization-section');
 export const priceOptimizationEnabledCheckbox = document.querySelector('#price-optimization-enabled') as HTMLInputElement;
-export const debugLoggingEnabledCheckbox = document.querySelector('#debug-logging-enabled') as HTMLInputElement;
+export const debugLoggingTopicInputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-debug-topic]'));
 
 export const deviceDetailOverlay = qs('#device-detail-overlay');
 export const deviceDetailPanel = qs('#device-detail-panel');

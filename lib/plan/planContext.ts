@@ -1,6 +1,6 @@
 import CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
-import { getHourBucketKey } from '../utils/dateUtils';
+import { getCurrentHourContext } from './planHourContext';
 import type { PlanInputDevice } from './planTypes';
 import type { DailyBudgetAggressiveness } from '../dailyBudget/dailyBudgetTypes';
 
@@ -65,12 +65,10 @@ export function buildPlanContext(params: {
 
   // Compute used/budget kWh for this hour
   const budgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
-  const bucketKey = getHourBucketKey();
-  const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
   const now = Date.now();
-  const hourStart = new Date(bucketKey).getTime();
-  const hourEnd = hourStart + 60 * 60 * 1000;
-  const minutesRemaining = Math.max(0, (hourEnd - now) / 60000);
+  const hourContext = getCurrentHourContext(powerTracker, now);
+  const usedKWh = hourContext.usedKWh;
+  const minutesRemaining = hourContext.minutesRemaining;
 
   const headroomRaw = total === null ? null : softLimit - total;
   // headroom is the ACTUAL available capacity. Use this for shedding.

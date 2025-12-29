@@ -315,10 +315,41 @@
       </div>
       <div class="form-grid">
         <label class="field checkbox-field">
-          <input id="debug-logging-enabled" name="debug_logging_enabled" type="checkbox">
-          <span class="field__label">Enable debug logging (resets to off on app start)</span>
+          <input id="debug-topic-plan" data-debug-topic="plan" type="checkbox">
+          <div>
+            <span class="field__label">Plan engine</span>
+            <small class="field__hint">Shedding, restore, and soft-limit decisions.</small>
+          </div>
         </label>
-        <p class="muted">Use only for troubleshooting. Debug logging is always disabled when the app restarts.</p>
+        <label class="field checkbox-field">
+          <input id="debug-topic-price" data-debug-topic="price" type="checkbox">
+          <div>
+            <span class="field__label">Price optimization</span>
+            <small class="field__hint">Spot prices, tariffs, and price shaping.</small>
+          </div>
+        </label>
+        <label class="field checkbox-field">
+          <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
+          <div>
+            <span class="field__label">Daily budget</span>
+            <small class="field__hint">Daily plan, pressure, and rollover.</small>
+          </div>
+        </label>
+        <label class="field checkbox-field">
+          <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">
+          <div>
+            <span class="field__label">Devices</span>
+            <small class="field__hint">Device snapshots and Homey API interactions.</small>
+          </div>
+        </label>
+        <label class="field checkbox-field">
+          <input id="debug-topic-settings" data-debug-topic="settings" type="checkbox">
+          <div>
+            <span class="field__label">Settings</span>
+            <small class="field__hint">Settings changes and housekeeping.</small>
+          </div>
+        </label>
+        <p class="muted">Select only what you need. Debug logging stays enabled across restarts.</p>
       </div>
     </section>
 

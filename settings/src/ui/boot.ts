@@ -21,7 +21,7 @@ import {
   capacityMarginInput,
   capacityDryRunInput,
   priorityForm,
-  debugLoggingEnabledCheckbox,
+  debugLoggingTopicInputs,
 } from './dom';
 import { getHomeyClient, getSetting, setSetting, waitForHomey } from './homey';
 import { showToast, showToastError } from './toast';
@@ -33,6 +33,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  DEBUG_LOGGING_TOPICS,
   OPERATING_MODE_SETTING,
 } from '../../../lib/utils/settingsKeys';
 import {
@@ -119,6 +120,13 @@ const initRealtimeListeners = () => {
       void logSettingsError('Failed to refresh prices', error, 'settings.set');
     });
   };
+  const refreshDailyBudgetIfVisible = () => {
+    const budgetPanel = document.querySelector('#budget-panel');
+    if (!budgetPanel || budgetPanel.classList.contains('hidden')) return;
+    refreshDailyBudgetPlan().catch((error) => {
+      void logSettingsError('Failed to refresh daily budget', error, 'settings.set');
+    });
+  };
 
   homey.on('plan_updated', (plan) => {
     const overviewPanel = document.querySelector('#overview-panel');
@@ -144,6 +152,8 @@ const initRealtimeListeners = () => {
     'daily_budget_reset',
     'combined_prices',
     'price_optimization_enabled',
+    CAPACITY_LIMIT_KW,
+    CAPACITY_MARGIN_KW,
   ]);
 
   const dailyBudgetSettingsKeys = new Set([
@@ -184,6 +194,7 @@ const initRealtimeListeners = () => {
       refreshPowerData().catch((error) => {
         void logSettingsError('Failed to refresh power data', error, 'settings.set');
       });
+      refreshDailyBudgetIfVisible();
     }
 
     if (dailyBudgetRefreshKeys.has(key)) {
@@ -404,19 +415,27 @@ const initNettleieHandlers = () => {
 };
 
 const initAdvancedHandlers = () => {
-  debugLoggingEnabledCheckbox?.addEventListener('change', async () => {
+  const saveDebugTopics = async () => {
     try {
-      await setSetting('debug_logging_enabled', debugLoggingEnabledCheckbox.checked);
+      const selected = debugLoggingTopicInputs
+        .filter((input) => input.checked && typeof input.dataset.debugTopic === 'string')
+        .map((input) => input.dataset.debugTopic as string);
+      await setSetting(DEBUG_LOGGING_TOPICS, selected);
+      await setSetting('debug_logging_enabled', selected.length > 0);
       await showToast(
-        debugLoggingEnabledCheckbox.checked
-          ? 'Debug logging enabled (resets on restart).'
-          : 'Debug logging disabled.',
+        selected.length ? 'Debug logging updated.' : 'Debug logging disabled.',
         'ok',
       );
     } catch (error) {
-      await logSettingsError('Failed to update debug logging setting', error, 'debugLoggingEnabledCheckbox');
+      await logSettingsError('Failed to update debug logging setting', error, 'debugLoggingTopics');
       await showToastError(error, 'Failed to update debug logging setting.');
     }
+  };
+
+  debugLoggingTopicInputs.forEach((input) => {
+    input.addEventListener('change', () => {
+      void saveDebugTopics();
+    });
   });
 };
 

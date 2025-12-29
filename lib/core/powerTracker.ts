@@ -12,6 +12,7 @@ export type PowerTrackerState = {
   lastTimestamp?: number;
   buckets?: Record<string, number>; // Hourly data (ISO timestamp -> kWh)
   hourlyBudgets?: Record<string, number>; // Hourly budget snapshot (ISO timestamp -> kWh)
+  dailyBudgetCaps?: Record<string, number>; // Daily budget plan per hour (ISO timestamp -> kWh)
   dailyTotals?: Record<string, number>; // Daily totals (YYYY-MM-DD -> kWh)
   hourlyAverages?: Record<string, { sum: number; count: number }>; // day-hour pattern (0-6_0-23 -> { sum, count })
   controlledBuckets?: Record<string, number>;
@@ -272,15 +273,19 @@ export function aggregateAndPruneHistory(
   );
 
   const nextBudgets = new Map<string, number>();
+  const nextDailyCaps = new Map<string, number>();
   for (const isoKey of totalAggregate.nextBuckets.keys()) {
     const budget = (state.hourlyBudgets || {})[isoKey];
     if (budget !== undefined) nextBudgets.set(isoKey, budget);
+    const dailyCap = (state.dailyBudgetCaps || {})[isoKey];
+    if (dailyCap !== undefined) nextDailyCaps.set(isoKey, dailyCap);
   }
 
   return {
     ...state,
     buckets: totalAggregate.buckets,
     hourlyBudgets: Object.fromEntries(nextBudgets),
+    dailyBudgetCaps: Object.fromEntries(nextDailyCaps),
     dailyTotals: totalAggregate.dailyTotals,
     hourlyAverages: totalAggregate.hourlyAverages,
     controlledBuckets: controlledAggregate.buckets,
