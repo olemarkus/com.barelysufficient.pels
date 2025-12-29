@@ -2,12 +2,9 @@ import CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { getCurrentHourContext } from './planHourContext';
 import type { PlanInputDevice } from './planTypes';
-import type { DailyBudgetAggressiveness } from '../dailyBudget/dailyBudgetTypes';
 
 export type DailyBudgetContext = {
   enabled: boolean;
-  pressure: number;
-  aggressiveness: DailyBudgetAggressiveness;
   usedNowKWh: number;
   allowedNowKWh: number;
   remainingKWh: number;

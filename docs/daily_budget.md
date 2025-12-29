@@ -50,7 +50,6 @@ The daily budget controls live in the **Budget** tab.
 
 - **Enable daily energy budget**: turns the feature on/off.
 - **Daily budget (kWh)**: target daily energy use. Range: 20–360 kWh.
-- **Aggressiveness**: controls how quickly the pressure indicator reacts to deviations (status signal).
 - **Price-shape today plan**: when price optimization is enabled, the plan is weighted toward cheaper remaining hours.
 - **Reset learning**: clears the learned usage profile for future plans.
 
@@ -62,7 +61,6 @@ The Budget tab shows a "Today plan" chart and live stats:
 - **Allowed now**: cumulative kWh that the plan allows up to the current hour.
 - **Remaining**: daily budget minus used (can be negative).
 - **Deviation**: used minus allowed so far (positive means over plan).
-- **Pressure**: 0–100% indicator of how far over/under plan you are (status signal).
 - **Confidence**: how much learned history is influencing the plan.
 - **Price shaping**: shows whether price shaping is active.
 - **Plan frozen**: appears while you're over plan; it clears once you are back under plan.
@@ -93,8 +91,7 @@ The plan is a cumulative curve. The current bucket's planned kWh is turned into 
 These are exposed on the PELS Insights device:
 
 - `daily_budget_used_kwh`
-- `daily_budget_allowed_kwh_now`
+- `daily_budget_allowed_kwh_now` (status-only, not tracked in Insights)
 - `daily_budget_remaining_kwh`
-- `daily_budget_pressure`
 - `daily_budget_exceeded`
 - `pels_limit_reason` (indicates whether limits are due to hourly or daily budget)

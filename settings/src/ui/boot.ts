@@ -147,7 +147,6 @@ const initRealtimeListeners = () => {
   const dailyBudgetRefreshKeys = new Set([
     'daily_budget_enabled',
     'daily_budget_kwh',
-    'daily_budget_aggressiveness',
     'daily_budget_price_shaping_enabled',
     'daily_budget_reset',
     'combined_prices',
@@ -159,7 +158,6 @@ const initRealtimeListeners = () => {
   const dailyBudgetSettingsKeys = new Set([
     'daily_budget_enabled',
     'daily_budget_kwh',
-    'daily_budget_aggressiveness',
     'daily_budget_price_shaping_enabled',
   ]);
 

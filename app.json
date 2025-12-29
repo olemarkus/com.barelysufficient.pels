@@ -351,12 +351,10 @@
         "pels_daily_budget_used_kwh",
         "pels_daily_budget_allowed_kwh_now",
         "pels_daily_budget_remaining_kwh",
-        "pels_daily_budget_pressure",
         "pels_daily_budget_exceeded",
         "pels_limit_reason",
         "pels_controlled_power",
         "pels_uncontrolled_power",
-        "pels_shedding",
         "pels_price_level",
         "pels_devices_on",
         "pels_devices_off"
@@ -414,10 +412,10 @@
     "pels_daily_budget_allowed_kwh_now": {
       "type": "number",
       "title": {
-        "en": "Daily budget allowed now"
+        "en": "Budget allowed"
       },
       "desc": {
-        "en": "kWh allowed so far today by the daily budget plan"
+        "en": "Daily budget allowance so far today"
       },
       "units": {
         "en": "kWh"
@@ -425,7 +423,7 @@
       "getable": true,
       "setable": false,
       "uiComponent": "sensor",
-      "insights": true,
+      "insights": false,
       "decimals": 2
     },
     "pels_daily_budget_exceeded": {
@@ -440,20 +438,6 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": true
-    },
-    "pels_daily_budget_pressure": {
-      "type": "number",
-      "title": {
-        "en": "Daily budget pressure"
-      },
-      "desc": {
-        "en": "Daily budget pressure (0-1)"
-      },
-      "getable": true,
-      "setable": false,
-      "uiComponent": "sensor",
-      "insights": true,
-      "decimals": 2
     },
     "pels_daily_budget_remaining_kwh": {
       "type": "number",
@@ -492,10 +476,10 @@
     "pels_devices_off": {
       "type": "number",
       "title": {
-        "en": "Devices off"
+        "en": "Devices shed"
       },
       "desc": {
-        "en": "Number of controlled devices currently off or shed"
+        "en": "Number of controlled devices currently shed (off or minimum temperature)"
       },
       "getable": true,
       "setable": false,
@@ -506,10 +490,10 @@
     "pels_devices_on": {
       "type": "number",
       "title": {
-        "en": "Devices on"
+        "en": "Devices active"
       },
       "desc": {
-        "en": "Number of controlled devices currently running"
+        "en": "Number of controlled devices not currently shed"
       },
       "getable": true,
       "setable": false,
@@ -563,7 +547,7 @@
       "setable": false
     },
     "pels_limit_reason": {
-      "type": "enum",
+      "type": "string",
       "title": {
         "en": "Limit reason"
       },
@@ -571,33 +555,7 @@
         "en": "Why PELS is currently limiting device restores or shedding"
       },
       "getable": true,
-      "setable": false,
-      "values": [
-        {
-          "id": "none",
-          "title": {
-            "en": "None"
-          }
-        },
-        {
-          "id": "hourly",
-          "title": {
-            "en": "Hourly limit"
-          }
-        },
-        {
-          "id": "daily",
-          "title": {
-            "en": "Daily budget"
-          }
-        },
-        {
-          "id": "both",
-          "title": {
-            "en": "Both"
-          }
-        }
-      ]
+      "setable": false
     },
     "pels_price_level": {
       "type": "enum",
@@ -636,19 +594,6 @@
           }
         }
       ]
-    },
-    "pels_shedding": {
-      "type": "boolean",
-      "title": {
-        "en": "Shedding"
-      },
-      "desc": {
-        "en": "Whether PELS is currently shedding load to stay within capacity"
-      },
-      "getable": true,
-      "setable": false,
-      "uiComponent": "sensor",
-      "insights": false
     },
     "pels_shortfall": {
       "type": "boolean",

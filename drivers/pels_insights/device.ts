@@ -7,12 +7,10 @@ type StatusData = {
   dailyBudgetUsedKwh?: number;
   dailyBudgetAllowedKwhNow?: number;
   dailyBudgetRemainingKwh?: number;
-  dailyBudgetPressure?: number;
   dailyBudgetExceeded?: boolean;
   limitReason?: 'none' | 'hourly' | 'daily' | 'both';
   controlledKw?: number;
   uncontrolledKw?: number;
-  shedding?: boolean;
   priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
   devicesOn?: number;
   devicesOff?: number;
@@ -30,12 +28,10 @@ const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
   { key: 'dailyBudgetUsedKwh', id: 'pels_daily_budget_used_kwh', type: 'number' },
   { key: 'dailyBudgetAllowedKwhNow', id: 'pels_daily_budget_allowed_kwh_now', type: 'number' },
   { key: 'dailyBudgetRemainingKwh', id: 'pels_daily_budget_remaining_kwh', type: 'number' },
-  { key: 'dailyBudgetPressure', id: 'pels_daily_budget_pressure', type: 'number' },
   { key: 'dailyBudgetExceeded', id: 'pels_daily_budget_exceeded', type: 'boolean' },
   { key: 'limitReason', id: 'pels_limit_reason', type: 'string' },
   { key: 'controlledKw', id: 'pels_controlled_power', type: 'number' },
   { key: 'uncontrolledKw', id: 'pels_uncontrolled_power', type: 'number' },
-  { key: 'shedding', id: 'pels_shedding', type: 'boolean' },
   { key: 'priceLevel', id: 'pels_price_level', type: 'string' },
   { key: 'devicesOn', id: 'pels_devices_on', type: 'number' },
   { key: 'devicesOff', id: 'pels_devices_off', type: 'number' },
@@ -57,12 +53,10 @@ class PelsInsightsDevice extends Homey.Device {
       'pels_daily_budget_used_kwh',
       'pels_daily_budget_allowed_kwh_now',
       'pels_daily_budget_remaining_kwh',
-      'pels_daily_budget_pressure',
       'pels_daily_budget_exceeded',
       'pels_limit_reason',
       'pels_controlled_power',
       'pels_uncontrolled_power',
-      'pels_shedding',
       'pels_price_level',
       'pels_devices_on',
       'pels_devices_off',
@@ -77,6 +71,9 @@ class PelsInsightsDevice extends Homey.Device {
     // Remove deprecated alarm_generic if present (replaced by pels_shortfall)
     if (this.hasCapability('alarm_generic')) {
       await this.removeCapability('alarm_generic');
+    }
+    if (this.hasCapability('pels_shedding')) {
+      await this.removeCapability('pels_shedding');
     }
 
     // Initialize from current settings

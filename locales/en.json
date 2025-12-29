@@ -15,9 +15,6 @@
     "pels_shortfall": {
       "title": "Capacity shortfall"
     },
-    "pels_shedding": {
-      "title": "Shedding"
-    },
     "pels_price_level": {
       "title": "Price level",
       "values": {
@@ -28,10 +25,10 @@
       }
     },
     "pels_devices_on": {
-      "title": "Devices on"
+      "title": "Devices active"
     },
     "pels_devices_off": {
-      "title": "Devices off"
+      "title": "Devices shed"
     }
   }
 }

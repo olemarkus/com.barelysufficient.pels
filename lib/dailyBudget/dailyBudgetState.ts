@@ -152,7 +152,6 @@ export const buildDailyBudgetSnapshot = (params: {
   plannedKWh: number[];
   priceData: PriceData;
   budget: BudgetState;
-  pressure: number;
   frozen: boolean;
 }): DailyBudgetUiPayload => {
   const {
@@ -162,7 +161,6 @@ export const buildDailyBudgetSnapshot = (params: {
     plannedKWh,
     priceData,
     budget,
-    pressure,
     frozen,
   } = params;
 
@@ -175,7 +173,6 @@ export const buildDailyBudgetSnapshot = (params: {
     budget: {
       enabled,
       dailyBudgetKWh: settings.dailyBudgetKWh,
-      aggressiveness: settings.aggressiveness,
       priceShapingEnabled: settings.priceShapingEnabled,
     },
     state: {
@@ -183,7 +180,6 @@ export const buildDailyBudgetSnapshot = (params: {
       allowedNowKWh: budget.allowedNowKWh,
       remainingKWh: budget.remainingKWh,
       deviationKWh: budget.deviationKWh,
-      pressure,
       exceeded: budget.exceeded,
       frozen,
       confidence: budget.confidence,

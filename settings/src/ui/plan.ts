@@ -49,6 +49,7 @@ const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => {
 type PlanMetaLines = {
   now: string[];
   hour: string[];
+  limiter?: string;
 };
 
 type PlanMeta = NonNullable<PlanSnapshot['meta']>;
@@ -77,10 +78,11 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
   const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
   const powerText = `Now ${totalKw.toFixed(1)}kW / Limit ${softLimitKw.toFixed(1)}kW`;
   const nowLines = [powerText];
+  let limiterText: string | undefined;
   if (meta.softLimitSource) {
     const sourceLabel = getSoftLimitSourceLabel(meta.softLimitSource);
     const sourceLimit = getSoftLimitSourceValue(meta, softLimitKw);
-    nowLines.push(`Limiter ${sourceLabel} (${sourceLimit.toFixed(1)}kW)`);
+    limiterText = `Limiter ${sourceLabel} (${sourceLimit.toFixed(1)}kW)`;
   }
   nowLines.push(headroomText);
   const hourLines: string[] = [];
@@ -99,7 +101,7 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
     hourLines.push('End of hour');
   }
 
-  return { now: nowLines, hour: hourLines };
+  return { now: nowLines, hour: hourLines, limiter: limiterText };
 };
 
 const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
@@ -109,10 +111,10 @@ const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
     return;
   }
 
-  const { now: nowLines, hour: hourLines } = metaLines;
+  const { now: nowLines, hour: hourLines, limiter } = metaLines;
 
   planMeta.innerHTML = '';
-  const addSection = (title: string, sectionLines: string[]) => {
+  const addSection = (title: string, sectionLines: string[], pillText?: string) => {
     if (sectionLines.length === 0) return;
     const section = document.createElement('div');
     section.className = 'plan-meta-section';
@@ -120,6 +122,15 @@ const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
     heading.className = 'plan-meta-title';
     heading.textContent = title;
     section.appendChild(heading);
+    if (pillText) {
+      const pillWrap = document.createElement('div');
+      pillWrap.className = 'plan-meta-pill';
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.textContent = pillText;
+      pillWrap.appendChild(pill);
+      section.appendChild(pillWrap);
+    }
     sectionLines.forEach((line) => {
       const div = document.createElement('div');
       div.className = 'plan-meta-line-text';
@@ -129,7 +140,7 @@ const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
     planMeta.appendChild(section);
   };
 
-  addSection('Now', nowLines);
+  addSection('Now', nowLines, limiter);
   if (nowLines.length && hourLines.length) {
     const divider = document.createElement('div');
     divider.className = 'plan-meta-divider';

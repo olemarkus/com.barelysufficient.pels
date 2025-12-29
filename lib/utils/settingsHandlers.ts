@@ -5,7 +5,6 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
-  DAILY_BUDGET_AGGRESSIVENESS,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -82,7 +81,6 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     },
     [DAILY_BUDGET_ENABLED]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_KWH]: async () => handleDailyBudgetChange(deps),
-    [DAILY_BUDGET_AGGRESSIVENESS]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_PRICE_SHAPING_ENABLED]: async () => handleDailyBudgetChange(deps),
     combined_prices: async () => handleDailyBudgetPriceChange(deps),
     overshoot_behaviors: async () => {

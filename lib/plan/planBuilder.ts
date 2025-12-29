@@ -238,8 +238,6 @@ export class PlanBuilder {
     if (!snapshot) return undefined;
     return {
       enabled: snapshot.budget.enabled,
-      pressure: snapshot.state.pressure,
-      aggressiveness: snapshot.budget.aggressiveness,
       usedNowKWh: snapshot.state.usedNowKWh,
       allowedNowKWh: snapshot.state.allowedNowKWh,
       remainingKWh: snapshot.state.remainingKWh,
@@ -313,7 +311,6 @@ export class PlanBuilder {
       dailyBudgetUsedKWh: dailyBudgetSnapshot?.state.usedNowKWh,
       dailyBudgetAllowedKWhNow: dailyBudgetSnapshot?.state.allowedNowKWh,
       dailyBudgetRemainingKWh: dailyBudgetSnapshot?.state.remainingKWh,
-      dailyBudgetPressure: dailyBudgetSnapshot?.state.pressure,
       dailyBudgetExceeded: dailyBudgetSnapshot?.state.exceeded,
     };
   }

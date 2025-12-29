@@ -43,7 +43,6 @@ const buildDom = () => {
       <form id="daily-budget-form">
         <input id="daily-budget-enabled" type="checkbox">
         <input id="daily-budget-kwh">
-        <select id="daily-budget-aggressiveness"></select>
         <input id="daily-budget-price-shaping" type="checkbox">
       </form>
       <div id="daily-budget-chart"></div>
@@ -57,7 +56,6 @@ const buildDom = () => {
       <div id="daily-budget-allowed"></div>
       <div id="daily-budget-remaining"></div>
       <div id="daily-budget-deviation"></div>
-      <div id="daily-budget-pressure"></div>
       <div id="daily-budget-confidence"></div>
       <div id="daily-budget-price-shaping-state"></div>
       <div id="daily-budget-frozen"></div>

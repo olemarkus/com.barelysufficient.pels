@@ -1,10 +1,10 @@
 {
   "type": "number",
   "title": {
-    "en": "Daily budget allowed now"
+    "en": "Budget allowed"
   },
   "desc": {
-    "en": "kWh allowed so far today by the daily budget plan"
+    "en": "Daily budget allowance so far today"
   },
   "units": {
     "en": "kWh"
@@ -12,6 +12,6 @@
   "getable": true,
   "setable": false,
   "uiComponent": "sensor",
-  "insights": true,
+  "insights": false,
   "decimals": 2
 }
