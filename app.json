@@ -1,0 +1,678 @@
+{
+  "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
+  "id": "com.barelysufficient.pels",
+  "version": "1.5.9",
+  "compatibility": ">=12.4.0",
+  "sdk": 3,
+  "platforms": [
+    "local"
+  ],
+  "name": {
+    "en": "PELS"
+  },
+  "description": {
+    "en": "Save energy and money with automatic capacity control and price-aware load shifting."
+  },
+  "brandColor": "#7fd1ae",
+  "category": [
+    "energy",
+    "climate"
+  ],
+  "source": "https://github.com/olemarkus/com.barelysufficient.pels",
+  "homepage": "https://github.com/olemarkus/com.barelysufficient.pels/blob/main/docs/README.md",
+  "support": "mailto:olemarkus@gmail.com",
+  "bugs": {
+    "url": "https://github.com/olemarkus/com.barelysufficient.pels/issues"
+  },
+  "tags": {
+    "en": [
+      "capacity",
+      "power limit",
+      "energy price",
+      "temperature",
+      "spot price",
+      "grid tariff",
+      "energy optimization",
+      "power management"
+    ]
+  },
+  "permissions": [
+    "homey:manager:api"
+  ],
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
+  },
+  "author": {
+    "name": "Ole Markus With",
+    "email": "olemarkus@gmail.com"
+  },
+  "flow": {
+    "triggers": [
+      {
+        "title": {
+          "en": "Capacity guard: manual action needed"
+        },
+        "titleFormatted": {
+          "en": "Capacity guard cannot reduce load to the limit; manual action required"
+        },
+        "args": [],
+        "hint": {
+          "en": "Use this to get notified when PELS needs manual intervention to prevent exceeding your power limit."
+        },
+        "id": "capacity_shortfall"
+      },
+      {
+        "title": {
+          "en": "Operating mode changed to"
+        },
+        "titleFormatted": {
+          "en": "Operating mode changed to [[mode]]"
+        },
+        "args": [
+          {
+            "name": "mode",
+            "type": "autocomplete",
+            "title": {
+              "en": "Operating mode"
+            },
+            "placeholder": {
+              "en": "Select a mode"
+            },
+            "example": {
+              "en": "Home"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Use this to trigger flows when PELS switches to a different operating mode."
+        },
+        "id": "operating_mode_changed"
+      },
+      {
+        "title": {
+          "en": "Price level changed to"
+        },
+        "titleFormatted": {
+          "en": "Price level changed to [[level]]"
+        },
+        "args": [
+          {
+            "name": "level",
+            "type": "autocomplete",
+            "title": {
+              "en": "Price level"
+            },
+            "placeholder": {
+              "en": "Choose a price level"
+            },
+            "example": {
+              "en": "Cheap"
+            }
+          }
+        ],
+        "id": "price_level_changed"
+      }
+    ],
+    "conditions": [
+      {
+        "title": {
+          "en": "Is there enough capacity?"
+        },
+        "titleFormatted": {
+          "en": "Is there enough capacity for [[required_kw]] kW?"
+        },
+        "args": [
+          {
+            "name": "required_kw",
+            "type": "number",
+            "title": {
+              "en": "Required power (kW)"
+            },
+            "min": 0,
+            "step": 0.1
+          }
+        ],
+        "hint": {
+          "en": "Use this to check if you can safely turn on more devices without exceeding your capacity limit."
+        },
+        "id": "has_capacity_for"
+      },
+      {
+        "title": {
+          "en": "Is there headroom for device?"
+        },
+        "titleFormatted": {
+          "en": "Does [[device]] have headroom for [[required_kw]] kW?"
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            }
+          },
+          {
+            "name": "required_kw",
+            "type": "number",
+            "title": {
+              "en": "Required power (kW)"
+            },
+            "min": 0,
+            "step": 0.1
+          }
+        ],
+        "hint": {
+          "en": "Checks if the current headroom plus the device's estimated usage is enough to add the requested load."
+        },
+        "id": "has_headroom_for_device"
+      },
+      {
+        "title": {
+          "en": "Operating mode is..."
+        },
+        "titleFormatted": {
+          "en": "Operating mode is [[mode]]"
+        },
+        "args": [
+          {
+            "name": "mode",
+            "type": "autocomplete",
+            "title": {
+              "en": "Mode"
+            },
+            "placeholder": {
+              "en": "Choose a mode"
+            },
+            "example": {
+              "en": "Home"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Use this to create flows that only run when PELS is in a specific mode (e.g., Home, Away, Night)."
+        },
+        "id": "is_capacity_mode"
+      },
+      {
+        "title": {
+          "en": "Price level is..."
+        },
+        "titleFormatted": {
+          "en": "Price level is [[level]]"
+        },
+        "args": [
+          {
+            "name": "level",
+            "type": "autocomplete",
+            "title": {
+              "en": "Price level"
+            },
+            "placeholder": {
+              "en": "Choose a price level"
+            },
+            "example": {
+              "en": "Cheap"
+            }
+          }
+        ],
+        "id": "price_level_is"
+      }
+    ],
+    "actions": [
+      {
+        "title": {
+          "en": "Report power usage"
+        },
+        "titleFormatted": {
+          "en": "Report power [[power]] W"
+        },
+        "hint": {
+          "en": "Feed instantaneous power (W) from a meter to track hourly energy usage and feed capacity guard."
+        },
+        "args": [
+          {
+            "name": "power",
+            "type": "number",
+            "title": {
+              "en": "Power (W)"
+            },
+            "min": 0,
+            "step": 1
+          }
+        ],
+        "id": "report_power_usage"
+      },
+      {
+        "title": {
+          "en": "Set capacity limit"
+        },
+        "titleFormatted": {
+          "en": "Set capacity limit to [[limit_kw]] kW"
+        },
+        "hint": {
+          "en": "Use this to dynamically adjust your power limit based on time of day, electricity prices, or other conditions."
+        },
+        "args": [
+          {
+            "name": "limit_kw",
+            "type": "number",
+            "title": {
+              "en": "Limit (kW)"
+            },
+            "min": 0.1,
+            "step": 0.1
+          }
+        ],
+        "id": "set_capacity_limit"
+      },
+      {
+        "title": {
+          "en": "Set operating mode"
+        },
+        "titleFormatted": {
+          "en": "Set operating mode to [[mode]]"
+        },
+        "args": [
+          {
+            "name": "mode",
+            "type": "autocomplete",
+            "title": {
+              "en": "Mode (e.g. home, away, vacation)"
+            },
+            "placeholder": {
+              "en": "Choose a mode"
+            },
+            "example": {
+              "en": "Home"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Use this to automatically switch PELS modes based on time, presence, or other triggers in your flows."
+        },
+        "id": "set_capacity_mode"
+      },
+      {
+        "title": {
+          "en": "Set expected power for device"
+        },
+        "titleFormatted": {
+          "en": "Set expected power for [[device]] to [[power_w]] W"
+        },
+        "hint": {
+          "en": "Override a device's expected power usage until it reports a new meter reading. Fails if the device already has load configured in settings."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          },
+          {
+            "name": "power_w",
+            "type": "number",
+            "title": {
+              "en": "Expected power (W)"
+            },
+            "min": 1,
+            "step": 1
+          }
+        ],
+        "id": "set_expected_power_usage"
+      }
+    ]
+  },
+  "drivers": [
+    {
+      "id": "pels_insights",
+      "name": {
+        "en": "PELS Insights"
+      },
+      "class": "sensor",
+      "capabilities": [
+        "pels_insights",
+        "pels_shortfall",
+        "pels_headroom",
+        "pels_hourly_usage",
+        "pels_daily_budget_used_kwh",
+        "pels_daily_budget_allowed_kwh_now",
+        "pels_daily_budget_remaining_kwh",
+        "pels_daily_budget_pressure",
+        "pels_daily_budget_exceeded",
+        "pels_limit_reason",
+        "pels_controlled_power",
+        "pels_uncontrolled_power",
+        "pels_shedding",
+        "pels_price_level",
+        "pels_devices_on",
+        "pels_devices_off"
+      ],
+      "icon": "/drivers/pels_insights/assets/icon.svg",
+      "images": {
+        "small": "/drivers/pels_insights/assets/images/small.png",
+        "large": "/drivers/pels_insights/assets/images/large.png",
+        "xlarge": "/drivers/pels_insights/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ]
+    }
+  ],
+  "capabilities": {
+    "mode_indicator": {
+      "title": {
+        "en": "PELS Status"
+      },
+      "desc": {
+        "en": "Shows the current operating mode selected in settings or Flow."
+      },
+      "type": "string",
+      "getable": true,
+      "setable": false
+    },
+    "pels_controlled_power": {
+      "type": "number",
+      "title": {
+        "en": "Controlled load"
+      },
+      "desc": {
+        "en": "Current controlled load"
+      },
+      "units": {
+        "en": "kW"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_daily_budget_allowed_kwh_now": {
+      "type": "number",
+      "title": {
+        "en": "Daily budget allowed now"
+      },
+      "desc": {
+        "en": "kWh allowed so far today by the daily budget plan"
+      },
+      "units": {
+        "en": "kWh"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_daily_budget_exceeded": {
+      "type": "boolean",
+      "title": {
+        "en": "Daily budget exceeded"
+      },
+      "desc": {
+        "en": "Whether the daily budget plan has been exceeded"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true
+    },
+    "pels_daily_budget_pressure": {
+      "type": "number",
+      "title": {
+        "en": "Daily budget pressure"
+      },
+      "desc": {
+        "en": "Daily budget pressure (0-1)"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_daily_budget_remaining_kwh": {
+      "type": "number",
+      "title": {
+        "en": "Daily budget remaining"
+      },
+      "desc": {
+        "en": "Remaining kWh in the daily budget (can be negative)"
+      },
+      "units": {
+        "en": "kWh"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_daily_budget_used_kwh": {
+      "type": "number",
+      "title": {
+        "en": "Daily budget used"
+      },
+      "desc": {
+        "en": "kWh used so far today (daily budget)"
+      },
+      "units": {
+        "en": "kWh"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_devices_off": {
+      "type": "number",
+      "title": {
+        "en": "Devices off"
+      },
+      "desc": {
+        "en": "Number of controlled devices currently off or shed"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 0
+    },
+    "pels_devices_on": {
+      "type": "number",
+      "title": {
+        "en": "Devices on"
+      },
+      "desc": {
+        "en": "Number of controlled devices currently running"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 0
+    },
+    "pels_headroom": {
+      "type": "number",
+      "title": {
+        "en": "Headroom"
+      },
+      "desc": {
+        "en": "Available power headroom before capacity limit"
+      },
+      "units": {
+        "en": "kW"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_hourly_usage": {
+      "type": "number",
+      "title": {
+        "en": "Used this hour"
+      },
+      "desc": {
+        "en": "kWh consumed so far this hour"
+      },
+      "units": {
+        "en": "kWh"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
+    "pels_insights": {
+      "title": {
+        "en": "PELS Insights"
+      },
+      "desc": {
+        "en": "Shows the current operating mode selected in settings or Flow."
+      },
+      "type": "string",
+      "getable": true,
+      "setable": false
+    },
+    "pels_limit_reason": {
+      "type": "enum",
+      "title": {
+        "en": "Limit reason"
+      },
+      "desc": {
+        "en": "Why PELS is currently limiting device restores or shedding"
+      },
+      "getable": true,
+      "setable": false,
+      "values": [
+        {
+          "id": "none",
+          "title": {
+            "en": "None"
+          }
+        },
+        {
+          "id": "hourly",
+          "title": {
+            "en": "Hourly limit"
+          }
+        },
+        {
+          "id": "daily",
+          "title": {
+            "en": "Daily budget"
+          }
+        },
+        {
+          "id": "both",
+          "title": {
+            "en": "Both"
+          }
+        }
+      ]
+    },
+    "pels_price_level": {
+      "type": "enum",
+      "title": {
+        "en": "Price level"
+      },
+      "desc": {
+        "en": "Current electricity price level relative to daily average"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "values": [
+        {
+          "id": "cheap",
+          "title": {
+            "en": "Cheap"
+          }
+        },
+        {
+          "id": "normal",
+          "title": {
+            "en": "Normal"
+          }
+        },
+        {
+          "id": "expensive",
+          "title": {
+            "en": "Expensive"
+          }
+        },
+        {
+          "id": "unknown",
+          "title": {
+            "en": "Unknown"
+          }
+        }
+      ]
+    },
+    "pels_shedding": {
+      "type": "boolean",
+      "title": {
+        "en": "Shedding"
+      },
+      "desc": {
+        "en": "Whether PELS is currently shedding load to stay within capacity"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
+    },
+    "pels_shortfall": {
+      "type": "boolean",
+      "title": {
+        "en": "Capacity shortfall"
+      },
+      "desc": {
+        "en": "Whether PELS cannot shed enough load to stay within capacity limits"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
+    },
+    "pels_uncontrolled_power": {
+      "type": "number",
+      "title": {
+        "en": "Uncontrolled load"
+      },
+      "desc": {
+        "en": "Current uncontrolled load"
+      },
+      "units": {
+        "en": "kW"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    }
+  }
+}
