@@ -17,6 +17,8 @@ const AGGRESSIVENESS_CONFIG: Record<DailyBudgetAggressiveness, { pressureScale: 
   balanced: { pressureScale: 0.12, restoreExponent: 1 },
   strict: { pressureScale: 0.08, restoreExponent: 1.35 },
 };
+const PREVIOUS_PLAN_BLEND_WEIGHT = 0.7;
+const NEW_PLAN_BLEND_WEIGHT = 1 - PREVIOUS_PLAN_BLEND_WEIGHT;
 
 export function getConfidence(sampleCount: number): number {
   if (!Number.isFinite(sampleCount) || sampleCount <= 0) return 0;
@@ -122,7 +124,7 @@ export function buildPlan(params: {
     const previousWeights = normalizeWeights(previousRemaining);
     const blended = normalizedRemaining.map((value, index) => (
       previousWeights[index] !== undefined
-        ? previousWeights[index] * 0.7 + value * 0.3
+        ? previousWeights[index] * PREVIOUS_PLAN_BLEND_WEIGHT + value * NEW_PLAN_BLEND_WEIGHT
         : value
     ));
     normalizedRemaining = normalizeWeights(blended);

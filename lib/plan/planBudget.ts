@@ -1,6 +1,9 @@
 import type { PowerTrackerState } from '../core/powerTracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 
+const SUSTAINABLE_RATE_THRESHOLD_MIN = 10;
+const SUSTAINABLE_RATE_THRESHOLD_HOURS = SUSTAINABLE_RATE_THRESHOLD_MIN / 60;
+
 export function computeDynamicSoftLimit(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   powerTracker: PowerTrackerState;
@@ -17,7 +20,7 @@ export function computeDynamicSoftLimit(params: {
   const hourStart = new Date(bucketKey).getTime();
   const hourEnd = hourStart + 60 * 60 * 1000;
   const remainingMs = hourEnd - now;
-  const remainingHours = Math.max(remainingMs / 3600000, 10 / 60); // floor at 10 minutes to avoid extreme burst rates
+  const remainingHours = Math.max(remainingMs / 3600000, SUSTAINABLE_RATE_THRESHOLD_HOURS);
 
   const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
   const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
@@ -32,7 +35,9 @@ export function computeDynamicSoftLimit(params: {
   // Earlier in the hour, allow the full burst rate since there's time to recover.
   const minutesRemaining = remainingMs / 60000;
   const sustainableRateKw = netBudgetKWh; // kWh/h = kW at steady state
-  const allowedKw = minutesRemaining <= 10 ? Math.min(burstRateKw, sustainableRateKw) : burstRateKw;
+  const allowedKw = minutesRemaining <= SUSTAINABLE_RATE_THRESHOLD_MIN
+    ? Math.min(burstRateKw, sustainableRateKw)
+    : burstRateKw;
 
   logDebug(
     `Soft limit calc: budget=${netBudgetKWh.toFixed(3)}kWh used=${usedKWh.toFixed(3)}kWh `
@@ -62,13 +67,15 @@ export function computeDailyUsageSoftLimit(params: {
   if (!Number.isFinite(bucketStartMs) || !Number.isFinite(bucketEndMs) || bucketEndMs <= bucketStartMs) return 0;
   const boundedNowMs = Math.min(Math.max(nowMs, bucketStartMs), bucketEndMs);
   const remainingMs = Math.max(0, bucketEndMs - boundedNowMs);
-  const remainingHours = Math.max(remainingMs / 3600000, 10 / 60);
+  const remainingHours = Math.max(remainingMs / 3600000, SUSTAINABLE_RATE_THRESHOLD_HOURS);
   const safeUsed = Number.isFinite(usedKWh) ? Math.max(0, usedKWh) : 0;
   const remainingKWh = Math.max(0, plannedKWh - safeUsed);
   const burstRateKw = remainingKWh / remainingHours;
   const minutesRemaining = remainingMs / 60000;
   const sustainableRateKw = plannedKWh; // kWh/h = kW if the bucket uses its budget evenly.
-  const allowedKw = minutesRemaining <= 10 ? Math.min(burstRateKw, sustainableRateKw) : burstRateKw;
+  const allowedKw = minutesRemaining <= SUSTAINABLE_RATE_THRESHOLD_MIN
+    ? Math.min(burstRateKw, sustainableRateKw)
+    : burstRateKw;
   logDebug?.(
     `Daily soft limit calc: budget=${plannedKWh.toFixed(3)}kWh used=${safeUsed.toFixed(3)}kWh `
     + `remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h `
