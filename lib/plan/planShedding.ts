@@ -45,6 +45,8 @@ export async function buildSheddingPlan(
   const { shedSet, shedReasons, updates } = planShedding(context, state, deps);
   const guardResult = await updateGuardState({
     headroom: context.headroom,
+    capacitySoftLimit: context.capacitySoftLimit,
+    total: context.total,
     devices: context.devices,
     shedSet,
     capacityGuard: deps.capacityGuard,
@@ -91,13 +93,14 @@ function planShedding(
       3,
     )} total=${context.total === null ? 'unknown' : context.total.toFixed(3)}`,
   );
+  const shedReason = resolveShedReason(context.softLimitSource);
   const candidates = buildSheddingCandidates({
     devices: context.devices,
     needed,
     state,
     deps,
   });
-  const result = selectShedDevices(candidates, needed, deps.log);
+  const result = selectShedDevices(candidates, needed, shedReason, deps.log);
   result.shedSet.forEach((id) => shedSet.add(id));
   result.shedReasons.forEach((reason, id) => shedReasons.set(id, reason));
 
@@ -181,6 +184,7 @@ function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
 function selectShedDevices(
   candidates: ShedCandidate[],
   needed: number,
+  reason: string,
   log: (...args: unknown[]) => void,
 ): { shedSet: Set<string>; shedReasons: Map<string, string> } {
   const shedSet = new Set<string>();
@@ -192,7 +196,7 @@ function selectShedDevices(
     if (candidate.effectivePower <= 0) continue;
     if (remaining <= 0) break;
     shedSet.add(candidate.id);
-    shedReasons.set(candidate.id, 'shed due to capacity');
+    shedReasons.set(candidate.id, reason);
     remaining -= candidate.effectivePower;
   }
   return { shedSet, shedReasons };
@@ -200,14 +204,17 @@ function selectShedDevices(
 
 async function updateGuardState(params: {
   headroom: number | null;
+  capacitySoftLimit: number;
+  total: number | null;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   capacityGuard: CapacityGuard | undefined;
 }): Promise<{ sheddingActive: boolean }> {
-  const { headroom, devices, shedSet, capacityGuard } = params;
+  const { headroom, capacitySoftLimit, total, devices, shedSet, capacityGuard } = params;
   if (shouldActivateShedding(headroom, shedSet)) {
     const remainingCandidates = countRemainingCandidates(devices, shedSet, headroom);
-    const deficitKw = headroom !== null ? -headroom : 0;
+    const capacityHeadroom = total === null ? null : capacitySoftLimit - total;
+    const deficitKw = capacityHeadroom !== null ? Math.max(0, -capacityHeadroom) : 0;
     await capacityGuard?.setSheddingActive(true);
     await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
     return { sheddingActive: true };
@@ -221,6 +228,12 @@ async function updateGuardState(params: {
   }
   await capacityGuard?.checkShortfall(true, 0);
   return { sheddingActive: canDisable ? false : current };
+}
+
+function resolveShedReason(limitSource: PlanContext['softLimitSource']): string {
+  if (limitSource === 'daily') return 'shed due to daily budget';
+  if (limitSource === 'both') return 'shed due to daily budget + capacity';
+  return 'shed due to capacity';
 }
 
 function shouldActivateShedding(headroom: number | null, shedSet: Set<string>): boolean {

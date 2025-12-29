@@ -28,6 +28,9 @@ export type DevicePlan = {
   meta: {
     totalKw: number | null;
     softLimitKw: number;
+    capacitySoftLimitKw?: number;
+    dailySoftLimitKw?: number | null;
+    softLimitSource?: 'capacity' | 'daily' | 'both';
     headroomKw: number | null;
     hourlyBudgetExhausted?: boolean;
     usedKWh?: number;

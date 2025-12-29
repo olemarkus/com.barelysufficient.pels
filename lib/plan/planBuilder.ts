@@ -3,8 +3,8 @@ import CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
-import { computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
-import { buildPlanContext, type PlanContext } from './planContext';
+import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
+import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './planShedding';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
@@ -106,14 +106,20 @@ export class PlanBuilder {
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
-    const softLimit = this.computeDynamicSoftLimit();
     const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
+    const capacitySoftLimit = this.computeDynamicSoftLimit();
+    const dailySoftLimit = this.computeDailySoftLimit(dailyBudgetSnapshot);
+    const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
+    const softLimitSource = this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit);
     const context = buildPlanContext({
       devices,
       capacityGuard: this.capacityGuard,
       capacitySettings: this.capacitySettings,
       powerTracker: this.powerTracker,
       softLimit,
+      capacitySoftLimit,
+      dailySoftLimit,
+      softLimitSource,
       desiredForMode,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       dailyBudget: this.buildDailyBudgetContext(dailyBudgetSnapshot),
@@ -196,6 +202,38 @@ export class PlanBuilder {
     };
   }
 
+  private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {
+    if (dailySoftLimit === null) return 'capacity';
+    if (dailySoftLimit === capacitySoftLimit) return 'both';
+    return dailySoftLimit < capacitySoftLimit ? 'daily' : 'capacity';
+  }
+
+  private computeDailySoftLimit(snapshot: DailyBudgetUiPayload | null): number | null {
+    if (!snapshot?.budget.enabled) return null;
+    const plannedKWh = snapshot.buckets.plannedKWh;
+    const bucketStartUtc = snapshot.buckets.startUtc;
+    const index = snapshot.currentBucketIndex;
+    if (!Array.isArray(plannedKWh) || !Array.isArray(bucketStartUtc)) return null;
+    if (index < 0 || index >= plannedKWh.length || index >= bucketStartUtc.length) return null;
+    const bucketStartIso = bucketStartUtc[index];
+    const bucketStartMs = new Date(bucketStartIso).getTime();
+    if (!Number.isFinite(bucketStartMs)) return null;
+    const bucketEndMs = index + 1 < bucketStartUtc.length
+      ? new Date(bucketStartUtc[index + 1]).getTime()
+      : bucketStartMs + 60 * 60 * 1000;
+    if (!Number.isFinite(bucketEndMs)) return null;
+    const usedKWh = this.powerTracker.buckets?.[bucketStartIso] ?? 0;
+    const planned = plannedKWh[index];
+    if (!Number.isFinite(planned)) return null;
+    return computeDailyUsageSoftLimit({
+      plannedKWh: planned,
+      usedKWh,
+      bucketStartMs,
+      bucketEndMs,
+      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+    });
+  }
+
   private buildDailyBudgetContext(snapshot: DailyBudgetUiPayload | null): PlanContext['dailyBudget'] | undefined {
     if (!snapshot) return undefined;
     return {
@@ -260,6 +298,9 @@ export class PlanBuilder {
     return {
       totalKw: context.total,
       softLimitKw: context.softLimit,
+      capacitySoftLimitKw: context.capacitySoftLimit,
+      dailySoftLimitKw: context.dailySoftLimit,
+      softLimitSource: context.softLimitSource,
       headroomKw: context.headroom,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       usedKWh: context.usedKWh,

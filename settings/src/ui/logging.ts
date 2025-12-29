@@ -4,7 +4,13 @@ import { setSetting } from './homey';
 const pendingLogs: SettingsUiLogEntry[] = [];
 
 const normalizeError = (error: unknown): string => {
-  if (error instanceof Error) return error.stack || error.message;
+  if (error instanceof Error) {
+    const message = error.message || String(error);
+    if (error.stack) {
+      return error.stack.includes(message) ? error.stack : `${message}\n${error.stack}`;
+    }
+    return message;
+  }
   if (typeof error === 'string') return error;
   try {
     return JSON.stringify(error);

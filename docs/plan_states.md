@@ -21,7 +21,10 @@ This document describes how the Plan tab derives device state and the status tex
   - reason = "keep (priority N)"
 - Shedding due to overshoot:
   - If headroom < 0, lowest-priority devices are added to shedSet.
-  - plannedState = "shed", reason = "shed due to capacity"
+  - plannedState = "shed", reason reflects the active cap:
+    - "shed due to capacity"
+    - "shed due to daily budget"
+    - "shed due to daily budget + capacity"
 - Hourly budget exhausted:
   - plannedState = "shed"
   - reason = "shed due to hourly budget"
@@ -60,6 +63,8 @@ Parentheses indicate dynamic values.
 - not controllable by PELS
 - restore (need XkW, headroom YkW)
 - shed due to capacity
+- shed due to daily budget
+- shed due to daily budget + capacity
 - shed due to hourly budget
 - shortfall (need XkW, headroom YkW)
 - cooldown (shedding, Ss remaining)

@@ -125,8 +125,8 @@
             </label>
             <label class="field">
               <span class="field__label">Daily budget (kWh)</span>
-              <input id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off">
-              <small class="field__hint">Used to steer restore decisions (soft limit).</small>
+              <input id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" min="20" max="360" inputmode="decimal" autocomplete="off">
+              <small class="field__hint">Daily energy target used to build the plan.</small>
             </label>
             <label class="field">
               <span class="field__label">Aggressiveness</span>
@@ -135,7 +135,7 @@
                 <option value="balanced">Balanced</option>
                 <option value="strict">Strict</option>
               </select>
-              <small class="field__hint">Controls how quickly restores are limited.</small>
+              <small class="field__hint">Controls how quickly the pressure indicator reacts.</small>
             </label>
             <label class="field checkbox-field">
               <input id="daily-budget-price-shaping" name="daily_budget_price_shaping_enabled" type="checkbox" checked>

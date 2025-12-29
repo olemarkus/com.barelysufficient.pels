@@ -87,12 +87,18 @@ function hasPrices(value: unknown): value is { prices: Array<{ total: number }> 
 
 function resolveLimitReason(plan: DevicePlan): 'none' | 'hourly' | 'daily' | 'both' {
   const dailyLimited = plan.devices.some((d) => d.plannedState === 'shed' && d.reason?.includes('daily budget'));
+  const headroomNegative = plan.meta.headroomKw !== null && plan.meta.headroomKw < 0;
+  const limitSource = plan.meta.softLimitSource;
+  const dailySourceActive = limitSource === 'daily' || limitSource === 'both';
+  const capacitySourceActive = limitSource === 'capacity' || limitSource === 'both';
   const hourlyLimited = Boolean(plan.meta.hourlyBudgetExhausted)
-    || (plan.meta.headroomKw !== null && plan.meta.headroomKw < 0)
-    || plan.devices.some((d) => d.plannedState === 'shed' && !d.reason?.includes('daily budget'));
+    || plan.devices.some((d) => d.plannedState === 'shed' && d.reason?.includes('hourly budget'))
+    || plan.devices.some((d) => d.plannedState === 'shed' && d.reason?.includes('capacity'))
+    || (headroomNegative && (limitSource ? capacitySourceActive : true));
+  const dailyLimitedResolved = dailyLimited || (headroomNegative && dailySourceActive);
 
-  if (dailyLimited && hourlyLimited) return 'both';
-  if (dailyLimited) return 'daily';
+  if (dailyLimitedResolved && hourlyLimited) return 'both';
+  if (dailyLimitedResolved) return 'daily';
   if (hourlyLimited) return 'hourly';
   return 'none';
 }
