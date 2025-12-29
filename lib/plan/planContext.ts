@@ -15,11 +15,16 @@ export type DailyBudgetContext = {
   frozen: boolean;
 };
 
+export type SoftLimitSource = 'capacity' | 'daily' | 'both';
+
 export type PlanContext = {
   devices: PlanInputDevice[];
   desiredForMode: Record<string, number>;
   total: number | null;
   softLimit: number;
+  capacitySoftLimit: number;
+  dailySoftLimit: number | null;
+  softLimitSource: SoftLimitSource;
   budgetKWh: number;
   usedKWh: number;
   minutesRemaining: number;
@@ -35,6 +40,9 @@ export function buildPlanContext(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   powerTracker: PowerTrackerState;
   softLimit: number;
+  capacitySoftLimit: number;
+  dailySoftLimit: number | null;
+  softLimitSource: SoftLimitSource;
   desiredForMode: Record<string, number>;
   hourlyBudgetExhausted: boolean;
   dailyBudget?: DailyBudgetContext;
@@ -45,6 +53,9 @@ export function buildPlanContext(params: {
     capacitySettings,
     powerTracker,
     softLimit,
+    capacitySoftLimit,
+    dailySoftLimit,
+    softLimitSource,
     desiredForMode,
     hourlyBudgetExhausted,
     dailyBudget,
@@ -76,6 +87,9 @@ export function buildPlanContext(params: {
     desiredForMode,
     total,
     softLimit,
+    capacitySoftLimit,
+    dailySoftLimit,
+    softLimitSource,
     budgetKWh,
     usedKWh,
     minutesRemaining,

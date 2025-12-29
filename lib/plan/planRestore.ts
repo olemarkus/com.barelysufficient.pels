@@ -1,6 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
-import type { DailyBudgetContext, PlanContext } from './planContext';
+import type { PlanContext } from './planContext';
 import type { PowerTrackerState } from '../core/powerTracker';
 import {
   RECENT_SHED_EXTRA_BUFFER_KW,
@@ -18,8 +18,6 @@ import {
   cleanupStaleSwaps,
   exportSwapState,
 } from './planSwapState';
-import { getAggressivenessConfig } from '../dailyBudget/dailyBudgetManager';
-import { clamp } from '../utils/mathUtils';
 import { buildInsufficientHeadroomUpdate, buildSwapCandidates, estimateRestorePower } from './planRestoreSwap';
 
 export type RestoreDeps = {
@@ -58,8 +56,6 @@ export function applyRestorePlan(params: {
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapState = buildSwapState(state);
   const timing = buildRestoreTiming(state, context.headroomRaw, deps.powerTracker);
-  const budgetGate = resolveDailyBudgetGate(context.dailyBudget, planDevices);
-
   cleanupStaleSwaps(deviceMap, swapState, deps.log);
 
   const restoredThisCycle = new Set<string>();
@@ -83,7 +79,6 @@ export function applyRestorePlan(params: {
         restoreHysteresis,
         restoredThisCycle,
         restoredOneThisCycle,
-        budgetGate,
         deps,
       });
       availableHeadroom = result.availableHeadroom;
@@ -102,36 +97,6 @@ export function applyRestorePlan(params: {
     restoredOneThisCycle,
     ...timing,
   };
-}
-
-type DailyBudgetGate = {
-  allowedPriority: number;
-  pressure: number;
-  reason: string;
-};
-
-function resolveDailyBudgetGate(
-  dailyBudget: DailyBudgetContext | undefined,
-  planDevices: DevicePlanDevice[],
-): DailyBudgetGate | null {
-  if (!dailyBudget?.enabled) return null;
-  const priorities = planDevices
-    .filter((dev) => dev.controllable !== false)
-    .map((dev) => dev.priority ?? 100);
-  if (priorities.length === 0) return null;
-  const minPriority = Math.min(...priorities);
-  const maxPriority = Math.max(...priorities);
-  const { restoreExponent } = getAggressivenessConfig(dailyBudget.aggressiveness);
-  const ratio = Math.pow(1 - clamp(dailyBudget.pressure, 0, 1), restoreExponent);
-  const allowedPriority = Math.round(minPriority + (maxPriority - minPriority) * ratio);
-  if (allowedPriority >= maxPriority) return null;
-  const reason = `daily budget (pressure ${(dailyBudget.pressure * 100).toFixed(0)}%)`;
-  return { allowedPriority, pressure: dailyBudget.pressure, reason };
-}
-
-function shouldAllowDailyBudgetRestore(dev: DevicePlanDevice, gate: DailyBudgetGate): boolean {
-  const priority = dev.priority ?? 100;
-  return priority <= gate.allowedPriority;
 }
 
 function buildRestoreTiming(
@@ -221,7 +186,6 @@ function planRestoreForDevice(params: {
   restoreHysteresis: number;
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
-  budgetGate: DailyBudgetGate | null;
   deps: RestoreDeps;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
@@ -235,7 +199,6 @@ function planRestoreForDevice(params: {
     restoreHysteresis,
     restoredThisCycle,
     restoredOneThisCycle,
-    budgetGate,
     deps,
   } = params;
 
@@ -244,15 +207,6 @@ function planRestoreForDevice(params: {
       plannedState: 'shed',
       reason: `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`,
     });
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  if (budgetGate && !shouldAllowDailyBudgetRestore(dev, budgetGate)) {
-    setDevice(deviceMap, dev.id, {
-      plannedState: 'shed',
-      reason: budgetGate.reason,
-    });
-    deps.logDebug(`Plan: blocking restore of ${dev.name} - ${budgetGate.reason}`);
     return { availableHeadroom, restoredOneThisCycle };
   }
 

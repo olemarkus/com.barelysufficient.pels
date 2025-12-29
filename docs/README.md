@@ -16,6 +16,7 @@ Inspired by the Sparegris (Piggy Bank) Homey app.
   - [Devices Tab](#devices-tab)
   - [Modes Tab](#modes-tab)
   - [Power Usage Tab](#power-usage-tab)
+  - [Daily Budget (Power Usage Tab)](#daily-budget-power-usage-tab)
   - [Plan Tab](#plan-tab)
   - [Price Tab](#price-tab)
 - [Flow Cards](#flow-cards)
@@ -182,6 +183,12 @@ Displays a heatmap showing your average power usage by hour of day and day of we
 Shows power consumption per hour for the last 30 days, derived from reported power samples. Older data is automatically aggregated into daily summaries.
 
 > **Important:** You must create a Flow to report power usage to PELS (see [Flow Cards](#flow-cards)).
+
+### Daily Budget (Power Usage Tab)
+
+The Daily Budget is a soft kWh/day guide that creates a daily usage based cap. The planner uses the smaller of that and the capacity based cap.
+
+For details on how the plan is built, how DST is handled, and what each value means, see `docs/daily_budget.md`.
 
 ### Plan Tab
 

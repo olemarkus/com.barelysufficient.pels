@@ -46,6 +46,9 @@ const formatPercent = (value: number) => (
   Number.isFinite(value) ? `${Math.round(value * 100)}%` : '--%'
 );
 
+const MIN_DAILY_BUDGET_KWH = 20;
+const MAX_DAILY_BUDGET_KWH = 360;
+
 let priceOptimizationEnabled = true;
 
 const setPillState = (enabled: boolean, exceeded: boolean) => {
@@ -225,7 +228,9 @@ export const loadDailyBudgetSettings = async () => {
     dailyBudgetEnabledInput.checked = enabled === true;
   }
   if (dailyBudgetKwhInput) {
-    dailyBudgetKwhInput.value = typeof dailyBudgetKWh === 'number' ? dailyBudgetKWh.toString() : '0';
+    const raw = typeof dailyBudgetKWh === 'number' ? dailyBudgetKWh : MIN_DAILY_BUDGET_KWH;
+    const bounded = Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, raw));
+    dailyBudgetKwhInput.value = bounded.toString();
   }
   if (dailyBudgetAggressivenessSelect) {
     dailyBudgetAggressivenessSelect.value = typeof aggressiveness === 'string' ? aggressiveness : 'balanced';
@@ -241,11 +246,15 @@ export const saveDailyBudgetSettings = async () => {
   if (!Number.isFinite(kwhValue) || kwhValue < 0) {
     throw new Error('Daily budget must be a non-negative number.');
   }
+  if (enabled && (kwhValue < MIN_DAILY_BUDGET_KWH || kwhValue > MAX_DAILY_BUDGET_KWH)) {
+    throw new Error(`Daily budget must be between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
+  }
+  const boundedKwh = Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, kwhValue));
   const aggressiveness = dailyBudgetAggressivenessSelect?.value || 'balanced';
   const priceShapingEnabled = dailyBudgetPriceShapingInput?.checked ?? true;
 
   await setSetting(DAILY_BUDGET_ENABLED, enabled);
-  await setSetting(DAILY_BUDGET_KWH, kwhValue);
+  await setSetting(DAILY_BUDGET_KWH, boundedKwh);
   await setSetting(DAILY_BUDGET_AGGRESSIVENESS, aggressiveness);
   await setSetting(DAILY_BUDGET_PRICE_SHAPING_ENABLED, priceShapingEnabled);
   await showToast('Daily budget settings saved.', 'ok');

@@ -18,6 +18,11 @@ export = {
   async get_daily_budget({ homey }: ApiContext): Promise<DailyBudgetUiPayload | null> {
     const app = getApp(homey);
     if (!app?.getDailyBudgetUiPayload) return null;
-    return app.getDailyBudgetUiPayload();
+    try {
+      return app.getDailyBudgetUiPayload();
+    } catch (error) {
+      app?.error?.('Daily budget API failed', error as Error);
+      return null;
+    }
   },
 };

@@ -22,6 +22,8 @@ type DailyBudgetServiceDeps = {
 
 export class DailyBudgetService {
   private manager: DailyBudgetManager;
+  private static readonly MIN_BUDGET_KWH = 20;
+  private static readonly MAX_BUDGET_KWH = 360;
   private settings: DailyBudgetSettings = {
     enabled: false,
     dailyBudgetKWh: 0,
@@ -46,9 +48,13 @@ export class DailyBudgetService {
       && ['relaxed', 'balanced', 'strict'].includes(aggressiveness)
       ? aggressiveness as DailyBudgetSettings['aggressiveness']
       : 'balanced';
+    const rawBudget = isFiniteNumber(budgetKWh) ? Math.max(0, budgetKWh) : 0;
+    const boundedBudget = rawBudget === 0
+      ? 0
+      : Math.min(DailyBudgetService.MAX_BUDGET_KWH, Math.max(DailyBudgetService.MIN_BUDGET_KWH, rawBudget));
     this.settings = {
       enabled: enabled === true,
-      dailyBudgetKWh: isFiniteNumber(budgetKWh) ? Math.max(0, budgetKWh) : 0,
+      dailyBudgetKWh: boundedBudget,
       aggressiveness: resolvedAggressiveness,
       priceShapingEnabled: priceShapingEnabled !== false,
     };
@@ -58,22 +64,36 @@ export class DailyBudgetService {
     this.manager.loadState(this.deps.homey.settings.get(DAILY_BUDGET_STATE));
   }
 
+  private resolveTimeZone(): string {
+    try {
+      const tz = this.deps.homey.clock?.getTimezone?.();
+      if (typeof tz === 'string' && tz.trim()) return tz;
+    } catch (error) {
+      this.deps.log('Daily budget: failed to read timezone', error);
+    }
+    return 'Europe/Oslo';
+  }
+
   updateState(params: { nowMs?: number; forcePlanRebuild?: boolean } = {}): void {
     const nowMs = params.nowMs ?? Date.now();
-    const timeZone = this.deps.homey.clock.getTimezone() || 'Europe/Oslo';
+    const timeZone = this.resolveTimeZone();
     const combinedPrices = this.deps.homey.settings.get('combined_prices') as CombinedPriceData | null;
-    const update = this.manager.update({
-      nowMs,
-      timeZone,
-      settings: this.settings,
-      powerTracker: this.deps.getPowerTracker(),
-      combinedPrices,
-      priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
-      forcePlanRebuild: params.forcePlanRebuild,
-    });
-    this.snapshot = update.snapshot;
-    if (update.shouldPersist) {
-      this.persistState();
+    try {
+      const update = this.manager.update({
+        nowMs,
+        timeZone,
+        settings: this.settings,
+        powerTracker: this.deps.getPowerTracker(),
+        combinedPrices,
+        priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
+        forcePlanRebuild: params.forcePlanRebuild,
+      });
+      this.snapshot = update.snapshot;
+      if (update.shouldPersist) {
+        this.persistState();
+      }
+    } catch (error) {
+      this.deps.log('Daily budget: failed to update state', error);
     }
   }
 

@@ -42,6 +42,41 @@ export function computeDynamicSoftLimit(params: {
   return { allowedKw, hourlyBudgetExhausted };
 }
 
+export function computeDailyUsageSoftLimit(params: {
+  plannedKWh: number;
+  usedKWh: number;
+  bucketStartMs: number;
+  bucketEndMs: number;
+  nowMs?: number;
+  logDebug?: (...args: unknown[]) => void;
+}): number {
+  const {
+    plannedKWh,
+    usedKWh,
+    bucketStartMs,
+    bucketEndMs,
+    nowMs = Date.now(),
+    logDebug,
+  } = params;
+  if (!Number.isFinite(plannedKWh) || plannedKWh <= 0) return 0;
+  if (!Number.isFinite(bucketStartMs) || !Number.isFinite(bucketEndMs) || bucketEndMs <= bucketStartMs) return 0;
+  const boundedNowMs = Math.min(Math.max(nowMs, bucketStartMs), bucketEndMs);
+  const remainingMs = Math.max(0, bucketEndMs - boundedNowMs);
+  const remainingHours = Math.max(remainingMs / 3600000, 10 / 60);
+  const safeUsed = Number.isFinite(usedKWh) ? Math.max(0, usedKWh) : 0;
+  const remainingKWh = Math.max(0, plannedKWh - safeUsed);
+  const burstRateKw = remainingKWh / remainingHours;
+  const minutesRemaining = remainingMs / 60000;
+  const sustainableRateKw = plannedKWh; // kWh/h = kW if the bucket uses its budget evenly.
+  const allowedKw = minutesRemaining <= 10 ? Math.min(burstRateKw, sustainableRateKw) : burstRateKw;
+  logDebug?.(
+    `Daily soft limit calc: budget=${plannedKWh.toFixed(3)}kWh used=${safeUsed.toFixed(3)}kWh `
+    + `remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h `
+    + `burst=${burstRateKw.toFixed(3)}kW capped=${allowedKw.toFixed(3)}kW`,
+  );
+  return Math.max(0, allowedKw);
+}
+
 /**
  * Compute the shortfall threshold - the "real" soft limit without EOH capping.
  * Shortfall should only trigger when power exceeds this threshold AND no devices left to shed.

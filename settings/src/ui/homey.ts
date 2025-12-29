@@ -4,7 +4,12 @@ export type HomeySettingsClient = {
   ready: () => Promise<void>;
   get: (key: string, cb: HomeyCallback<unknown>) => void;
   set: (key: string, value: unknown, cb: HomeyCallback<void>) => void;
-  api?: (method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: string, body: unknown, cb: HomeyCallback<unknown>) => void;
+  api?: (
+    method: 'DELETE' | 'GET' | 'POST' | 'PUT',
+    uri: string,
+    bodyOrCallback: unknown | HomeyCallback<unknown>,
+    cb?: HomeyCallback<unknown>,
+  ) => void;
   on?: (event: string, cb: (...args: unknown[]) => void) => void;
   clock?: {
     getTimezone?: () => string;
@@ -79,25 +84,42 @@ export const setSetting = (key: string, value: unknown): Promise<void> => {
   });
 };
 
+const buildApiError = (method: string, uri: string, error: unknown) => {
+  const message = error instanceof Error && error.message ? error.message : String(error);
+  return new Error(`Homey api ${method} ${uri} failed: ${message}`);
+};
+
 export const callApi = <T>(method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: string, body?: unknown): Promise<T> => {
   const client = homeyClient;
   const api = client?.api;
   if (!api || typeof api !== 'function') {
-    return Promise.reject(new Error('Homey API not available'));
+    return Promise.reject(new Error(`Homey api ${method} ${uri} not available`));
   }
   return new Promise((resolve, reject) => {
     const callback: HomeyCallback<unknown> = (err, value) => {
       if (err) {
-        reject(err);
+        reject(buildApiError(method, uri, err));
         return;
       }
       resolve(value as T);
     };
     if (method === 'GET' || method === 'DELETE') {
-      api(method, uri, null, callback);
+      try {
+        api.call(client, method, uri, callback);
+      } catch {
+        try {
+          api.call(client, method, uri, {}, callback);
+        } catch (error) {
+          reject(buildApiError(method, uri, error));
+        }
+      }
       return;
     }
-    api(method, uri, body ?? {}, callback);
+    try {
+      api.call(client, method, uri, body ?? {}, callback);
+    } catch (error) {
+      reject(buildApiError(method, uri, error));
+    }
   });
 };
 
