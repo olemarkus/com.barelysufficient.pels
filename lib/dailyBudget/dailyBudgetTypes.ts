@@ -51,6 +51,7 @@ export type DailyBudgetUiPayload = {
     startLocalLabels: string[];
     plannedWeight: number[];
     plannedKWh: number[];
+    actualKWh: number[];
     allowedCumKWh: number[];
     price?: Array<number | null>;
     priceFactor?: Array<number | null>;

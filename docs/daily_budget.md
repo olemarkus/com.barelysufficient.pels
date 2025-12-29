@@ -24,7 +24,7 @@ PELS always computes the capacity based cap for the current hour. When daily bud
 
 ## Examples (Scenarios)
 
-### 1) Ahead of plan, daily cap becomes the limiter
+### 1) Over plan, daily cap becomes the limiter
 It’s 15:00. The plan says you should have used 35 kWh by now, but you have used 40 kWh.
 The daily usage based cap for this hour becomes lower than the capacity based cap. The planner uses the smaller cap, which reduces headroom. As a result, some restores won’t happen and low-priority devices can be shed earlier.
 
@@ -32,9 +32,9 @@ The daily usage based cap for this hour becomes lower than the capacity based ca
 It’s 10:00. The plan says 18 kWh by now, but you have used 12 kWh.
 The daily usage based cap becomes higher than the capacity based cap, so the capacity cap remains the limiter. Restores and boosts are still allowed if there is headroom.
 
-### 3) Overspent early hour, plan freezes
+### 3) Overspent early hour, plan freezes until you catch up
 At 08:00 the plan allowed 6 kWh, but you already used 7.5 kWh.
-The daily budget "freezes" the plan: it keeps the same remaining limits for the rest of the day (no rebalancing). This prevents a single overspend from making the rest of the day more permissive.
+The daily budget "freezes" the plan while you are over plan. Once usage drops back under plan, it can rebalance again.
 
 ### 4) Price shaping enabled
 You enable price shaping and prices are cheap from 01:00–05:00 and expensive in the evening.
@@ -58,10 +58,13 @@ The settings UI shows a "Today plan" chart and live stats:
 - **Used**: kWh used so far today (local time).
 - **Allowed now**: cumulative kWh that the plan allows up to the current hour.
 - **Remaining**: daily budget minus used (can be negative).
-- **Deviation**: used minus allowed (positive means ahead of plan).
-- **Pressure**: 0–100% indicator of how far ahead/behind plan you are (status signal).
+- **Deviation**: used minus allowed so far (positive means over plan).
+- **Pressure**: 0–100% indicator of how far over/under plan you are (status signal).
 - **Confidence**: how much learned history is influencing the plan.
 - **Price shaping**: shows whether price shaping is active.
+- **Plan frozen**: appears while you're over plan; it clears once you are back under plan.
+
+The chart shows planned kWh/hour as bars, with actual kWh/hour as dots for completed hours.
 
 ### Buckets and DST
 

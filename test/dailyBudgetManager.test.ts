@@ -211,16 +211,24 @@ describe('daily budget exceeded state', () => {
     expect(update.snapshot.state.frozen).toBe(true);
   });
 
-  it('freezes when overspending a completed hour before rebuilding', () => {
+  it('unfreezes once usage returns under plan', () => {
     const manager = buildManager();
     const settings = {
       enabled: true,
-      dailyBudgetKWh: 6,
+      dailyBudgetKWh: 10,
       aggressiveness: 'balanced' as const,
       priceShapingEnabled: false,
     };
     const dayStart = getDateKeyStartMs('2024-01-15', TZ);
     const bucketKey = new Date(dayStart).toISOString();
+    const nextBucketKey = new Date(dayStart + 60 * 60 * 1000).toISOString();
+
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights([0.5, 0.5, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+    });
 
     manager.update({
       nowMs: dayStart + 5 * 60 * 1000,
@@ -230,14 +238,23 @@ describe('daily budget exceeded state', () => {
       priceOptimizationEnabled: false,
     });
 
-    const update = manager.update({
+    const overUpdate = manager.update({
+      nowMs: dayStart + 30 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 6 } },
+      priceOptimizationEnabled: false,
+    });
+    expect(overUpdate.snapshot.state.frozen).toBe(true);
+
+    const underUpdate = manager.update({
       nowMs: dayStart + 60 * 60 * 1000 + 2 * 60 * 1000,
       timeZone: TZ,
       settings,
-      powerTracker: { buckets: { [bucketKey]: 4 } },
+      powerTracker: { buckets: { [bucketKey]: 6, [nextBucketKey]: 0 } },
       priceOptimizationEnabled: false,
     });
 
-    expect(update.snapshot.state.frozen).toBe(true);
+    expect(underUpdate.snapshot.state.frozen).toBe(false);
   });
 });

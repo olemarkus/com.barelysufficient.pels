@@ -177,11 +177,19 @@
           <div id="daily-budget-chart" class="daily-budget-chart">
             <div class="daily-budget-bars-wrap">
               <div id="daily-budget-bars" class="daily-budget-bars"></div>
-              <svg id="daily-budget-line" class="daily-budget-line" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                <polyline id="daily-budget-line-path" points=""></polyline>
-              </svg>
             </div>
             <div id="daily-budget-labels" class="daily-budget-labels"></div>
+          </div>
+
+          <div class="daily-budget-legend" id="daily-budget-legend">
+            <div class="daily-budget-legend__item">
+              <span class="daily-budget-legend__swatch daily-budget-legend__swatch--planned" aria-hidden="true"></span>
+              <span class="muted">Planned</span>
+            </div>
+            <div class="daily-budget-legend__item">
+              <span class="daily-budget-legend__swatch daily-budget-legend__swatch--actual" aria-hidden="true"></span>
+              <span class="muted">Actual</span>
+            </div>
           </div>
 
           <p id="daily-budget-empty" class="muted" hidden>Daily budget data not available yet.</p>
