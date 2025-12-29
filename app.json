@@ -439,6 +439,20 @@
       "uiComponent": "sensor",
       "insights": true
     },
+    "pels_daily_budget_pressure": {
+      "type": "number",
+      "title": {
+        "en": "Daily budget pressure"
+      },
+      "desc": {
+        "en": "Deprecated: daily budget pressure signal."
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false,
+      "decimals": 2
+    },
     "pels_daily_budget_remaining_kwh": {
       "type": "number",
       "title": {
@@ -594,6 +608,19 @@
           }
         }
       ]
+    },
+    "pels_shedding": {
+      "type": "boolean",
+      "title": {
+        "en": "Shedding"
+      },
+      "desc": {
+        "en": "Deprecated: use devices shed count."
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
     },
     "pels_shortfall": {
       "type": "boolean",
