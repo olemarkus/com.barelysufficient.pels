@@ -70,5 +70,8 @@
   },
   "1.5.9": {
     "en": "Update app descriptions and doc fixes."
+  },
+  "1.6.0": {
+    "en": "Added a soft daily energy budget feature with price‑shaped planning and limiter status, including a new “today plan” view and daily budget settings, while refining plan logic (freeze/settle behavior) and performance; refreshed Insights (limit reason/load split, removed deprecated capabilities), reorganized the settings UI, and introduced topic‑based debug logging and timezone handling fixes alongside assorted plan/UX cleanup."
   }
 }
