@@ -14,6 +14,8 @@ export type CombinedPriceData = {
 const PREVIOUS_PLAN_BLEND_WEIGHT = 0.7;
 const NEW_PLAN_BLEND_WEIGHT = 1 - PREVIOUS_PLAN_BLEND_WEIGHT;
 const CAP_ALLOCATION_EPSILON = 1e-6;
+// Allow a few extra redistribution passes when caps fill due to rounding.
+const MAX_CAP_REDISTRIBUTION_EXTRA_ITERATIONS = 3;
 
 export function getConfidence(sampleCount: number): number {
   if (!Number.isFinite(sampleCount) || sampleCount <= 0) return 0;
@@ -316,7 +318,7 @@ function allocateBudgetWithCaps(params: {
     .filter((index) => (caps[index] ?? 0) > CAP_ALLOCATION_EPSILON);
   let guard = 0;
 
-  while (remaining > CAP_ALLOCATION_EPSILON && active.length > 0 && guard < count + 3) {
+  while (remaining > CAP_ALLOCATION_EPSILON && active.length > 0 && guard < count + MAX_CAP_REDISTRIBUTION_EXTRA_ITERATIONS) {
     const weightSum = active.reduce((sum, index) => sum + (weights[index] ?? 0), 0);
     if (weightSum <= CAP_ALLOCATION_EPSILON) {
       const evenShare = remaining / active.length;
