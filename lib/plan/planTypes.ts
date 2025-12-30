@@ -40,8 +40,6 @@ export type DevicePlan = {
     uncontrolledKw?: number;
     hourControlledKWh?: number;
     hourUncontrolledKWh?: number;
-    dailyBudgetUsedKWh?: number;
-    dailyBudgetAllowedKWhNow?: number;
     dailyBudgetRemainingKWh?: number;
     dailyBudgetExceeded?: boolean;
   };

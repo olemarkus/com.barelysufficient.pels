@@ -35,6 +35,8 @@ type DailyBudgetManagerDeps = {
 };
 
 const PLAN_REBUILD_INTERVAL_MS = 60 * 60 * 1000;
+const PLAN_REBUILD_USAGE_DELTA_KWH = 0.05;
+const PLAN_REBUILD_USAGE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const STATE_PERSIST_INTERVAL_MS = 60 * 1000;
 const DEFAULT_PROFILE = buildDefaultProfile();
 
@@ -302,8 +304,11 @@ export class DailyBudgetManager {
     if (!enabled || this.state.frozen) return false;
     const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
     const lastUsedNowKWh = this.state.lastUsedNowKWh;
-    const usageChanged = typeof lastUsedNowKWh === 'number'
-      && Math.abs(context.usedNowKWh - lastUsedNowKWh) > 0.001;
+    const usageDeltaKWh = typeof lastUsedNowKWh === 'number'
+      ? Math.abs(context.usedNowKWh - lastUsedNowKWh)
+      : 0;
+    const usageChanged = usageDeltaKWh >= PLAN_REBUILD_USAGE_DELTA_KWH
+      && context.nowMs - this.lastPlanRebuildMs >= PLAN_REBUILD_USAGE_MIN_INTERVAL_MS;
     return (
       planStateMismatch
       || Boolean(forcePlanRebuild)

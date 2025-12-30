@@ -16,7 +16,7 @@ This document describes how the Overview tab derives device state and the status
 
 ## State Transitions (high level)
 
-- Normal keep:
+- Normal active (plannedState = "keep"):
   - plannedState = "keep"
   - reason = "keep (priority N)"
 - Shedding due to overshoot:
@@ -51,7 +51,7 @@ The Overview tab shows a State line derived from plannedState and currentState:
 - Shed (powered off): plannedState === "shed" and shedAction === "turn_off"
 - Shed (lowered temperature): plannedState === "shed" and shedAction === "set_temperature"
 - Restoring: plannedState === "keep" and currentState is "off" or "unknown"
-- Keep: plannedState === "keep" and currentState is "on"
+- Active: plannedState === "keep" and currentState is "on"
 - Unknown: fallback if state is not clear
 
 ## Overview Tab "Status" Line (reason values)

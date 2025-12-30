@@ -347,9 +347,8 @@
         "pels_insights",
         "pels_shortfall",
         "pels_headroom",
+        "pels_hourly_limit_kw",
         "pels_hourly_usage",
-        "pels_daily_budget_used_kwh",
-        "pels_daily_budget_allowed_kwh_now",
         "pels_daily_budget_remaining_kwh",
         "pels_daily_budget_exceeded",
         "pels_limit_reason",
@@ -415,7 +414,7 @@
         "en": "Budget allowed"
       },
       "desc": {
-        "en": "Daily budget allowance so far today"
+        "en": "Deprecated: shown in the daily budget plan view."
       },
       "units": {
         "en": "kWh"
@@ -476,7 +475,7 @@
         "en": "Daily budget used"
       },
       "desc": {
-        "en": "kWh used so far today (daily budget)"
+        "en": "Deprecated: daily budget usage is tracked in the Usage tab."
       },
       "units": {
         "en": "kWh"
@@ -484,7 +483,7 @@
       "getable": true,
       "setable": false,
       "uiComponent": "sensor",
-      "insights": true,
+      "insights": false,
       "decimals": 2
     },
     "pels_devices_off": {
@@ -532,6 +531,23 @@
       "insights": true,
       "decimals": 2
     },
+    "pels_hourly_limit_kw": {
+      "type": "number",
+      "title": {
+        "en": "Hourly limit"
+      },
+      "desc": {
+        "en": "Current effective hourly limit (capacity or daily budget)"
+      },
+      "units": {
+        "en": "kW"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2
+    },
     "pels_hourly_usage": {
       "type": "number",
       "title": {
@@ -551,7 +567,7 @@
     },
     "pels_insights": {
       "title": {
-        "en": "PELS Insights"
+        "en": "Operating mode"
       },
       "desc": {
         "en": "Shows the current operating mode selected in settings or Flow."

@@ -260,7 +260,7 @@ class PelsApp extends Homey.App {
   private loadPowerTracker(): void {
     const stored = this.homey.settings.get('power_tracker_state') as unknown;
     if (isPowerTrackerState(stored)) this.powerTracker = stored;
-    this.dailyBudgetService.updateState({ forcePlanRebuild: true });
+    this.dailyBudgetService.updateState();
   }
   private loadCapacitySettings(): void {
     const limit = this.homey.settings.get(CAPACITY_LIMIT_KW) as unknown;
@@ -312,7 +312,7 @@ class PelsApp extends Homey.App {
     const pruned = aggregateAndPruneHistory(nextState);
     this.powerTracker = pruned;
     const nowMs = typeof pruned.lastTimestamp === 'number' ? pruned.lastTimestamp : Date.now();
-    this.dailyBudgetService.updateState({ nowMs, forcePlanRebuild: true });
+    this.dailyBudgetService.updateState({ nowMs });
     this.recordDailyBudgetCap(this.dailyBudgetService.getSnapshot());
     this.homey.settings.set('power_tracker_state', this.powerTracker);
   }

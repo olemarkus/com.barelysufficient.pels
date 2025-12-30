@@ -1,17 +1,17 @@
 {
   "type": "number",
   "title": {
-    "en": "Daily budget used"
+    "en": "Hourly limit"
   },
   "desc": {
-    "en": "Deprecated: daily budget usage is tracked in the Usage tab."
+    "en": "Current effective hourly limit (capacity or daily budget)"
   },
   "units": {
-    "en": "kWh"
+    "en": "kW"
   },
   "getable": true,
   "setable": false,
   "uiComponent": "sensor",
-  "insights": false,
+  "insights": true,
   "decimals": 2
 }

@@ -4,7 +4,7 @@
     "en": "Budget allowed"
   },
   "desc": {
-    "en": "Daily budget allowance so far today"
+    "en": "Deprecated: shown in the daily budget plan view."
   },
   "units": {
     "en": "kWh"

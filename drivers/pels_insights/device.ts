@@ -3,9 +3,8 @@ import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 
 type StatusData = {
   headroomKw?: number;
+  hourlyLimitKw?: number;
   hourlyUsageKwh?: number;
-  dailyBudgetUsedKwh?: number;
-  dailyBudgetAllowedKwhNow?: number;
   dailyBudgetRemainingKwh?: number;
   dailyBudgetExceeded?: boolean;
   limitReason?: 'none' | 'hourly' | 'daily' | 'both';
@@ -24,9 +23,8 @@ type CapabilityEntry = {
 
 const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
   { key: 'headroomKw', id: 'pels_headroom', type: 'number' },
+  { key: 'hourlyLimitKw', id: 'pels_hourly_limit_kw', type: 'number' },
   { key: 'hourlyUsageKwh', id: 'pels_hourly_usage', type: 'number' },
-  { key: 'dailyBudgetUsedKwh', id: 'pels_daily_budget_used_kwh', type: 'number' },
-  { key: 'dailyBudgetAllowedKwhNow', id: 'pels_daily_budget_allowed_kwh_now', type: 'number' },
   { key: 'dailyBudgetRemainingKwh', id: 'pels_daily_budget_remaining_kwh', type: 'number' },
   { key: 'dailyBudgetExceeded', id: 'pels_daily_budget_exceeded', type: 'boolean' },
   { key: 'limitReason', id: 'pels_limit_reason', type: 'string' },
@@ -58,9 +56,8 @@ class PelsInsightsDevice extends Homey.Device {
     const requiredCapabilities = [
       'pels_shortfall',
       'pels_headroom',
+      'pels_hourly_limit_kw',
       'pels_hourly_usage',
-      'pels_daily_budget_used_kwh',
-      'pels_daily_budget_allowed_kwh_now',
       'pels_daily_budget_remaining_kwh',
       'pels_daily_budget_exceeded',
       'pels_limit_reason',
@@ -81,6 +78,8 @@ class PelsInsightsDevice extends Homey.Device {
     await this.removeDeprecatedCapability('alarm_generic');
     await this.removeDeprecatedCapability('pels_shedding');
     await this.removeDeprecatedCapability('pels_daily_budget_pressure');
+    await this.removeDeprecatedCapability('pels_daily_budget_used_kwh');
+    await this.removeDeprecatedCapability('pels_daily_budget_allowed_kwh_now');
 
     // Initialize from current settings
     const initialMode = (this.homey.settings.get(OPERATING_MODE_SETTING) as string) || 'home';

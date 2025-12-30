@@ -16,7 +16,6 @@ import { showToast, showToastError } from './toast';
 import { state } from './state';
 import { createDragHandle } from './components';
 import { logSettingsError } from './logging';
-import { createDragHandle } from './components';
 
 export const loadModeAndPriorities = async () => {
   const mode = await getSetting(OPERATING_MODE_SETTING);

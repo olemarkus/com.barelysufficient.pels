@@ -437,9 +437,14 @@ input:focus-visible {
   border-radius: var(--radius-md);
   font-size: var(--font-size-xs);
   line-height: var(--font-line-height-normal);
-  text-align: right;
+  text-align: left;
   display: grid;
   gap: var(--spacing-2);
+  width: 100%;
+}
+
+.overview-stats {
+  margin-bottom: var(--spacing-4);
 }
 
 .plan-meta-section {
@@ -453,11 +458,6 @@ input:focus-visible {
   letter-spacing: 0.04em;
   color: var(--text-secondary);
   font-weight: var(--font-weight-semibold);
-}
-
-.plan-meta-pill {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .plan-meta-line-text {

@@ -24,6 +24,7 @@ const buildDom = () => {
       <form id="targets-form">
         <select id="target-mode-select"></select>
       </form>
+      <input id="capacity-dry-run" type="checkbox">
       <div id="device-list"></div>
       <p id="empty-state" hidden></p>
     </section>
@@ -39,7 +40,7 @@ const buildDom = () => {
       <p id="priority-empty" hidden></p>
     </section>
     <section class="panel hidden" data-panel="budget">
-      <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"><input id="capacity-dry-run" type="checkbox"></form>
+      <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"></form>
       <form id="daily-budget-form">
         <input id="daily-budget-enabled" type="checkbox">
         <input id="daily-budget-kwh">
