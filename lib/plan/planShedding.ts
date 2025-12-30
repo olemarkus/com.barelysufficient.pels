@@ -120,26 +120,33 @@ function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
   return devices
     .filter((d) => d.controllable !== false && d.currentOn !== false)
     .map((d) => addCandidatePower(d, deps.getPriorityForDevice))
+    .filter((candidate): candidate is ShedCandidate => candidate !== null)
     .filter((d) => isNotAtShedTemperature(d, deps.getShedBehavior))
     .filter((d) => isNotRecentlyRestored(d, state, nowTs, needed, deps.logDebug))
     .sort(sortCandidates);
 }
 
+function resolveCandidatePower(device: PlanInputDevice): number | null {
+  const measured = device.measuredPowerKw;
+  if (typeof measured === 'number' && Number.isFinite(measured)) {
+    return measured > 0 ? measured : null;
+  }
+  if (typeof device.expectedPowerKw === 'number' && device.expectedPowerKw > 0) {
+    return device.expectedPowerKw;
+  }
+  if (typeof device.powerKw === 'number' && device.powerKw > 0) {
+    return device.powerKw;
+  }
+  return 1;
+}
+
 function addCandidatePower(
   device: PlanInputDevice,
   getPriority: (deviceId: string) => number,
-): ShedCandidate {
+): ShedCandidate | null {
+  const power = resolveCandidatePower(device);
+  if (power === null) return null;
   const priority = getPriority(device.id);
-  let power: number;
-  if (typeof device.measuredPowerKw === 'number') {
-    power = Math.max(0, device.measuredPowerKw);
-  } else if (typeof device.expectedPowerKw === 'number' && device.expectedPowerKw > 0) {
-    power = device.expectedPowerKw;
-  } else if (typeof device.powerKw === 'number' && device.powerKw > 0) {
-    power = device.powerKw;
-  } else {
-    power = 1;
-  }
   return { ...device, priority, effectivePower: power };
 }
 
@@ -247,5 +254,7 @@ function countRemainingCandidates(
   headroom: number | null,
 ): number {
   if (headroom === null || headroom >= 0) return 0;
-  return devices.filter((d) => d.controllable !== false && d.currentOn !== false && !shedSet.has(d.id)).length;
+  return devices.filter((d) => d.controllable !== false && d.currentOn !== false && !shedSet.has(d.id))
+    .filter((d) => resolveCandidatePower(d) !== null)
+    .length;
 }

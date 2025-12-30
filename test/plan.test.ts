@@ -1198,11 +1198,9 @@ describe('Device plan snapshot', () => {
     // Sync the snapshot to the guard so it knows about controllable devices
     // Guard no longer needs explicit sync - Plan calls Guard methods directly
 
-    // Use very high power to ensure it exceeds any threshold
-    // Even at minute 1 (59 mins left): threshold = 5 / 0.983 = ~5.1kW
-    // At minute 59 (1 min left): threshold = 5 / 0.0167 = ~300kW
-    // So use 500kW to be safe
-    await (app as any).recordPowerSample(500000); // 500kW definitely exceeds threshold
+    // Use very high power to ensure it exceeds any threshold.
+    // Threshold is clamped with a minimum remaining time of 0.01h, so max threshold is 500kW.
+    await (app as any).recordPowerSample(600000); // 600kW definitely exceeds threshold
     // Shortfall is now detected by Plan calling checkShortfall() - no need for tick()
     expect(triggerSpy).toHaveBeenCalled();
 

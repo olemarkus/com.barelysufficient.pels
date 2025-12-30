@@ -49,22 +49,14 @@ const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => {
 type PlanMetaLines = {
   now: string[];
   hour: string[];
-  limiter?: string;
 };
 
 type PlanMeta = NonNullable<PlanSnapshot['meta']>;
 
-const getSoftLimitSourceLabel = (source?: PlanMeta['softLimitSource']) => {
-  if (source === 'daily') return 'Daily';
-  if (source === 'both') return 'Daily + capacity';
-  return 'Capacity';
-};
-
-const getSoftLimitSourceValue = (meta: PlanMeta, fallback: number) => {
-  if (meta.softLimitSource === 'daily' && typeof meta.dailySoftLimitKw === 'number') {
-    return meta.dailySoftLimitKw;
-  }
-  return fallback;
+const getSoftLimitSourceText = (source?: PlanMeta['softLimitSource']) => {
+  if (source === 'daily') return 'Limited by daily budget';
+  if (source === 'both') return 'Limited by daily + capacity caps';
+  return 'Limited by capacity cap';
 };
 
 const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null => {
@@ -76,16 +68,14 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
 
   const headroomAbs = Math.abs(headroomKw).toFixed(1);
   const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
-  const powerText = `Now ${totalKw.toFixed(1)}kW / Limit ${softLimitKw.toFixed(1)}kW`;
+  const powerText = `Now ${totalKw.toFixed(1)}kW (limit ${softLimitKw.toFixed(1)}kW)`;
   const nowLines = [powerText];
-  let limiterText: string | undefined;
-  if (meta.softLimitSource) {
-    const sourceLabel = getSoftLimitSourceLabel(meta.softLimitSource);
-    const sourceLimit = getSoftLimitSourceValue(meta, softLimitKw);
-    limiterText = `Limiter ${sourceLabel} (${sourceLimit.toFixed(1)}kW)`;
-  }
   nowLines.push(headroomText);
   const hourLines: string[] = [];
+
+  if (meta.softLimitSource) {
+    hourLines.push(getSoftLimitSourceText(meta.softLimitSource));
+  }
 
   if (typeof meta.controlledKw === 'number' && typeof meta.uncontrolledKw === 'number') {
     nowLines.push(`Controlled ${meta.controlledKw.toFixed(2)}kW / Uncontrolled ${meta.uncontrolledKw.toFixed(2)}kW`);
@@ -101,7 +91,7 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
     hourLines.push('End of hour');
   }
 
-  return { now: nowLines, hour: hourLines, limiter: limiterText };
+  return { now: nowLines, hour: hourLines };
 };
 
 const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
@@ -111,10 +101,10 @@ const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
     return;
   }
 
-  const { now: nowLines, hour: hourLines, limiter } = metaLines;
+  const { now: nowLines, hour: hourLines } = metaLines;
 
   planMeta.innerHTML = '';
-  const addSection = (title: string, sectionLines: string[], pillText?: string) => {
+  const addSection = (title: string, sectionLines: string[]) => {
     if (sectionLines.length === 0) return;
     const section = document.createElement('div');
     section.className = 'plan-meta-section';
@@ -122,15 +112,6 @@ const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
     heading.className = 'plan-meta-title';
     heading.textContent = title;
     section.appendChild(heading);
-    if (pillText) {
-      const pillWrap = document.createElement('div');
-      pillWrap.className = 'plan-meta-pill';
-      const pill = document.createElement('span');
-      pill.className = 'pill';
-      pill.textContent = pillText;
-      pillWrap.appendChild(pill);
-      section.appendChild(pillWrap);
-    }
     sectionLines.forEach((line) => {
       const div = document.createElement('div');
       div.className = 'plan-meta-line-text';
@@ -140,7 +121,7 @@ const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
     planMeta.appendChild(section);
   };
 
-  addSection('Now', nowLines, limiter);
+  addSection('Now', nowLines);
   if (nowLines.length && hourLines.length) {
     const divider = document.createElement('div');
     divider.className = 'plan-meta-divider';
@@ -190,7 +171,7 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
       ? 'Shed (lowered temperature)'
       : 'Shed (powered off)';
   } else if (dev.plannedState === 'keep') {
-    stateText = (dev.currentState === 'off' || dev.currentState === 'unknown') ? 'Restoring' : 'Keep';
+    stateText = (dev.currentState === 'off' || dev.currentState === 'unknown') ? 'Restoring' : 'Active';
   }
   return createMetaLine('State', stateText);
 };

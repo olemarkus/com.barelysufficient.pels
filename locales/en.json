@@ -4,13 +4,16 @@
   },
   "capability": {
     "pels_insights": {
-      "title": "Mode"
+      "title": "Operating mode"
     },
     "pels_headroom": {
       "title": "Headroom"
     },
     "pels_hourly_usage": {
       "title": "Used this hour"
+    },
+    "pels_hourly_limit_kw": {
+      "title": "Hourly limit"
     },
     "pels_shortfall": {
       "title": "Capacity shortfall"

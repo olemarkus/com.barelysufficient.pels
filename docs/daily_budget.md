@@ -90,8 +90,7 @@ The plan is a cumulative curve. The current bucket's planned kWh is turned into 
 
 These are exposed on the PELS Insights device:
 
-- `daily_budget_used_kwh`
-- `daily_budget_allowed_kwh_now` (status-only, not tracked in Insights)
+- `pels_hourly_limit_kw` (effective hourly limit in kW)
 - `daily_budget_remaining_kwh`
 - `daily_budget_exceeded`
 - `pels_limit_reason` (indicates whether limits are due to hourly or daily budget)

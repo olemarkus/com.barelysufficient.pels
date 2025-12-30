@@ -10,9 +10,8 @@ export function buildPelsStatus(params: {
 }): {
   status: {
     headroomKw: number | null;
+    hourlyLimitKw?: number;
     hourlyUsageKwh: number;
-    dailyBudgetUsedKwh?: number;
-    dailyBudgetAllowedKwhNow?: number;
     dailyBudgetRemainingKwh?: number;
     dailyBudgetExceeded?: boolean;
     limitReason?: 'none' | 'hourly' | 'daily' | 'both';
@@ -32,11 +31,10 @@ export function buildPelsStatus(params: {
   return {
     status: {
       headroomKw: plan.meta.headroomKw,
+      hourlyLimitKw: plan.meta.softLimitKw,
       hourlyUsageKwh: plan.meta.usedKWh ?? 0,
-      dailyBudgetUsedKwh: plan.meta.dailyBudgetUsedKWh,
-      dailyBudgetAllowedKwhNow: plan.meta.dailyBudgetAllowedKWhNow,
-      dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh,
-      dailyBudgetExceeded: plan.meta.dailyBudgetExceeded,
+      dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh ?? 0,
+      dailyBudgetExceeded: plan.meta.dailyBudgetExceeded ?? false,
       limitReason,
       controlledKw: plan.meta.controlledKw,
       uncontrolledKw: plan.meta.uncontrolledKw,

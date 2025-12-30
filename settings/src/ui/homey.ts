@@ -39,7 +39,9 @@ export const getHomeyTimezone = () => {
   if (typeof clockTz === 'string' && clockTz.trim()) return clockTz;
   const i18nTz = homeyClient?.i18n?.getTimezone?.();
   if (typeof i18nTz === 'string' && i18nTz.trim()) return i18nTz;
-  return 'Europe/Oslo';
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (typeof browserTz === 'string' && browserTz.trim()) return browserTz;
+  return 'UTC';
 };
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

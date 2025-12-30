@@ -308,10 +308,8 @@ export class PlanBuilder {
       uncontrolledKw,
       hourControlledKWh: getCurrentHourKWh(this.powerTracker.controlledBuckets),
       hourUncontrolledKWh: getCurrentHourKWh(this.powerTracker.uncontrolledBuckets),
-      dailyBudgetUsedKWh: dailyBudgetSnapshot?.state.usedNowKWh,
-      dailyBudgetAllowedKWhNow: dailyBudgetSnapshot?.state.allowedNowKWh,
-      dailyBudgetRemainingKWh: dailyBudgetSnapshot?.state.remainingKWh,
-      dailyBudgetExceeded: dailyBudgetSnapshot?.state.exceeded,
+      dailyBudgetRemainingKWh: dailyBudgetSnapshot?.state.remainingKWh ?? 0,
+      dailyBudgetExceeded: dailyBudgetSnapshot?.state.exceeded ?? false,
     };
   }
 }
