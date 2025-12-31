@@ -1,6 +1,7 @@
 # Plan States and Status Lines
 
 This document describes how the Overview tab derives device state and the status text shown per device.
+Only managed devices are included in the plan snapshot; unmanaged devices are hidden from the Overview tab.
 
 ## Core State Fields (per device)
 
@@ -52,6 +53,7 @@ The Overview tab shows a State line derived from plannedState and currentState:
 - Shed (lowered temperature): plannedState === "shed" and shedAction === "set_temperature"
 - Restoring: plannedState === "keep" and currentState is "off" or "unknown"
 - Active: plannedState === "keep" and currentState is "on"
+- Capacity control off: controllable === false
 - Unknown: fallback if state is not clear
 
 ## Overview Tab "Status" Line (reason values)
@@ -60,7 +62,7 @@ These are the strings assigned to reason in app.ts. The UI shows reason or "Wait
 Parentheses indicate dynamic values.
 
 - keep (priority N)
-- not controllable by PELS
+- capacity control off
 - restore (need XkW, headroom YkW)
 - shed due to capacity
 - shed due to daily budget

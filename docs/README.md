@@ -91,8 +91,8 @@ After installation:
 ### Quick Setup
 
 1. **Set your capacity limit** in the Budget tab
-2. **Mark devices as controllable** in the Devices tab
-3. **Set priorities and temperatures** for each mode in the Modes tab
+2. **Mark devices as managed** in the Devices tab and enable **Capacity-based control** where you want shedding
+3. **Set priorities and temperatures** for each mode in the Modes tab (managed devices only)
 4. **Configure price settings** (optional) in the Price tab
 5. **Create a Flow** to report power usage to PELS
 
@@ -104,9 +104,9 @@ After installation:
 - Create a Flow that calls **Report power usage** whenever your meter updates (e.g., Tibber Pulse).  
 - Without this, PELS cannot calculate headroom or plan shedding.
 
-### 2) Check if you can increase a controllable load (EV charger, water heater)
+### 2) Check if you can increase a capacity-controlled load (EV charger, water heater)
 - Create a Flow condition using **Is there headroom for device?**
-  - Device: pick the controllable device (e.g., charger)
+  - Device: pick the capacity-controlled device (e.g., charger)
   - Required kW: how much extra you want to draw
 - The card checks current headroom plus the device’s **expected** draw (settings.load first, then latest reading or override) with a conservative **1 kW fallback** when unknown. This avoids over-promising capacity.
 
@@ -135,11 +135,12 @@ The Devices tab shows all devices in your home that have temperature control cap
 
 | Setting | Description |
 |---------|-------------|
-| **Controllable** | Toggle whether PELS can control this device. Only controllable devices will be managed for capacity and price optimization. |
-| **Price Optimization** | Enable temperature adjustments based on electricity prices. |
+| **Managed by PELS** | Toggle whether PELS should include the device in modes and price optimization. Unmanaged devices are treated as uncontrolled load and hidden from the Overview plan. |
+| **Capacity-based control** | Toggle whether PELS can shed/restore this device for capacity. You can keep this off while still using price optimization. |
+| **Price Optimization** | Enable temperature adjustments based on electricity prices (managed devices only). |
 | **When shedding** | Choose what happens during capacity shedding: turn off (default) or drop to a minimum temperature. |
 
-> **Note:** You must enable "Controllable" for a device before it appears in the Modes tab.
+> **Note:** Only managed devices appear in the Modes tab and Price optimization list.
 
 ### Modes Tab
 
@@ -154,7 +155,7 @@ Select which mode is currently active. This determines which priorities and temp
 - **Rename mode**: Select a mode and click "Rename"
 
 #### Per-Mode Settings
-For each controllable device in a mode:
+For each managed device in a mode:
 
 | Setting | Description |
 |---------|-------------|
@@ -166,6 +167,7 @@ For each controllable device in a mode:
 ### Overview Tab
 
 Shows the current plan – what PELS intends to do with each device based on current power consumption and settings.
+Only managed devices are listed; unmanaged load still contributes to the totals.
 
 | Column | Description |
 |--------|-------------|
@@ -278,6 +280,8 @@ Diagnostics and debug toggles.
 | **Set capacity limit** | Change the capacity limit dynamically |
 | **Set operating mode** | Switch between modes (Home, Away, etc.) |
 | **Set expected power for device** | Provide an explicit expected draw (W) when the device can’t report it (e.g., map “Power changed to Max” → 3000 W). Fails if the device already has a configured load. |
+| **Enable capacity control for device** | Turn on capacity-based control for a single device |
+| **Disable capacity control for device** | Turn off capacity-based control for a single device |
 
 ---
 
@@ -353,7 +357,7 @@ The device shows:
 | "No power samples received" | Create a Flow to report power usage |
 | Devices not appearing | Make sure they have temperature capabilities |
 | No price data | Configure price area and/or grid company |
-| PELS not controlling devices | Check "Controllable" is enabled and "Dry run" is disabled |
+| PELS not controlling devices | Check "Managed by PELS" and "Capacity-based control" are enabled (and "Dry run" is disabled) |
 
 ---
 
