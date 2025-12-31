@@ -119,7 +119,7 @@ function buildBasePlanDevice(params: {
   const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id));
   const baseReason = controllable
     ? shedReasons.get(dev.id) || `keep (priority ${priority})`
-    : 'not controllable by PELS';
+    : 'capacity control off';
   const { shedAction, shedTemperature } = resolveShedAction(controllable, shedSet.has(dev.id), shedBehavior);
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
@@ -169,6 +169,7 @@ function applyOffStateReason(params: {
   guardInShortfall: boolean;
 }): DevicePlanDevice {
   const { planDevice, powerKw, restoreMarginPlanning, headroomRaw, guardInShortfall } = params;
+  if (!planDevice.controllable) return planDevice;
   if (planDevice.plannedState === 'shed' || planDevice.currentState !== 'off') return planDevice;
   const need = (powerKw && powerKw > 0 ? powerKw : 1) + restoreMarginPlanning;
   if (guardInShortfall) {
@@ -189,6 +190,7 @@ function applyHourlyBudgetShed(params: {
   hourlyBudgetExhausted: boolean;
 }): DevicePlanDevice {
   const { planDevice, hourlyBudgetExhausted } = params;
+  if (!planDevice.controllable) return planDevice;
   if (!hourlyBudgetExhausted || planDevice.plannedState === 'shed') return planDevice;
   if (planDevice.currentState !== 'on' && planDevice.currentState !== 'unknown') return planDevice;
   return {

@@ -10,6 +10,7 @@ import {
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
+  MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from './settingsKeys';
 export type PriceServiceLike = {
@@ -50,6 +51,12 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     controllable_devices: async () => {
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after controllable change');
+      await deps.rebuildPlanFromCache();
+    },
+    [MANAGED_DEVICES]: async () => {
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after managed change');
+      await deps.rebuildPlanFromCache();
     },
     power_tracker_state: async () => deps.loadPowerTracker(),
     [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),

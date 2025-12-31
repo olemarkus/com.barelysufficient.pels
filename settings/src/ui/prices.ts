@@ -16,7 +16,7 @@ import {
 } from './dom';
 import { getSetting, setSetting } from './homey';
 import { showToast, showToastError } from './toast';
-import { defaultPriceOptimizationConfig, state } from './state';
+import { resolveManagedState, defaultPriceOptimizationConfig, state } from './state';
 import { gridCompanies } from './gridCompanies';
 import { renderPrices } from './priceRender';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
@@ -284,7 +284,7 @@ export const renderPriceOptimization = (devices: TargetDeviceSnapshot[]) => {
 
   const enabledDevices = (devices || []).filter((device) => {
     const config = state.priceOptimizationSettings[device.id];
-    return config?.enabled === true;
+    return resolveManagedState(device.id) && config?.enabled === true;
   });
 
   if (enabledDevices.length === 0) {

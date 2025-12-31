@@ -442,7 +442,10 @@ export class PlanExecutor {
     if (!plan || !Array.isArray(plan.devices)) return;
 
     for (const dev of plan.devices) {
-      if (dev.controllable === false) continue;
+      if (dev.controllable === false) {
+        await this.applyTargetUpdate(dev);
+        continue;
+      }
       const handledShed = await this.applyShedAction(dev);
       if (handledShed) continue;
       await this.applyRestorePower(dev);

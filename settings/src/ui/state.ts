@@ -20,6 +20,7 @@ export type UiState = {
   latestDevices: TargetDeviceSnapshot[];
   modeTargets: Record<string, Record<string, number>>;
   controllableMap: Record<string, boolean>;
+  managedMap: Record<string, boolean>;
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ShedBehavior>;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
@@ -39,7 +40,16 @@ export const state: UiState = {
   latestDevices: [],
   modeTargets: {},
   controllableMap: {},
+  managedMap: {},
   modeAliases: {},
   shedBehaviors: {},
   priceOptimizationSettings: {},
+};
+
+export const resolveManagedState = (deviceId: string): boolean => {
+  const explicit = state.managedMap[deviceId];
+  if (typeof explicit === 'boolean') return explicit;
+  const capacityEnabled = state.controllableMap[deviceId] !== false;
+  const priceEnabled = state.priceOptimizationSettings[deviceId]?.enabled === true;
+  return capacityEnabled || priceEnabled;
 };

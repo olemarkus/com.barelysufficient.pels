@@ -641,6 +641,7 @@ describe('Device plan snapshot', () => {
     });
 
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-ctl': true, 'dev-non': false });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-ctl': true, 'dev-non': true });
 
     const app = createApp();
     await app.onInit();
@@ -658,6 +659,23 @@ describe('Device plan snapshot', () => {
 
     expect(ctlPlan?.plannedState).toBe('shed');
     expect(nonCtlPlan?.plannedState).toBe('keep');
+  });
+
+  it('excludes unmanaged devices from the plan snapshot', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': false });
+
+    const app = createApp();
+    await app.onInit();
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan).toBeUndefined();
   });
 
   it('updates planned target when switching modes', async () => {
@@ -2711,6 +2729,50 @@ describe('Dry run mode', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan.plannedTarget).toBe(50);
+  });
+
+  it('applies price optimization when capacity control is disabled', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 50);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': false });
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: { 'dev-1': 50 },
+    });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': {
+        enabled: true,
+        cheapDelta: 5,
+        expensiveDelta: -5,
+      },
+    });
+    mockHomeyInstance.settings.set('price_optimization_enabled', true);
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+    (app as any).isCurrentHourCheap = () => true;
+    (app as any).isCurrentHourExpensive = () => false;
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [{ id: 'target_temperature', value: 50, unit: '°C' }],
+        powerKw: 1,
+        currentOn: true,
+      },
+    ]);
+
+    await (app as any).planService.rebuildPlanFromCache();
+
+    expect(await dev1.getCapabilityValue('target_temperature')).toBe(55);
   });
 
   it('price optimization is overridden by temperature-based shedding', async () => {

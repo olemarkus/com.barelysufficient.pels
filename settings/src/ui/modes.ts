@@ -13,7 +13,7 @@ import {
 import { getSetting, setSetting } from './homey';
 import { OPERATING_MODE_SETTING } from '../../../lib/utils/settingsKeys';
 import { showToast, showToastError } from './toast';
-import { state } from './state';
+import { resolveManagedState, state } from './state';
 import { createDragHandle } from './components';
 import { logSettingsError } from './logging';
 
@@ -22,6 +22,7 @@ export const loadModeAndPriorities = async () => {
   const priorities = await getSetting('capacity_priorities');
   const targets = await getSetting('mode_device_targets');
   const controllables = await getSetting('controllable_devices');
+  const managed = await getSetting('managed_devices');
   const aliases = await getSetting('mode_aliases');
   state.activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
   state.editingMode = state.activeMode; // Start editing the active mode
@@ -33,6 +34,9 @@ export const loadModeAndPriorities = async () => {
     : {};
   state.controllableMap = controllables && typeof controllables === 'object'
     ? controllables as Record<string, boolean>
+    : {};
+  state.managedMap = managed && typeof managed === 'object'
+    ? managed as Record<string, boolean>
     : {};
   state.modeAliases = aliases && typeof aliases === 'object'
     ? Object.entries(aliases).reduce<Record<string, string>>((acc, [k, v]) => {
@@ -139,13 +143,14 @@ const buildPriorityRow = (device: TargetDeviceSnapshot) => {
 export const renderPriorities = (devices: TargetDeviceSnapshot[]) => {
   if (!priorityList) return;
   priorityList.innerHTML = '';
-  if (!devices.length) {
+  const managedDevices = devices.filter((device) => resolveManagedState(device.id));
+  if (!managedDevices.length) {
     priorityEmpty.hidden = false;
     return;
   }
   priorityEmpty.hidden = true;
 
-  const sorted = [...devices].sort((a, b) => getPriority(a.id) - getPriority(b.id));
+  const sorted = [...managedDevices].sort((a, b) => getPriority(a.id) - getPriority(b.id));
   sorted.forEach((device) => {
     priorityList.appendChild(buildPriorityRow(device));
   });

@@ -111,6 +111,42 @@ describe('MyApp initialization', () => {
     expect(setLimitSpy).toHaveBeenCalledWith(5);
   });
 
+  it('enable_device_capacity_control flow card enables capacity control', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const enableListener = mockHomeyInstance.flow._actionCardListeners['enable_device_capacity_control'];
+    expect(enableListener).toBeDefined();
+
+    const result = await enableListener({ device: 'dev-1' });
+    expect(result).toBe(true);
+    expect(mockHomeyInstance.settings.get('controllable_devices')).toEqual({ 'dev-1': true });
+  });
+
+  it('disable_device_capacity_control flow card disables capacity control', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    const disableListener = mockHomeyInstance.flow._actionCardListeners['disable_device_capacity_control'];
+    expect(disableListener).toBeDefined();
+
+    const result = await disableListener({ device: { id: 'dev-1', name: 'Heater' } });
+    expect(result).toBe(true);
+    expect(mockHomeyInstance.settings.get('controllable_devices')).toEqual({ 'dev-1': false });
+  });
+
   it('set_capacity_limit flow card rejects invalid values', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({

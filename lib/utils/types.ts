@@ -12,6 +12,7 @@ export type TargetDeviceSnapshot = {
     measuredPowerKw?: number;
     zone?: string;
     controllable?: boolean;
+    managed?: boolean;
     capabilities?: string[];
     lastUpdated?: number;
 };

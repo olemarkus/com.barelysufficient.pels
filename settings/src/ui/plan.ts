@@ -78,14 +78,14 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
   }
 
   if (typeof meta.controlledKw === 'number' && typeof meta.uncontrolledKw === 'number') {
-    nowLines.push(`Controlled ${meta.controlledKw.toFixed(2)}kW / Uncontrolled ${meta.uncontrolledKw.toFixed(2)}kW`);
+    nowLines.push(`Capacity-controlled ${meta.controlledKw.toFixed(2)}kW / Other load ${meta.uncontrolledKw.toFixed(2)}kW`);
   }
 
   if (typeof meta.usedKWh === 'number' && typeof meta.budgetKWh === 'number') {
     hourLines.push(`Used ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)} kWh`);
   }
   if (typeof meta.hourControlledKWh === 'number' && typeof meta.hourUncontrolledKWh === 'number') {
-    hourLines.push(`Controlled ${meta.hourControlledKWh.toFixed(2)} / Uncontrolled ${meta.hourUncontrolledKWh.toFixed(2)} kWh`);
+    hourLines.push(`Capacity-controlled ${meta.hourControlledKWh.toFixed(2)} / Other load ${meta.hourUncontrolledKWh.toFixed(2)} kWh`);
   }
   if (typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10) {
     hourLines.push('End of hour');
@@ -166,6 +166,10 @@ const buildPlanPowerLine = (dev: PlanDeviceSnapshot) => {
 
 const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
   let stateText = 'Unknown';
+  if (dev.controllable === false) {
+    stateText = 'Capacity control off';
+    return createMetaLine('State', stateText);
+  }
   if (dev.plannedState === 'shed') {
     stateText = dev.shedAction === 'set_temperature'
       ? 'Shed (lowered temperature)'

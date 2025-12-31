@@ -86,6 +86,7 @@ export const deviceDetailOverlay = qs('#device-detail-overlay');
 export const deviceDetailPanel = qs('#device-detail-panel');
 export const deviceDetailTitle = qs('#device-detail-title');
 export const deviceDetailClose = qs('#device-detail-close') as HTMLButtonElement;
+export const deviceDetailManaged = document.querySelector('#device-detail-managed') as HTMLInputElement;
 export const deviceDetailControllable = document.querySelector('#device-detail-controllable') as HTMLInputElement;
 export const deviceDetailPriceOpt = document.querySelector('#device-detail-price-opt') as HTMLInputElement;
 export const deviceDetailModes = qs('#device-detail-modes');

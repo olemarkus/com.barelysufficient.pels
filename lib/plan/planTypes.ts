@@ -57,5 +57,6 @@ export type PlanInputDevice = {
   measuredPowerKw?: number;
   currentTemperature?: number;
   controllable?: boolean;
+  managed?: boolean;
   zone?: string;
 };

@@ -81,6 +81,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
   registerHeadroomForDeviceCard(deps);
   registerCapacityAndModeCards(deps);
+  registerDeviceCapacityControlCards(deps);
 }
 
 function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {
@@ -173,6 +174,26 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
   ));
 }
 
+function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
+  const enableCard = deps.homey.flow.getActionCard('enable_device_capacity_control');
+  enableCard.registerRunListener(async (args: unknown) => {
+    await setDeviceCapacityControl(args as { device?: DeviceArg } | null, true, deps);
+    return true;
+  });
+  enableCard.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getDeviceOptions(deps, query)
+  ));
+
+  const disableCard = deps.homey.flow.getActionCard('disable_device_capacity_control');
+  disableCard.registerRunListener(async (args: unknown) => {
+    await setDeviceCapacityControl(args as { device?: DeviceArg } | null, false, deps);
+    return true;
+  });
+  disableCard.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getDeviceOptions(deps, query)
+  ));
+}
+
 function getModeOptions(deps: FlowCardDeps, query: string): Array<{ id: string; name: string }> {
   const q = (query || '').toLowerCase();
   return Array.from(deps.getAllModes())
@@ -188,11 +209,40 @@ function getPriceLevelOptions(query: string): Array<{ id: string; name: string }
     .map((opt: PriceLevelOption) => ({ id: opt.id, name: opt.name }));
 }
 
+async function getDeviceOptions(deps: FlowCardDeps, query: string): Promise<Array<{ id: string; name: string }>> {
+  const q = (query || '').toLowerCase();
+  const snapshot = await deps.getSnapshot();
+  return snapshot
+    .map((d) => ({ id: d.id, name: d.name || d.id }))
+    .filter((d) => !q || d.name.toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function getDeviceIdFromArg(arg: DeviceArg): string {
   const deviceIdRaw = typeof arg === 'object' && arg !== null
     ? arg.id || arg.data?.id
     : arg;
   return (deviceIdRaw || '').trim();
+}
+
+async function setDeviceCapacityControl(
+  payload: { device?: DeviceArg } | null,
+  enabled: boolean,
+  deps: FlowCardDeps,
+): Promise<void> {
+  const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+  if (!deviceId) throw new Error('Device must be provided');
+  const snapshot = await deps.getSnapshot();
+  const deviceName = snapshot.find((d) => d.id === deviceId)?.name || deviceId;
+  const existing = deps.homey.settings.get('controllable_devices');
+  const next = {
+    ...(existing && typeof existing === 'object' ? existing as Record<string, boolean> : {}),
+    [deviceId]: enabled,
+  };
+  deps.homey.settings.set('controllable_devices', next);
+  deps.log(`Flow: capacity control ${enabled ? 'enabled' : 'disabled'} for ${deviceName}`);
+  await deps.refreshSnapshot();
+  deps.rebuildPlan();
 }
 
 async function checkHeadroomForDevice(
