@@ -21,7 +21,7 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 
 PELS requires the `homey:manager:api` permission to function. This permission grants access to Homey's internal device API (HomeyAPI), which PELS uses to:
 
-1. **Discover devices** – List all devices in your home to find thermostats, water heaters, and other controllable devices
+1. **Discover devices** – List all devices in your home to find thermostats, water heaters, and other eligible devices
 2. **Read device state** – Get current temperatures, power consumption, and on/off states
 3. **Control devices** – Set thermostat target temperatures and turn devices on/off for load shedding and price optimization
 
@@ -159,9 +159,9 @@ Aggregation happens automatically when power data is saved—you don't need to m
 
 ## Assumptions and Limitations
 
-### Headroom check for controllable loads
+### Headroom check for capacity-controlled loads
 
-The **"Is there headroom for device?"** Flow condition is intended for controllable-load devices such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
+The **"Is there headroom for device?"** Flow condition is intended for capacity-controlled devices such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
 
 - Current headroom (soft limit minus current load)
 - Device's expected usage (estimator order: `settings.load` → newest of meter reading or flow override → last known on-state draw → fallback **1 kW**). Devices with `settings.load > 0` are excluded from this card entirely.
