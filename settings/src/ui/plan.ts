@@ -233,17 +233,25 @@ const buildPlanRow = (dev: PlanDeviceSnapshot) => {
 
 export const renderPlan = (plan: PlanSnapshot | null) => {
   planList.innerHTML = '';
-  if (!plan || !Array.isArray(plan.devices) || plan.devices.length === 0) {
+  if (!plan) {
     planEmpty.hidden = false;
+    planEmpty.textContent = 'No plan available yet. Send power data or refresh devices.';
     planMeta.textContent = 'Awaiting data…';
     return;
   }
-  planEmpty.hidden = true;
-
   renderPlanMeta(plan.meta);
 
+  const devices = Array.isArray(plan.devices) ? plan.devices : [];
+  if (devices.length === 0) {
+    planEmpty.hidden = false;
+    planEmpty.textContent = 'No managed devices.';
+    return;
+  }
+
+  planEmpty.hidden = true;
+
   // Sort all devices globally by priority (priority 1 = most important = first)
-  const sortedDevices = [...plan.devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+  const sortedDevices = [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
   sortedDevices.forEach((dev) => {
     planList.appendChild(buildPlanRow(dev));
