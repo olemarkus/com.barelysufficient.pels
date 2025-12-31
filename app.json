@@ -230,6 +230,54 @@
     "actions": [
       {
         "title": {
+          "en": "Disable capacity control for device"
+        },
+        "titleFormatted": {
+          "en": "Disable capacity control for [[device]]"
+        },
+        "hint": {
+          "en": "Keep PELS from shedding or restoring this device while capacity control is disabled."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "id": "disable_device_capacity_control"
+      },
+      {
+        "title": {
+          "en": "Enable capacity control for device"
+        },
+        "titleFormatted": {
+          "en": "Enable capacity control for [[device]]"
+        },
+        "hint": {
+          "en": "Allow PELS to shed or restore this device based on capacity limits."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "id": "enable_device_capacity_control"
+      },
+      {
+        "title": {
           "en": "Report power usage"
         },
         "titleFormatted": {
