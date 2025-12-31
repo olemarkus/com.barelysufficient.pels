@@ -121,6 +121,24 @@ describe('plan meta usage summary', () => {
     const metaLines = getPlanMetaText();
     expect(metaLines.some((line) => line === 'Capacity-controlled 2.00kW / Other load 1.50kW')).toBe(true);
   });
+
+  it('shows meta lines even when no devices are managed', () => {
+    renderPlanSnapshot({
+      meta: {
+        totalKw: 3.5,
+        softLimitKw: 5,
+        headroomKw: 1.5,
+      },
+      devices: [],
+    });
+
+    const metaLines = getPlanMetaText();
+    expect(metaLines.some((line) => line === 'Now 3.5kW (limit 5.0kW)')).toBe(true);
+    expect(metaLines.some((line) => line === '1.5kW available')).toBe(true);
+
+    const empty = document.querySelector('#plan-empty') as HTMLElement | null;
+    expect(empty?.textContent?.trim()).toBe('No managed devices.');
+  });
 });
 
 describe('plan device state', () => {
