@@ -278,6 +278,16 @@
             <div id="power-week-label" class="muted">This week</div>
             <button type="button" class="btn ghost" id="power-week-next">Next week</button>
           </div>
+          <div class="usage-legend" id="power-legend">
+            <div class="usage-legend__item">
+              <span class="usage-legend__swatch" aria-hidden="true"></span>
+              <span class="muted">Measured</span>
+            </div>
+            <div class="usage-legend__item">
+              <span class="usage-legend__swatch usage-legend__swatch--warn" aria-hidden="true"></span>
+              <span class="muted">Warning (over cap or unreliable)</span>
+            </div>
+          </div>
           <div id="power-list" class="device-list usage-list" role="list"></div>
           <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the "Report power usage" Flow action.</p>
         </div>
