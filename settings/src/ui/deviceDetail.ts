@@ -3,6 +3,7 @@ import {
   deviceDetailOverlay,
   deviceDetailTitle,
   deviceDetailClose,
+  deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
   deviceDetailModes,
@@ -14,7 +15,7 @@ import {
   deviceDetailShedTemp,
 } from './dom';
 import { getSetting, setSetting } from './homey';
-import { state, defaultPriceOptimizationConfig } from './state';
+import { resolveManagedState, state, defaultPriceOptimizationConfig } from './state';
 import { renderDevices } from './devices';
 import { renderPriorities } from './modes';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './prices';
@@ -32,6 +33,9 @@ const setDeviceDetailTitle = (name: string) => {
 };
 
 const setDeviceDetailControlStates = (deviceId: string) => {
+  if (deviceDetailManaged) {
+    deviceDetailManaged.checked = resolveManagedState(deviceId);
+  }
   if (deviceDetailControllable) {
     deviceDetailControllable.checked = state.controllableMap[deviceId] !== false;
   }
@@ -261,6 +265,22 @@ const initDeviceDetailControllableHandler = () => {
   });
 };
 
+const initDeviceDetailManagedHandler = () => {
+  deviceDetailManaged?.addEventListener('change', async () => {
+    if (!currentDetailDeviceId) return;
+    state.managedMap[currentDetailDeviceId] = deviceDetailManaged.checked;
+    try {
+      await setSetting('managed_devices', state.managedMap);
+      renderDevices(state.latestDevices);
+      renderPriorities(state.latestDevices);
+      renderPriceOptimization(state.latestDevices);
+    } catch (error) {
+      await logSettingsError('Failed to update managed device', error, 'device detail');
+      await showToastError(error, 'Failed to update managed device.');
+    }
+  });
+};
+
 const ensurePriceOptimizationConfig = (deviceId: string) => {
   if (!state.priceOptimizationSettings[deviceId]) {
     state.priceOptimizationSettings[deviceId] = { ...defaultPriceOptimizationConfig };
@@ -332,6 +352,7 @@ const initDeviceDetailOpenHandler = () => {
 
 export const initDeviceDetailHandlers = () => {
   initDeviceDetailCloseHandlers();
+  initDeviceDetailManagedHandler();
   initDeviceDetailControllableHandler();
   initDeviceDetailPriceOptHandlers();
   initDeviceDetailShedHandlers();

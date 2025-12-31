@@ -941,6 +941,13 @@ describe('Settings UI', () => {
             nameWrap.style.cursor = 'pointer';
             nameWrap.addEventListener('click', () => openDeviceDetail('device-' + (index + 1), name));
             
+            const managedLabel = document.createElement('label');
+            managedLabel.className = 'checkbox-icon';
+            const managedInput = document.createElement('input');
+            managedInput.type = 'checkbox';
+            managedInput.checked = true;
+            managedLabel.appendChild(managedInput);
+
             const ctrlLabel = document.createElement('label');
             ctrlLabel.className = 'checkbox-icon';
             const ctrlInput = document.createElement('input');
@@ -955,7 +962,7 @@ describe('Settings UI', () => {
             priceInput.checked = index < 2;
             priceLabel.appendChild(priceInput);
             
-            row.append(nameWrap, ctrlLabel, priceLabel);
+            row.append(nameWrap, managedLabel, ctrlLabel, priceLabel);
             deviceList.appendChild(row);
           });
           
@@ -1093,9 +1100,11 @@ describe('Settings UI', () => {
     test('device detail has control checkboxes', async () => {
       await page.click('.device-row__name');
 
+      const managedCheckbox = await page.$('#device-detail-managed');
       const controllableCheckbox = await page.$('#device-detail-controllable');
       const priceOptCheckbox = await page.$('#device-detail-price-opt');
 
+      expect(managedCheckbox).toBeTruthy();
       expect(controllableCheckbox).toBeTruthy();
       expect(priceOptCheckbox).toBeTruthy();
     });

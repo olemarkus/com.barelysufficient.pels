@@ -45,11 +45,13 @@ export class DeviceManager {
     private providers: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
+        getManaged?: (deviceId: string) => boolean;
     } = {};
 
     constructor(homey: Homey.App, logger: Logger, providers?: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
+        getManaged?: (deviceId: string) => boolean;
     }, powerState?: PowerEstimateState) {
         this.homey = homey;
         this.logger = logger;
@@ -265,6 +267,7 @@ export class DeviceManager {
             measuredPowerKw: powerEstimate.measuredPowerKw,
             zone,
             controllable: this.providers.getControllable ? this.providers.getControllable(deviceId) : undefined,
+            managed: this.providers.getManaged ? this.providers.getManaged(deviceId) : undefined,
             capabilities,
         };
     }

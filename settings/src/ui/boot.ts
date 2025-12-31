@@ -188,6 +188,18 @@ const initRealtimeListeners = () => {
       });
     }
 
+    if (key === 'managed_devices' || key === 'controllable_devices') {
+      loadModeAndPriorities()
+        .then(() => {
+          renderPriorities(state.latestDevices);
+          renderDevices(state.latestDevices);
+          renderPriceOptimization(state.latestDevices);
+        })
+        .catch((error) => {
+          void logSettingsError('Failed to load device control settings', error, 'settings.set');
+        });
+    }
+
     if (key === 'power_tracker_state') {
       refreshPowerData().catch((error) => {
         void logSettingsError('Failed to refresh power data', error, 'settings.set');

@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Disable capacity control for device"
+  },
+  "titleFormatted": {
+    "en": "Disable capacity control for [[device]]"
+  },
+  "hint": {
+    "en": "Keep PELS from shedding or restoring this device while capacity control is disabled."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ]
+}

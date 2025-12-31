@@ -21,10 +21,10 @@ export function buildPlanChangeLines(plan: DevicePlan): string[] {
 }
 
 function isChange(device: DevicePlanDevice): boolean {
-  if (device.controllable === false) return false;
+  const sameTarget = normalizeTarget(device.plannedTarget) === normalizeTarget(device.currentTarget);
+  if (device.controllable === false) return !sameTarget;
   const desiredPower = getDesiredPower(device);
   const samePower = desiredPower === device.currentState;
-  const sameTarget = normalizeTarget(device.plannedTarget) === normalizeTarget(device.currentTarget);
   return !(samePower && sameTarget);
 }
 
@@ -62,6 +62,7 @@ function formatTarget(value: unknown): string {
 }
 
 function getPlannedPowerLabel(device: DevicePlanDevice): string {
+  if (device.controllable === false) return device.currentState;
   if (device.plannedState !== 'shed') return 'on';
   if (device.shedAction === 'set_temperature') {
     return typeof device.plannedTarget === 'number'

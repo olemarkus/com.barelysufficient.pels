@@ -208,7 +208,7 @@ body {
 /* Table header for device lists */
 .device-table-header {
   display: grid;
-  grid-template-columns: 1fr 40px 40px;
+  grid-template-columns: 1fr 80px 40px 40px;
   gap: 8px;
   align-items: center;
   padding: 8px 0;
@@ -503,7 +503,7 @@ input:focus-visible {
 
 .control-row {
   display: grid;
-  grid-template-columns: 1fr 40px 40px;
+  grid-template-columns: 1fr 80px 40px 40px;
   align-items: center;
   gap: var(--spacing-2);
 }

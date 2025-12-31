@@ -42,7 +42,7 @@
       <div class="card__header">
         <div>
           <p class="eyebrow">Devices</p>
-          <h2>Controllable devices</h2>
+          <h2>Device control</h2>
         </div>
       </div>
       <div class="toggle-row">
@@ -54,6 +54,7 @@
       </div>
       <div class="device-table-header">
         <span>Device</span>
+        <span title="Managed by PELS">Managed</span>
         <span title="Capacity-based control">Cap</span>
         <span title="Price-based control">Price</span>
       </div>
@@ -61,7 +62,7 @@
       <p id="empty-state" class="muted" hidden>No devices with target temperature capabilities were found.</p>
       <div class="list__footer">
         <button type="button" class="btn secondary" id="refresh-button">Refresh</button>
-        <p class="muted">Toggle which devices PELS may control. Temperature & priority live in the Modes tab.</p>
+        <p class="muted">Managed devices participate in modes and optimization. Temperature & priority live in the Modes tab.</p>
       </div>
     </section>
 
@@ -501,6 +502,12 @@
         <section class="detail-section">
           <h3>Controls</h3>
           <div class="detail-controls">
+            <label class="checkbox-field">
+              <input type="checkbox" id="device-detail-managed">
+              <span>Managed by PELS</span>
+            </label>
+            <p class="muted">Include this device in modes and optimization plans.</p>
+
             <label class="checkbox-field">
               <input type="checkbox" id="device-detail-controllable">
               <span>Capacity-based control</span>

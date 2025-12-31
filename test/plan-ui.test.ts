@@ -19,6 +19,12 @@ const getUsageText = () => {
   return usageLine?.querySelector('span:last-child')?.textContent?.trim();
 };
 
+const getStateText = () => {
+  const lines = Array.from(document.querySelectorAll('.plan-meta-line'));
+  const stateLine = lines.find((line) => line.querySelector('.plan-label')?.textContent === 'State');
+  return stateLine?.querySelector('span:last-child')?.textContent?.trim();
+};
+
 const getPlanMetaText = () => {
   const meta = document.querySelector('#plan-meta') as HTMLElement | null;
   if (!meta) return [];
@@ -113,6 +119,24 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === 'Controlled 2.00kW / Uncontrolled 1.50kW')).toBe(true);
+    expect(metaLines.some((line) => line === 'Capacity-controlled 2.00kW / Other load 1.50kW')).toBe(true);
+  });
+});
+
+describe('plan device state', () => {
+  it('shows capacity control off state for non-controllable devices', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Device 1',
+          currentState: 'off',
+          plannedState: 'keep',
+          controllable: false,
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Capacity control off');
   });
 });

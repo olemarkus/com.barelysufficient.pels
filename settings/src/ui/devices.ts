@@ -2,7 +2,7 @@ import type { TargetDeviceSnapshot } from '../../../lib/utils/types';
 import { deviceList, emptyState, refreshButton } from './dom';
 import { getSetting, pollSetting, setSetting } from './homey';
 import { showToast, showToastError } from './toast';
-import { state } from './state';
+import { resolveManagedState, state } from './state';
 import { renderPriorities } from './modes';
 import { refreshPlan } from './plan';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './prices';
@@ -23,6 +23,23 @@ const setBusy = (busy: boolean) => {
 };
 
 const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
+  const managedCheckbox = createCheckboxLabel({
+    title: 'Managed by PELS',
+    checked: resolveManagedState(device.id),
+    onChange: async (checked) => {
+      state.managedMap[device.id] = checked;
+      try {
+        await setSetting('managed_devices', state.managedMap);
+        renderDevices(state.latestDevices);
+        renderPriorities(state.latestDevices);
+        renderPriceOptimization(state.latestDevices);
+      } catch (error) {
+        await logSettingsError('Failed to update managed device', error, 'device list');
+        await showToastError(error, 'Failed to update managed devices.');
+      }
+    },
+  });
+
   const ctrlCheckbox = createCheckboxLabel({
     title: 'Capacity-based control',
     checked: state.controllableMap[device.id] !== false,
@@ -59,7 +76,7 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
     id: device.id,
     name: device.name,
     className: 'control-row',
-    controls: [ctrlCheckbox, priceOptCheckbox],
+    controls: [managedCheckbox, ctrlCheckbox, priceOptCheckbox],
     onClick: () => {
       const openEvent = new CustomEvent('open-device-detail', { detail: { deviceId: device.id } });
       document.dispatchEvent(openEvent);
