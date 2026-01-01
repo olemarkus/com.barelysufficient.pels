@@ -63,6 +63,7 @@ import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
 import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail';
 import { state } from './state';
 import { flushSettingsLogs, logSettingsError, logSettingsInfo, logSettingsWarn } from './logging';
+import { initTooltips } from './tooltips';
 
 const showTab = (tabId: string) => {
   const overflowMenu = document.querySelector('.tab-overflow-menu') as HTMLElement;
@@ -490,6 +491,7 @@ export const boot = async () => {
     await found.ready();
     await flushSettingsLogs();
 
+    initTooltips();
     initRealtimeListeners();
     showTab('overview');
 
