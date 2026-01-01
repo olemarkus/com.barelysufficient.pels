@@ -216,8 +216,14 @@ async function handleShortfallCheck(
   remainingCandidates: number,
   deficitKw: number,
 ): Promise<void> {
-  // Only check shortfall for hourly capacity violations, not daily budget violations.
-  // Daily budget is a soft constraint - we shed load to try to meet it, but never panic.
+  // Shortfall (panic mode) should only trigger when exceeding the hard capacity limit.
+  // The soft limit (with margin) is for shedding decisions, but panic is only
+  // when we actually exceed the contracted grid capacity limit.
+  //
+  // softLimitSource tells us why we're shedding:
+  // - 'capacity': Exceeding hourly hard cap (should check shortfall)
+  // - 'daily': Exceeding daily budget soft limit (should NOT panic)
+  // - 'both': Both limits exceeded, but hard cap is the panic trigger
   if (softLimitSource === 'capacity' || softLimitSource === 'both') {
     await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
   } else {
