@@ -2,7 +2,6 @@ import type Homey from 'homey';
 import type CapacityGuard from '../core/capacityGuard';
 import type { DeviceManager } from '../core/deviceManager';
 import type { PowerTrackerState } from '../core/powerTracker';
-import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PlanEngine } from '../plan/planEngine';
@@ -15,6 +14,7 @@ import type { DebugLoggingTopic } from '../utils/debugLogging';
 import { normalizeShedBehaviors as normalizeShedBehaviorsHelper, resolveModeName as resolveModeNameHelper } from '../utils/capacityHelpers';
 import { isBooleanMap, isFiniteNumber, isModeDeviceTargets, isPrioritySettings, isStringMap } from '../utils/appTypeGuards';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, MANAGED_DEVICES, OPERATING_MODE_SETTING } from '../utils/settingsKeys';
+import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 
 export type CapacitySettingsSnapshot = {
   capacitySettings: { limitKw: number; marginKw: number };
@@ -50,17 +50,15 @@ export function buildCapacitySettingsSnapshot(params: {
     marginKw: isFiniteNumber(margin) ? margin : current.capacitySettings.marginKw,
   };
 
-  let nextAliases = current.modeAliases;
-  if (isStringMap(modeAliases)) {
-    nextAliases = Object.fromEntries(
+  const nextAliases = isStringMap(modeAliases)
+    ? Object.fromEntries(
       Object.entries(modeAliases).map(([k, v]) => [k.toLowerCase(), v]),
-    );
-  }
+    )
+    : current.modeAliases;
 
-  let nextMode = current.operatingMode;
-  if (typeof modeRaw === 'string' && modeRaw.length > 0) {
-    nextMode = resolveModeNameHelper(modeRaw, nextAliases);
-  }
+  const nextMode = (typeof modeRaw === 'string' && modeRaw.length > 0)
+    ? resolveModeNameHelper(modeRaw, nextAliases)
+    : current.operatingMode;
 
   const nextPriorities = isPrioritySettings(priorities) ? priorities : current.capacityPriorities;
   const nextTargets = isModeDeviceTargets(modeTargets) ? modeTargets : current.modeDeviceTargets;
@@ -86,13 +84,13 @@ export function buildCapacitySettingsSnapshot(params: {
 export type PlanEngineInitApp = {
   homey: Homey.App['homey'];
   deviceManager: DeviceManager;
-  capacityGuard?: CapacityGuard;
-  capacitySettings: { limitKw: number; marginKw: number };
-  capacityDryRun: boolean;
-  operatingMode: string;
-  modeDeviceTargets: Record<string, Record<string, number>>;
-  powerTracker: PowerTrackerState;
-  dailyBudgetService: DailyBudgetService;
+  getCapacityGuard: () => CapacityGuard | undefined;
+  getCapacitySettings: () => { limitKw: number; marginKw: number };
+  getCapacityDryRun: () => boolean;
+  getOperatingMode: () => string;
+  getModeDeviceTargets: () => Record<string, Record<string, number>>;
+  getPowerTracker: () => PowerTrackerState;
+  getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptimizationSettings>;
   isCurrentHourCheap: () => boolean;
@@ -111,17 +109,17 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
   return new PlanEngineClass({
     homey: app.homey,
     deviceManager: app.deviceManager,
-    getCapacityGuard: () => app.capacityGuard,
-    getCapacitySettings: () => app.capacitySettings,
-    getCapacityDryRun: () => app.capacityDryRun,
-    getOperatingMode: () => app.operatingMode,
-    getModeDeviceTargets: () => app.modeDeviceTargets,
+    getCapacityGuard: () => app.getCapacityGuard(),
+    getCapacitySettings: () => app.getCapacitySettings(),
+    getCapacityDryRun: () => app.getCapacityDryRun(),
+    getOperatingMode: () => app.getOperatingMode(),
+    getModeDeviceTargets: () => app.getModeDeviceTargets(),
     getPriceOptimizationEnabled: () => app.getPriceOptimizationEnabled(),
     getPriceOptimizationSettings: () => app.getPriceOptimizationSettings(),
     isCurrentHourCheap: () => app.isCurrentHourCheap(),
     isCurrentHourExpensive: () => app.isCurrentHourExpensive(),
-    getPowerTracker: () => app.powerTracker,
-    getDailyBudgetSnapshot: () => app.dailyBudgetService.getSnapshot(),
+    getPowerTracker: () => app.getPowerTracker(),
+    getDailyBudgetSnapshot: () => app.getDailyBudgetSnapshot(),
     getPriorityForDevice: (deviceId) => app.getPriorityForDevice(deviceId),
     getShedBehavior: (deviceId) => app.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: () => app.getDynamicSoftLimitOverride(),
@@ -136,9 +134,9 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
 export type PlanServiceInitApp = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;
-  capacityDryRun: boolean;
-  powerTracker: PowerTrackerState;
-  latestTargetSnapshot: TargetDeviceSnapshot[];
+  getCapacityDryRun: () => boolean;
+  getLastPowerUpdate: () => number | null;
+  getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
   resolveManagedState: (deviceId: string) => boolean;
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isCurrentHourCheap: () => boolean;
@@ -152,19 +150,19 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
   return new PlanService({
     homey: app.homey,
     planEngine: app.planEngine,
-    getPlanDevices: () => app.latestTargetSnapshot.map((device) => ({
+    getPlanDevices: () => app.getLatestTargetSnapshot().map((device) => ({
       ...device,
       managed: app.resolveManagedState(device.id),
       controllable: app.isCapacityControlEnabled(device.id),
     })).filter((device) => device.managed !== false),
-    getCapacityDryRun: () => app.capacityDryRun,
+    getCapacityDryRun: () => app.getCapacityDryRun(),
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug('plan', ...args),
     error: (...args: unknown[]) => app.error(...args),
     isCurrentHourCheap: () => app.isCurrentHourCheap(),
     isCurrentHourExpensive: () => app.isCurrentHourExpensive(),
     getCombinedPrices: () => app.homey.settings.get('combined_prices') as unknown,
-    getLastPowerUpdate: () => app.powerTracker.lastTimestamp ?? null,
+    getLastPowerUpdate: () => app.getLastPowerUpdate(),
   });
 }
 
@@ -172,7 +170,7 @@ export type FlowCardInitApp = {
   homey: Homey.App['homey'];
   resolveModeName: (mode: string) => string;
   getAllModes: () => Set<string>;
-  operatingMode: string;
+  getOperatingMode: () => string;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getCurrentPriceLevel: () => PriceLevel;
   recordPowerSample: (powerW: number) => Promise<void>;
@@ -191,7 +189,7 @@ export function registerAppFlowCards(app: FlowCardInitApp): void {
     homey: app.homey as FlowHomeyLike,
     resolveModeName: (mode) => app.resolveModeName(mode),
     getAllModes: () => app.getAllModes(),
-    getCurrentOperatingMode: () => app.operatingMode,
+    getCurrentOperatingMode: () => app.getOperatingMode(),
     handleOperatingModeChange: (rawMode) => app.handleOperatingModeChange(rawMode),
     getCurrentPriceLevel: () => app.getCurrentPriceLevel(),
     recordPowerSample: (powerW) => app.recordPowerSample(powerW),
