@@ -75,6 +75,7 @@ Note: Do not run `homey` CLI commands - these deploy to hardware and should be r
 - Settings keys use snake_case (Homey convention)
 - Flow card arguments use snake_case (Homey convention)
 - Prefer explicit types over `any`, but `homey-api` responses need `any`
+- Avoid ESLint disable comments; only use them when absolutely necessary as a last resort.
 
 ## Performance Constraints
 
