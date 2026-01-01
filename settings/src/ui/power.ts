@@ -16,6 +16,7 @@ import {
 } from './dom';
 import { getHomeyTimezone, getSetting } from './homey';
 import { createUsageBar } from './components';
+import { setTooltip } from './tooltips';
 import type { PowerTrackerState } from '../../../lib/core/powerTracker';
 import { buildDayContext } from '../../../lib/dailyBudget/dailyBudgetState';
 import {
@@ -538,7 +539,7 @@ const createPowerRow = (entry: PowerUsageEntry, timeZone: string): HTMLElement =
 
   if (entry.unreliable) {
     row.classList.add('usage-row--warn');
-    row.title = 'Unreliable data';
+    setTooltip(row, 'Unreliable data');
   }
 
   row.append(label, meter, value);

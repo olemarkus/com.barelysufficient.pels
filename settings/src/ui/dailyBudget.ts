@@ -24,6 +24,7 @@ import {
 import { callApi, getSetting, setSetting } from './homey';
 import { showToast, showToastError } from './toast';
 import { logSettingsError } from './logging';
+import { setTooltip } from './tooltips';
 import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
@@ -153,12 +154,12 @@ const buildDailyBudgetBar = (params: {
     bar.appendChild(dot);
   }
 
-  bar.title = buildDailyBudgetBarTitle({
+  setTooltip(bar, buildDailyBudgetBarTitle({
     label,
     plannedKWh: value,
     actualKWh: actualValue,
     isCurrent: index === payload.currentBucketIndex,
-  });
+  }));
 
   return bar;
 };
@@ -175,7 +176,7 @@ const buildDailyBudgetAxisLabel = (params: {
   const shortLabel = formatHourLabel(label);
   axisLabel.textContent = (index % labelEvery === 0 || index === count - 1) ? shortLabel : '';
   if (shortLabel && label && shortLabel !== label) {
-    axisLabel.title = label;
+    setTooltip(axisLabel, label);
   }
   return axisLabel;
 };
@@ -226,12 +227,12 @@ const renderDailyBudgetEmptyState = () => {
   if (dailyBudgetAllowed) dailyBudgetAllowed.textContent = '-- kWh';
   if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = '-- kWh';
   if (dailyBudgetDeviation) dailyBudgetDeviation.textContent = '-- kWh';
-  if (dailyBudgetDeviation) dailyBudgetDeviation.removeAttribute('title');
+  setTooltip(dailyBudgetDeviation, null);
   if (dailyBudgetConfidence) setChipState(dailyBudgetConfidence, 'Confidence --');
   if (dailyBudgetPriceShapingState) setChipState(dailyBudgetPriceShapingState, 'Price shaping --');
   if (dailyBudgetFrozen) {
     dailyBudgetFrozen.hidden = true;
-    dailyBudgetFrozen.removeAttribute('title');
+    setTooltip(dailyBudgetFrozen, null);
   }
 };
 
@@ -248,7 +249,7 @@ const renderDailyBudgetStats = (payload: DailyBudgetUiPayload) => {
   if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = formatKWh(payload.state.remainingKWh);
   if (dailyBudgetDeviation) {
     dailyBudgetDeviation.textContent = formatSignedKWh(payload.state.deviationKWh);
-    dailyBudgetDeviation.title = 'Deviation = used minus allowed so far. Positive means over plan.';
+    setTooltip(dailyBudgetDeviation, 'Deviation = used minus allowed so far. Positive means over plan.');
   }
 };
 
@@ -282,9 +283,9 @@ const renderDailyBudgetChips = (payload: DailyBudgetUiPayload) => {
     dailyBudgetFrozen.hidden = !payload.state.frozen;
     if (payload.state.frozen) {
       setChipState(dailyBudgetFrozen, 'Plan frozen', false, true);
-      dailyBudgetFrozen.title = 'Plan frozen while over plan; resumes once you are back under.';
+      setTooltip(dailyBudgetFrozen, 'Plan frozen while over plan; resumes once you are back under.');
     } else {
-      dailyBudgetFrozen.removeAttribute('title');
+      setTooltip(dailyBudgetFrozen, null);
     }
   }
 };

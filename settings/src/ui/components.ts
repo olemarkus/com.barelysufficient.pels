@@ -5,6 +5,7 @@
  */
 
 import { logSettingsError } from './logging';
+import { setTooltip } from './tooltips';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -148,8 +149,9 @@ export const createUsageBar = (options: UsageBarOptions): HTMLElement => {
 
     const bar = document.createElement('div');
     bar.className = ['usage-bar', className].filter(Boolean).join(' ');
-    if (title) {
-        bar.title = title;
+    const tooltip = title || labelText;
+    if (tooltip) {
+        setTooltip(bar, tooltip);
     }
 
     const ratio = max > 0 ? Math.min(1, value / max) : 0;
@@ -181,11 +183,12 @@ export const createCheckboxLabel = (options: CheckboxOptions): HTMLElement => {
 
     const label = document.createElement('label');
     label.className = 'checkbox-icon';
-    label.title = title;
+    setTooltip(label, title);
 
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = checked;
+    input.setAttribute('aria-label', title);
     input.addEventListener('change', () => {
         const result = onChange(input.checked);
         if (result instanceof Promise) {
@@ -212,7 +215,10 @@ export const createNumberInput = (options: NumberInputOptions): HTMLInputElement
     if (min !== undefined) input.min = min.toString();
     if (max !== undefined) input.max = max.toString();
     if (className) input.className = className;
-    if (title) input.title = title;
+    if (title) {
+        setTooltip(input, title);
+        input.setAttribute('aria-label', title);
+    }
 
     input.addEventListener('change', () => {
         const val = parseFloat(input.value);

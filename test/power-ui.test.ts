@@ -110,7 +110,7 @@ describe('power page stats (buckets-only)', () => {
     renderPowerUsage(entries);
     const labels = document.querySelectorAll('.power-meter .usage-bar__label');
     expect(labels.length).toBeGreaterThan(0);
-    const titled = document.querySelectorAll('.power-meter[title*="cap"]');
+    const titled = document.querySelectorAll('.power-meter[data-tooltip*="cap"]');
     expect(titled.length).toBeGreaterThan(0);
     jest.restoreAllMocks();
   });

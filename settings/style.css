@@ -721,6 +721,11 @@ input:focus-visible {
   background: var(--accent);
 }
 
+.usage-bar.tooltip-active {
+  border-color: var(--color-state-info-border);
+  box-shadow: 0 0 0 2px var(--color-state-info-border);
+}
+
 .usage-bar__label {
   position: absolute;
   left: 50%;
@@ -746,11 +751,6 @@ input:focus-visible {
 
 .power-meter__fill--alert {
   background: var(--color-state-warning-bg);
-}
-
-.usage-bar:hover .usage-bar__label,
-.usage-bar:active .usage-bar__label {
-  opacity: 1;
 }
 
 .mode-target-input {
@@ -818,23 +818,29 @@ input:focus-visible {
   cursor: help;
 }
 
-.chip[data-tooltip]:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + var(--spacing-2));
-  right: 0;
+.tippy-box {
+  position: relative;
+  outline: 0;
+}
+
+.tippy-box[data-state='hidden'] {
+  opacity: 0;
+}
+
+.tippy-box[data-theme~='pels'] {
   background: var(--color-surface-elevated);
   color: var(--color-base-white);
-  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--color-border-medium);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
   font-size: var(--font-size-sm);
-  white-space: pre-line;
   line-height: var(--font-line-height-normal);
   z-index: 1000;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--color-border-medium);
-  min-width: 160px;
-  pointer-events: none;
+}
+
+.tippy-box[data-theme~='pels'] .tippy-content {
+  padding: var(--spacing-2) var(--spacing-3);
+  white-space: pre-line;
 }
 
 .chip strong {
@@ -1570,6 +1576,10 @@ input[type="text"]:focus {
   display: flex;
   align-items: flex-end;
   height: 100%;
+}
+
+.daily-budget-bar.tooltip-active .daily-budget-bar__fill {
+  box-shadow: 0 0 0 2px var(--color-state-info-border);
 }
 
 .daily-budget-bar__fill {
