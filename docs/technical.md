@@ -29,9 +29,15 @@ Without this permission, PELS would not be able to see or control any devices. T
 
 ---
 
-## Capacity Budget Model
+## Capacity Budget Model (Hourly)
 
-PELS uses an **hourly energy budget** model based on the Norwegian grid tariff system ("effektbasert nettleie"). Your capacity limit (e.g., 10 kW) represents the maximum average power you want to consume over any single hour.
+PELS uses an **hourly energy budget** model based on the Norwegian grid tariff system ("effektbasert nettleie"). Your capacity limit (e.g., 10 kW) represents the maximum average power you want to consume over any single hour. This is the **hard cap** – exceeding it triggers grid penalties.
+
+### Hard Cap vs Soft Limit
+
+- **Hard cap**: Your contracted grid capacity limit (limitKw). Exceeding this for a full hour triggers penalties.
+- **Soft limit**: Hard cap minus your safety margin (limitKw - marginKw). PELS starts shedding when power exceeds this, giving time to react.
+- **Shortfall**: Only triggers when load exceeds the hard cap AND no more devices can be shed. This is the emergency "panic" state.
 
 ### Dynamic Soft Limit
 
@@ -48,9 +54,11 @@ Rather than simply comparing instantaneous power against your limit, PELS calcul
 - Time left: 0.5 hours
 - Burst rate: 5 ÷ 0.5 = 10 kW allowed
 
-### Sustainable Rate Cap
+### Sustainable Rate Cap (Hourly Capacity Only)
 
-To prevent "end of hour bursting" where devices ramp up to use remaining budget then overshoot the next hour, the soft limit is capped at the sustainable rate (your budget in kW). This means even if you have headroom at 11:55, you won't turn on 5 kW of heaters that would overshoot noon.
+To prevent "end of hour bursting" where devices ramp up to use remaining budget then overshoot the next hour, the hourly soft limit is capped at the sustainable rate (your budget in kW) during the last ~10 minutes. This means even if you have headroom at 11:55, you won't turn on 5 kW of heaters that would overshoot noon.
+
+**Note:** This end-of-hour capping only applies to the hourly capacity soft limit, not the daily budget soft limit. Daily budget violations are not time-critical in the same way – there's no grid penalty for exceeding a daily budget at any particular minute.
 
 ---
 
@@ -64,6 +72,18 @@ When a new hour begins:
 4. Any "hourly budget exhausted" state is cleared
 
 PELS handles this automatically—there's no manual intervention needed.
+
+---
+
+## Daily Budget (Soft Constraint)
+
+The daily energy budget is a **soft constraint** that helps pace energy use throughout the day. Unlike the hourly capacity limit:
+
+- **Never triggers shortfall/panic**: If PELS cannot shed enough devices to meet the daily budget, it continues operating without emergency alarms.
+- **No end-of-hour capping**: Daily budget soft limits are not time-critical, so they don't apply the sustainable rate cap.
+- **Combined with hourly**: The planner uses the smaller of the hourly soft limit and daily soft limit for shedding decisions.
+
+See `docs/daily_budget.md` for detailed documentation.
 
 ---
 
