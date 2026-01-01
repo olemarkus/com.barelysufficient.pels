@@ -15,10 +15,10 @@ describe('daily usage soft limit', () => {
     expect(allowed).toBeCloseTo(6, 3);
   });
 
-  it('caps burst rate in the last 10 minutes', () => {
+  it('allows burst rate even in last minutes (no EOH capping)', () => {
     const bucketStartMs = 0;
     const bucketEndMs = 60 * 60 * 1000;
-    const nowMs = bucketEndMs - 5 * 60 * 1000;
+    const nowMs = bucketEndMs - 5 * 60 * 1000; // 5 minutes remaining
     const allowed = computeDailyUsageSoftLimit({
       plannedKWh: 4,
       usedKWh: 1,
@@ -26,7 +26,11 @@ describe('daily usage soft limit', () => {
       bucketEndMs,
       nowMs,
     });
-    expect(allowed).toBeCloseTo(4, 3);
+    // Remaining: 3 kWh over 5 minutes (but uses min threshold of 10 minutes)
+    // remainingHours = max(5/60, 10/60) = 10/60 = 0.1667 hours
+    // Burst rate: 3 / 0.1667 = 18 kW
+    // Daily budget NEVER applies EOH capping (unlike hourly capacity)
+    expect(allowed).toBeCloseTo(18, 0);
   });
 
   it('returns 0 when the planned budget is 0', () => {
