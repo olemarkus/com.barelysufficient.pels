@@ -61,7 +61,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
       }, waitMs);
       setState({ ...getState(), timer });
     });
-    setState({ ...state, pending });
+    setState({ ...getState(), pending });
     return pending;
   }
   return getState().pending ?? Promise.resolve();
