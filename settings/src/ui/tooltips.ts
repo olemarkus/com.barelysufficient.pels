@@ -63,7 +63,6 @@ export const initTooltips = (): void => {
       if (!content) return false;
       hideAll({ exclude: instance });
       setBarTooltipActive(instance.reference, true);
-      instance.setContent(content);
       return undefined;
     },
     onHide(instance) {
