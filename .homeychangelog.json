@@ -73,5 +73,8 @@
   },
   "1.6.0": {
     "en": "Added a soft daily energy budget feature with price‑shaped planning and limiter status, including a new “today plan” view and daily budget settings, while refining plan logic (freeze/settle behavior) and performance; refreshed Insights (limit reason/load split, removed deprecated capabilities), reorganized the settings UI, and introduced topic‑based debug logging and timezone handling fixes alongside assorted plan/UX cleanup."
+  },
+  "1.7.0": {
+    "en": "Added new flow actions to enable and disable capacity control per device, giving you more flexibility to manage which devices participate in load shedding through automations. Fixed an issue where daily budget constraints could incorrectly trigger shortfall alerts - daily budget limits are now treated as soft constraints that won't cause emergency shedding. Improved the settings UI with a usage legend and better device control visibility."
   }
 }
