@@ -55,14 +55,12 @@ export const initTooltips = (): void => {
     appendTo: () => document.body,
     theme: 'pels',
     trigger,
-    content(reference) {
-      return getTooltipContent(reference);
-    },
     onShow(instance) {
       const content = getTooltipContent(instance.reference);
       if (!content) return false;
       hideAll({ exclude: instance });
       setBarTooltipActive(instance.reference, true);
+      instance.setContent(content);
       return undefined;
     },
     onHide(instance) {
