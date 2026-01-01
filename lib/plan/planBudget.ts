@@ -67,15 +67,13 @@ export function computeDailyUsageSoftLimit(params: {
   const safeUsed = Number.isFinite(usedKWh) ? Math.max(0, usedKWh) : 0;
   const remainingKWh = Math.max(0, plannedKWh - safeUsed);
   const burstRateKw = remainingKWh / remainingHours;
-  const minutesRemaining = remainingMs / 60000;
-  const sustainableRateKw = plannedKWh; // kWh/h = kW if the bucket uses its budget evenly.
-  const allowedKw = minutesRemaining <= SUSTAINABLE_RATE_THRESHOLD_MIN
-    ? Math.min(burstRateKw, sustainableRateKw)
-    : burstRateKw;
+  // Daily budget is a soft constraint - never apply end-of-hour capping.
+  // Only the hourly hard cap needs EOH protection.
+  const allowedKw = burstRateKw;
   logDebug?.(
     `Daily soft limit calc: budget=${plannedKWh.toFixed(3)}kWh used=${safeUsed.toFixed(3)}kWh `
     + `remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h `
-    + `burst=${burstRateKw.toFixed(3)}kW capped=${allowedKw.toFixed(3)}kW`,
+    + `burst=${burstRateKw.toFixed(3)}kW`,
   );
   return Math.max(0, allowedKw);
 }

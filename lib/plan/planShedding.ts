@@ -46,6 +46,7 @@ export async function buildSheddingPlan(
   const guardResult = await updateGuardState({
     headroom: context.headroom,
     capacitySoftLimit: context.capacitySoftLimit,
+    softLimitSource: context.softLimitSource,
     total: context.total,
     devices: context.devices,
     shedSet,
@@ -209,21 +210,38 @@ function selectShedDevices(
   return { shedSet, shedReasons };
 }
 
+async function handleShortfallCheck(
+  capacityGuard: CapacityGuard | undefined,
+  softLimitSource: PlanContext['softLimitSource'],
+  remainingCandidates: number,
+  deficitKw: number,
+): Promise<void> {
+  // Only check shortfall for hourly capacity violations, not daily budget violations.
+  // Daily budget is a soft constraint - we shed load to try to meet it, but never panic.
+  if (softLimitSource === 'capacity' || softLimitSource === 'both') {
+    await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
+  } else {
+    // Daily budget violation only - clear shortfall if it was set
+    await capacityGuard?.checkShortfall(true, 0);
+  }
+}
+
 async function updateGuardState(params: {
   headroom: number | null;
   capacitySoftLimit: number;
+  softLimitSource: PlanContext['softLimitSource'];
   total: number | null;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   capacityGuard: CapacityGuard | undefined;
 }): Promise<{ sheddingActive: boolean }> {
-  const { headroom, capacitySoftLimit, total, devices, shedSet, capacityGuard } = params;
+  const { headroom, capacitySoftLimit, softLimitSource, total, devices, shedSet, capacityGuard } = params;
   if (shouldActivateShedding(headroom, shedSet)) {
     const remainingCandidates = countRemainingCandidates(devices, shedSet, headroom);
     const capacityHeadroom = total === null ? null : capacitySoftLimit - total;
     const deficitKw = capacityHeadroom !== null ? Math.max(0, -capacityHeadroom) : 0;
     await capacityGuard?.setSheddingActive(true);
-    await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
+    await handleShortfallCheck(capacityGuard, softLimitSource, remainingCandidates, deficitKw);
     return { sheddingActive: true };
   }
 

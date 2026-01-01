@@ -186,13 +186,17 @@ Configure capacity management and the daily budget.
 
 | Setting | Description |
 |---------|-------------|
-| **Capacity limit (kW)** | Your maximum power draw (typically your grid connection limit) |
-| **Soft margin (kW)** | Buffer zone before the hard limit. PELS starts shedding when you exceed (limit - margin) |
+| **Capacity limit (kW)** | Your maximum power draw (typically your grid connection limit). This is a **hard limit** – exceeding it for the hour triggers penalties (effekttariff). |
+| **Soft margin (kW)** | Buffer zone before the hard limit. PELS starts shedding when you exceed (limit - margin). If load cannot be reduced below the limit even after shedding all devices, PELS triggers an emergency "capacity shortfall" alarm. |
 | **Dry run** | When enabled, PELS calculates what it would do but doesn't actually control devices. Great for testing! |
+
+> **Important:** The hourly capacity limit is the only "panic now" limit. If you're within the margin but exceeding the limit, PELS will shed devices but won't trigger emergency alarms. Only when load exceeds (limit - margin) AND cannot be reduced further will PELS trigger the "manual action needed" alarm.
 
 ### Daily Budget (Budget Tab)
 
-The Daily Budget is a soft kWh/day guide that creates a daily usage based cap. The planner uses the smaller of that and the capacity based cap.
+The Daily Budget is a **soft constraint** – a kWh/day guide that creates a daily usage cap. The planner uses the smaller of the daily budget soft limit and the capacity hard limit.
+
+**Unlike the hourly capacity limit**, violating the daily budget will never trigger emergency alarms or "manual action needed" flows. PELS will shed devices to try to stay within the daily budget, but if that's not possible, it simply continues operating without panic.
 
 For details on how the plan is built, how DST is handled, and what each value means, see `docs/daily_budget.md`.
 
@@ -259,7 +263,7 @@ Diagnostics and debug toggles.
 
 | Card | Description |
 |------|-------------|
-| **Capacity guard: manual action needed** | Fires when PELS cannot reduce load enough – manual intervention required. The PELS Insights device will also show a "Capacity shortfall" alarm. |
+| **Capacity guard: manual action needed** | Fires when PELS cannot reduce load enough to stay within your **hourly capacity limit** – manual intervention required. This is an emergency situation indicating you're about to exceed your grid capacity for the hour. **Note:** This only triggers for hourly hard cap violations (effekttariff), never for daily budget violations (which are soft constraints). The PELS Insights device will also show a "Capacity shortfall" alarm. |
 | **Operating mode changed to...** | Fires when the operating mode switches to the selected mode |
 | **Price level changed to...** | Fires when the price level changes (Cheap/Normal/Expensive/Unknown) |
 
@@ -297,7 +301,7 @@ PELS includes a virtual device called "PELS Insights" that displays the currentl
 
 The device shows:
 - **Current mode name** – Updates automatically when you change modes
-- **Capacity shortfall alarm** – Activates when PELS cannot reduce load enough and manual action is needed
+- **Capacity shortfall alarm** – Activates when PELS cannot reduce load enough to stay within your hourly capacity limit and manual action is needed. This only triggers for hourly hard cap violations, not daily budget violations.
 
 ---
 

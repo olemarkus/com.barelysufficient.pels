@@ -65,7 +65,7 @@
         },
         "args": [],
         "hint": {
-          "en": "Use this to get notified when PELS needs manual intervention to prevent exceeding your power limit."
+          "en": "Triggers when PELS cannot shed enough devices to stay within your hourly power capacity limit (hard cap). This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly capacity limit violations, never for daily budget constraints (which are soft limits)."
         },
         "id": "capacity_shortfall"
       },
