@@ -3,25 +3,31 @@ import CapacityGuard from './lib/core/capacityGuard';
 import { DeviceManager } from './lib/core/deviceManager';
 import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedAction, ShedBehavior } from './lib/plan/planTypes';
-import { sumControlledUsageKw } from './lib/plan/planUsage';
 import { PlanService } from './lib/plan/planService';
 import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
-import { PriceOptimizationSettings } from './lib/price/priceOptimizer';
-import { aggregateAndPruneHistory, PowerTrackerState, recordPowerSample } from './lib/core/powerTracker';
+import { aggregateAndPruneHistory, PowerTrackerState } from './lib/core/powerTracker';
 import { createSettingsHandler } from './lib/utils/settingsHandlers';
 import { PriceLevel } from './lib/price/priceLevels';
 import { buildPeriodicStatusLog } from './lib/core/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
-import { ALL_DEBUG_LOGGING_TOPICS, type DebugLoggingTopic, normalizeDebugLoggingTopics } from './lib/utils/debugLogging';
+import { type DebugLoggingTopic } from './lib/utils/debugLogging';
 import { getAllModes as getAllModesHelper, getShedBehavior as getShedBehaviorHelper,
   resolveModeName as resolveModeNameHelper } from './lib/utils/capacityHelpers';
-import { DEBUG_LOGGING_TOPICS, MANAGED_DEVICES, OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
+import { MANAGED_DEVICES, OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
-import { buildCapacitySettingsSnapshot, createPlanEngine, createPlanService, registerAppFlowCards,
-  type CapacitySettingsSnapshot, type FlowCardInitApp, type PlanEngineInitApp, type PlanServiceInitApp } from './lib/app/appInit';
+import { createPlanEngine, createPlanService, registerAppFlowCards,
+  type FlowCardInitApp, type PlanEngineInitApp, type PlanServiceInitApp } from './lib/app/appInit';
+import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
+import { loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
+import {
+  PowerSampleRebuildState,
+  recordDailyBudgetCap,
+  recordPowerSampleForApp,
+  schedulePlanRebuildFromPowerSample,
+} from './lib/app/appPowerHelpers';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 class PelsApp extends Homey.App {
@@ -53,15 +59,20 @@ class PelsApp extends Homey.App {
   private settingsHandler?: (key: string) => Promise<void>;
   private lastNotifiedOperatingMode = 'Home';
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
-  private lastPowerSamplePlanRebuildMs = 0;
-  private pendingPowerSampleRebuild?: Promise<void>;
-  private powerSampleRebuildTimer?: ReturnType<typeof setTimeout>;
+  private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private heartbeatInterval?: ReturnType<typeof setInterval>;
-  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void { this.deviceManager.updateLocalSnapshot(deviceId, updates); }
-  private setExpectedOverride(deviceId: string, kw: number): void { this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() }; }
+  private updateLocalSnapshot(
+    deviceId: string,
+    updates: { target?: number | null; on?: boolean },
+  ): void {
+    this.deviceManager.updateLocalSnapshot(deviceId, updates);
+  }
+  private setExpectedOverride(deviceId: string, kw: number): void {
+    this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
+  }
   async onInit() {
     this.log('PELS has been initialized');
-    this.updateDebugLoggingTopics();
+    this.updateDebugLoggingEnabled();
     this.initPriceCoordinator();
     this.loadCapacitySettings();
     this.initDailyBudgetService();
@@ -72,21 +83,6 @@ class PelsApp extends Homey.App {
     this.initCapacityGuardProviders();
     this.initSettingsHandler();
     await this.startApp();
-  }
-  private updateDebugLoggingTopics(logChange = false): void {
-    const rawTopics = this.homey.settings.get(DEBUG_LOGGING_TOPICS) as unknown;
-    let enabledTopics = normalizeDebugLoggingTopics(rawTopics);
-    if (enabledTopics.length === 0) {
-      const legacyEnabled = this.homey.settings.get('debug_logging_enabled') as unknown;
-      if (legacyEnabled === true) {
-        enabledTopics = [...ALL_DEBUG_LOGGING_TOPICS];
-      }
-    }
-    this.debugLoggingTopics = new Set(enabledTopics);
-    if (logChange) {
-      const label = enabledTopics.length ? enabledTopics.join(', ') : 'disabled';
-      this.log(`Debug logging topics: ${label}`);
-    }
   }
   private initPriceCoordinator(): void {
     this.priceCoordinator = new PriceCoordinator({
@@ -104,7 +100,7 @@ class PelsApp extends Homey.App {
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (...args: unknown[]) => this.logDebug('daily_budget', ...args),
       getPowerTracker: () => this.powerTracker,
-      getPriceOptimizationEnabled: () => this.getPriceOptimizationEnabled(),
+      getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
       getCapacitySettings: () => this.capacitySettings,
     });
     this.dailyBudgetService.loadSettings();
@@ -140,10 +136,40 @@ class PelsApp extends Homey.App {
     });
   }
   private initPlanEngine(): void {
-    this.planEngine = createPlanEngine(this as unknown as PlanEngineInitApp);
+    const deps: PlanEngineInitApp = {
+      homey: this.homey, deviceManager: this.deviceManager,
+      getCapacityGuard: () => this.capacityGuard, getCapacitySettings: () => this.capacitySettings,
+      getCapacityDryRun: () => this.capacityDryRun, getOperatingMode: () => this.operatingMode,
+      getModeDeviceTargets: () => this.modeDeviceTargets, getPowerTracker: () => this.powerTracker,
+      getDailyBudgetSnapshot: () => this.dailyBudgetService.getSnapshot(),
+      getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
+      getPriceOptimizationSettings: () => this.priceOptimizationSettings,
+      isCurrentHourCheap: () => this.isCurrentHourCheap(), isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
+      getPriorityForDevice: (deviceId) => this.getPriorityForDevice(deviceId),
+      getShedBehavior: (deviceId) => this.getShedBehavior(deviceId),
+      getDynamicSoftLimitOverride: () => this.getDynamicSoftLimitOverride(),
+      applySheddingToDevice: (deviceId, deviceName, reason) => this.applySheddingToDevice(deviceId, deviceName, reason),
+      updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+      log: (...args: unknown[]) => this.log(...args),
+      logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
+      error: (...args: unknown[]) => this.error(...args),
+    };
+    this.planEngine = createPlanEngine(deps);
   }
   private initPlanService(): void {
-    this.planService = createPlanService(this as unknown as PlanServiceInitApp);
+    const deps: PlanServiceInitApp = {
+      homey: this.homey, planEngine: this.planEngine,
+      getCapacityDryRun: () => this.capacityDryRun,
+      getLastPowerUpdate: () => this.powerTracker.lastTimestamp ?? null,
+      getLatestTargetSnapshot: () => this.latestTargetSnapshot,
+      resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
+      isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
+      isCurrentHourCheap: () => this.isCurrentHourCheap(), isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
+      log: (...args: unknown[]) => this.log(...args),
+      logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
+      error: (...args: unknown[]) => this.error(...args),
+    };
+    this.planService = createPlanService(deps);
   }
   private initCapacityGuardProviders(): void {
     if (!this.capacityGuard) return;
@@ -158,19 +184,15 @@ class PelsApp extends Homey.App {
       rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache(),
       refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
       loadPowerTracker: () => this.loadPowerTracker(),
-      getCapacityGuard: () => this.capacityGuard,
-      getCapacitySettings: () => this.capacitySettings,
-      getCapacityDryRun: () => this.capacityDryRun,
-      loadPriceOptimizationSettings: () => this.loadPriceOptimizationSettings(),
+      getCapacityGuard: () => this.capacityGuard, getCapacitySettings: () => this.capacitySettings,
+      getCapacityDryRun: () => this.capacityDryRun, loadPriceOptimizationSettings: () => this.loadPriceOptimizationSettings(),
       loadDailyBudgetSettings: () => this.dailyBudgetService.loadSettings(),
       updateDailyBudgetState: (options) => this.dailyBudgetService.updateState(options),
       resetDailyBudgetLearning: () => this.dailyBudgetService.resetLearning(),
-      priceService: this.priceCoordinator,
-      updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
+      priceService: this.priceCoordinator, updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
       updateOverheadToken: (value) => this.updateOverheadToken(value),
       updateDebugLoggingEnabled: (logChange) => this.updateDebugLoggingEnabled(logChange),
-      log: (message: string) => this.log(message),
-      errorLog: (message: string, error: unknown) => this.error(message, error as Error),
+      log: (message: string) => this.log(message), errorLog: (message: string, error: unknown) => this.error(message, error as Error),
     });
     this.homey.settings.on('set', async (key: string) => {
       await this.settingsHandler?.(key);
@@ -200,9 +222,9 @@ class PelsApp extends Homey.App {
       clearInterval(this.snapshotRefreshInterval);
       this.snapshotRefreshInterval = undefined;
     }
-    if (this.powerSampleRebuildTimer) {
-      clearTimeout(this.powerSampleRebuildTimer);
-      this.powerSampleRebuildTimer = undefined;
+    if (this.powerSampleRebuildState.timer) {
+      clearTimeout(this.powerSampleRebuildState.timer);
+      this.powerSampleRebuildState.timer = undefined;
     }
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
@@ -235,7 +257,9 @@ class PelsApp extends Homey.App {
     return this.priceCoordinator.getPriceOptimizationSettings();
   }
   private updateDebugLoggingEnabled(logChange = false): void {
-    this.updateDebugLoggingTopics(logChange);
+    this.debugLoggingTopics = buildDebugLoggingTopics({
+      settings: this.homey.settings, log: (...args: unknown[]) => this.log(...args), logChange,
+    });
   }
   private notifyOperatingModeChanged(mode: string): void {
     const trimmed = (mode || '').trim();
@@ -254,22 +278,19 @@ class PelsApp extends Homey.App {
     this.dailyBudgetService.updateState();
   }
   private loadCapacitySettings(): void {
-    const next = buildCapacitySettingsSnapshot({
+    const next = loadCapacitySettingsFromHomey({
       settings: this.homey.settings,
       current: {
-        capacitySettings: this.capacitySettings,
-        modeAliases: this.modeAliases,
-        operatingMode: this.operatingMode,
-        capacityPriorities: this.capacityPriorities,
-        modeDeviceTargets: this.modeDeviceTargets,
-        capacityDryRun: this.capacityDryRun,
-        controllableDevices: this.controllableDevices,
-        managedDevices: this.managedDevices,
-        managedDefaultsDirty: this.managedDefaultsDirty,
-        shedBehaviors: this.shedBehaviors,
-      } as CapacitySettingsSnapshot,
+        capacitySettings: this.capacitySettings, modeAliases: this.modeAliases, operatingMode: this.operatingMode,
+        capacityPriorities: this.capacityPriorities, modeDeviceTargets: this.modeDeviceTargets,
+        capacityDryRun: this.capacityDryRun, controllableDevices: this.controllableDevices, managedDevices: this.managedDevices,
+        managedDefaultsDirty: this.managedDefaultsDirty, shedBehaviors: this.shedBehaviors,
+      },
     });
-    Object.assign(this, next);
+    this.capacitySettings = next.capacitySettings; this.modeAliases = next.modeAliases; this.operatingMode = next.operatingMode;
+    this.capacityPriorities = next.capacityPriorities; this.modeDeviceTargets = next.modeDeviceTargets;
+    this.capacityDryRun = next.capacityDryRun; this.controllableDevices = next.controllableDevices; this.managedDevices = next.managedDevices;
+    this.managedDefaultsDirty = next.managedDefaultsDirty; this.shedBehaviors = next.shedBehaviors;
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.capacitySettings.marginKw);
   }
@@ -300,69 +321,51 @@ class PelsApp extends Homey.App {
     this.powerTracker = pruned;
     const nowMs = typeof pruned.lastTimestamp === 'number' ? pruned.lastTimestamp : Date.now();
     this.dailyBudgetService.updateState({ nowMs });
-    this.recordDailyBudgetCap(this.dailyBudgetService.getSnapshot());
+    this.powerTracker = recordDailyBudgetCap({
+      powerTracker: this.powerTracker,
+      snapshot: this.dailyBudgetService.getSnapshot(),
+    });
     this.homey.settings.set('power_tracker_state', this.powerTracker);
   }
-  private recordDailyBudgetCap(snapshot: DailyBudgetUiPayload | null): void {
-    if (!snapshot?.budget.enabled) return;
-    const planned = snapshot.buckets.plannedKWh;
-    const startUtc = snapshot.buckets.startUtc;
-    const index = snapshot.currentBucketIndex;
-    if (!Array.isArray(planned) || !Array.isArray(startUtc)) return;
-    if (index < 0 || index >= planned.length || index >= startUtc.length) return;
-    const plannedKWh = planned[index];
-    const bucketKey = startUtc[index];
-    if (!Number.isFinite(plannedKWh) || typeof bucketKey !== 'string') return;
-    const nextCaps = new Map<string, number>(Object.entries(this.powerTracker.dailyBudgetCaps || {}));
-    nextCaps.set(bucketKey, plannedKWh);
-    this.powerTracker.dailyBudgetCaps = Object.fromEntries(nextCaps);
-  }
   private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
-    const hourBudgetKWh = Math.max(0, this.capacitySettings.limitKw - this.capacitySettings.marginKw);
-    const snapshot = this.latestTargetSnapshot;
-    const totalKw = snapshot.length ? sumControlledUsageKw(snapshot) : null;
-    const controlledPowerW = totalKw !== null ? Math.max(0, totalKw * 1000) : undefined;
-    await recordPowerSample({
-      state: this.powerTracker,
+    await recordPowerSampleForApp({
       currentPowerW,
-      controlledPowerW,
       nowMs,
+      capacitySettings: this.capacitySettings,
+      getLatestTargetSnapshot: () => this.latestTargetSnapshot,
+      powerTracker: this.powerTracker,
       capacityGuard: this.capacityGuard,
-      hourBudgetKWh,
-      rebuildPlanFromCache: () => this.schedulePlanRebuildFromPowerSample(),
-      saveState: (state) => this.savePowerTracker(state),
       homey: this.homey,
+      schedulePlanRebuild: () => schedulePlanRebuildFromPowerSample({
+        getState: () => this.powerSampleRebuildState,
+        setState: (state) => {
+          this.powerSampleRebuildState = state;
+        },
+        minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
+        rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache(),
+        logError: (error) => {
+          // Log error but don't throw - state is already persisted
+          this.error('PowerTracker: Failed to rebuild plan after power sample:', error);
+        },
+      }),
+      saveState: (state) => this.savePowerTracker(state),
     });
   }
-  private schedulePlanRebuildFromPowerSample(): Promise<void> {
-    const now = Date.now();
-    const elapsedMs = now - this.lastPowerSamplePlanRebuildMs;
-    if (elapsedMs >= POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS) {
-      this.lastPowerSamplePlanRebuildMs = now;
-      return this.planService.rebuildPlanFromCache();
-    }
-    if (!this.pendingPowerSampleRebuild) {
-      const waitMs = Math.max(0, POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS - elapsedMs);
-      this.pendingPowerSampleRebuild = new Promise((resolve) => {
-        this.powerSampleRebuildTimer = setTimeout(() => {
-          this.powerSampleRebuildTimer = undefined;
-          this.lastPowerSamplePlanRebuildMs = Date.now();
-          this.planService.rebuildPlanFromCache()
-            .catch((error) => {
-              // Log error but don't throw - state is already persisted
-              this.error('PowerTracker: Failed to rebuild plan after power sample:', error as Error);
-            })
-            .finally(() => {
-              this.pendingPowerSampleRebuild = undefined;
-              resolve();
-            });
-        }, waitMs);
-      });
-    }
-    return this.pendingPowerSampleRebuild;
-  }
   private registerFlowCards(): void {
-    registerAppFlowCards(this as unknown as FlowCardInitApp);
+    const deps: FlowCardInitApp = {
+      homey: this.homey,
+      resolveModeName: (mode) => this.resolveModeName(mode),
+      getAllModes: () => this.getAllModes(),
+      getOperatingMode: () => this.operatingMode,
+      handleOperatingModeChange: (rawMode) => this.handleOperatingModeChange(rawMode),
+      getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
+      recordPowerSample: (powerW) => this.recordPowerSample(powerW), capacityGuard: this.capacityGuard,
+      getFlowSnapshot: () => this.getFlowSnapshot(), refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
+      getDeviceLoadSetting: (deviceId) => this.getDeviceLoadSetting(deviceId), setExpectedOverride: (deviceId, kw) => this.setExpectedOverride(deviceId, kw),
+      planService: this.planService, log: (...args: unknown[]) => this.log(...args),
+      logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
+    };
+    registerAppFlowCards(deps);
   }
   private async handleOperatingModeChange(rawMode: string): Promise<void> {
     const resolved = resolveModeNameHelper(rawMode, this.modeAliases);
@@ -418,12 +421,6 @@ class PelsApp extends Homey.App {
   private getCombinedHourlyPrices(): unknown {
     return this.priceCoordinator.getCombinedHourlyPrices();
   }
-  private getPriceOptimizationEnabled(): boolean {
-    return this.priceCoordinator.getPriceOptimizationEnabled();
-  }
-  private getPriceOptimizationSettings(): Record<string, PriceOptimizationSettings> {
-    return this.priceCoordinator.getPriceOptimizationSettings();
-  }
   private findCheapestHours(count: number): string[] {
     return this.priceCoordinator.findCheapestHours(count);
   }
@@ -448,7 +445,9 @@ class PelsApp extends Homey.App {
       error: (...args: unknown[]) => this.error(...args),
     });
   }
-  private getPriorityForDevice(deviceId: string): number { return this.capacityPriorities[this.operatingMode || 'Home']?.[deviceId] ?? 100; }
+  private getPriorityForDevice(deviceId: string): number {
+    return this.capacityPriorities[this.operatingMode || 'Home']?.[deviceId] ?? 100;
+  }
   private resolveModeName(name: string): string {
     return resolveModeNameHelper(name, this.modeAliases);
   }
@@ -462,7 +461,7 @@ class PelsApp extends Homey.App {
       this.loadPriceOptimizationSettings();
     }
     const capacityEnabled = this.controllableDevices[deviceId] !== false;
-    const priceEnabled = this.getPriceOptimizationSettings()[deviceId]?.enabled === true;
+    const priceEnabled = this.priceOptimizationSettings[deviceId]?.enabled === true;
     const managed = capacityEnabled || priceEnabled;
     this.managedDevices[deviceId] = managed;
     this.managedDefaultsDirty = true;
@@ -479,9 +478,12 @@ class PelsApp extends Homey.App {
   private getShedBehavior(deviceId: string): { action: ShedAction; temperature: number | null } {
     return getShedBehaviorHelper(deviceId, this.shedBehaviors);
   }
-  private computeDynamicSoftLimit(): number { return this.planService.computeDynamicSoftLimit(); }
-  private computeShortfallThreshold(): number { return this.planService.computeShortfallThreshold(); }
-
+  private computeDynamicSoftLimit(): number {
+    return this.planService.computeDynamicSoftLimit();
+  }
+  private computeShortfallThreshold(): number {
+    return this.planService.computeShortfallThreshold();
+  }
   private async handleShortfall(deficitKw: number): Promise<void> {
     return this.planService.handleShortfall(deficitKw);
   }
@@ -494,6 +496,5 @@ class PelsApp extends Homey.App {
   private async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
     return this.planService.applySheddingToDevice(deviceId, deviceName, reason);
   }
-
 }
 export = PelsApp;
