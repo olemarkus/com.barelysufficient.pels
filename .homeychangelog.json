@@ -76,5 +76,8 @@
   },
   "1.7.0": {
     "en": "Added new flow actions to enable and disable capacity control per device, giving you more flexibility to manage which devices participate in load shedding through automations. Fixed an issue where daily budget constraints could incorrectly trigger shortfall alerts - daily budget limits are now treated as soft constraints that won't cause emergency shedding. Improved the settings UI with a usage legend and better device control visibility."
+  },
+  "1.7.1": {
+    "en": "Information previously only available when hovering over e.g chart bars is now available on touch interfaces as well."
   }
 }
