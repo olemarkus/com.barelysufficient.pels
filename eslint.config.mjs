@@ -196,4 +196,10 @@ export default tseslint.config(
       'n/no-unsupported-features/es-syntax': 'off',
     },
   },
+  {
+    files: ['app.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 650, skipBlankLines: true, skipComments: true }],
+    },
+  },
 );
