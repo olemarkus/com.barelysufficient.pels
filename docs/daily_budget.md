@@ -1,37 +1,44 @@
 # Daily Energy Budget
 
-The Daily Energy Budget is a soft kWh/day guide. It does not override the hourly capacity system. Instead, it produces a **daily usage based cap** for the current hour, and the planner uses the smaller of that and the **capacity based cap**.
+The Daily Energy Budget is a **soft constraint** – a kWh/day guide that helps pace your energy use. It does not override the hourly capacity system. Instead, it produces a **daily soft limit** for the current hour, and the planner uses the smaller of that and the **hourly capacity soft limit**.
+
+**Key distinction:** Unlike the hourly capacity limit (hard cap), the daily budget will never trigger emergency alarms or "shortfall" flows. If PELS cannot shed enough devices to meet the daily budget, it simply continues operating without panic. Only violations of the hourly hard cap trigger emergency intervention.
 
 This feature always uses the whole-home meter data that PELS already collects (the same stats used for hourly and daily usage).
 
 ## Terminology
 
-- **Capacity based cap**: the hourly soft limit derived from your grid tariff limit (e.g., 5/10/15 kW) and margin.
-- **Daily usage based cap**: a soft hourly cap derived from the daily plan (history + price shaping).
+- **Hourly hard cap**: Your contracted grid capacity limit (e.g., 5/10/15 kW). Exceeding this triggers grid penalties (effekttariff). This is the only "panic" limit.
+- **Hourly soft limit**: The hard cap minus your safety margin. PELS starts shedding when power exceeds this, giving time to react before hitting the hard cap.
+- **Daily soft limit**: A soft limit derived from the daily plan (history + price shaping). Never triggers panic/shortfall.
+- **Effective soft limit**: The smaller of the hourly soft limit and daily soft limit – this is what the planner uses for shedding decisions.
 
 ## What It Does
 
 - Builds a plan for how much energy should be used across the current local day.
 - Tracks how much energy has been used since local midnight.
 - Computes how much is "allowed by now" based on the plan.
-- Computes a daily usage based cap for the current hour from the plan.
+- Computes a daily soft limit for the current hour from the plan.
 - Freezes the plan for the rest of the day if the budget is overspent. If the day is underspent, the plan can still rebalance.
-- Uses the smaller of the capacity based cap and the daily usage based cap.
+- Uses the smaller of the hourly soft limit and the daily soft limit (effective soft limit).
 
-## How the cap is applied
+## How the Soft Limit is Applied
 
-PELS always computes the capacity based cap for the current hour. When daily budget is enabled, it also computes a daily usage based cap for the same hour. The planner then uses the smaller of those two caps when deciding shedding and restores.
-The daily usage based cap is capped at the capacity limit (before margin). The planner still uses the smaller of the capacity based cap and the daily usage based cap each hour.
+PELS always computes the hourly soft limit for the current hour. When daily budget is enabled, it also computes a daily soft limit for the same hour. The planner then uses the smaller of those two (the effective soft limit) when deciding shedding and restores.
+
+The daily soft limit is capped at the hourly hard cap (before margin). This ensures the daily budget never allows more power than your grid connection supports.
+
+**Important:** End-of-hour capping (which prevents bursting at the end of an hour) only applies to the hourly soft limit, not the daily soft limit. Daily budget violations are not time-critical in the same way – there's no penalty for exceeding a daily budget at 11:55.
 
 ## Examples (Scenarios)
 
-### 1) Over plan, daily cap becomes the limiter
-It’s 15:00. The plan says you should have used 35 kWh by now, but you have used 40 kWh.
-The daily usage based cap for this hour becomes lower than the capacity based cap. The planner uses the smaller cap, which reduces headroom. As a result, some restores won’t happen and low-priority devices can be shed earlier.
+### 1) Over plan, daily soft limit becomes the limiter
+It's 15:00. The plan says you should have used 35 kWh by now, but you have used 40 kWh.
+The daily soft limit for this hour becomes lower than the hourly soft limit. The planner uses the effective soft limit (the smaller of the two), which reduces headroom. As a result, some restores won't happen and low-priority devices can be shed earlier.
 
-### 2) Behind plan, capacity cap stays in charge
-It’s 10:00. The plan says 18 kWh by now, but you have used 12 kWh.
-The daily usage based cap becomes higher than the capacity based cap, so the capacity cap remains the limiter. Restores and boosts are still allowed if there is headroom.
+### 2) Behind plan, hourly soft limit stays in charge
+It's 10:00. The plan says 18 kWh by now, but you have used 12 kWh.
+The daily soft limit becomes higher than the hourly soft limit, so the hourly soft limit remains the limiter. Restores and boosts are still allowed if there is headroom.
 
 ### 3) Overspent early hour, plan freezes until you catch up
 At 08:00 the plan allowed 6 kWh, but you already used 7.5 kWh.
@@ -39,10 +46,10 @@ The daily budget "freezes" the plan while you are over plan. Once usage drops ba
 
 ### 4) Price shaping enabled
 You enable price shaping and prices are cheap from 01:00–05:00 and expensive in the evening.
-The daily plan shifts more of the remaining allowance to cheap hours, which raises the daily usage based cap overnight and lowers it during expensive hours.
+The daily plan shifts more of the remaining allowance to cheap hours, which raises the daily soft limit overnight and lowers it during expensive hours.
 
 ### 5) Daily budget off
-Daily budget disabled means PELS uses only the capacity based cap and price optimization (if enabled). There is no daily pacing.
+Daily budget disabled means PELS uses only the hourly soft limit and price optimization (if enabled). There is no daily pacing.
 
 ## Settings
 
@@ -76,15 +83,15 @@ Buckets are computed from local midnight to the next local midnight. On DST tran
 - **Default profile**: a safe baseline distribution across the day.
 - **Learned profile**: updated at the end of each day from actual usage.
 - **Confidence blending**: ramps from default to learned over time.
-- **Price shaping** (optional): reweights remaining buckets based on today’s prices.
+- **Price shaping** (optional): reweights remaining buckets based on today's prices.
 
-The plan is a cumulative curve. The current bucket's planned kWh is turned into a daily usage based cap for that hour, and the planner uses the smaller of the two caps.
+The plan is a cumulative curve. The current bucket's planned kWh is turned into a daily soft limit for that hour, and the planner uses the effective soft limit (smaller of hourly and daily).
 
 ## Interaction With Other Features
 
-- **Hourly capacity limit**: always enforced. Daily budget never bypasses it.
-- **Daily usage cap**: combined with the capacity based cap by taking the smaller limit.
-- **Price optimization**: can reshape the plan if price shaping is enabled.
+- **Hourly capacity limit (hard cap)**: Always enforced. Daily budget never bypasses it. Only violations of this limit trigger emergency shortfall alarms.
+- **Daily soft limit**: Combined with the hourly soft limit by taking the smaller limit. Never triggers emergency alarms.
+- **Price optimization**: Can reshape the daily plan if price shaping is enabled.
 
 ## Insights
 
