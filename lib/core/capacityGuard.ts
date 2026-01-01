@@ -100,7 +100,10 @@ export default class CapacityGuard {
       const threshold = this.shortfallThresholdProvider();
       if (typeof threshold === 'number' && threshold >= 0) return threshold;
     }
-    return this.getSoftLimit();
+    // Shortfall (panic mode) should trigger at the hard cap, not the soft limit.
+    // The soft limit (with margin) is for shedding decisions, but panic is only
+    // when we actually exceed the contracted grid capacity limit.
+    return this.limitKw;
   }
 
   headroom(): number | null {

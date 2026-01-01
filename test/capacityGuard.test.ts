@@ -36,9 +36,9 @@ describe('CapacityGuard', () => {
       expect(guard.getShortfallThreshold()).toBe(10.0);
     });
 
-    it('falls back to soft limit for shortfall threshold', () => {
+    it('falls back to hard limit for shortfall threshold', () => {
       const guard = new CapacityGuard({ limitKw: 5, softMarginKw: 0.2 });
-      expect(guard.getShortfallThreshold()).toBe(4.8);
+      expect(guard.getShortfallThreshold()).toBe(5);
     });
   });
 
@@ -103,7 +103,7 @@ describe('CapacityGuard', () => {
       expect(guard.isInShortfall()).toBe(false);
     });
 
-    it('enters shortfall when threshold exceeded and no candidates', async () => {
+    it('enters shortfall when hard cap exceeded and no candidates', async () => {
       const shortfallEvents: Array<{ type: string; deficit?: number }> = [];
       const guard = new CapacityGuard({
         limitKw: 5,
@@ -111,8 +111,8 @@ describe('CapacityGuard', () => {
         onShortfall: (deficit) => { shortfallEvents.push({ type: 'shortfall', deficit }); },
       });
 
-      guard.reportTotalPower(5.5); // Over threshold (4.8)
-      await guard.checkShortfall(false, 0.7); // No candidates
+      guard.reportTotalPower(5.5); // Over hard cap (5.0)
+      await guard.checkShortfall(false, 0.5); // No candidates
 
       expect(shortfallEvents).toHaveLength(1);
       expect(shortfallEvents[0].type).toBe('shortfall');
@@ -127,14 +127,14 @@ describe('CapacityGuard', () => {
         onShortfall: () => { shortfallEvents.push('shortfall'); },
       });
 
-      guard.reportTotalPower(5.5);
-      await guard.checkShortfall(true, 0.7); // Has candidates
+      guard.reportTotalPower(5.5); // Over hard cap
+      await guard.checkShortfall(true, 0.5); // Has candidates
 
       expect(shortfallEvents).toHaveLength(0);
       expect(guard.isInShortfall()).toBe(false);
     });
 
-    it('does not enter shortfall when under threshold', async () => {
+    it('does not enter shortfall when under hard cap', async () => {
       const shortfallEvents: string[] = [];
       const guard = new CapacityGuard({
         limitKw: 5,
@@ -142,7 +142,7 @@ describe('CapacityGuard', () => {
         onShortfall: () => { shortfallEvents.push('shortfall'); },
       });
 
-      guard.reportTotalPower(4.0); // Under threshold
+      guard.reportTotalPower(4.9); // Under hard cap but over soft limit
       await guard.checkShortfall(false, 0);
 
       expect(shortfallEvents).toHaveLength(0);
@@ -194,7 +194,7 @@ describe('CapacityGuard', () => {
 
       // Enter shortfall
       guard.reportTotalPower(5.5);
-      await guard.checkShortfall(false, 0.7);
+      await guard.checkShortfall(false, 0.5);
 
       // Start timer
       guard.reportTotalPower(4.5);
@@ -204,11 +204,11 @@ describe('CapacityGuard', () => {
       advanceTime(30000);
       await guard.checkShortfall(true, 0);
 
-      // Power spikes - resets timer
-      guard.reportTotalPower(4.7); // Headroom = 0.1kW (below 0.2 margin)
-      await guard.checkShortfall(true, 0);
+      // Power spikes back over hard cap - resets timer
+      guard.reportTotalPower(5.1); // Exceeds hard cap again
+      await guard.checkShortfall(false, 0.1); // No candidates, re-enters shortfall state check
 
-      // Resume good headroom - timer restarts from scratch
+      // Drop back below - timer restarts from scratch
       guard.reportTotalPower(4.5);
       await guard.checkShortfall(true, 0); // Timer starts here
 
