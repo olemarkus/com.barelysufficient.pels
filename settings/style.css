@@ -1680,3 +1680,120 @@ input[type="text"]:focus {
   font-size: var(--font-size-sm);
   font-style: italic;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Touch Device Support
+ *
+ * Converts hover-based interactions to tap-based for touch devices.
+ * Uses .touch-device class added by JS and CSS media queries as fallback.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* Tooltip styles for touch devices - tap to toggle */
+.touch-device .chip[data-tooltip] {
+  cursor: pointer;
+}
+
+/* Hide CSS :hover tooltips on touch devices, use JS-controlled .tooltip-active */
+.touch-device .chip[data-tooltip]:hover::after {
+  display: none;
+}
+
+/* Show tooltip when .tooltip-active class is applied */
+.chip[data-tooltip].tooltip-active::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + var(--spacing-2));
+  right: 0;
+  background: var(--color-surface-elevated);
+  color: var(--color-base-white);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  white-space: pre-line;
+  line-height: var(--font-line-height-normal);
+  z-index: 1000;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border-medium);
+  min-width: 160px;
+  pointer-events: none;
+}
+
+/* Usage bar label - show on tap for touch devices */
+.touch-device .usage-bar:hover .usage-bar__label {
+  opacity: 0;
+}
+
+.usage-bar.usage-bar--active .usage-bar__label {
+  opacity: 1;
+}
+
+/* Add visual indicator that bars are tappable on touch devices */
+.touch-device .usage-bar {
+  cursor: pointer;
+}
+
+/* Improve tap targets on touch devices */
+.touch-device .device-row.clickable {
+  min-height: 48px;
+}
+
+.touch-device .btn,
+.touch-device .tab {
+  min-height: 44px;
+}
+
+.touch-device .checkbox-icon {
+  padding: var(--spacing-2);
+}
+
+.touch-device .checkbox-icon input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+}
+
+/* Media query fallback for devices that don't get JS class */
+@media (pointer: coarse) {
+  .chip[data-tooltip] {
+    cursor: pointer;
+  }
+
+  /* On coarse pointers, rely on .tooltip-active class */
+  .chip[data-tooltip]:hover::after {
+    display: none;
+  }
+
+  .usage-bar:hover .usage-bar__label {
+    opacity: 0;
+  }
+
+  .usage-bar {
+    cursor: pointer;
+  }
+
+  .device-row.clickable {
+    min-height: 48px;
+  }
+
+  .btn,
+  .tab {
+    min-height: 44px;
+  }
+
+  .checkbox-icon {
+    padding: var(--spacing-2);
+  }
+
+  .checkbox-icon input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* Ensure tooltips stay active even on coarse pointer media */
+@media (pointer: coarse) {
+  .chip[data-tooltip].tooltip-active::after,
+  .usage-bar.usage-bar--active .usage-bar__label {
+    display: block;
+    opacity: 1;
+  }
+}

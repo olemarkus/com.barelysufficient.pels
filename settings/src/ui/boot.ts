@@ -63,6 +63,7 @@ import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
 import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail';
 import { state } from './state';
 import { flushSettingsLogs, logSettingsError, logSettingsInfo, logSettingsWarn } from './logging';
+import { initTouchSupport } from './touch';
 
 const showTab = (tabId: string) => {
   const overflowMenu = document.querySelector('.tab-overflow-menu') as HTMLElement;
@@ -489,6 +490,9 @@ export const boot = async () => {
 
     await found.ready();
     await flushSettingsLogs();
+
+    // Initialize touch support early so CSS classes are available
+    initTouchSupport();
 
     initRealtimeListeners();
     showTab('overview');
