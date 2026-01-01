@@ -187,10 +187,10 @@ Configure capacity management and the daily budget.
 | Setting | Description |
 |---------|-------------|
 | **Capacity limit (kW)** | Your maximum power draw (typically your grid connection limit). This is a **hard limit** – exceeding it for the hour triggers penalties (effekttariff). |
-| **Soft margin (kW)** | Buffer zone before the hard limit. PELS starts shedding when you exceed (limit - margin). If load cannot be reduced below the limit even after shedding all devices, PELS triggers an emergency "capacity shortfall" alarm. |
+| **Soft margin (kW)** | Buffer zone before the hard limit. PELS starts shedding when you exceed (limit - margin), giving time to react before hitting the hard cap. The "capacity shortfall" alarm only triggers when load exceeds the hard limit itself AND cannot be reduced further. |
 | **Dry run** | When enabled, PELS calculates what it would do but doesn't actually control devices. Great for testing! |
 
-> **Important:** The hourly capacity limit is the only "panic now" limit. If you're within the margin but exceeding the limit, PELS will shed devices but won't trigger emergency alarms. Only when load exceeds (limit - margin) AND cannot be reduced further will PELS trigger the "manual action needed" alarm.
+> **Important:** The hourly capacity limit is the only "panic now" limit. PELS starts shedding when you exceed (limit - margin), giving you time to react. The "capacity shortfall" alarm only triggers when load exceeds the hard limit itself AND cannot be reduced further – this is the emergency scenario requiring manual intervention.
 
 ### Daily Budget (Budget Tab)
 
