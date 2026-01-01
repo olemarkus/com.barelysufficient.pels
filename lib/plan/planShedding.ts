@@ -226,7 +226,7 @@ async function handleShortfallCheck(
   // - 'both': Both limits exceeded, but hard cap is the panic trigger
   if (softLimitSource === 'capacity' || softLimitSource === 'both') {
     await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
-  } else {
+  } else if (softLimitSource === 'daily') {
     // Daily budget violation only - clear shortfall if it was set
     await capacityGuard?.checkShortfall(true, 0);
   }
