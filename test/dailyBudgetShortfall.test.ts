@@ -31,7 +31,8 @@ describe('Daily Budget Shortfall Prevention', () => {
     // but we can verify the behavior through the guard's perspective:
     // When power exceeds shortfallThreshold AND no candidates, shortfall triggers
 
-    const shortfallThreshold = 9; // hourly: 9 kW soft limit
+    // Default threshold is the hard cap (10 kW), but we can override for testing
+    const shortfallThreshold = 10; // hard cap
     guard.setShortfallThresholdProvider(() => shortfallThreshold);
 
     // Case 1: Power (3 kW) is below shortfall threshold (9 kW)
@@ -47,11 +48,11 @@ describe('Daily Budget Shortfall Prevention', () => {
   });
 
   test('hourly cap violation (softLimitSource=capacity) checks shortfall', async () => {
-    const shortfallThreshold = 9; // 9 kW soft limit
+    const shortfallThreshold = 10; // hard cap (limitKw)
     guard.setShortfallThresholdProvider(() => shortfallThreshold);
 
-    // Power exceeds shortfall threshold AND no candidates
-    guard.reportTotalPower(12); // Exceeds 9 kW threshold
+    // Power exceeds shortfall threshold (hard cap) AND no candidates
+    guard.reportTotalPower(12); // Exceeds 10 kW hard cap
     await guard.checkShortfall(false, 3); // No candidates
 
     // Shortfall should be triggered
@@ -59,11 +60,11 @@ describe('Daily Budget Shortfall Prevention', () => {
   });
 
   test('combined violation (softLimitSource=both) checks shortfall based on hourly threshold', async () => {
-    const shortfallThreshold = 9;
+    const shortfallThreshold = 10; // hard cap
     guard.setShortfallThresholdProvider(() => shortfallThreshold);
 
-    // Power is below hourly threshold but might exceed daily budget soft limit
-    guard.reportTotalPower(5); // Below 9 kW threshold
+    // Power is below hourly hard cap but might exceed daily budget soft limit
+    guard.reportTotalPower(5); // Below 10 kW hard cap
     await guard.checkShortfall(false, 2); // No candidates
 
     // Should NOT trigger shortfall because we're below hourly threshold
