@@ -36,6 +36,7 @@ export const isTouchDevice = (): boolean => {
  */
 const setupTooltipTapToggle = () => {
   let activeTooltipElement: HTMLElement | null = null;
+  let handledByTouch = false;
 
   const showTooltip = (element: HTMLElement) => {
     // Hide any previously active tooltip
@@ -63,6 +64,12 @@ const setupTooltipTapToggle = () => {
 
   // Use event delegation for all tooltip elements
   document.addEventListener('click', (e) => {
+    // Skip if already handled by touchend to prevent double-toggle
+    if (handledByTouch) {
+      handledByTouch = false;
+      return;
+    }
+
     const target = e.target as HTMLElement;
     const tooltipElement = target.closest('[data-tooltip]') as HTMLElement | null;
 
@@ -74,9 +81,9 @@ const setupTooltipTapToggle = () => {
       // Clicked outside - hide active tooltip
       hideTooltip(activeTooltipElement);
     }
-  }, { passive: false });
+  });
 
-  // Also handle touch events specifically for better responsiveness
+  // Handle touch events for better responsiveness on touch devices
   document.addEventListener('touchend', (e) => {
     const target = e.target as HTMLElement;
     const tooltipElement = target.closest('[data-tooltip]') as HTMLElement | null;
@@ -84,6 +91,7 @@ const setupTooltipTapToggle = () => {
     if (tooltipElement) {
       // Prevent click event from firing after touch
       e.preventDefault();
+      handledByTouch = true;
       toggleTooltip(tooltipElement);
     }
   }, { passive: false });
@@ -99,6 +107,7 @@ const setupTooltipTapToggle = () => {
  */
 const setupUsageBarTapToggle = () => {
   let activeUsageBar: HTMLElement | null = null;
+  let handledByTouch = false;
 
   const showLabel = (bar: HTMLElement) => {
     if (activeUsageBar && activeUsageBar !== bar) {
@@ -124,16 +133,39 @@ const setupUsageBarTapToggle = () => {
   };
 
   document.addEventListener('click', (e) => {
+    // Skip if already handled by touchend to prevent double-toggle
+    if (handledByTouch) {
+      handledByTouch = false;
+      return;
+    }
+
     const target = e.target as HTMLElement;
     const usageBar = target.closest('.usage-bar') as HTMLElement | null;
     const hasLabel = usageBar?.querySelector('.usage-bar__label');
 
     if (usageBar && hasLabel) {
+      e.preventDefault();
+      e.stopPropagation();
       toggleLabel(usageBar);
     } else if (activeUsageBar) {
       hideLabel(activeUsageBar);
     }
   });
+
+  // Handle touch events for better responsiveness on touch devices
+  document.addEventListener('touchend', (e) => {
+    const target = e.target as HTMLElement;
+    const usageBar = target.closest('.usage-bar') as HTMLElement | null;
+    const hasLabel = usageBar?.querySelector('.usage-bar__label');
+
+    if (usageBar && hasLabel) {
+      // Prevent click event from firing after touch
+      e.preventDefault();
+      e.stopPropagation();
+      handledByTouch = true;
+      toggleLabel(usageBar);
+    }
+  }, { passive: false });
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1723,7 +1723,7 @@ input[type="text"]:focus {
   opacity: 0;
 }
 
-.usage-bar.usage-bar--active .usage-bar__label {
+.touch-device .usage-bar.usage-bar--active .usage-bar__label {
   opacity: 1;
 }
 
@@ -1787,10 +1787,8 @@ input[type="text"]:focus {
     width: 22px;
     height: 22px;
   }
-}
 
-/* Ensure tooltips stay active even on coarse pointer media */
-@media (pointer: coarse) {
+  /* Ensure tooltips and labels stay active when toggled */
   .chip[data-tooltip].tooltip-active::after,
   .usage-bar.usage-bar--active .usage-bar__label {
     display: block;
