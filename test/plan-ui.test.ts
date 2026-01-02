@@ -158,3 +158,63 @@ describe('plan device state', () => {
     expect(getStateText()).toBe('Capacity control off');
   });
 });
+
+describe('plan meta budget display', () => {
+  it('shows daily budget allocation when limited by daily budget', () => {
+    renderPlanSnapshot({
+      meta: {
+        totalKw: 3.6,
+        softLimitKw: 3.8,
+        headroomKw: 0.2,
+        usedKWh: 4.57,
+        budgetKWh: 9.5, // hourly capacity budget
+        dailyBudgetHourKWh: 5.21, // daily allocation for this hour
+        softLimitSource: 'daily',
+        minutesRemaining: 5,
+      },
+      devices: [],
+    });
+
+    const metaLines = getPlanMetaText();
+    // Should show daily budget allocation (5.21), not hourly capacity (9.5)
+    expect(metaLines.some((line) => line?.includes('Used 4.57 of 5.2'))).toBe(true);
+    expect(metaLines.some((line) => line?.includes('of 9.5'))).toBe(false);
+  });
+
+  it('shows hourly capacity budget when limited by capacity', () => {
+    renderPlanSnapshot({
+      meta: {
+        totalKw: 5.0,
+        softLimitKw: 8.0,
+        headroomKw: 3.0,
+        usedKWh: 3.5,
+        budgetKWh: 9.5, // hourly capacity budget
+        dailyBudgetHourKWh: 12.0, // daily allocation is higher
+        softLimitSource: 'capacity',
+        minutesRemaining: 30,
+      },
+      devices: [],
+    });
+
+    const metaLines = getPlanMetaText();
+    // Should show hourly capacity (9.5), not daily allocation (12.0)
+    expect(metaLines.some((line) => line?.includes('Used 3.50 of 9.5'))).toBe(true);
+  });
+
+  it('shows hourly capacity budget when no daily budget is active', () => {
+    renderPlanSnapshot({
+      meta: {
+        totalKw: 5.0,
+        softLimitKw: 8.0,
+        headroomKw: 3.0,
+        usedKWh: 3.5,
+        budgetKWh: 9.5,
+        // no dailyBudgetHourKWh or softLimitSource
+      },
+      devices: [],
+    });
+
+    const metaLines = getPlanMetaText();
+    expect(metaLines.some((line) => line?.includes('Used 3.50 of 9.5'))).toBe(true);
+  });
+});
