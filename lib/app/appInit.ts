@@ -12,6 +12,7 @@ import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import { COMBINED_PRICES } from '../utils/settingsKeys';
 import type { CapacitySettingsSnapshot } from './appSettingsHelpers';
 
 export type { CapacitySettingsSnapshot };
@@ -96,7 +97,7 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
     error: (...args: unknown[]) => app.error(...args),
     isCurrentHourCheap: () => app.isCurrentHourCheap(),
     isCurrentHourExpensive: () => app.isCurrentHourExpensive(),
-    getCombinedPrices: () => app.homey.settings.get('combined_prices') as unknown,
+    getCombinedPrices: () => app.homey.settings.get(COMBINED_PRICES) as unknown,
     getLastPowerUpdate: () => app.getLastPowerUpdate(),
   });
 }

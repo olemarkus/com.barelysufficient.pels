@@ -2,6 +2,7 @@ import Homey from 'homey';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
+import { PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
 
 export type PriceCoordinatorDeps = {
   homey: Homey.App['homey'];
@@ -43,7 +44,7 @@ export class PriceCoordinator {
   }
 
   updatePriceOptimizationEnabled(logChange = false): void {
-    const enabled = this.deps.homey.settings.get('price_optimization_enabled') as unknown;
+    const enabled = this.deps.homey.settings.get(PRICE_OPTIMIZATION_ENABLED) as unknown;
     this.priceOptimizationEnabled = enabled !== false;
     if (logChange) {
       this.deps.log(`Price optimization ${this.priceOptimizationEnabled ? 'enabled' : 'disabled'}`);

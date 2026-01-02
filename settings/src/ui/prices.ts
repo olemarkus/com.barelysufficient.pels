@@ -32,7 +32,16 @@ import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { calculateThresholds } from './priceThresholds';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../lib/price/priceComponents';
-import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, HOMEY_PRICES_CURRENCY, HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
+import {
+  COMBINED_PRICES,
+  FLOW_PRICES_TODAY,
+  FLOW_PRICES_TOMORROW,
+  HOMEY_PRICES_CURRENCY,
+  HOMEY_PRICES_TODAY,
+  HOMEY_PRICES_TOMORROW,
+  PRICE_OPTIMIZATION_ENABLED,
+  PRICE_SCHEME,
+} from '../../../lib/utils/settingsKeys';
 import { getFlowPricePayload, getMissingFlowHours } from '../../../lib/price/flowPriceUtils';
 import { addDays } from '../../../lib/price/priceServiceUtils';
 import { getTimeAgo } from './utils';
@@ -130,7 +139,7 @@ export const loadPriceSettings = async () => {
   const providerSurcharge = await getSetting('provider_surcharge');
   const thresholdPercent = await getSetting('price_threshold_percent');
   const minDiffOre = await getSetting('price_min_diff_ore');
-  const priceOptEnabled = await getSetting('price_optimization_enabled');
+  const priceOptEnabled = await getSetting(PRICE_OPTIMIZATION_ENABLED);
 
   if (priceSchemeSelect) {
     priceSchemeSelect.value = priceScheme;
@@ -401,7 +410,7 @@ const getPriceData = async (): Promise<CombinedPriceData | null> => {
   const currencySetting = priceScheme === 'homey' ? await getSetting(HOMEY_PRICES_CURRENCY) : null;
   const homeyCurrency = typeof currencySetting === 'string' ? currencySetting : '';
   const priceUnit = priceScheme === 'norway' ? 'øre/kWh' : (homeyCurrency || 'price units');
-  const combinedData = await getSetting('combined_prices');
+  const combinedData = await getSetting(COMBINED_PRICES);
   if (combinedData && typeof combinedData === 'object' && 'prices' in combinedData) {
     return attachSchemeMetadata(combinedData as CombinedPriceData, priceScheme, priceUnit);
   }

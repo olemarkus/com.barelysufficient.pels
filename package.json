@@ -31,6 +31,7 @@
     "parseuri": "3.0.2"
   },
   "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "homey-api": "^3.16.0"
   },
   "devDependencies": {

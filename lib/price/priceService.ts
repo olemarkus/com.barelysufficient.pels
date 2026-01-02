@@ -1,6 +1,7 @@
 import Homey from 'homey';
 import { formatDateInTimeZone, getHourStartInTimeZone } from './priceTime';
 import {
+  COMBINED_PRICES,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
   HOMEY_PRICES_CURRENCY,
@@ -233,7 +234,7 @@ export default class PriceService {
       minDiffOre: this.getNumberSetting('price_min_diff_ore', 0),
       now: new Date(),
     });
-    this.homey.settings.set('combined_prices', payload);
+    this.homey.settings.set(COMBINED_PRICES, payload);
     this.emitRealtime('prices_updated', payload);
   }
 

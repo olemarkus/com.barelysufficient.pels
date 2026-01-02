@@ -7,6 +7,7 @@ import {
   getNextLocalDayStartUtcMs,
 } from '../utils/dateUtils';
 import {
+  COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -75,7 +76,7 @@ export class DailyBudgetService {
   updateState(params: { nowMs?: number; forcePlanRebuild?: boolean } = {}): void {
     const nowMs = params.nowMs ?? Date.now();
     const timeZone = this.resolveTimeZone();
-    const combinedPrices = this.deps.homey.settings.get('combined_prices') as CombinedPriceData | null;
+    const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
     const capacity = this.deps.getCapacitySettings();
     const capacityBudgetKWh = Math.max(0, capacity.limitKw);
     try {
@@ -113,7 +114,7 @@ export class DailyBudgetService {
       const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
       const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
       const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
-      const combinedPrices = this.deps.homey.settings.get('combined_prices') as CombinedPriceData | null;
+      const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
       const capacity = this.deps.getCapacitySettings();
       const capacityBudgetKWh = Math.max(0, capacity.limitKw);
       return this.manager.buildPreview({
