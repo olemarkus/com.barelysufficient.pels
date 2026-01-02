@@ -151,7 +151,7 @@ export class DailyBudgetManager {
       );
     }
 
-    this.snapshot = buildDailyBudgetSnapshot({
+    const snapshot = buildDailyBudgetSnapshot({
       context,
       settings,
       enabled,
@@ -160,6 +160,15 @@ export class DailyBudgetManager {
       budget,
       frozen: Boolean(this.state.frozen),
     });
+    this.snapshot = snapshot;
+
+    if (plan.shouldLog) {
+      this.logPlanDebug({
+        snapshot,
+        priceOptimizationEnabled,
+        capacityBudgetKWh,
+      });
+    }
 
     this.state.dateKey = context.dateKey;
     this.state.dayStartUtcMs = context.dayStartUtcMs;
@@ -168,6 +177,27 @@ export class DailyBudgetManager {
 
     const shouldPersist = this.shouldPersist(context.nowMs);
     return { snapshot: this.snapshot, shouldPersist };
+  }
+
+  private logPlanDebug(params: {
+    snapshot: DailyBudgetUiPayload;
+    priceOptimizationEnabled: boolean;
+    capacityBudgetKWh?: number;
+  }): void {
+    const { snapshot, priceOptimizationEnabled, capacityBudgetKWh } = params;
+    const profileSampleCount = this.state.profile?.sampleCount ?? 0;
+    const debugPayload = {
+      ...snapshot,
+      meta: {
+        priceOptimizationEnabled,
+        capacityBudgetKWh: Number.isFinite(capacityBudgetKWh) ? capacityBudgetKWh : null,
+        profileSampleCount,
+        profileConfidence: getConfidence(profileSampleCount),
+        profileLearnedWeights: this.state.profile?.weights ?? null,
+        profileEffectiveWeights: this.getEffectiveProfile(),
+      },
+    };
+    this.deps.logDebug(`Daily budget: plan debug ${JSON.stringify(debugPayload)}`);
   }
 
   private handleRollover(params: {
