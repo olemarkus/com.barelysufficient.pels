@@ -138,6 +138,17 @@ export const mockHomeyInstance = {
     getTimezone: () => 'Europe/Oslo',
     getTimezoneOffset: () => -60, // CET in winter
   },
+  images: {
+    createImage: async () => ({
+      setStream: (_handler: (stream: NodeJS.WritableStream) => void) => {},
+      update: async () => {},
+      unregister: async () => {},
+    }),
+    unregisterImage: async () => {},
+    getImage: () => {
+      throw new Error('not implemented');
+    },
+  },
   cloud: {
     getHomeyId: async () => 'mock-homey-id',
   },

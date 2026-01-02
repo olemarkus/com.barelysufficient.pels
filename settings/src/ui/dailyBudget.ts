@@ -26,6 +26,7 @@ import { showToast, showToastError } from './toast';
 import { logSettingsError } from './logging';
 import { setTooltip } from './tooltips';
 import {
+  COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -448,7 +449,7 @@ export const refreshDailyBudgetPlan = async () => {
   try {
     const [payload, combinedPrices] = await Promise.all([
       callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
-      getSetting('combined_prices').catch(() => null),
+      getSetting(COMBINED_PRICES).catch(() => null),
     ]);
     costDisplay = resolveCostDisplay(combinedPrices);
     renderDailyBudget(payload);

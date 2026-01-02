@@ -5,6 +5,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -17,6 +18,8 @@ import {
   HOMEY_PRICES_TOMORROW,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
+  PRICE_OPTIMIZATION_ENABLED,
+  PRICE_OPTIMIZATION_SETTINGS,
   PRICE_SCHEME,
 } from './settingsKeys';
 export type PriceServiceLike = {
@@ -117,19 +120,19 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     price_min_diff_ore: async () => {
       await refreshPriceDerivedState();
     },
-    price_optimization_settings: async () => {
+    [PRICE_OPTIMIZATION_SETTINGS]: async () => {
       deps.loadPriceOptimizationSettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh plan after price optimization settings change');
     },
     [DAILY_BUDGET_ENABLED]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_KWH]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_PRICE_SHAPING_ENABLED]: async () => handleDailyBudgetChange(deps),
-    combined_prices: async () => handleDailyBudgetPriceChange(deps),
+    [COMBINED_PRICES]: async () => handleDailyBudgetPriceChange(deps),
     overshoot_behaviors: async () => {
       deps.loadCapacitySettings();
       await deps.rebuildPlanFromCache();
     },
-    price_optimization_enabled: async () => {
+    [PRICE_OPTIMIZATION_ENABLED]: async () => {
       deps.updatePriceOptimizationEnabled(true);
       deps.updateDailyBudgetState({ forcePlanRebuild: true });
       await deps.rebuildPlanFromCache();

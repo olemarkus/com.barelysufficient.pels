@@ -34,8 +34,10 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  COMBINED_PRICES,
   DEBUG_LOGGING_TOPICS,
   OPERATING_MODE_SETTING,
+  PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
 import {
@@ -153,8 +155,8 @@ const initRealtimeListeners = () => {
     'daily_budget_kwh',
     'daily_budget_price_shaping_enabled',
     'daily_budget_reset',
-    'combined_prices',
-    'price_optimization_enabled',
+    COMBINED_PRICES,
+    PRICE_OPTIMIZATION_ENABLED,
     CAPACITY_LIMIT_KW,
     CAPACITY_MARGIN_KW,
   ]);
@@ -176,7 +178,7 @@ const initRealtimeListeners = () => {
       refreshPlanIfVisible();
     }
 
-    if (key === 'combined_prices' || key === 'electricity_prices') {
+    if (key === COMBINED_PRICES || key === 'electricity_prices') {
       refreshPricesIfVisible();
     }
 
@@ -381,7 +383,7 @@ const initPriceHandlers = () => {
   });
   priceOptimizationEnabledCheckbox?.addEventListener('change', async () => {
     try {
-      await setSetting('price_optimization_enabled', priceOptimizationEnabledCheckbox.checked);
+      await setSetting(PRICE_OPTIMIZATION_ENABLED, priceOptimizationEnabledCheckbox.checked);
       await showToast(
         priceOptimizationEnabledCheckbox.checked ? 'Price optimization enabled.' : 'Price optimization disabled.',
         'ok',
