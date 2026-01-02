@@ -1,5 +1,15 @@
 import Homey from 'homey';
-import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
+import type { CombinedPriceData } from '../../lib/dailyBudget/dailyBudgetMath';
+import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import { buildPlanPriceSvg } from '../../lib/insights/planPriceImage';
+import {
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
+  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  DAILY_BUDGET_RESET,
+  DAILY_BUDGET_STATE,
+  OPERATING_MODE_SETTING,
+} from '../../lib/utils/settingsKeys';
 
 type StatusData = {
   headroomKw?: number;
@@ -13,6 +23,10 @@ type StatusData = {
   priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
   devicesOn?: number;
   devicesOff?: number;
+};
+
+type DailyBudgetApp = Homey.App & {
+  getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
 };
 
 type CapabilityEntry = {
@@ -35,6 +49,18 @@ const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
   { key: 'devicesOff', id: 'pels_devices_off', type: 'number' },
 ];
 
+const PLAN_IMAGE_SETTINGS_KEYS = new Set([
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
+  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  DAILY_BUDGET_RESET,
+  DAILY_BUDGET_STATE,
+  'combined_prices',
+  'price_optimization_enabled',
+]);
+
+const HOUR_MS = 60 * 60 * 1000;
+
 const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
   if (type === 'string') return typeof value === 'string' && value.length > 0;
   if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
@@ -42,6 +68,12 @@ const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
 };
 
 class PelsInsightsDevice extends Homey.Device {
+  private planImage?: Homey.Image;
+  private planImageSvg = '';
+  private planImageTimer?: ReturnType<typeof setTimeout>;
+  private planImageInterval?: ReturnType<typeof setInterval>;
+  private lastPlanImageKey?: string;
+
   private async removeDeprecatedCapability(capability: string): Promise<void> {
     if (!this.hasCapability(capability)) return;
     try {
@@ -86,6 +118,7 @@ class PelsInsightsDevice extends Homey.Device {
     await this.updateMode(initialMode);
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
     await this.updateFromStatus();
+    await this.initPlanImage();
 
     // Listen for settings changes
     this.homey.settings.on('set', async (key: string) => {
@@ -99,7 +132,15 @@ class PelsInsightsDevice extends Homey.Device {
       if (key === 'pels_status') {
         await this.updateFromStatus();
       }
+      if (PLAN_IMAGE_SETTINGS_KEYS.has(key)) {
+        void this.refreshPlanImage({ force: true });
+      }
     });
+  }
+
+  async onUninit(): Promise<void> {
+    this.clearPlanImageTimers();
+    await this.unregisterPlanImage();
   }
 
   async updateMode(mode: string): Promise<void> {
@@ -135,6 +176,106 @@ class PelsInsightsDevice extends Homey.Device {
       this.error('Failed to update status capabilities', error);
     }
   }
+
+  private async initPlanImage(): Promise<void> {
+    if (this.planImage || !this.homey.images?.createImage) return;
+    try {
+      this.planImageSvg = buildPlanPriceSvg({ snapshot: null, nowMs: Date.now() });
+      this.planImage = await this.homey.images.createImage();
+      this.planImage.setStream((stream: NodeJS.WritableStream) => {
+        const imageStream = stream as NodeJS.WritableStream & { contentType?: string; filename?: string };
+        imageStream.contentType = 'image/svg+xml';
+        imageStream.filename = 'pels-plan.svg';
+        stream.end(this.planImageSvg);
+      });
+      await this.setCameraImage('plan', 'Plan + Price', this.planImage);
+      await this.refreshPlanImage({ force: true });
+      this.schedulePlanImageRefresh();
+    } catch (error) {
+      this.error('Failed to initialize plan image', error);
+    }
+  }
+
+  private schedulePlanImageRefresh(): void {
+    if (this.planImageTimer || this.planImageInterval) return;
+    const now = new Date();
+    const next = new Date(now.getTime());
+    next.setMinutes(0, 0, 0);
+    next.setHours(now.getHours() + 1);
+    const delay = Math.max(1000, next.getTime() - now.getTime());
+    this.planImageTimer = setTimeout(() => {
+      this.planImageTimer = undefined;
+      void this.refreshPlanImage({ force: true });
+      this.planImageInterval = setInterval(() => {
+        void this.refreshPlanImage({ force: true });
+      }, HOUR_MS);
+    }, delay);
+  }
+
+  private async refreshPlanImage(options: { force?: boolean } = {}): Promise<void> {
+    if (!this.planImage) return;
+    try {
+      const nowMs = Date.now();
+      const snapshot = this.getDailyBudgetSnapshot();
+      const key = this.resolvePlanImageKey(snapshot, nowMs);
+      if (!options.force && this.lastPlanImageKey === key) return;
+      this.lastPlanImageKey = key;
+      const combinedPrices = this.homey.settings.get('combined_prices') as CombinedPriceData | null;
+      this.planImageSvg = buildPlanPriceSvg({ snapshot, combinedPrices, nowMs });
+      await this.planImage.update();
+    } catch (error) {
+      this.error('Failed to refresh plan image', error);
+    }
+  }
+
+  private resolvePlanImageKey(snapshot: DailyBudgetUiPayload | null, nowMs: number): string {
+    if (snapshot) {
+      return `${snapshot.dateKey}-${snapshot.currentBucketIndex}`;
+    }
+    return `${formatLocalDateKey(nowMs)}-${new Date(nowMs).getHours()}`;
+  }
+
+  private clearPlanImageTimers(): void {
+    if (this.planImageTimer) {
+      clearTimeout(this.planImageTimer);
+      this.planImageTimer = undefined;
+    }
+    if (this.planImageInterval) {
+      clearInterval(this.planImageInterval);
+      this.planImageInterval = undefined;
+    }
+  }
+
+  private async unregisterPlanImage(): Promise<void> {
+    if (!this.planImage) return;
+    try {
+      await this.planImage.unregister();
+    } catch (error) {
+      this.error('Failed to unregister plan image', error);
+    } finally {
+      this.planImage = undefined;
+    }
+  }
+
+  private getDailyBudgetSnapshot(): DailyBudgetUiPayload | null {
+    const app = this.homey.app as DailyBudgetApp;
+    if (app?.getDailyBudgetUiPayload) {
+      return app.getDailyBudgetUiPayload();
+    }
+    return null;
+  }
+}
+
+function formatLocalDateKey(nowMs: number): string {
+  const date = new Date(nowMs);
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  return `${year}-${month}-${day}`;
+}
+
+function pad2(value: number): string {
+  return value < 10 ? `0${value}` : String(value);
 }
 
 export = PelsInsightsDevice;
