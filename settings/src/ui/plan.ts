@@ -62,17 +62,24 @@ const getSoftLimitSourceText = (source?: PlanMeta['softLimitSource']) => {
 
 const getDisplayBudgetKWh = (meta: NonNullable<PlanSnapshot['meta']>): number | null => {
   if (typeof meta.usedKWh !== 'number' || typeof meta.budgetKWh !== 'number') return null;
-  const isDailyLimited = meta.softLimitSource === 'daily' || meta.softLimitSource === 'both';
-  return isDailyLimited && typeof meta.dailyBudgetHourKWh === 'number'
+  return meta.softLimitSource === 'daily' && typeof meta.dailyBudgetHourKWh === 'number'
     ? meta.dailyBudgetHourKWh
     : meta.budgetKWh;
 };
 
-const buildNowLines = (meta: NonNullable<PlanSnapshot['meta']>): string[] => {
+type ValidatedMeta = {
+  totalKw: number;
+  softLimitKw: number;
+  headroomKw: number;
+  controlledKw?: number;
+  uncontrolledKw?: number;
+};
+
+const buildNowLines = (meta: ValidatedMeta): string[] => {
   const { totalKw, softLimitKw, headroomKw, controlledKw, uncontrolledKw } = meta;
-  const headroomAbs = Math.abs(headroomKw!).toFixed(1);
-  const headroomText = headroomKw! >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
-  const powerText = `Now ${totalKw!.toFixed(1)}kW (limit ${softLimitKw!.toFixed(1)}kW)`;
+  const headroomAbs = Math.abs(headroomKw).toFixed(1);
+  const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
+  const powerText = `Now ${totalKw.toFixed(1)}kW (limit ${softLimitKw.toFixed(1)}kW)`;
   const lines = [powerText, headroomText];
   if (typeof controlledKw === 'number' && typeof uncontrolledKw === 'number') {
     lines.push(`Capacity-controlled ${controlledKw.toFixed(2)}kW / Other load ${uncontrolledKw.toFixed(2)}kW`);
@@ -104,7 +111,14 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
   if (typeof totalKw !== 'number' || typeof softLimitKw !== 'number' || typeof headroomKw !== 'number') {
     return null;
   }
-  return { now: buildNowLines(meta), hour: buildHourLines(meta) };
+  const validated: ValidatedMeta = {
+    totalKw,
+    softLimitKw,
+    headroomKw,
+    controlledKw: meta.controlledKw,
+    uncontrolledKw: meta.uncontrolledKw,
+  };
+  return { now: buildNowLines(validated), hour: buildHourLines(meta) };
 };
 
 const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
