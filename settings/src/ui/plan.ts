@@ -36,6 +36,7 @@ type PlanSnapshot = {
     uncontrolledKw?: number;
     hourControlledKWh?: number;
     hourUncontrolledKWh?: number;
+    dailyBudgetHourKWh?: number;
   };
   devices?: PlanDeviceSnapshot[];
 };
@@ -59,39 +60,51 @@ const getSoftLimitSourceText = (source?: PlanMeta['softLimitSource']) => {
   return 'Limited by capacity cap';
 };
 
+const getDisplayBudgetKWh = (meta: NonNullable<PlanSnapshot['meta']>): number | null => {
+  if (typeof meta.usedKWh !== 'number' || typeof meta.budgetKWh !== 'number') return null;
+  const isDailyLimited = meta.softLimitSource === 'daily' || meta.softLimitSource === 'both';
+  return isDailyLimited && typeof meta.dailyBudgetHourKWh === 'number'
+    ? meta.dailyBudgetHourKWh
+    : meta.budgetKWh;
+};
+
+const buildNowLines = (meta: NonNullable<PlanSnapshot['meta']>): string[] => {
+  const { totalKw, softLimitKw, headroomKw, controlledKw, uncontrolledKw } = meta;
+  const headroomAbs = Math.abs(headroomKw!).toFixed(1);
+  const headroomText = headroomKw! >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
+  const powerText = `Now ${totalKw!.toFixed(1)}kW (limit ${softLimitKw!.toFixed(1)}kW)`;
+  const lines = [powerText, headroomText];
+  if (typeof controlledKw === 'number' && typeof uncontrolledKw === 'number') {
+    lines.push(`Capacity-controlled ${controlledKw.toFixed(2)}kW / Other load ${uncontrolledKw.toFixed(2)}kW`);
+  }
+  return lines;
+};
+
+const buildHourLines = (meta: NonNullable<PlanSnapshot['meta']>): string[] => {
+  const lines: string[] = [];
+  if (meta.softLimitSource) {
+    lines.push(getSoftLimitSourceText(meta.softLimitSource));
+  }
+  const displayBudget = getDisplayBudgetKWh(meta);
+  if (displayBudget !== null && typeof meta.usedKWh === 'number') {
+    lines.push(`Used ${meta.usedKWh.toFixed(2)} of ${displayBudget.toFixed(1)} kWh`);
+  }
+  if (typeof meta.hourControlledKWh === 'number' && typeof meta.hourUncontrolledKWh === 'number') {
+    lines.push(`Capacity-controlled ${meta.hourControlledKWh.toFixed(2)} / Other load ${meta.hourUncontrolledKWh.toFixed(2)} kWh`);
+  }
+  if (typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10) {
+    lines.push('End of hour');
+  }
+  return lines;
+};
+
 const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null => {
   if (!meta) return null;
   const { totalKw, softLimitKw, headroomKw } = meta;
   if (typeof totalKw !== 'number' || typeof softLimitKw !== 'number' || typeof headroomKw !== 'number') {
     return null;
   }
-
-  const headroomAbs = Math.abs(headroomKw).toFixed(1);
-  const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
-  const powerText = `Now ${totalKw.toFixed(1)}kW (limit ${softLimitKw.toFixed(1)}kW)`;
-  const nowLines = [powerText];
-  nowLines.push(headroomText);
-  const hourLines: string[] = [];
-
-  if (meta.softLimitSource) {
-    hourLines.push(getSoftLimitSourceText(meta.softLimitSource));
-  }
-
-  if (typeof meta.controlledKw === 'number' && typeof meta.uncontrolledKw === 'number') {
-    nowLines.push(`Capacity-controlled ${meta.controlledKw.toFixed(2)}kW / Other load ${meta.uncontrolledKw.toFixed(2)}kW`);
-  }
-
-  if (typeof meta.usedKWh === 'number' && typeof meta.budgetKWh === 'number') {
-    hourLines.push(`Used ${meta.usedKWh.toFixed(2)} of ${meta.budgetKWh.toFixed(1)} kWh`);
-  }
-  if (typeof meta.hourControlledKWh === 'number' && typeof meta.hourUncontrolledKWh === 'number') {
-    hourLines.push(`Capacity-controlled ${meta.hourControlledKWh.toFixed(2)} / Other load ${meta.hourUncontrolledKWh.toFixed(2)} kWh`);
-  }
-  if (typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10) {
-    hourLines.push('End of hour');
-  }
-
-  return { now: nowLines, hour: hourLines };
+  return { now: buildNowLines(meta), hour: buildHourLines(meta) };
 };
 
 const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {

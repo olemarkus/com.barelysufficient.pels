@@ -234,6 +234,15 @@ export class PlanBuilder {
     });
   }
 
+  private extractDailyBudgetHourKWh(snapshot: DailyBudgetUiPayload | null): number | undefined {
+    if (!snapshot?.budget.enabled) return undefined;
+    const plannedKWh = snapshot.buckets.plannedKWh;
+    const index = snapshot.currentBucketIndex;
+    if (!Array.isArray(plannedKWh) || index < 0 || index >= plannedKWh.length) return undefined;
+    const value = plannedKWh[index];
+    return Number.isFinite(value) ? value : undefined;
+  }
+
   private buildDailyBudgetContext(snapshot: DailyBudgetUiPayload | null): PlanContext['dailyBudget'] | undefined {
     if (!snapshot) return undefined;
     return {
@@ -310,6 +319,7 @@ export class PlanBuilder {
       hourUncontrolledKWh: getCurrentHourKWh(this.powerTracker.uncontrolledBuckets),
       dailyBudgetRemainingKWh: dailyBudgetSnapshot?.state.remainingKWh ?? 0,
       dailyBudgetExceeded: dailyBudgetSnapshot?.state.exceeded ?? false,
+      dailyBudgetHourKWh: this.extractDailyBudgetHourKWh(dailyBudgetSnapshot),
     };
   }
 }
