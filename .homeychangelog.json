@@ -79,5 +79,8 @@
   },
   "1.7.1": {
     "en": "Information previously only available when hovering over e.g chart bars is now available on touch interfaces as well."
+  },
+  "1.7.2": {
+    "en": "Previously the 'Used X of Y kWh' line always showed the hourly capacity\nbudget, even when the system was constrained by daily budget. Now the UI shows the actual daily budget allocation for the current hour."
   }
 }
