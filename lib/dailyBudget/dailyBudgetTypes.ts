@@ -20,7 +20,7 @@ export type DailyBudgetState = {
   profile?: DailyBudgetProfile;
 };
 
-export type DailyBudgetUiPayload = {
+export type DailyBudgetDayPayload = {
   dateKey: string;
   timeZone: string;
   nowUtc: string;
@@ -51,6 +51,10 @@ export type DailyBudgetUiPayload = {
     price?: Array<number | null>;
     priceFactor?: Array<number | null>;
   };
+};
+
+export type DailyBudgetUiPayload = DailyBudgetDayPayload & {
+  tomorrow?: DailyBudgetDayPayload | null;
 };
 
 export type DailyBudgetUpdate = {

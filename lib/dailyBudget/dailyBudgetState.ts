@@ -12,7 +12,7 @@ import {
   resolveCurrentBucketIndex,
   sumArray,
 } from './dailyBudgetMath';
-import type { DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
+import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
 
 export type DayContext = {
   nowMs: number;
@@ -153,7 +153,7 @@ export const buildDailyBudgetSnapshot = (params: {
   priceData: PriceData;
   budget: BudgetState;
   frozen: boolean;
-}): DailyBudgetUiPayload => {
+}): DailyBudgetDayPayload => {
   const {
     context,
     settings,

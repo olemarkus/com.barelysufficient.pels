@@ -52,16 +52,17 @@ const buildDom = () => {
       <div id="daily-budget-legend"></div>
       <div id="daily-budget-empty"></div>
       <div id="daily-budget-status-pill"></div>
+      <div id="daily-budget-title"></div>
       <div id="daily-budget-day"></div>
-      <div id="daily-budget-used"></div>
-      <div id="daily-budget-allowed"></div>
       <div id="daily-budget-remaining"></div>
       <div id="daily-budget-deviation"></div>
+      <div id="daily-budget-cost-label"></div>
+      <div id="daily-budget-cost"></div>
       <div id="daily-budget-confidence"></div>
       <div id="daily-budget-price-shaping-state"></div>
-      <div id="daily-budget-frozen"></div>
-      <button id="daily-budget-refresh-button"></button>
-      <button id="daily-budget-reset-button"></button>
+      <div id="daily-budget-legend-actual"></div>
+      <button id="daily-budget-toggle-today"></button>
+      <button id="daily-budget-toggle-tomorrow"></button>
     </section>
     <section class="panel hidden" data-panel="usage">
       <div id="power-list"></div>
