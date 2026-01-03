@@ -360,7 +360,7 @@ function attemptSwapRestore(params: {
     restoredThisCycle,
   });
   if (!swap.ready) {
-    const update = buildInsufficientHeadroomUpdate(dev, restoreNeed.needed, availableHeadroom);
+    const update = buildInsufficientHeadroomUpdate(restoreNeed.needed, availableHeadroom);
     setDevice(deviceMap, dev.id, update);
     deps.logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${restoreNeed.devPower.toFixed(2)}kW) - ${swap.reason}`);
     return { availableHeadroom, restoredOneThisCycle: false };

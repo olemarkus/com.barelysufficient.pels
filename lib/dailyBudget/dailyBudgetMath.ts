@@ -304,7 +304,7 @@ function buildPlannedKWh(params: {
   });
 }
 
-function allocateBudgetWithCaps(params: {
+export function allocateBudgetWithCaps(params: {
   weights: number[];
   totalKWh: number;
   caps: number[];

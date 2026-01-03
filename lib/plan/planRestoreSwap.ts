@@ -62,7 +62,6 @@ export function buildSwapCandidates(params: {
 }
 
 export function buildInsufficientHeadroomUpdate(
-  dev: DevicePlanDevice,
   needed: number,
   availableHeadroom: number,
 ): Partial<DevicePlanDevice> {

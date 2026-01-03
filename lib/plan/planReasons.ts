@@ -1,5 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
+import { estimateRestorePower } from './planRestoreSwap';
 import { sortByPriorityAsc } from './planSort';
 
 export type ShedHoldParams = {
@@ -118,12 +119,6 @@ export function finalizePlanDevices(planDevices: DevicePlanDevice[]): {
   const sorted = sortByPriorityAsc(planDevices);
   const lastPlannedShedIds = new Set(sorted.filter((d) => d.plannedState === 'shed').map((d) => d.id));
   return { planDevices: sorted, lastPlannedShedIds };
-}
-
-function estimateRestorePower(dev: DevicePlanDevice): number {
-  if (typeof dev.expectedPowerKw === 'number') return dev.expectedPowerKw;
-  if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
-  return dev.powerKw ?? 1;
 }
 
 function shouldNormalizeReason(reason: string | undefined): boolean {
