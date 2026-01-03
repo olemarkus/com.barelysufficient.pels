@@ -398,14 +398,31 @@ export function buildPriceDebugData(params: {
   priceShapingEnabled: boolean;
 }): { prices?: Array<number | null>; priceFactors?: Array<number | null>; priceShapingActive: boolean } {
   const priceShape = buildPriceFactors(params);
-  if (!priceShape.priceFactors) {
-    return { priceShapingActive: false };
-  }
   return {
     prices: priceShape.prices,
     priceFactors: priceShape.priceFactors,
     priceShapingActive: priceShape.priceShapingActive,
   };
+}
+
+export function buildPriceSeries(params: {
+  bucketStartUtcMs: number[];
+  combinedPrices?: CombinedPriceData | null;
+}): Array<number | null> | undefined {
+  const { bucketStartUtcMs, combinedPrices } = params;
+  const entries = combinedPrices?.prices;
+  if (!entries || entries.length === 0) {
+    return undefined;
+  }
+  const priceByStart = new Map<number, number>();
+  entries.forEach((entry) => {
+    const ts = new Date(entry.startsAt).getTime();
+    if (Number.isFinite(ts)) priceByStart.set(ts, entry.total);
+  });
+  return bucketStartUtcMs.map((ts) => {
+    const value = priceByStart.get(ts);
+    return typeof value === 'number' ? value : null;
+  });
 }
 
 export function buildPriceFactors(params: {
@@ -423,26 +440,16 @@ export function buildPriceFactors(params: {
     priceShapingEnabled,
   } = params;
 
+  const pricesAll = buildPriceSeries({ bucketStartUtcMs, combinedPrices });
+  if (!pricesAll) {
+    return { priceShapingActive: false };
+  }
   if (!priceOptimizationEnabled || !priceShapingEnabled) {
-    return { priceShapingActive: false };
+    return { prices: pricesAll, priceShapingActive: false };
   }
-  const entries = combinedPrices?.prices;
-  if (!entries || entries.length === 0) {
-    return { priceShapingActive: false };
-  }
-  const priceByStart = new Map<number, number>();
-  entries.forEach((entry) => {
-    const ts = new Date(entry.startsAt).getTime();
-    if (Number.isFinite(ts)) priceByStart.set(ts, entry.total);
-  });
-
-  const pricesAll = bucketStartUtcMs.map((ts) => {
-    const value = priceByStart.get(ts);
-    return typeof value === 'number' ? value : null;
-  });
   const remainingPrices = pricesAll.slice(currentBucketIndex);
   if (remainingPrices.some((value) => typeof value !== 'number')) {
-    return { priceShapingActive: false };
+    return { prices: pricesAll, priceShapingActive: false };
   }
   const numericPrices = remainingPrices as number[];
   const priceList = [...numericPrices].sort((a, b) => a - b);

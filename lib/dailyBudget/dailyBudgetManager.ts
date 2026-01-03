@@ -14,6 +14,7 @@ import {
   sumArray,
 } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
+import { buildDailyBudgetPreview } from './dailyBudgetPreview';
 import {
   buildDayContext,
   buildBucketUsage,
@@ -23,34 +24,19 @@ import {
 } from './dailyBudgetState';
 import type { DayContext, PriceData } from './dailyBudgetState';
 import type {
+  DailyBudgetDayPayload,
   DailyBudgetSettings,
   DailyBudgetState,
   DailyBudgetUiPayload,
   DailyBudgetUpdate,
 } from './dailyBudgetTypes';
-
-type DailyBudgetManagerDeps = {
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-};
+import { isDailyBudgetState, type DailyBudgetManagerDeps, type ExistingPlanState, type PlanResult } from './dailyBudgetManagerTypes';
 
 const PLAN_REBUILD_INTERVAL_MS = 60 * 60 * 1000;
 const PLAN_REBUILD_USAGE_DELTA_KWH = 0.05;
 const PLAN_REBUILD_USAGE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const STATE_PERSIST_INTERVAL_MS = 60 * 1000;
 const DEFAULT_PROFILE = buildDefaultProfile();
-
-type ExistingPlanState = {
-  planStateMismatch: boolean;
-  existingPlan: number[] | null;
-  deviationExisting: number;
-};
-
-type PlanResult = {
-  plannedKWh: number[];
-  priceData: PriceData;
-  shouldLog: boolean;
-};
 
 export class DailyBudgetManager {
   private state: DailyBudgetState = {};
@@ -60,17 +46,14 @@ export class DailyBudgetManager {
   private lastPlanRebuildMs = 0;
 
   constructor(private deps: DailyBudgetManagerDeps) {}
-
   loadState(raw: unknown): void {
     if (isDailyBudgetState(raw)) {
       this.state = { ...raw };
     }
   }
-
   exportState(): DailyBudgetState {
     return this.state;
   }
-
   resetLearning(): void {
     this.state.profile = {
       weights: [...DEFAULT_PROFILE],
@@ -79,7 +62,6 @@ export class DailyBudgetManager {
     this.state.frozen = false;
     this.markDirty();
   }
-
   update(params: {
     nowMs?: number;
     timeZone: string;
@@ -441,6 +423,26 @@ export class DailyBudgetManager {
     return this.snapshot;
   }
 
+  buildPreview(params: {
+    dayStartUtcMs: number;
+    timeZone: string;
+    settings: DailyBudgetSettings;
+    combinedPrices?: CombinedPriceData | null;
+    priceOptimizationEnabled: boolean;
+    capacityBudgetKWh?: number;
+  }): DailyBudgetDayPayload {
+    this.ensureProfile();
+    const { settings } = params;
+    const enabled = this.isEnabled(settings);
+    return buildDailyBudgetPreview({
+      ...params,
+      enabled,
+      priceShapingEnabled: settings.priceShapingEnabled,
+      profileWeights: this.getEffectiveProfile(),
+      profileSampleCount: this.state.profile?.sampleCount ?? 0,
+    });
+  }
+
   private ensureProfile(): void {
     if (!this.state.profile || !Array.isArray(this.state.profile.weights) || this.state.profile.weights.length !== 24) {
       this.state.profile = {
@@ -510,17 +512,6 @@ export class DailyBudgetManager {
   }
 
   private markDirty(force = false): void { this.dirty = true; if (force) this.lastPersistMs = 0; }
-}
-
-function isDailyBudgetState(value: unknown): value is DailyBudgetState {
-  if (!value || typeof value !== 'object') return false;
-  const state = value as DailyBudgetState;
-  if (state.profile) {
-    if (!Array.isArray(state.profile.weights) || state.profile.weights.length !== 24) return false;
-    if (typeof state.profile.sampleCount !== 'number') return false;
-  }
-  if (state.plannedKWh && !Array.isArray(state.plannedKWh)) return false;
-  return true;
 }
 
 export {

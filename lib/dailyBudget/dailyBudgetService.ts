@@ -2,6 +2,11 @@ import type Homey from 'homey';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import {
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+  getNextLocalDayStartUtcMs,
+} from '../utils/dateUtils';
+import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -10,7 +15,7 @@ import {
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
-import type { DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
+import type { DailyBudgetDayPayload, DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
@@ -101,12 +106,40 @@ export class DailyBudgetService {
     this.persistState();
   }
 
+  private buildTomorrowPreview(nowMs: number): DailyBudgetDayPayload | null {
+    try {
+      const timeZone = this.resolveTimeZone();
+      const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
+      const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
+      const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
+      const combinedPrices = this.deps.homey.settings.get('combined_prices') as CombinedPriceData | null;
+      const capacity = this.deps.getCapacitySettings();
+      const capacityBudgetKWh = Math.max(0, capacity.limitKw);
+      return this.manager.buildPreview({
+        dayStartUtcMs: tomorrowStartUtcMs,
+        timeZone,
+        settings: this.settings,
+        combinedPrices,
+        priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
+        capacityBudgetKWh,
+      });
+    } catch (error) {
+      this.deps.log('Daily budget: failed to build tomorrow preview', error);
+      return null;
+    }
+  }
+
   getSnapshot(): DailyBudgetUiPayload | null {
     return this.snapshot;
   }
 
   getUiPayload(): DailyBudgetUiPayload | null {
-    this.updateState({ forcePlanRebuild: false });
-    return this.snapshot;
+    const nowMs = Date.now();
+    this.updateState({ nowMs, forcePlanRebuild: false });
+    if (!this.snapshot) return null;
+    return {
+      ...this.snapshot,
+      tomorrow: this.buildTomorrowPreview(nowMs),
+    };
   }
 }

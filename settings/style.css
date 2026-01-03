@@ -1547,6 +1547,44 @@ input[type="text"]:focus {
   margin: 0;
 }
 
+.daily-budget-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+}
+
+.daily-budget-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-2);
+}
+
+.daily-budget-toggle__button {
+  border: none;
+  background-color: transparent !important;
+  color: var(--muted) !important;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.daily-budget-toggle__button.is-active {
+  background-color: var(--color-surface-4) !important;
+  color: var(--text) !important;
+  font-weight: var(--font-weight-semibold);
+}
+
+.daily-budget-toggle__button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
 .daily-budget-summary {
   margin-bottom: var(--spacing-4);
 }

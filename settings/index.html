@@ -149,21 +149,19 @@
 
           <div class="daily-budget-header">
             <div>
-              <h4>Today plan</h4>
+              <h4 id="daily-budget-title">Today plan</h4>
               <p class="muted" id="daily-budget-day">--</p>
             </div>
-            <div class="pill" id="daily-budget-status-pill">No data</div>
+            <div class="daily-budget-actions">
+              <div class="daily-budget-toggle" role="group" aria-label="Daily budget view">
+                <button type="button" class="daily-budget-toggle__button is-active" id="daily-budget-toggle-today" aria-pressed="true">Today</button>
+                <button type="button" class="daily-budget-toggle__button" id="daily-budget-toggle-tomorrow" aria-pressed="false">Tomorrow</button>
+              </div>
+              <div class="pill" id="daily-budget-status-pill">No data</div>
+            </div>
           </div>
 
           <div class="usage-summary daily-budget-summary">
-            <div class="summary-card">
-              <span class="summary-label">Used</span>
-              <span class="summary-value" id="daily-budget-used">-- kWh</span>
-            </div>
-            <div class="summary-card">
-              <span class="summary-label">Allowed now</span>
-              <span class="summary-value" id="daily-budget-allowed">-- kWh</span>
-            </div>
             <div class="summary-card">
               <span class="summary-label">Remaining</span>
               <span class="summary-value" id="daily-budget-remaining">-- kWh</span>
@@ -171,6 +169,10 @@
             <div class="summary-card">
               <span class="summary-label">Deviation</span>
               <span class="summary-value" id="daily-budget-deviation">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label" id="daily-budget-cost-label">Estimated cost</span>
+              <span class="summary-value" id="daily-budget-cost">-- øre</span>
             </div>
           </div>
 
@@ -186,7 +188,7 @@
               <span class="daily-budget-legend__swatch daily-budget-legend__swatch--planned" aria-hidden="true"></span>
               <span class="muted">Planned</span>
             </div>
-            <div class="daily-budget-legend__item">
+            <div class="daily-budget-legend__item" id="daily-budget-legend-actual">
               <span class="daily-budget-legend__swatch daily-budget-legend__swatch--actual" aria-hidden="true"></span>
               <span class="muted">Actual</span>
             </div>
@@ -197,14 +199,9 @@
           <div id="daily-budget-meta" class="daily-budget-meta">
             <div id="daily-budget-confidence" class="chip">Confidence --</div>
             <div id="daily-budget-price-shaping-state" class="chip">Price shaping --</div>
-            <div id="daily-budget-frozen" class="chip" hidden>Plan frozen</div>
           </div>
 
-          <div class="list__footer">
-            <button type="button" class="btn secondary" id="daily-budget-refresh-button">Refresh today plan</button>
-            <button type="button" class="btn ghost" id="daily-budget-reset-button">Reset learned plan</button>
-            <p class="muted">Refreshes every 60s. Uses local day boundaries.</p>
-          </div>
+          <p class="muted">Refreshes every 60s. Uses local day boundaries.</p>
         </div>
       </details>
     </section>
