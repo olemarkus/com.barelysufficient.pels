@@ -2,12 +2,14 @@ import Homey from 'homey';
 import type { CombinedPriceData } from '../../lib/dailyBudget/dailyBudgetMath';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { buildPlanPricePng } from '../../lib/insights/planPriceImage';
+import { normalizeDebugLoggingTopics } from '../../lib/utils/debugLogging';
 import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   DAILY_BUDGET_RESET,
   DAILY_BUDGET_STATE,
+  DEBUG_LOGGING_TOPICS,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 
@@ -27,6 +29,13 @@ type StatusData = {
 
 type DailyBudgetApp = Homey.App & {
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
+};
+
+type ImageBuffer = Buffer<ArrayBufferLike>;
+type ImageStreamMetadata = {
+  contentType: string;
+  filename: string;
+  contentLength?: number;
 };
 
 type CapabilityEntry = {
@@ -73,9 +82,11 @@ const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
 
 class PelsInsightsDevice extends Homey.Device {
   private planImage?: Homey.Image;
-  private planImagePng = EMPTY_PNG;
+  private planImagePng: ImageBuffer = EMPTY_PNG;
+  private planImageGeneration?: Promise<ImageBuffer>;
   private planImageTimer?: ReturnType<typeof setTimeout>;
   private planImageInterval?: ReturnType<typeof setInterval>;
+  private planImageWarmupTimer?: ReturnType<typeof setTimeout>;
   private lastPlanImageKey?: string;
 
   private async removeDeprecatedCapability(capability: string): Promise<void> {
@@ -185,26 +196,10 @@ class PelsInsightsDevice extends Homey.Device {
     if (this.planImage || !this.homey.images?.createImage) return;
     try {
       this.planImage = await this.homey.images.createImage();
-      this.planImage.setStream((stream: NodeJS.WritableStream) => {
-        const png = this.planImagePng ?? EMPTY_PNG;
-        const meta = {
-          contentType: 'image/png',
-          filename: 'pels-plan.png',
-          contentLength: png.length,
-        };
-        const imageStream = stream as NodeJS.WritableStream & {
-          contentType?: string;
-          filename?: string;
-          contentLength?: number;
-        };
-        imageStream.contentType = meta.contentType;
-        imageStream.filename = meta.filename;
-        imageStream.contentLength = meta.contentLength;
-        stream.end(png);
-        return meta;
-      });
-      await this.setAlbumArtImage(this.planImage);
+      this.planImage.setStream((stream: NodeJS.WritableStream) => this.writePlanImageToStream(stream));
+      await this.setCameraImage('plan_budget', 'Budget + Plan', this.planImage);
       await this.refreshPlanImage({ force: true });
+      this.schedulePlanImageWarmup();
       this.schedulePlanImageRefresh();
     } catch (error) {
       this.error('Failed to initialize plan image', error);
@@ -229,16 +224,24 @@ class PelsInsightsDevice extends Homey.Device {
 
   private async refreshPlanImage(options: { force?: boolean } = {}): Promise<void> {
     if (!this.planImage) return;
+    if (this.planImageGeneration) {
+      this.logPlanImageDebug('Refresh skipped: generation already in progress');
+      return;
+    }
     try {
       const nowMs = Date.now();
       const snapshot = this.getDailyBudgetSnapshot();
       const key = this.resolvePlanImageKey(snapshot, nowMs);
-      if (!options.force && this.lastPlanImageKey === key) return;
+      if (!options.force && this.lastPlanImageKey === key) {
+        this.logPlanImageDebug(`Refresh skipped: cached key ${key}`);
+        return;
+      }
+      this.logPlanImageDebug(`Refreshing image (force=${options.force === true}) key=${key}`);
+      const png = await this.generatePlanImageBuffer(snapshot, nowMs);
+      this.planImagePng = png;
       this.lastPlanImageKey = key;
-      const combinedPrices = this.homey.settings.get('combined_prices') as CombinedPriceData | null;
-      const png = await buildPlanPricePng({ snapshot, combinedPrices });
-      this.planImagePng = Buffer.from(png);
       await this.planImage.update();
+      this.logPlanImageDebug(`Image updated (${png.length} bytes)`);
     } catch (error) {
       this.error('Failed to refresh plan image', error);
     }
@@ -260,6 +263,10 @@ class PelsInsightsDevice extends Homey.Device {
       clearInterval(this.planImageInterval);
       this.planImageInterval = undefined;
     }
+    if (this.planImageWarmupTimer) {
+      clearTimeout(this.planImageWarmupTimer);
+      this.planImageWarmupTimer = undefined;
+    }
   }
 
   private async unregisterPlanImage(): Promise<void> {
@@ -279,6 +286,88 @@ class PelsInsightsDevice extends Homey.Device {
       return app.getDailyBudgetUiPayload();
     }
     return null;
+  }
+
+  private async getPlanImageForStream(): Promise<ImageBuffer> {
+    if (this.planImageGeneration) return this.planImageGeneration;
+    const generation = (async () => {
+      const nowMs = Date.now();
+      const snapshot = this.getDailyBudgetSnapshot();
+      try {
+        this.logPlanImageDebug('Generating image for stream');
+        const png = await this.generatePlanImageBuffer(snapshot, nowMs);
+        this.planImagePng = png;
+        this.lastPlanImageKey = this.resolvePlanImageKey(snapshot, nowMs);
+        this.logPlanImageDebug(`Generated image for stream (${png.length} bytes)`);
+        return png;
+      } catch (error) {
+        this.error('Failed to generate plan image for stream', error);
+        return this.planImagePng ?? EMPTY_PNG;
+      } finally {
+        this.planImageGeneration = undefined;
+      }
+    })();
+    this.planImageGeneration = generation;
+    return generation;
+  }
+
+  private async generatePlanImageBuffer(snapshot: DailyBudgetUiPayload | null, nowMs: number): Promise<ImageBuffer> {
+    const combinedPrices = this.homey.settings.get('combined_prices') as CombinedPriceData | null;
+    const png = await buildPlanPricePng({ snapshot, combinedPrices, nowMs });
+    return Buffer.from(png);
+  }
+
+  private async writePlanImageToStream(stream: NodeJS.WritableStream): Promise<ImageStreamMetadata> {
+    const imageStream = stream as NodeJS.WritableStream & {
+      contentType?: string;
+      filename?: string;
+      contentLength?: number;
+    };
+    try {
+      const png = await this.getPlanImageForStream();
+      const meta = {
+        contentType: 'image/png',
+        filename: 'pels-plan.png',
+        contentLength: png.length,
+      };
+      imageStream.contentType = meta.contentType;
+      imageStream.filename = meta.filename;
+      imageStream.contentLength = meta.contentLength;
+      stream.end(png);
+      return meta;
+    } catch (error) {
+      this.error('Failed to stream plan image', error);
+      const fallback = this.planImagePng ?? EMPTY_PNG;
+      const meta = {
+        contentType: 'image/png',
+        filename: 'pels-plan.png',
+        contentLength: fallback.length,
+      };
+      imageStream.contentType = meta.contentType;
+      imageStream.filename = meta.filename;
+      imageStream.contentLength = meta.contentLength;
+      stream.end(fallback);
+      this.logPlanImageDebug('Stream fallback: using cached image');
+      return meta;
+    }
+  }
+
+  private schedulePlanImageWarmup(): void {
+    if (this.planImageWarmupTimer) return;
+    this.planImageWarmupTimer = setTimeout(() => {
+      this.planImageWarmupTimer = undefined;
+      if (this.planImagePng.length <= EMPTY_PNG.length) {
+        this.logPlanImageDebug('Warmup refresh: placeholder image detected');
+        void this.refreshPlanImage({ force: true });
+      }
+    }, 8000);
+  }
+
+  private logPlanImageDebug(message: string): void {
+    const rawTopics = this.homey.settings.get(DEBUG_LOGGING_TOPICS) as unknown;
+    const topics = normalizeDebugLoggingTopics(rawTopics);
+    if (!topics.includes('daily_budget')) return;
+    this.log(`[plan-image] ${message}`);
   }
 }
 
