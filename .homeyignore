@@ -1,5 +1,6 @@
 settings/src/
 test/
+coverage/
 jest.config.cjs
 tsconfig.json
 .eslintrc.json
