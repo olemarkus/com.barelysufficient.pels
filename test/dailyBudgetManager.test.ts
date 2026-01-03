@@ -263,6 +263,29 @@ describe('daily budget price shaping', () => {
   });
 });
 
+describe('daily budget preview', () => {
+  it('builds a tomorrow preview without a current bucket', () => {
+    const manager = buildManager();
+    const settings = {
+      enabled: true,
+      dailyBudgetKWh: 24,
+      priceShapingEnabled: false,
+    };
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const preview = manager.buildPreview({
+      dayStartUtcMs: dayStart,
+      timeZone: TZ,
+      settings,
+      priceOptimizationEnabled: false,
+    });
+
+    expect(preview.currentBucketIndex).toBe(-1);
+    expect(preview.state.allowedNowKWh).toBe(0);
+    const plannedTotal = preview.buckets.plannedKWh.reduce((sum, value) => sum + value, 0);
+    expect(plannedTotal).toBeCloseTo(settings.dailyBudgetKWh, 6);
+  });
+});
+
 describe('daily budget exceeded state', () => {
   it('freezes when usage exceeds the allowed curve', () => {
     const manager = buildManager();

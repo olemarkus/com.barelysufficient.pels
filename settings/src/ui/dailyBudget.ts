@@ -18,7 +18,6 @@ import {
   dailyBudgetLegendActual,
   dailyBudgetEmpty,
   dailyBudgetConfidence,
-  dailyBudgetPriceShapingState,
   dailyBudgetToggleToday,
   dailyBudgetToggleTomorrow,
 } from './dom';
@@ -43,13 +42,11 @@ const formatSignedKWh = (value: number, digits = 2) => {
 const formatPercent = (value: number) => (
   Number.isFinite(value) ? `${Math.round(value * 100)}%` : '--%'
 );
-const formatOre = (value?: number | null) => (
-  Number.isFinite(value) ? `${Math.round(value as number)} øre` : '-- øre'
+const formatNok = (value?: number | null) => (
+  Number.isFinite(value) ? `${(value as number).toFixed(2)} kr` : '-- kr'
 );
 
 type DailyBudgetView = 'today' | 'tomorrow';
-
-let priceOptimizationEnabled = true;
 let currentDailyBudgetView: DailyBudgetView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
 
@@ -98,6 +95,11 @@ const setChipStateIfPresent = (element: HTMLElement | null, label: string, activ
   setChipState(element, label, active, alert);
 };
 
+const setDeviationVisibility = (visible: boolean) => {
+  const card = dailyBudgetDeviation?.closest('.summary-card') as HTMLElement | null;
+  setHidden(card, !visible);
+};
+
 const resolveViewPayload = (
   payload: DailyBudgetUiPayload,
   view: DailyBudgetView,
@@ -117,7 +119,7 @@ const applyDailyBudgetViewState = () => {
   }
 };
 
-const computeEstimatedCostOre = (params: {
+const computeEstimatedCostNok = (params: {
   plannedKWh: number[];
   actualKWh?: number[];
   currentBucketIndex?: number;
@@ -131,7 +133,7 @@ const computeEstimatedCostOre = (params: {
   } = params;
   if (!prices || prices.length === 0) return null;
   if (prices.length < plannedKWh.length) return null;
-  let total = 0;
+  let totalOre = 0;
   for (let index = 0; index < plannedKWh.length; index += 1) {
     const price = prices[index];
     if (!Number.isFinite(price)) return null;
@@ -142,9 +144,9 @@ const computeEstimatedCostOre = (params: {
         kwh = actualValue as number;
       }
     }
-    total += kwh * (price as number);
+    totalOre += kwh * (price as number);
   }
-  return total;
+  return totalOre / 100;
 };
 
 const resolveLabelEvery = (count: number) => {
@@ -297,15 +299,15 @@ const renderDailyBudgetEmptyState = (message = 'Daily budget data not available 
   setHidden(dailyBudgetLegendActual, true);
   setPillState(false, false);
   const isTomorrow = currentDailyBudgetView === 'tomorrow';
+  setDeviationVisibility(!isTomorrow);
   setText(dailyBudgetTitle, isTomorrow ? 'Tomorrow plan' : 'Today plan');
   setText(dailyBudgetDay, '--');
   setText(dailyBudgetRemaining, '-- kWh');
   setText(dailyBudgetDeviation, '-- kWh');
   setText(dailyBudgetCostLabel, isTomorrow ? 'Estimated cost tomorrow' : 'Estimated cost today');
-  setText(dailyBudgetCost, '-- øre');
+  setText(dailyBudgetCost, '-- kr');
   setTooltip(dailyBudgetDeviation, null);
   setChipStateIfPresent(dailyBudgetConfidence, 'Confidence --');
-  setChipStateIfPresent(dailyBudgetPriceShapingState, 'Price shaping --');
 };
 
 const renderDailyBudgetHeader = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
@@ -315,52 +317,35 @@ const renderDailyBudgetHeader = (payload: DailyBudgetDayPayload, view: DailyBudg
   if (dailyBudgetDay) {
     dailyBudgetDay.textContent = `${payload.dateKey} · ${payload.timeZone}`;
   }
-  setPillState(payload.budget.enabled, payload.state.exceeded);
+  setPillState(payload.budget.enabled, view === 'today' ? payload.state.exceeded : false);
 };
 
 const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
+  const isTomorrow = view === 'tomorrow';
   if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = formatKWh(payload.state.remainingKWh);
-  if (dailyBudgetDeviation) {
+  setDeviationVisibility(!isTomorrow);
+  if (dailyBudgetDeviation && !isTomorrow) {
     dailyBudgetDeviation.textContent = formatSignedKWh(payload.state.deviationKWh);
     setTooltip(dailyBudgetDeviation, 'Deviation = used minus allowed so far. Positive means over plan.');
+  } else {
+    setTooltip(dailyBudgetDeviation, null);
   }
   if (dailyBudgetCostLabel) {
     dailyBudgetCostLabel.textContent = view === 'tomorrow' ? 'Estimated cost tomorrow' : 'Estimated cost today';
   }
-  const estimatedCost = computeEstimatedCostOre({
+  const estimatedCost = computeEstimatedCostNok({
     plannedKWh: payload.buckets.plannedKWh || [],
     actualKWh: view === 'today' ? payload.buckets.actualKWh : undefined,
     currentBucketIndex: view === 'today' ? payload.currentBucketIndex : undefined,
     prices: payload.buckets.price,
   });
-  if (dailyBudgetCost) dailyBudgetCost.textContent = formatOre(estimatedCost);
+  if (dailyBudgetCost) dailyBudgetCost.textContent = formatNok(estimatedCost);
 };
 
 const renderDailyBudgetChips = (payload: DailyBudgetDayPayload) => {
   if (dailyBudgetConfidence) {
     const confidenceLabel = `Confidence ${formatPercent(payload.state.confidence)}`;
     setChipState(dailyBudgetConfidence, confidenceLabel, payload.state.confidence >= 0.5);
-  }
-  if (dailyBudgetPriceShapingState) {
-    const priceShapingEnabled = payload.budget.priceShapingEnabled;
-    const priceOptimizationOn = priceOptimizationEnabled;
-    let label = 'Price shaping off';
-    let active = false;
-    let alert = false;
-
-    if (!priceShapingEnabled) {
-      label = 'Price shaping off';
-    } else if (!priceOptimizationOn) {
-      label = 'Requires price optimization';
-    } else if (!payload.state.priceShapingActive) {
-      label = 'Waiting for prices';
-      alert = payload.budget.enabled;
-    } else {
-      label = 'Price shaping on';
-      active = true;
-    }
-
-    setChipState(dailyBudgetPriceShapingState, label, active, alert);
   }
 };
 
@@ -434,13 +419,7 @@ export const saveDailyBudgetSettings = async () => {
 
 export const refreshDailyBudgetPlan = async () => {
   try {
-    const [payload, priceOptEnabled] = await Promise.all([
-      callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
-      getSetting('price_optimization_enabled').catch(() => undefined),
-    ]);
-    if (priceOptEnabled !== undefined) {
-      priceOptimizationEnabled = priceOptEnabled !== false;
-    }
+    const payload = await callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget');
     renderDailyBudget(payload);
   } catch (error) {
     await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');
