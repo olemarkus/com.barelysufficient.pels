@@ -94,9 +94,7 @@ export default class PriceService {
     const attempts: Array<{ label: string; date: string }> = [{ label: 'today', date: today }];
     const normalized = await this.fetchAndNormalizeNettleie({ date: today, settings: requestSettings });
     if (normalized) {
-      this.homey.settings.set('nettleie_data', normalized);
-      this.log(`Nettleie: Stored ${normalized.length} hourly tariff entries`);
-      this.updateCombinedPrices();
+      this.storeNettleieData(normalized, '');
       return;
     }
 
@@ -108,9 +106,7 @@ export default class PriceService {
       attempts.push({ label: fallback.label, date: fallbackDate });
       const fallbackData = await this.fetchAndNormalizeNettleie({ date: fallbackDate, settings: requestSettings });
       if (fallbackData) {
-        this.homey.settings.set('nettleie_data', fallbackData);
-        this.log(`Nettleie: Stored ${fallbackData.length} hourly tariff entries (fallback ${fallback.label} ${fallbackDate})`);
-        this.updateCombinedPrices();
+        this.storeNettleieData(fallbackData, ` (fallback ${fallback.label} ${fallbackDate})`);
         return;
       }
     }
@@ -147,6 +143,12 @@ export default class PriceService {
     const daysInMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
     target.setDate(Math.min(day, daysInMonth));
     return target;
+  }
+
+  private storeNettleieData(data: Array<Record<string, unknown>>, logContext: string): void {
+    this.homey.settings.set('nettleie_data', data);
+    this.log(`Nettleie: Stored ${data.length} hourly tariff entries${logContext}`);
+    this.updateCombinedPrices();
   }
 
   private async fetchAndNormalizeNettleie(params: {
