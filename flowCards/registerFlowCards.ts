@@ -2,7 +2,12 @@ import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/
 import CapacityGuard from '../lib/core/capacityGuard';
 import { FlowHomeyLike, TargetDeviceSnapshot } from '../lib/utils/types';
 import { registerExpectedPowerCard } from './expectedPower';
-import { CAPACITY_LIMIT_KW } from '../lib/utils/settingsKeys';
+import {
+  CAPACITY_LIMIT_KW,
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
+} from '../lib/utils/settingsKeys';
+import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 
 type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
 
@@ -22,6 +27,8 @@ export type FlowCardDeps = {
   getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   setExpectedOverride: (deviceId: string, kw: number) => void;
   rebuildPlan: () => void;
+  loadDailyBudgetSettings: () => void;
+  updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -131,6 +138,34 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     deps.setCapacityLimit(limit);
     const previousText = typeof previous === 'number' ? `${previous} kW` : 'unset';
     deps.log(`Flow: capacity limit set to ${limit} kW (was ${previousText})`);
+    return true;
+  });
+
+  const setDailyBudgetCard = deps.homey.flow.getActionCard('set_daily_budget_kwh');
+  setDailyBudgetCard.registerRunListener(async (args: unknown) => {
+    const payload = args as { budget_kwh?: number } | null;
+    const raw = Number(payload?.budget_kwh);
+    if (!Number.isFinite(raw)) {
+      throw new Error('Daily budget must be a number (kWh).');
+    }
+    if (raw < 0) {
+      throw new Error('Daily budget must be non-negative (kWh).');
+    }
+    const isDisabling = raw === 0;
+    if (!isDisabling && (raw < MIN_DAILY_BUDGET_KWH || raw > MAX_DAILY_BUDGET_KWH)) {
+      throw new Error(`Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
+    }
+
+    deps.homey.settings.set(DAILY_BUDGET_KWH, raw);
+    deps.homey.settings.set(DAILY_BUDGET_ENABLED, !isDisabling);
+    deps.loadDailyBudgetSettings();
+    deps.updateDailyBudgetState({ forcePlanRebuild: true });
+    deps.rebuildPlan();
+    if (isDisabling) {
+      deps.log('Flow: daily budget disabled (0 kWh)');
+    } else {
+      deps.log(`Flow: daily budget set to ${raw} kWh`);
+    }
     return true;
   });
 

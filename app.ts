@@ -389,6 +389,8 @@ class PelsApp extends Homey.App {
       getDeviceLoadSetting: (deviceId) => this.getDeviceLoadSetting(deviceId),
       setExpectedOverride: (deviceId, kw) => this.setExpectedOverride(deviceId, kw),
       planService: this.planService,
+      loadDailyBudgetSettings: () => this.dailyBudgetService.loadSettings(),
+      updateDailyBudgetState: (options) => this.dailyBudgetService.updateState(options),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
     };

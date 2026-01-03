@@ -9,8 +9,11 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
+import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -109,6 +112,61 @@ describe('MyApp initialization', () => {
     const result = await setLimitListener({ limit_kw: 5 });
     expect(result).toBe(true);
     expect(setLimitSpy).toHaveBeenCalledWith(5);
+  });
+
+  it('set_daily_budget_kwh flow card updates daily budget settings', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
+    expect(setBudgetListener).toBeDefined();
+
+    const result = await setBudgetListener({ budget_kwh: 40 });
+    expect(result).toBe(true);
+    expect(mockHomeyInstance.settings.get(DAILY_BUDGET_KWH)).toBe(40);
+    expect(mockHomeyInstance.settings.get(DAILY_BUDGET_ENABLED)).toBe(true);
+    expect((app as any).dailyBudgetService.getSnapshot()).not.toBeNull();
+  });
+
+  it('set_daily_budget_kwh flow card disables daily budget when set to 0', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(DAILY_BUDGET_KWH, 40);
+    mockHomeyInstance.settings.set(DAILY_BUDGET_ENABLED, true);
+
+    const app = createApp();
+    await app.onInit();
+
+    const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
+    const result = await setBudgetListener({ budget_kwh: 0 });
+    expect(result).toBe(true);
+    expect(mockHomeyInstance.settings.get(DAILY_BUDGET_KWH)).toBe(0);
+    expect(mockHomeyInstance.settings.get(DAILY_BUDGET_ENABLED)).toBe(false);
+  });
+
+  it('set_daily_budget_kwh flow card rejects invalid values', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
+    await expect(setBudgetListener({ budget_kwh: -1 })).rejects.toThrow('Daily budget must be non-negative (kWh).');
+    await expect(setBudgetListener({ budget_kwh: 1 }))
+      .rejects.toThrow(`Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
+    await expect(setBudgetListener({ budget_kwh: MAX_DAILY_BUDGET_KWH + 1 }))
+      .rejects.toThrow(`Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
   });
 
   it('enable_device_capacity_control flow card enables capacity control', async () => {
