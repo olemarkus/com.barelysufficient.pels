@@ -40,6 +40,45 @@ const createErroringRequest = () => {
   return req;
 };
 
+const formatDateInOslo = (date: Date): string => {
+  const formatter = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Oslo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(date);
+};
+
+const subtractMonths = (date: Date, months: number): Date => {
+  const target = new Date(date);
+  const day = target.getDate();
+  target.setDate(1);
+  target.setMonth(target.getMonth() - months);
+  const daysInMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, daysInMonth));
+  return target;
+};
+
+const buildExpectedNettleieDates = (baseDate: Date): {
+  today: string;
+  yesterday: string;
+  week: string;
+  month: string;
+} => {
+  const yesterdayDate = new Date(baseDate);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const weekDate = new Date(baseDate);
+  weekDate.setDate(weekDate.getDate() - 7);
+  const monthDate = subtractMonths(baseDate, 1);
+  return {
+    today: formatDateInOslo(baseDate),
+    yesterday: formatDateInOslo(yesterdayDate),
+    week: formatDateInOslo(weekDate),
+    month: formatDateInOslo(monthDate),
+  };
+};
+
 // Mock response data structures based on real API responses
 const mockHvakosterStrommenResponse = [
   {
@@ -490,6 +529,8 @@ describe('Spot price fetching', () => {
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
+    const { setAllowConsoleError } = require('./setup');
+    setAllowConsoleError(true);
 
     try {
       const app = createApp();
@@ -499,6 +540,7 @@ describe('Spot price fetching', () => {
       // Should have fetched prices because it's after 13:15 and tomorrow's prices are missing
       expect(fetchCount).toBeGreaterThan(0);
     } finally {
+      setAllowConsoleError(false);
       global.Date = originalDate;
     }
   });
@@ -785,6 +827,134 @@ describe('Nettleie (grid tariff) fetching', () => {
     expect(capturedUrl).toContain('OrganisasjonsNr=976944801');
     // URLSearchParams uses + for spaces, which is valid URL encoding
     expect(capturedUrl).toMatch(/Tariffgruppe=Hytter(\+|%20)og(\+|%20)fritidshus/);
+  });
+
+  it('falls back to earlier dates and stops after successful response', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('nettleie_fylke', '46');
+    mockHomeyInstance.settings.set('nettleie_orgnr', '976944801');
+    mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Hytter og fritidshus');
+
+    const now = new Date(2026, 0, 3, 12, 0, 0);
+    const MockDate = class extends Date {
+      constructor(...args: any[]) {
+        if (args.length === 0) {
+          super(now.getTime());
+        } else {
+          // @ts-ignore
+          super(...args);
+        }
+      }
+
+      static now() {
+        return now.getTime();
+      }
+    } as DateConstructor;
+    const originalDate = global.Date;
+    global.Date = MockDate;
+
+    try {
+      const { today, yesterday, week } = buildExpectedNettleieDates(now);
+      const requestedDates: string[] = [];
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        const date = new URL(url).searchParams.get('ValgtDato') ?? '';
+        requestedDates.push(date);
+        const payload = date === week ? mockNveNettleieResponse : [];
+        return Promise.resolve({
+          ok: true,
+          json: async () => payload,
+        });
+      });
+
+      const app = createApp();
+      await app.onInit();
+      requestedDates.length = 0;
+      (global.fetch as jest.Mock).mockClear();
+
+      mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+      await flushPromises();
+
+      expect(requestedDates).toEqual([today, yesterday, week]);
+      const nettleieData = mockHomeyInstance.settings.get('nettleie_data');
+      expect(Array.isArray(nettleieData)).toBe(true);
+      expect(nettleieData.length).toBe(mockNveNettleieResponse.length);
+    } finally {
+      global.Date = originalDate;
+    }
+  });
+
+  it('logs when all nettleie fallback attempts are empty', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('nettleie_fylke', '46');
+    mockHomeyInstance.settings.set('nettleie_orgnr', '976944801');
+    mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Hytter og fritidshus');
+
+    const now = new Date(2026, 0, 3, 12, 0, 0);
+    const MockDate = class extends Date {
+      constructor(...args: any[]) {
+        if (args.length === 0) {
+          super(now.getTime());
+        } else {
+          // @ts-ignore
+          super(...args);
+        }
+      }
+
+      static now() {
+        return now.getTime();
+      }
+    } as DateConstructor;
+    const originalDate = global.Date;
+    global.Date = MockDate;
+
+    const { setAllowConsoleError } = require('./setup');
+    setAllowConsoleError(true);
+    try {
+      const { today, yesterday, week, month } = buildExpectedNettleieDates(now);
+      const requestedDates: string[] = [];
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        const date = new URL(url).searchParams.get('ValgtDato') ?? '';
+        requestedDates.push(date);
+        return Promise.resolve({
+          ok: true,
+          json: async () => [],
+        });
+      });
+
+      const app = createApp();
+      await app.onInit();
+      requestedDates.length = 0;
+      (global.fetch as jest.Mock).mockClear();
+
+      mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+      await flushPromises();
+
+      expect(requestedDates).toEqual([today, yesterday, week, month]);
+      const errorCalls = (console.error as jest.Mock).mock.calls;
+      const cachedCall = errorCalls.find(([message]) => (
+        typeof message === 'string'
+        && message.includes('Keeping cached tariff data (NVE returned empty list)')
+      ));
+      expect(cachedCall).toBeTruthy();
+      const payload = cachedCall?.[1] as { attempts?: Array<{ label: string; date: string }> } | undefined;
+      expect(payload?.attempts).toEqual([
+        { label: 'today', date: today },
+        { label: 'yesterday', date: yesterday },
+        { label: 'week', date: week },
+        { label: 'month', date: month },
+      ]);
+    } finally {
+      setAllowConsoleError(false);
+      global.Date = originalDate;
+    }
   });
 });
 
