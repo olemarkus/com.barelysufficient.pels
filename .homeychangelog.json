@@ -82,5 +82,8 @@
   },
   "1.7.2": {
     "en": "Previously the 'Used X of Y kWh' line always showed the hourly capacity\nbudget, even when the system was constrained by daily budget. Now the UI shows the actual daily budget allocation for the current hour."
+  },
+  "1.7.3": {
+    "en": "The Daily Budget panel has been refreshed with a today/tomorrow toggle, a clearer planned‑vs‑actual chart plus confidence chip, and a simplified summary that includes remaining/deviation and an estimated cost readout (now shown in NOK); tomorrow’s plan preview appears when prices are available; nettleie (grid tariff) fetching is more reliable thanks to fallback dates when the NVE API returns empty data, so price totals are less likely to go missing."
   }
 }
