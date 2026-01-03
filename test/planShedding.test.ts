@@ -30,6 +30,15 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
 });
 
 describe('buildSheddingPlan', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('skips recently restored devices and those already at shed temperature', async () => {
     const state = createPlanEngineState();
     state.lastDeviceRestoreMs['dev-recent'] = Date.now() - 60 * 1000;

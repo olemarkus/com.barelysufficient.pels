@@ -160,7 +160,7 @@ For each managed device in a mode:
 | Setting | Description |
 |---------|-------------|
 | **Desired °C** | The target temperature for this device in this mode |
-| **Priority** | Higher number = higher priority (kept on longer). Drag to reorder. |
+| **Priority** | Lower number = higher priority (kept on longer, restored first). Drag to reorder. |
 
 > **Tip:** Changes save automatically when you modify them.
 
@@ -169,12 +169,14 @@ For each managed device in a mode:
 Shows the current plan – what PELS intends to do with each device based on current power consumption and settings.
 Only managed devices are listed; unmanaged load still contributes to the totals.
 
-| Column | Description |
-|--------|-------------|
+| Field | Description |
+|-------|-------------|
 | **Device** | The device name |
-| **Current** | Current state (on/off and temperature) |
-| **Planned** | What PELS plans to do (keep, shed, restore) |
+| **Temperature** | Current temperature and target (if available) |
+| **Power** | Current → planned power state (on/off) |
+| **State** | Active, Restoring, Shed, or Capacity control off |
 | **Usage** | Current measured power vs. expected power (fallback 1 kW if unknown) |
+| **Status** | The reason for the current plan (or "Waiting for headroom") |
 
 Click **Refresh plan** to recalculate.
 
@@ -311,14 +313,14 @@ The device shows:
 
 1. **Monitor**: PELS receives power readings via the "Report power usage" Flow action
 2. **Calculate**: It compares current usage against your soft limit (limit - margin)
-3. **Plan**: When over the soft limit, it creates a plan to shed devices, starting with lowest priority
+3. **Plan**: When over the soft limit, it creates a plan to shed devices, starting with the lowest priority (highest number)
 4. **Execute**: Unless in dry-run mode, it turns off devices according to the plan
 5. **Recover**: When power drops and headroom is available, it restores devices in priority order
 
 ### Priority-Based Shedding
 
-- Devices with **lower priority numbers** are shed first
-- Devices with **higher priority numbers** are kept on longest
+- Devices with **higher priority numbers** are shed first
+- Devices with **lower priority numbers** are kept on longest and restored first (priority 1 is most important)
 - PELS can "swap" – turn off multiple low-priority devices to restore a single high-priority device
 
 ### Price Optimization
