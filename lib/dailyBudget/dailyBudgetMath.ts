@@ -90,25 +90,26 @@ export function buildPlan(params: {
     lockCurrentBucket,
   } = params;
 
+  const safeCurrentBucketIndex = Math.max(0, currentBucketIndex);
   const hasPreviousPlan = Array.isArray(previousPlannedKWh)
     && previousPlannedKWh.length === bucketStartUtcMs.length;
   const shouldLockCurrent = Boolean(lockCurrentBucket) && hasPreviousPlan;
   const remainingStartIndex = shouldLockCurrent
-    ? Math.min(currentBucketIndex + 1, bucketStartUtcMs.length)
-    : currentBucketIndex;
+    ? Math.min(safeCurrentBucketIndex + 1, bucketStartUtcMs.length)
+    : safeCurrentBucketIndex;
 
   const baseWeights = buildHourWeights({ bucketStartUtcMs, profileWeights, timeZone });
   const normalizedDayWeights = normalizeWeightsWithFallback(baseWeights);
 
   const priceShape = buildPriceFactors({
     bucketStartUtcMs,
-    currentBucketIndex,
+    currentBucketIndex: safeCurrentBucketIndex,
     combinedPrices,
     priceOptimizationEnabled,
     priceShapingEnabled,
   });
 
-  const usedInCurrent = bucketUsage[currentBucketIndex] ?? 0;
+  const usedInCurrent = bucketUsage[safeCurrentBucketIndex] ?? 0;
   const normalizedRemaining = resolveRemainingWeights({
     baseWeights,
     remainingStartIndex,
@@ -119,7 +120,7 @@ export function buildPlan(params: {
     dailyBudgetKWh,
     usedNowKWh,
     usedInCurrent,
-    currentBucketIndex,
+    currentBucketIndex: safeCurrentBucketIndex,
     previousPlannedKWh: hasPreviousPlan ? previousPlannedKWh : undefined,
     shouldLockCurrent,
   });
@@ -129,12 +130,12 @@ export function buildPlan(params: {
     capacityBudgetKWh,
     usedInCurrent,
     remainingStartIndex,
-    currentBucketIndex,
+    currentBucketIndex: safeCurrentBucketIndex,
   });
   const plannedKWh = buildPlannedKWh({
     bucketCount: bucketStartUtcMs.length,
     bucketUsage,
-    currentBucketIndex,
+    currentBucketIndex: safeCurrentBucketIndex,
     usedInCurrent,
     dailyBudgetKWh,
     normalizedDayWeights,
@@ -405,6 +406,9 @@ export function buildPriceDebugData(params: {
   };
 }
 
+/**
+ * Map combined price entries onto the bucket timestamps.
+ */
 export function buildPriceSeries(params: {
   bucketStartUtcMs: number[];
   combinedPrices?: CombinedPriceData | null;
@@ -440,6 +444,7 @@ export function buildPriceFactors(params: {
     priceShapingEnabled,
   } = params;
 
+  const safeCurrentBucketIndex = Math.max(0, currentBucketIndex);
   const pricesAll = buildPriceSeries({ bucketStartUtcMs, combinedPrices });
   if (!pricesAll) {
     return { priceShapingActive: false };
@@ -447,7 +452,7 @@ export function buildPriceFactors(params: {
   if (!priceOptimizationEnabled || !priceShapingEnabled) {
     return { prices: pricesAll, priceShapingActive: false };
   }
-  const remainingPrices = pricesAll.slice(currentBucketIndex);
+  const remainingPrices = pricesAll.slice(safeCurrentBucketIndex);
   if (remainingPrices.some((value) => typeof value !== 'number')) {
     return { prices: pricesAll, priceShapingActive: false };
   }
@@ -461,7 +466,7 @@ export function buildPriceFactors(params: {
   const maxFactor = 1.3;
   const remainingFactors = numericPrices.map((price) => clamp(1 + (median - price) / spread, minFactor, maxFactor));
   const priceFactorsAll = [
-    ...Array.from({ length: currentBucketIndex }, () => null),
+    ...Array.from({ length: safeCurrentBucketIndex }, () => null),
     ...remainingFactors,
   ];
 

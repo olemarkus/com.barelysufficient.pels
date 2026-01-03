@@ -42,7 +42,6 @@ export const dailyBudgetLegend = qs('#daily-budget-legend');
 export const dailyBudgetLegendActual = qs('#daily-budget-legend-actual');
 export const dailyBudgetEmpty = qs('#daily-budget-empty');
 export const dailyBudgetConfidence = qs('#daily-budget-confidence');
-export const dailyBudgetPriceShapingState = qs('#daily-budget-price-shaping-state');
 export const dailyBudgetToggleToday = document.querySelector('#daily-budget-toggle-today') as HTMLButtonElement;
 export const dailyBudgetToggleTomorrow = document.querySelector('#daily-budget-toggle-tomorrow') as HTMLButtonElement;
 export const dryRunBanner = qs('#dry-run-banner');

@@ -50,7 +50,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
   });
   const bucketUsage = bucketStartUtcMs.map(() => 0);
   const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
-  const currentBucketIndex = 0;
+  const currentBucketIndex = -1;
   const usedNowKWh = 0;
   const context: DayContext = {
     nowMs: dayStartUtcMs,

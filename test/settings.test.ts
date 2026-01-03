@@ -59,7 +59,6 @@ const buildDom = () => {
       <div id="daily-budget-cost-label"></div>
       <div id="daily-budget-cost"></div>
       <div id="daily-budget-confidence"></div>
-      <div id="daily-budget-price-shaping-state"></div>
       <div id="daily-budget-legend-actual"></div>
       <button id="daily-budget-toggle-today"></button>
       <button id="daily-budget-toggle-tomorrow"></button>
