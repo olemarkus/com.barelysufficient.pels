@@ -79,25 +79,99 @@ export default class PriceService {
       this.log('Nettleie: No organization number configured, skipping fetch');
       return;
     }
+    const requestSettings: { fylke: string; orgnr: string; tariffgruppe: string } = {
+      fylke: settings.fylke,
+      orgnr: settings.orgnr,
+      tariffgruppe: settings.tariffgruppe,
+    };
 
-    const today = this.formatDateInHomeyTimezone(new Date());
+    const todayDate = new Date();
+    const today = this.formatDateInHomeyTimezone(todayDate);
     if (!forceRefresh && this.shouldUseNettleieCache(today)) {
       return;
     }
 
+    const attempts: Array<{ label: string; date: string }> = [{ label: 'today', date: today }];
+    const normalized = await this.fetchAndNormalizeNettleie({ date: today, settings: requestSettings });
+    if (normalized) {
+      this.homey.settings.set('nettleie_data', normalized);
+      this.log(`Nettleie: Stored ${normalized.length} hourly tariff entries`);
+      this.updateCombinedPrices();
+      return;
+    }
+
+    for (const fallback of this.buildNettleieFallbackDates(todayDate)) {
+      const fallbackDate = this.formatDateInHomeyTimezone(fallback.date);
+      if (attempts.some((attempt) => attempt.date === fallbackDate)) {
+        continue;
+      }
+      attempts.push({ label: fallback.label, date: fallbackDate });
+      const fallbackData = await this.fetchAndNormalizeNettleie({ date: fallbackDate, settings: requestSettings });
+      if (fallbackData) {
+        this.homey.settings.set('nettleie_data', fallbackData);
+        this.log(`Nettleie: Stored ${fallbackData.length} hourly tariff entries (fallback ${fallback.label} ${fallbackDate})`);
+        this.updateCombinedPrices();
+        return;
+      }
+    }
+
+    this.errorLog?.('Nettleie: Keeping cached tariff data (NVE returned empty list)', {
+      attempts,
+      fylke: requestSettings.fylke,
+      orgnr: requestSettings.orgnr,
+      tariffgruppe: requestSettings.tariffgruppe,
+    });
+  }
+
+  private buildNettleieFallbackDates(baseDate: Date): Array<{ label: string; date: Date }> {
+    const yesterday = new Date(baseDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const weekAgo = new Date(baseDate);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const monthAgo = this.subtractMonths(baseDate, 1);
+
+    return [
+      { label: 'yesterday', date: yesterday },
+      { label: 'week', date: weekAgo },
+      { label: 'month', date: monthAgo },
+    ];
+  }
+
+  private subtractMonths(date: Date, months: number): Date {
+    const target = new Date(date);
+    const day = target.getDate();
+    target.setDate(1);
+    target.setMonth(target.getMonth() - months);
+    const daysInMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+    target.setDate(Math.min(day, daysInMonth));
+    return target;
+  }
+
+  private async fetchAndNormalizeNettleie(params: {
+    date: string;
+    settings: { fylke: string; orgnr: string; tariffgruppe: string };
+  }): Promise<Array<Record<string, unknown>> | null> {
+    const { date, settings } = params;
     const url = this.buildNettleieUrl({
-      date: today,
+      date,
       fylke: settings.fylke,
       orgnr: settings.orgnr,
       tariffgruppe: settings.tariffgruppe,
     });
-    this.log(`Nettleie: Fetching grid tariffs from NVE API for ${today}, fylke=${settings.fylke}, org=${settings.orgnr}`);
+    this.log(`Nettleie: Fetching grid tariffs from NVE API for ${date}, fylke=${settings.fylke}, org=${settings.orgnr}`);
     const nettleieData = await this.fetchNettleieData(url);
-    if (!nettleieData) return;
+    if (!nettleieData) return null;
     const normalized = this.normalizeNettleieData(nettleieData);
-    this.homey.settings.set('nettleie_data', normalized);
-    this.log(`Nettleie: Stored ${normalized.length} hourly tariff entries`);
-    this.updateCombinedPrices();
+    if (normalized.length === 0) {
+      this.errorLog?.(
+        'Nettleie: NVE API returned 0 hourly tariff entries',
+        { date, fylke: settings.fylke, orgnr: settings.orgnr, tariffgruppe: settings.tariffgruppe },
+      );
+      return null;
+    }
+    return normalized;
   }
 
   updateCombinedPrices(): void {

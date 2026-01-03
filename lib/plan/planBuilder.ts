@@ -36,6 +36,8 @@ export type PlanBuilderDeps = {
   logDebug: (...args: unknown[]) => void;
 };
 
+const SOFT_LIMIT_EPSILON = 1e-3;
+
 const getCurrentHourKWh = (buckets?: Record<string, number>): number | undefined => {
   const value = buckets?.[getHourBucketKey()];
   return typeof value === 'number' ? value : undefined;
@@ -204,7 +206,7 @@ export class PlanBuilder {
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {
     if (dailySoftLimit === null) return 'capacity';
-    if (dailySoftLimit === capacitySoftLimit) return 'both';
+    if (Math.abs(dailySoftLimit - capacitySoftLimit) <= SOFT_LIMIT_EPSILON) return 'both';
     return dailySoftLimit < capacitySoftLimit ? 'daily' : 'capacity';
   }
 
