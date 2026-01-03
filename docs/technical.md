@@ -128,9 +128,10 @@ When a high-priority device is off and there isn't enough headroom to restore it
 When power exceeds the soft limit, devices are shed in priority order:
 
 1. **Lowest priority first** (highest number): Priority 5 sheds before priority 3
-2. **One device at a time**: After shedding, wait for measurements to stabilize
+2. **Multiple devices per plan**: PELS may shed more than one device in a single plan to cover the overshoot; actions are still throttled per device
 3. **Respect cooldowns**: No rapid toggling
-4. **Optional min temperature**: A device can be configured to drop to a minimum setpoint instead of turning fully off.
+4. **Restore grace**: Recently restored devices are protected from re-shedding for ~3 minutes unless overshoot is severe (≥ 0.5 kW)
+5. **Optional min temperature**: A device can be configured to drop to a minimum setpoint instead of turning fully off. Devices already at the shed temperature are skipped.
 
 ---
 
@@ -157,6 +158,8 @@ This estimation is inherently imperfect, which is why PELS:
 - Restores only one device at a time
 - Waits for actual measurements before restoring more
 - Uses a hysteresis buffer for safety
+
+For shedding decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
 
 ---
 

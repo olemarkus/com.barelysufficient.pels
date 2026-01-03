@@ -138,11 +138,14 @@ describe('createSettingsHandler', () => {
     await handler('settings_ui_log');
     await handler('settings_ui_log');
 
+    expect(errorLog).toHaveBeenCalledTimes(1);
     expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('Settings UI'), expect.any(Error));
     const loggedError = errorLog.mock.calls[0][1] as Error;
     expect(loggedError.message).toBe('Detail');
+    expect(deps.log).toHaveBeenCalledTimes(2);
     expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('Warning:'));
     expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('Settings UI'));
+    expect(deps.homey.settings.set).toHaveBeenCalledTimes(3);
     expect(deps.homey.settings.set).toHaveBeenCalledWith('settings_ui_log', null);
   });
 
