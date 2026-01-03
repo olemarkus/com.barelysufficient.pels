@@ -1,7 +1,7 @@
 import Homey from 'homey';
 import type { CombinedPriceData } from '../../lib/dailyBudget/dailyBudgetMath';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { buildPlanPriceSvg } from '../../lib/insights/planPriceImage';
+import { buildPlanPricePng } from '../../lib/insights/planPriceImage';
 import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
@@ -60,6 +60,10 @@ const PLAN_IMAGE_SETTINGS_KEYS = new Set([
 ]);
 
 const HOUR_MS = 60 * 60 * 1000;
+const EMPTY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=',
+  'base64',
+);
 
 const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
   if (type === 'string') return typeof value === 'string' && value.length > 0;
@@ -69,7 +73,7 @@ const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
 
 class PelsInsightsDevice extends Homey.Device {
   private planImage?: Homey.Image;
-  private planImageSvg = '';
+  private planImagePng = EMPTY_PNG;
   private planImageTimer?: ReturnType<typeof setTimeout>;
   private planImageInterval?: ReturnType<typeof setInterval>;
   private lastPlanImageKey?: string;
@@ -180,15 +184,26 @@ class PelsInsightsDevice extends Homey.Device {
   private async initPlanImage(): Promise<void> {
     if (this.planImage || !this.homey.images?.createImage) return;
     try {
-      this.planImageSvg = buildPlanPriceSvg({ snapshot: null, nowMs: Date.now() });
       this.planImage = await this.homey.images.createImage();
       this.planImage.setStream((stream: NodeJS.WritableStream) => {
-        const imageStream = stream as NodeJS.WritableStream & { contentType?: string; filename?: string };
-        imageStream.contentType = 'image/svg+xml';
-        imageStream.filename = 'pels-plan.svg';
-        stream.end(this.planImageSvg);
+        const png = this.planImagePng ?? EMPTY_PNG;
+        const meta = {
+          contentType: 'image/png',
+          filename: 'pels-plan.png',
+          contentLength: png.length,
+        };
+        const imageStream = stream as NodeJS.WritableStream & {
+          contentType?: string;
+          filename?: string;
+          contentLength?: number;
+        };
+        imageStream.contentType = meta.contentType;
+        imageStream.filename = meta.filename;
+        imageStream.contentLength = meta.contentLength;
+        stream.end(png);
+        return meta;
       });
-      await this.setCameraImage('plan', 'Plan + Price', this.planImage);
+      await this.setAlbumArtImage(this.planImage);
       await this.refreshPlanImage({ force: true });
       this.schedulePlanImageRefresh();
     } catch (error) {
@@ -221,7 +236,8 @@ class PelsInsightsDevice extends Homey.Device {
       if (!options.force && this.lastPlanImageKey === key) return;
       this.lastPlanImageKey = key;
       const combinedPrices = this.homey.settings.get('combined_prices') as CombinedPriceData | null;
-      this.planImageSvg = buildPlanPriceSvg({ snapshot, combinedPrices, nowMs });
+      const png = await buildPlanPricePng({ snapshot, combinedPrices });
+      this.planImagePng = Buffer.from(png);
       await this.planImage.update();
     } catch (error) {
       this.error('Failed to refresh plan image', error);

@@ -66,6 +66,7 @@ const COLORS = {
 };
 
 const FONT_FAMILY = 'IBM Plex Sans, Arial, sans-serif';
+let resvgPromise: Promise<typeof import('@resvg/resvg-js')> | null = null;
 
 export function buildPlanPriceSvg(params: PlanPriceImageParams): string {
   const {
@@ -108,6 +109,24 @@ export function buildPlanPriceSvg(params: PlanPriceImageParams): string {
   ];
   return parts.join('');
 }
+
+export async function buildPlanPricePng(params: PlanPriceImageParams): Promise<Uint8Array> {
+  const width = params.width ?? DEFAULT_WIDTH;
+  const height = params.height ?? DEFAULT_HEIGHT;
+  const svg = buildPlanPriceSvg({ ...params, width, height });
+  const { Resvg } = await loadResvg();
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: 'width', value: width },
+  });
+  return resvg.render().asPng();
+}
+
+const loadResvg = async (): Promise<typeof import('@resvg/resvg-js')> => {
+  if (!resvgPromise) {
+    resvgPromise = import('@resvg/resvg-js');
+  }
+  return resvgPromise;
+};
 
 function buildLayout(params: { width: number; height: number; bucketCount: number }): Layout | null {
   const { width, height, bucketCount } = params;
