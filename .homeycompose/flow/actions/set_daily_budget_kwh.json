@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Set daily budget"
+  },
+  "titleFormatted": {
+    "en": "Set daily budget to [[budget_kwh]] kWh"
+  },
+  "hint": {
+    "en": "Use this to adjust your daily energy budget from flows. Set to 0 to disable the daily budget."
+  },
+  "args": [
+    {
+      "name": "budget_kwh",
+      "type": "number",
+      "title": {
+        "en": "Budget (kWh)"
+      },
+      "min": 0,
+      "max": 360,
+      "step": 0.1
+    }
+  ]
+}
