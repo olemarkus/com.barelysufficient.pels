@@ -213,9 +213,9 @@ describe('Settings UI', () => {
       expect(tabsBox!.width).toBeLessThanOrEqual(480);
     });
 
-    test('main tabs are visible (with overflow menu for less-used tabs)', async () => {
+    test('main tabs are visible (two-row layout on smaller screens)', async () => {
       const mainTabs = await page.$$('.tabs > .tab');
-      expect(mainTabs.length).toBeGreaterThanOrEqual(3);
+      expect(mainTabs.length).toBeGreaterThanOrEqual(7);
 
       const tabTexts = await page.$$eval('.tabs > .tab', (els) => {
         const texts: string[] = [];
@@ -229,9 +229,9 @@ describe('Settings UI', () => {
       expect(tabTexts).toContain('Modes');
       expect(tabTexts).toContain('Overview');
       expect(tabTexts).toContain('Budget');
-
-      const overflowToggle = await page.$('.tab-overflow-toggle');
-      expect(overflowToggle).toBeTruthy();
+      expect(tabTexts).toContain('Usage');
+      expect(tabTexts).toContain('Price');
+      expect(tabTexts).toContain('Advanced');
     });
 
     test('page has no significant horizontal overflow', async () => {
@@ -255,14 +255,11 @@ describe('Settings UI', () => {
       await setupPage({ viewport: { width: 320, height: 600 } });
     });
 
-    test('page content is contained (overflow menu handles extra tabs)', async () => {
+    test('page content is contained (tabs wrap without overflow)', async () => {
       const overflow = await page.evaluate(() => {
         return document.body.scrollWidth - document.documentElement.clientWidth;
       });
       expect(overflow).toBeLessThanOrEqual(10);
-
-      const overflowToggle = await page.$('.tab-overflow-toggle');
-      expect(overflowToggle).toBeTruthy();
     });
 
     test('tab bar wraps or remains usable', async () => {
@@ -270,6 +267,15 @@ describe('Settings UI', () => {
       const tabsBox = await tabsContainer?.boundingBox();
       expect(tabsBox).toBeTruthy();
       expect(tabsBox!.x).toBeGreaterThanOrEqual(0);
+      const rowCount = await page.evaluate(() => {
+        const tabs = Array.from(document.querySelectorAll('.tabs .tab'));
+        const tops = new Set<number>();
+        for (const tab of tabs) {
+          tops.add(Math.round(tab.getBoundingClientRect().top));
+        }
+        return tops.size;
+      });
+      expect(rowCount).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -552,13 +558,7 @@ describe('Settings UI', () => {
     });
 
     test('price status badge shows state when on price tab', async () => {
-      await page.click('.tab-overflow-toggle');
-      await sleep(50);
-      await page.evaluate(() => {
-        const menu = document.querySelector('.tab-overflow-menu');
-        if (menu) menu.removeAttribute('hidden');
-      });
-      await page.click('.tab-overflow-menu [data-tab="price"]');
+      await page.click('[data-tab="price"]');
       await sleep(50);
 
       const badge = await page.$('#price-status-badge');
@@ -806,13 +806,7 @@ describe('Settings UI', () => {
   describe('Price optimization section', () => {
     beforeAll(async () => {
       await setupPage({ viewport: { width: 480, height: 800 } });
-      await page.click('.tab-overflow-toggle');
-      await sleep(50);
-      await page.evaluate(() => {
-        const menu = document.querySelector('.tab-overflow-menu');
-        if (menu) menu.removeAttribute('hidden');
-      });
-      await page.click('.tab-overflow-menu [data-tab="price"]');
+      await page.click('[data-tab="price"]');
       await sleep(50);
     });
 

@@ -66,11 +66,6 @@ import { flushSettingsLogs, logSettingsError, logSettingsInfo, logSettingsWarn }
 import { initTooltips } from './tooltips';
 
 const showTab = (tabId: string) => {
-  const overflowMenu = document.querySelector('.tab-overflow-menu') as HTMLElement;
-  const overflowToggle = document.querySelector('.tab-overflow-toggle') as HTMLButtonElement;
-  if (overflowMenu) overflowMenu.hidden = true;
-  if (overflowToggle) overflowToggle.setAttribute('aria-expanded', 'false');
-
   tabs.forEach((tab) => {
     const isActive = tab.dataset.tab === tabId;
     tab.classList.toggle('active', isActive);
@@ -227,23 +222,6 @@ const refreshPowerData = async () => {
   const usage = await getPowerUsage();
   renderPowerUsage(usage);
   await renderPowerStats();
-};
-
-const initOverflowMenu = () => {
-  const overflowToggle = document.querySelector('.tab-overflow-toggle') as HTMLButtonElement;
-  const overflowMenu = document.querySelector('.tab-overflow-menu') as HTMLElement;
-  if (!overflowToggle || !overflowMenu) return;
-
-  overflowToggle.addEventListener('click', (event) => {
-    event.stopPropagation();
-    const isExpanded = overflowToggle.getAttribute('aria-expanded') === 'true';
-    overflowToggle.setAttribute('aria-expanded', String(!isExpanded));
-    overflowMenu.hidden = isExpanded;
-  });
-  document.addEventListener('click', () => {
-    overflowToggle.setAttribute('aria-expanded', 'false');
-    overflowMenu.hidden = true;
-  });
 };
 
 const initTabHandlers = () => {
@@ -495,7 +473,6 @@ export const boot = async () => {
     initRealtimeListeners();
     showTab('overview');
 
-    initOverflowMenu();
     initTabHandlers();
     initDeviceDetailHandlers();
     initModeHandlers();
