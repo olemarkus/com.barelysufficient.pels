@@ -152,6 +152,26 @@ describe('MyApp initialization', () => {
     expect(mockHomeyInstance.settings.get(DAILY_BUDGET_ENABLED)).toBe(false);
   });
 
+  it('set_daily_budget_kwh flow card skips rebuild when unchanged', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(DAILY_BUDGET_KWH, 40);
+    mockHomeyInstance.settings.set(DAILY_BUDGET_ENABLED, true);
+
+    const app = createApp();
+    await app.onInit();
+
+    const rebuildSpy = jest.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
+    const result = await setBudgetListener({ budget_kwh: 40 });
+    expect(result).toBe(true);
+    expect(rebuildSpy).not.toHaveBeenCalled();
+    rebuildSpy.mockRestore();
+  });
+
   it('set_daily_budget_kwh flow card rejects invalid values', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
