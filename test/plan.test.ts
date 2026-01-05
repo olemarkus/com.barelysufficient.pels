@@ -1715,10 +1715,10 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // With hysteresis: restoreHysteresis = max(0.2, marginKw * 2) = max(0.2, 0.4) = 0.4 kW
-    // High-pri device needs 1.5 + 0.4 = 1.9 kW
+    // With hysteresis: restoreBuffer = clamp(0.2..0.6, 1.5 * 0.1 + 0.1) = 0.25 kW
+    // High-pri device needs 1.5 + 0.25 = 1.75 kW
     // Soft limit = 4 kW, total = 3 kW, headroom = 1 kW
-    // Shedding low-pri (1.2 kW) gives us 1.0 + 1.2 = 2.2 kW >= 1.9 kW - enough!
+    // Shedding low-pri (1.2 kW) gives us 1.0 + 1.2 = 2.2 kW >= 1.75 kW - enough!
     (app as any).computeDynamicSoftLimit = () => 4;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 4);

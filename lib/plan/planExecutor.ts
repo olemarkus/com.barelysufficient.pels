@@ -11,6 +11,7 @@ import {
   SHED_COOLDOWN_MS,
 } from './planConstants';
 import { getShedCooldownState } from './planTiming';
+import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -217,10 +218,9 @@ export class PlanExecutor {
     const headroom = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
     const sheddingActive = this.capacityGuard?.isSheddingActive() === true;
     const inShortfall = this.capacityGuard?.isInShortfall() === true;
-    const restoreMargin = Math.max(0.1, this.capacitySettings.marginKw || 0);
-    const plannedPower = typeof dev.powerKw === 'number' && dev.powerKw > 0 ? dev.powerKw : 1;
-    const restoreHysteresis = Math.max(0.2, restoreMargin * 2);
-    const baseNeededForDevice = plannedPower + restoreHysteresis;
+    const plannedPower = estimateRestorePower(dev);
+    const restoreBuffer = computeRestoreBufferKw(plannedPower);
+    const baseNeededForDevice = plannedPower + restoreBuffer;
     const lastDeviceShed = this.state.lastDeviceShedMs[dev.id];
     const recentlyShed = Boolean(
       lastDeviceShed && Date.now() - lastDeviceShed < RECENT_SHED_RESTORE_BACKOFF_MS,

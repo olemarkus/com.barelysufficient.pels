@@ -69,6 +69,12 @@ export function buildInsufficientHeadroomUpdate(
   return { plannedState: 'shed', reason };
 }
 
+export function computeRestoreBufferKw(devPower: number): number {
+  const boundedPower = Math.max(0, devPower);
+  const scaled = boundedPower * 0.1 + 0.1;
+  return Math.max(0.2, Math.min(0.6, scaled));
+}
+
 export function estimateRestorePower(dev: DevicePlanDevice): number {
   if (typeof dev.expectedPowerKw === 'number') return dev.expectedPowerKw;
   if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
