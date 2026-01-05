@@ -18,7 +18,12 @@ import {
   cleanupStaleSwaps,
   exportSwapState,
 } from './planSwapState';
-import { buildInsufficientHeadroomUpdate, buildSwapCandidates, estimateRestorePower } from './planRestoreSwap';
+import {
+  buildInsufficientHeadroomUpdate,
+  buildSwapCandidates,
+  computeRestoreBufferKw,
+  estimateRestorePower,
+} from './planRestoreSwap';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -33,7 +38,6 @@ export type RestorePlanResult = {
   planDevices: DevicePlanDevice[];
   stateUpdates: RestorePlanState;
   restoredThisCycle: Set<string>;
-  restoreHysteresis: number;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   inCooldown: boolean;
@@ -60,7 +64,6 @@ export function applyRestorePlan(params: {
 
   const restoredThisCycle = new Set<string>();
   let availableHeadroom = context.headroomRaw !== null ? context.headroomRaw : 0;
-  const restoreHysteresis = Math.max(0.2, context.restoreMarginPlanning * 2);
   let restoredOneThisCycle = false;
 
   if (shouldPlanRestores(context.headroomRaw, sheddingActive, timing)) {
@@ -76,7 +79,6 @@ export function applyRestorePlan(params: {
         state,
         timing,
         availableHeadroom,
-        restoreHysteresis,
         restoredThisCycle,
         restoredOneThisCycle,
         deps,
@@ -92,7 +94,6 @@ export function applyRestorePlan(params: {
     planDevices: Array.from(deviceMap.values()),
     stateUpdates: exportSwapState(swapState),
     restoredThisCycle,
-    restoreHysteresis,
     availableHeadroom,
     restoredOneThisCycle,
     ...timing,
@@ -183,7 +184,6 @@ function planRestoreForDevice(params: {
     restoreCooldownSeconds: number;
   };
   availableHeadroom: number;
-  restoreHysteresis: number;
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
   deps: RestoreDeps;
@@ -196,7 +196,6 @@ function planRestoreForDevice(params: {
     state,
     timing,
     availableHeadroom,
-    restoreHysteresis,
     restoredThisCycle,
     restoredOneThisCycle,
     deps,
@@ -216,7 +215,7 @@ function planRestoreForDevice(params: {
   const pendingBlock = shouldBlockRestoreForPendingSwap(dev, deviceMap, swapState, deps.logDebug);
   if (pendingBlock) return { availableHeadroom, restoredOneThisCycle };
 
-  const restoreNeed = getRestoreNeed(dev, state, restoreHysteresis);
+  const restoreNeed = getRestoreNeed(dev, state);
   if (availableHeadroom >= restoreNeed.needed) {
     restoredThisCycle.add(dev.id);
     return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
@@ -300,10 +299,10 @@ function shouldBlockRestoreForPendingSwap(
 function getRestoreNeed(
   dev: DevicePlanDevice,
   state: PlanEngineState,
-  restoreHysteresis: number,
 ): { needed: number; devPower: number } {
   const devPower = estimateRestorePower(dev);
-  const baseNeeded = devPower + restoreHysteresis;
+  const restoreBuffer = computeRestoreBufferKw(devPower);
+  const baseNeeded = devPower + restoreBuffer;
   const lastDeviceShed = state.lastDeviceShedMs[dev.id];
   const recentlyShed = Boolean(
     lastDeviceShed && Date.now() - lastDeviceShed < RECENT_SHED_RESTORE_BACKOFF_MS,
