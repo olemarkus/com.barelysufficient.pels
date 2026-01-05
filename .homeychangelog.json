@@ -88,5 +88,8 @@
   },
   "1.7.4": {
     "en": "Added a new Flow action to set or disable the daily budget (kWh) so you can automate budget changes, and the settings UI now arranges tabs into two rows for better navigation."
+  },
+  "1.7.5": {
+    "en": "Minor bug fixes"
   }
 }
