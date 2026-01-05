@@ -1,6 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
-import { estimateRestorePower } from './planRestoreSwap';
+import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
 import { sortByPriorityAsc } from './planSort';
 
 export type ShedHoldParams = {
@@ -10,7 +10,6 @@ export type ShedHoldParams = {
   inShedWindow: boolean;
   inCooldown: boolean;
   activeOvershoot: boolean;
-  restoreHysteresis: number;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
@@ -31,7 +30,6 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     inShedWindow,
     inCooldown,
     activeOvershoot,
-    restoreHysteresis,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
@@ -54,7 +52,6 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       inShedWindow,
       inCooldown,
       activeOvershoot,
-      restoreHysteresis,
       availableHeadroom: headroom,
       restoredOneThisCycle: restoredOne,
       restoredThisCycle,
@@ -78,7 +75,6 @@ export function normalizeShedReasons(params: {
   shedReasons: Map<string, string>;
   guardInShortfall: boolean;
   headroomRaw: number | null;
-  restoreHysteresis: number;
   inCooldown: boolean;
   activeOvershoot: boolean;
   inRestoreCooldown: boolean;
@@ -90,7 +86,6 @@ export function normalizeShedReasons(params: {
     shedReasons,
     guardInShortfall,
     headroomRaw,
-    restoreHysteresis,
     inCooldown,
     activeOvershoot,
     inRestoreCooldown,
@@ -103,7 +98,6 @@ export function normalizeShedReasons(params: {
     shedReasons,
     guardInShortfall,
     headroomRaw,
-    restoreHysteresis,
     inCooldown,
     activeOvershoot,
     inRestoreCooldown,
@@ -157,7 +151,6 @@ function applyHoldToDevice(params: {
   inShedWindow: boolean;
   inCooldown: boolean;
   activeOvershoot: boolean;
-  restoreHysteresis: number;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
@@ -172,7 +165,6 @@ function applyHoldToDevice(params: {
     inShedWindow,
     inCooldown,
     activeOvershoot,
-    restoreHysteresis,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
@@ -191,8 +183,9 @@ function applyHoldToDevice(params: {
     && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan);
 
   if (!shouldHold && wasShedLastPlan) {
-    if (availableHeadroom < restoreHysteresis) {
-      const reason = `insufficient headroom (need ${restoreHysteresis.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`;
+    const restoreBuffer = computeRestoreBufferKw(estimateRestorePower(dev));
+    if (availableHeadroom < restoreBuffer) {
+      const reason = `insufficient headroom (need ${restoreBuffer.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`;
       return applyHoldUpdate(dev, behavior, reason, availableHeadroom, restoredOneThisCycle);
     }
     if (restoredOneThisCycle) {
@@ -201,7 +194,7 @@ function applyHoldToDevice(params: {
     restoredThisCycle.add(dev.id);
     return {
       device: dev,
-      availableHeadroom: availableHeadroom - restoreHysteresis,
+      availableHeadroom: availableHeadroom - restoreBuffer,
       restoredOneThisCycle: true,
     };
   }
@@ -219,7 +212,6 @@ function normalizeDeviceReason(params: {
   shedReasons: Map<string, string>;
   guardInShortfall: boolean;
   headroomRaw: number | null;
-  restoreHysteresis: number;
   inCooldown: boolean;
   activeOvershoot: boolean;
   inRestoreCooldown: boolean;
@@ -231,7 +223,6 @@ function normalizeDeviceReason(params: {
     shedReasons,
     guardInShortfall,
     headroomRaw,
-    restoreHysteresis,
     inCooldown,
     activeOvershoot,
     inRestoreCooldown,
@@ -249,7 +240,6 @@ function normalizeDeviceReason(params: {
     guardInShortfall,
     reasonFlags,
     headroomRaw,
-    restoreHysteresis,
   });
   if (shortfallReason) return { ...dev, reason: shortfallReason };
 
@@ -320,13 +310,13 @@ function maybeApplyShortfallReason(params: {
   guardInShortfall: boolean;
   reasonFlags: { isSwapReason: boolean; isBudgetReason: boolean; isShortfallReason: boolean };
   headroomRaw: number | null;
-  restoreHysteresis: number;
 }): string | null {
-  const { dev, guardInShortfall, reasonFlags, headroomRaw, restoreHysteresis } = params;
+  const { dev, guardInShortfall, reasonFlags, headroomRaw } = params;
   if (!guardInShortfall || reasonFlags.isSwapReason || reasonFlags.isBudgetReason) return null;
   if (dev.reason?.startsWith('shortfall (')) return null;
   const estimatedPower = estimateRestorePower(dev);
-  const estimatedNeed = estimatedPower + restoreHysteresis;
+  const restoreBuffer = computeRestoreBufferKw(estimatedPower);
+  const estimatedNeed = estimatedPower + restoreBuffer;
   return `shortfall (need ${estimatedNeed.toFixed(2)}kW, headroom ${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`;
 }
 

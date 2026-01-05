@@ -1,6 +1,7 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
+import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -46,8 +47,6 @@ export function buildInitialPlanDevices(params: {
 
     const withOffStateReason = applyOffStateReason({
       planDevice: base,
-      powerKw: dev.powerKw,
-      restoreMarginPlanning: context.restoreMarginPlanning,
       headroomRaw: context.headroomRaw,
       guardInShortfall,
     });
@@ -163,15 +162,15 @@ function resolveShedAction(
 
 function applyOffStateReason(params: {
   planDevice: DevicePlanDevice;
-  powerKw: number | undefined;
-  restoreMarginPlanning: number;
   headroomRaw: number | null;
   guardInShortfall: boolean;
 }): DevicePlanDevice {
-  const { planDevice, powerKw, restoreMarginPlanning, headroomRaw, guardInShortfall } = params;
+  const { planDevice, headroomRaw, guardInShortfall } = params;
   if (!planDevice.controllable) return planDevice;
   if (planDevice.plannedState === 'shed' || planDevice.currentState !== 'off') return planDevice;
-  const need = (powerKw && powerKw > 0 ? powerKw : 1) + restoreMarginPlanning;
+  const estimatedPower = estimateRestorePower(planDevice);
+  const restoreBuffer = computeRestoreBufferKw(estimatedPower);
+  const need = estimatedPower + restoreBuffer;
   if (guardInShortfall) {
     return {
       ...planDevice,
