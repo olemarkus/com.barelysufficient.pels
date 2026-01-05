@@ -1,4 +1,9 @@
-import { buildInsufficientHeadroomUpdate, buildSwapCandidates, estimateRestorePower } from '../lib/plan/planRestoreSwap';
+import {
+  buildInsufficientHeadroomUpdate,
+  buildSwapCandidates,
+  computeRestoreBufferKw,
+  estimateRestorePower,
+} from '../lib/plan/planRestoreSwap';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
 
@@ -84,5 +89,15 @@ describe('restore swap helpers', () => {
     expect(estimateRestorePower(baseDevice({ measuredPowerKw: 3, powerKw: 1 }))).toBe(3);
     expect(estimateRestorePower(baseDevice({ powerKw: 2 }))).toBe(2);
     expect(estimateRestorePower(baseDevice())).toBe(1);
+  });
+
+  it('computes restore buffer with bounds and scaling', () => {
+    expect(computeRestoreBufferKw(-2)).toBeCloseTo(0.2, 5);
+    expect(computeRestoreBufferKw(0)).toBeCloseTo(0.2, 5);
+    expect(computeRestoreBufferKw(1)).toBeCloseTo(0.2, 5);
+    expect(computeRestoreBufferKw(1.5)).toBeCloseTo(0.25, 5);
+    expect(computeRestoreBufferKw(3)).toBeCloseTo(0.4, 5);
+    expect(computeRestoreBufferKw(5)).toBeCloseTo(0.6, 5);
+    expect(computeRestoreBufferKw(10)).toBeCloseTo(0.6, 5);
   });
 });
