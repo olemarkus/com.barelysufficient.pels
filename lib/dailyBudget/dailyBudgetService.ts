@@ -133,6 +133,36 @@ export class DailyBudgetService {
     return this.snapshot;
   }
 
+  getPeriodicStatusLog(): string | null {
+    const nowMs = Date.now();
+    this.updateState({ nowMs, forcePlanRebuild: false });
+    const snapshot = this.snapshot;
+    if (!snapshot || !snapshot.budget.enabled) return null;
+    const plannedKWh = snapshot.buckets?.plannedKWh ?? [];
+    const currentIndex = snapshot.currentBucketIndex ?? 0;
+    const plannedNow = plannedKWh[currentIndex] ?? 0;
+    const actualNow = snapshot.buckets?.actualKWh?.[currentIndex];
+    const currentUsage = typeof actualNow === 'number' && Number.isFinite(actualNow) ? actualNow : 0;
+    const plannedRemaining = plannedKWh
+      .slice(currentIndex + 1)
+      .reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0)
+      + Math.max(0, plannedNow - currentUsage);
+    const originalBudget = snapshot.budget.dailyBudgetKWh;
+    const usedNow = snapshot.state.usedNowKWh;
+    const allowedNow = snapshot.state.allowedNowKWh;
+    const currentBudget = usedNow + plannedRemaining;
+    const remainingOriginal = originalBudget - usedNow;
+    const remainingNew = plannedRemaining;
+    return (
+      `Daily budget: original=${originalBudget.toFixed(2)}kWh, `
+      + `current=${currentBudget.toFixed(2)}kWh, `
+      + `actual=${usedNow.toFixed(2)}kWh, `
+      + `budgeted=${allowedNow.toFixed(2)}kWh, `
+      + `remaining(original)=${remainingOriginal.toFixed(2)}kWh, `
+      + `remaining(new)=${remainingNew.toFixed(2)}kWh`
+    );
+  }
+
   getUiPayload(): DailyBudgetUiPayload | null {
     const nowMs = Date.now();
     this.updateState({ nowMs, forcePlanRebuild: false });
