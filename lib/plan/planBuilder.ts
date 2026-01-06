@@ -137,6 +137,16 @@ export class PlanBuilder {
     });
     this.applySheddingUpdates(sheddingPlan);
 
+    const overshootActive = context.headroom !== null && context.headroom < 0;
+    const prevOvershoot = this.state.wasOvershoot;
+    if (overshootActive && !prevOvershoot && sheddingPlan.overshootStats) {
+      const { needed, candidates, totalSheddable } = sheddingPlan.overshootStats;
+      this.deps.logDebug(`Plan: overshoot=${needed.toFixed(2)}kW, candidates=${candidates}, totalSheddable=${totalSheddable.toFixed(2)}kW`);
+    } else if (!overshootActive && prevOvershoot) {
+      this.deps.logDebug('Plan: overshoot cleared');
+    }
+    this.state.wasOvershoot = overshootActive;
+
     let planDevices = buildInitialPlanDevices({
       context,
       state: this.state,

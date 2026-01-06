@@ -18,6 +18,7 @@ export type PlanEngineState = {
   restoreCooldownMs: number;
   lastRestoreCooldownBumpMs: number | null;
   hourlyBudgetExhausted: boolean;
+  wasOvershoot: boolean;
 };
 
 export function createPlanEngineState(): PlanEngineState {
@@ -39,5 +40,6 @@ export function createPlanEngineState(): PlanEngineState {
     restoreCooldownMs: RESTORE_COOLDOWN_MS,
     lastRestoreCooldownBumpMs: null,
     hourlyBudgetExhausted: false,
+    wasOvershoot: false,
   };
 }
