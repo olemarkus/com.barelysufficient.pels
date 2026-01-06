@@ -17,6 +17,11 @@ export type SheddingPlan = {
     lastOvershootMs?: number;
     lastShedPlanMeasurementTs?: number;
   };
+  overshootStats: {
+    needed: number;
+    candidates: number;
+    totalSheddable: number;
+  } | null;
 };
 
 export type SheddingDeps = {
@@ -43,7 +48,7 @@ export async function buildSheddingPlan(
   state: PlanEngineState,
   deps: SheddingDeps,
 ): Promise<SheddingPlan> {
-  const { shedSet, shedReasons, updates } = planShedding(context, state, deps);
+  const { shedSet, shedReasons, updates, overshootStats } = planShedding(context, state, deps);
   const guardResult = await updateGuardState({
     headroom: context.headroom,
     capacitySoftLimit: context.capacitySoftLimit,
@@ -60,6 +65,7 @@ export async function buildSheddingPlan(
     sheddingActive: guardResult.sheddingActive,
     guardInShortfall,
     updates,
+    overshootStats,
   };
 }
 
@@ -71,23 +77,28 @@ function planShedding(
   context: PlanContext,
   state: PlanEngineState,
   deps: SheddingDeps,
-): { shedSet: Set<string>; shedReasons: Map<string, string>; updates: { lastOvershootMs?: number; lastShedPlanMeasurementTs?: number } } {
+): {
+  shedSet: Set<string>;
+  shedReasons: Map<string, string>;
+  updates: { lastOvershootMs?: number; lastShedPlanMeasurementTs?: number };
+  overshootStats: SheddingPlan['overshootStats'];
+} {
   const shedSet = new Set<string>();
   const shedReasons = new Map<string, string>();
   if (!shouldPlanShedding(context.headroom)) {
-    return { shedSet, shedReasons, updates: {} };
+    return { shedSet, shedReasons, updates: {}, overshootStats: null };
   }
 
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const alreadyShedThisSample = measurementTs !== null && measurementTs === state.lastShedPlanMeasurementTs;
   if (alreadyShedThisSample) {
     deps.logDebug('Plan: skipping additional shedding until a new power measurement arrives');
-    return { shedSet, shedReasons, updates: {} };
+    return { shedSet, shedReasons, updates: {}, overshootStats: null };
   }
 
   // Type narrowing: headroom is guaranteed to be non-null here due to shouldPlanShedding check
   if (context.headroom === null) {
-    return { shedSet, shedReasons, updates: {} };
+    return { shedSet, shedReasons, updates: {}, overshootStats: null };
   }
   const needed = -context.headroom;
   deps.logDebug(
@@ -102,18 +113,29 @@ function planShedding(
     state,
     deps,
   });
-  const result = selectShedDevices(candidates, needed, shedReason, deps.log);
+  const result = selectShedDevices(candidates, needed, shedReason);
   result.shedSet.forEach((id) => shedSet.add(id));
   result.shedReasons.forEach((reason, id) => shedReasons.set(id, reason));
 
   if (shedSet.size === 0) {
-    return { shedSet, shedReasons, updates: {} };
+    return { shedSet, shedReasons, updates: {}, overshootStats: null };
   }
   const updates = {
     lastOvershootMs: Date.now(),
     ...(measurementTs !== null ? { lastShedPlanMeasurementTs: measurementTs } : {}),
   };
-  return { shedSet, shedReasons, updates };
+  const candidateCount = candidates.length;
+  const totalSheddable = candidates.reduce((sum, c) => sum + c.effectivePower, 0);
+  return {
+    shedSet,
+    shedReasons,
+    updates,
+    overshootStats: {
+      needed,
+      candidates: candidateCount,
+      totalSheddable,
+    },
+  };
 }
 
 function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
@@ -197,13 +219,10 @@ function selectShedDevices(
   candidates: ShedCandidate[],
   needed: number,
   reason: string,
-  log: (...args: unknown[]) => void,
 ): { shedSet: Set<string>; shedReasons: Map<string, string> } {
   const shedSet = new Set<string>();
   const shedReasons = new Map<string, string>();
   let remaining = needed;
-  const totalSheddable = candidates.reduce((sum, c) => sum + c.effectivePower, 0);
-  log(`Plan: overshoot=${needed.toFixed(2)}kW, candidates=${candidates.length}, totalSheddable=${totalSheddable.toFixed(2)}kW`);
   for (const candidate of candidates) {
     if (candidate.effectivePower <= 0) continue;
     if (remaining <= 0) break;
