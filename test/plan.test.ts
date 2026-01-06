@@ -189,6 +189,47 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.reason).toContain('shed');
   });
 
+  it('logs plan overshoot transitions', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 10 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 2;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+    }
+
+    (console.log as jest.Mock).mockClear();
+    await (app as any).recordPowerSample(5000);
+    const enterLogs = (console.log as jest.Mock).mock.calls
+      .map((call) => call[0])
+      .filter((msg) => msg === 'Capacity overshoot.');
+    expect(enterLogs.length).toBe(1);
+
+    (console.log as jest.Mock).mockClear();
+    await (app as any).recordPowerSample(5000);
+    const repeatEnterLogs = (console.log as jest.Mock).mock.calls
+      .map((call) => call[0])
+      .filter((msg) => msg === 'Capacity overshoot.');
+    expect(repeatEnterLogs.length).toBe(0);
+
+    (console.log as jest.Mock).mockClear();
+    await (app as any).recordPowerSample(0);
+    const clearedLogs = (console.log as jest.Mock).mock.calls
+      .map((call) => call[0])
+      .filter((msg) => msg === 'Recovered from capacity overshoot.');
+    expect(clearedLogs.length).toBe(1);
+  });
+
   it('uses concise reason when shedding to a minimum temperature', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 21);
