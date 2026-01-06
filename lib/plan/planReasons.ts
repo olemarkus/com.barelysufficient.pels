@@ -117,7 +117,10 @@ export function finalizePlanDevices(planDevices: DevicePlanDevice[]): {
 
 function shouldNormalizeReason(reason: string | undefined): boolean {
   if (!reason) return true;
-  return reason.startsWith('keep (') || reason.startsWith('restore (need') || reason.startsWith('set to ');
+  return reason === 'keep'
+    || reason.startsWith('keep (')
+    || reason.startsWith('restore (need')
+    || reason.startsWith('set to ');
 }
 
 function getBaseShedReason(
@@ -297,6 +300,7 @@ function buildBaseReason(
   shedReasons: Map<string, string>,
 ): string {
   const keepReason = dev.reason
+    && dev.reason !== 'keep'
     && !dev.reason.startsWith('keep (')
     && !dev.reason.startsWith('restore (need')
     && !dev.reason.startsWith('set to ')

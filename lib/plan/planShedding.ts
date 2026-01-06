@@ -28,7 +28,8 @@ export type SheddingDeps = {
   logDebug: (...args: unknown[]) => void;
 };
 
-type ShedCandidate = PlanInputDevice & { priority: number; effectivePower: number };
+type BaseShedCandidate = PlanInputDevice & { priority: number; effectivePower: number };
+type ShedCandidate = BaseShedCandidate & { recentlyRestored: boolean };
 
 type ShedCandidateParams = {
   devices: PlanInputDevice[];
@@ -121,9 +122,9 @@ function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
   return devices
     .filter((d) => d.controllable !== false && d.currentOn !== false)
     .map((d) => addCandidatePower(d, deps.getPriorityForDevice))
-    .filter((candidate): candidate is ShedCandidate => candidate !== null)
+    .filter((candidate): candidate is BaseShedCandidate => candidate !== null)
+    .map((candidate) => addRecentRestoreState(candidate, state, nowTs, needed, deps.logDebug))
     .filter((d) => isNotAtShedTemperature(d, deps.getShedBehavior))
-    .filter((d) => isNotRecentlyRestored(d, state, nowTs, needed, deps.logDebug))
     .sort(sortCandidates);
 }
 
@@ -144,7 +145,7 @@ function resolveCandidatePower(device: PlanInputDevice): number | null {
 function addCandidatePower(
   device: PlanInputDevice,
   getPriority: (deviceId: string) => number,
-): ShedCandidate | null {
+): BaseShedCandidate | null {
   const power = resolveCandidatePower(device);
   if (power === null) return null;
   const priority = getPriority(device.id);
@@ -161,31 +162,34 @@ function isNotAtShedTemperature(
   return !(typeof currentTarget === 'number' && currentTarget === shedBehavior.temperature);
 }
 
-function isNotRecentlyRestored(
-  device: ShedCandidate,
+function addRecentRestoreState(
+  device: BaseShedCandidate,
   state: PlanEngineState,
   nowTs: number,
   needed: number,
   logDebug: (...args: unknown[]) => void,
-): boolean {
+): ShedCandidate {
   const lastRestore = state.lastDeviceRestoreMs[device.id];
-  if (!lastRestore) return true;
+  if (!lastRestore) return { ...device, recentlyRestored: false };
   const sinceRestoreMs = nowTs - lastRestore;
   const recentlyRestored = sinceRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
   const overshootSevere = needed > RECENT_RESTORE_OVERSHOOT_BYPASS_KW;
   if (recentlyRestored && !overshootSevere) {
     logDebug(
-      `Plan: protecting ${device.name} from shedding (recently restored ${Math.round(sinceRestoreMs / 1000)}s ago, overshoot ${needed.toFixed(2)}kW)`,
+      `Plan: deprioritizing ${device.name} for shedding (recently restored ${Math.round(sinceRestoreMs / 1000)}s ago, overshoot ${needed.toFixed(2)}kW)`,
     );
-    return false;
+    return { ...device, recentlyRestored: true };
   }
-  return true;
+  return { ...device, recentlyRestored: false };
 }
 
 function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
   const pa = a.priority ?? 100;
   const pb = b.priority ?? 100;
   if (pa !== pb) return pb - pa; // Higher number sheds first
+  if (a.recentlyRestored !== b.recentlyRestored) {
+    return Number(a.recentlyRestored) - Number(b.recentlyRestored);
+  }
   return b.effectivePower - a.effectivePower;
 }
 
