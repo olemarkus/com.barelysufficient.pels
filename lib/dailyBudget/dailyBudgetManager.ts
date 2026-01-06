@@ -255,6 +255,7 @@ export class DailyBudgetManager {
       plannedKWh: existingPlan,
       dailyBudgetKWh,
       currentBucketIndex: context.currentBucketIndex,
+      currentBucketProgress: context.currentBucketProgress,
       usedNowKWh: context.usedNowKWh,
     });
     return {

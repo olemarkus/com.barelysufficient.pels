@@ -326,7 +326,7 @@ const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudge
   setDeviationVisibility(!isTomorrow);
   if (dailyBudgetDeviation && !isTomorrow) {
     dailyBudgetDeviation.textContent = formatSignedKWh(payload.state.deviationKWh);
-    setTooltip(dailyBudgetDeviation, 'Deviation = used minus allowed so far. Positive means over plan.');
+    setTooltip(dailyBudgetDeviation, 'Deviation = used minus allowed so far (time-weighted within the hour). Positive means over plan.');
   } else {
     setTooltip(dailyBudgetDeviation, null);
   }
