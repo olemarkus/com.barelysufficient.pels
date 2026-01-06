@@ -39,21 +39,15 @@ describe('buildSheddingPlan', () => {
     jest.useRealTimers();
   });
 
-  it('skips recently restored devices and those already at shed temperature', async () => {
+  it('deprioritizes recently restored devices when same-priority alternatives exist', async () => {
     const state = createPlanEngineState();
     state.lastDeviceRestoreMs['dev-recent'] = Date.now() - 60 * 1000;
 
     const devices = [
       buildDevice({
-        id: 'dev-expected',
-        name: 'Expected',
+        id: 'dev-nonrecent',
+        name: 'NonRecent',
         expectedPowerKw: 1.5,
-        currentOn: true,
-        controllable: true,
-      }),
-      buildDevice({
-        id: 'dev-default',
-        name: 'Default',
         currentOn: true,
         controllable: true,
       }),
@@ -100,17 +94,69 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null }
         ),
         getPriorityForDevice: (deviceId: string) => (
-          { 'dev-expected': 100, 'dev-default': 50, 'dev-recent': 90, 'dev-at-temp': 80 }[deviceId] ?? 100
+          { 'dev-nonrecent': 100, 'dev-recent': 100, 'dev-at-temp': 80 }[deviceId] ?? 100
         ),
         log: jest.fn(),
         logDebug: jest.fn(),
       },
     );
 
-    expect(result.shedReasons.get('dev-expected')).toBe('shed due to daily budget');
+    expect(result.shedReasons.get('dev-nonrecent')).toBe('shed due to daily budget');
     expect(result.shedSet.has('dev-recent')).toBe(false);
     expect(result.shedSet.has('dev-at-temp')).toBe(false);
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 0);
+  });
+
+  it('allows shedding recently restored devices when they are lower priority', async () => {
+    const state = createPlanEngineState();
+    state.lastDeviceRestoreMs['dev-low'] = Date.now() - 60 * 1000;
+
+    const devices = [
+      buildDevice({
+        id: 'dev-high',
+        name: 'High',
+        measuredPowerKw: 0.4,
+        currentOn: true,
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'dev-low',
+        name: 'Low',
+        measuredPowerKw: 0.6,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 5,
+        softLimit: 4.5,
+        capacitySoftLimit: 4.5,
+        headroomRaw: -0.5,
+        headroom: -0.5,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 789 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'dev-high' ? 1 : 3),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('dev-low')).toBe(true);
+    expect(result.shedSet.has('dev-high')).toBe(false);
   });
 
   it('allows recently restored devices when overshoot is severe', async () => {

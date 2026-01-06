@@ -1,3 +1,5 @@
+import { RESTORE_COOLDOWN_MS } from './planConstants';
+
 export type PlanEngineState = {
   lastDeviceShedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
@@ -13,6 +15,8 @@ export type PlanEngineState = {
   swappedOutFor: Record<string, string>;
   pendingSwapTargets: Set<string>;
   pendingSwapTimestamps: Record<string, number>;
+  restoreCooldownMs: number;
+  lastRestoreCooldownBumpMs: number | null;
   hourlyBudgetExhausted: boolean;
 };
 
@@ -32,6 +36,8 @@ export function createPlanEngineState(): PlanEngineState {
     swappedOutFor: {},
     pendingSwapTargets: new Set<string>(),
     pendingSwapTimestamps: {},
+    restoreCooldownMs: RESTORE_COOLDOWN_MS,
+    lastRestoreCooldownBumpMs: null,
     hourlyBudgetExhausted: false,
   };
 }

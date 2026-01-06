@@ -2,6 +2,7 @@ import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes'
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
+import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -20,7 +21,7 @@ export function buildInitialPlanDevices(params: {
   guardInShortfall: boolean;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
-  const { context, shedSet, shedReasons, guardInShortfall, deps } = params;
+  const { context, state, shedSet, shedReasons, guardInShortfall, deps } = params;
   return context.devices.map((dev) => {
     const priority = deps.getPriorityForDevice(dev.id);
     const plannedTarget = resolvePlannedTarget({
@@ -33,13 +34,14 @@ export function buildInitialPlanDevices(params: {
     const controllable = dev.controllable !== false;
     const shedBehavior = deps.getShedBehavior(dev.id);
 
-    const base = buildBasePlanDevice({
-      dev,
-      priority,
-      currentState,
-      currentTarget,
-      plannedTarget,
-      controllable,
+  const base = buildBasePlanDevice({
+    dev,
+    priority,
+    recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
+    currentState,
+    currentTarget,
+    plannedTarget,
+    controllable,
       shedBehavior,
       shedSet,
       shedReasons,
@@ -95,6 +97,7 @@ function resolveCurrentState(currentOn?: boolean): string {
 function buildBasePlanDevice(params: {
   dev: PlanInputDevice;
   priority: number;
+  recentlyRestored: boolean;
   currentState: string;
   currentTarget: unknown;
   plannedTarget: number | null;
@@ -106,6 +109,7 @@ function buildBasePlanDevice(params: {
   const {
     dev,
     priority,
+    recentlyRestored,
     currentState,
     currentTarget,
     plannedTarget,
@@ -117,7 +121,7 @@ function buildBasePlanDevice(params: {
 
   const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id));
   const baseReason = controllable
-    ? shedReasons.get(dev.id) || `keep (priority ${priority})`
+    ? shedReasons.get(dev.id) || (recentlyRestored ? 'keep (recently restored)' : 'keep')
     : 'capacity control off';
   const { shedAction, shedTemperature } = resolveShedAction(controllable, shedSet.has(dev.id), shedBehavior);
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
@@ -142,6 +146,11 @@ function buildBasePlanDevice(params: {
     shedAction,
     shedTemperature,
   };
+}
+
+function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
+  if (!lastRestoreMs) return false;
+  return Date.now() - lastRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
 }
 
 function resolvePlannedState(controllable: boolean, shouldShed: boolean): 'shed' | 'keep' {
