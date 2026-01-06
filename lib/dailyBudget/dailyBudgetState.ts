@@ -5,6 +5,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
 } from '../utils/dateUtils';
+import { clamp } from '../utils/mathUtils';
 import {
   buildAllowedCumKWh,
   buildWeightsFromPlan,
@@ -180,15 +181,11 @@ function resolveBucketProgress(params: {
   nextDayStartUtcMs: number;
 }): number {
   const { nowMs, bucketStartUtcMs, currentBucketIndex, nextDayStartUtcMs } = params;
+  if (bucketStartUtcMs.length === 0) return 0;
   const clampedIndex = Math.max(0, Math.min(currentBucketIndex, bucketStartUtcMs.length - 1));
-  const start = bucketStartUtcMs[clampedIndex] ?? nowMs;
+  const start = bucketStartUtcMs[clampedIndex];
   const end = bucketStartUtcMs[clampedIndex + 1] ?? nextDayStartUtcMs;
-  const span = Math.max(1, end - start);
-  return clamp((nowMs - start) / span, 0, 1);
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+  return clamp((nowMs - start) / Math.max(1, end - start), 0, 1);
 }
 
 export const buildDailyBudgetSnapshot = (params: {
