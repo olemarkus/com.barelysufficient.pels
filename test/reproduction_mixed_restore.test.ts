@@ -156,16 +156,30 @@ describe('Mixed Type Restoration Throttling', () => {
             expect(d1RestoredC2).toBe(false);
         }
 
-        // 4. After Cooldown (30s)
+        // 4. After Cooldown (60s)
         currentTime += 35000; // +35s (Total 40s from first restore)
         await (app as any).recordPowerSample(5000);
         plan = mockHomeyInstance.settings.get('device_plan_snapshot');
 
-        // Now both should be restored
+        // Still in restore cooldown (base 60s)
         const d1Cycles3 = plan.devices.find((d: any) => d.id === 'dev-1');
         const d2Cycles3 = plan.devices.find((d: any) => d.id === 'dev-2');
 
-        expect(d1Cycles3.plannedState).not.toBe('shed');
-        expect(d2Cycles3.plannedState).not.toBe('shed');
+        if (d1Restored) {
+            expect(d2Cycles3.plannedState).toBe('shed');
+        } else {
+            expect(d1Cycles3.plannedState).toBe('shed');
+        }
+
+        // 5. After restore cooldown window
+        currentTime += 90000; // +90s (Total 130s from first restore)
+        await (app as any).recordPowerSample(5000);
+        plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+
+        const d1Cycles4 = plan.devices.find((d: any) => d.id === 'dev-1');
+        const d2Cycles4 = plan.devices.find((d: any) => d.id === 'dev-2');
+
+        expect(d1Cycles4.plannedState).not.toBe('shed');
+        expect(d2Cycles4.plannedState).not.toBe('shed');
     });
 });
