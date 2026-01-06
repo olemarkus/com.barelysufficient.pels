@@ -29,7 +29,7 @@ describe('restore cooldown backoff', () => {
     jest.useRealTimers();
   });
 
-  it('backs off restore cooldown to 60, 120, 240, then caps at 300 seconds', () => {
+  it('backs off restore cooldown from 60 to 120, 240, then caps at 300 seconds', () => {
     const state = createPlanEngineState();
     let now = Date.UTC(2024, 0, 1, 0, 0, 0);
 
@@ -63,5 +63,49 @@ describe('restore cooldown backoff', () => {
     expect(step(60000)).toBe(240000);
     expect(step(60000)).toBe(300000);
     expect(step(60000)).toBe(300000);
+  });
+
+  it('resets restore cooldown to base after sustained stability', () => {
+    const state = createPlanEngineState();
+    let now = Date.UTC(2024, 0, 1, 0, 0, 0);
+
+    const deps = {
+      powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
+      log: jest.fn(),
+      logDebug: jest.fn(),
+    };
+
+    const triggerInstability = (): void => {
+      state.lastRestoreMs = now - 2 * 60 * 1000;
+      state.lastOvershootMs = now - 1000;
+    };
+
+    triggerInstability();
+    jest.setSystemTime(now);
+    let result = applyRestorePlan({
+      planDevices: [],
+      context: buildContext(),
+      state,
+      sheddingActive: false,
+      deps,
+    });
+
+    state.restoreCooldownMs = result.restoreCooldownMs;
+    state.lastRestoreCooldownBumpMs = result.lastRestoreCooldownBumpMs;
+    expect(result.restoreCooldownMs).toBe(120000);
+
+    now += 6 * 60 * 1000;
+    state.lastOvershootMs = now - 6 * 60 * 1000;
+    jest.setSystemTime(now);
+    result = applyRestorePlan({
+      planDevices: [],
+      context: buildContext(),
+      state,
+      sheddingActive: false,
+      deps,
+    });
+
+    expect(result.restoreCooldownMs).toBe(60000);
   });
 });
