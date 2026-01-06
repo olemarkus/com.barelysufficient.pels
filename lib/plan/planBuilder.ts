@@ -139,11 +139,12 @@ export class PlanBuilder {
 
     const overshootActive = context.headroom !== null && context.headroom < 0;
     const prevOvershoot = this.state.wasOvershoot;
-    if (overshootActive && !prevOvershoot && sheddingPlan.overshootStats) {
-      const { needed, candidates, totalSheddable } = sheddingPlan.overshootStats;
-      this.deps.logDebug(`Plan: overshoot=${needed.toFixed(2)}kW, candidates=${candidates}, totalSheddable=${totalSheddable.toFixed(2)}kW`);
-    } else if (!overshootActive && prevOvershoot) {
-      this.deps.logDebug('Plan: overshoot cleared');
+    if (overshootActive && !prevOvershoot) {
+      this.deps.log('Capacity overshoot.');
+      this.state.overshootLogged = true;
+    } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
+      this.deps.log('Recovered from capacity overshoot.');
+      this.state.overshootLogged = false;
     }
     this.state.wasOvershoot = overshootActive;
 
