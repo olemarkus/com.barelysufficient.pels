@@ -61,6 +61,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     bucketStartLocalLabels,
     bucketKeys,
     currentBucketIndex,
+    currentBucketProgress: 0,
     bucketUsage,
     usedNowKWh,
     currentBucketUsage: 0,

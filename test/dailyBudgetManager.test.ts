@@ -98,7 +98,7 @@ describe('daily budget planning', () => {
       priceOptimizationEnabled: false,
     });
     expect(update.snapshot.buckets.plannedKWh[0]).toBeCloseTo(5, 3);
-    expect(update.snapshot.state.allowedNowKWh).toBeCloseTo(5, 3);
+    expect(update.snapshot.state.allowedNowKWh).toBeCloseTo(2.5, 3);
   });
 
   it('caps planned buckets to the capacity budget per hour', () => {
@@ -343,7 +343,7 @@ describe('daily budget exceeded state', () => {
     expect(overUpdate.snapshot.state.frozen).toBe(true);
 
     const underUpdate = manager.update({
-      nowMs: dayStart + 60 * 60 * 1000 + 2 * 60 * 1000,
+      nowMs: dayStart + 60 * 60 * 1000 + 12 * 60 * 1000,
       timeZone: TZ,
       settings,
       powerTracker: { buckets: { [bucketKey]: 6, [nextBucketKey]: 0 } },

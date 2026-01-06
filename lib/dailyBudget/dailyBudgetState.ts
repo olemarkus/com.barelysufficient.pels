@@ -23,6 +23,7 @@ export type DayContext = {
   bucketStartLocalLabels: string[];
   bucketKeys: string[];
   currentBucketIndex: number;
+  currentBucketProgress: number;
   bucketUsage: number[];
   usedNowKWh: number;
   currentBucketUsage: number;
@@ -60,6 +61,12 @@ export const buildDayContext = (params: {
   });
   const { bucketKeys, bucketUsage } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
   const currentBucketIndex = resolveCurrentBucketIndex(dayStartUtcMs, bucketStartUtcMs.length, nowMs);
+  const currentBucketProgress = resolveBucketProgress({
+    nowMs,
+    bucketStartUtcMs,
+    currentBucketIndex,
+    nextDayStartUtcMs,
+  });
   const usedNowKWh = sumArray(bucketUsage);
   const currentBucketUsage = bucketUsage[currentBucketIndex] ?? 0;
 
@@ -72,6 +79,7 @@ export const buildDayContext = (params: {
     bucketStartLocalLabels,
     bucketKeys,
     currentBucketIndex,
+    currentBucketProgress,
     bucketUsage,
     usedNowKWh,
     currentBucketUsage,
@@ -93,6 +101,7 @@ export const computePlanDeviation = (params: {
   plannedKWh: number[];
   dailyBudgetKWh: number;
   currentBucketIndex: number;
+  currentBucketProgress: number;
   usedNowKWh: number;
 }): { allowedCumKWh: number[]; allowedNowKWh: number; deviationKWh: number } => {
   const {
@@ -100,10 +109,13 @@ export const computePlanDeviation = (params: {
     plannedKWh,
     dailyBudgetKWh,
     currentBucketIndex,
+    currentBucketProgress,
     usedNowKWh,
   } = params;
   const allowedCumKWh = buildAllowedCumKWh(plannedKWh, dailyBudgetKWh);
-  const allowedNowKWh = enabled ? allowedCumKWh[currentBucketIndex] ?? 0 : 0;
+  const allowedNowKWh = enabled
+    ? interpolateAllowedNowKWh(allowedCumKWh, currentBucketIndex, currentBucketProgress)
+    : 0;
   const deviationKWh = enabled ? usedNowKWh - allowedNowKWh : 0;
   return { allowedCumKWh, allowedNowKWh, deviationKWh };
 };
@@ -128,6 +140,7 @@ export const computeBudgetState = (params: {
     plannedKWh,
     dailyBudgetKWh,
     currentBucketIndex: context.currentBucketIndex,
+    currentBucketProgress: context.currentBucketProgress,
     usedNowKWh: context.usedNowKWh,
   });
   const remainingKWh = enabled ? dailyBudgetKWh - context.usedNowKWh : 0;
@@ -144,6 +157,39 @@ export const computeBudgetState = (params: {
     confidence,
   };
 };
+
+function interpolateAllowedNowKWh(
+  allowedCumKWh: number[],
+  currentBucketIndex: number,
+  currentBucketProgress: number,
+): number {
+  if (currentBucketIndex <= 0) {
+    const first = allowedCumKWh[0] ?? 0;
+    return first * clamp(currentBucketProgress, 0, 1);
+  }
+  const prev = allowedCumKWh[currentBucketIndex - 1] ?? 0;
+  const current = allowedCumKWh[currentBucketIndex] ?? prev;
+  const progress = clamp(currentBucketProgress, 0, 1);
+  return prev + (current - prev) * progress;
+}
+
+function resolveBucketProgress(params: {
+  nowMs: number;
+  bucketStartUtcMs: number[];
+  currentBucketIndex: number;
+  nextDayStartUtcMs: number;
+}): number {
+  const { nowMs, bucketStartUtcMs, currentBucketIndex, nextDayStartUtcMs } = params;
+  const clampedIndex = Math.max(0, Math.min(currentBucketIndex, bucketStartUtcMs.length - 1));
+  const start = bucketStartUtcMs[clampedIndex] ?? nowMs;
+  const end = bucketStartUtcMs[clampedIndex + 1] ?? nextDayStartUtcMs;
+  const span = Math.max(1, end - start);
+  return clamp((nowMs - start) / span, 0, 1);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 export const buildDailyBudgetSnapshot = (params: {
   context: DayContext;
