@@ -91,5 +91,8 @@
   },
   "1.7.5": {
     "en": "Minor bug fixes"
+  },
+  "1.7.6": {
+    "en": "PELS now reduces restore flapping by adding an exponential restore cooldown backoff (up to 5 minutes) after instability, improves shedding order so lower‑priority devices shed first even if higher‑priority devices were recently restored, makes daily budget deviation time‑weighted within the hour for more accurate “allowed so far” reporting, and simplifies device status messaging to show “keep” without priority while noting when a device was recently restored."
   }
 }
