@@ -203,7 +203,7 @@ export const refreshNettleie = async () => {
   try {
     await getNettleieData();
   } catch (error) {
-    await logSettingsError('Failed to load nettleie', error, 'refreshNettleie');
+    await logSettingsError('Failed to load grid tariff data', error, 'refreshNettleie');
   }
 };
 

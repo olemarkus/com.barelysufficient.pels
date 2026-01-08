@@ -122,7 +122,7 @@ describe('createSettingsHandler', () => {
 
     await handler('refresh_nettleie');
 
-    expect(deps.errorLog).toHaveBeenCalledWith('Failed to refresh nettleie data', expect.any(Error));
+    expect(deps.errorLog).toHaveBeenCalledWith('Failed to refresh grid tariff data', expect.any(Error));
   });
 
   it('routes settings UI log entries by level', async () => {

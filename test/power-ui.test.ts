@@ -29,6 +29,7 @@ const installHomeyClient = (tracker: unknown, timeZone = 'UTC') => {
     },
     set: (_key, _value, cb) => cb(null),
     on: () => { },
+    __: (key) => key,
     clock: {
       getTimezone: () => timeZone,
     },

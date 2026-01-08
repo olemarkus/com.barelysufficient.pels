@@ -72,7 +72,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       try {
         await deps.priceService.refreshNettleieData(true);
       } catch (error) {
-        deps.errorLog('Failed to refresh nettleie data', error);
+        deps.errorLog('Failed to refresh grid tariff data', error);
       }
     },
     refresh_spot_prices: async () => {

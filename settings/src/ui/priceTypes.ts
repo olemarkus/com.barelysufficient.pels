@@ -3,6 +3,10 @@ export type PriceEntry = {
   total: number;
   spotPrice?: number;
   nettleie?: number;
+  providerSurcharge?: number;
+  forbruksavgift?: number;
+  enovaAvgift?: number;
+  stromstotte?: number;
   isCheap?: boolean;
   isExpensive?: boolean;
 };

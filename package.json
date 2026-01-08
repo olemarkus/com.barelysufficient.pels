@@ -7,8 +7,8 @@
   "scripts": {
     "build": "tsc && npm run build:tokens && npm run build:settings",
     "build:tokens": "style-dictionary build --config style-dictionary.config.mjs",
-    "build:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --minify",
-    "watch:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
+    "build:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --minify --main-fields=browser,main,module",
+    "watch:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch --main-fields=browser,main,module",
     "start": "npm run build:settings && homey app run",
     "install-app": "npm run build:settings && homey app install",
     "lint": "eslint .",

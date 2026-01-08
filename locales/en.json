@@ -33,5 +33,15 @@
     "pels_devices_off": {
       "title": "Devices shed"
     }
+  },
+  "price_components": {
+    "spot": "Spot price",
+    "nettleie": "Grid tariff",
+    "surcharge": "Provider markup",
+    "tax": "Electricity tax",
+    "enova": "Enova fee",
+    "support": "Gov. support",
+    "fallback_label": "Surcharge (Tax/Fee - Support)",
+    "total": "Total"
   }
 }

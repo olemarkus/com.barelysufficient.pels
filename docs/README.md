@@ -1,6 +1,6 @@
 # PELS - User Guide
 
-**PELS** (Pris- og Effektstyrt Energilagringssystem) is a Homey app that helps you optimize energy usage in your home. It manages when your largest energy consumers run, keeping you within power limits and taking advantage of cheaper electricity prices (currently Norwegian prices only).
+**PELS** (Price and Energy Load Shifting) is a Homey app that helps you optimize energy usage in your home. It manages when your largest energy consumers run, keeping you within power limits and taking advantage of cheaper electricity prices (currently Norwegian prices only).
 
 For the short Homey App Store description, see `README.txt` in the repository root.
 
@@ -38,8 +38,9 @@ Inspired by the Sparegris (Piggy Bank) Homey app.
 - **Multiple Modes** – Define different modes (Home, Away, Night, etc.) with their own temperature targets and device priorities
 - **Smart Load Shedding** – Intelligently selects which devices to turn off based on priority, and can swap lower-priority devices for higher-priority ones
 - **Automatic Recovery** – Restores devices when headroom becomes available
-- **Norwegian Grid Tariffs** – Fetches real-time grid tariffs (nettleie) from NVE
+- **Norwegian Grid Tariffs** – Fetches real-time grid tariffs from NVE
 - **Spot Prices** – Integrates with hvakosterstrommen.no for electricity spot prices
+- **Tax & Support Calculation** – Automatically adds consumption tax and the Enova fee, and deducts electricity support based on current rules
 
 ---
 
@@ -221,13 +222,13 @@ Shows power consumption per hour for the last 30 days, derived from reported pow
 
 Configure electricity price sources and price-based optimization.
 
-#### Grid Tariff Settings (Nettleie)
+#### Grid Tariff Settings
 
 | Setting | Description |
 |---------|-------------|
-| **County (Fylke)** | Your Norwegian county |
+| **County** | Your Norwegian county |
 | **Grid company** | Your local grid company (nettselskap) |
-| **Tariff group** | Husholdning (household) or Hytter (cabin) |
+| **Tariff group** | Household or cabin/holiday home |
 
 #### Spot Price Settings
 
@@ -237,6 +238,8 @@ Configure electricity price sources and price-based optimization.
 | **Provider surcharge** | Your provider's markup on spot price (øre/kWh) |
 | **Price threshold (%)** | Hours below/above this % from average are marked cheap/expensive (default: 25%) |
 | **Minimum price difference** | Skip optimization if savings are less than this (øre/kWh). Avoids discomfort for minimal savings. |
+
+> **Note:** displayed prices include all taxes (VAT, consumption tax, Enova fee) and deduct electricity support.
 
 #### Price Optimization
 
@@ -327,7 +330,7 @@ The device shows:
 
 1. Fetches spot prices from hvakosterstrommen.no
 2. Fetches grid tariffs from NVE
-3. Calculates total cost per hour (spot + nettleie + provider surcharge)
+3. Calculates total cost per hour (spot + grid tariff + provider surcharge)
 4. Marks hours as "cheap" or "expensive" based on your threshold
 5. Applies temperature deltas to devices during those hours
 

@@ -107,7 +107,7 @@ export class PriceCoordinator {
         this.deps.error('Failed to refresh spot prices', error);
       });
       this.priceService.refreshNettleieData().catch((error: Error) => {
-        this.deps.error('Failed to refresh nettleie data', error);
+        this.deps.error('Failed to refresh grid tariff data', error);
       });
     }, refreshIntervalMs);
   }

@@ -12,6 +12,7 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 - [Shedding Order](#shedding-order)
 - [Restoration Order](#restoration-order)
 - [Power Estimation](#power-estimation)
+- [Price Calculation Logic](#price-calculation-logic)
 - [Power Usage Data Retention](#power-usage-data-retention)
 - [Assumptions and Limitations](#assumptions-and-limitations)
 
@@ -31,7 +32,7 @@ Without this permission, PELS would not be able to see or control any devices. T
 
 ## Capacity Budget Model (Hourly)
 
-PELS uses an **hourly energy budget** model based on the Norwegian grid tariff system ("effektbasert nettleie"). Your capacity limit (e.g., 10 kW) represents the maximum average power you want to consume over any single hour. This is the **hard cap** – exceeding it triggers grid penalties.
+PELS uses an **hourly energy budget** model based on the Norwegian capacity-based grid tariff system. Your capacity limit (e.g., 10 kW) represents the maximum average power you want to consume over any single hour. This is the **hard cap** – exceeding it triggers grid penalties.
 
 ### Hard Cap vs Soft Limit
 
@@ -161,7 +162,43 @@ This estimation is inherently imperfect, which is why PELS:
 
 For shedding decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
 
+
 ---
+
+## Price Calculation Logic
+
+PELS calculates the **real consumer price** by combining multiple components. The `totalPrice` displayed and used for optimization is calculated as:
+
+```
+Total Price = (Spot Price + Grid Tariff + Provider Surcharge + Taxes) - Electricity Support
+```
+
+### 1. Spot Price
+- Fetched from `hvakosterstrommen.no`
+- Base spot price from API is ex. VAT, but the stored `total`/`totalPrice` used for optimization includes VAT.
+
+### 2. Grid Tariff
+- Fetched from NVE API
+- Includes `energiledd` (Energy component)
+
+### 3. Taxes (Government Fees)
+- **VAT (value-added tax)**: 25% on spot + grid tariff + other taxes. 0% (VAT exempt) for NO4 zone. Note: Only certain areas of NO4 (Nord-Troms and Finnmark) are technically exempt, but this implementation applies the exemption to the entire NO4 zone for simplicity.
+- **Consumption tax (electricity tax)**: Statutory consumption tax.
+  - 2026: Standard flat rate of 4.18 øre/kWh. Source: [Regjeringen.no](https://www.regjeringen.no/no/tema/energi/regjeringens-stromtiltak/id2900232/)
+  - **Note**: This rate is applied to ALL price areas (including NO4) by default. Users in exempt/reduced rate areas (e.g. Finnmark/Nord-Troms) must manually subtract this using the "Spot Price Adjustment" setting.
+- **Enova fee**: Contribution to Energy Fund.
+  - 2026: 1.0 øre/kWh
+
+### 4. Electricity Support (Government Support)
+- Calculated hourly based on the raw spot price (ex. VAT)
+- Formula (2026): 90% coverage of spot price above 77 øre/kWh (ex. VAT)
+- Deducted directly from the total price
+
+### 5. Provider Surcharge
+- Configurable constant added to cover electricity supplier margins
+
+This ensures the price you see matches your actual bill as closely as possible.
+
 
 ## Power Usage Data Retention
 
@@ -218,4 +255,4 @@ PELS controls devices through Homey's local API. Cloud-only devices may have add
 
 ## Future Work / TODOs
 
-- Pricing strategies: current implementation assumes Norwegian spot + nettleie model. Introduce a pluggable price strategy interface (e.g., `PriceStrategy` with inputs for spot, tariffs, provider surcharges, taxes/VAT) so non-NO regions can drop in their own calculators without touching control logic. Keep aggregation/token outputs stable while swapping strategies.
+- Pricing strategies: current implementation assumes Norwegian spot + grid tariff model. Introduce a pluggable price strategy interface (e.g., `PriceStrategy` with inputs for spot, tariffs, provider surcharges, taxes/VAT) so non-NO regions can drop in their own calculators without touching control logic. Keep aggregation/token outputs stable while swapping strategies.

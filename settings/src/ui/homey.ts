@@ -17,6 +17,7 @@ export type HomeySettingsClient = {
   i18n?: {
     getTimezone?: () => string;
   };
+  __: (key: string, tokens?: Record<string, string | number>) => string;
 };
 
 // Homey global injected by runtime.

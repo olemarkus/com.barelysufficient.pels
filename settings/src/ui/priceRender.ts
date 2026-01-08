@@ -1,6 +1,6 @@
 import { priceList, priceEmpty, priceStatusBadge } from './dom';
 import { getTimeAgo } from './utils';
-import { getHomeyTimezone } from './homey';
+import { getHomeyTimezone, getHomeyClient } from './homey';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { createDeviceRow } from './components';
 import {
@@ -9,6 +9,8 @@ import {
   getDateKeyInTimeZone,
   getHourStartInTimeZone,
 } from './timezone';
+
+const t = (key: string) => getHomeyClient()?.__?.(key) ?? key;
 
 const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   if (!priceStatusBadge) return;
@@ -252,18 +254,29 @@ const formatPriceTimeLabel = (entryTime: Date, timeContext: PriceTimeContext) =>
 const buildPriceTooltip = (entry: PriceEntry) => {
   const tooltipLines: string[] = [];
   if (typeof entry.spotPrice === 'number') {
-    tooltipLines.push(`Spot: ${entry.spotPrice.toFixed(1)} øre`);
+    tooltipLines.push(`${t('price_components.spot')}: ${entry.spotPrice.toFixed(1)} øre`);
   }
   if (typeof entry.nettleie === 'number') {
-    tooltipLines.push(`Nettleie: ${entry.nettleie.toFixed(1)} øre`);
+    tooltipLines.push(`${t('price_components.nettleie')}: ${entry.nettleie.toFixed(1)} øre`);
   }
-  if (typeof entry.spotPrice === 'number') {
+
+  // Detailed breakdown if available
+  const hasDetails = typeof entry.providerSurcharge !== 'undefined';
+
+  if (hasDetails) {
+    if (entry.providerSurcharge) tooltipLines.push(`${t('price_components.surcharge')}: ${entry.providerSurcharge.toFixed(1)} øre`);
+    if (entry.forbruksavgift) tooltipLines.push(`${t('price_components.tax')}: ${entry.forbruksavgift.toFixed(1)} øre`);
+    if (entry.enovaAvgift) tooltipLines.push(`${t('price_components.enova')}: ${entry.enovaAvgift.toFixed(1)} øre`);
+    if (entry.stromstotte) tooltipLines.push(`${t('price_components.support')}: -${entry.stromstotte.toFixed(1)} øre`);
+  } else if (typeof entry.spotPrice === 'number') {
+    // Fallback for older data
     const surcharge = entry.total - entry.spotPrice - (entry.nettleie ?? 0);
     if (Math.abs(surcharge) >= 0.05) {
-      tooltipLines.push(`Surcharge: ${surcharge.toFixed(1)} øre`);
+      tooltipLines.push(`${t('price_components.fallback_label')}: ${surcharge.toFixed(1)} øre`);
     }
   }
-  tooltipLines.push(`Total: ${entry.total.toFixed(1)} øre/kWh`);
+
+  tooltipLines.push(`${t('price_components.total')}: ${entry.total.toFixed(1)} øre/kWh`);
   return tooltipLines.join('\n');
 };
 

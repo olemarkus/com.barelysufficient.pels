@@ -1,11 +1,16 @@
 import Homey from 'homey';
-import { httpsGetJson } from '../utils/httpClient';
+import { fetchSpotPricesForDate } from './priceFetcher';
+import { calculateNorwegianTaxes, getVatMultiplier } from './norwegianTaxes';
+import { getDateKeyInTimeZone, getHourStartInTimeZone } from '../utils/dateUtils';
 
 export type CombinedHourlyPrice = {
   startsAt: string;
   spotPrice: number;
-  nettleie: number;
+  gridRent: number;
   providerSurcharge: number;
+  consumptionTax: number;
+  enovaFee: number;
+  subsidy: number;
   totalPrice: number;
 };
 
@@ -60,8 +65,16 @@ export default class PriceService {
       }
     }
 
-    const todayPrices = await this.fetchSpotPricesForDate(today, priceArea);
-    const tomorrowPrices = await this.fetchSpotPricesForDate(this.addDays(today, 1), priceArea);
+    const todayPrices = await fetchSpotPricesForDate(today, priceArea, {
+      log: this.log,
+      debug: this.logDebug,
+      error: this.errorLog,
+    });
+    const tomorrowPrices = await fetchSpotPricesForDate(this.addDays(today, 1), priceArea, {
+      log: this.log,
+      debug: this.logDebug,
+      error: this.errorLog,
+    });
     const allPrices = [...todayPrices, ...tomorrowPrices];
     if (allPrices.length === 0) {
       this.log('Spot prices: No price data available');
@@ -76,7 +89,7 @@ export default class PriceService {
   async refreshNettleieData(forceRefresh = false): Promise<void> {
     const settings = this.getNettleieSettings();
     if (!settings.orgnr) {
-      this.log('Nettleie: No organization number configured, skipping fetch');
+      this.log('Grid tariff: No organization number configured, skipping fetch');
       return;
     }
     const requestSettings: { fylke: string; orgnr: string; tariffgruppe: string } = {
@@ -86,7 +99,7 @@ export default class PriceService {
     };
 
     const todayDate = new Date();
-    const today = this.formatDateInHomeyTimezone(todayDate);
+    const today = getDateKeyInTimeZone(todayDate, this.homey.clock.getTimezone());
     if (!forceRefresh && this.shouldUseNettleieCache(today)) {
       return;
     }
@@ -99,7 +112,7 @@ export default class PriceService {
     }
 
     for (const fallback of this.buildNettleieFallbackDates(todayDate)) {
-      const fallbackDate = this.formatDateInHomeyTimezone(fallback.date);
+      const fallbackDate = getDateKeyInTimeZone(fallback.date, this.homey.clock.getTimezone());
       if (attempts.some((attempt) => attempt.date === fallbackDate)) {
         continue;
       }
@@ -111,7 +124,7 @@ export default class PriceService {
       }
     }
 
-    this.errorLog?.('Nettleie: Keeping cached tariff data (NVE returned empty list)', {
+    this.errorLog?.('Grid tariff: Keeping cached tariff data (NVE returned empty list)', {
       attempts,
       fylke: requestSettings.fylke,
       orgnr: requestSettings.orgnr,
@@ -147,7 +160,7 @@ export default class PriceService {
 
   private storeNettleieData(data: Array<Record<string, unknown>>, logContext: string): void {
     this.homey.settings.set('nettleie_data', data);
-    this.log(`Nettleie: Stored ${data.length} hourly tariff entries${logContext}`);
+    this.log(`Grid tariff: Stored ${data.length} hourly tariff entries${logContext}`);
     this.updateCombinedPrices();
   }
 
@@ -162,13 +175,13 @@ export default class PriceService {
       orgnr: settings.orgnr,
       tariffgruppe: settings.tariffgruppe,
     });
-    this.log(`Nettleie: Fetching grid tariffs from NVE API for ${date}, fylke=${settings.fylke}, org=${settings.orgnr}`);
+    this.log(`Grid tariff: Fetching NVE tariffs for ${date}, county=${settings.fylke}, org=${settings.orgnr}`);
     const nettleieData = await this.fetchNettleieData(url);
     if (!nettleieData) return null;
     const normalized = this.normalizeNettleieData(nettleieData);
     if (normalized.length === 0) {
       this.errorLog?.(
-        'Nettleie: NVE API returned 0 hourly tariff entries',
+        'Grid tariff: NVE API returned 0 hourly tariff entries',
         { date, fylke: settings.fylke, orgnr: settings.orgnr, tariffgruppe: settings.tariffgruppe },
       );
       return null;
@@ -201,7 +214,11 @@ export default class PriceService {
         startsAt: p.startsAt,
         total: p.totalPrice,
         spotPrice: p.spotPrice,
-        nettleie: p.nettleie,
+        gridRent: p.gridRent,
+        providerSurcharge: p.providerSurcharge,
+        consumptionTax: p.consumptionTax,
+        enovaFee: p.enovaFee,
+        subsidy: p.subsidy,
         isCheap: p.totalPrice <= lowThreshold && meetsMinDiff,
         isExpensive: p.totalPrice >= highThreshold && meetsMinDiff,
       };
@@ -224,27 +241,47 @@ export default class PriceService {
     const spotPrices = this.getSettingValue('electricity_prices');
     const nettleieData = this.getSettingValue('nettleie_data');
     const providerSurcharge = this.getNumberSetting('provider_surcharge', 0);
-    const spotList = Array.isArray(spotPrices) ? spotPrices as Array<{ startsAt: string; total: number }> : [];
-    const nettleieList = Array.isArray(nettleieData) ? nettleieData as Array<{ time: string; energileddInk: number }> : [];
+    const priceArea = this.getPriceArea();
+    const spotList = Array.isArray(spotPrices)
+      ? spotPrices as Array<{ startsAt: string; total: number; totalExVat?: number }> // 'total' includes VAT
+      : [];
+    const nettleieList = Array.isArray(nettleieData) ? nettleieData as Array<{ time: string; energyFeeIncVat: number }> : [];
 
     const nettleieByHour = new Map<number, number>();
     for (const entry of nettleieList) {
       const hour = typeof entry.time === 'number' ? entry.time : parseInt(entry.time, 10);
-      if (!Number.isNaN(hour) && typeof entry.energileddInk === 'number') {
-        nettleieByHour.set(hour, entry.energileddInk);
+      if (!Number.isNaN(hour) && typeof entry.energyFeeIncVat === 'number') {
+        nettleieByHour.set(hour, entry.energyFeeIncVat);
       }
     }
 
     return spotList.map((spot) => {
       const date = new Date(spot.startsAt);
       const hour = date.getHours();
-      const nettleie = nettleieByHour.get(hour) || 0;
+      const gridRent = nettleieByHour.get(hour) || 0;
+
+      // Calculate spot price ex. VAT for subsidy calculation
+      const vatMultiplier = getVatMultiplier(priceArea);
+      const spotPriceExVat = spot.totalExVat ?? spot.total / vatMultiplier;
+
+      const taxes = calculateNorwegianTaxes({
+        spotPriceExVat,
+        priceArea,
+      });
+
+      // Total = spot (inc VAT) + gridRent + surcharge + taxes - subsidy
+      const totalPrice = spot.total + gridRent + providerSurcharge
+        + taxes.consumptionTax + taxes.enovaFee - taxes.subsidy;
+
       return {
         startsAt: spot.startsAt,
         spotPrice: spot.total,
-        nettleie,
+        gridRent,
         providerSurcharge,
-        totalPrice: spot.total + nettleie + providerSurcharge,
+        consumptionTax: taxes.consumptionTax,
+        enovaFee: taxes.enovaFee,
+        subsidy: taxes.subsidy,
+        totalPrice,
       };
     }).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
   }
@@ -279,7 +316,15 @@ export default class PriceService {
     const prices = this.getCombinedHourlyPrices();
     const current = this.getCurrentHourPrice(prices);
     if (!current) return 'price unknown';
-    return `${current.totalPrice.toFixed(1)} øre/kWh (spot ${current.spotPrice.toFixed(1)} + nettleie ${current.nettleie.toFixed(1)})`;
+
+    let breakdown = `spot ${current.spotPrice.toFixed(1)} + grid rent ${current.gridRent.toFixed(1)}`;
+    if (current.consumptionTax > 0) {
+      breakdown += ` + tax ${current.consumptionTax.toFixed(1)}`;
+    }
+    if (current.subsidy > 0) {
+      breakdown += ` - subsidy ${current.subsidy.toFixed(1)}`;
+    }
+    return `${current.totalPrice.toFixed(1)} øre/kWh (${breakdown})`;
   }
 
   private getPriceArea(): string {
@@ -339,11 +384,11 @@ export default class PriceService {
   }
 
   private shouldUseNettleieCache(today: string): boolean {
-    const existingData = this.getSettingValue('nettleie_data') as Array<{ datoId?: string }> | null;
+    const existingData = this.getSettingValue('nettleie_data') as Array<{ dateId?: string }> | null;
     if (existingData && Array.isArray(existingData) && existingData.length > 0) {
       const firstEntry = existingData[0];
-      if (firstEntry?.datoId?.startsWith(today)) {
-        this.logDebug(`Nettleie: Using cached data for ${today} (${existingData.length} entries)`);
+      if (firstEntry?.dateId?.startsWith(today)) {
+        this.logDebug(`Grid tariff: Using cached data for ${today} (${existingData.length} entries)`);
         this.updateCombinedPrices();
         return true;
       }
@@ -379,12 +424,12 @@ export default class PriceService {
       }
       const data = await response.json() as unknown;
       if (!Array.isArray(data)) {
-        this.errorLog?.('Nettleie: Unexpected response format from NVE API');
+        this.errorLog?.('Grid tariff: Unexpected response format from NVE API');
         return null;
       }
       return data as Array<Record<string, unknown>>;
     } catch (error) {
-      this.errorLog?.('Nettleie: Failed to fetch grid tariffs from NVE API', error);
+      this.errorLog?.('Grid tariff: Failed to fetch NVE tariffs', error);
       return null;
     }
   }
@@ -392,11 +437,11 @@ export default class PriceService {
   private normalizeNettleieData(data: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
     return data.map((entry) => ({
       time: entry.time,
-      energileddEks: entry.energileddEks,
-      energileddInk: entry.energileddInk,
-      fastleddEks: entry.fastleddEks,
-      fastleddInk: entry.fastleddInk,
-      datoId: entry.datoId,
+      energyFeeExVat: entry.energileddEks,
+      energyFeeIncVat: entry.energileddInk,
+      fixedFeeExVat: entry.fastleddEks,
+      fixedFeeIncVat: entry.fastleddInk,
+      dateId: entry.datoId,
     }));
   }
 
@@ -438,98 +483,11 @@ export default class PriceService {
     return currentPrice.totalPrice >= thresholds.high && diffFromAvg >= thresholds.minDiff;
   }
 
-  private async fetchSpotPricesForDate(date: Date, priceArea: string): Promise<Array<{ startsAt: string; total: number; currency: string }>> {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
 
-    const url = `https://www.hvakosterstrommen.no/api/v1/prices/${year}/${month}-${day}_${priceArea}.json`;
-
-    this.logDebug(`Spot prices: Fetching from ${url}`);
-
-    try {
-      const data = await httpsGetJson(url, { log: this.log });
-
-      if (!Array.isArray(data)) {
-        this.errorLog?.('Spot prices: Unexpected response format');
-        return [];
-      }
-
-      const vatMultiplier = priceArea === 'NO4' ? 1.0 : 1.25;
-
-      return data.map((entry: Record<string, unknown>) => ({
-        startsAt: entry.time_start as string,
-        total: (entry.NOK_per_kWh as number) * 100 * vatMultiplier,
-        currency: 'NOK',
-      }));
-    } catch (error: unknown) {
-      if ((error as { statusCode?: number })?.statusCode === 404) {
-        this.logDebug(`Spot prices: No data for ${year}-${month}-${day} (not yet available)`);
-        return [];
-      }
-      this.errorLog?.(`Spot prices: Failed to fetch prices for ${year}-${month}-${day}`, error);
-      return [];
-    }
-  }
-
-  private formatDateInHomeyTimezone(date: Date): string {
-    const timezone = this.homey.clock.getTimezone();
-    try {
-      const formatter = new Intl.DateTimeFormat('sv-SE', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      });
-      return formatter.format(date);
-    } catch {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-  }
 
   getCurrentHourStartMs(): number {
     const current = this.getCurrentHourPrice(this.getCombinedHourlyPrices());
     if (current) return new Date(current.startsAt).getTime();
-    return this.getHourStartInHomeyTimezone(new Date());
-  }
-
-  private getHourStartInHomeyTimezone(date: Date): number {
-    const timezone = this.homey.clock.getTimezone();
-    try {
-      const formatter = new Intl.DateTimeFormat('sv-SE', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
-      const parts = formatter.formatToParts(date);
-      const getPart = (type: Intl.DateTimeFormatPartTypes) => {
-        const part = parts.find((entry) => entry.type === type);
-        return part ? part.value : '';
-      };
-      const year = Number(getPart('year'));
-      const month = Number(getPart('month'));
-      const day = Number(getPart('day'));
-      const hour = Number(getPart('hour'));
-      const minute = Number(getPart('minute'));
-      const second = Number(getPart('second'));
-      if ([year, month, day, hour, minute, second].some((value) => !Number.isFinite(value))) {
-        throw new Error('Invalid date parts');
-      }
-      const utcCandidate = Date.UTC(year, month - 1, day, hour, minute, second);
-      const offsetMs = utcCandidate - date.getTime();
-      return Date.UTC(year, month - 1, day, hour, 0, 0, 0) - offsetMs;
-    } catch {
-      const fallback = new Date(date);
-      fallback.setMinutes(0, 0, 0);
-      return fallback.getTime();
-    }
+    return getHourStartInTimeZone(new Date(), this.homey.clock.getTimezone());
   }
 }
