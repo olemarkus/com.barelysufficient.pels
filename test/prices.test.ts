@@ -6,6 +6,10 @@ import {
   MockDriver,
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
+import {
+  ELECTRICITY_SUPPORT_COVERAGE,
+  ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT,
+} from '../lib/price/priceComponents';
 
 // Mock the https module
 jest.mock('https', () => ({
@@ -60,7 +64,7 @@ const subtractMonths = (date: Date, months: number): Date => {
   return target;
 };
 
-const buildExpectedNettleieDates = (baseDate: Date): {
+const buildExpectedGridTariffDates = (baseDate: Date): {
   today: string;
   yesterday: string;
   week: string;
@@ -118,7 +122,7 @@ const mockHvakosterStrommenResponse = [
   },
 ];
 
-const mockNveNettleieResponse = [
+const mockNveGridTariffResponse = [
   {
     datoId: '2025-12-01T00:00:00',
     time: 0,
@@ -255,13 +259,13 @@ describe('Spot price fetching', () => {
     expect(Array.isArray(prices)).toBe(true);
     expect(prices.length).toBeGreaterThan(0);
 
-    // Check price transformation (NOK/kWh to øre/kWh with 25% VAT for NO1)
+    // Check price transformation (NOK/kWh to øre/kWh, ex VAT)
     const firstPrice = prices[0];
     expect(firstPrice).toHaveProperty('startsAt');
-    expect(firstPrice).toHaveProperty('total');
+    expect(firstPrice).toHaveProperty('spotPriceExVat');
     expect(firstPrice).toHaveProperty('currency', 'NOK');
-    // 0.35 NOK/kWh * 100 * 1.25 = 43.75 øre/kWh
-    expect(firstPrice.total).toBeCloseTo(43.75, 1);
+    // 0.35 NOK/kWh * 100 = 35 øre/kWh
+    expect(firstPrice.spotPriceExVat).toBeCloseTo(35, 1);
   });
 
   it('emits prices_updated realtime event when prices are refreshed', async () => {
@@ -303,7 +307,7 @@ describe('Spot price fetching', () => {
     expect(Array.isArray(lastPriceEvent.data.prices)).toBe(true);
   });
 
-  it('does not apply VAT for NO4 (Nord-Norge)', async () => {
+  it('uses VAT exemption for NO4 (Nord-Norge)', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -328,9 +332,12 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
     await flushPromises();
 
-    const prices = mockHomeyInstance.settings.get('electricity_prices');
-    // 0.35 NOK/kWh * 100 = 35 øre/kWh (no VAT)
-    expect(prices[0].total).toBeCloseTo(35, 1);
+    const combined = mockHomeyInstance.settings.get('combined_prices') as { prices?: Array<{ vatMultiplier?: number; vatAmount?: number; total?: number; totalExVat?: number }> } | null;
+    expect(combined?.prices?.length).toBeGreaterThan(0);
+    const firstPrice = combined?.prices?.[0];
+    expect(firstPrice?.vatMultiplier).toBe(1);
+    expect(firstPrice?.vatAmount).toBeCloseTo(0, 5);
+    expect(firstPrice?.total).toBeCloseTo(firstPrice?.totalExVat ?? 0, 5);
   });
 
   it('handles 404 response gracefully (prices not yet available)', async () => {
@@ -449,7 +456,7 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.set('electricity_prices_area', 'NO1');
     mockHomeyInstance.settings.set('electricity_prices', [{
       startsAt: `${todayStr}T00:00:00.000Z`,
-      total: 40,
+      spotPriceExVat: 40,
       currency: 'NOK',
     }]);
     mockHomeyInstance.settings.set('price_area', 'NO2');
@@ -494,7 +501,7 @@ describe('Spot price fetching', () => {
     // Pre-populate with only today's prices (no tomorrow)
     const todayPrices = mockHvakosterStrommenResponse.map((p) => ({
       startsAt: p.time_start.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
-      total: p.NOK_per_kWh * 100 * 1.25,
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
     mockHomeyInstance.settings.set('electricity_prices', todayPrices);
@@ -561,12 +568,12 @@ describe('Spot price fetching', () => {
     // Pre-populate with today's AND tomorrow's prices
     const todayPrices = mockHvakosterStrommenResponse.map((p) => ({
       startsAt: p.time_start.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
-      total: p.NOK_per_kWh * 100 * 1.25,
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
     const tomorrowPrices = mockHvakosterStrommenResponse.map((p) => ({
       startsAt: p.time_start.replace(/\d{4}-\d{2}-\d{2}/, tomorrowStr),
-      total: p.NOK_per_kWh * 100 * 1.25,
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
     mockHomeyInstance.settings.set('electricity_prices', [...todayPrices, ...tomorrowPrices]);
@@ -628,7 +635,7 @@ describe('Spot price fetching', () => {
     // Pre-populate with only today's prices (no tomorrow)
     const todayPrices = mockHvakosterStrommenResponse.map((p) => ({
       startsAt: p.time_start.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
-      total: p.NOK_per_kWh * 100 * 1.25,
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
     mockHomeyInstance.settings.set('electricity_prices', todayPrices);
@@ -677,7 +684,7 @@ describe('Spot price fetching', () => {
   });
 });
 
-describe('Nettleie (grid tariff) fetching', () => {
+describe('Grid tariff fetching', () => {
   let originalFetch: typeof global.fetch;
 
   beforeEach(() => {
@@ -690,7 +697,7 @@ describe('Nettleie (grid tariff) fetching', () => {
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     jest.clearAllTimers();
 
-    // Mock global fetch for nettleie (uses fetch, not https)
+    // Mock global fetch for grid tariffs (uses fetch, not https)
     originalFetch = global.fetch;
     global.fetch = jest.fn();
   });
@@ -701,13 +708,13 @@ describe('Nettleie (grid tariff) fetching', () => {
     global.fetch = originalFetch;
   });
 
-  it('fetches and stores nettleie data from NVE API', async () => {
+  it('fetches and stores grid tariff data from NVE API', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    // Configure nettleie settings
+    // Configure grid tariff settings
     mockHomeyInstance.settings.set('nettleie_fylke', '03');
     mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
@@ -715,29 +722,29 @@ describe('Nettleie (grid tariff) fetching', () => {
     // Mock fetch response
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
-      json: async () => mockNveNettleieResponse,
+      json: async () => mockNveGridTariffResponse,
     });
 
     const app = createApp();
     await app.onInit();
 
-    // Trigger nettleie refresh
+    // Trigger grid tariff refresh
     mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
     await flushPromises();
 
-    // Check that nettleie data was stored
-    const nettleieData = mockHomeyInstance.settings.get('nettleie_data');
-    expect(Array.isArray(nettleieData)).toBe(true);
-    expect(nettleieData.length).toBe(3);
+    // Check that grid tariff data was stored
+    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
+    expect(Array.isArray(gridTariffData)).toBe(true);
+    expect(gridTariffData.length).toBe(3);
 
     // Check data structure
-    const firstEntry = nettleieData[0];
+    const firstEntry = gridTariffData[0];
     expect(firstEntry).toHaveProperty('time', 0);
-    expect(firstEntry).toHaveProperty('energileddEks', 19.12);
-    expect(firstEntry).toHaveProperty('energileddInk', 35.79);
-    expect(firstEntry).toHaveProperty('fastleddEks', 244.0);
-    expect(firstEntry).toHaveProperty('fastleddInk', 305.0);
-    expect(firstEntry).toHaveProperty('datoId');
+    expect(firstEntry).toHaveProperty('energyFeeExVat', 19.12);
+    expect(firstEntry).toHaveProperty('energyFeeIncVat', 35.79);
+    expect(firstEntry).toHaveProperty('fixedFeeExVat', 244.0);
+    expect(firstEntry).toHaveProperty('fixedFeeIncVat', 305.0);
+    expect(firstEntry).toHaveProperty('dateKey');
   });
 
   it('skips fetch when organization number is not configured', async () => {
@@ -746,10 +753,10 @@ describe('Nettleie (grid tariff) fetching', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    // Only set fylke, no orgnr
+    // Only set county, no organization number
     mockHomeyInstance.settings.set('nettleie_fylke', '03');
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
-    // No nettleie_orgnr set
+    // No organization number set
 
     const app = createApp();
     await app.onInit();
@@ -792,8 +799,8 @@ describe('Nettleie (grid tariff) fetching', () => {
     }
 
     // No data stored due to error
-    const nettleieData = mockHomeyInstance.settings.get('nettleie_data');
-    expect(nettleieData).toBeUndefined();
+    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
+    expect(gridTariffData).toBeUndefined();
   });
 
   it('uses correct URL format with encoded parameters', async () => {
@@ -858,12 +865,12 @@ describe('Nettleie (grid tariff) fetching', () => {
     global.Date = MockDate;
 
     try {
-      const { today, yesterday, week } = buildExpectedNettleieDates(now);
+      const { today, yesterday, week } = buildExpectedGridTariffDates(now);
       const requestedDates: string[] = [];
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
         const date = new URL(url).searchParams.get('ValgtDato') ?? '';
         requestedDates.push(date);
-        const payload = date === week ? mockNveNettleieResponse : [];
+        const payload = date === week ? mockNveGridTariffResponse : [];
         return Promise.resolve({
           ok: true,
           json: async () => payload,
@@ -879,15 +886,15 @@ describe('Nettleie (grid tariff) fetching', () => {
       await flushPromises();
 
       expect(requestedDates).toEqual([today, yesterday, week]);
-      const nettleieData = mockHomeyInstance.settings.get('nettleie_data');
-      expect(Array.isArray(nettleieData)).toBe(true);
-      expect(nettleieData.length).toBe(mockNveNettleieResponse.length);
+      const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
+      expect(Array.isArray(gridTariffData)).toBe(true);
+      expect(gridTariffData.length).toBe(mockNveGridTariffResponse.length);
     } finally {
       global.Date = originalDate;
     }
   });
 
-  it('logs when all nettleie fallback attempts are empty', async () => {
+  it('logs when all grid tariff fallback attempts are empty', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -918,7 +925,7 @@ describe('Nettleie (grid tariff) fetching', () => {
     const { setAllowConsoleError } = require('./setup');
     setAllowConsoleError(true);
     try {
-      const { today, yesterday, week, month } = buildExpectedNettleieDates(now);
+      const { today, yesterday, week, month } = buildExpectedGridTariffDates(now);
       const requestedDates: string[] = [];
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
         const date = new URL(url).searchParams.get('ValgtDato') ?? '';
@@ -970,8 +977,8 @@ describe('Price data structures', () => {
     expect(typeof entry.time_start).toBe('string');
   });
 
-  it('NVE nettleie response has expected fields', () => {
-    const entry = mockNveNettleieResponse[0];
+  it('NVE grid tariff response has expected fields', () => {
+    const entry = mockNveGridTariffResponse[0];
     expect(entry).toHaveProperty('datoId');
     expect(entry).toHaveProperty('time');
     expect(entry).toHaveProperty('tariffgruppe');
@@ -1018,26 +1025,19 @@ describe('Price optimization', () => {
     return prices;
   };
 
-  // Generate nettleie data for 24 hours
-  const generateMockNettleieFor24Hours = () => {
+  // Generate grid tariff data for 24 hours
+  const generateMockGridTariffFor24Hours = () => {
     const data: any[] = [];
     for (let hour = 0; hour < 24; hour++) {
       // Day rate (6-22) vs night rate (22-6)
       const isNight = hour < 6 || hour >= 22;
       data.push({
-        datoId: '2025-12-01T00:00:00',
+        dateKey: '2025-12-01T00:00:00',
         time: hour,
-        tariffgruppe: 'Husholdning',
-        konsesjonar: 'ELVIA AS',
-        organisasjonsnr: '980489698',
-        fylkeNr: '03',
-        fylke: 'Oslo',
-        harMva: true,
-        harForbruksavgift: true,
-        fastleddEks: 244.0,
-        energileddEks: isNight ? 15.0 : 25.0,
-        fastleddInk: 305.0,
-        energileddInk: isNight ? 20.0 : 35.0,
+        fixedFeeExVat: 244.0,
+        energyFeeExVat: isNight ? 15.0 : 25.0,
+        fixedFeeIncVat: 305.0,
+        energyFeeIncVat: isNight ? 20.0 : 35.0,
       });
     }
     return data;
@@ -1064,7 +1064,7 @@ describe('Price optimization', () => {
     global.fetch = originalFetch;
   });
 
-  it('combines spot prices and nettleie correctly for total cost', async () => {
+  it('combines spot prices and grid tariffs correctly for total cost', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     waterHeater.setCapabilityValue('target_temperature', 55);
     waterHeater.setCapabilityValue('onoff', true);
@@ -1077,13 +1077,13 @@ describe('Price optimization', () => {
     now.setMinutes(0, 0, 0);
     const spotPrices = generateMockPricesFor24Hours(now).map((p) => ({
       startsAt: p.time_start,
-      total: p.NOK_per_kWh * 100 * 1.25, // Already converted to øre with VAT
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
-    const nettleieData = generateMockNettleieFor24Hours();
+    const gridTariffData = generateMockGridTariffFor24Hours();
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-    mockHomeyInstance.settings.set('nettleie_data', nettleieData);
+    mockHomeyInstance.settings.set('nettleie_data', gridTariffData);
 
     // Mock https for the refresh that happens on init
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
@@ -1102,13 +1102,154 @@ describe('Price optimization', () => {
     expect(Array.isArray(combinedPrices)).toBe(true);
     expect(combinedPrices.length).toBeGreaterThan(0);
 
-    // Each combined price should have spot + nettleie
+    // Each combined price should include all components
     const firstPrice = combinedPrices[0];
     expect(firstPrice).toHaveProperty('startsAt');
-    expect(firstPrice).toHaveProperty('spotPrice');
-    expect(firstPrice).toHaveProperty('nettleie');
+    expect(firstPrice).toHaveProperty('spotPriceExVat');
+    expect(firstPrice).toHaveProperty('gridTariffExVat');
+    expect(firstPrice).toHaveProperty('providerSurchargeExVat');
+    expect(firstPrice).toHaveProperty('consumptionTaxExVat');
+    expect(firstPrice).toHaveProperty('enovaFeeExVat');
+    expect(firstPrice).toHaveProperty('vatMultiplier');
+    expect(firstPrice).toHaveProperty('vatAmount');
+    expect(firstPrice).toHaveProperty('electricitySupport');
+    expect(firstPrice).toHaveProperty('totalExVat');
     expect(firstPrice).toHaveProperty('totalPrice');
-    expect(firstPrice.totalPrice).toBe(firstPrice.spotPrice + firstPrice.nettleie);
+    expect(firstPrice.totalExVat).toBeCloseTo(
+      firstPrice.spotPriceExVat
+        + firstPrice.gridTariffExVat
+        + firstPrice.providerSurchargeExVat
+        + firstPrice.consumptionTaxExVat
+        + firstPrice.enovaFeeExVat,
+      5,
+    );
+    expect(firstPrice.totalPrice).toBeCloseTo(
+      firstPrice.totalExVat * firstPrice.vatMultiplier - firstPrice.electricitySupport,
+      5,
+    );
+  });
+
+  it('treats provider surcharge as VAT-inclusive in settings', async () => {
+    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [waterHeater]),
+    });
+
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    const spotPrices = [{
+      startsAt: now.toISOString(),
+      spotPriceExVat: 100,
+      currency: 'NOK',
+    }];
+
+    mockHomeyInstance.settings.set('price_area', 'NO1');
+    mockHomeyInstance.settings.set('electricity_prices_area', 'NO1');
+    mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+    mockHomeyInstance.settings.set('nettleie_data', []);
+    mockHomeyInstance.settings.set('provider_surcharge', 12.5);
+
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      const response = createMockHttpsResponse(200, []);
+      callback(response);
+      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+    });
+
+    const app = createApp();
+    await app.onInit();
+    await flushPromises();
+
+    const [firstPrice] = app['getCombinedHourlyPrices']();
+    expect(firstPrice.providerSurchargeExVat).toBeCloseTo(10, 5);
+  });
+
+  it('applies electricity support when spot price exceeds the threshold', async () => {
+    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [waterHeater]),
+    });
+
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    const spotPriceExVat = ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT + 20;
+    const spotPrices = [{
+      startsAt: now.toISOString(),
+      spotPriceExVat,
+      currency: 'NOK',
+    }];
+
+    mockHomeyInstance.settings.set('price_area', 'NO1');
+    mockHomeyInstance.settings.set('electricity_prices_area', 'NO1');
+    mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+    mockHomeyInstance.settings.set('nettleie_data', []);
+
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      const response = createMockHttpsResponse(200, []);
+      callback(response);
+      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+    });
+
+    const app = createApp();
+    await app.onInit();
+    await flushPromises();
+
+    const [firstPrice] = app['getCombinedHourlyPrices']();
+    const expectedSupportExVat = (spotPriceExVat - ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT) * ELECTRICITY_SUPPORT_COVERAGE;
+    expect(firstPrice.electricitySupportExVat).toBeCloseTo(expectedSupportExVat, 5);
+    expect(firstPrice.electricitySupport).toBeCloseTo(expectedSupportExVat * firstPrice.vatMultiplier, 5);
+    expect(firstPrice.totalPrice).toBeCloseTo(
+      firstPrice.totalExVat * firstPrice.vatMultiplier - firstPrice.electricitySupport,
+      5,
+    );
+  });
+
+  it('matches the price breakdown example for a high-price hour in NO1', async () => {
+    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [waterHeater]),
+    });
+
+    const vatMultiplier = 1.25;
+    const spotPriceIncVat = 200;
+    const gridTariffIncVat = 35;
+    const spotPriceExVat = spotPriceIncVat / vatMultiplier;
+    const gridTariffExVat = gridTariffIncVat / vatMultiplier;
+
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    mockHomeyInstance.settings.set('price_area', 'NO1');
+    mockHomeyInstance.settings.set('nettleie_fylke', '03');
+    mockHomeyInstance.settings.set('electricity_prices_area', 'NO1');
+    mockHomeyInstance.settings.set('provider_surcharge', 0);
+    mockHomeyInstance.settings.set('electricity_prices', [
+      { startsAt: now.toISOString(), spotPriceExVat, currency: 'NOK' },
+      { startsAt: tomorrow.toISOString(), spotPriceExVat, currency: 'NOK' },
+    ]);
+    mockHomeyInstance.settings.set('nettleie_data', [{
+      dateKey: now.toISOString().split('T')[0],
+      time: now.getHours(),
+      energyFeeExVat: gridTariffExVat,
+    }]);
+
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
+      callback(response);
+      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+    });
+
+    const app = createApp();
+    await app.onInit();
+    await flushPromises();
+
+    const [firstPrice] = app['getCombinedHourlyPrices']();
+    expect(firstPrice.spotPriceExVat).toBeCloseTo(160, 5);
+    expect(firstPrice.gridTariffExVat).toBeCloseTo(28, 5);
+    expect(firstPrice.consumptionTaxExVat * firstPrice.vatMultiplier).toBeCloseTo(8.91, 2);
+    expect(firstPrice.electricitySupport).toBeCloseTo(93.38, 2);
+    expect(firstPrice.totalPrice).toBeCloseTo(151.79, 2);
   });
 
   it('finds the cheapest hours correctly', async () => {
@@ -1147,13 +1288,13 @@ describe('Price optimization', () => {
     const rawPrices = generate24HoursFromNow();
     const spotPrices = rawPrices.map((p) => ({
       startsAt: p.time_start,
-      total: p.NOK_per_kWh * 100 * 1.25, // Already converted to øre with VAT
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
-    const nettleieData = generateMockNettleieFor24Hours();
+    const gridTariffData = generateMockGridTariffFor24Hours();
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-    mockHomeyInstance.settings.set('nettleie_data', nettleieData);
+    mockHomeyInstance.settings.set('nettleie_data', gridTariffData);
 
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, rawPrices);
@@ -1199,13 +1340,13 @@ describe('Price optimization', () => {
 
     const spotPrices = generateMockPricesFor24Hours(new Date(now.getFullYear(), now.getMonth(), now.getDate())).map((p) => ({
       startsAt: p.time_start,
-      total: p.NOK_per_kWh * 100 * 1.25,
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
-    const nettleieData = generateMockNettleieFor24Hours();
+    const gridTariffData = generateMockGridTariffFor24Hours();
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-    mockHomeyInstance.settings.set('nettleie_data', nettleieData);
+    mockHomeyInstance.settings.set('nettleie_data', gridTariffData);
 
     // Configure price optimization for the water heater with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
@@ -1248,13 +1389,13 @@ describe('Price optimization', () => {
 
     const spotPrices = generateMockPricesFor24Hours(new Date(now.getFullYear(), now.getMonth(), now.getDate())).map((p) => ({
       startsAt: p.time_start,
-      total: p.NOK_per_kWh * 100 * 1.25,
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
-    const nettleieData = generateMockNettleieFor24Hours();
+    const gridTariffData = generateMockGridTariffFor24Hours();
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-    mockHomeyInstance.settings.set('nettleie_data', nettleieData);
+    mockHomeyInstance.settings.set('nettleie_data', gridTariffData);
 
     // Configure price optimization with delta-based settings
     mockHomeyInstance.settings.set('price_optimization_settings', {
@@ -1290,12 +1431,12 @@ describe('Price optimization', () => {
     const now = new Date();
     const spotPrices = generateMockPricesFor24Hours(now).map((p) => ({
       startsAt: p.time_start,
-      total: p.NOK_per_kWh * 100 * 1.25,
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-    mockHomeyInstance.settings.set('nettleie_data', generateMockNettleieFor24Hours());
+    mockHomeyInstance.settings.set('nettleie_data', generateMockGridTariffFor24Hours());
 
     // Configure price optimization but DISABLED
     mockHomeyInstance.settings.set('price_optimization_settings', {
@@ -1404,10 +1545,10 @@ describe('Price optimization', () => {
     for (let hour = 0; hour < 24; hour++) {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
-      const total = hour === 3 ? 20 : 50; // Hour 3 is cheap
+      const spotPriceExVat = hour === 3 ? 20 : 50; // Hour 3 is cheap
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat,
         currency: 'NOK',
       });
     }
@@ -1488,12 +1629,12 @@ describe('Price optimization', () => {
     now.setMinutes(0, 0, 0);
     const spotPrices = generateMockPricesFor24Hours(now).map((p) => ({
       startsAt: p.time_start,
-      total: p.NOK_per_kWh * 100 * 1.25,
+      spotPriceExVat: p.NOK_per_kWh * 100,
       currency: 'NOK',
     }));
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
-    mockHomeyInstance.settings.set('nettleie_data', generateMockNettleieFor24Hours());
+    mockHomeyInstance.settings.set('nettleie_data', generateMockGridTariffFor24Hours());
 
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesFor24Hours(now));
@@ -1511,7 +1652,7 @@ describe('Price optimization', () => {
     expect(typeof priceInfo).toBe('string');
     expect(priceInfo).toContain('øre/kWh');
     expect(priceInfo).toContain('spot');
-    expect(priceInfo).toContain('nettleie');
+    expect(priceInfo).toContain('grid tariff');
   });
 
   it('plan shows cheapDelta applied during cheap hours', async () => {
@@ -1534,15 +1675,15 @@ describe('Price optimization', () => {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
       // Hour 3 is cheap (20), others normal (50)
-      const total = hour === 3 ? 20 : 50;
+      const spotPriceExVat = hour === 3 ? 20 : 50;
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat,
         currency: 'NOK',
       });
     }
 
-    // No nettleie to keep prices simple
+    // No grid tariff to keep prices simple
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
@@ -1634,10 +1775,10 @@ describe('Price optimization', () => {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
       // Hour 8 is expensive (80), others normal (50)
-      const total = hour === 8 ? 80 : 50;
+      const spotPriceExVat = hour === 8 ? 80 : 50;
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat,
         currency: 'NOK',
       });
     }
@@ -1725,7 +1866,7 @@ describe('Price optimization', () => {
       date.setHours(hour, 0, 0, 0);
       spotPrices.push({
         startsAt: date.toISOString(),
-        total: 50, // All same price = normal
+        spotPriceExVat: 50, // All same price = normal
         currency: 'NOK',
       });
     }
@@ -1811,10 +1952,10 @@ describe('Price optimization', () => {
     for (let hour = 0; hour < 24; hour++) {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
-      const total = hour === 3 ? 20 : 50;
+      const spotPriceExVat = hour === 3 ? 20 : 50;
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat,
         currency: 'NOK',
       });
     }
@@ -1896,15 +2037,15 @@ describe('Price optimization', () => {
     now.setHours(8, 40, 0, 0);
     const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // Create spot prices where hour 8 is expensive (80 øre, avg ~51)
+    // Create spot prices where hour 8 is expensive (80 øre ex VAT, avg ~51)
     const spotPrices: any[] = [];
     for (let hour = 0; hour < 24; hour++) {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
-      const total = hour === 8 ? 80 : 50;
+      const spotPriceExVat = hour === 8 ? 80 : 50;
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat,
         currency: 'NOK',
       });
     }
@@ -1914,7 +2055,7 @@ describe('Price optimization', () => {
       // Return spot prices for hvakosterstrommen API
       if (url.includes('hvakosterstrommen')) {
         const hvakosterResponse = spotPrices.map((p) => ({
-          NOK_per_kWh: p.total / 100 / 1.25, // Convert back to NOK/kWh excl VAT
+          NOK_per_kWh: p.spotPriceExVat / 100,
           time_start: p.startsAt,
           time_end: new Date(new Date(p.startsAt).getTime() + 3600000).toISOString(),
         }));
@@ -1930,9 +2071,9 @@ describe('Price optimization', () => {
     // Set up settings - price optimization enabled with -5 delta for expensive hours
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
     mockHomeyInstance.settings.set('mode_device_targets', {
-      Hjemmekontor: { 'water-heater-1': 65 },
+      'Home Office': { 'water-heater-1': 65 },
     });
-    mockHomeyInstance.settings.set('operating_mode', 'Hjemmekontor');
+    mockHomeyInstance.settings.set('operating_mode', 'Home Office');
     mockHomeyInstance.settings.set('capacity_dry_run', false); // Disable dry run to allow actuation
     mockHomeyInstance.settings.set('price_optimization_settings', {
       'water-heater-1': {
@@ -1993,10 +2134,10 @@ describe('Price optimization', () => {
     for (let hour = 0; hour < 24; hour++) {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
-      const total = hour === 3 ? 20 : 50;
+      const spotPriceExVat = hour === 3 ? 20 : 50;
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat,
         currency: 'NOK',
       });
     }
@@ -2056,10 +2197,10 @@ describe('Price optimization', () => {
     for (let hour = 0; hour < 24; hour++) {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
-      const total = hour === 8 ? 80 : 50;
+      const spotPriceExVat = hour === 8 ? 80 : 50;
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat,
         currency: 'NOK',
       });
     }
@@ -2118,10 +2259,10 @@ describe('Price optimization', () => {
     for (let hour = 0; hour < 24; hour++) {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
-      const total = hour === 3 ? 40 : 50; // 20% below average
+      const spotPriceExVat = hour === 3 ? 40 : 50; // 20% below average
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat,
         currency: 'NOK',
       });
     }
@@ -2178,16 +2319,16 @@ describe('Price optimization', () => {
     now.setHours(3, 30, 0, 0);
     const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // Hour 3 at 35 is 30% below average of 50, so definitely cheap by threshold
-    // But absolute difference is only 15 øre
+    // Hour 3 at 34 is about 26% below the average once fixed charges apply, so it is cheap by threshold.
+    // Absolute difference stays below the min-diff setting when configured higher.
     const spotPrices: any[] = [];
     for (let hour = 0; hour < 24; hour++) {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
-      const total = hour === 3 ? 35 : 50;
+      const spotPriceExVat = hour === 3 ? 34 : 50;
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat,
         currency: 'NOK',
       });
     }
@@ -2222,7 +2363,7 @@ describe('Price optimization', () => {
     global.Date = MockDate;
 
     try {
-      // With no min diff, hour 3 is cheap (15 øre below average)
+      // With no min diff, hour 3 is cheap (~19 øre below average)
       mockHomeyInstance.settings.set('price_min_diff_ore', 0);
       await app.onInit();
       await flushPromises();

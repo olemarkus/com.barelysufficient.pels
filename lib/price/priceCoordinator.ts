@@ -106,8 +106,8 @@ export class PriceCoordinator {
       this.priceService.refreshSpotPrices().catch((error: Error) => {
         this.deps.error('Failed to refresh spot prices', error);
       });
-      this.priceService.refreshNettleieData().catch((error: Error) => {
-        this.deps.error('Failed to refresh nettleie data', error);
+      this.priceService.refreshGridTariffData().catch((error: Error) => {
+        this.deps.error('Failed to refresh grid tariff data', error);
       });
     }, refreshIntervalMs);
   }
@@ -116,8 +116,8 @@ export class PriceCoordinator {
     await this.priceService.refreshSpotPrices(forceRefresh);
   }
 
-  async refreshNettleieData(forceRefresh = false): Promise<void> {
-    await this.priceService.refreshNettleieData(forceRefresh);
+  async refreshGridTariffData(forceRefresh = false): Promise<void> {
+    await this.priceService.refreshGridTariffData(forceRefresh);
   }
 
   updateCombinedPrices(): void {

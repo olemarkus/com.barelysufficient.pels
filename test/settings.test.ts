@@ -420,8 +420,8 @@ describe('settings script', () => {
       prices.push({
         startsAt: date.toISOString(),
         total,
-        spotPrice: total * 0.7,
-        nettleie: total * 0.3,
+        spotPriceExVat: total * 0.7,
+        gridTariffExVat: total * 0.3,
         isCheap: total <= 75, // 25% below 100
         isExpensive: total >= 125, // 25% above 100
       });
@@ -503,8 +503,8 @@ describe('settings script', () => {
       prices.push({
         startsAt: date.toISOString(),
         total,
-        spotPrice: total * 0.7,
-        nettleie: total * 0.3,
+        spotPriceExVat: total * 0.7,
+        gridTariffExVat: total * 0.3,
         isCheap: false, // All within threshold
         isExpensive: false,
       });
@@ -569,7 +569,7 @@ describe('settings script', () => {
       if (hour >= 6 && hour <= 8) total = 120; // Expensive
       spotPrices.push({
         startsAt: date.toISOString(),
-        total,
+        spotPriceExVat: total,
         currency: 'NOK',
       });
     }

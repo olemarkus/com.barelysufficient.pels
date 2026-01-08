@@ -2635,19 +2635,17 @@ describe('Dry run mode', () => {
     const now = new Date();
     now.setHours(3, 30, 0, 0);
     const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const spotPrices: Array<{ startsAt: string; total: number }> = [];
+    const hourlyTotals: Array<{ startsAt: string; total: number }> = [];
     for (let hour = 0; hour < 24; hour++) {
       const date = new Date(baseDate);
       date.setHours(hour, 0, 0, 0);
       const total = hour === 3 ? 20 : 50; // Hour 3 is cheap
-      spotPrices.push({ startsAt: date.toISOString(), total });
+      hourlyTotals.push({ startsAt: date.toISOString(), total });
     }
     mockHomeyInstance.settings.set('combined_prices', {
-      prices: spotPrices.map((p) => ({
+      prices: hourlyTotals.map((p) => ({
         startsAt: p.startsAt,
-        spotPrice: p.total,
-        gridTariff: 0,
-        totalPrice: p.total,
+        total: p.total,
       })),
     });
     // Do NOT set capacity_dry_run - default is true

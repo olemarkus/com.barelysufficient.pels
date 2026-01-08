@@ -28,7 +28,7 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     updateDailyBudgetState: jest.fn(),
     resetDailyBudgetLearning: jest.fn(),
     priceService: {
-      refreshNettleieData: jest.fn().mockResolvedValue(undefined),
+      refreshGridTariffData: jest.fn().mockResolvedValue(undefined),
       refreshSpotPrices: jest.fn().mockResolvedValue(undefined),
     },
     updatePriceOptimizationEnabled: jest.fn(),
@@ -111,10 +111,10 @@ describe('createSettingsHandler', () => {
     );
   });
 
-  it('logs when nettleie refresh fails', async () => {
+  it('logs when grid tariff refresh fails', async () => {
     const deps = buildDeps({
       priceService: {
-        refreshNettleieData: jest.fn().mockRejectedValue(new Error('fail')),
+        refreshGridTariffData: jest.fn().mockRejectedValue(new Error('fail')),
         refreshSpotPrices: jest.fn().mockResolvedValue(undefined),
       },
     });
@@ -122,7 +122,7 @@ describe('createSettingsHandler', () => {
 
     await handler('refresh_nettleie');
 
-    expect(deps.errorLog).toHaveBeenCalledWith('Failed to refresh nettleie data', expect.any(Error));
+    expect(deps.errorLog).toHaveBeenCalledWith('Failed to refresh grid tariff data', expect.any(Error));
   });
 
   it('routes settings UI log entries by level', async () => {

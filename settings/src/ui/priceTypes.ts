@@ -1,8 +1,16 @@
 export type PriceEntry = {
   startsAt: string;
   total: number;
-  spotPrice?: number;
-  nettleie?: number;
+  spotPriceExVat?: number;
+  gridTariffExVat?: number;
+  providerSurchargeExVat?: number;
+  consumptionTaxExVat?: number;
+  enovaFeeExVat?: number;
+  vatAmount?: number;
+  vatMultiplier?: number;
+  electricitySupportExVat?: number;
+  electricitySupport?: number;
+  totalExVat?: number;
   isCheap?: boolean;
   isExpensive?: boolean;
 };

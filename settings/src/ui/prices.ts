@@ -8,10 +8,10 @@ import {
   priceOptimizationEmpty,
   priceOptimizationSection,
   priceOptimizationEnabledCheckbox,
-  nettleieFylkeSelect,
-  nettleieCompanySelect,
-  nettleieOrgnrInput,
-  nettleieTariffgruppeSelect,
+  gridTariffCountySelect,
+  gridTariffCompanySelect,
+  gridTariffOrgNumberInput,
+  gridTariffGroupSelect,
   priceStatusBadge,
 } from './dom';
 import { getSetting, setSetting } from './homey';
@@ -22,14 +22,20 @@ import { renderPrices } from './priceRender';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { createDeviceRow, createNumberInput } from './components';
 import { logSettingsError } from './logging';
+import { getVatMultiplier } from '../../../lib/price/priceComponents';
 
-type NettleieEntry = {
+type GridTariffEntry = {
   time: number;
-  energileddEks: number | null;
-  energileddInk: number | null;
-  fastleddEks: number | null;
-  fastleddInk: number | null;
-  datoId: string;
+  energyFeeExVat?: number | null;
+  energyFeeIncVat?: number | null;
+  fixedFeeExVat?: number | null;
+  fixedFeeIncVat?: number | null;
+  dateKey?: string;
+  energileddEks?: number | null;
+  energileddInk?: number | null;
+  fastleddEks?: number | null;
+  fastleddInk?: number | null;
+  datoId?: string;
 };
 
 export const loadPriceSettings = async () => {
@@ -113,7 +119,28 @@ const getPriceData = async (): Promise<CombinedPriceData | null> => {
   }
   const priceData = await getSetting('electricity_prices');
   if (!priceData || !Array.isArray(priceData) || priceData.length === 0) return null;
-  const prices = priceData as PriceEntry[];
+  const priceAreaSetting = await getSetting('price_area');
+  const priceArea = typeof priceAreaSetting === 'string' ? priceAreaSetting : 'NO1';
+  const vatMultiplier = getVatMultiplier(priceArea);
+  const prices = (priceData as Array<{ startsAt?: string; spotPriceExVat?: number; total?: number }>)
+    .filter((entry) => typeof entry.startsAt === 'string')
+    .map((entry) => {
+      let spotPriceExVat = 0;
+      if (typeof entry.spotPriceExVat === 'number') {
+        spotPriceExVat = entry.spotPriceExVat;
+      } else if (typeof entry.total === 'number') {
+        spotPriceExVat = entry.total / vatMultiplier;
+      }
+      const total = spotPriceExVat * vatMultiplier;
+      return {
+        startsAt: entry.startsAt as string,
+        total,
+        spotPriceExVat,
+        vatMultiplier,
+        vatAmount: total - spotPriceExVat,
+        totalExVat: spotPriceExVat,
+      } satisfies PriceEntry;
+    });
   const avgPrice = prices.reduce((sum, p) => sum + p.total, 0) / prices.length;
   return {
     prices,
@@ -136,74 +163,74 @@ export const refreshPrices = async () => {
   }
 };
 
-export const updateGridCompanyOptions = (fylkeNr: string) => {
-  if (!nettleieCompanySelect) return;
+export const updateGridCompanyOptions = (countyCode: string) => {
+  if (!gridTariffCompanySelect) return;
 
-  const currentValue = nettleieOrgnrInput?.value || '';
-  nettleieCompanySelect.innerHTML = '<option value="">-- Select grid company --</option>';
+  const currentValue = gridTariffOrgNumberInput?.value || '';
+  gridTariffCompanySelect.innerHTML = '<option value="">-- Select grid company --</option>';
 
   const filteredCompanies = gridCompanies
-    .filter(c => c.fylker.includes(fylkeNr))
+    .filter((company) => company.countyCodes.includes(countyCode))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  filteredCompanies.forEach(company => {
+  filteredCompanies.forEach((company) => {
     const opt = document.createElement('option');
-    opt.value = company.orgnr;
+    opt.value = company.organizationNumber;
     opt.textContent = company.name;
-    if (company.orgnr === currentValue) opt.selected = true;
-    nettleieCompanySelect.appendChild(opt);
+    if (company.organizationNumber === currentValue) opt.selected = true;
+    gridTariffCompanySelect.appendChild(opt);
   });
 };
 
-export const loadNettleieSettings = async () => {
-  const fylke = await getSetting('nettleie_fylke');
-  const orgnr = await getSetting('nettleie_orgnr');
-  const tariffgruppe = await getSetting('nettleie_tariffgruppe');
+export const loadGridTariffSettings = async () => {
+  const countyCode = await getSetting('nettleie_fylke');
+  const organizationNumber = await getSetting('nettleie_orgnr');
+  const tariffGroup = await getSetting('nettleie_tariffgruppe');
 
-  if (nettleieFylkeSelect && typeof fylke === 'string') {
-    nettleieFylkeSelect.value = fylke;
+  if (gridTariffCountySelect && typeof countyCode === 'string') {
+    gridTariffCountySelect.value = countyCode;
   }
 
-  updateGridCompanyOptions(typeof fylke === 'string' ? fylke : '03');
+  updateGridCompanyOptions(typeof countyCode === 'string' ? countyCode : '03');
 
-  if (nettleieOrgnrInput && typeof orgnr === 'string') {
-    nettleieOrgnrInput.value = orgnr;
-    if (nettleieCompanySelect) {
-      nettleieCompanySelect.value = orgnr;
+  if (gridTariffOrgNumberInput && typeof organizationNumber === 'string') {
+    gridTariffOrgNumberInput.value = organizationNumber;
+    if (gridTariffCompanySelect) {
+      gridTariffCompanySelect.value = organizationNumber;
     }
   }
-  if (nettleieTariffgruppeSelect && typeof tariffgruppe === 'string') {
-    nettleieTariffgruppeSelect.value = tariffgruppe;
+  if (gridTariffGroupSelect && typeof tariffGroup === 'string') {
+    gridTariffGroupSelect.value = tariffGroup;
   }
 };
 
-export const saveNettleieSettings = async () => {
-  const fylke = nettleieFylkeSelect?.value || '03';
-  const orgnr = nettleieCompanySelect?.value || '';
-  const tariffgruppe = nettleieTariffgruppeSelect?.value || 'Husholdning';
+export const saveGridTariffSettings = async () => {
+  const countyCode = gridTariffCountySelect?.value || '03';
+  const organizationNumber = gridTariffCompanySelect?.value || '';
+  const tariffGroup = gridTariffGroupSelect?.value || 'Husholdning';
 
-  if (nettleieOrgnrInput) nettleieOrgnrInput.value = orgnr;
+  if (gridTariffOrgNumberInput) gridTariffOrgNumberInput.value = organizationNumber;
 
-  await setSetting('nettleie_fylke', fylke);
-  await setSetting('nettleie_orgnr', orgnr);
-  await setSetting('nettleie_tariffgruppe', tariffgruppe);
+  await setSetting('nettleie_fylke', countyCode);
+  await setSetting('nettleie_orgnr', organizationNumber);
+  await setSetting('nettleie_tariffgruppe', tariffGroup);
   await showToast('Grid tariff settings saved.', 'ok');
 
   await setSetting('refresh_nettleie', Date.now());
-  await refreshNettleie();
+  await refreshGridTariff();
 };
 
-const getNettleieData = async (): Promise<NettleieEntry[]> => {
+const getGridTariffData = async (): Promise<GridTariffEntry[]> => {
   const data = await getSetting('nettleie_data');
   if (!data || !Array.isArray(data)) return [];
-  return data as NettleieEntry[];
+  return data as GridTariffEntry[];
 };
 
-export const refreshNettleie = async () => {
+export const refreshGridTariff = async () => {
   try {
-    await getNettleieData();
+    await getGridTariffData();
   } catch (error) {
-    await logSettingsError('Failed to load nettleie', error, 'refreshNettleie');
+    await logSettingsError('Failed to load grid tariff data', error, 'refreshGridTariff');
   }
 };
 
