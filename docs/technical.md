@@ -216,6 +216,36 @@ The budget model focuses on the current hour. It doesn't "save up" headroom from
 
 PELS controls devices through Homey's local API. Cloud-only devices may have additional latency.
 
+## Pricing Model
+
+PELS stores spot prices as øre/kWh **ex VAT** from hvakosterstrommen.no. Hourly totals are computed from:
+
+- Spot price (spotpris)
+- Grid tariff energy component (nettleie)
+- Provider surcharge (incl. VAT in settings; converted to ex VAT internally)
+- Consumption tax (elavgift)
+- Enova fee (enovaavgift)
+- VAT (mva) where applicable
+- Electricity support (strømstøtte) applied to the spot price above the threshold
+
+Calculation summary:
+
+- `totalExVat = spot + gridTariff + providerSurchargeExVat + consumptionTax + enovaFee`
+- `electricitySupportExVat = max(0, spotPriceExVat - threshold) * coverage`
+- `totalPrice = totalExVat * vatMultiplier - electricitySupportExVat * vatMultiplier`
+
+All component rates are treated as ex VAT, and VAT is applied once after summing the components.
+
+Current policy values:
+
+- Electricity support threshold: 77 øre/kWh (ex VAT, 96.25 incl. VAT)
+- Electricity support coverage: 90% above the threshold
+
+Regional rules:
+
+- VAT is 25% by default, but price area NO4 is VAT-exempt.
+- Reduced consumption tax applies to Troms and Finnmark counties (fylker). Municipality-level exceptions are ignored.
+
 ## Future Work / TODOs
 
-- Pricing strategies: current implementation assumes Norwegian spot + nettleie model. Introduce a pluggable price strategy interface (e.g., `PriceStrategy` with inputs for spot, tariffs, provider surcharges, taxes/VAT) so non-NO regions can drop in their own calculators without touching control logic. Keep aggregation/token outputs stable while swapping strategies.
+- Pricing strategies: current implementation assumes Norwegian spot + grid tariff + taxes/support. Introduce a pluggable price strategy interface (e.g., `PriceStrategy` with inputs for spot, tariffs, provider surcharges, taxes/VAT, support) so non-NO regions can drop in their own calculators without touching control logic. Keep aggregation/token outputs stable while swapping strategies.

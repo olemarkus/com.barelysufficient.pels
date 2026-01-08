@@ -38,8 +38,9 @@ Inspired by the Sparegris (Piggy Bank) Homey app.
 - **Multiple Modes** – Define different modes (Home, Away, Night, etc.) with their own temperature targets and device priorities
 - **Smart Load Shedding** – Intelligently selects which devices to turn off based on priority, and can swap lower-priority devices for higher-priority ones
 - **Automatic Recovery** – Restores devices when headroom becomes available
-- **Norwegian Grid Tariffs** – Fetches real-time grid tariffs (nettleie) from NVE
-- **Spot Prices** – Integrates with hvakosterstrommen.no for electricity spot prices
+- **Norwegian Grid Tariffs** – Fetches grid tariff energy components (nettleie) from NVE
+- **Spot Prices** – Integrates with hvakosterstrommen.no for spot prices (spotpris)
+- **Price Breakdown** – Adds consumption tax (elavgift), Enova fee (enovaavgift), VAT (mva), and electricity support (strømstøtte) to the hourly total
 
 ---
 
@@ -234,9 +235,32 @@ Configure electricity price sources and price-based optimization.
 | Setting | Description |
 |---------|-------------|
 | **Price area** | Your electricity price zone (NO1-NO5). Price optimization currently supports Norway only. |
-| **Provider surcharge** | Your provider's markup on spot price (øre/kWh) |
+| **Provider surcharge** | Your provider's markup on spot price (øre/kWh, incl. VAT) |
 | **Price threshold (%)** | Hours below/above this % from average are marked cheap/expensive (default: 25%) |
 | **Minimum price difference** | Skip optimization if savings are less than this (øre/kWh). Avoids discomfort for minimal savings. |
+
+#### Price Calculation
+
+PELS builds the hourly total price from:
+
+- Spot price (spotpris)
+- Grid tariff energy component (nettleie)
+- Provider surcharge (incl. VAT in settings; converted to ex VAT internally)
+- Consumption tax (elavgift)
+- Enova fee (enovaavgift)
+- VAT (mva) when applicable
+- Electricity support (strømstøtte) applied to the spot price above the threshold
+
+All component rates are treated as ex VAT, and VAT is applied once after summing the components.
+
+Current electricity support uses a 77 øre/kWh (ex VAT, 96.25 incl. VAT) threshold with 90% coverage above the threshold.
+
+Regional rules:
+
+- VAT is exempt in price area NO4.
+- Reduced consumption tax applies to Troms and Finnmark counties (fylker). Municipality-level exceptions are ignored.
+
+The Price tab tooltips show the full breakdown per hour.
 
 #### Price Optimization
 
@@ -327,7 +351,7 @@ The device shows:
 
 1. Fetches spot prices from hvakosterstrommen.no
 2. Fetches grid tariffs from NVE
-3. Calculates total cost per hour (spot + nettleie + provider surcharge)
+3. Calculates total cost per hour (spot + grid tariff + provider surcharge (incl. VAT) + consumption tax (elavgift) + Enova fee (enovaavgift) + VAT (mva) - electricity support (strømstøtte))
 4. Marks hours as "cheap" or "expensive" based on your threshold
 5. Applies temperature deltas to devices during those hours
 
