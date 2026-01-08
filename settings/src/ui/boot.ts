@@ -11,11 +11,11 @@ import {
   priceMinDiffInput,
   priceRefreshButton,
   priceOptimizationEnabledCheckbox,
-  nettleieSettingsForm,
-  nettleieFylkeSelect,
-  nettleieCompanySelect,
-  nettleieTariffgruppeSelect,
-  nettleieRefreshButton,
+  gridTariffSettingsForm,
+  gridTariffCountySelect,
+  gridTariffCompanySelect,
+  gridTariffGroupSelect,
+  gridTariffRefreshButton,
   capacityForm,
   capacityLimitInput,
   capacityMarginInput,
@@ -46,10 +46,10 @@ import {
 import {
   loadPriceSettings,
   refreshPrices,
-  loadNettleieSettings,
-  refreshNettleie,
+  loadGridTariffSettings,
+  refreshGridTariff,
   savePriceSettings,
-  saveNettleieSettings,
+  saveGridTariffSettings,
   updateGridCompanyOptions,
   loadPriceOptimizationSettings,
   renderPriceOptimization,
@@ -377,27 +377,27 @@ const initPriceHandlers = () => {
   });
 };
 
-const initNettleieHandlers = () => {
-  const autoSaveNettleieSettings = async () => {
+const initGridTariffHandlers = () => {
+  const autoSaveGridTariffSettings = async () => {
     try {
-      await saveNettleieSettings();
+      await saveGridTariffSettings();
     } catch (error) {
-      await logSettingsError('Failed to save grid tariff settings', error, 'autoSaveNettleieSettings');
+      await logSettingsError('Failed to save grid tariff settings', error, 'autoSaveGridTariffSettings');
       await showToastError(error, 'Failed to save grid tariff settings.');
     }
   };
-  nettleieCompanySelect?.addEventListener('change', autoSaveNettleieSettings);
-  nettleieTariffgruppeSelect?.addEventListener('change', autoSaveNettleieSettings);
-  nettleieSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
-  nettleieFylkeSelect?.addEventListener('change', () => {
-    updateGridCompanyOptions(nettleieFylkeSelect.value);
+  gridTariffCompanySelect?.addEventListener('change', autoSaveGridTariffSettings);
+  gridTariffGroupSelect?.addEventListener('change', autoSaveGridTariffSettings);
+  gridTariffSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
+  gridTariffCountySelect?.addEventListener('change', () => {
+    updateGridCompanyOptions(gridTariffCountySelect.value);
   });
-  nettleieRefreshButton?.addEventListener('click', async () => {
+  gridTariffRefreshButton?.addEventListener('click', async () => {
     try {
       await setSetting('refresh_nettleie', Date.now());
-      await refreshNettleie();
+      await refreshGridTariff();
     } catch (error) {
-      await logSettingsError('Failed to refresh grid tariffs', error, 'nettleieRefreshButton');
+      await logSettingsError('Failed to refresh grid tariffs', error, 'gridTariffRefreshButton');
       await showToastError(error, 'Failed to refresh grid tariffs.');
     }
   });
@@ -450,8 +450,8 @@ const loadInitialData = async () => {
   renderPriceOptimization(state.latestDevices);
   await loadPriceSettings();
   await refreshPrices();
-  await loadNettleieSettings();
-  await refreshNettleie();
+  await loadGridTariffSettings();
+  await refreshGridTariff();
   await refreshDailyBudgetPlan();
   await loadAdvancedSettings();
 };
@@ -479,7 +479,7 @@ export const boot = async () => {
     initCapacityHandlers();
     initDailyBudgetHandlers();
     initPriceHandlers();
-    initNettleieHandlers();
+    initGridTariffHandlers();
     initAdvancedHandlers();
 
     await loadInitialData();

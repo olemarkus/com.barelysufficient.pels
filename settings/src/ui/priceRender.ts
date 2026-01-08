@@ -251,18 +251,27 @@ const formatPriceTimeLabel = (entryTime: Date, timeContext: PriceTimeContext) =>
 
 const buildPriceTooltip = (entry: PriceEntry) => {
   const tooltipLines: string[] = [];
-  if (typeof entry.spotPrice === 'number') {
-    tooltipLines.push(`Spot: ${entry.spotPrice.toFixed(1)} øre`);
+  const formatOre = (value: number) => `${value.toFixed(1)} øre`;
+  const hasBreakdown = typeof entry.spotPriceExVat === 'number';
+
+  if (hasBreakdown) {
+    const gridTariff = entry.gridTariffExVat ?? 0;
+    const surcharge = entry.providerSurchargeExVat ?? 0;
+    const consumptionTax = entry.consumptionTaxExVat ?? 0;
+    const enovaFee = entry.enovaFeeExVat ?? 0;
+    const vatAmount = entry.vatAmount ?? 0;
+    const support = entry.electricitySupport ?? 0;
+    const vatLabel = entry.vatMultiplier === 1 ? 'VAT (0%)' : 'VAT';
+
+    tooltipLines.push(`Spot price (ex VAT): ${formatOre(entry.spotPriceExVat)}`);
+    tooltipLines.push(`Grid tariff (ex VAT): ${formatOre(gridTariff)}`);
+    tooltipLines.push(`Provider surcharge (ex VAT): ${formatOre(surcharge)}`);
+    tooltipLines.push(`Consumption tax: ${formatOre(consumptionTax)}`);
+    tooltipLines.push(`Enova fee: ${formatOre(enovaFee)}`);
+    tooltipLines.push(`${vatLabel}: ${formatOre(vatAmount)}`);
+    tooltipLines.push(`Electricity support: -${formatOre(support)}`);
   }
-  if (typeof entry.nettleie === 'number') {
-    tooltipLines.push(`Nettleie: ${entry.nettleie.toFixed(1)} øre`);
-  }
-  if (typeof entry.spotPrice === 'number') {
-    const surcharge = entry.total - entry.spotPrice - (entry.nettleie ?? 0);
-    if (Math.abs(surcharge) >= 0.05) {
-      tooltipLines.push(`Surcharge: ${surcharge.toFixed(1)} øre`);
-    }
-  }
+
   tooltipLines.push(`Total: ${entry.total.toFixed(1)} øre/kWh`);
   return tooltipLines.join('\n');
 };

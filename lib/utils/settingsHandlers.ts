@@ -14,7 +14,7 @@ import {
   OPERATING_MODE_SETTING,
 } from './settingsKeys';
 export type PriceServiceLike = {
-  refreshNettleieData: (forceRefresh?: boolean) => Promise<void>;
+  refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
 };
 
@@ -70,9 +70,9 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     },
     refresh_nettleie: async () => {
       try {
-        await deps.priceService.refreshNettleieData(true);
+        await deps.priceService.refreshGridTariffData(true);
       } catch (error) {
-        deps.errorLog('Failed to refresh nettleie data', error);
+        deps.errorLog('Failed to refresh grid tariff data', error);
       }
     },
     refresh_spot_prices: async () => {

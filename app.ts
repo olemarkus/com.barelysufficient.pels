@@ -97,7 +97,7 @@ class PelsApp extends Homey.App {
       registerFlowCards: () => this.registerFlowCards(),
       startPeriodicSnapshotRefresh: () => this.startPeriodicSnapshotRefresh(),
       refreshSpotPrices: () => this.priceCoordinator.refreshSpotPrices(),
-      refreshNettleieData: () => this.priceCoordinator.refreshNettleieData(),
+      refreshGridTariffData: () => this.priceCoordinator.refreshGridTariffData(),
       startPriceRefresh: () => this.priceCoordinator.startPriceRefresh(),
       startPriceOptimization: () => this.priceCoordinator.startPriceOptimization(),
     });

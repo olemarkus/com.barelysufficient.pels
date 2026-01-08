@@ -11,7 +11,7 @@ export async function startAppServices(params: {
   registerFlowCards: () => void;
   startPeriodicSnapshotRefresh: () => void;
   refreshSpotPrices: () => Promise<void>;
-  refreshNettleieData: () => Promise<void>;
+  refreshGridTariffData: () => Promise<void>;
   startPriceRefresh: () => void;
   startPriceOptimization: () => Promise<void>;
 }): Promise<void> {
@@ -28,7 +28,7 @@ export async function startAppServices(params: {
     registerFlowCards,
     startPeriodicSnapshotRefresh,
     refreshSpotPrices,
-    refreshNettleieData,
+    refreshGridTariffData,
     startPriceRefresh,
     startPriceOptimization,
   } = params;
@@ -43,7 +43,7 @@ export async function startAppServices(params: {
   registerFlowCards();
   startPeriodicSnapshotRefresh();
   await refreshSpotPrices();
-  await refreshNettleieData();
+  await refreshGridTariffData();
   startPriceRefresh();
   await startPriceOptimization();
 }
