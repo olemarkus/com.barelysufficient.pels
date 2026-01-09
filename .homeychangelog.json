@@ -94,5 +94,8 @@
   },
   "1.7.6": {
     "en": "PELS now reduces restore flapping by adding an exponential restore cooldown backoff (up to 5 minutes) after instability, improves shedding order so lower‑priority devices shed first even if higher‑priority devices were recently restored, makes daily budget deviation time‑weighted within the hour for more accurate “allowed so far” reporting, and simplifies device status messaging to show “keep” without priority while noting when a device was recently restored."
+  },
+  "1.8.0": {
+    "en": "App’s price calculations and UI have been expanded to show a full hourly price breakdown: totals now include grid tariff energy component, provider surcharge (now defined as VAT‑inclusive), consumption tax, Enova fee, VAT, and electricity support (with regional rules like NO4 VAT exemption and reduced consumption tax in Troms/Finnmark), and the Price tab reflects this with clearer labels and hover tooltips that show the component breakdown per hour."
   }
 }
