@@ -25,6 +25,7 @@ describe('Expected power flow card', () => {
     const deviceNoLoad = new MockDevice('dev-noload', 'No Load', ['target_temperature']);
 
     setMockDrivers({ driverA: new MockDriver('driverA', [deviceWithLoad, deviceNoLoad]) });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-load': true, 'dev-noload': true });
 
     const app = createApp();
     await app.onInit();
@@ -129,9 +130,10 @@ describe('Expected power flow card', () => {
     const snapshotFallback = (app as any).parseDevicesForTests([
       {
         id: 'dev-3',
-        capabilities: ['target_temperature'],
+        capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
         capabilitiesObj: {},
         name: 'Heater',
+        class: 'heater',
         settings: {},
       },
     ]);

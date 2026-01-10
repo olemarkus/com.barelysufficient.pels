@@ -17,6 +17,16 @@ jest.mock('homey-api', () => ({
     },
 }));
 
+const findSnapshotDevice = <T extends { id: string }>(
+    snapshot: T[],
+    deviceId: string,
+): T | undefined => {
+    for (const device of snapshot) {
+        if (device.id === deviceId) return device;
+    }
+    return undefined;
+};
+
 describe('DeviceManager', () => {
     let deviceManager: DeviceManager;
     let homeyMock: Homey.App;
@@ -66,9 +76,11 @@ describe('DeviceManager', () => {
                 dev1: {
                     id: 'dev1',
                     name: 'Heater',
-                    capabilities: ['measure_power', 'target_temperature'],
+                    class: 'heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
                         measure_power: { value: 1000, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
                         target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
                         onoff: { value: true, id: 'onoff' },
                     },
@@ -76,8 +88,10 @@ describe('DeviceManager', () => {
                 dev2: {
                     id: 'dev2',
                     name: 'Light',
-                    capabilities: ['onoff'],
+                    class: 'socket',
+                    capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
+                        measure_power: { value: 120, id: 'measure_power' },
                         onoff: { value: true, id: 'onoff' },
                     },
                 },
@@ -86,10 +100,14 @@ describe('DeviceManager', () => {
             await deviceManager.refreshSnapshot();
 
             const snapshot = deviceManager.getSnapshot();
-            expect(snapshot).toHaveLength(1); // Only Heater has target_temperature
-            expect(snapshot[0].id).toBe('dev1');
-            expect(snapshot[0].powerKw).toBe(1);
-            expect(snapshot[0].currentOn).toBe(true);
+            expect(snapshot).toHaveLength(2);
+            const heater = findSnapshotDevice(snapshot, 'dev1');
+            const light = findSnapshotDevice(snapshot, 'dev2');
+            expect(heater?.deviceType).toBe('temperature');
+            expect(heater?.powerKw).toBe(1);
+            expect(heater?.currentOn).toBe(true);
+            expect(light?.deviceType).toBe('onoff');
+            expect(light?.targets).toEqual([]);
         });
 
         it('includes measured power zero when load setting is present', async () => {
@@ -98,9 +116,11 @@ describe('DeviceManager', () => {
                 dev1: {
                     id: 'dev1',
                     name: 'Heater',
-                    capabilities: ['measure_power', 'target_temperature'],
+                    class: 'heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
                         measure_power: { value: 0, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
                         target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
                     },
                     settings: { load: 600 },
@@ -126,8 +146,11 @@ describe('DeviceManager', () => {
                 dev1: {
                     id: 'dev1',
                     name: 'Heater',
-                    capabilities: ['target_temperature'],
+                    class: 'heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
                         target_temperature: { value: 20, id: 'target_temperature' },
                     },
                 },
@@ -151,8 +174,11 @@ describe('DeviceManager', () => {
                 dev1: {
                     id: 'dev1',
                     name: 'Heater',
-                    capabilities: ['target_temperature'],
+                    class: 'heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                     capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
                         target_temperature: { value: 20, id: 'target_temperature' },
                     },
                     targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],

@@ -67,9 +67,11 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',
-                capabilities: ['measure_power', 'target_temperature'],
+                class: 'heater',
+                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                 capabilitiesObj: {
                     measure_power: { value: 1670, id: 'measure_power' }, // 1.67 kW
+                    measure_temperature: { value: 21, id: 'measure_temperature' },
                     target_temperature: { value: 20, id: 'target_temperature' },
                 },
             },
@@ -98,9 +100,11 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',
-                capabilities: ['measure_power', 'target_temperature'],
+                class: 'heater',
+                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                 capabilitiesObj: {
                     measure_power: { value: 1670, id: 'measure_power' }, // Still 1.67 kW
+                    measure_temperature: { value: 21, id: 'measure_temperature' },
                     target_temperature: { value: 20, id: 'target_temperature' },
                 },
             },
@@ -133,9 +137,11 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',
-                capabilities: ['measure_power', 'target_temperature'],
+                class: 'heater',
+                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                 capabilitiesObj: {
                     measure_power: { value: 3500, id: 'measure_power' }, // 3.5 kW
+                    measure_temperature: { value: 21, id: 'measure_temperature' },
                     target_temperature: { value: 20, id: 'target_temperature' },
                 },
             },
@@ -157,9 +163,11 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',
-                capabilities: ['measure_power', 'target_temperature'],
+                class: 'heater',
+                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                 capabilitiesObj: {
                     measure_power: { value: 3000, id: 'measure_power' },
+                    measure_temperature: { value: 21, id: 'measure_temperature' },
                     target_temperature: { value: 20, id: 'target_temperature' },
                 },
             },
@@ -180,9 +188,11 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',
-                capabilities: ['measure_power', 'target_temperature'],
+                class: 'heater',
+                capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
                 capabilitiesObj: {
                     measure_power: { value: 2000, id: 'measure_power' },
+                    measure_temperature: { value: 21, id: 'measure_temperature' },
                     target_temperature: { value: 20, id: 'target_temperature' },
                 },
             },

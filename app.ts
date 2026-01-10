@@ -542,7 +542,7 @@ class PelsApp extends Homey.App {
     if (!this.priceOptimizationSettingsLoaded) {
       this.loadPriceOptimizationSettings();
     }
-    const capacityEnabled = this.controllableDevices[deviceId] !== false;
+    const capacityEnabled = this.controllableDevices[deviceId] === true;
     const priceEnabled = this.priceOptimizationSettings[deviceId]?.enabled === true;
     const managed = capacityEnabled || priceEnabled;
     this.managedDevices[deviceId] = managed;

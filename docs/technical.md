@@ -182,6 +182,16 @@ Aggregation happens automatically when power data is saved—you don't need to m
 
 ## Assumptions and Limitations
 
+### Supported Devices
+
+PELS only manages devices that expose the capabilities it needs:
+
+- **All devices**: `measure_power` (without this, PELS cannot estimate impact or headroom)
+- **Temperature devices**: `target_temperature` + `measure_temperature` + `measure_power`
+- **On/off devices**: `onoff` + `measure_power`
+
+Devices are **disabled by default**. You must explicitly enable management and control in the Devices tab.
+
 ### Headroom check for capacity-controlled loads
 
 The **"Is there headroom for device?"** Flow condition is intended for capacity-controlled devices such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:

@@ -27,6 +27,7 @@ describe('Mode device targets', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -38,8 +39,13 @@ describe('Mode device targets', () => {
           'dev-1': {
             id: 'dev-1',
             name: 'Heater',
-            capabilities: ['target_temperature'],
-            capabilitiesObj: { target_temperature: { value: 20, id: 'target_temperature' } },
+            class: 'heater',
+            capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
+            capabilitiesObj: {
+              measure_power: { value: 1200, id: 'measure_power' },
+              measure_temperature: { value: 21, id: 'measure_temperature' },
+              target_temperature: { value: 20, id: 'target_temperature' },
+            },
             settings: {},
           },
         }),
@@ -73,6 +79,7 @@ describe('Mode device targets', () => {
     // Preload active mode before app init.
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -84,8 +91,13 @@ describe('Mode device targets', () => {
           'dev-1': {
             id: 'dev-1',
             name: 'Heater',
-            capabilities: ['target_temperature'],
-            capabilitiesObj: { target_temperature: { value: 20, id: 'target_temperature' } },
+            class: 'heater',
+            capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
+            capabilitiesObj: {
+              measure_power: { value: 1200, id: 'measure_power' },
+              measure_temperature: { value: 21, id: 'measure_temperature' },
+              target_temperature: { value: 20, id: 'target_temperature' },
+            },
             settings: {},
           },
         }),

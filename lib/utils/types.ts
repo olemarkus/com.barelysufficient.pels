@@ -2,6 +2,8 @@ export type TargetDeviceSnapshot = {
     id: string;
     name: string;
     targets: Array<{ id: string; value: unknown; unit: string }>;
+    deviceClass?: string;
+    deviceType?: 'temperature' | 'onoff';
     powerKw?: number;
     expectedPowerKw?: number;
     expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'default';
@@ -65,11 +67,13 @@ export type HomeyDeviceLike = {
     name?: string;
     class?: string;
     data?: { id?: string };
+    virtualClass?: string;
     capabilities?: string[];
     capabilitiesObj?: Record<string, CapabilityValue<unknown> | undefined> & {
         measure_temperature?: CapabilityValue<number>;
         measure_power?: CapabilityValue<number>;
         onoff?: CapabilityValue<boolean>;
+        target_temperature?: CapabilityValue<number>;
     };
     settings?: { load?: number };
     zone?: { name?: string } | string;
