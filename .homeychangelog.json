@@ -97,5 +97,8 @@
   },
   "1.8.0": {
     "en": "App’s price calculations and UI have been expanded to show a full hourly price breakdown: totals now include grid tariff energy component, provider surcharge (now defined as VAT‑inclusive), consumption tax, Enova fee, VAT, and electricity support (with regional rules like NO4 VAT exemption and reduced consumption tax in Troms/Finnmark), and the Price tab reflects this with clearer labels and hover tooltips that show the component breakdown per hour."
+  },
+  "1.8.1": {
+    "en": "Add debug tools for cleaning up device states and device insights."
   }
 }
