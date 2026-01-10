@@ -3,6 +3,7 @@ import {
   setMockDrivers,
   MockDevice,
   MockDriver,
+  setAutoEnableMockDevices,
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
@@ -42,11 +43,13 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     mockHomeyInstance.api.clearRealtimeEvents();
+    setAutoEnableMockDevices(true);
     jest.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
+    setAutoEnableMockDevices(false);
     jest.clearAllTimers();
   });
 
@@ -1172,11 +1175,13 @@ describe('Device plan snapshot', () => {
     const sampleDevice = {
       id: 'thermostat-1',
       name: 'Room Thermostat',
-      capabilities: ['onoff', 'target_temperature', 'measure_power'],
+      class: 'thermostat',
+      capabilities: ['onoff', 'target_temperature', 'measure_power', 'measure_temperature'],
       capabilitiesObj: {
         onoff: { value: false, id: 'onoff' },
         target_temperature: { value: 22, units: '°C', id: 'target_temperature' },
         measure_power: { value: 0, id: 'measure_power' },
+        measure_temperature: { value: 21, id: 'measure_temperature' },
       },
       settings: { load: 450 },
     };
@@ -1694,8 +1699,11 @@ describe('Device plan snapshot', () => {
           'hoiax-1': {
             id: 'hoiax-1',
             name: 'Connected 300',
-            capabilities: ['target_temperature', 'onoff', 'max_power_3000'],
+            class: 'heater',
+            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff', 'max_power_3000'],
             capabilitiesObj: {
+              measure_power: { value: 3000, id: 'measure_power' },
+              measure_temperature: { value: 55, id: 'measure_temperature' },
               target_temperature: { value: 65, id: 'target_temperature' },
               onoff: { value: true, id: 'onoff' },
             },
@@ -2599,6 +2607,7 @@ describe('Dry run mode', () => {
       Home: { 'dev-1': 22 },
     });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();

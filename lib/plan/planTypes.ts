@@ -51,6 +51,7 @@ export type PlanInputDevice = {
   id: string;
   name: string;
   targets: Array<{ id: string; value: unknown; unit: string }>;
+  deviceType?: 'temperature' | 'onoff';
   priority?: number;
   currentOn?: boolean;
   powerKw?: number;

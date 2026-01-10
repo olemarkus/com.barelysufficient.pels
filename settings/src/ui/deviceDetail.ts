@@ -28,32 +28,47 @@ type ShedAction = 'turn_off' | 'set_temperature';
 
 const getDeviceById = (deviceId: string) => state.latestDevices.find((device) => device.id === deviceId) || null;
 
+const supportsTemperatureDevice = (device: TargetDeviceSnapshot | null): boolean => (
+  Boolean(device && (device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0))
+);
+
 const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = name;
 };
 
 const setDeviceDetailControlStates = (deviceId: string) => {
+  const device = getDeviceById(deviceId);
+  const supportsTemperature = supportsTemperatureDevice(device);
   if (deviceDetailManaged) {
     deviceDetailManaged.checked = resolveManagedState(deviceId);
   }
   if (deviceDetailControllable) {
-    deviceDetailControllable.checked = state.controllableMap[deviceId] !== false;
+    deviceDetailControllable.checked = state.controllableMap[deviceId] === true;
   }
 
   const priceConfig = state.priceOptimizationSettings[deviceId];
   if (deviceDetailPriceOpt) {
-    deviceDetailPriceOpt.checked = priceConfig?.enabled || false;
+    deviceDetailPriceOpt.checked = supportsTemperature && priceConfig?.enabled === true;
+    deviceDetailPriceOpt.disabled = !supportsTemperature;
   }
 };
 
 const setDeviceDetailShedBehavior = (deviceId: string) => {
+  const device = getDeviceById(deviceId);
+  const supportsTemperature = supportsTemperatureDevice(device);
   const shedConfig = state.shedBehaviors[deviceId];
   if (deviceDetailShedAction) {
-    deviceDetailShedAction.value = shedConfig?.action || 'turn_off';
+    const setTempOption = deviceDetailShedAction.querySelector('option[value="set_temperature"]');
+    if (setTempOption) {
+      setTempOption.disabled = !supportsTemperature;
+      setTempOption.hidden = !supportsTemperature;
+    }
+    deviceDetailShedAction.disabled = !supportsTemperature;
+    deviceDetailShedAction.value = supportsTemperature ? shedConfig?.action || 'turn_off' : 'turn_off';
   }
   if (deviceDetailShedTemp) {
     const temp = shedConfig?.temperature;
-    deviceDetailShedTemp.value = typeof temp === 'number' ? temp.toString() : '';
+    deviceDetailShedTemp.value = supportsTemperature && typeof temp === 'number' ? temp.toString() : '';
   }
 };
 
@@ -74,9 +89,13 @@ const showDeviceDetailOverlay = () => {
 };
 
 const updateDeltaSectionVisibility = () => {
-  if (deviceDetailDeltaSection && deviceDetailPriceOpt) {
-    deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.checked ? 'block' : 'none';
+  if (!deviceDetailDeltaSection || !deviceDetailPriceOpt) return;
+  const device = currentDetailDeviceId ? getDeviceById(currentDetailDeviceId) : null;
+  if (!supportsTemperatureDevice(device)) {
+    deviceDetailDeltaSection.style.display = 'none';
+    return;
   }
+  deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.checked ? 'block' : 'none';
 };
 
 const getShedDefaultTemp = (deviceId: string | null): number => {
@@ -89,8 +108,39 @@ const getShedDefaultTemp = (deviceId: string | null): number => {
   return 10;
 };
 
+const parseShedTemperatureInput = (): number | null => {
+  const parsedTemp = parseFloat(deviceDetailShedTemp?.value || '');
+  if (!Number.isFinite(parsedTemp)) return null;
+  if (parsedTemp < -20 || parsedTemp > 50) return null;
+  return parsedTemp;
+};
+
+const resolveTemperatureShedBehavior = (deviceId: string): {
+  behavior: { action: ShedAction; temperature?: number };
+  updateTempInput?: number;
+} => {
+  const action: ShedAction = deviceDetailShedAction?.value === 'set_temperature' ? 'set_temperature' : 'turn_off';
+  if (action === 'turn_off') {
+    return { behavior: { action: 'turn_off' } };
+  }
+  const parsedTemp = parseShedTemperatureInput();
+  const temperature = parsedTemp ?? state.shedBehaviors[deviceId]?.temperature ?? getShedDefaultTemp(deviceId);
+  return {
+    behavior: { action: 'set_temperature', temperature },
+    updateTempInput: parsedTemp === null ? temperature : undefined,
+  };
+};
+
 const updateShedTempVisibility = () => {
   if (!deviceDetailShedAction || !deviceDetailShedTempRow) return;
+  const device = currentDetailDeviceId ? getDeviceById(currentDetailDeviceId) : null;
+  if (!supportsTemperatureDevice(device)) {
+    deviceDetailShedTempRow.hidden = true;
+    if (deviceDetailShedTemp) {
+      deviceDetailShedTemp.disabled = true;
+    }
+    return;
+  }
   const isTemp = deviceDetailShedAction.value === 'set_temperature';
   deviceDetailShedTempRow.hidden = !isTemp;
   if (deviceDetailShedTemp) {
@@ -179,28 +229,33 @@ const renderDeviceDetailModes = (device: TargetDeviceSnapshot) => {
   if (!deviceDetailModes) return;
   deviceDetailModes.innerHTML = '';
 
+  if (!supportsTemperatureDevice(device)) {
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = 'Temperature targets are not available for on/off devices.';
+    deviceDetailModes.appendChild(note);
+    return;
+  }
+
   getAllModes().forEach((mode) => {
     deviceDetailModes.appendChild(buildDeviceDetailModeRow(mode, device));
   });
 };
 
 const saveShedBehavior = async () => {
-  if (!currentDetailDeviceId) return;
   const deviceId = currentDetailDeviceId;
-  const action: ShedAction = deviceDetailShedAction?.value === 'set_temperature' ? 'set_temperature' : 'turn_off';
-  const parsedTemp = parseFloat(deviceDetailShedTemp?.value || '');
-  const validTemp = Number.isFinite(parsedTemp) && parsedTemp >= -20 && parsedTemp <= 50 ? parsedTemp : null;
-
-  if (action === 'set_temperature') {
-    const temperature = validTemp ?? state.shedBehaviors[deviceId]?.temperature ?? getShedDefaultTemp(deviceId);
-    state.shedBehaviors[deviceId] = { action, temperature };
-    if (deviceDetailShedTemp && validTemp === null) {
-      deviceDetailShedTemp.value = temperature.toString();
-    }
-  } else {
+  if (!deviceId) return;
+  const device = getDeviceById(deviceId);
+  if (!supportsTemperatureDevice(device)) {
     state.shedBehaviors[deviceId] = { action: 'turn_off' };
+    await setSetting('overshoot_behaviors', state.shedBehaviors);
+    return;
   }
-
+  const { behavior, updateTempInput } = resolveTemperatureShedBehavior(deviceId);
+  state.shedBehaviors[deviceId] = behavior;
+  if (typeof updateTempInput === 'number' && deviceDetailShedTemp) {
+    deviceDetailShedTemp.value = updateTempInput.toString();
+  }
   await setSetting('overshoot_behaviors', state.shedBehaviors);
 };
 
@@ -288,21 +343,30 @@ const ensurePriceOptimizationConfig = (deviceId: string) => {
   return state.priceOptimizationSettings[deviceId];
 };
 
+const parsePriceDeltaInput = (value: string | undefined, fallback: number): number => {
+  const parsed = parseFloat(value || '');
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed < -20 || parsed > 20) return fallback;
+  return parsed;
+};
+
+const readPriceOptInputs = (): { enabled: boolean; cheapDelta: number; expensiveDelta: number } => ({
+  enabled: deviceDetailPriceOpt?.checked || false,
+  cheapDelta: parsePriceDeltaInput(deviceDetailCheapDelta?.value, 5),
+  expensiveDelta: parsePriceDeltaInput(deviceDetailExpensiveDelta?.value, -5),
+});
+
 const initDeviceDetailPriceOptHandlers = () => {
   const autoSavePriceOpt = async () => {
-    if (!currentDetailDeviceId) return;
     const deviceId = currentDetailDeviceId;
-    const priceOptEnabled = deviceDetailPriceOpt?.checked || false;
-    const cheapDelta = parseFloat(deviceDetailCheapDelta?.value || '5');
-    const expensiveDelta = parseFloat(deviceDetailExpensiveDelta?.value || '-5');
-
-    const validCheapDelta = Number.isFinite(cheapDelta) && cheapDelta >= -20 && cheapDelta <= 20;
-    const validExpensiveDelta = Number.isFinite(expensiveDelta) && expensiveDelta >= -20 && expensiveDelta <= 20;
-
+    if (!deviceId) return;
+    const device = getDeviceById(deviceId);
+    if (!supportsTemperatureDevice(device)) return;
+    const { enabled, cheapDelta, expensiveDelta } = readPriceOptInputs();
     const config = ensurePriceOptimizationConfig(deviceId);
-    config.enabled = priceOptEnabled;
-    config.cheapDelta = validCheapDelta ? cheapDelta : 5;
-    config.expensiveDelta = validExpensiveDelta ? expensiveDelta : -5;
+    config.enabled = enabled;
+    config.cheapDelta = cheapDelta;
+    config.expensiveDelta = expensiveDelta;
     try {
       await savePriceOptimizationSettings();
       renderDevices(state.latestDevices);

@@ -54,7 +54,7 @@
         <span data-tooltip="Price-based control">Price</span>
       </div>
       <div id="device-list" class="device-list" role="list"></div>
-      <p id="empty-state" class="muted" hidden>No devices with target temperature capabilities were found.</p>
+      <p id="empty-state" class="muted" hidden>No compatible devices found. PELS requires devices with power measurement and either temperature control or on/off capability.</p>
       <div class="list__footer">
         <button type="button" class="btn secondary" id="refresh-button">Refresh</button>
         <p class="muted">Managed devices participate in modes and optimization. Temperature & priority live in the Modes tab.</p>
@@ -367,10 +367,8 @@
         </label>
         <div class="inline-actions">
           <button type="button" class="btn ghost" id="advanced-device-clear">Clear device data</button>
-          <button type="button" class="btn ghost" id="advanced-device-clear-unknown">Clear unknown devices</button>
         </div>
         <p class="muted">Clears modes, priorities, control flags, overshoot behavior, and price optimization for the selected device.</p>
-        <p class="muted">Unknown devices are IDs stored in settings that are not in the latest device snapshot.</p>
       </div>
       <div class="section-header">
         <h3 class="section-title">Device log</h3>

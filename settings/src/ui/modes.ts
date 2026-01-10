@@ -17,6 +17,10 @@ import { resolveManagedState, state } from './state';
 import { createDragHandle } from './components';
 import { logSettingsError } from './logging';
 
+const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
+  device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
+);
+
 export const loadModeAndPriorities = async () => {
   const mode = await getSetting(OPERATING_MODE_SETTING);
   const priorities = await getSetting('capacity_priorities');
@@ -97,12 +101,36 @@ export const getPriority = (deviceId: string) => {
 };
 
 export const getDesiredTarget = (device: TargetDeviceSnapshot) => {
+  if (!supportsTemperatureDevice(device)) return null;
   const mode = state.editingMode || 'Home';
   const value = state.modeTargets[mode]?.[device.id];
   if (typeof value === 'number') return value;
   const firstTarget = device.targets?.find?.(() => true);
   if (firstTarget && typeof firstTarget.value === 'number') return firstTarget.value;
   return null;
+};
+
+const buildOnOffPlaceholder = (): HTMLElement => {
+  const placeholder = document.createElement('span');
+  placeholder.className = 'mode-target-placeholder';
+  placeholder.textContent = 'On/off only';
+  return placeholder;
+};
+
+const buildModeTargetInput = (device: TargetDeviceSnapshot, desired: number | null): HTMLElement => {
+  if (!supportsTemperatureDevice(device)) return buildOnOffPlaceholder();
+  const tempInput = document.createElement('input');
+  tempInput.type = 'number';
+  tempInput.step = '0.5';
+  tempInput.inputMode = 'decimal';
+  tempInput.placeholder = 'Desired °C';
+  tempInput.value = desired === null ? '' : desired.toString();
+  tempInput.dataset.deviceId = device.id;
+  tempInput.className = 'mode-target-input';
+  tempInput.addEventListener('change', () => {
+    applyTargetChange(device.id, tempInput.value);
+  });
+  return tempInput;
 };
 
 const buildPriorityRow = (device: TargetDeviceSnapshot) => {
@@ -116,17 +144,7 @@ const buildPriorityRow = (device: TargetDeviceSnapshot) => {
   name.textContent = device.name;
 
   const desired = getDesiredTarget(device);
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.step = '0.5';
-  input.inputMode = 'decimal';
-  input.placeholder = 'Desired °C';
-  input.value = desired === null ? '' : desired.toString();
-  input.dataset.deviceId = device.id;
-  input.className = 'mode-target-input';
-  input.addEventListener('change', () => {
-    applyTargetChange(device.id, input.value);
-  });
+  const input = buildModeTargetInput(device, desired);
 
   const badge = document.createElement('span');
   badge.className = 'chip priority-badge';

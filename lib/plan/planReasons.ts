@@ -146,6 +146,103 @@ function getBaseShedReason(
   return baseReason;
 }
 
+type HoldDecision =
+  | { type: 'skip' }
+  | { type: 'restore'; availableHeadroom: number; restoredOneThisCycle: boolean }
+  | { type: 'hold'; reason: string };
+
+function hasTemperatureTarget(dev: DevicePlanDevice): boolean {
+  return (typeof dev.currentTarget === 'number' && Number.isFinite(dev.currentTarget))
+    || (typeof dev.plannedTarget === 'number' && Number.isFinite(dev.plannedTarget));
+}
+
+function resolveRestoreDecision(params: {
+  dev: DevicePlanDevice;
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+  restoredThisCycle: Set<string>;
+}): HoldDecision {
+  const {
+    dev,
+    availableHeadroom,
+    restoredOneThisCycle,
+    restoredThisCycle,
+  } = params;
+  const restoreBuffer = computeRestoreBufferKw(estimateRestorePower(dev));
+  if (availableHeadroom < restoreBuffer) {
+    const reason = `insufficient headroom (need ${restoreBuffer.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`;
+    return { type: 'hold', reason };
+  }
+  if (restoredOneThisCycle) {
+    return { type: 'hold', reason: 'restore throttled' };
+  }
+  restoredThisCycle.add(dev.id);
+  return {
+    type: 'restore',
+    availableHeadroom: availableHeadroom - restoreBuffer,
+    restoredOneThisCycle: true,
+  };
+}
+
+function resolveHoldDecision(params: {
+  dev: DevicePlanDevice;
+  behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null };
+  state: PlanEngineState;
+  shedReasons: Map<string, string>;
+  inShedWindow: boolean;
+  inCooldown: boolean;
+  activeOvershoot: boolean;
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+  restoredThisCycle: Set<string>;
+  shedCooldownRemainingSec: number | null;
+  holdDuringRestoreCooldown: boolean;
+}): HoldDecision {
+  const {
+    dev,
+    behavior,
+    state,
+    shedReasons,
+    inShedWindow,
+    inCooldown,
+    activeOvershoot,
+    availableHeadroom,
+    restoredOneThisCycle,
+    restoredThisCycle,
+    shedCooldownRemainingSec,
+    holdDuringRestoreCooldown,
+  } = params;
+
+  if (behavior.action !== 'set_temperature' || behavior.temperature === null) {
+    return { type: 'skip' };
+  }
+  if (!hasTemperatureTarget(dev)) {
+    return { type: 'skip' };
+  }
+
+  const atMinTemp = Number(dev.currentTarget) === behavior.temperature || Number(dev.plannedTarget) === behavior.temperature;
+  const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
+  const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
+  const shouldHold = (inShedWindow || holdDuringRestoreCooldown)
+    && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan);
+
+  if (!shouldHold && wasShedLastPlan) {
+    return resolveRestoreDecision({
+      dev,
+      availableHeadroom,
+      restoredOneThisCycle,
+      restoredThisCycle,
+    });
+  }
+
+  if (!shouldHold) {
+    return { type: 'skip' };
+  }
+
+  const baseReason = getBaseShedReason(dev, shedReasons, activeOvershoot, inCooldown, shedCooldownRemainingSec);
+  return { type: 'hold', reason: baseReason };
+}
+
 function applyHoldToDevice(params: {
   dev: DevicePlanDevice;
   behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null };
@@ -175,39 +272,32 @@ function applyHoldToDevice(params: {
     holdDuringRestoreCooldown,
   } = params;
 
-  if (behavior.action !== 'set_temperature' || behavior.temperature === null) {
-    return { device: dev, availableHeadroom, restoredOneThisCycle };
-  }
+  const decision = resolveHoldDecision({
+    dev,
+    behavior,
+    state,
+    shedReasons,
+    inShedWindow,
+    inCooldown,
+    activeOvershoot,
+    availableHeadroom,
+    restoredOneThisCycle,
+    restoredThisCycle,
+    shedCooldownRemainingSec,
+    holdDuringRestoreCooldown,
+  });
 
-  const atMinTemp = Number(dev.currentTarget) === behavior.temperature || Number(dev.plannedTarget) === behavior.temperature;
-  const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
-  const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
-  const shouldHold = (inShedWindow || holdDuringRestoreCooldown)
-    && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan);
-
-  if (!shouldHold && wasShedLastPlan) {
-    const restoreBuffer = computeRestoreBufferKw(estimateRestorePower(dev));
-    if (availableHeadroom < restoreBuffer) {
-      const reason = `insufficient headroom (need ${restoreBuffer.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`;
-      return applyHoldUpdate(dev, behavior, reason, availableHeadroom, restoredOneThisCycle);
-    }
-    if (restoredOneThisCycle) {
-      return applyHoldUpdate(dev, behavior, 'restore throttled', availableHeadroom, restoredOneThisCycle);
-    }
-    restoredThisCycle.add(dev.id);
+  if (decision.type === 'restore') {
     return {
       device: dev,
-      availableHeadroom: availableHeadroom - restoreBuffer,
-      restoredOneThisCycle: true,
+      availableHeadroom: decision.availableHeadroom,
+      restoredOneThisCycle: decision.restoredOneThisCycle,
     };
   }
-
-  if (!shouldHold) {
-    return { device: dev, availableHeadroom, restoredOneThisCycle };
+  if (decision.type === 'hold') {
+    return applyHoldUpdate(dev, behavior, decision.reason, availableHeadroom, restoredOneThisCycle);
   }
-
-  const baseReason = getBaseShedReason(dev, shedReasons, activeOvershoot, inCooldown, shedCooldownRemainingSec);
-  return applyHoldUpdate(dev, behavior, baseReason, availableHeadroom, restoredOneThisCycle);
+  return { device: dev, availableHeadroom, restoredOneThisCycle };
 }
 
 function normalizeDeviceReason(params: {

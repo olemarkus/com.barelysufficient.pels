@@ -24,6 +24,10 @@ import { createDeviceRow, createNumberInput } from './components';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../lib/price/priceComponents';
 
+const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
+  device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
+);
+
 type GridTariffEntry = {
   time: number;
   energyFeeExVat?: number | null;
@@ -311,7 +315,7 @@ export const renderPriceOptimization = (devices: TargetDeviceSnapshot[]) => {
 
   const enabledDevices = (devices || []).filter((device) => {
     const config = state.priceOptimizationSettings[device.id];
-    return resolveManagedState(device.id) && config?.enabled === true;
+    return resolveManagedState(device.id) && config?.enabled === true && supportsTemperatureDevice(device);
   });
 
   if (enabledDevices.length === 0) {

@@ -24,6 +24,7 @@ export type DeviceRowOptions = {
 export type CheckboxOptions = {
     title: string;
     checked: boolean;
+    disabled?: boolean;
     onChange: (checked: boolean) => void | Promise<void>;
 };
 
@@ -179,15 +180,19 @@ export const createUsageBar = (options: UsageBarOptions): HTMLElement => {
  * Creates a checkbox wrapped in a label with icon styling.
  */
 export const createCheckboxLabel = (options: CheckboxOptions): HTMLElement => {
-    const { title, checked, onChange } = options;
+    const { title, checked, disabled = false, onChange } = options;
 
     const label = document.createElement('label');
     label.className = 'checkbox-icon';
     setTooltip(label, title);
+    if (disabled) {
+        label.classList.add('is-disabled');
+    }
 
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = checked;
+    input.disabled = disabled;
     input.setAttribute('aria-label', title);
     input.addEventListener('change', () => {
         const result = onChange(input.checked);

@@ -27,7 +27,7 @@ export type UiState = {
 };
 
 export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
-  enabled: true,
+  enabled: false,
   cheapDelta: 5,
   expensiveDelta: -5,
 };
@@ -49,7 +49,7 @@ export const state: UiState = {
 export const resolveManagedState = (deviceId: string): boolean => {
   const explicit = state.managedMap[deviceId];
   if (typeof explicit === 'boolean') return explicit;
-  const capacityEnabled = state.controllableMap[deviceId] !== false;
+  const capacityEnabled = state.controllableMap[deviceId] === true;
   const priceEnabled = state.priceOptimizationSettings[deviceId]?.enabled === true;
   return capacityEnabled || priceEnabled;
 };

@@ -22,7 +22,20 @@ export class MockDevice {
     private id: string,
     private name: string,
     private capabilities: string[],
+    private deviceClass: string = 'heater',
   ) { }
+
+  private getNormalizedCapabilities(): string[] {
+    const normalized = new Set(this.capabilities);
+    if (normalized.has('target_temperature')) {
+      normalized.add('measure_power');
+      normalized.add('measure_temperature');
+    }
+    if (normalized.has('onoff')) {
+      normalized.add('measure_power');
+    }
+    return Array.from(normalized);
+  }
 
   private capabilityValues = new Map<string, any>();
   private settings: Record<string, any> = {};
@@ -36,11 +49,15 @@ export class MockDevice {
   }
 
   getCapabilities(): string[] {
-    return this.capabilities;
+    return this.getNormalizedCapabilities();
   }
 
   getName(): string {
     return this.name;
+  }
+
+  getDeviceClass(): string {
+    return this.deviceClass;
   }
 
   getData() {
@@ -82,6 +99,22 @@ export class MockDriver {
     return this.devices;
   }
 }
+
+let autoEnableMockDevices = false;
+
+export const setAutoEnableMockDevices = (enabled: boolean): void => {
+  autoEnableMockDevices = enabled;
+};
+
+const buildControllableDevices = (drivers: Record<string, MockDriver>): Record<string, boolean> => {
+  const controllable: Record<string, boolean> = {};
+  for (const driver of Object.values(drivers)) {
+    for (const device of driver.getDevices()) {
+      controllable[device.idValue] = true;
+    }
+  }
+  return controllable;
+};
 
 // Helper to find a device instance by ID across all mock drivers
 const findMockDeviceById = (deviceId: string): MockDevice | null => {
@@ -143,6 +176,7 @@ export const mockHomeyInstance = {
             devices[device.idValue] = {
               id: device.idValue,
               name: device.getName(),
+              class: device.getDeviceClass(),
               capabilities: caps,
               capabilitiesObj,
               settings: await device.getSettings(),
@@ -230,6 +264,17 @@ export const mockHomeyInstance = {
 
 export const setMockDrivers = (drivers: Record<string, MockDriver>) => {
   mockHomeyInstance.drivers.getDrivers = () => drivers;
+  if (!autoEnableMockDevices) return;
+  const existingControllable = mockHomeyInstance.settings.get('controllable_devices');
+  const existingManaged = mockHomeyInstance.settings.get('managed_devices');
+  if ((existingControllable && typeof existingControllable === 'object')
+    || (existingManaged && typeof existingManaged === 'object')) {
+    return;
+  }
+  const controllable = buildControllableDevices(drivers);
+  if (Object.keys(controllable).length > 0) {
+    mockHomeyInstance.settings.set('controllable_devices', controllable);
+  }
 };
 
 class MockApp {
@@ -253,6 +298,7 @@ const homeyModule = {
     MockDevice,
     MockDriver,
     setMockDrivers,
+    setAutoEnableMockDevices,
   },
 };
 
@@ -263,16 +309,17 @@ export const mockHomeyApiInstance = {
     getDevices: async () => {
       const drivers = mockHomeyInstance.drivers.getDrivers();
       const devices: Record<string, any> = {};
-      for (const driver of Object.values(drivers)) {
-        for (const device of driver.getDevices()) {
-          const caps = device.getCapabilities();
-          const capabilitiesObj: Record<string, any> = {};
+        for (const driver of Object.values(drivers)) {
+          for (const device of driver.getDevices()) {
+            const caps = device.getCapabilities();
+            const capabilitiesObj: Record<string, any> = {};
           for (const cap of caps) {
             capabilitiesObj[cap] = { id: cap, value: await device.getCapabilityValue(cap) };
           }
           devices[device.idValue] = {
             id: device.idValue,
             name: device.getName(),
+            class: device.getDeviceClass(),
             capabilities: caps,
             capabilitiesObj,
             settings: await device.getSettings(),

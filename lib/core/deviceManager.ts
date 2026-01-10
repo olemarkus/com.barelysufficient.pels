@@ -1,12 +1,14 @@
 import Homey from 'homey';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
+import { resolveDeviceLabel, resolveZoneLabel } from './deviceManagerHelpers';
 
 type HomeyApiConstructor = {
     createAppAPI: (opts: { homey: Homey.App['homey']; debug?: ((...args: unknown[]) => void) | null }) => Promise<HomeyApiClient>;
 };
 const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
 
-const TARGET_CAPABILITY_PREFIXES = ['target_temperature', 'thermostat_setpoint'];
+const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
+const SUPPORTED_DEVICE_CLASSES = new Set(['thermostat', 'heater', 'socket']);
 const MIN_SIGNIFICANT_POWER_W = 50;
 
 type HomeyApiDevicesClient = {
@@ -245,8 +247,12 @@ export class DeviceManager {
             this.logger.error('Device missing ID, skipping:', device.name || 'unknown');
             return null;
         }
-        const deviceLabel = this.getDeviceLabel(device, deviceId);
+        const deviceClassKey = this.resolveDeviceClassKey(device);
+        if (!deviceClassKey) return null;
+        const deviceLabel = resolveDeviceLabel(device, deviceId);
         const capabilities = this.getCapabilities(device);
+        const capsStatus = this.resolveDeviceCapabilities(capabilities);
+        if (!capsStatus) return null;
         const capabilityObj = this.getCapabilityObj(device);
         const currentTemperature = this.getCurrentTemperature(capabilityObj);
         const powerRaw = capabilityObj.measure_power?.value;
@@ -257,18 +263,18 @@ export class DeviceManager {
             powerRaw,
             now,
         });
-        const targetCaps = this.getTargetCaps(capabilities);
-        if (targetCaps.length === 0) {
-            return null;
-        }
+        const { targetCaps } = capsStatus;
         const targets = this.buildTargets(targetCaps, capabilityObj);
         const currentOn = this.getCurrentOn(capabilityObj, powerRaw);
-        const zone = this.getZoneLabel(device);
+        const zone = resolveZoneLabel(device);
+        const deviceType: TargetDeviceSnapshot['deviceType'] = targetCaps.length > 0 ? 'temperature' : 'onoff';
 
         return {
             id: deviceId,
             name: device.name ?? deviceId,
             targets,
+            deviceClass: deviceClassKey,
+            deviceType,
             powerKw: powerEstimate.powerKw,
             expectedPowerKw: powerEstimate.expectedPowerKw,
             expectedPowerSource: powerEstimate.expectedPowerSource,
@@ -287,31 +293,51 @@ export class DeviceManager {
     private getDeviceId(device: HomeyDeviceLike): string | null {
         return device.id || device.data?.id || null;
     }
-
-    private getDeviceLabel(device: HomeyDeviceLike, deviceId: string): string {
-        return device.name ? `${device.name} (${deviceId})` : deviceId;
+    private getDeviceClass(device: HomeyDeviceLike): string | null {
+        if (typeof device.class === 'string' && device.class.trim()) {
+            return device.class.trim();
+        }
+        return null;
     }
-
+    private resolveDeviceClassKey(device: HomeyDeviceLike): string | null {
+        const deviceClass = this.getDeviceClass(device);
+        if (!deviceClass) return null;
+        const deviceClassKey = deviceClass.toLowerCase();
+        if (!SUPPORTED_DEVICE_CLASSES.has(deviceClassKey)) {
+            return null;
+        }
+        return deviceClassKey;
+    }
     private getCapabilities(device: HomeyDeviceLike): string[] {
         return Array.isArray(device.capabilities) ? device.capabilities : [];
     }
-
+    private resolveDeviceCapabilities(capabilities: string[]): { targetCaps: string[] } | null {
+        if (!capabilities.includes('measure_power')) {
+            return null;
+        }
+        const targetCaps = this.getTargetCaps(capabilities);
+        const hasOnOff = capabilities.includes('onoff');
+        if (targetCaps.length > 0 && !capabilities.includes('measure_temperature')) {
+            return null;
+        }
+        if (targetCaps.length === 0 && !hasOnOff) {
+            return null;
+        }
+        return { targetCaps };
+    }
     private getCapabilityObj(device: HomeyDeviceLike): Record<string, CapabilityValue> {
         if (device.capabilitiesObj && typeof device.capabilitiesObj === 'object') {
             return device.capabilitiesObj as Record<string, CapabilityValue>;
         }
         return {};
     }
-
     private getCurrentTemperature(capabilityObj: Record<string, CapabilityValue>): number | undefined {
         const temp = capabilityObj.measure_temperature?.value;
         return typeof temp === 'number' ? temp : undefined;
     }
-
     private getTargetCaps(capabilities: string[]): string[] {
         return capabilities.filter((cap) => TARGET_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(prefix)));
     }
-
     private buildTargets(targetCaps: string[], capabilityObj: Record<string, CapabilityValue>): TargetDeviceSnapshot['targets'] {
         return targetCaps.map((capId) => ({
             id: capId,
@@ -319,7 +345,6 @@ export class DeviceManager {
             unit: capabilityObj[capId]?.units || '°C',
         }));
     }
-
     private getCurrentOn(capabilityObj: Record<string, CapabilityValue>, powerRaw: unknown): boolean | undefined {
         if (typeof capabilityObj.onoff?.value === 'boolean') {
             return capabilityObj.onoff.value;
@@ -329,25 +354,6 @@ export class DeviceManager {
         }
         return undefined;
     }
-
-    private getZoneLabel(device: HomeyDeviceLike): string {
-        const zone = device.zone;
-        if (zone && typeof zone === 'object' && 'name' in zone) {
-            const name = (zone as { name?: unknown }).name;
-            if (typeof name === 'string' && name) {
-                return name;
-            }
-        }
-        if (typeof zone === 'string' && zone) {
-            return zone;
-        }
-        const zoneName = device.zoneName;
-        if (typeof zoneName === 'string' && zoneName) {
-            return zoneName;
-        }
-        return 'Unknown';
-    }
-
     private updateAndGetPowerEstimate(params: {
         device: HomeyDeviceLike;
         deviceId: string;

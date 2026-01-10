@@ -13,6 +13,14 @@ export type PlanDevicesDeps = {
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 };
 
+const supportsTemperatureDevice = (device: PlanInputDevice): boolean => {
+  const hasTargets = Array.isArray(device.targets) && device.targets.length > 0;
+  if (device.deviceType) {
+    return device.deviceType === 'temperature' && hasTargets;
+  }
+  return hasTargets;
+};
+
 export function buildInitialPlanDevices(params: {
   context: PlanContext;
   state: PlanEngineState;
@@ -23,25 +31,30 @@ export function buildInitialPlanDevices(params: {
 }): DevicePlanDevice[] {
   const { context, state, shedSet, shedReasons, guardInShortfall, deps } = params;
   return context.devices.map((dev) => {
+    const supportsTemperature = supportsTemperatureDevice(dev);
     const priority = deps.getPriorityForDevice(dev.id);
     const plannedTarget = resolvePlannedTarget({
       dev,
       desiredForMode: context.desiredForMode,
+      supportsTemperature,
       deps,
     });
     const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
     const currentState = resolveCurrentState(dev.currentOn);
     const controllable = dev.controllable !== false;
-    const shedBehavior = deps.getShedBehavior(dev.id);
+    const shedBehavior: { action: ShedAction; temperature: number | null } = supportsTemperature
+      ? deps.getShedBehavior(dev.id)
+      : { action: 'turn_off', temperature: null };
 
-  const base = buildBasePlanDevice({
-    dev,
-    priority,
-    recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
-    currentState,
-    currentTarget,
-    plannedTarget,
-    controllable,
+    const base = buildBasePlanDevice({
+      dev,
+      priority,
+      recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
+      currentState,
+      currentTarget,
+      plannedTarget,
+      controllable,
+      supportsTemperature,
       shedBehavior,
       shedSet,
       shedReasons,
@@ -63,9 +76,11 @@ export function buildInitialPlanDevices(params: {
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
   desiredForMode: Record<string, number>;
+  supportsTemperature: boolean;
   deps: PlanDevicesDeps;
 }): number | null {
-  const { dev, desiredForMode, deps } = params;
+  const { dev, desiredForMode, supportsTemperature, deps } = params;
+  if (!supportsTemperature) return null;
   const desired = desiredForMode[dev.id];
   let plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
   const priceOptConfig = deps.getPriceOptimizationSettings()[dev.id];
@@ -102,6 +117,7 @@ function buildBasePlanDevice(params: {
   currentTarget: unknown;
   plannedTarget: number | null;
   controllable: boolean;
+  supportsTemperature: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null };
   shedSet: Set<string>;
   shedReasons: Map<string, string>;
@@ -114,6 +130,7 @@ function buildBasePlanDevice(params: {
     currentTarget,
     plannedTarget,
     controllable,
+    supportsTemperature,
     shedBehavior,
     shedSet,
     shedReasons,
@@ -123,7 +140,12 @@ function buildBasePlanDevice(params: {
   const baseReason = controllable
     ? shedReasons.get(dev.id) || (recentlyRestored ? 'keep (recently restored)' : 'keep')
     : 'capacity control off';
-  const { shedAction, shedTemperature } = resolveShedAction(controllable, shedSet.has(dev.id), shedBehavior);
+  const { shedAction, shedTemperature } = resolveShedAction(
+    controllable,
+    shedSet.has(dev.id),
+    shedBehavior,
+    supportsTemperature,
+  );
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
     : plannedTarget;
@@ -162,8 +184,15 @@ function resolveShedAction(
   controllable: boolean,
   shouldShed: boolean,
   shedBehavior: { action: ShedAction; temperature: number | null },
+  supportsTemperature: boolean,
 ): { shedAction: ShedAction; shedTemperature: number | null } {
-  if (controllable && shouldShed && shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
+  if (
+    supportsTemperature
+    && controllable
+    && shouldShed
+    && shedBehavior.action === 'set_temperature'
+    && shedBehavior.temperature !== null
+  ) {
     return { shedAction: 'set_temperature', shedTemperature: shedBehavior.temperature };
   }
   return { shedAction: 'turn_off', shedTemperature: null };

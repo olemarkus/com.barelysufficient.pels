@@ -55,6 +55,27 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('keeps devices disabled by default when no settings exist', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      managed?: boolean;
+      controllable?: boolean;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'dev-1');
+
+    expect(entry?.managed).toBe(false);
+    expect(entry?.controllable).toBe(false);
+  });
+
   it('set_capacity_mode flow card changes mode and persists to settings', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
@@ -358,6 +379,7 @@ describe('MyApp initialization', () => {
     // Set up mode targets before init
     mockHomeyInstance.settings.set('mode_device_targets', { Away: { 'dev-1': 16 } });
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -370,8 +392,14 @@ describe('MyApp initialization', () => {
           'dev-1': {
             id: 'dev-1',
             name: 'Heater',
-            capabilities: ['target_temperature', 'onoff'],
-            capabilitiesObj: { target_temperature: { value: 20, id: 'target_temperature' }, onoff: { value: true, id: 'onoff' } },
+            class: 'heater',
+            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+            capabilitiesObj: {
+              measure_power: { value: 1200, id: 'measure_power' },
+              measure_temperature: { value: 21, id: 'measure_temperature' },
+              target_temperature: { value: 20, id: 'target_temperature' },
+              onoff: { value: true, id: 'onoff' },
+            },
             settings: {},
           },
         }),
@@ -414,8 +442,14 @@ describe('MyApp initialization', () => {
           'dev-1': {
             id: 'dev-1',
             name: 'Heater',
-            capabilities: ['target_temperature', 'onoff'],
-            capabilitiesObj: { target_temperature: { value: 20, id: 'target_temperature' }, onoff: { value: true, id: 'onoff' } },
+            class: 'heater',
+            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+            capabilitiesObj: {
+              measure_power: { value: 1200, id: 'measure_power' },
+              measure_temperature: { value: 21, id: 'measure_temperature' },
+              target_temperature: { value: 20, id: 'target_temperature' },
+              onoff: { value: true, id: 'onoff' },
+            },
             settings: {},
           },
         }),
@@ -458,8 +492,11 @@ describe('MyApp initialization', () => {
           'dev-1': {
             id: 'dev-1',
             name: 'Heater',
-            capabilities: ['target_temperature', 'onoff'],
+            class: 'heater',
+            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
             capabilitiesObj: {
+              measure_power: { value: 1200, id: 'measure_power' },
+              measure_temperature: { value: 21, id: 'measure_temperature' },
               target_temperature: { value: await heater.getCapabilityValue('target_temperature') },
               onoff: { value: await heater.getCapabilityValue('onoff') },
             },
@@ -495,6 +532,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -509,8 +547,11 @@ describe('MyApp initialization', () => {
           'dev-1': {
             id: 'dev-1',
             name: 'Heater',
-            capabilities: ['target_temperature', 'onoff'],
+            class: 'heater',
+            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
             capabilitiesObj: {
+              measure_power: { value: 1200, id: 'measure_power' },
+              measure_temperature: { value: 21, id: 'measure_temperature' },
               target_temperature: { value: await heater.getCapabilityValue('target_temperature'), id: 'target_temperature' },
               onoff: { value: await heater.getCapabilityValue('onoff'), id: 'onoff' },
             },
@@ -546,6 +587,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 3 } });
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -910,6 +952,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
     // Set up priorities so the device is in the plan
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
