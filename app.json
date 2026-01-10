@@ -44,6 +44,14 @@
     "get_daily_budget": {
       "method": "GET",
       "path": "/daily_budget"
+    },
+    "homey_devices": {
+      "method": "GET",
+      "path": "/homey_devices"
+    },
+    "log_homey_device": {
+      "method": "POST",
+      "path": "/log_homey_device"
     }
   },
   "images": {

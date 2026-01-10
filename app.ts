@@ -70,6 +70,52 @@ class PelsApp extends Homey.App {
   private setExpectedOverride(deviceId: string, kw: number): void {
     this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
   }
+
+  private sanitizeLogValue(value: string): string {
+    if (!value) return '';
+    const cleaned = value.replace(/[^a-zA-Z0-9 _.-]/g, ' ');
+    return cleaned.replace(/\s+/g, ' ').trim();
+  }
+
+  private safeJsonStringify(payload: unknown): string {
+    try {
+      return JSON.stringify(payload, null, 2);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return `[unserializable device object: ${message}]`;
+    }
+  }
+
+  async getHomeyDevicesForDebug(): Promise<HomeyDeviceLike[]> {
+    if (!this.deviceManager) return [];
+    try {
+      await this.deviceManager.init();
+      return await this.deviceManager.getDevicesForDebug();
+    } catch (error) {
+      this.error('Failed to fetch Homey devices for debug', error as Error);
+      return [];
+    }
+  }
+
+  async logHomeyDeviceForDebug(deviceId: string): Promise<boolean> {
+    if (!deviceId) return false;
+    const devices = await this.getHomeyDevicesForDebug();
+    const device = devices.find((entry) => entry.id === deviceId);
+    const safeDeviceId = this.sanitizeLogValue(deviceId);
+    if (!device) {
+      this.log('Homey device dump: device not found', { deviceId: safeDeviceId });
+      return false;
+    }
+    const label = device.name || deviceId;
+    const safeLabel = this.sanitizeLogValue(label) || safeDeviceId;
+    const deviceJson = this.safeJsonStringify(device);
+    this.log('Homey device dump', {
+      deviceId: safeDeviceId,
+      label: safeLabel,
+      payload: deviceJson,
+    });
+    return true;
+  }
   async onInit() {
     this.log('PELS has been initialized');
     this.updateDebugLoggingEnabled();

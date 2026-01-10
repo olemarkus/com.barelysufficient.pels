@@ -61,6 +61,12 @@ import {
 } from './dailyBudget';
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
 import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail';
+import {
+  initAdvancedDeviceCleanupHandlers,
+  initAdvancedDeviceLoggerHandlers,
+  refreshAdvancedDeviceCleanup,
+  refreshAdvancedDeviceLogger,
+} from './advanced';
 import { state } from './state';
 import { flushSettingsLogs, logSettingsError, logSettingsInfo, logSettingsWarn } from './logging';
 import { initTooltips } from './tooltips';
@@ -426,6 +432,9 @@ const initAdvancedHandlers = () => {
       void saveDebugTopics();
     });
   });
+
+  initAdvancedDeviceCleanupHandlers();
+  initAdvancedDeviceLoggerHandlers();
 };
 
 const loadInitialData = async () => {
@@ -448,6 +457,8 @@ const loadInitialData = async () => {
   renderPriorities(state.latestDevices);
   renderDevices(state.latestDevices);
   renderPriceOptimization(state.latestDevices);
+  refreshAdvancedDeviceCleanup();
+  await refreshAdvancedDeviceLogger();
   await loadPriceSettings();
   await refreshPrices();
   await loadGridTariffSettings();

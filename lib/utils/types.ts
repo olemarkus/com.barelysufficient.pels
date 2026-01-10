@@ -63,6 +63,7 @@ export type CapabilityValue<T> = {
 export type HomeyDeviceLike = {
     id?: string;
     name?: string;
+    class?: string;
     data?: { id?: string };
     capabilities?: string[];
     capabilitiesObj?: Record<string, CapabilityValue<unknown> | undefined> & {
