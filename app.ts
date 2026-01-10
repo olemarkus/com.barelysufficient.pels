@@ -79,7 +79,7 @@ class PelsApp extends Homey.App {
 
   private safeJsonStringify(payload: unknown): string {
     try {
-      return JSON.stringify(payload, null, 2);
+      return JSON.stringify(payload);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return `[unserializable device object: ${message}]`;
