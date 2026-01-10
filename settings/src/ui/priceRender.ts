@@ -252,9 +252,9 @@ const formatPriceTimeLabel = (entryTime: Date, timeContext: PriceTimeContext) =>
 const buildPriceTooltip = (entry: PriceEntry) => {
   const tooltipLines: string[] = [];
   const formatOre = (value: number) => `${value.toFixed(1)} øre`;
-  const hasBreakdown = typeof entry.spotPriceExVat === 'number';
 
-  if (hasBreakdown) {
+  const spotPrice = entry.spotPriceExVat;
+  if (typeof spotPrice === 'number') {
     const gridTariff = entry.gridTariffExVat ?? 0;
     const surcharge = entry.providerSurchargeExVat ?? 0;
     const consumptionTax = entry.consumptionTaxExVat ?? 0;
@@ -263,7 +263,7 @@ const buildPriceTooltip = (entry: PriceEntry) => {
     const support = entry.electricitySupport ?? 0;
     const vatLabel = entry.vatMultiplier === 1 ? 'VAT (0%)' : 'VAT';
 
-    tooltipLines.push(`Spot price (ex VAT): ${formatOre(entry.spotPriceExVat)}`);
+    tooltipLines.push(`Spot price (ex VAT): ${formatOre(spotPrice)}`);
     tooltipLines.push(`Grid tariff (ex VAT): ${formatOre(gridTariff)}`);
     tooltipLines.push(`Provider surcharge (ex VAT): ${formatOre(surcharge)}`);
     tooltipLines.push(`Consumption tax: ${formatOre(consumptionTax)}`);

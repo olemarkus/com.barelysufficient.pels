@@ -356,6 +356,37 @@
         </label>
         <p class="muted">Select only what you need. Debug logging stays enabled across restarts.</p>
       </div>
+      <div class="section-header">
+        <h3 class="section-title">Device cleanup</h3>
+      </div>
+      <div class="form-grid">
+        <label class="field">
+          <span class="field__label">Device</span>
+          <select id="advanced-device-select"></select>
+          <small class="field__hint">Removes PELS settings for this device only.</small>
+        </label>
+        <div class="inline-actions">
+          <button type="button" class="btn ghost" id="advanced-device-clear">Clear device data</button>
+          <button type="button" class="btn ghost" id="advanced-device-clear-unknown">Clear unknown devices</button>
+        </div>
+        <p class="muted">Clears modes, priorities, control flags, overshoot behavior, and price optimization for the selected device.</p>
+        <p class="muted">Unknown devices are IDs stored in settings that are not in the latest device snapshot.</p>
+      </div>
+      <div class="section-header">
+        <h3 class="section-title">Device log</h3>
+      </div>
+      <div class="form-grid">
+        <label class="field">
+          <span class="field__label">Homey device</span>
+          <select id="advanced-api-device-select"></select>
+          <small class="field__hint">Loads the raw device from the Homey API.</small>
+        </label>
+        <div class="inline-actions">
+          <button type="button" class="btn ghost" id="advanced-api-device-refresh">Refresh list</button>
+          <button type="button" class="btn ghost" id="advanced-api-device-log">Log device</button>
+        </div>
+        <p class="muted">Writes the selected device payload to the app logs for inspection.</p>
+      </div>
     </section>
 
     <section class="card panel hidden" id="price-panel" data-panel="price">

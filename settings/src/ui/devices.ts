@@ -100,6 +100,8 @@ export const refreshDevices = async () => {
     renderDevices(devices);
     renderPriorities(devices);
     renderPriceOptimization(devices);
+    const devicesUpdated = new CustomEvent('devices-updated', { detail: { devices } });
+    document.dispatchEvent(devicesUpdated);
     await refreshPlan();
   } catch (error) {
     await logSettingsError('Failed to refresh devices', error, 'refreshDevices');

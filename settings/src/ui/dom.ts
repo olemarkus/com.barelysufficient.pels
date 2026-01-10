@@ -81,6 +81,12 @@ export const priceOptimizationEmpty = qs('#price-optimization-empty');
 export const priceOptimizationSection = qs('#price-optimization-section');
 export const priceOptimizationEnabledCheckbox = document.querySelector('#price-optimization-enabled') as HTMLInputElement;
 export const debugLoggingTopicInputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-debug-topic]'));
+export const advancedDeviceSelect = document.querySelector('#advanced-device-select') as HTMLSelectElement;
+export const advancedDeviceClearButton = document.querySelector('#advanced-device-clear') as HTMLButtonElement;
+export const advancedDeviceClearUnknownButton = document.querySelector('#advanced-device-clear-unknown') as HTMLButtonElement;
+export const advancedApiDeviceSelect = document.querySelector('#advanced-api-device-select') as HTMLSelectElement;
+export const advancedApiDeviceRefreshButton = document.querySelector('#advanced-api-device-refresh') as HTMLButtonElement;
+export const advancedApiDeviceLogButton = document.querySelector('#advanced-api-device-log') as HTMLButtonElement;
 
 export const deviceDetailOverlay = qs('#device-detail-overlay');
 export const deviceDetailPanel = qs('#device-detail-panel');

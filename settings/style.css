@@ -171,6 +171,17 @@ body {
   text-align: left;
 }
 
+.device-group-header {
+  margin-top: var(--spacing-4);
+  padding: var(--spacing-2) 0;
+  border-bottom: 1px dashed var(--panel-border);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
 .tab {
   flex-shrink: 1;
   border: none;
@@ -310,6 +321,12 @@ input[type="number"]:focus {
   cursor: pointer;
 }
 
+.checkbox-icon.is-disabled,
+.checkbox-icon input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: var(--opacity-disabled);
+}
+
 .checkbox-icon input[type="checkbox"] {
   width: 18px;
   height: 18px;
@@ -347,6 +364,25 @@ input[type="number"]:focus {
 .btn:disabled {
   opacity: var(--opacity-disabled);
   cursor: not-allowed;
+}
+
+.btn:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.btn.is-busy {
+  cursor: progress;
+  opacity: 0.8;
+}
+
+.btn.confirming {
+  border-color: var(--homey-red, #f44336);
+  color: var(--homey-red, #f44336);
+}
+
+.btn.confirming:hover {
+  transform: none;
 }
 
 .btn:not(:disabled):hover {
@@ -468,6 +504,12 @@ input:focus-visible {
   grid-template-columns: 20px minmax(0, 1fr) 80px 44px;
   align-items: center;
   gap: var(--spacing-1);
+}
+
+.mode-target-placeholder {
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
 }
 
 .mode-row__inputs {
