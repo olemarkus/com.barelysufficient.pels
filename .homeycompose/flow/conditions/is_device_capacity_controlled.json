@@ -1,0 +1,20 @@
+{
+  "title": {
+    "en": "Is device capacity controlled?"
+  },
+  "titleFormatted": {
+    "en": "Is [[device]] capacity controlled?"
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      }
+    }
+  ],
+  "hint": {
+    "en": "Use this to check if PELS can shed or restore the selected device based on capacity limits."
+  }
+}

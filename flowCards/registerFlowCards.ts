@@ -89,6 +89,8 @@ export function registerFlowCards(deps: FlowCardDeps): void {
   registerHeadroomForDeviceCard(deps);
   registerCapacityAndModeCards(deps);
   registerDeviceCapacityControlCards(deps);
+  registerManagedDeviceCondition(deps);
+  registerCapacityControlCondition(deps);
 }
 
 function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {
@@ -237,6 +239,36 @@ function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
   disableCard.registerArgumentAutocompleteListener('device', async (query: string) => (
     getDeviceOptions(deps, query)
   ));
+}
+
+function registerManagedDeviceCondition(deps: FlowCardDeps): void {
+  const isManagedCond = deps.homey.flow.getConditionCard('is_device_managed');
+  isManagedCond.registerRunListener(async (args: unknown) => {
+    const device = await resolveDeviceFromArgs(args, deps);
+    return device?.managed === true;
+  });
+  isManagedCond.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getDeviceOptions(deps, query)
+  ));
+}
+
+function registerCapacityControlCondition(deps: FlowCardDeps): void {
+  const isCapacityControlCond = deps.homey.flow.getConditionCard('is_device_capacity_controlled');
+  isCapacityControlCond.registerRunListener(async (args: unknown) => {
+    const device = await resolveDeviceFromArgs(args, deps);
+    return device?.controllable === true;
+  });
+  isCapacityControlCond.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getDeviceOptions(deps, query)
+  ));
+}
+
+async function resolveDeviceFromArgs(args: unknown, deps: FlowCardDeps): Promise<TargetDeviceSnapshot | null> {
+  const payload = args as { device?: DeviceArg } | null;
+  const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+  if (!deviceId) return null;
+  const snapshot = await deps.getSnapshot();
+  return snapshot.find((d) => d.id === deviceId) ?? null;
 }
 
 function getModeOptions(deps: FlowCardDeps, query: string): Array<{ id: string; name: string }> {
