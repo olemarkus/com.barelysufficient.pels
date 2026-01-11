@@ -11,10 +11,10 @@ import {
   CAPACITY_MARGIN_KW,
 } from '../lib/utils/settingsKeys';
 
-const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
-// Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+// Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
+jest.useFakeTimers({ doNotFake: ['nextTick', 'Date'] });
 
 const buildOnOffDevice = async (options?: { id?: string; name?: string; on?: boolean; powerW?: number }) => {
   const deviceId = options?.id ?? 'device-a';
@@ -241,7 +241,8 @@ describe('On/off device integration', () => {
     }
 
     await (app as any).recordPowerSample(5000);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    jest.advanceTimersByTime(100);
+    await flushPromises();
 
     expect(setCapSpy).toHaveBeenCalledWith({
       deviceId: 'device-a',
@@ -278,7 +279,8 @@ describe('On/off device integration', () => {
     }
 
     await (app as any).recordPowerSample(5000);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    jest.advanceTimersByTime(100);
+    await flushPromises();
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const planDevice = plan.devices.find((entry: any) => entry.id === 'device-a');

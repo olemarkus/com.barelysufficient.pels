@@ -10,11 +10,12 @@ import {
     CAPACITY_LIMIT_KW,
     CAPACITY_MARGIN_KW,
 } from '../lib/utils/settingsKeys';
+import type { TargetDeviceSnapshot } from '../lib/utils/types';
 
-const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
-// Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+// Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
+jest.useFakeTimers({ doNotFake: ['nextTick', 'Date'] });
 
 const buildHeatpumpDevice = async (options?: {
     id?: string;
@@ -106,15 +107,7 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        type SnapshotEntry = {
-            id: string;
-            deviceType?: string;
-            deviceClass?: string;
-            targets?: Array<{ id: string; value: unknown }>;
-            currentOn?: boolean;
-            powerKw?: number;
-        };
-        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as SnapshotEntry[];
+        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[];
         const entry = snapshot.find((snap) => snap.id === device.idValue);
 
         expect(entry).toBeDefined();
@@ -133,11 +126,7 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        type SnapshotEntry = {
-            id: string;
-            targets?: Array<{ id: string; value: unknown }>;
-        };
-        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as SnapshotEntry[];
+        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[];
         const entry = snapshot.find((snap) => snap.id === device.idValue);
 
         expect(entry?.targets).toBeDefined();
@@ -213,7 +202,8 @@ describe('Heatpump device integration', () => {
         }
 
         await (app as any).recordPowerSample(5000);
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        jest.advanceTimersByTime(100);
+        await flushPromises();
 
         expect(setCapSpy).toHaveBeenCalledWith({
             deviceId: 'heatpump-a',
@@ -250,7 +240,8 @@ describe('Heatpump device integration', () => {
         }
 
         await (app as any).recordPowerSample(5000);
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        jest.advanceTimersByTime(100);
+        await flushPromises();
 
         const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
         const planDevice = plan.devices.find((entry: any) => entry.id === 'heatpump-a');
