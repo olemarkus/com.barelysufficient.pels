@@ -213,6 +213,48 @@
       },
       {
         "title": {
+          "en": "Is device capacity controlled?"
+        },
+        "titleFormatted": {
+          "en": "Is [[device]] capacity controlled?"
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Use this to check if PELS can shed or restore the selected device based on capacity limits."
+        },
+        "id": "is_device_capacity_controlled"
+      },
+      {
+        "title": {
+          "en": "Is device managed by PELS?"
+        },
+        "titleFormatted": {
+          "en": "Is [[device]] managed by PELS?"
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Use this to check if PELS is currently managing the selected device."
+        },
+        "id": "is_device_managed"
+      },
+      {
+        "title": {
           "en": "Price level is..."
         },
         "titleFormatted": {

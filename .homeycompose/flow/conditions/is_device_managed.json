@@ -1,0 +1,20 @@
+{
+  "title": {
+    "en": "Is device managed by PELS?"
+  },
+  "titleFormatted": {
+    "en": "Is [[device]] managed by PELS?"
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      }
+    }
+  ],
+  "hint": {
+    "en": "Use this to check if PELS is currently managing the selected device."
+  }
+}
