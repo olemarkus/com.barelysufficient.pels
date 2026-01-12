@@ -1556,6 +1556,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'water-heater-1': true });
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'water-heater-1': 55 } });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('capacity_dry_run', false); // Not dry run
@@ -1687,6 +1688,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'water-heater-1': true });
 
     // Set mode target for the device
     mockHomeyInstance.settings.set('mode_device_targets', {
@@ -1786,6 +1788,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'water-heater-1': true });
 
     // Set mode target for the device
     mockHomeyInstance.settings.set('mode_device_targets', {
@@ -1874,6 +1877,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'water-heater-1': true });
 
     // Set mode target for the device
     mockHomeyInstance.settings.set('mode_device_targets', {
@@ -1963,6 +1967,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'water-heater-1': true });
 
     // Set mode target for the device
     mockHomeyInstance.settings.set('mode_device_targets', {
@@ -2070,6 +2075,7 @@ describe('Price optimization', () => {
 
     // Set up settings - price optimization enabled with -5 delta for expensive hours
     mockHomeyInstance.settings.set('controllable_devices', { 'water-heater-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'water-heater-1': true });
     mockHomeyInstance.settings.set('mode_device_targets', {
       'Home Office': { 'water-heater-1': 65 },
     });

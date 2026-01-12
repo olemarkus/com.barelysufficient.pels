@@ -145,6 +145,7 @@ describe('Heatpump device integration', () => {
         mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'heatpump-a': 20 } });
         mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
         mockHomeyInstance.settings.set('controllable_devices', { 'heatpump-a': true });
+        mockHomeyInstance.settings.set('managed_devices', { 'heatpump-a': true });
 
         const app = createApp();
         await app.onInit();
@@ -182,6 +183,7 @@ describe('Heatpump device integration', () => {
         mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
         mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
         mockHomeyInstance.settings.set('controllable_devices', { 'heatpump-a': true });
+        mockHomeyInstance.settings.set('managed_devices', { 'heatpump-a': true });
         mockHomeyInstance.settings.set('overshoot_behaviors', {
             'heatpump-a': { action: 'set_temperature', temperature: 15 },
         });
@@ -222,6 +224,7 @@ describe('Heatpump device integration', () => {
         mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
         mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
         mockHomeyInstance.settings.set('controllable_devices', { 'heatpump-a': true });
+        mockHomeyInstance.settings.set('managed_devices', { 'heatpump-a': true });
         mockHomeyInstance.settings.set('overshoot_behaviors', {
             'heatpump-a': { action: 'set_temperature', temperature: 15 },
         });

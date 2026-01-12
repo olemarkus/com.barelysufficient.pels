@@ -39,17 +39,19 @@ const setDeviceDetailTitle = (name: string) => {
 const setDeviceDetailControlStates = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   const supportsTemperature = supportsTemperatureDevice(device);
+  const isManaged = resolveManagedState(deviceId);
   if (deviceDetailManaged) {
-    deviceDetailManaged.checked = resolveManagedState(deviceId);
+    deviceDetailManaged.checked = isManaged;
   }
   if (deviceDetailControllable) {
     deviceDetailControllable.checked = state.controllableMap[deviceId] === true;
+    deviceDetailControllable.disabled = !isManaged;
   }
 
   const priceConfig = state.priceOptimizationSettings[deviceId];
   if (deviceDetailPriceOpt) {
     deviceDetailPriceOpt.checked = supportsTemperature && priceConfig?.enabled === true;
-    deviceDetailPriceOpt.disabled = !supportsTemperature;
+    deviceDetailPriceOpt.disabled = !supportsTemperature || !isManaged;
   }
 };
 
@@ -95,7 +97,8 @@ const updateDeltaSectionVisibility = () => {
     deviceDetailDeltaSection.style.display = 'none';
     return;
   }
-  deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.checked ? 'block' : 'none';
+  const isManaged = currentDetailDeviceId ? resolveManagedState(currentDetailDeviceId) : false;
+  deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.checked && isManaged ? 'block' : 'none';
 };
 
 const getShedDefaultTemp = (deviceId: string | null): number => {
@@ -329,6 +332,8 @@ const initDeviceDetailManagedHandler = () => {
       renderDevices(state.latestDevices);
       renderPriorities(state.latestDevices);
       renderPriceOptimization(state.latestDevices);
+      setDeviceDetailControlStates(currentDetailDeviceId);
+      updateDeltaSectionVisibility();
     } catch (error) {
       await logSettingsError('Failed to update managed device', error, 'device detail');
       await showToastError(error, 'Failed to update managed device.');
