@@ -76,6 +76,7 @@ describe('Device plan snapshot', () => {
 
     // Trigger a plan rebuild by recording power
     await (app as any).recordPowerSample(1000);
+    await flushPromises();
 
     // Check that plan_updated event was emitted
     const planEvents = mockHomeyInstance.api._realtimeEvents.filter((e) => e.event === 'plan_updated');
@@ -117,6 +118,7 @@ describe('Device plan snapshot', () => {
 
     // Report 12 kW total; over the 9 kW soft limit
     await (app as any).recordPowerSample(12000);
+    await flushPromises();
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan).toBeTruthy();
@@ -154,6 +156,7 @@ describe('Device plan snapshot', () => {
 
     // Report 12 kW total; over the 9 kW soft limit
     await (app as any).recordPowerSample(12000);
+    await flushPromises();
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan).toBeTruthy();
@@ -747,7 +750,7 @@ describe('Device plan snapshot', () => {
 
     // Switch mode; settings listener should rebuild snapshot/plan.
     mockHomeyInstance.settings.set('operating_mode', 'Comfort');
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushPromises();
 
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const comfortPlan = plan.devices.find((d: any) => d.id === 'dev-1');
