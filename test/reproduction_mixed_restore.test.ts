@@ -63,6 +63,7 @@ describe('Mixed Type Restoration Throttling', () => {
         const driver = new MockDriver('driver-1', [dev1, dev2]);
         setMockDrivers({ 'driver-1': driver });
         mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+        mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true, 'dev-2': true });
 
         // Setup mode targets
         mockHomeyInstance.settings.set('mode_device_targets', {

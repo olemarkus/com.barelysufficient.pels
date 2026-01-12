@@ -274,6 +274,8 @@ export const setMockDrivers = (drivers: Record<string, MockDriver>) => {
   const controllable = buildControllableDevices(drivers);
   if (Object.keys(controllable).length > 0) {
     mockHomeyInstance.settings.set('controllable_devices', controllable);
+    const managed = { ...controllable };
+    mockHomeyInstance.settings.set('managed_devices', managed);
   }
 };
 

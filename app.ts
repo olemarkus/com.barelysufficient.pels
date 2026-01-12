@@ -15,8 +15,8 @@ import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
 import { type DebugLoggingTopic } from './lib/utils/debugLogging';
 import { getAllModes as getAllModesHelper, getShedBehavior as getShedBehaviorHelper,
   resolveModeName as resolveModeNameHelper } from './lib/utils/capacityHelpers';
-import { MANAGED_DEVICES, OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
-import { isPowerTrackerState } from './lib/utils/appTypeGuards';
+import { CONTROLLABLE_DEVICES, MANAGED_DEVICES, OPERATING_MODE_SETTING, PRICE_OPTIMIZATION_SETTINGS } from './lib/utils/settingsKeys';
+import { isBooleanMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
 import { createPlanEngine, createPlanService, registerAppFlowCards,
   type FlowCardInitApp, type PlanEngineInitApp, type PlanServiceInitApp } from './lib/app/appInit';
 import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
@@ -41,12 +41,10 @@ class PelsApp extends Homey.App {
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
   private controllableDevices: Record<string, boolean> = {};
   private managedDevices: Record<string, boolean> = {};
-  private managedDefaultsDirty = false;
   private shedBehaviors: Record<string, ShedBehavior> = {};
   private debugLoggingTopics = new Set<DebugLoggingTopic>();
   private dailyBudgetService!: DailyBudgetService;
   private priceCoordinator!: PriceCoordinator;
-  private priceOptimizationSettingsLoaded = false;
   private deviceManager!: DeviceManager;
   private planEngine!: PlanEngine;
   private planService!: PlanService;
@@ -120,6 +118,7 @@ class PelsApp extends Homey.App {
     this.log('PELS has been initialized');
     this.updateDebugLoggingEnabled();
     this.initPriceCoordinator();
+    this.migrateManagedDevices();
     this.loadCapacitySettings();
     this.initDailyBudgetService();
     await this.initDeviceManager();
@@ -334,6 +333,61 @@ class PelsApp extends Homey.App {
     }
     this.dailyBudgetService.updateState();
   }
+  private migrateManagedDevices(): void {
+    const managedRaw = this.homey.settings.get(MANAGED_DEVICES) as unknown;
+    const controllableRaw = this.homey.settings.get(CONTROLLABLE_DEVICES) as unknown;
+    const priceRaw = this.homey.settings.get(PRICE_OPTIMIZATION_SETTINGS) as unknown;
+
+    const managed = isBooleanMap(managedRaw) ? { ...managedRaw } : {};
+    const controllable = isBooleanMap(controllableRaw) ? { ...controllableRaw } : {};
+    const priceEnabled = new Set<string>();
+
+    if (priceRaw && typeof priceRaw === 'object') {
+      Object.entries(priceRaw as Record<string, unknown>).forEach(([deviceId, entry]) => {
+        if (entry && typeof entry === 'object' && (entry as { enabled?: unknown }).enabled === true) {
+          priceEnabled.add(deviceId);
+        }
+      });
+    }
+
+    let managedChanged = false;
+    let controllableChanged = false;
+
+    priceEnabled.forEach((deviceId) => {
+      if (!Object.prototype.hasOwnProperty.call(managed, deviceId)) {
+        managed[deviceId] = true;
+        managedChanged = true;
+      }
+    });
+
+    Object.entries(controllable).forEach(([deviceId, isControllable]) => {
+      if (isControllable === true && !Object.prototype.hasOwnProperty.call(managed, deviceId)) {
+        managed[deviceId] = true;
+        managedChanged = true;
+      }
+    });
+
+    Object.entries(managed).forEach(([deviceId, isManaged]) => {
+      if (isManaged !== true) return;
+      const hasCapacity = typeof controllable[deviceId] === 'boolean';
+      const hasPrice = priceEnabled.has(deviceId);
+      if (!hasCapacity && !hasPrice) {
+        controllable[deviceId] = true;
+        controllableChanged = true;
+      }
+    });
+
+    if (managedChanged) {
+      this.homey.settings.set(MANAGED_DEVICES, managed);
+    }
+    if (controllableChanged) {
+      this.homey.settings.set(CONTROLLABLE_DEVICES, controllable);
+    }
+
+    if (managedChanged || controllableChanged) {
+      this.log('Migrated managed device settings to explicit managed devices.');
+    }
+  }
   private loadCapacitySettings(): void {
     const next = loadCapacitySettingsFromHomey({
       settings: this.homey.settings,
@@ -346,7 +400,6 @@ class PelsApp extends Homey.App {
         capacityDryRun: this.capacityDryRun,
         controllableDevices: this.controllableDevices,
         managedDevices: this.managedDevices,
-        managedDefaultsDirty: this.managedDefaultsDirty,
         shedBehaviors: this.shedBehaviors,
       },
     });
@@ -358,14 +411,12 @@ class PelsApp extends Homey.App {
     this.capacityDryRun = next.capacityDryRun;
     this.controllableDevices = next.controllableDevices;
     this.managedDevices = next.managedDevices;
-    this.managedDefaultsDirty = next.managedDefaultsDirty;
     this.shedBehaviors = next.shedBehaviors;
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.capacitySettings.marginKw);
   }
   private loadPriceOptimizationSettings(): void {
     this.priceCoordinator.loadPriceOptimizationSettings();
-    this.priceOptimizationSettingsLoaded = true;
   }
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null {
     return this.dailyBudgetService.getUiPayload();
@@ -497,7 +548,6 @@ class PelsApp extends Homey.App {
   private async refreshTargetDevicesSnapshot(): Promise<void> {
     this.logDebug('devices', 'Refreshing target devices snapshot');
     await this.deviceManager.refreshSnapshot();
-    this.syncManagedDefaults();
     this.homey.settings.set('target_devices_snapshot', this.deviceManager.getSnapshot());
   }
   private getCombinedHourlyPrices(): unknown {
@@ -537,25 +587,10 @@ class PelsApp extends Homey.App {
     return getAllModesHelper(this.operatingMode, this.capacityPriorities, this.modeDeviceTargets);
   }
   private resolveManagedState(deviceId: string): boolean {
-    const existing = this.managedDevices[deviceId];
-    if (typeof existing === 'boolean') return existing;
-    if (!this.priceOptimizationSettingsLoaded) {
-      this.loadPriceOptimizationSettings();
-    }
-    const capacityEnabled = this.controllableDevices[deviceId] === true;
-    const priceEnabled = this.priceOptimizationSettings[deviceId]?.enabled === true;
-    const managed = capacityEnabled || priceEnabled;
-    this.managedDevices[deviceId] = managed;
-    this.managedDefaultsDirty = true;
-    return managed;
+    return this.managedDevices[deviceId] === true;
   }
   private isCapacityControlEnabled(deviceId: string): boolean {
-    return this.resolveManagedState(deviceId) && this.controllableDevices[deviceId] !== false;
-  }
-  private syncManagedDefaults(): void {
-    if (!this.managedDefaultsDirty) return;
-    this.managedDefaultsDirty = false;
-    this.homey.settings.set(MANAGED_DEVICES, this.managedDevices);
+    return this.managedDevices[deviceId] === true && this.controllableDevices[deviceId] === true;
   }
   private getShedBehavior(deviceId: string): { action: ShedAction; temperature: number | null } {
     return getShedBehaviorHelper(deviceId, this.shedBehaviors);

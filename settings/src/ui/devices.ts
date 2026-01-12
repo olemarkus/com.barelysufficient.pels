@@ -122,9 +122,10 @@ const setBusy = (busy: boolean) => {
 
 const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   const supportsTemperature = supportsTemperatureDevice(device);
+  const isManaged = resolveManagedState(device.id);
   const managedCheckbox = createCheckboxLabel({
     title: 'Managed by PELS',
-    checked: resolveManagedState(device.id),
+    checked: isManaged,
     onChange: async (checked) => {
       state.managedMap[device.id] = checked;
       try {
@@ -140,8 +141,9 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   });
 
   const ctrlCheckbox = createCheckboxLabel({
-    title: 'Capacity-based control',
+    title: isManaged ? 'Capacity-based control' : 'Capacity-based control (requires Managed by PELS)',
     checked: state.controllableMap[device.id] === true,
+    disabled: !isManaged,
     onChange: async (checked) => {
       state.controllableMap[device.id] = checked;
       try {
@@ -153,10 +155,19 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
     },
   });
 
+  let priceTitle: string;
+  if (!supportsTemperature) {
+    priceTitle = 'Price-based control (temperature devices only)';
+  } else if (isManaged) {
+    priceTitle = 'Price-based control';
+  } else {
+    priceTitle = 'Price-based control (requires Managed by PELS)';
+  }
+
   const priceOptCheckbox = createCheckboxLabel({
-    title: supportsTemperature ? 'Price-based control' : 'Price-based control (temperature devices only)',
+    title: priceTitle,
     checked: supportsTemperature && state.priceOptimizationSettings[device.id]?.enabled === true,
-    disabled: !supportsTemperature,
+    disabled: !supportsTemperature || !isManaged,
     onChange: async (checked) => {
       if (!state.priceOptimizationSettings[device.id]) {
         state.priceOptimizationSettings[device.id] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };

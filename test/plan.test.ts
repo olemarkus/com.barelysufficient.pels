@@ -11,6 +11,11 @@ import { createApp, cleanupApps } from './utils/appTestUtils';
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+const setManagedControllableDevices = (devices: Record<string, boolean>) => {
+  mockHomeyInstance.settings.set('controllable_devices', devices);
+  const managed = { ...devices };
+  mockHomeyInstance.settings.set('managed_devices', managed);
+};
 
 // Factory for creating a Hoiax Connected 300 water heater mock
 function createHoiaxWaterHeater(id: string, name: string = 'Connected 300') {
@@ -573,7 +578,7 @@ describe('Device plan snapshot', () => {
     });
 
     // Make device non-controllable so no shedding is possible
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': false });
+    setManagedControllableDevices({ 'dev-1': false });
 
     const app = createApp();
     await app.onInit();
@@ -684,7 +689,7 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [controllable, nonCtl]),
     });
 
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-ctl': true, 'dev-non': false });
+    setManagedControllableDevices({ 'dev-ctl': true, 'dev-non': false });
     mockHomeyInstance.settings.set('managed_devices', { 'dev-ctl': true, 'dev-non': true });
 
     const app = createApp();
@@ -711,7 +716,7 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [dev1]),
     });
 
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': false });
 
     const app = createApp();
@@ -904,7 +909,7 @@ describe('Device plan snapshot', () => {
     });
 
     mockHomeyInstance.settings.set('capacity_dry_run', false);
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -939,7 +944,7 @@ describe('Device plan snapshot', () => {
     });
 
     // Mark both devices controllable.
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+    setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -964,7 +969,7 @@ describe('Device plan snapshot', () => {
 
   it('does not shed additional devices without a new power sample after an initial shed', async () => {
     mockHomeyInstance.settings.set('capacity_dry_run', true);
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+    setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
 
     const app = createApp();
@@ -1033,7 +1038,7 @@ describe('Device plan snapshot', () => {
 
   it('allows additional shedding after a new power sample arrives', async () => {
     mockHomeyInstance.settings.set('capacity_dry_run', true);
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+    setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
 
     const app = createApp();
@@ -1137,7 +1142,7 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [dev1]),
     });
 
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -1203,7 +1208,7 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [devOn, devOff]),
     });
 
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-on': true, 'dev-off': true });
+    setManagedControllableDevices({ 'dev-on': true, 'dev-off': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -1232,7 +1237,7 @@ describe('Device plan snapshot', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_limit_kw', 5); // Low limit ensures threshold is exceeded
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
@@ -1282,7 +1287,7 @@ describe('Device plan snapshot', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1, dev2]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+    setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
 
     const triggerSpy = jest.fn();
     const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
@@ -1315,7 +1320,7 @@ describe('Device plan snapshot', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
@@ -1373,7 +1378,7 @@ describe('Device plan snapshot', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
@@ -1440,7 +1445,7 @@ describe('Device plan snapshot', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
@@ -1502,7 +1507,7 @@ describe('Device plan snapshot', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -1545,7 +1550,7 @@ describe('Device plan snapshot', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -1597,7 +1602,7 @@ describe('Device plan snapshot', () => {
     });
 
     mockHomeyInstance.settings.set('capacity_dry_run', false);
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -1641,7 +1646,7 @@ describe('Device plan snapshot', () => {
       hoiaxDriver: new MockDriver('hoiaxDriver', [hoiax]),
     });
 
-    mockHomeyInstance.settings.set('controllable_devices', { 'hoiax-1': true });
+    setManagedControllableDevices({ 'hoiax-1': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -1758,7 +1763,7 @@ describe('Device plan snapshot', () => {
     // Set priorities: dev-high has priority 1 (most important), dev-low has priority 10 (less important)
     // Lower number = higher priority = more important
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    setManagedControllableDevices({ 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -1811,7 +1816,7 @@ describe('Device plan snapshot', () => {
 
     // Both devices have equal or higher priority - no swap possible
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 10, 'dev-high2': 10 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-high2': true });
+    setManagedControllableDevices({ 'dev-high': true, 'dev-high2': true });
 
     const app = createApp();
     await app.onInit();
@@ -1854,7 +1859,7 @@ describe('Device plan snapshot', () => {
 
     // High priority (10) > Low priority (5)
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 10, 'dev-low': 5 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    setManagedControllableDevices({ 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -1907,7 +1912,7 @@ describe('Device plan snapshot', () => {
 
     // Lower number = higher priority: High (1) is most important, Low1 (8) and Low2 (9) are less important
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low1': 8, 'dev-low2': 9 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low1': true, 'dev-low2': true });
+    setManagedControllableDevices({ 'dev-high': true, 'dev-low1': true, 'dev-low2': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -1963,7 +1968,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_priorities', {
       Home: { 'dev-swap-target': 10, 'dev-lower': 8 },
     });
-    mockHomeyInstance.settings.set('controllable_devices', {
+    setManagedControllableDevices({
       'dev-swap-target': true, 'dev-lower': true,
     });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
@@ -2028,7 +2033,7 @@ describe('Device plan snapshot', () => {
 
     // Lower number = higher priority
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-target': 1, 'dev-swapped': 5 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-target': true, 'dev-swapped': true });
+    setManagedControllableDevices({ 'dev-target': true, 'dev-swapped': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -2131,7 +2136,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
     // Lower number = higher priority: dev-high (1) is more important than dev-low (10)
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    setManagedControllableDevices({ 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -2197,7 +2202,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    setManagedControllableDevices({ 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -2271,7 +2276,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    setManagedControllableDevices({ 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', true);
 
     const app = createApp();
@@ -2318,7 +2323,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-high': true, 'dev-low': true });
+    setManagedControllableDevices({ 'dev-high': true, 'dev-low': true });
     mockHomeyInstance.settings.set('capacity_dry_run', true);
 
     const app = createApp();
@@ -2375,7 +2380,7 @@ describe('Dry run mode', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     // Do NOT set capacity_dry_run - should default to true
 
     const app = createApp();
@@ -2393,7 +2398,7 @@ describe('Dry run mode', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('capacity_dry_run', undefined);
 
     const app = createApp();
@@ -2413,7 +2418,7 @@ describe('Dry run mode', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     // Explicitly NOT setting capacity_dry_run - default is true
 
     const app = createApp();
@@ -2443,7 +2448,7 @@ describe('Dry run mode', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     // Default dry run mode
 
     const app = createApp();
@@ -2482,7 +2487,7 @@ describe('Dry run mode', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     // Default dry run mode
 
     const app = createApp();
@@ -2528,7 +2533,7 @@ describe('Dry run mode', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     // Start in dry run mode (default)
 
     const app = createApp();
@@ -2557,7 +2562,7 @@ describe('Dry run mode', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     // Default dry run mode
 
     const app = createApp();
@@ -2607,7 +2612,7 @@ describe('Dry run mode', () => {
       Home: { 'dev-1': 22 },
     });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -2733,7 +2738,7 @@ describe('Dry run mode', () => {
       driverA: new MockDriver('driverA', [dev1]),
     });
 
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'dev-1': 55 },
       Away: { 'dev-1': 45 },
@@ -2788,6 +2793,7 @@ describe('Dry run mode', () => {
       driverA: new MockDriver('driverA', [dev1]),
     });
 
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': false });
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'dev-1': 50 },
@@ -2832,7 +2838,7 @@ describe('Dry run mode', () => {
       driverA: new MockDriver('driverA', [dev1]),
     });
 
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: { 'dev-1': 55 },
     });
@@ -2910,7 +2916,7 @@ describe('Dry run mode', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 10);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -2985,7 +2991,7 @@ describe('Dry run mode', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 10);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -3051,7 +3057,7 @@ describe('Dry run mode', () => {
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.05); // small margin -> restoreMargin = 0.1, hysteresis = 0.2
     mockHomeyInstance.settings.set('capacity_dry_run', false);
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -3110,7 +3116,7 @@ describe('Dry run mode', () => {
     });
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20, 'dev-2': 20 } });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+    setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
     const app = createApp();
@@ -3194,7 +3200,7 @@ describe('Dry run mode', () => {
 
     mockHomeyInstance.settings.set('capacity_limit_kw', 10);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.5); // Large margin for testing
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    setManagedControllableDevices({ 'dev-1': true });
 
     // We want behavior: set_temperature to check if it tries to shed
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
@@ -3253,7 +3259,7 @@ describe('Dry run mode', () => {
 
     mockHomeyInstance.settings.set('capacity_limit_kw', 10);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true, 'dev-2': true });
+    setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
 
     // Configure shed behavior to set_temperature
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20, 'dev-2': 20 } });

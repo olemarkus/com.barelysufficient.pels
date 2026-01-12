@@ -47,9 +47,5 @@ export const state: UiState = {
 };
 
 export const resolveManagedState = (deviceId: string): boolean => {
-  const explicit = state.managedMap[deviceId];
-  if (typeof explicit === 'boolean') return explicit;
-  const capacityEnabled = state.controllableMap[deviceId] === true;
-  const priceEnabled = state.priceOptimizationSettings[deviceId]?.enabled === true;
-  return capacityEnabled || priceEnabled;
+  return state.managedMap[deviceId] === true;
 };

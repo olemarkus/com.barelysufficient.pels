@@ -26,6 +26,7 @@ describe('Expected power flow card', () => {
 
     setMockDrivers({ driverA: new MockDriver('driverA', [deviceWithLoad, deviceNoLoad]) });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-load': true, 'dev-noload': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-load': true, 'dev-noload': true });
 
     const app = createApp();
     await app.onInit();

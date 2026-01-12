@@ -28,6 +28,7 @@ describe('Mode device targets', () => {
     });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -80,6 +81,7 @@ describe('Mode device targets', () => {
     mockHomeyInstance.settings.set('operating_mode', 'Home');
     mockHomeyInstance.settings.set('capacity_dry_run', false);
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();

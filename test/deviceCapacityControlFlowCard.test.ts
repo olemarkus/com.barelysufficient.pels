@@ -24,6 +24,7 @@ describe('Capacity control device condition', () => {
   it('returns true when the device is capacity controlled', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
@@ -40,6 +41,7 @@ describe('Capacity control device condition', () => {
   it('returns false when the device is not capacity controlled', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': false });
 
     const app = createApp();

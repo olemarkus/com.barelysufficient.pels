@@ -225,6 +225,7 @@ describe('MyApp initialization', () => {
     const result = await enableListener({ device: 'dev-1' });
     expect(result).toBe(true);
     expect(mockHomeyInstance.settings.get('controllable_devices')).toEqual({ 'dev-1': true });
+    expect(mockHomeyInstance.settings.get('managed_devices')).toBeUndefined();
   });
 
   it('disable_device_capacity_control flow card disables capacity control', async () => {
@@ -272,6 +273,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.2);
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -380,6 +382,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Away: { 'dev-1': 16 } });
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -533,6 +536,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -588,6 +592,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -953,6 +958,7 @@ describe('computeDynamicSoftLimit', () => {
     // Set up priorities so the device is in the plan
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
     await app.onInit();
@@ -967,5 +973,116 @@ describe('computeDynamicSoftLimit', () => {
     const status = mockHomeyInstance.settings.get('pels_status');
     expect(status).toBeDefined();
     expect(status).toHaveProperty('headroomKw');
+  });
+
+  it('backfills managed devices from price optimization settings on first run', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
+    expect(mockHomeyInstance.settings.get('controllable_devices')).toBeUndefined();
+  });
+
+  it('backfills capacity control when managed is true and no settings exist', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
+    expect(mockHomeyInstance.settings.get('controllable_devices')).toEqual({ 'dev-1': true });
+  });
+
+  it('does not enable capacity control when price optimization is enabled', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
+    expect(mockHomeyInstance.settings.get('controllable_devices')).toBeUndefined();
+  });
+
+  it('does not override explicit unmanaged devices during migration', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': false });
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': false });
+    expect(mockHomeyInstance.settings.get('controllable_devices')).toBeUndefined();
+  });
+
+  it('migration is idempotent - running twice produces same result', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('price_optimization_settings', {
+      'dev-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const managedAfterFirst = mockHomeyInstance.settings.get('managed_devices');
+    const controllableAfterFirst = mockHomeyInstance.settings.get('controllable_devices');
+
+    await cleanupApps();
+
+    const app2 = createApp();
+    await app2.onInit();
+
+    const managedAfterSecond = mockHomeyInstance.settings.get('managed_devices');
+    const controllableAfterSecond = mockHomeyInstance.settings.get('controllable_devices');
+
+    expect(managedAfterSecond).toEqual(managedAfterFirst);
+    expect(controllableAfterSecond).toEqual(controllableAfterFirst);
+  });
+
+  it('backfills managed devices from capacity control settings', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
+    expect(mockHomeyInstance.settings.get('controllable_devices')).toEqual({ 'dev-1': true });
   });
 });

@@ -16,7 +16,6 @@ export type CapacitySettingsSnapshot = {
   capacityDryRun: boolean;
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
-  managedDefaultsDirty: boolean;
   shedBehaviors: Record<string, ShedBehavior>;
 };
 
@@ -67,7 +66,6 @@ export function buildCapacitySettingsSnapshot(params: {
     capacityDryRun: nextDryRun,
     controllableDevices: nextControllables,
     managedDevices: nextManaged,
-    managedDefaultsDirty: false,
     shedBehaviors: nextBehaviors,
   };
 }
