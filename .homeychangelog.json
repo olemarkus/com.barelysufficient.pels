@@ -112,5 +112,8 @@
   },
   "1.8.5": {
     "en": "Added cards for checking if a device is managed or capacity controlled"
+  },
+  "1.8.6": {
+    "en": "Just a number of smaller bugfixes."
   }
 }
