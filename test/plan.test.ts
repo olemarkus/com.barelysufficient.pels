@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import {
   mockHomeyInstance,
   setMockDrivers,
@@ -10,7 +13,7 @@ import { createApp, cleanupApps } from './utils/appTestUtils';
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
 
-const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+const flushPromises = (): Promise<void> => new Promise((resolve) => { setImmediate(resolve); });
 const setManagedControllableDevices = (devices: Record<string, boolean>) => {
   mockHomeyInstance.settings.set('controllable_devices', devices);
   const managed = { ...devices };
