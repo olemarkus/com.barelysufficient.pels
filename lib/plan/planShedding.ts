@@ -246,8 +246,7 @@ async function handleShortfallCheck(
   // softLimitSource tells us why we're shedding:
   // - 'capacity': Exceeding hourly hard cap (should check shortfall)
   // - 'daily': Exceeding daily budget soft limit (should NOT panic)
-  // - 'both': Both limits exceeded, but hard cap is the panic trigger
-  if (softLimitSource === 'capacity' || softLimitSource === 'both') {
+  if (softLimitSource === 'capacity') {
     await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
   } else if (softLimitSource === 'daily') {
     // Daily budget violation only - clear shortfall if it was set
@@ -286,7 +285,6 @@ async function updateGuardState(params: {
 
 function resolveShedReason(limitSource: PlanContext['softLimitSource']): string {
   if (limitSource === 'daily') return 'shed due to daily budget';
-  if (limitSource === 'both') return 'shed due to daily budget + capacity';
   return 'shed due to capacity';
 }
 

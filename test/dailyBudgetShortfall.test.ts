@@ -59,7 +59,7 @@ describe('Daily Budget Shortfall Prevention', () => {
     expect(guard.isInShortfall()).toBe(true);
   });
 
-  test('combined violation (softLimitSource=both) checks shortfall based on hourly threshold', async () => {
+  test('combined violation (both limits equal, capacity wins) checks shortfall based on hourly threshold', async () => {
     const shortfallThreshold = 10; // hard cap
     guard.setShortfallThresholdProvider(() => shortfallThreshold);
 

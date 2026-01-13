@@ -20,6 +20,11 @@ const setManagedControllableDevices = (devices: Record<string, boolean>) => {
   mockHomeyInstance.settings.set('managed_devices', managed);
 };
 
+async function advanceTimeAndRecordPower(app: any, advanceMs: number, powerW: number): Promise<void> {
+  jest.advanceTimersByTime(advanceMs);
+  await app.recordPowerSample(powerW);
+}
+
 // Factory for creating a Hoiax Connected 300 water heater mock
 function createHoiaxWaterHeater(id: string, name: string = 'Connected 300') {
   const device = new MockDevice(id, name, [
@@ -1317,11 +1322,8 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
   });
 
-  // TODO: This test relies on deprecated Guard tick() mechanism
-  // Shortfall detection now works via Plan calling checkShortfall()
-  // Shortfall behavior is tested in capacityGuard.test.ts
-  it.skip('does not trigger capacity_shortfall repeatedly while already in shortfall state', async () => {
-    // Shortfall triggers when power exceeds the shortfall threshold.
+  it('does not trigger capacity_shortfall repeatedly while already in shortfall state', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'clearImmediate', 'clearTimeout'] });
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -1342,7 +1344,6 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Only 1 kW available to shed
     app.setSnapshotForTests([
       {
         id: 'dev-1',
@@ -1353,30 +1354,22 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
     ]);
-    // Sync the snapshot to the guard so it knows about controllable devices
-    // Guard no longer needs explicit sync
 
-    // First shortfall sample - should trigger (500kW definitely exceeds threshold)
     await (app as any).recordPowerSample(500000);
-    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
-    // Second shortfall sample - should NOT trigger again (already in shortfall)
     await (app as any).recordPowerSample(550000);
-    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
-    // Third shortfall sample - should still NOT trigger
     await (app as any).recordPowerSample(520000);
-    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
+    jest.useRealTimers();
   });
 
-  // TODO: This test relies on deprecated Guard tick() mechanism
-  it.skip('triggers capacity_shortfall again after shortfall is resolved and re-enters', async () => {
-    // Shortfall triggers when power exceeds shortfall threshold.
+  it('triggers capacity_shortfall again after shortfall is resolved and re-enters', async () => {
+    jest.useFakeTimers();
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 500);
     await dev1.setCapabilityValue('onoff', true);
@@ -1412,98 +1405,24 @@ describe('Device plan snapshot', () => {
         controllable: true,
       },
     ]);
-    // Sync the snapshot to the guard so it knows about controllable devices
-    // Guard no longer needs explicit sync
 
-    // First shortfall - should trigger (500kW definitely exceeds threshold)
     await (app as any).recordPowerSample(500000);
-    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(1);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
-    // Power drops way below threshold - shortfall resolved (needs sustained time)
-    await (app as any).recordPowerSample(1000); // 1kW
-    // Need to tick multiple times with time passing to clear shortfall (60s sustained)
-    const originalNow = Date.now;
-    let mockTime = originalNow();
-    jest.spyOn(Date, 'now').mockImplementation(() => mockTime);
-    await (app as any).capacityGuard?.tick(); // starts timer
-    mockTime += 30000;
-    await (app as any).capacityGuard?.tick();
-    mockTime += 31000; // total 61s
-    await (app as any).capacityGuard?.tick();
-    jest.restoreAllMocks();
+    await advanceTimeAndRecordPower(app, 1000, 1000);
+    await advanceTimeAndRecordPower(app, 30000, 1000);
+    await advanceTimeAndRecordPower(app, 31000, 1000);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
 
-    // Shortfall returns - should trigger again (500kW exceeds threshold)
     await (app as any).recordPowerSample(500000);
-    await (app as any).capacityGuard?.tick();
     expect(triggerSpy).toHaveBeenCalledTimes(2);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
+    jest.useRealTimers();
   });
 
-  // TODO: This test relies on deprecated Guard tick() mechanism
-  it.skip('updates capacity_shortfall setting for device sync', async () => {
-    // Shortfall triggers when power exceeds shortfall threshold.
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [dev1]),
-    });
-    setManagedControllableDevices({ 'dev-1': true });
-    mockHomeyInstance.settings.set('capacity_limit_kw', 5);
-    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
-
-    const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
-    const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
-    mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
-      if (id === 'capacity_shortfall') {
-        return { trigger: triggerSpy };
-      }
-      return originalGetTrigger();
-    }) as any;
-
-    const app = createApp();
-    await app.onInit();
-
-    // Initially not in shortfall
-    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBeFalsy();
-
-    app.setSnapshotForTests([
-      {
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        powerKw: 0.5,
-        currentOn: true,
-        controllable: true,
-      },
-    ]);
-    // Sync the snapshot to the guard so it knows about controllable devices
-    // Guard no longer needs explicit sync
-
-    // Enter shortfall - setting should be true (500kW definitely exceeds threshold)
-    await (app as any).recordPowerSample(500000);
-    await (app as any).capacityGuard?.tick();
-    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
-
-    // Exit shortfall - setting should be false (needs sustained time)
-    await (app as any).recordPowerSample(1000); // 1kW
-    // Need to tick multiple times with time passing to clear shortfall (60s sustained)
-    const originalNow = Date.now;
-    let mockTime = originalNow();
-    jest.spyOn(Date, 'now').mockImplementation(() => mockTime);
-    await (app as any).capacityGuard?.tick(); // starts timer
-    mockTime += 30000;
-    await (app as any).capacityGuard?.tick();
-    mockTime += 31000; // total 61s
-    await (app as any).capacityGuard?.tick();
-    jest.restoreAllMocks();
-    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
-
-    mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
-  });
 
   it('does not restore immediately after shedding (prevents flapping)', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
@@ -2414,37 +2333,6 @@ describe('Dry run mode', () => {
     expect((app as any).capacityDryRun).toBe(true);
   });
 
-  // TODO: This test relies on deprecated Guard actuator mechanism
-  // Dry run is now enforced by Plan - tested in 'does not apply plan actions in dry run mode'
-  it.skip('does not call actuator when shedding in dry run mode', async () => {
-    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
-    await dev1.setCapabilityValue('measure_power', 2000);
-    await dev1.setCapabilityValue('onoff', true);
-
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [dev1]),
-    });
-    setManagedControllableDevices({ 'dev-1': true });
-    // Explicitly NOT setting capacity_dry_run - default is true
-
-    const app = createApp();
-    await app.onInit();
-
-    // Track if actuator was called
-    const actuatorCalls: string[] = [];
-    if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.actuator = async (deviceId: string) => {
-        actuatorCalls.push(deviceId);
-      };
-    }
-
-    // Trigger overshoot
-    await (app as any).recordPowerSample(6000); // Way over soft limit
-    await (app as any).capacityGuard?.tick();
-
-    // Actuator should NOT have been called in dry run mode
-    expect(actuatorCalls).toHaveLength(0);
-  });
 
   it('does not apply plan actions in dry run mode', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
