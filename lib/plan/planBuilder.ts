@@ -215,7 +215,7 @@ export class PlanBuilder {
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {
     if (dailySoftLimit === null) return 'capacity';
-    if (Math.abs(dailySoftLimit - capacitySoftLimit) <= SOFT_LIMIT_EPSILON) return 'both';
+    if (Math.abs(dailySoftLimit - capacitySoftLimit) <= SOFT_LIMIT_EPSILON) return 'capacity';
     return dailySoftLimit < capacitySoftLimit ? 'daily' : 'capacity';
   }
 

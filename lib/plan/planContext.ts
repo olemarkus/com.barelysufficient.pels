@@ -12,7 +12,7 @@ export type DailyBudgetContext = {
   frozen: boolean;
 };
 
-export type SoftLimitSource = 'capacity' | 'daily' | 'both';
+export type SoftLimitSource = 'capacity' | 'daily';
 
 export type PlanContext = {
   devices: PlanInputDevice[];

@@ -75,14 +75,15 @@ function resolveLimitReason(plan: DevicePlan): 'none' | 'hourly' | 'daily' | 'bo
   const dailyLimited = plan.devices.some((d) => d.plannedState === 'shed' && d.reason?.includes('daily budget'));
   const headroomNegative = plan.meta.headroomKw !== null && plan.meta.headroomKw < 0;
   const limitSource = plan.meta.softLimitSource;
-  const dailySourceActive = limitSource === 'daily' || limitSource === 'both';
-  const capacitySourceActive = limitSource === 'capacity' || limitSource === 'both';
+  const dailySourceActive = limitSource === 'daily';
+  const capacitySourceActive = limitSource === 'capacity';
   const hourlyLimited = Boolean(plan.meta.hourlyBudgetExhausted)
     || plan.devices.some((d) => d.plannedState === 'shed' && d.reason?.includes('hourly budget'))
     || plan.devices.some((d) => d.plannedState === 'shed' && d.reason?.includes('capacity'))
     || (headroomNegative && (limitSource ? capacitySourceActive : true));
   const dailyLimitedResolved = dailyLimited || (headroomNegative && dailySourceActive);
 
+  // When both limits are active, show 'both' for clarity, but capacity always wins for shedding decisions
   if (dailyLimitedResolved && hourlyLimited) return 'both';
   if (dailyLimitedResolved) return 'daily';
   if (hourlyLimited) return 'hourly';
