@@ -1323,7 +1323,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('does not trigger capacity_shortfall repeatedly while already in shortfall state', async () => {
-    jest.useFakeTimers({ doNotFake: ['setImmediate', 'clearImmediate', 'clearTimeout'] });
+    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate'] });
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -1369,7 +1369,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('triggers capacity_shortfall again after shortfall is resolved and re-enters', async () => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate'] });
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 500);
     await dev1.setCapabilityValue('onoff', true);
