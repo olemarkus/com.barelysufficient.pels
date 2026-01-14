@@ -34,6 +34,7 @@ export class DailyBudgetService {
     priceShapingEnabled: true,
   };
   private snapshot: DailyBudgetUiPayload | null = null;
+  private daySnapshots: Record<string, DailyBudgetDayPayload> = {};
 
   constructor(private deps: DailyBudgetServiceDeps) {
     this.manager = new DailyBudgetManager({
@@ -88,7 +89,7 @@ export class DailyBudgetService {
         forcePlanRebuild: params.forcePlanRebuild,
         capacityBudgetKWh,
       });
-      this.snapshot = update.snapshot;
+      this.setDaySnapshot(update.snapshot, nowMs);
       if (update.shouldPersist) {
         this.persistState();
       }
@@ -136,7 +137,7 @@ export class DailyBudgetService {
   getPeriodicStatusLog(): string | null {
     const nowMs = Date.now();
     this.updateState({ nowMs, forcePlanRebuild: false });
-    const snapshot = this.snapshot;
+    const snapshot = this.getTodaySnapshot();
     if (!snapshot || !snapshot.budget.enabled) return null;
     const plannedKWh = snapshot.buckets?.plannedKWh ?? [];
     const currentIndex = snapshot.currentBucketIndex ?? 0;
@@ -167,9 +168,26 @@ export class DailyBudgetService {
     const nowMs = Date.now();
     this.updateState({ nowMs, forcePlanRebuild: false });
     if (!this.snapshot) return null;
-    return {
-      ...this.snapshot,
-      tomorrow: this.buildTomorrowPreview(nowMs),
+    return this.snapshot;
+  }
+
+  private setDaySnapshot(snapshot: DailyBudgetDayPayload, nowMs: number): void {
+    const todayKey = snapshot.dateKey;
+    const tomorrowSnapshot = this.buildTomorrowPreview(nowMs);
+    const tomorrowKey = tomorrowSnapshot?.dateKey ?? null;
+    this.daySnapshots = {
+      [todayKey]: snapshot,
+      ...(tomorrowSnapshot ? { [tomorrowSnapshot.dateKey]: tomorrowSnapshot } : {}),
     };
+    this.snapshot = {
+      days: { ...this.daySnapshots },
+      todayKey,
+      tomorrowKey,
+    };
+  }
+
+  private getTodaySnapshot(): DailyBudgetDayPayload | null {
+    if (!this.snapshot) return null;
+    return this.snapshot.days[this.snapshot.todayKey] ?? null;
   }
 }

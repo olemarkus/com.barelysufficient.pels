@@ -456,6 +456,54 @@
           }
         ],
         "id": "set_expected_power_usage"
+      },
+      {
+        "title": {
+          "en": "Set external prices (today)"
+        },
+        "titleFormatted": {
+          "en": "Set external prices for today from [[prices_json]]"
+        },
+        "hint": {
+          "en": "Paste the price JSON from Power by the Hour's \"price changed\" card tag. Single quotes are accepted (e.g., {'0':0.2747,'1':0.2678,...})."
+        },
+        "args": [
+          {
+            "name": "prices_json",
+            "type": "text",
+            "title": {
+              "en": "Price data (JSON)"
+            },
+            "placeholder": {
+              "en": "{'0':0.2747,'1':0.2678,'2':0.261,...}"
+            }
+          }
+        ],
+        "id": "set_external_prices_today"
+      },
+      {
+        "title": {
+          "en": "Set external prices (tomorrow)"
+        },
+        "titleFormatted": {
+          "en": "Set external prices for tomorrow from [[prices_json]]"
+        },
+        "hint": {
+          "en": "Paste the price JSON from Power by the Hour's \"price changed\" card tag. Single quotes are accepted (e.g., {'0':0.2747,'1':0.2678,'2':0.261,...})."
+        },
+        "args": [
+          {
+            "name": "prices_json",
+            "type": "text",
+            "title": {
+              "en": "Price data (JSON)"
+            },
+            "placeholder": {
+              "en": "{'0':0.2747,'1':0.2678,'2':0.261,...}"
+            }
+          }
+        ],
+        "id": "set_external_prices_tomorrow"
       }
     ]
   },

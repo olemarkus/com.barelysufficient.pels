@@ -1,9 +1,13 @@
 import type { TargetDeviceSnapshot } from '../../../lib/utils/types';
 import {
   priceAreaSelect,
+  priceSchemeSelect,
+  priceSchemeNote,
+  priceNorwaySettings,
   providerSurchargeInput,
   priceThresholdInput,
   priceMinDiffInput,
+  priceRefreshButton,
   priceOptimizationList,
   priceOptimizationEmpty,
   priceOptimizationSection,
@@ -13,6 +17,10 @@ import {
   gridTariffOrgNumberInput,
   gridTariffGroupSelect,
   priceStatusBadge,
+  priceFlowStatus,
+  priceFlowEnabled,
+  priceFlowToday,
+  priceFlowTomorrow,
 } from './dom';
 import { getSetting, setSetting } from './homey';
 import { showToast, showToastError } from './toast';
@@ -23,10 +31,20 @@ import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { createDeviceRow, createNumberInput } from './components';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../lib/price/priceComponents';
+import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
+import { getFlowPricePayload, getMissingFlowHours } from '../../../lib/price/flowPriceUtils';
+import { addDays } from '../../../lib/price/priceServiceUtils';
+import { getHomeyTimezone } from './homey';
+import { getTimeAgo } from './utils';
+import { getDateKeyInTimeZone } from './timezone';
 
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
 );
+
+type PriceScheme = 'norway' | 'flow';
+
+const normalizePriceScheme = (value: unknown): PriceScheme => (value === 'flow' ? 'flow' : 'norway');
 
 type GridTariffEntry = {
   time: number;
@@ -42,13 +60,50 @@ type GridTariffEntry = {
   datoId?: string;
 };
 
+const applyPriceSchemeUi = (scheme: PriceScheme) => {
+  const isFlow = scheme === 'flow';
+
+  if (priceNorwaySettings) priceNorwaySettings.hidden = isFlow;
+  if (priceAreaSelect) priceAreaSelect.disabled = isFlow;
+  if (providerSurchargeInput) providerSurchargeInput.disabled = isFlow;
+  if (gridTariffCountySelect) gridTariffCountySelect.disabled = isFlow;
+  if (gridTariffCompanySelect) gridTariffCompanySelect.disabled = isFlow;
+  if (gridTariffGroupSelect) gridTariffGroupSelect.disabled = isFlow;
+
+  if (priceRefreshButton) {
+    priceRefreshButton.disabled = isFlow;
+    priceRefreshButton.hidden = isFlow;
+    priceRefreshButton.textContent = 'Refresh prices';
+    priceRefreshButton.title = 'Refresh Norwegian spot prices.';
+  }
+
+  if (priceSchemeNote) {
+    if (isFlow) {
+      priceSchemeNote.textContent = 'Flow source uses values as provided (currency/tax may vary). '
+        + 'Use this outside Norway or when you prefer external prices. Make sure you feed today and '
+        + 'tomorrow prices into the PELS flow actions.';
+      priceSchemeNote.hidden = false;
+    } else {
+      priceSchemeNote.hidden = true;
+    }
+  }
+
+  if (priceFlowStatus) {
+    priceFlowStatus.hidden = !isFlow;
+  }
+};
+
 export const loadPriceSettings = async () => {
+  const priceScheme = normalizePriceScheme(await getSetting(PRICE_SCHEME));
   const priceArea = await getSetting('price_area');
   const providerSurcharge = await getSetting('provider_surcharge');
   const thresholdPercent = await getSetting('price_threshold_percent');
   const minDiffOre = await getSetting('price_min_diff_ore');
   const priceOptEnabled = await getSetting('price_optimization_enabled');
 
+  if (priceSchemeSelect) {
+    priceSchemeSelect.value = priceScheme;
+  }
   if (priceAreaSelect) {
     priceAreaSelect.value = typeof priceArea === 'string' ? priceArea : 'NO1';
   }
@@ -64,9 +119,68 @@ export const loadPriceSettings = async () => {
   if (priceOptimizationEnabledCheckbox) {
     priceOptimizationEnabledCheckbox.checked = priceOptEnabled !== false;
   }
+
+  applyPriceSchemeUi(priceScheme);
+  await refreshFlowStatus(priceScheme);
+};
+
+type FlowStatusTone = 'ok' | 'warn';
+
+const updateFlowStatusValue = (target: HTMLSpanElement | null, text: string, tone: FlowStatusTone) => {
+  if (!target) return;
+  const el = target;
+  el.textContent = text;
+  el.classList.remove('ok', 'warn');
+  el.classList.add(tone);
+};
+
+const formatFlowPayloadStatus = (
+  payload: ReturnType<typeof getFlowPricePayload> | null,
+  expectedDateKey: string,
+  timeZone: string,
+): { text: string; tone: FlowStatusTone } => {
+  if (!payload) {
+    return { text: 'No data received', tone: 'warn' };
+  }
+
+  const hourCount = Object.keys(payload.pricesByHour).length;
+  const missingHours = getMissingFlowHours(payload.pricesByHour);
+  const updatedAt = new Date(payload.updatedAt);
+  const updatedText = Number.isNaN(updatedAt.getTime())
+    ? 'updated time unknown'
+    : `updated ${getTimeAgo(updatedAt, new Date(), timeZone)}`;
+  const dateMismatch = payload.dateKey !== expectedDateKey;
+  const missingSuffix = missingHours.length > 0 ? ` (${missingHours.length} missing)` : '';
+  const dateSuffix = dateMismatch ? ` (payload ${payload.dateKey})` : '';
+
+  return {
+    text: `${hourCount}/24 hours${missingSuffix}, ${updatedText}${dateSuffix}`,
+    tone: dateMismatch || missingHours.length > 0 ? 'warn' : 'ok',
+  };
+};
+
+export const refreshFlowStatus = async (schemeOverride?: PriceScheme) => {
+  const scheme = schemeOverride ?? normalizePriceScheme(await getSetting(PRICE_SCHEME));
+  if (!priceFlowStatus || scheme !== 'flow') return;
+
+  const timeZone = getHomeyTimezone();
+  const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
+  const tomorrowKey = getDateKeyInTimeZone(addDays(new Date(), 1), timeZone);
+
+  updateFlowStatusValue(priceFlowEnabled, 'Enabled', 'ok');
+
+  const todayPayload = getFlowPricePayload(await getSetting(FLOW_PRICES_TODAY));
+  const tomorrowPayload = getFlowPricePayload(await getSetting(FLOW_PRICES_TOMORROW));
+
+  const todayStatus = formatFlowPayloadStatus(todayPayload, todayKey, timeZone);
+  const tomorrowStatus = formatFlowPayloadStatus(tomorrowPayload, tomorrowKey, timeZone);
+
+  updateFlowStatusValue(priceFlowToday, todayStatus.text, todayStatus.tone);
+  updateFlowStatusValue(priceFlowTomorrow, tomorrowStatus.text, tomorrowStatus.tone);
 };
 
 type PriceSettingsInput = {
+  priceScheme: PriceScheme;
   priceArea: string;
   providerSurcharge: number;
   thresholdPercent: number;
@@ -74,6 +188,7 @@ type PriceSettingsInput = {
 };
 
 const parsePriceSettingsInputs = (): PriceSettingsInput => ({
+  priceScheme: normalizePriceScheme(priceSchemeSelect?.value || 'norway'),
   priceArea: priceAreaSelect?.value || 'NO1',
   providerSurcharge: parseFloat(providerSurchargeInput?.value || '0') || 0,
   thresholdPercent: parseInt(priceThresholdInput?.value || '25', 10) || 25,
@@ -92,35 +207,59 @@ const validateNumberRange = (value: number, min: number, max: number, message: s
 };
 
 export const savePriceSettings = async () => {
-  const { priceArea, providerSurcharge, thresholdPercent, minDiffOre } = parsePriceSettingsInputs();
+  const {
+    priceScheme,
+    priceArea,
+    providerSurcharge,
+    thresholdPercent,
+    minDiffOre,
+  } = parsePriceSettingsInputs();
 
-  validatePriceArea(priceArea);
-  validateNumberRange(providerSurcharge, -100, 1000, 'Provider surcharge must be between -100 and 1000 øre.');
+  if (priceScheme === 'norway') {
+    validatePriceArea(priceArea);
+    validateNumberRange(providerSurcharge, -100, 1000, 'Provider surcharge must be between -100 and 1000 øre.');
+  }
   validateNumberRange(thresholdPercent, 0, 100, 'Threshold must be between 0 and 100%.');
-  validateNumberRange(minDiffOre, 0, 1000, 'Minimum difference must be between 0 and 1000 øre.');
+  validateNumberRange(minDiffOre, 0, 1000, 'Minimum difference must be between 0 and 1000 price units.');
 
+  await setSetting(PRICE_SCHEME, priceScheme);
   await setSetting('price_area', priceArea);
   await setSetting('provider_surcharge', providerSurcharge);
   await setSetting('price_threshold_percent', thresholdPercent);
   await setSetting('price_min_diff_ore', minDiffOre);
   await showToast('Price settings saved.', 'ok');
+  applyPriceSchemeUi(priceScheme);
 };
 
-const getPriceData = async (): Promise<CombinedPriceData | null> => {
-  const combinedData = await getSetting('combined_prices');
-  if (combinedData && typeof combinedData === 'object' && 'prices' in combinedData) {
-    return combinedData as CombinedPriceData;
-  }
-  if (combinedData && Array.isArray(combinedData) && combinedData.length > 0) {
-    const prices = combinedData as PriceEntry[];
-    const avgPrice = prices.reduce((sum, p) => sum + p.total, 0) / prices.length;
-    return {
-      prices,
-      avgPrice,
-      lowThreshold: avgPrice * 0.75,
-      highThreshold: avgPrice * 1.25,
-    };
-  }
+const attachSchemeMetadata = (
+  data: CombinedPriceData,
+  priceScheme: PriceScheme,
+  priceUnit: string,
+): CombinedPriceData => ({
+  ...data,
+  priceScheme: data.priceScheme ?? priceScheme,
+  priceUnit: data.priceUnit ?? priceUnit,
+});
+
+const buildCombinedFromLegacy = (
+  combinedData: unknown,
+  priceScheme: PriceScheme,
+  priceUnit: string,
+): CombinedPriceData | null => {
+  if (!combinedData || !Array.isArray(combinedData) || combinedData.length === 0) return null;
+  const prices = combinedData as PriceEntry[];
+  const avgPrice = prices.reduce((sum, p) => sum + p.total, 0) / prices.length;
+  return {
+    prices,
+    avgPrice,
+    lowThreshold: avgPrice * 0.75,
+    highThreshold: avgPrice * 1.25,
+    priceScheme,
+    priceUnit,
+  };
+};
+
+const buildCombinedFromSpotPrices = async (): Promise<CombinedPriceData | null> => {
   const priceData = await getSetting('electricity_prices');
   if (!priceData || !Array.isArray(priceData) || priceData.length === 0) return null;
   const priceAreaSetting = await getSetting('price_area');
@@ -151,13 +290,29 @@ const getPriceData = async (): Promise<CombinedPriceData | null> => {
     avgPrice,
     lowThreshold: avgPrice * 0.75,
     highThreshold: avgPrice * 1.25,
+    priceScheme: 'norway',
+    priceUnit: 'øre/kWh',
   };
+};
+
+const getPriceData = async (): Promise<CombinedPriceData | null> => {
+  const priceScheme = normalizePriceScheme(await getSetting(PRICE_SCHEME));
+  const priceUnit = priceScheme === 'flow' ? 'price units' : 'øre/kWh';
+  const combinedData = await getSetting('combined_prices');
+  if (combinedData && typeof combinedData === 'object' && 'prices' in combinedData) {
+    return attachSchemeMetadata(combinedData as CombinedPriceData, priceScheme, priceUnit);
+  }
+  if (priceScheme === 'flow') return null;
+  const legacy = buildCombinedFromLegacy(combinedData, priceScheme, priceUnit);
+  if (legacy) return legacy;
+  return buildCombinedFromSpotPrices();
 };
 
 export const refreshPrices = async () => {
   try {
     const prices = await getPriceData();
     renderPrices(prices);
+    await refreshFlowStatus();
   } catch (error) {
     await logSettingsError('Failed to load prices', error, 'refreshPrices');
     if (priceStatusBadge) {

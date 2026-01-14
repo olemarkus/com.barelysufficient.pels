@@ -124,6 +124,14 @@ export class PriceCoordinator {
     this.priceService.updateCombinedPrices();
   }
 
+  storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {
+    dateKey: string;
+    storedCount: number;
+    missingHours: number[];
+  } {
+    return this.priceService.storeFlowPriceData(kind, raw);
+  }
+
   getCombinedHourlyPrices() {
     return this.priceService.getCombinedHourlyPrices();
   }

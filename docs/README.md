@@ -1,6 +1,6 @@
 # PELS - User Guide
 
-**PELS** (Pris- og Effektstyrt Energilagringssystem) is a Homey app that helps you optimize energy usage in your home. It manages when your largest energy consumers run, keeping you within power limits and taking advantage of cheaper electricity prices (currently Norwegian prices only).
+**PELS** (Pris- og Effektstyrt Energilagringssystem) is a Homey app that helps you optimize energy usage in your home. It manages when your largest energy consumers run, keeping you within power limits and taking advantage of cheaper electricity prices (Norway pricing or flow tag pricing from external providers).
 
 For the short Homey App Store description, see `README.txt` in the repository root.
 
@@ -34,13 +34,14 @@ Inspired by the Sparegris (Piggy Bank) Homey app.
 ## Features
 
 - **Capacity Management** – Stay within your power limits by automatically shedding load from lower-priority devices when consumption approaches your limit
-- **Price Optimization** – Adjust device temperatures based on Norwegian electricity prices (boost during cheap hours, reduce during expensive hours)
+- **Price Optimization** – Adjust device temperatures based on hourly prices (boost during cheap hours, reduce during expensive hours)
 - **Multiple Modes** – Define different modes (Home, Away, Night, etc.) with their own temperature targets and device priorities
 - **Smart Load Shedding** – Intelligently selects which devices to turn off based on priority, and can swap lower-priority devices for higher-priority ones
 - **Automatic Recovery** – Restores devices when headroom becomes available
 - **Norwegian Grid Tariffs** – Fetches grid tariff energy components (nettleie) from NVE
-- **Spot Prices** – Integrates with hvakosterstrommen.no for spot prices (spotpris)
-- **Price Breakdown** – Adds consumption tax (elavgift), Enova fee (enovaavgift), VAT (mva), and electricity support (strømstøtte) to the hourly total
+- **Spot Prices (Norway)** – Integrates with hvakosterstrommen.no for spot prices (spotpris)
+- **Flow Tag Prices** – Accepts hourly price data from Power by the Hour (or any flow tag source) when you want to supply external prices
+- **Price Breakdown** – Adds consumption tax (elavgift), Enova fee (enovaavgift), VAT (mva), and electricity support (strømstøtte) to the hourly total (Norway only)
 
 ---
 
@@ -120,7 +121,7 @@ After installation:
 - Different modes can set different priorities and temperatures (e.g., Night vs. Home).
 
 ### 5) Use price optimization
-- Enable price optimization per device in the Devices tab, set cheap/expensive deltas, and configure your price area and tariff in the Price tab.
+- Enable price optimization per device in the Devices tab, set cheap/expensive deltas, and configure your price source (Norway or flow tag) in the Price tab.
 
 ### 6) Reapply mode targets to fix drift
 - If a device has drifted from its mode target (e.g., manual override), trigger **Set operating mode** with the *current* mode (and ensure dry-run is off).  
@@ -222,6 +223,12 @@ Shows power consumption per hour for the last 30 days, derived from reported pow
 
 Configure electricity price sources and price-based optimization.
 
+#### Price Source
+
+| Setting | Description |
+|---------|-------------|
+| **Price source** | Choose **Norway (spot + grid tariff)** or **Flow tag (Power by the Hour/other providers)**. Flow tag prices are used as provided (currency/tax unknown), and can be used alongside Norway pricing when you prefer external feeds. |
+
 #### Grid Tariff Settings (Nettleie)
 
 | Setting | Description |
@@ -230,18 +237,34 @@ Configure electricity price sources and price-based optimization.
 | **Grid company** | Your local grid company (nettselskap) |
 | **Tariff group** | Husholdning (household) or Hytter (cabin) |
 
+> These settings are only used with the Norway price source.
+
 #### Spot Price Settings
 
 | Setting | Description |
 |---------|-------------|
-| **Price area** | Your electricity price zone (NO1-NO5). Price optimization currently supports Norway only. |
+| **Price area** | Your electricity price zone (NO1-NO5). Used only for Norway pricing. |
 | **Provider surcharge** | Your provider's markup on spot price (øre/kWh, incl. VAT) |
 | **Price threshold (%)** | Hours below/above this % from average are marked cheap/expensive (default: 25%) |
-| **Minimum price difference** | Skip optimization if savings are less than this (øre/kWh). Avoids discomfort for minimal savings. |
+| **Minimum price difference** | Skip optimization if savings are less than this (price units). Avoids discomfort for minimal savings. |
+
+#### Flow Tag Setup (Power by the Hour or similar)
+
+1. Set **Price source** to **Flow tag (Power by the Hour)**.
+2. Create a Flow triggered by your price source (e.g., **Power by the Hour → Price changed**) and add the action **PELS → Set external prices (today)**. Use the tag that contains the full-day JSON payload (single quotes are accepted).
+3. Create a second Flow for **PELS → Set external prices (tomorrow)** using the tag with tomorrow’s prices (if available).
+4. If one flow doesn’t run, PELS will still use whichever price data is available.
+
+PBTH (Power by the Hour) tips:
+- Use the PBTH flow tags that provide the full-day JSON payload (often labeled "prices json" or similar) for today and tomorrow.
+- Example payload: `{"0":0.2747,"1":0.2678,"2":0.261,"3":0.255}` (single quotes are accepted).
+- Make sure the flow action input uses the full JSON string, not a single-hour value.
+
+> **Note:** Flow tag prices are used as provided. PELS does not add VAT or change currency. This makes it suitable for regions outside Norway as well.
 
 #### Price Calculation
 
-PELS builds the hourly total price from:
+The Norway price source builds the hourly total price from:
 
 - Spot price (spotpris)
 - Grid tariff energy component (nettleie)
@@ -261,6 +284,8 @@ Regional rules:
 - Reduced consumption tax applies to Troms and Finnmark counties (fylker). Municipality-level exceptions are ignored.
 
 The Price tab tooltips show the full breakdown per hour.
+
+Flow tag pricing skips the calculation and uses the provided values directly.
 
 #### Price Optimization
 
@@ -312,6 +337,8 @@ Diagnostics and debug toggles.
 | **Set expected power for device** | Provide an explicit expected draw (W) when the device can’t report it (e.g., map “Power changed to Max” → 3000 W). Fails if the device already has a configured load. |
 | **Enable capacity control for device** | Turn on capacity-based control for a single device |
 | **Disable capacity control for device** | Turn off capacity-based control for a single device |
+| **Set external prices (today)** | Store today’s hourly prices from a flow tag (Power by the Hour) |
+| **Set external prices (tomorrow)** | Store tomorrow’s hourly prices from a flow tag (Power by the Hour) |
 
 ---
 
@@ -349,11 +376,15 @@ The device shows:
 
 ### Price Optimization
 
+For the Norway price source:
 1. Fetches spot prices from hvakosterstrommen.no
 2. Fetches grid tariffs from NVE
 3. Calculates total cost per hour (spot + grid tariff + provider surcharge (incl. VAT) + consumption tax (elavgift) + Enova fee (enovaavgift) + VAT (mva) - electricity support (strømstøtte))
 4. Marks hours as "cheap" or "expensive" based on your threshold
 5. Applies temperature deltas to devices during those hours
+
+For the Flow tag price source:
+- Uses hourly prices supplied by your flows and treats values as provided.
 
 > **Want more detail?** See the [Technical Documentation](technical.md) for in-depth information about the capacity budget model, cooldown logic, priority swapping, and system assumptions.
 

@@ -3136,86 +3136,91 @@ describe('Dry run mode', () => {
 
 
   it('should throttle restoration of set_temperature devices to one per cycle', async () => {
-    // Detects bug where multiple devices shed via set_temperature restore simultaneously
-    const dev1 = new MockDevice('dev-1', 'Heater 1', ['target_temperature', 'measure_power', 'onoff']);
-    await dev1.setCapabilityValue('target_temperature', 20);
-    await dev1.setCapabilityValue('measure_power', 1000); // 1 kW
-    await dev1.setCapabilityValue('onoff', true);
+    jest.useFakeTimers();
+    try {
+      // Detects bug where multiple devices shed via set_temperature restore simultaneously
+      const dev1 = new MockDevice('dev-1', 'Heater 1', ['target_temperature', 'measure_power', 'onoff']);
+      await dev1.setCapabilityValue('target_temperature', 20);
+      await dev1.setCapabilityValue('measure_power', 1000); // 1 kW
+      await dev1.setCapabilityValue('onoff', true);
 
-    const dev2 = new MockDevice('dev-2', 'Heater 2', ['target_temperature', 'measure_power', 'onoff']);
-    await dev2.setCapabilityValue('target_temperature', 20);
-    await dev2.setCapabilityValue('measure_power', 1000); // 1 kW
-    await dev2.setCapabilityValue('onoff', true);
+      const dev2 = new MockDevice('dev-2', 'Heater 2', ['target_temperature', 'measure_power', 'onoff']);
+      await dev2.setCapabilityValue('target_temperature', 20);
+      await dev2.setCapabilityValue('measure_power', 1000); // 1 kW
+      await dev2.setCapabilityValue('onoff', true);
 
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [dev1, dev2]),
-    });
+      setMockDrivers({
+        driverA: new MockDriver('driverA', [dev1, dev2]),
+      });
 
-    mockHomeyInstance.settings.set('capacity_limit_kw', 10);
-    mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
-    setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
+      mockHomeyInstance.settings.set('capacity_limit_kw', 10);
+      mockHomeyInstance.settings.set('capacity_margin_kw', 0.2);
+      setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
 
-    // Configure shed behavior to set_temperature
-    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20, 'dev-2': 20 } });
-    mockHomeyInstance.settings.set('overshoot_behaviors', {
-      'dev-1': { action: 'set_temperature', temperature: 10 },
-      'dev-2': { action: 'set_temperature', temperature: 10 },
-    });
-    mockHomeyInstance.settings.set('capacity_dry_run', false);
+      // Configure shed behavior to set_temperature
+      mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20, 'dev-2': 20 } });
+      mockHomeyInstance.settings.set('overshoot_behaviors', {
+        'dev-1': { action: 'set_temperature', temperature: 10 },
+        'dev-2': { action: 'set_temperature', temperature: 10 },
+      });
+      mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    jest.setSystemTime(new Date('2023-01-01T12:00:00Z'));
+      jest.setSystemTime(new Date('2023-01-01T12:00:00Z'));
 
-    const app = createApp();
-    await app.onInit();
+      const app = createApp();
+      await app.onInit();
 
-    // 1. Trigger Overshoot to shed both devices
-    // Limit = 0.5 kW. Usage = 2.0 kW. Overshoot.
-    (app as any).computeDynamicSoftLimit = () => 0.5;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+      // 1. Trigger Overshoot to shed both devices
+      // Limit = 0.5 kW. Usage = 2.0 kW. Overshoot.
+      (app as any).computeDynamicSoftLimit = () => 0.5;
+      if ((app as any).capacityGuard?.setSoftLimitProvider) {
+        (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
+      }
+      await (app as any).recordPowerSample(2000);
+
+      // Verify both are shed to 10C
+      const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
+      const shedCount = plan1.devices.filter((d: any) => d.plannedState === 'shed').length;
+      expect(shedCount).toBe(2);
+
+      // Update devices to reflect shed state
+      await dev1.setCapabilityValue('target_temperature', 10);
+      await dev2.setCapabilityValue('target_temperature', 10);
+
+      // 2. Restore Capacity
+      // Limit = 5.0 kW. Usage = 2.0 kW (still pulling power at lower temp? or less. say 2.0 for simplicity).
+      // Headroom = 3.0 kW. Enough to restore both.
+      (app as any).computeDynamicSoftLimit = () => 5.0;
+      if ((app as any).capacityGuard?.setSoftLimitProvider) {
+        (app as any).capacityGuard.setSoftLimitProvider(() => 5.0);
+      }
+
+      // Advance time to bypass cooldowns if any
+      jest.advanceTimersByTime(10 * 60 * 1000);
+      jest.setSystemTime(new Date('2023-01-01T12:10:00Z'));
+
+      // Explicitly clear cooldowns to avoid test flakiness with Date mocking
+      (app as any).planEngine.state.lastSheddingMs = 0;
+      (app as any).planEngine.state.lastOvershootMs = 0;
+      (app as any).planEngine.state.lastDeviceShedMs = {};
+
+      await (app as any).recordPowerSample(2000);
+
+      const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
+
+      // Check how many devices are still planned as 'shed'
+      // Ideally, only one should be restored, so one should still be 'shed'.
+      // If the bug exists, both will be restored (0 shed).
+      const shedDevicesAfterRestore = plan2.devices.filter((d: any) => d.plannedState === 'shed');
+
+      // We expect throttling: only 1 device restored per cycle.
+      // So 1 device should still be shed.
+      expect(shedDevicesAfterRestore.length).toBeGreaterThanOrEqual(1);
+
+      // Also verify that at least one IS restored (not both shed)
+      expect(shedDevicesAfterRestore.length).toBeLessThan(2);
+    } finally {
+      jest.useRealTimers();
     }
-    await (app as any).recordPowerSample(2000);
-
-    // Verify both are shed to 10C
-    const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
-    const shedCount = plan1.devices.filter((d: any) => d.plannedState === 'shed').length;
-    expect(shedCount).toBe(2);
-
-    // Update devices to reflect shed state
-    await dev1.setCapabilityValue('target_temperature', 10);
-    await dev2.setCapabilityValue('target_temperature', 10);
-
-    // 2. Restore Capacity
-    // Limit = 5.0 kW. Usage = 2.0 kW (still pulling power at lower temp? or less. say 2.0 for simplicity).
-    // Headroom = 3.0 kW. Enough to restore both.
-    (app as any).computeDynamicSoftLimit = () => 5.0;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 5.0);
-    }
-
-    // Advance time to bypass cooldowns if any
-    jest.advanceTimersByTime(10 * 60 * 1000);
-    jest.setSystemTime(new Date('2023-01-01T12:10:00Z'));
-
-    // Explicitly clear cooldowns to avoid test flakiness with Date mocking
-    (app as any).planEngine.state.lastSheddingMs = 0;
-    (app as any).planEngine.state.lastOvershootMs = 0;
-    (app as any).planEngine.state.lastDeviceShedMs = {};
-
-    await (app as any).recordPowerSample(2000);
-
-    const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
-
-    // Check how many devices are still planned as 'shed'
-    // Ideally, only one should be restored, so one should still be 'shed'.
-    // If the bug exists, both will be restored (0 shed).
-    const shedDevicesAfterRestore = plan2.devices.filter((d: any) => d.plannedState === 'shed');
-
-    // We expect throttling: only 1 device restored per cycle.
-    // So 1 device should still be shed.
-    expect(shedDevicesAfterRestore.length).toBeGreaterThanOrEqual(1);
-
-    // Also verify that at least one IS restored (not both shed)
-    expect(shedDevicesAfterRestore.length).toBeLessThan(2);
   });
 });

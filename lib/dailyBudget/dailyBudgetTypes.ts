@@ -53,11 +53,13 @@ export type DailyBudgetDayPayload = {
   };
 };
 
-export type DailyBudgetUiPayload = DailyBudgetDayPayload & {
-  tomorrow?: DailyBudgetDayPayload | null;
+export type DailyBudgetUiPayload = {
+  days: Record<string, DailyBudgetDayPayload>;
+  todayKey: string;
+  tomorrowKey?: string | null;
 };
 
 export type DailyBudgetUpdate = {
-  snapshot: DailyBudgetUiPayload;
+  snapshot: DailyBudgetDayPayload;
   shouldPersist: boolean;
 };

@@ -23,4 +23,6 @@ export type CombinedPriceData = {
   thresholdPercent?: number;
   minDiffOre?: number;
   lastFetched?: string;
+  priceScheme?: string;
+  priceUnit?: string;
 };

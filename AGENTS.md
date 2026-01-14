@@ -55,6 +55,7 @@ test/               # Jest tests with mock Homey SDK
 npm install          # Install dependencies
 npx lint-staged      # Pre-commit hook: ESLint + type check on staged files
 npm test             # Full test suite (pre-commit)
+npm run ci           # Run regularly during implementation
 npx tsc --noEmit     # Type check (extra safety if needed)
 ```
 
@@ -88,6 +89,7 @@ Note: Do not run `homey` CLI commands - these deploy to hardware and should be r
 - **Dry-run mode**: Check `capacity_dry_run` setting - devices won't actuate if enabled
 - **Mock updates**: New Homey SDK methods need to be added to `test/mocks/homey.ts`
 - **Pre-commit hooks**: All commits must pass ESLint, TypeScript, and tests
+- **Homey compose merges**: When `.homeycompose` files change, `homey app validate` updates root `app.json`; include those changes in commits
 
 ## Settings Keys
 

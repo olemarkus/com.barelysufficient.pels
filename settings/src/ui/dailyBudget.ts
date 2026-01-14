@@ -103,9 +103,11 @@ const setDeviationVisibility = (visible: boolean) => {
 const resolveViewPayload = (
   payload: DailyBudgetUiPayload,
   view: DailyBudgetView,
-): DailyBudgetDayPayload | null => (
-  view === 'tomorrow' ? payload.tomorrow ?? null : payload
-);
+): DailyBudgetDayPayload | null => {
+  const key = view === 'tomorrow' ? payload.tomorrowKey : payload.todayKey;
+  if (!key) return null;
+  return payload.days[key] ?? null;
+};
 
 const applyDailyBudgetViewState = () => {
   const isToday = currentDailyBudgetView === 'today';

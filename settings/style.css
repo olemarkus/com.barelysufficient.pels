@@ -182,6 +182,22 @@ body {
   color: var(--muted);
 }
 
+.device-loading-notice {
+  padding: var(--spacing-4);
+  margin-bottom: var(--spacing-4);
+  background: var(--color-surface-3);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .tab {
   flex-shrink: 1;
   border: none;
@@ -1132,6 +1148,29 @@ input[type="text"]:focus {
   background: var(--color-state-warning-bg-muted);
   border: 1px solid var(--color-state-warning-border-muted);
   border-radius: var(--radius-md);
+}
+
+.flow-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.flow-status-row + .flow-status-row {
+  margin-top: var(--spacing-2);
+}
+
+.flow-status-label {
+  font-weight: 600;
+}
+
+.flow-status-value.ok {
+  color: var(--color-state-positive-text);
+}
+
+.flow-status-value.warn {
+  color: var(--color-state-warning-text);
 }
 
 /* Global banner for warnings/notices */

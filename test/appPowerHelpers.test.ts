@@ -4,13 +4,17 @@ import { recordDailyBudgetCap, schedulePlanRebuildFromPowerSample } from '../lib
 
 describe('recordDailyBudgetCap', () => {
   it('returns existing state for invalid snapshots', () => {
+    const wrapUiPayload = (day: any) => ({
+      days: { '2024-01-01': day },
+      todayKey: '2024-01-01',
+    });
     const cases = [
       null,
-      { budget: { enabled: false } },
-      { budget: { enabled: true }, buckets: { plannedKWh: 'nope', startUtc: [] }, currentBucketIndex: 0 },
-      { budget: { enabled: true }, buckets: { plannedKWh: [1], startUtc: ['2024-01-01T00:00:00.000Z'] }, currentBucketIndex: 2 },
-      { budget: { enabled: true }, buckets: { plannedKWh: [Number.NaN], startUtc: ['2024-01-01T00:00:00.000Z'] }, currentBucketIndex: 0 },
-      { budget: { enabled: true }, buckets: { plannedKWh: [1], startUtc: [123] }, currentBucketIndex: 0 },
+      wrapUiPayload({ budget: { enabled: false } }),
+      wrapUiPayload({ budget: { enabled: true }, buckets: { plannedKWh: 'nope', startUtc: [] }, currentBucketIndex: 0 }),
+      wrapUiPayload({ budget: { enabled: true }, buckets: { plannedKWh: [1], startUtc: ['2024-01-01T00:00:00.000Z'] }, currentBucketIndex: 2 }),
+      wrapUiPayload({ budget: { enabled: true }, buckets: { plannedKWh: [Number.NaN], startUtc: ['2024-01-01T00:00:00.000Z'] }, currentBucketIndex: 0 }),
+      wrapUiPayload({ budget: { enabled: true }, buckets: { plannedKWh: [1], startUtc: [123] }, currentBucketIndex: 0 }),
     ];
 
     cases.forEach((snapshot) => {
@@ -24,9 +28,14 @@ describe('recordDailyBudgetCap', () => {
     const bucketKey = '2024-01-01T00:00:00.000Z';
     const powerTracker: PowerTrackerState = { dailyBudgetCaps: { existing: 1 } };
     const snapshot = {
-      budget: { enabled: true },
-      buckets: { plannedKWh: [2.5], startUtc: [bucketKey] },
-      currentBucketIndex: 0,
+      days: {
+        '2024-01-01': {
+          budget: { enabled: true },
+          buckets: { plannedKWh: [2.5], startUtc: [bucketKey] },
+          currentBucketIndex: 0,
+        },
+      },
+      todayKey: '2024-01-01',
     };
 
     const result = recordDailyBudgetCap({ powerTracker, snapshot: snapshot as any });

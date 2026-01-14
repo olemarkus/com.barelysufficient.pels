@@ -30,6 +30,7 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     priceService: {
       refreshGridTariffData: jest.fn().mockResolvedValue(undefined),
       refreshSpotPrices: jest.fn().mockResolvedValue(undefined),
+      updateCombinedPrices: jest.fn(),
     },
     updatePriceOptimizationEnabled: jest.fn(),
     updateOverheadToken: jest.fn().mockResolvedValue(undefined),
@@ -116,6 +117,7 @@ describe('createSettingsHandler', () => {
       priceService: {
         refreshGridTariffData: jest.fn().mockRejectedValue(new Error('fail')),
         refreshSpotPrices: jest.fn().mockResolvedValue(undefined),
+        updateCombinedPrices: jest.fn(),
       },
     });
     const handler = createSettingsHandler(deps);

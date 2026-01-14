@@ -7,7 +7,8 @@ import { renderPriorities } from './modes';
 import { refreshPlan } from './plan';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './prices';
 import { createDeviceRow, createCheckboxLabel } from './components';
-import { logSettingsError } from './logging';
+import { logSettingsError, logSettingsWarn } from './logging';
+import { debouncedSetSetting } from './utils';
 
 const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
   const snapshot = await getSetting('target_devices_snapshot');
@@ -120,43 +121,72 @@ const setBusy = (busy: boolean) => {
   refreshButton.disabled = busy;
 };
 
+const withInitialLoadGuard = (
+  actionLabel: string,
+  handler: (checked: boolean) => Promise<void>,
+) => async (checked: boolean) => {
+  if (!state.initialLoadComplete) {
+    await logSettingsWarn(`Blocked ${actionLabel} toggle during initial load`, undefined, 'device list');
+    return;
+  }
+  await handler(checked);
+};
+
 const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const isManaged = resolveManagedState(device.id);
+  const isLoadingComplete = state.initialLoadComplete;
+
   const managedCheckbox = createCheckboxLabel({
-    title: 'Managed by PELS',
+    title: isLoadingComplete ? 'Managed by PELS' : 'Loading...',
     checked: isManaged,
-    onChange: async (checked) => {
+    disabled: !isLoadingComplete,
+    onChange: withInitialLoadGuard('managed', async (checked) => {
+      // Optimistic UI: update state immediately
       state.managedMap[device.id] = checked;
+      renderDevices(state.latestDevices);
+      renderPriorities(state.latestDevices);
+      renderPriceOptimization(state.latestDevices);
+      // Debounced save: coalesces rapid toggles into single save
       try {
-        await setSetting('managed_devices', state.managedMap);
-        renderDevices(state.latestDevices);
-        renderPriorities(state.latestDevices);
-        renderPriceOptimization(state.latestDevices);
+        await debouncedSetSetting('managed_devices', () => ({ ...state.managedMap }));
       } catch (error) {
         await logSettingsError('Failed to update managed device', error, 'device list');
         await showToastError(error, 'Failed to update managed devices.');
       }
-    },
+    }),
   });
 
+  let ctrlTitle: string;
+  if (!isLoadingComplete) {
+    ctrlTitle = 'Loading...';
+  } else if (isManaged) {
+    ctrlTitle = 'Capacity-based control';
+  } else {
+    ctrlTitle = 'Capacity-based control (requires Managed by PELS)';
+  }
+
   const ctrlCheckbox = createCheckboxLabel({
-    title: isManaged ? 'Capacity-based control' : 'Capacity-based control (requires Managed by PELS)',
+    title: ctrlTitle,
     checked: state.controllableMap[device.id] === true,
-    disabled: !isManaged,
-    onChange: async (checked) => {
+    disabled: !isLoadingComplete || !isManaged,
+    onChange: withInitialLoadGuard('controllable', async (checked) => {
+      // Optimistic UI: update state immediately
       state.controllableMap[device.id] = checked;
+      // Debounced save: coalesces rapid toggles into single save
       try {
-        await setSetting('controllable_devices', state.controllableMap);
+        await debouncedSetSetting('controllable_devices', () => ({ ...state.controllableMap }));
       } catch (error) {
         await logSettingsError('Failed to update controllable device', error, 'device list');
         await showToastError(error, 'Failed to update controllable devices.');
       }
-    },
+    }),
   });
 
   let priceTitle: string;
-  if (!supportsTemperature) {
+  if (!isLoadingComplete) {
+    priceTitle = 'Loading...';
+  } else if (!supportsTemperature) {
     priceTitle = 'Price-based control (temperature devices only)';
   } else if (isManaged) {
     priceTitle = 'Price-based control';
@@ -167,8 +197,8 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   const priceOptCheckbox = createCheckboxLabel({
     title: priceTitle,
     checked: supportsTemperature && state.priceOptimizationSettings[device.id]?.enabled === true,
-    disabled: !supportsTemperature || !isManaged,
-    onChange: async (checked) => {
+    disabled: !isLoadingComplete || !supportsTemperature || !isManaged,
+    onChange: withInitialLoadGuard('price opt', async (checked) => {
       if (!state.priceOptimizationSettings[device.id]) {
         state.priceOptimizationSettings[device.id] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
       }
@@ -180,7 +210,7 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
         await logSettingsError('Failed to update price optimization settings', error, 'device list');
         await showToastError(error, 'Failed to update price optimization settings.');
       }
-    },
+    }),
   });
 
   return createDeviceRow({
@@ -202,6 +232,14 @@ export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
     return;
   }
   emptyState.hidden = true;
+
+  // Show loading notice if initial load is still in progress
+  if (!state.initialLoadComplete) {
+    const loadingNotice = document.createElement('div');
+    loadingNotice.className = 'device-loading-notice';
+    loadingNotice.textContent = 'Loading device settings...';
+    deviceList.appendChild(loadingNotice);
+  }
 
   const groups = new Map<string, TargetDeviceSnapshot[]>();
   devices.forEach((device) => {
