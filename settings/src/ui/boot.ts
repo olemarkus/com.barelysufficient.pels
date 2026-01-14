@@ -5,6 +5,7 @@ import {
   refreshButton,
   planRefreshButton,
   priceSettingsForm,
+  priceSchemeSelect,
   priceAreaSelect,
   providerSurchargeInput,
   priceThresholdInput,
@@ -35,6 +36,7 @@ import {
   CAPACITY_MARGIN_KW,
   DEBUG_LOGGING_TOPICS,
   OPERATING_MODE_SETTING,
+  PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
 import {
   initModeHandlers,
@@ -175,6 +177,13 @@ const initRealtimeListeners = () => {
     }
 
     if (key === 'combined_prices' || key === 'electricity_prices') {
+      refreshPricesIfVisible();
+    }
+
+    if (key === PRICE_SCHEME) {
+      loadPriceSettings().catch((error) => {
+        void logSettingsError('Failed to load price settings', error, 'settings.set');
+      });
       refreshPricesIfVisible();
     }
 
@@ -355,6 +364,7 @@ const initPriceHandlers = () => {
       await showToastError(error, 'Failed to save price settings.');
     }
   };
+  priceSchemeSelect?.addEventListener('change', autoSavePriceSettings);
   priceAreaSelect?.addEventListener('change', autoSavePriceSettings);
   providerSurchargeInput?.addEventListener('change', autoSavePriceSettings);
   priceThresholdInput?.addEventListener('change', autoSavePriceSettings);
@@ -438,33 +448,50 @@ const initAdvancedHandlers = () => {
 };
 
 const loadInitialData = async () => {
+  // Phase 1: Refresh devices (needed for rendering)
   await refreshDevices();
-  const usage = await getPowerUsage();
+
+  // Phase 2: Load mode/priorities FIRST to populate managedMap before any rendering
+  // This prevents the race condition where users see empty checkboxes
+  await loadModeAndPriorities();
+
+  // Phase 3: Load remaining settings in parallel for faster load time
+  const [usage] = await Promise.all([
+    getPowerUsage(),
+    loadCapacitySettings(),
+    loadDailyBudgetSettings(),
+    loadStaleDataStatus(),
+    loadShedBehaviors(),
+    loadPriceOptimizationSettings(),
+    loadPriceSettings(),
+    loadGridTariffSettings(),
+    loadAdvancedSettings(),
+  ]);
+
+  // Phase 4: Render everything once with all state populated
   renderPowerUsage(usage);
   await renderPowerStats();
-  await loadCapacitySettings();
-  await loadDailyBudgetSettings();
-  await loadStaleDataStatus();
-  setInterval(() => {
-    void loadStaleDataStatus().catch((error) => {
-      void logSettingsError('Failed to refresh stale data status', error, 'staleDataInterval');
-    });
-  }, 30 * 1000);
-  await loadModeAndPriorities();
-  await loadShedBehaviors();
-  await loadPriceOptimizationSettings();
   renderModeOptions();
   renderPriorities(state.latestDevices);
   renderDevices(state.latestDevices);
   renderPriceOptimization(state.latestDevices);
   refreshAdvancedDeviceCleanup();
   await refreshAdvancedDeviceLogger();
-  await loadPriceSettings();
   await refreshPrices();
-  await loadGridTariffSettings();
   await refreshGridTariff();
   await refreshDailyBudgetPlan();
-  await loadAdvancedSettings();
+
+  // Phase 5: Mark initial load complete - enables save operations
+  state.initialLoadComplete = true;
+  // Re-render devices to enable checkboxes now that load is complete
+  renderDevices(state.latestDevices);
+
+  // Set up periodic stale data check
+  setInterval(() => {
+    void loadStaleDataStatus().catch((error) => {
+      void logSettingsError('Failed to refresh stale data status', error, 'staleDataInterval');
+    });
+  }, 30 * 1000);
 };
 
 export const boot = async () => {

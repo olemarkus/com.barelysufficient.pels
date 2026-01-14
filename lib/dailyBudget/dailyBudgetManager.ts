@@ -27,7 +27,6 @@ import type {
   DailyBudgetDayPayload,
   DailyBudgetSettings,
   DailyBudgetState,
-  DailyBudgetUiPayload,
   DailyBudgetUpdate,
 } from './dailyBudgetTypes';
 import { isDailyBudgetState, type DailyBudgetManagerDeps, type ExistingPlanState, type PlanResult } from './dailyBudgetManagerTypes';
@@ -40,7 +39,7 @@ const DEFAULT_PROFILE = buildDefaultProfile();
 
 export class DailyBudgetManager {
   private state: DailyBudgetState = {};
-  private snapshot: DailyBudgetUiPayload | null = null;
+  private snapshot: DailyBudgetDayPayload | null = null;
   private dirty = false;
   private lastPersistMs = 0;
   private lastPlanRebuildMs = 0;
@@ -162,7 +161,7 @@ export class DailyBudgetManager {
   }
 
   private logPlanDebug(params: {
-    snapshot: DailyBudgetUiPayload;
+    snapshot: DailyBudgetDayPayload;
     priceOptimizationEnabled: boolean;
     capacityBudgetKWh?: number;
   }): void {
@@ -420,7 +419,7 @@ export class DailyBudgetManager {
     return shouldPersist;
   }
 
-  getSnapshot(): DailyBudgetUiPayload | null {
+  getSnapshot(): DailyBudgetDayPayload | null {
     return this.snapshot;
   }
 

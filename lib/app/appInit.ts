@@ -114,6 +114,11 @@ export type FlowCardInitApp = {
   refreshTargetDevicesSnapshot: () => Promise<void>;
   getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   setExpectedOverride: (deviceId: string, kw: number) => void;
+  storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
+    dateKey: string;
+    storedCount: number;
+    missingHours: number[];
+  };
   planService: PlanService;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
@@ -137,6 +142,7 @@ export function registerAppFlowCards(app: FlowCardInitApp): void {
     refreshSnapshot: () => app.refreshTargetDevicesSnapshot(),
     getDeviceLoadSetting: (deviceId) => app.getDeviceLoadSetting(deviceId),
     setExpectedOverride: (deviceId, kw) => app.setExpectedOverride(deviceId, kw),
+    storeFlowPriceData: (kind, raw) => app.storeFlowPriceData(kind, raw),
     rebuildPlan: () => app.planService.rebuildPlanFromCache(),
     loadDailyBudgetSettings: () => app.loadDailyBudgetSettings(),
     updateDailyBudgetState: (options) => app.updateDailyBudgetState(options),

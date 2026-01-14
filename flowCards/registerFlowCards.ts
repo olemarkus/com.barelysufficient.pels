@@ -26,6 +26,11 @@ export type FlowCardDeps = {
   refreshSnapshot: () => Promise<void>;
   getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   setExpectedOverride: (deviceId: string, kw: number) => void;
+  storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
+    dateKey: string;
+    storedCount: number;
+    missingHours: number[];
+  };
   rebuildPlan: () => void;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
@@ -91,6 +96,33 @@ export function registerFlowCards(deps: FlowCardDeps): void {
   registerDeviceCapacityControlCards(deps);
   registerManagedDeviceCondition(deps);
   registerCapacityControlCondition(deps);
+  registerFlowPriceCards(deps);
+}
+
+function registerFlowPriceCards(deps: FlowCardDeps): void {
+  const setTodayCard = deps.homey.flow.getActionCard('set_external_prices_today');
+  setTodayCard.registerRunListener(createPriceCardRunListener('today', deps));
+
+  const setTomorrowCard = deps.homey.flow.getActionCard('set_external_prices_tomorrow');
+  setTomorrowCard.registerRunListener(createPriceCardRunListener('tomorrow', deps));
+}
+
+function createPriceCardRunListener(kind: 'today' | 'tomorrow', deps: FlowCardDeps) {
+  return async (args: unknown) => {
+    try {
+      const payload = args as { prices_json?: unknown } | null;
+      const raw = payload?.prices_json;
+      if (raw === null || raw === undefined || String(raw).trim() === '') {
+        throw new Error('Price data is required.');
+      }
+      const result = deps.storeFlowPriceData(kind, raw);
+      deps.log(`Flow: stored ${result.storedCount} hourly prices for ${result.dateKey} (${kind})`);
+      return true;
+    } catch (error) {
+      deps.log(`Flow: Failed to store ${kind} prices from flow tag.`, error);
+      throw error;
+    }
+  };
 }
 
 function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {

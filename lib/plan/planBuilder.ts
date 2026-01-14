@@ -220,10 +220,11 @@ export class PlanBuilder {
   }
 
   private computeDailySoftLimit(snapshot: DailyBudgetUiPayload | null): number | null {
-    if (!snapshot?.budget.enabled) return null;
-    const plannedKWh = snapshot.buckets.plannedKWh;
-    const bucketStartUtc = snapshot.buckets.startUtc;
-    const index = snapshot.currentBucketIndex;
+    const today = this.getTodayDailyBudget(snapshot);
+    if (!today?.budget.enabled) return null;
+    const plannedKWh = today.buckets.plannedKWh;
+    const bucketStartUtc = today.buckets.startUtc;
+    const index = today.currentBucketIndex;
     if (!Array.isArray(plannedKWh) || !Array.isArray(bucketStartUtc)) return null;
     if (index < 0 || index >= plannedKWh.length || index >= bucketStartUtc.length) return null;
     const bucketStartIso = bucketStartUtc[index];
@@ -246,24 +247,31 @@ export class PlanBuilder {
   }
 
   private extractDailyBudgetHourKWh(snapshot: DailyBudgetUiPayload | null): number | undefined {
-    if (!snapshot?.budget.enabled) return undefined;
-    const plannedKWh = snapshot.buckets.plannedKWh;
-    const index = snapshot.currentBucketIndex;
+    const today = this.getTodayDailyBudget(snapshot);
+    if (!today?.budget.enabled) return undefined;
+    const plannedKWh = today.buckets.plannedKWh;
+    const index = today.currentBucketIndex;
     if (!Array.isArray(plannedKWh) || index < 0 || index >= plannedKWh.length) return undefined;
     const value = plannedKWh[index];
     return Number.isFinite(value) ? value : undefined;
   }
 
   private buildDailyBudgetContext(snapshot: DailyBudgetUiPayload | null): PlanContext['dailyBudget'] | undefined {
-    if (!snapshot) return undefined;
+    const today = this.getTodayDailyBudget(snapshot);
+    if (!today) return undefined;
     return {
-      enabled: snapshot.budget.enabled,
-      usedNowKWh: snapshot.state.usedNowKWh,
-      allowedNowKWh: snapshot.state.allowedNowKWh,
-      remainingKWh: snapshot.state.remainingKWh,
-      exceeded: snapshot.state.exceeded,
-      frozen: snapshot.state.frozen,
+      enabled: today.budget.enabled,
+      usedNowKWh: today.state.usedNowKWh,
+      allowedNowKWh: today.state.allowedNowKWh,
+      remainingKWh: today.state.remainingKWh,
+      exceeded: today.state.exceeded,
+      frozen: today.state.frozen,
     };
+  }
+
+  private getTodayDailyBudget(snapshot: DailyBudgetUiPayload | null) {
+    if (!snapshot) return null;
+    return snapshot.days[snapshot.todayKey] ?? null;
   }
 
   private applySheddingUpdates(sheddingPlan: SheddingPlan): void {
@@ -315,6 +323,7 @@ export class PlanBuilder {
     const uncontrolledKw = typeof context.total === 'number' && controlledKw !== null
       ? Math.max(0, context.total - controlledKw)
       : undefined;
+    const today = this.getTodayDailyBudget(dailyBudgetSnapshot);
     return {
       totalKw: context.total,
       softLimitKw: context.softLimit,
@@ -330,8 +339,8 @@ export class PlanBuilder {
       uncontrolledKw,
       hourControlledKWh: getCurrentHourKWh(this.powerTracker.controlledBuckets),
       hourUncontrolledKWh: getCurrentHourKWh(this.powerTracker.uncontrolledBuckets),
-      dailyBudgetRemainingKWh: dailyBudgetSnapshot?.state.remainingKWh ?? 0,
-      dailyBudgetExceeded: dailyBudgetSnapshot?.state.exceeded ?? false,
+      dailyBudgetRemainingKWh: today?.state.remainingKWh ?? 0,
+      dailyBudgetExceeded: today?.state.exceeded ?? false,
       dailyBudgetHourKWh: this.extractDailyBudgetHourKWh(dailyBudgetSnapshot),
     };
   }

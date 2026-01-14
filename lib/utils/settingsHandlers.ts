@@ -10,12 +10,16 @@ import {
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
+  FLOW_PRICES_TODAY,
+  FLOW_PRICES_TOMORROW,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
+  PRICE_SCHEME,
 } from './settingsKeys';
 export type PriceServiceLike = {
   refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
+  updateCombinedPrices: () => void;
 };
 
 export type SettingsHandlerDeps = {
@@ -81,6 +85,18 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       } catch (error) {
         deps.errorLog('Failed to refresh spot prices', error);
       }
+    },
+    [PRICE_SCHEME]: async () => {
+      deps.priceService.updateCombinedPrices();
+      await handleDailyBudgetPriceChange(deps);
+    },
+    [FLOW_PRICES_TODAY]: async () => {
+      deps.priceService.updateCombinedPrices();
+      await handleDailyBudgetPriceChange(deps);
+    },
+    [FLOW_PRICES_TOMORROW]: async () => {
+      deps.priceService.updateCombinedPrices();
+      await handleDailyBudgetPriceChange(deps);
     },
     price_optimization_settings: async () => {
       deps.loadPriceOptimizationSettings();

@@ -396,8 +396,8 @@
         <div class="pill" id="price-status-badge">No data</div>
       </div>
       <div class="price-info">
-        <p class="muted">Price-based optimization uses electricity spot prices and grid tariffs to shift energy-intensive tasks to cheaper hours.</p>
-        <p class="muted">Totals include grid tariff, provider surcharge, consumption tax, Enova fee, VAT, and electricity support. Hover a price for the breakdown.</p>
+        <p class="muted">Price-based optimization uses hourly prices to shift energy-intensive tasks to cheaper hours.</p>
+        <p class="muted">Norway source adds grid tariff, provider surcharge, taxes, and electricity support. Flow source uses values as provided (currency/tax may differ).</p>
       </div>
       
       <div class="toggle-row">
@@ -411,9 +411,36 @@
       <details class="settings-collapse">
         <summary>
           <h3 class="section-title">⚙️ Price settings</h3>
-          <span class="section-hint">Grid tariff & spot price configuration</span>
+          <span class="section-hint">Price source, grid tariff & spot price configuration</span>
         </summary>
         <div class="collapse-content">
+          <h4>Price source</h4>
+          <form id="price-source-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">Price source</span>
+              <select id="price-scheme" name="price_scheme">
+                <option value="norway">Norway (spot + grid tariff)</option>
+                <option value="flow">Flow (Power by the Hour)</option>
+              </select>
+              <small class="field__hint">Select where PELS should fetch price data.</small>
+            </label>
+          </form>
+          <p id="price-scheme-note" class="price-notice price-notice-info" hidden></p>
+          <div id="price-flow-status" class="price-notice price-notice-info" hidden>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Power by the Hour</span>
+              <span class="flow-status-value" id="price-flow-enabled">Not enabled</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Today</span>
+              <span class="flow-status-value" id="price-flow-today">No data yet</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Tomorrow</span>
+              <span class="flow-status-value" id="price-flow-tomorrow">No data yet</span>
+            </div>
+          </div>
+          <div id="price-norway-settings">
           <h4>Grid tariff</h4>
           <form id="nettleie-settings-form" class="form-grid">
             <label class="field">
@@ -457,8 +484,8 @@
             </div>
           </form>
           
-          <h4>Spot price</h4>
-          <form id="price-settings-form" class="form-grid">
+          <h4>Spot price (Norway)</h4>
+          <form id="price-norway-form" class="form-grid">
             <label class="field">
               <span class="field__label">Price area</span>
               <select id="price-area" name="price_area">
@@ -475,13 +502,17 @@
               <input type="number" id="provider-surcharge" name="provider_surcharge" step="0.1" min="-100" max="100" value="0">
               <small class="field__hint">Your electricity provider's surcharge on top of the spot price, including VAT. Can be negative if you have a discount (check your contract).</small>
             </label>
+          </form>
+          </div>
+          <h4>Price signal</h4>
+          <form id="price-settings-form" class="form-grid">
             <label class="field">
               <span class="field__label">Price threshold (%)</span>
               <input type="number" id="price-threshold-percent" name="price_threshold_percent" step="1" min="5" max="50" value="25">
               <small class="field__hint">Hours below/above this % from average are considered cheap/expensive.</small>
             </label>
             <label class="field">
-              <span class="field__label">Minimum price difference (øre/kWh)</span>
+              <span class="field__label">Minimum price difference (price units)</span>
               <input type="number" id="price-min-diff-ore" name="price_min_diff_ore" step="1" min="0" max="100" value="0">
               <small class="field__hint">Skip optimization if savings are less than this. Avoids sacrificing comfort for minimal savings.</small>
             </label>
@@ -489,7 +520,7 @@
         </div>
       </details>
       <div id="price-list" class="device-list" role="list"></div>
-      <p id="price-empty" class="muted">No spot price data available. Configure a price source above to see electricity prices.</p>
+      <p id="price-empty" class="muted">No price data available. Configure a price source above or feed flow prices to see hourly rates.</p>
       <div class="list__footer">
         <button type="button" class="btn secondary" id="price-refresh-button">Refresh prices</button>
       </div>

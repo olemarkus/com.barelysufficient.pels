@@ -19,6 +19,28 @@ const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   }
 };
 
+type PriceScheme = 'norway' | 'flow';
+
+const resolvePriceScheme = (data: CombinedPriceData): PriceScheme => (
+  data.priceScheme === 'flow' ? 'flow' : 'norway'
+);
+
+const resolvePriceUnit = (data: CombinedPriceData, scheme: PriceScheme): string => (
+  data.priceUnit || (scheme === 'flow' ? 'price units' : 'øre/kWh')
+);
+
+const formatPriceValue = (value: number, decimals: number): string => (
+  value.toFixed(decimals)
+);
+
+const formatSummaryPrice = (value: number, scheme: PriceScheme): string => (
+  formatPriceValue(value, scheme === 'flow' ? 4 : 0)
+);
+
+const formatChipPrice = (value: number, scheme: PriceScheme): string => (
+  formatPriceValue(value, scheme === 'flow' ? 4 : 1)
+);
+
 const HOUR_MS = 60 * 60 * 1000;
 
 const isCurrentHourEntry = (entryTime: Date, now: Date) => {
@@ -73,34 +95,44 @@ const buildPriceSummaryItem = (
   return item;
 };
 
-const buildPriceSummarySection = (
-  cheapHours: PriceEntry[],
-  expensiveHours: PriceEntry[],
-  thresholdPct: number,
-  timeZone: string,
-) => {
+const buildPriceSummarySection = (context: PriceRenderContext) => {
   const summarySection = document.createElement('div');
   summarySection.className = 'price-summary';
 
-  if (cheapHours.length > 0) {
-    const cheapest = cheapHours[0];
-    const cheapestTime = formatTimeInTimeZone(new Date(cheapest.startsAt), { hour: '2-digit', minute: '2-digit' }, timeZone);
-    const detailText = `(cheapest: ${cheapest.total.toFixed(0)} øre at ${cheapestTime})`;
-    summarySection.appendChild(buildPriceSummaryItem('cheap', cheapHours.length, 'cheap hour', detailText));
+  if (context.cheapHours.length > 0) {
+    const cheapest = context.cheapHours[0];
+    const cheapestTime = formatTimeInTimeZone(
+      new Date(cheapest.startsAt),
+      { hour: '2-digit', minute: '2-digit' },
+      context.timeZone,
+    );
+    const detailText = `(cheapest: ${formatSummaryPrice(cheapest.total, context.priceScheme)} `
+      + `${context.priceUnit} at ${cheapestTime})`;
+    summarySection.appendChild(buildPriceSummaryItem('cheap', context.cheapHours.length, 'cheap hour', detailText));
   } else {
     summarySection.appendChild(
-      buildPriceSummaryItem('neutral', null, '', `No cheap hours (<${thresholdPct}% below avg)`),
+      buildPriceSummaryItem('neutral', null, '', `No cheap hours (<${context.thresholdPct}% below avg)`),
     );
   }
 
-  if (expensiveHours.length > 0) {
-    const mostExpensive = expensiveHours[0];
-    const expensiveTime = formatTimeInTimeZone(new Date(mostExpensive.startsAt), { hour: '2-digit', minute: '2-digit' }, timeZone);
-    const detailText = `(peak: ${mostExpensive.total.toFixed(0)} øre at ${expensiveTime})`;
-    summarySection.appendChild(buildPriceSummaryItem('expensive', expensiveHours.length, 'expensive hour', detailText));
+  if (context.expensiveHours.length > 0) {
+    const mostExpensive = context.expensiveHours[0];
+    const expensiveTime = formatTimeInTimeZone(
+      new Date(mostExpensive.startsAt),
+      { hour: '2-digit', minute: '2-digit' },
+      context.timeZone,
+    );
+    const detailText = `(peak: ${formatSummaryPrice(mostExpensive.total, context.priceScheme)} `
+      + `${context.priceUnit} at ${expensiveTime})`;
+    summarySection.appendChild(buildPriceSummaryItem(
+      'expensive',
+      context.expensiveHours.length,
+      'expensive hour',
+      detailText,
+    ));
   } else {
     summarySection.appendChild(
-      buildPriceSummaryItem('neutral', null, '', `No expensive hours (>${thresholdPct}% above avg)`),
+      buildPriceSummaryItem('neutral', null, '', `No expensive hours (>${context.thresholdPct}% above avg)`),
     );
   }
 
@@ -110,6 +142,8 @@ const buildPriceSummarySection = (
 type PriceTimeContext = {
   now: Date;
   timeZone: string;
+  priceScheme: PriceScheme;
+  priceUnit: string;
 };
 
 const buildPriceDetailsSection = (
@@ -151,9 +185,13 @@ type PriceRenderContext = {
   thresholdPct: number;
   avgPrice: number;
   timeZone: string;
+  priceUnit: string;
+  priceScheme: PriceScheme;
 };
 
 const buildPriceRenderContext = (data: CombinedPriceData, timeZone: string): PriceRenderContext | null => {
+  const priceScheme = resolvePriceScheme(data);
+  const priceUnit = resolvePriceUnit(data, priceScheme);
   const now = new Date();
   const currentHour = getCurrentHour(now, timeZone);
   const futurePrices = getFuturePrices(data.prices, currentHour);
@@ -171,16 +209,13 @@ const buildPriceRenderContext = (data: CombinedPriceData, timeZone: string): Pri
     thresholdPct: data.thresholdPercent ?? 25,
     avgPrice: data.avgPrice,
     timeZone,
+    priceUnit,
+    priceScheme,
   };
 };
 
 const renderPriceSections = (context: PriceRenderContext) => {
-  priceList.appendChild(buildPriceSummarySection(
-    context.cheapHours,
-    context.expensiveHours,
-    context.thresholdPct,
-    context.timeZone,
-  ));
+  priceList.appendChild(buildPriceSummarySection(context));
 
   if (context.cheapHours.length > 0) {
     priceList.appendChild(
@@ -211,7 +246,8 @@ const renderPriceSections = (context: PriceRenderContext) => {
   const allDetails = document.createElement('details');
   allDetails.className = 'price-details';
   const allSummary = document.createElement('summary');
-  allSummary.textContent = `📊 All prices (${context.futurePrices.length} hours, avg ${context.avgPrice.toFixed(0)} øre/kWh)`;
+  allSummary.textContent = `📊 All prices (${context.futurePrices.length} hours, avg `
+    + `${formatSummaryPrice(context.avgPrice, context.priceScheme)} ${context.priceUnit})`;
   allDetails.appendChild(allSummary);
   allEntries.forEach(({ entry, priceClass }) => {
     allDetails.appendChild(createPriceRow(entry, priceClass, context));
@@ -223,10 +259,13 @@ const renderPriceNotices = (context: PriceRenderContext, data: CombinedPriceData
   const lastPriceTime = new Date(context.futurePrices[context.futurePrices.length - 1].startsAt);
   const hoursRemaining = Math.floor((lastPriceTime.getTime() - context.now.getTime()) / (1000 * 60 * 60)) + 1;
   if (hoursRemaining <= 12) {
+    const warningSuffix = context.priceScheme === 'flow'
+      ? 'Make sure your flow supplies tomorrow\'s prices.'
+      : 'Tomorrow\'s prices typically publish around 13:00.';
     priceList.appendChild(buildPriceNotice(
       'price-notice price-notice-warning',
       `⚠️ Price data available for ${hoursRemaining} more hour${hoursRemaining === 1 ? '' : 's'}. `
-      + `Tomorrow's prices typically publish around 13:00.`,
+      + warningSuffix,
     ));
   }
 
@@ -249,12 +288,12 @@ const formatPriceTimeLabel = (entryTime: Date, timeContext: PriceTimeContext) =>
   return `${timeStr}${dateStr}${nowLabel}`;
 };
 
-const buildPriceTooltip = (entry: PriceEntry) => {
+const buildPriceTooltip = (entry: PriceEntry, scheme: PriceScheme, priceUnit: string) => {
   const tooltipLines: string[] = [];
   const formatOre = (value: number) => `${value.toFixed(1)} øre`;
 
   const spotPrice = entry.spotPriceExVat;
-  if (typeof spotPrice === 'number') {
+  if (scheme !== 'flow' && typeof spotPrice === 'number') {
     const gridTariff = entry.gridTariffExVat ?? 0;
     const surcharge = entry.providerSurchargeExVat ?? 0;
     const consumptionTax = entry.consumptionTaxExVat ?? 0;
@@ -272,30 +311,34 @@ const buildPriceTooltip = (entry: PriceEntry) => {
     tooltipLines.push(`Electricity support: -${formatOre(support)}`);
   }
 
-  tooltipLines.push(`Total: ${entry.total.toFixed(1)} øre/kWh`);
+  tooltipLines.push(`Total: ${formatChipPrice(entry.total, scheme)} ${priceUnit}`);
   return tooltipLines.join('\n');
 };
 
-const buildPriceChip = (entry: PriceEntry, priceClass: string) => {
+const buildPriceChip = (entry: PriceEntry, priceClass: string, scheme: PriceScheme, priceUnit: string) => {
   const chip = document.createElement('span');
   chip.className = `chip ${priceClass}`;
   const priceStrong = document.createElement('strong');
-  priceStrong.textContent = entry.total.toFixed(1);
-  const priceUnit = document.createElement('span');
-  priceUnit.textContent = 'øre/kWh';
-  chip.append(priceStrong, priceUnit);
-  chip.dataset.tooltip = buildPriceTooltip(entry);
+  priceStrong.textContent = formatChipPrice(entry.total, scheme);
+  const priceUnitEl = document.createElement('span');
+  priceUnitEl.textContent = priceUnit;
+  chip.append(priceStrong, priceUnitEl);
+  chip.dataset.tooltip = buildPriceTooltip(entry, scheme, priceUnit);
   return chip;
 };
 
-const createPriceRow = (entry: PriceEntry, priceClass: string, timeContext: PriceTimeContext) => {
+const createPriceRow = (
+  entry: PriceEntry,
+  priceClass: string,
+  timeContext: PriceTimeContext,
+) => {
   const entryTime = new Date(entry.startsAt);
   const isCurrentHour = isCurrentHourEntry(entryTime, timeContext.now);
 
   const row = createDeviceRow({
     name: formatPriceTimeLabel(entryTime, timeContext),
     className: 'price-row',
-    controls: [buildPriceChip(entry, priceClass)],
+    controls: [buildPriceChip(entry, priceClass, timeContext.priceScheme, timeContext.priceUnit)],
     controlsClassName: 'device-row__target',
   });
 
@@ -323,7 +366,10 @@ export const renderPrices = (data: CombinedPriceData | null) => {
   }
 
   if (context.currentEntry) {
-    setPriceStatusBadge(`Now: ${context.currentEntry.total.toFixed(1)} øre/kWh`, 'ok');
+    setPriceStatusBadge(
+      `Now: ${formatChipPrice(context.currentEntry.total, context.priceScheme)} ${context.priceUnit}`,
+      'ok',
+    );
   }
 
   renderPriceSections(context);

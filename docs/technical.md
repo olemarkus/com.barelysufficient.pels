@@ -254,6 +254,8 @@ Current policy values:
 Regional rules:
 
 - VAT is 25% by default, but price area NO4 is VAT-exempt.
+
+Flow tag pricing (Power by the Hour or other providers) stores hourly prices exactly as provided and skips the Norwegian price breakdown logic.
 - Reduced consumption tax applies to Troms and Finnmark counties (fylker). Municipality-level exceptions are ignored.
 
 ## Future Work / TODOs

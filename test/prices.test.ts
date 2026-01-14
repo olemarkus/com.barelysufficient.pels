@@ -1656,6 +1656,29 @@ describe('Price optimization', () => {
     expect(priceInfo).toContain('grid tariff');
   });
 
+  it('stores flow price data from single-quote JSON and builds combined prices', async () => {
+    mockHomeyInstance.settings.set('price_scheme', 'flow');
+
+    const app = createApp();
+    await app.onInit();
+    await flushPromises();
+
+    const result = app['storeFlowPriceData']('today', "{'0':0.2747,'1':0.2678,'2':0.261}");
+    expect(result.storedCount).toBe(3);
+
+    const combined = mockHomeyInstance.settings.get('combined_prices') as {
+      prices?: Array<{ total?: number }>;
+      priceScheme?: string;
+      priceUnit?: string;
+    } | null;
+    expect(combined?.priceScheme).toBe('flow');
+    expect(combined?.priceUnit).toBe('price units');
+    const totals = (combined?.prices || []).map((entry) => entry.total);
+    expect(totals).toContain(0.2747);
+    expect(totals).toContain(0.2678);
+    expect(totals).toContain(0.261);
+  });
+
   it('plan shows cheapDelta applied during cheap hours', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     waterHeater.setCapabilityValue('target_temperature', 55);

@@ -485,6 +485,7 @@ class PelsApp extends Homey.App {
       refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
       getDeviceLoadSetting: (deviceId) => this.getDeviceLoadSetting(deviceId),
       setExpectedOverride: (deviceId, kw) => this.setExpectedOverride(deviceId, kw),
+      storeFlowPriceData: (kind, raw) => this.storeFlowPriceData(kind, raw),
       planService: this.planService,
       loadDailyBudgetSettings: () => this.dailyBudgetService.loadSettings(),
       updateDailyBudgetState: (options) => this.dailyBudgetService.updateState(options),
@@ -564,6 +565,13 @@ class PelsApp extends Homey.App {
   }
   private getCurrentHourPriceInfo(): string {
     return this.priceCoordinator.getCurrentHourPriceInfo();
+  }
+  storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {
+    dateKey: string;
+    storedCount: number;
+    missingHours: number[];
+  } {
+    return this.priceCoordinator.storeFlowPriceData(kind, raw);
   }
   private async applyPriceOptimization() {
     return this.priceCoordinator.applyPriceOptimization();

@@ -14,6 +14,7 @@ export type PriceOptimizationConfig = {
 
 export type UiState = {
   isBusy: boolean;
+  initialLoadComplete: boolean;
   capacityPriorities: Record<string, Record<string, number>>;
   activeMode: string;
   editingMode: string;
@@ -34,6 +35,7 @@ export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
 
 export const state: UiState = {
   isBusy: false,
+  initialLoadComplete: false,
   capacityPriorities: {},
   activeMode: 'Home',
   editingMode: 'Home',

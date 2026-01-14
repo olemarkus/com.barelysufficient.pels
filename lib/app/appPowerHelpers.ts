@@ -17,10 +17,11 @@ export function recordDailyBudgetCap(params: {
   snapshot: DailyBudgetUiPayload | null;
 }): PowerTrackerState {
   const { powerTracker, snapshot } = params;
-  if (!snapshot?.budget.enabled) return powerTracker;
-  const planned = snapshot.buckets.plannedKWh;
-  const startUtc = snapshot.buckets.startUtc;
-  const index = snapshot.currentBucketIndex;
+  const today = snapshot?.days?.[snapshot.todayKey] ?? null;
+  if (!today?.budget.enabled) return powerTracker;
+  const planned = today.buckets.plannedKWh;
+  const startUtc = today.buckets.startUtc;
+  const index = today.currentBucketIndex;
   if (!Array.isArray(planned) || !Array.isArray(startUtc)) return powerTracker;
   if (index < 0 || index >= planned.length || index >= startUtc.length) return powerTracker;
   const plannedKWh = planned[index];
