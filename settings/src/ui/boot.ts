@@ -72,6 +72,7 @@ import {
 import { state } from './state';
 import { flushSettingsLogs, logSettingsError, logSettingsInfo, logSettingsWarn } from './logging';
 import { initTooltips } from './tooltips';
+import { initDebouncedSaveFlush } from './utils';
 
 const showTab = (tabId: string) => {
   tabs.forEach((tab) => {
@@ -449,7 +450,7 @@ const initAdvancedHandlers = () => {
 
 const loadInitialData = async () => {
   // Phase 1: Refresh devices (needed for rendering)
-  await refreshDevices();
+  await refreshDevices({ render: false });
 
   // Phase 2: Load mode/priorities FIRST to populate managedMap before any rendering
   // This prevents the race condition where users see empty checkboxes
@@ -508,6 +509,7 @@ export const boot = async () => {
     await flushSettingsLogs();
 
     initTooltips();
+    initDebouncedSaveFlush();
     initRealtimeListeners();
     showTab('overview');
 

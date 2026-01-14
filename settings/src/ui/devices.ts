@@ -271,18 +271,21 @@ export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
   deviceList.appendChild(fragment);
 };
 
-export const refreshDevices = async () => {
+export const refreshDevices = async (options?: { render?: boolean }) => {
   if (state.isBusy) return;
   setBusy(true);
+  const shouldRender = options?.render ?? true;
   try {
     await setSetting('refresh_target_devices_snapshot', Date.now());
     await pollSetting('target_devices_snapshot', 10, 300);
 
     const devices = await getTargetDevices();
     state.latestDevices = devices;
-    renderDevices(devices);
-    renderPriorities(devices);
-    renderPriceOptimization(devices);
+    if (shouldRender) {
+      renderDevices(devices);
+      renderPriorities(devices);
+      renderPriceOptimization(devices);
+    }
     const devicesUpdated = new CustomEvent('devices-updated', { detail: { devices } });
     document.dispatchEvent(devicesUpdated);
     await refreshPlan();
