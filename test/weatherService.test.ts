@@ -1,14 +1,26 @@
 
 import { WeatherService } from '../lib/core/weatherService';
 
-// Mock node-fetch
-jest.mock('node-fetch', () => jest.fn());
+// Mock global fetch
+global.fetch = jest.fn();
 
-// @ts-ignore
-declare module 'node-fetch';
-// @ts-expect-error node-fetch is not typed in this environment
-import fetch from 'node-fetch';
-const { Response } = jest.requireActual('node-fetch');
+class MockResponse {
+    ok: boolean;
+    status: number;
+    statusText: string;
+    private body: string;
+
+    constructor(body: string, init?: { status?: number; statusText?: string }) {
+        this.body = body;
+        this.status = init?.status ?? 200;
+        this.statusText = init?.statusText ?? 'OK';
+        this.ok = this.status >= 200 && this.status < 300;
+    }
+
+    async json() {
+        return JSON.parse(this.body);
+    }
+}
 
 
 describe('WeatherService', () => {
@@ -39,7 +51,7 @@ describe('WeatherService', () => {
             },
         };
 
-        (fetch as unknown as jest.Mock).mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
+        (global.fetch as jest.Mock).mockResolvedValue(new MockResponse(JSON.stringify(mockData), { status: 200 }));
 
         const forecast = await service.getForecast(60, 10);
 
@@ -50,7 +62,7 @@ describe('WeatherService', () => {
     });
 
     test('getForecast handles API errors gracefully', async () => {
-        (fetch as unknown as jest.Mock).mockResolvedValue(new Response('Error', { status: 500, statusText: 'Internal Server Error' }));
+        (global.fetch as jest.Mock).mockResolvedValue(new MockResponse('Error', { status: 500, statusText: 'Internal Server Error' }));
 
         const forecast = await service.getForecast(60, 10);
 
@@ -64,11 +76,11 @@ describe('WeatherService', () => {
                 timeseries: [{ time: '2023-10-27T12:00:00Z', data: { instant: { details: { air_temperature: 10.5 } } } }],
             },
         };
-        (fetch as unknown as jest.Mock).mockResolvedValue(new Response(JSON.stringify(mockData), { status: 200 }));
+        (global.fetch as jest.Mock).mockResolvedValue(new MockResponse(JSON.stringify(mockData), { status: 200 }));
 
         await service.getForecast(60, 10);
         await service.getForecast(60, 10); // Should be cached
 
-        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 });

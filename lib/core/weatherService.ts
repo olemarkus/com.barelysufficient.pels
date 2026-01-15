@@ -1,7 +1,4 @@
-// @ts-expect-error node-fetch is not typed in this environment
-import fetch from 'node-fetch';
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
 
 
 export type WeatherForecast = {
