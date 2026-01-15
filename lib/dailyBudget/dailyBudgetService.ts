@@ -1,3 +1,4 @@
+
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
@@ -33,6 +34,7 @@ export class DailyBudgetService {
     dailyBudgetKWh: 0,
     priceShapingEnabled: true,
   };
+  private dynamicBudgetKWh: number | null = null;
   private snapshot: DailyBudgetUiPayload | null = null;
 
   constructor(private deps: DailyBudgetServiceDeps) {
@@ -61,6 +63,11 @@ export class DailyBudgetService {
     this.manager.loadState(this.deps.homey.settings.get(DAILY_BUDGET_STATE));
   }
 
+  setDynamicBudget(kwh: number): void {
+    this.dynamicBudgetKWh = Math.max(0, kwh);
+    this.updateState({ nowMs: Date.now(), forcePlanRebuild: true });
+  }
+
   private resolveTimeZone(): string {
     try {
       const tz = this.deps.homey.clock?.getTimezone?.();
@@ -81,7 +88,10 @@ export class DailyBudgetService {
       const update = this.manager.update({
         nowMs,
         timeZone,
-        settings: this.settings,
+        settings: {
+          ...this.settings,
+          dailyBudgetKWh: this.dynamicBudgetKWh !== null ? this.dynamicBudgetKWh : this.settings.dailyBudgetKWh,
+        },
         powerTracker: this.deps.getPowerTracker(),
         combinedPrices,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
@@ -118,7 +128,10 @@ export class DailyBudgetService {
       return this.manager.buildPreview({
         dayStartUtcMs: tomorrowStartUtcMs,
         timeZone,
-        settings: this.settings,
+        settings: {
+          ...this.settings,
+          dailyBudgetKWh: this.dynamicBudgetKWh !== null ? this.dynamicBudgetKWh : this.settings.dailyBudgetKWh,
+        },
         combinedPrices,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         capacityBudgetKWh,
