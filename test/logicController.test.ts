@@ -70,4 +70,18 @@ describe('LogicController', () => {
         const coeffs = controller.getCoefficients();
         expect(coeffs['dev1']).toBe(0.021);
     });
+
+    test('coefficients do not grow unbounded', () => {
+        // Simulate many failures
+        for (let i = 0; i < 100; i++) {
+            controller.recordDailyFailure('dev1');
+        }
+
+        const coeffs = controller.getCoefficients();
+        // With simple exponential growth, 0.02 * 1.05^100 is approx 2.6
+        // If we want to cap it at e.g. 0.5 or 1.0, this should fail if not implemented.
+        // Let's expect it to stay within a reasonable realistic range (e.g. max 1.5 kWh/deg)
+        // A well insulated house is ~0.2 kw/deg maybe? A drafty one ~1-2?
+        expect(coeffs['dev1']).toBeLessThan(2.0);
+    });
 });

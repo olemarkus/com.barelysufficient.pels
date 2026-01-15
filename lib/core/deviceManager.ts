@@ -202,9 +202,11 @@ export class DeviceManager {
     }
 
     private async fetchDevices(): Promise<HomeyDeviceLike[]> {
+        require('fs').appendFileSync('/tmp/pels_debug.txt', `DEBUG: DeviceManager fetchDevices called at ${new Date().toISOString()}\n`);
         const devicesApi = this.homeyApi?.devices;
         if (devicesApi?.getDevices) {
             try {
+                require('fs').appendFileSync('/tmp/pels_debug.txt', 'DEBUG: Using HomeyAPI.devices.getDevices\n');
                 const devicesObj = await devicesApi.getDevices();
                 const list = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj || {});
                 this.logger.debug(`HomeyAPI returned ${list.length} devices`);

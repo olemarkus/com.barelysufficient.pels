@@ -199,8 +199,8 @@ class PelsApp extends Homey.App {
     this.logicController = new LogicController({
       getWeatherForecast: async () => {
         try {
-          const lat = (this.homey.geolocation.getLatitude() as number) ?? 59.91;
-          const lon = (this.homey.geolocation.getLongitude() as number) ?? 10.75;
+          const lat = this.homey.geolocation.getLatitude() ?? 59.91;
+          const lon = this.homey.geolocation.getLongitude() ?? 10.75;
           return await this.weatherService.getForecast(lat, lon);
         } catch (e) {
           this.error('Failed to get location or forecast', e);
@@ -208,6 +208,7 @@ class PelsApp extends Homey.App {
         }
       },
       log: (...args: unknown[]) => this.log(...args),
+      error: (...args: unknown[]) => this.error(...args),
       saveCoefficients: (coeffs) => this.homey.settings.set('logic_coefficients', coeffs),
       loadCoefficients: () => this.homey.settings.get('logic_coefficients') as Record<string, number>,
     }, {
@@ -591,9 +592,16 @@ class PelsApp extends Homey.App {
     return (status?.priceLevel || fallback) as PriceLevel;
   }
 
+  private isRefreshing = false;
+
   private startPeriodicSnapshotRefresh(): void {
     if (this.snapshotRefreshInterval) clearInterval(this.snapshotRefreshInterval);
     this.snapshotRefreshInterval = setInterval(async () => {
+      if (this.isRefreshing) {
+        this.log('Skipping snapshot refresh - previous run still in progress');
+        return;
+      }
+      this.isRefreshing = true;
       try {
         await this.refreshTargetDevicesSnapshot();
         const devices = this.deviceManager.getSnapshot();
@@ -602,8 +610,10 @@ class PelsApp extends Homey.App {
         this.dailyBudgetService.setDynamicBudget(newBudget);
       } catch (e) {
         this.error('Periodic snapshot refresh failed', e);
+      } finally {
+        this.isRefreshing = false;
+        this.logPeriodicStatus();
       }
-      this.logPeriodicStatus();
     }, SNAPSHOT_REFRESH_INTERVAL_MS);
   }
 

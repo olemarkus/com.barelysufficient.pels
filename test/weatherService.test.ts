@@ -83,4 +83,45 @@ describe('WeatherService', () => {
 
         expect(global.fetch).toHaveBeenCalledTimes(1);
     });
+
+    test('getForecast fetches new data when location changes', async () => {
+        const mockData = {
+            properties: {
+                timeseries: [{ time: '2023-10-27T12:00:00Z', data: { instant: { details: { air_temperature: 10.5 } } } }],
+            },
+        };
+        (global.fetch as jest.Mock)
+            .mockResolvedValueOnce(new MockResponse(JSON.stringify(mockData), { status: 200 }))
+            .mockResolvedValueOnce(new MockResponse(JSON.stringify(mockData), { status: 200 }));
+
+        await service.getForecast(60, 10);
+        await service.getForecast(61, 11); // Different location
+
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('getForecast handles missing temperature data', async () => {
+        const mockData = {
+            properties: {
+                timeseries: [
+                    { time: '2023-10-27T12:00:00Z', data: { instant: { details: { air_temperature: 10.5 } } } },
+                    { time: '2023-10-27T13:00:00Z', data: { instant: { details: {} } } }, // Missing temp
+                ],
+            },
+        };
+        (global.fetch as jest.Mock).mockResolvedValue(new MockResponse(JSON.stringify(mockData), { status: 200 }));
+
+        const forecast = await service.getForecast(60, 10);
+
+        // Should either filter it out or not fail. The bug report says it defaults to 0, which is bad.
+        // Let's assume we want to filter it out.
+        expect(forecast).toHaveLength(1);
+        expect(forecast[0].time).toBe('2023-10-27T12:00:00Z');
+    });
+
+    test('getForecast validates coordinates', async () => {
+        const forecast = await service.getForecast(91, 10); // Invalid lat
+        expect(forecast).toEqual([]);
+        expect(mockError).toHaveBeenCalledWith(expect.stringContaining('Invalid coordinates'), expect.any(Object));
+    });
 });

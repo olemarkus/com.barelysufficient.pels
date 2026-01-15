@@ -28,17 +28,41 @@ type MetNoResponse = {
     };
 };
 
+/**
+ * Service for fetching weather forecasts from Met.no.
+ * Features:
+ * - Fetches hourly air temperature forecasts.
+ * - Caches results for 1 hour to verify API rate limits.
+ * - Validates input coordinates.
+ * - Filters out incomplete data.
+ * - Returns last known good forecast on failure.
+ */
 export class WeatherService {
     private userAgent = 'PELS-Controller/1.0';
     private baseUrl = 'https://api.met.no/weatherapi/locationforecast/2.0/compact';
     private lastForecast: WeatherForecast[] = [];
     private lastFetchTime = 0;
     private fetchInterval = 1000 * 60 * 60; // 1 hour
+    private lastFetchLat: number | null = null;
+    private lastFetchLon: number | null = null;
 
     constructor(private deps: WeatherServiceDeps) { }
 
     async getForecast(lat: number, lon: number): Promise<WeatherForecast[]> {
-        if (this.lastForecast.length > 0 && Date.now() - this.lastFetchTime < this.fetchInterval) {
+        // Validate latitude and longitude before calling the external API
+        const latIsValid = Number.isFinite(lat) && lat >= -90 && lat <= 90;
+        const lonIsValid = Number.isFinite(lon) && lon >= -180 && lon <= 180;
+        if (!latIsValid || !lonIsValid) {
+            this.deps.error('Invalid coordinates for weather forecast', { lat, lon });
+            return this.lastForecast.length > 0 ? this.lastForecast : [];
+        }
+
+        if (
+            this.lastForecast.length > 0 &&
+            this.lastFetchLat === lat &&
+            this.lastFetchLon === lon &&
+            Date.now() - this.lastFetchTime < this.fetchInterval
+        ) {
             return this.lastForecast;
         }
 
@@ -59,12 +83,24 @@ export class WeatherService {
             const data = await response.json() as MetNoResponse;
             const timeseries = data?.properties?.timeseries || [];
 
-            this.lastForecast = timeseries.slice(0, 24).map((entry) => ({
+            const validTimeseries = timeseries.filter((entry) =>
+                entry.data?.instant?.details?.air_temperature !== undefined
+            );
+
+            if (validTimeseries.length !== timeseries.length) {
+                this.deps.error(
+                    `Weather API response missing air_temperature for ${timeseries.length - validTimeseries.length} time series entries`
+                );
+            }
+
+            this.lastForecast = validTimeseries.slice(0, 24).map((entry) => ({
                 time: entry.time,
-                air_temperature: entry.data?.instant?.details?.air_temperature ?? 0,
+                air_temperature: entry.data!.instant!.details!.air_temperature as number,
             }));
 
             this.lastFetchTime = Date.now();
+            this.lastFetchLat = lat;
+            this.lastFetchLon = lon;
             return this.lastForecast;
 
         } catch (error) {

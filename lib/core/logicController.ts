@@ -5,6 +5,7 @@ import { WeatherForecast } from './weatherService';
 export type LogicControllerDeps = {
     getWeatherForecast: () => Promise<WeatherForecast[]>;
     log: (...args: unknown[]) => void;
+    error: (...args: unknown[]) => void;
     saveCoefficients: (coefficients: Record<string, number>) => void;
     loadCoefficients: () => Record<string, number>;
 };
@@ -19,7 +20,12 @@ export class LogicController {
     private coefficients: Record<string, number> = {}; // deviceId -> kWh/degree-delta
 
     constructor(private deps: LogicControllerDeps, private config: LogicControllerConfig) {
-        this.coefficients = this.deps.loadCoefficients() || {};
+        const customCoeffs = this.deps.loadCoefficients();
+        this.coefficients = (
+            typeof customCoeffs === 'object' && customCoeffs !== null
+                ? customCoeffs
+                : {}
+        );
     }
 
     getCoefficients(): Record<string, number> {
@@ -75,15 +81,19 @@ export class LogicController {
         return totalBudget;
     }
 
+    private readonly MAX_COEFFICIENT = 1.5;
+    private readonly GROWTH_FACTOR = 1.05;
+    private readonly FAILURE_THRESHOLD = 1.0;
+
     async updateFeedback(devices: TargetDeviceSnapshot[]): Promise<void> {
+        require('fs').appendFileSync('/tmp/pels_debug.txt', `DEBUG: LogicController updateFeedback received ${devices.length} devices at ${new Date().toISOString()}\n`);
         for (const device of devices) {
             const target = device.targets?.find(t => t.id === 'target_temperature')?.value;
             const currentTemp = device.currentTemperature;
 
             if (typeof target === 'number' && typeof currentTemp === 'number') {
-                const failureThreshold = 1.0;
                 // If it's significantly below target, we treat it as a potential under-performance
-                if (target > currentTemp + failureThreshold) {
+                if (target > currentTemp + this.FAILURE_THRESHOLD) {
                     this.recordDailyFailure(device.id);
                 }
             }
@@ -92,9 +102,13 @@ export class LogicController {
 
     recordDailyFailure(deviceId: string): void {
         const current = this.coefficients[deviceId] ?? 0.02;
-        const next = current * 1.05;
-        this.coefficients[deviceId] = next;
-        this.deps.saveCoefficients(this.coefficients);
-        this.deps.log(`LogicController: Increased coefficient for ${deviceId} to ${next.toFixed(4)} (+5%)`);
+        const next = Math.min(current * this.GROWTH_FACTOR, this.MAX_COEFFICIENT);
+
+        if (next !== current) {
+            this.coefficients[deviceId] = next;
+            this.deps.saveCoefficients(this.coefficients);
+            this.deps.error(`DEBUG: LogicController saved coeffs for ${deviceId}: ${next}`);
+            this.deps.log(`LogicController: Increased coefficient for ${deviceId} to ${next.toFixed(4)} (+${(this.GROWTH_FACTOR - 1) * 100}%)`);
+        }
     }
 }

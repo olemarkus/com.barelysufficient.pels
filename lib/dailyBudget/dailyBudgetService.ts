@@ -64,7 +64,16 @@ export class DailyBudgetService {
   }
 
   setDynamicBudget(kwh: number): void {
-    this.dynamicBudgetKWh = Math.max(0, kwh);
+    const previousBudgetKWh = this.dynamicBudgetKWh;
+    const newBudgetKWh = Math.max(0, kwh);
+    this.dynamicBudgetKWh = newBudgetKWh;
+
+    if (previousBudgetKWh !== newBudgetKWh) {
+      this.deps.logDebug('Daily budget: dynamic budget updated', {
+        previousBudgetKWh,
+        newBudgetKWh,
+      });
+    }
     this.updateState({ nowMs: Date.now(), forcePlanRebuild: true });
   }
 
