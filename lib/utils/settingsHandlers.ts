@@ -10,6 +10,10 @@ import {
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
+  LOGIC_BASE_FLOOR_KWH,
+  LOGIC_CONTROL_ENABLED,
+  LOGIC_INDOOR_TARGET_C,
+  LOGIC_UNCONTROLLED_KWH,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from './settingsKeys';
@@ -89,6 +93,10 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     [DAILY_BUDGET_ENABLED]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_KWH]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_PRICE_SHAPING_ENABLED]: async () => handleDailyBudgetChange(deps),
+    [LOGIC_CONTROL_ENABLED]: async () => handleDailyBudgetChange(deps),
+    [LOGIC_BASE_FLOOR_KWH]: async () => handleDailyBudgetChange(deps),
+    [LOGIC_UNCONTROLLED_KWH]: async () => handleDailyBudgetChange(deps),
+    [LOGIC_INDOOR_TARGET_C]: async () => handleDailyBudgetChange(deps),
     combined_prices: async () => handleDailyBudgetPriceChange(deps),
     overshoot_behaviors: async () => {
       deps.loadCapacitySettings();

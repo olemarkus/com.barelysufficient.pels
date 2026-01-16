@@ -141,6 +141,10 @@ export const mockHomeyInstance = {
   cloud: {
     getHomeyId: async () => 'mock-homey-id',
   },
+  geolocation: {
+    getLatitude: () => 59.91,
+    getLongitude: () => 10.75,
+  },
   notifications: {
     _notifications: [] as Array<{ excerpt: string }>,
     createNotification: async ({ excerpt }: { excerpt: string }) => {
@@ -311,10 +315,10 @@ export const mockHomeyApiInstance = {
     getDevices: async () => {
       const drivers = mockHomeyInstance.drivers.getDrivers();
       const devices: Record<string, any> = {};
-        for (const driver of Object.values(drivers)) {
-          for (const device of driver.getDevices()) {
-            const caps = device.getCapabilities();
-            const capabilitiesObj: Record<string, any> = {};
+      for (const driver of Object.values(drivers)) {
+        for (const device of driver.getDevices()) {
+          const caps = device.getCapabilities();
+          const capabilitiesObj: Record<string, any> = {};
           for (const cap of caps) {
             capabilitiesObj[cap] = { id: cap, value: await device.getCapabilityValue(cap) };
           }

@@ -33,6 +33,7 @@ export class DailyBudgetService {
     dailyBudgetKWh: 0,
     priceShapingEnabled: true,
   };
+  private dynamicBudgetKWh: number | null = null;
   private snapshot: DailyBudgetUiPayload | null = null;
 
   constructor(private deps: DailyBudgetServiceDeps) {
@@ -61,6 +62,33 @@ export class DailyBudgetService {
     this.manager.loadState(this.deps.homey.settings.get(DAILY_BUDGET_STATE));
   }
 
+  setDynamicBudget(kwh: number): void {
+    const previousBudgetKWh = this.dynamicBudgetKWh;
+    const rawBudget = Math.max(0, kwh);
+    const boundedBudget = rawBudget === 0
+      ? 0
+      : Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, rawBudget));
+    this.dynamicBudgetKWh = boundedBudget;
+
+    if (previousBudgetKWh !== boundedBudget) {
+      this.deps.logDebug('Daily budget: dynamic budget updated', {
+        previousBudgetKWh,
+        newBudgetKWh: boundedBudget,
+      });
+    }
+    this.updateState({ nowMs: Date.now(), forcePlanRebuild: true });
+  }
+
+  clearDynamicBudget(): void {
+    if (this.dynamicBudgetKWh === null) return;
+    const previousBudgetKWh = this.dynamicBudgetKWh;
+    this.dynamicBudgetKWh = null;
+    this.deps.logDebug('Daily budget: dynamic budget cleared', {
+      previousBudgetKWh,
+    });
+    this.updateState({ nowMs: Date.now(), forcePlanRebuild: true });
+  }
+
   private resolveTimeZone(): string {
     try {
       const tz = this.deps.homey.clock?.getTimezone?.();
@@ -81,7 +109,12 @@ export class DailyBudgetService {
       const update = this.manager.update({
         nowMs,
         timeZone,
-        settings: this.settings,
+        settings: {
+          ...this.settings,
+          dailyBudgetKWh: this.settings.enabled && this.dynamicBudgetKWh !== null
+            ? this.dynamicBudgetKWh
+            : this.settings.dailyBudgetKWh,
+        },
         powerTracker: this.deps.getPowerTracker(),
         combinedPrices,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
@@ -103,6 +136,7 @@ export class DailyBudgetService {
 
   resetLearning(): void {
     this.manager.resetLearning();
+    this.clearDynamicBudget();
     this.persistState();
   }
 
@@ -118,7 +152,12 @@ export class DailyBudgetService {
       return this.manager.buildPreview({
         dayStartUtcMs: tomorrowStartUtcMs,
         timeZone,
-        settings: this.settings,
+        settings: {
+          ...this.settings,
+          dailyBudgetKWh: this.settings.enabled && this.dynamicBudgetKWh !== null
+            ? this.dynamicBudgetKWh
+            : this.settings.dailyBudgetKWh,
+        },
         combinedPrices,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         capacityBudgetKWh,

@@ -20,6 +20,11 @@ import {
   dailyBudgetConfidence,
   dailyBudgetToggleToday,
   dailyBudgetToggleTomorrow,
+  logicControlForm,
+  logicControlEnabledInput,
+  logicBaseFloorInput,
+  logicUncontrolledInput,
+  logicIndoorTargetInput,
 } from './dom';
 import { callApi, getSetting, setSetting } from './homey';
 import { showToast, showToastError } from './toast';
@@ -29,8 +34,16 @@ import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  LOGIC_BASE_FLOOR_KWH,
+  LOGIC_CONTROL_ENABLED,
+  LOGIC_INDOOR_TARGET_C,
+  LOGIC_UNCONTROLLED_KWH,
 } from '../../../lib/utils/settingsKeys';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../../lib/dailyBudget/dailyBudgetConstants';
+
+const DEFAULT_LOGIC_BASE_FLOOR_KWH = 10;
+const DEFAULT_LOGIC_UNCONTROLLED_KWH = 5;
+const DEFAULT_LOGIC_INDOOR_TARGET_C = 22;
 
 const formatKWh = (value: number, digits = 2) => (
   Number.isFinite(value) ? `${value.toFixed(digits)} kWh` : '-- kWh'
@@ -449,4 +462,75 @@ export const initDailyBudgetHandlers = () => {
   dailyBudgetForm?.addEventListener('submit', (event) => event.preventDefault());
   dailyBudgetToggleToday?.addEventListener('click', () => setDailyBudgetView('today'));
   dailyBudgetToggleTomorrow?.addEventListener('click', () => setDailyBudgetView('tomorrow'));
+};
+
+export const loadLogicControlSettings = async () => {
+  const [enabled, baseFloor, uncontrolled, indoorTarget] = await Promise.all([
+    getSetting(LOGIC_CONTROL_ENABLED),
+    getSetting(LOGIC_BASE_FLOOR_KWH),
+    getSetting(LOGIC_UNCONTROLLED_KWH),
+    getSetting(LOGIC_INDOOR_TARGET_C),
+  ]);
+
+  if (logicControlEnabledInput) {
+    logicControlEnabledInput.checked = enabled === true;
+  }
+  if (logicBaseFloorInput) {
+    const value = typeof baseFloor === 'number' && Number.isFinite(baseFloor)
+      ? baseFloor
+      : DEFAULT_LOGIC_BASE_FLOOR_KWH;
+    logicBaseFloorInput.value = value.toString();
+  }
+  if (logicUncontrolledInput) {
+    const value = typeof uncontrolled === 'number' && Number.isFinite(uncontrolled)
+      ? uncontrolled
+      : DEFAULT_LOGIC_UNCONTROLLED_KWH;
+    logicUncontrolledInput.value = value.toString();
+  }
+  if (logicIndoorTargetInput) {
+    const value = typeof indoorTarget === 'number' && Number.isFinite(indoorTarget)
+      ? indoorTarget
+      : DEFAULT_LOGIC_INDOOR_TARGET_C;
+    logicIndoorTargetInput.value = value.toString();
+  }
+};
+
+export const saveLogicControlSettings = async () => {
+  const enabled = logicControlEnabledInput?.checked ?? false;
+  const baseFloorValue = parseFloat(logicBaseFloorInput?.value || '0');
+  const uncontrolledValue = parseFloat(logicUncontrolledInput?.value || '0');
+  const indoorTargetValue = parseFloat(logicIndoorTargetInput?.value || '0');
+
+  if (!Number.isFinite(baseFloorValue) || baseFloorValue < 0) {
+    throw new Error('Base floor must be a non-negative number.');
+  }
+  if (!Number.isFinite(uncontrolledValue) || uncontrolledValue < 0) {
+    throw new Error('Uncontrolled load must be a non-negative number.');
+  }
+  if (!Number.isFinite(indoorTargetValue) || indoorTargetValue <= 0) {
+    throw new Error('Indoor target must be a positive number.');
+  }
+
+  await setSetting(LOGIC_CONTROL_ENABLED, enabled);
+  await setSetting(LOGIC_BASE_FLOOR_KWH, baseFloorValue);
+  await setSetting(LOGIC_UNCONTROLLED_KWH, uncontrolledValue);
+  await setSetting(LOGIC_INDOOR_TARGET_C, indoorTargetValue);
+  await showToast('Weather budget settings saved.', 'ok');
+};
+
+export const initLogicControlHandlers = () => {
+  const autoSave = async () => {
+    try {
+      await saveLogicControlSettings();
+    } catch (error) {
+      await logSettingsError('Failed to save weather budget settings', error, 'autoSaveLogicControl');
+      await showToastError(error, 'Failed to save weather budget settings.');
+    }
+  };
+
+  logicControlEnabledInput?.addEventListener('change', autoSave);
+  logicBaseFloorInput?.addEventListener('change', autoSave);
+  logicUncontrolledInput?.addEventListener('change', autoSave);
+  logicIndoorTargetInput?.addEventListener('change', autoSave);
+  logicControlForm?.addEventListener('submit', (event) => event.preventDefault());
 };
