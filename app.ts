@@ -1,4 +1,4 @@
-
+/* eslint-disable max-lines */
 import Homey from 'homey';
 import CapacityGuard from './lib/core/capacityGuard';
 import { DeviceManager } from './lib/core/deviceManager';
@@ -18,7 +18,17 @@ import {
   getAllModes as getAllModesHelper, getShedBehavior as getShedBehaviorHelper,
   resolveModeName as resolveModeNameHelper,
 } from './lib/utils/capacityHelpers';
-import { CONTROLLABLE_DEVICES, MANAGED_DEVICES, OPERATING_MODE_SETTING, PRICE_OPTIMIZATION_SETTINGS } from './lib/utils/settingsKeys';
+import {
+  CONTROLLABLE_DEVICES,
+  DAILY_BUDGET_ENABLED,
+  LOGIC_BASE_FLOOR_KWH,
+  LOGIC_CONTROL_ENABLED,
+  LOGIC_INDOOR_TARGET_C,
+  LOGIC_UNCONTROLLED_KWH,
+  MANAGED_DEVICES,
+  OPERATING_MODE_SETTING,
+  PRICE_OPTIMIZATION_SETTINGS,
+} from './lib/utils/settingsKeys';
 import { isBooleanMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
 import {
   createPlanEngine, createPlanService, registerAppFlowCards,
@@ -198,24 +208,32 @@ class PelsApp extends Homey.App {
   private initLogicController(): void {
     this.logicController = new LogicController({
       getWeatherForecast: async () => {
+        let lat: number;
+        let lon: number;
         try {
-          const lat = this.homey.geolocation.getLatitude() ?? 59.91;
-          const lon = this.homey.geolocation.getLongitude() ?? 10.75;
+          lat = this.homey.geolocation.getLatitude() ?? 59.91;
+          lon = this.homey.geolocation.getLongitude() ?? 10.75;
+        } catch (e) {
+          this.error('Failed to get location', e);
+          return [];
+        }
+        try {
           return await this.weatherService.getForecast(lat, lon);
         } catch (e) {
-          this.error('Failed to get location or forecast', e);
+          this.error('Failed to get forecast', e);
           return [];
         }
       },
       log: (...args: unknown[]) => this.log(...args),
       error: (...args: unknown[]) => this.error(...args),
       saveCoefficients: (coeffs) => this.homey.settings.set('logic_coefficients', coeffs),
-      loadCoefficients: () => this.homey.settings.get('logic_coefficients') as Record<string, number>,
-    }, {
-      baseFloorKw: 10,
-      uncontrolledLoadKw: 5,
-      indoorTargetTemp: 22,
-    });
+      loadCoefficients: () => {
+        const stored = this.homey.settings.get('logic_coefficients') as unknown;
+        return stored && typeof stored === 'object'
+          ? stored as Record<string, number>
+          : {};
+      },
+    }, this.resolveLogicControllerConfig());
   }
 
   private async initDeviceManager(): Promise<void> {
@@ -592,6 +610,29 @@ class PelsApp extends Homey.App {
     return (status?.priceLevel || fallback) as PriceLevel;
   }
 
+  private resolveLogicControllerConfig() {
+    const baseFloorSetting = this.homey.settings.get(LOGIC_BASE_FLOOR_KWH) as unknown;
+    const uncontrolledSetting = this.homey.settings.get(LOGIC_UNCONTROLLED_KWH) as unknown;
+    const indoorTargetSetting = this.homey.settings.get(LOGIC_INDOOR_TARGET_C) as unknown;
+    const baseFloor = Number(baseFloorSetting);
+    const uncontrolled = Number(uncontrolledSetting);
+    const indoorTarget = Number(indoorTargetSetting);
+
+    return {
+      baseFloorKwh: Number.isFinite(baseFloor) ? baseFloor : 10,
+      uncontrolledLoadKwh: Number.isFinite(uncontrolled) ? uncontrolled : 5,
+      indoorTargetTemp: Number.isFinite(indoorTarget) ? indoorTarget : 22,
+    };
+  }
+
+  private isLogicControlEnabled(): boolean {
+    return this.homey.settings.get(LOGIC_CONTROL_ENABLED) === true;
+  }
+
+  private isDailyBudgetEnabled(): boolean {
+    return this.homey.settings.get(DAILY_BUDGET_ENABLED) === true;
+  }
+
   private isRefreshing = false;
 
   private startPeriodicSnapshotRefresh(): void {
@@ -604,10 +645,19 @@ class PelsApp extends Homey.App {
       this.isRefreshing = true;
       try {
         await this.refreshTargetDevicesSnapshot();
+        if (!this.isDailyBudgetEnabled() || !this.isLogicControlEnabled()) {
+          this.dailyBudgetService.clearDynamicBudget();
+          return;
+        }
+        this.logicController.updateConfig(this.resolveLogicControllerConfig());
         const devices = this.deviceManager.getSnapshot();
         await this.logicController.updateFeedback(devices);
         const newBudget = await this.logicController.calculateDailyBudget(devices);
-        this.dailyBudgetService.setDynamicBudget(newBudget);
+        if (typeof newBudget === 'number') {
+          this.dailyBudgetService.setDynamicBudget(newBudget);
+        } else {
+          this.dailyBudgetService.clearDynamicBudget();
+        }
       } catch (e) {
         this.error('Periodic snapshot refresh failed', e);
       } finally {

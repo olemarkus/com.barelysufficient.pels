@@ -1,4 +1,3 @@
-
 import { TargetDeviceSnapshot } from '../utils/types';
 import { WeatherForecast } from './weatherService';
 
@@ -11,104 +10,130 @@ export type LogicControllerDeps = {
 };
 
 export type LogicControllerConfig = {
-    baseFloorKw: number;
-    uncontrolledLoadKw: number;
+    baseFloorKwh: number;
+    uncontrolledLoadKwh: number;
     indoorTargetTemp: number; // Default fallback if device has no target
 };
 
+const DEFAULT_HEATING_COEFFICIENT = 0.02;
+const MAX_COEFFICIENT = 1.5;
+const COEFFICIENT_GROWTH_FACTOR = 1.05;
+const FAILURE_THRESHOLD_C = 1.0;
+
+const resolveDayKey = (date: Date) => date.toISOString().slice(0, 10);
+
+/**
+ * Weather-aware daily budget calculator with a simple feedback loop.
+ *
+ * - Calculates heating needs from the next 24h forecast and device targets.
+ * - Learns per-device coefficients (kWh per degree-hour) when devices underperform.
+ * - Caps coefficient growth and rate-limits updates to avoid runaway budgets.
+ */
 export class LogicController {
     private coefficients: Record<string, number> = {}; // deviceId -> kWh/degree-delta
+    private lastFailureDay: Record<string, string> = {};
 
     constructor(private deps: LogicControllerDeps, private config: LogicControllerConfig) {
-        const customCoeffs = this.deps.loadCoefficients();
-        this.coefficients = (
-            typeof customCoeffs === 'object' && customCoeffs !== null
-                ? customCoeffs
-                : {}
-        );
+        this.coefficients = this.validateAndLoadCoefficients();
     }
 
     getCoefficients(): Record<string, number> {
         return { ...this.coefficients };
     }
 
-    async calculateDailyBudget(devices: TargetDeviceSnapshot[]): Promise<number> {
+    updateConfig(config: LogicControllerConfig): void {
+        this.config = config;
+    }
+
+    /**
+     * Returns a dynamic daily budget in kWh or null when forecast is unavailable.
+     */
+    async calculateDailyBudget(devices: TargetDeviceSnapshot[]): Promise<number | null> {
         const forecast = await this.deps.getWeatherForecast();
         if (!forecast || forecast.length === 0) {
-            this.deps.log('LogicController: No weather forecast available, using 0 dynamic budget.');
-            return 0;
+            this.deps.log('LogicController: No weather forecast available, skipping dynamic budget.');
+            return null;
         }
+
+        const heatingDevices = devices
+            .filter((device) => device.deviceType === 'temperature')
+            .map((device) => {
+                const targetTemp = device.targets?.find((t) => t.id === 'target_temperature')?.value;
+                const target = typeof targetTemp === 'number' ? targetTemp : this.config.indoorTargetTemp;
+                const coeff = this.coefficients[device.id] ?? DEFAULT_HEATING_COEFFICIENT;
+                return { target, coeff };
+            });
 
         let dailyHeatingNeeds = 0;
 
-        // We calculate heating needs for the next 24 hours based on forecast
+        // Heating needs are estimated from the next 24h forecast and per-device targets.
         for (const hourForecast of forecast) {
             const outdoorTemp = hourForecast.air_temperature;
-
-            for (const device of devices) {
-                // Only consider heating devices
-                if (device.deviceType !== 'temperature') continue;
-
-                const targetTemp = device.targets?.find(t => t.id === 'target_temperature')?.value;
-                const target = typeof targetTemp === 'number' ? targetTemp : this.config.indoorTargetTemp;
-
-                const delta = Math.max(0, target - outdoorTemp);
-
-                // Get coefficient or default to something reasonable (e.g. 0.05 kWh per degree delta per hour?)
-                // If we have no data, start small.
-                const coeff = this.coefficients[device.id] ?? 0.02;
-
-                dailyHeatingNeeds += delta * coeff;
+            for (const device of heatingDevices) {
+                const delta = Math.max(0, device.target - outdoorTemp);
+                dailyHeatingNeeds += delta * device.coeff;
             }
         }
 
-        // Total Budget = BaseFloor + UncontrolledLoad + HeatingNeeds
-        // We assume UncontrolledLoad is specified as a daily total in config, or we sum up hourly average.
-        // Let's assume config.uncontrolledLoadKw is DAILY total for now, or maybe hourly avg * 24?
-        // User requirement: "user-defined 'Base Floor' (kWh)" -> likely total for day?
-        // Let's interpret baseFloorKw as daily minimum and uncontrolledLoadKw as daily uncontrolled.
-
-        // Wait, the prompt says "Base Floor (kWh)".
-        // And "Assume a baseline of 'uncontrolled' usage exists."
-
-        const totalBudget = this.config.baseFloorKw + this.config.uncontrolledLoadKw + dailyHeatingNeeds;
+        // Total daily budget (kWh) = BaseFloor (daily kWh) + UncontrolledLoad (daily kWh) + HeatingNeeds (daily kWh).
+        const totalBudget = this.config.baseFloorKwh + this.config.uncontrolledLoadKwh + dailyHeatingNeeds;
 
         this.deps.log(
             `LogicController: Calculated Budget: ${totalBudget.toFixed(2)} kWh `
-            + `(Base: ${this.config.baseFloorKw}, Uncontrolled: ${this.config.uncontrolledLoadKw}, Heating: ${dailyHeatingNeeds.toFixed(2)})`,
+            + `(Base: ${this.config.baseFloorKwh}, Uncontrolled: ${this.config.uncontrolledLoadKwh}, Heating: ${dailyHeatingNeeds.toFixed(2)})`,
         );
 
         return totalBudget;
     }
 
-    private readonly MAX_COEFFICIENT = 1.5;
-    private readonly GROWTH_FACTOR = 1.05;
-    private readonly FAILURE_THRESHOLD = 1.0;
-
+    /**
+     * Updates coefficients based on device performance.
+     * Only increases once per device per day to avoid runaway growth.
+     */
     async updateFeedback(devices: TargetDeviceSnapshot[]): Promise<void> {
-        require('fs').appendFileSync('/tmp/pels_debug.txt', `DEBUG: LogicController updateFeedback received ${devices.length} devices at ${new Date().toISOString()}\n`);
+        const todayKey = resolveDayKey(new Date());
         for (const device of devices) {
-            const target = device.targets?.find(t => t.id === 'target_temperature')?.value;
+            const target = device.targets?.find((t) => t.id === 'target_temperature')?.value;
             const currentTemp = device.currentTemperature;
 
             if (typeof target === 'number' && typeof currentTemp === 'number') {
                 // If it's significantly below target, we treat it as a potential under-performance
-                if (target > currentTemp + this.FAILURE_THRESHOLD) {
+                if (target > currentTemp + FAILURE_THRESHOLD_C) {
+                    if (this.lastFailureDay[device.id] === todayKey) continue;
                     this.recordDailyFailure(device.id);
+                    this.lastFailureDay[device.id] = todayKey;
                 }
             }
         }
     }
 
     recordDailyFailure(deviceId: string): void {
-        const current = this.coefficients[deviceId] ?? 0.02;
-        const next = Math.min(current * this.GROWTH_FACTOR, this.MAX_COEFFICIENT);
+        const current = this.coefficients[deviceId] ?? DEFAULT_HEATING_COEFFICIENT;
+        const next = Math.min(current * COEFFICIENT_GROWTH_FACTOR, MAX_COEFFICIENT);
 
         if (next !== current) {
             this.coefficients[deviceId] = next;
             this.deps.saveCoefficients(this.coefficients);
-            this.deps.error(`DEBUG: LogicController saved coeffs for ${deviceId}: ${next}`);
-            this.deps.log(`LogicController: Increased coefficient for ${deviceId} to ${next.toFixed(4)} (+${(this.GROWTH_FACTOR - 1) * 100}%)`);
+            this.deps.log(`LogicController: Increased coefficient for ${deviceId} to ${next.toFixed(4)} (+${(COEFFICIENT_GROWTH_FACTOR - 1) * 100}%)`);
         }
+    }
+
+    private static isValidCoefficient(value: unknown): value is number {
+        return typeof value === 'number' && Number.isFinite(value) && value > 0;
+    }
+
+    private validateAndLoadCoefficients(): Record<string, number> {
+        const raw = this.deps.loadCoefficients();
+        const valid: Record<string, number> = {};
+        if (!raw || typeof raw !== 'object') return valid;
+
+        for (const [deviceId, value] of Object.entries(raw)) {
+            if (LogicController.isValidCoefficient(value)) {
+                valid[deviceId] = value;
+            } else {
+                this.deps.log(`LogicController: Ignoring invalid coefficient for ${deviceId}: ${String(value)}`);
+            }
+        }
+        return valid;
     }
 }

@@ -11,22 +11,23 @@ describe('LogicController', () => {
         mockDeps = {
             getWeatherForecast: jest.fn(),
             log: jest.fn(),
+            error: jest.fn(),
             saveCoefficients: jest.fn(),
             loadCoefficients: jest.fn().mockReturnValue({}),
         };
         mockConfig = {
-            baseFloorKw: 10,
-            uncontrolledLoadKw: 5,
+            baseFloorKwh: 10,
+            uncontrolledLoadKwh: 5,
             indoorTargetTemp: 21,
         };
         controller = new LogicController(mockDeps, mockConfig);
     });
 
-    test('calculateDailyBudget returns base budget when no forecast', async () => {
+    test('calculateDailyBudget returns null when no forecast', async () => {
         mockDeps.getWeatherForecast.mockResolvedValue([]);
         const budget = await controller.calculateDailyBudget([]);
-        expect(budget).toBe(0);
-        expect(mockDeps.log).toHaveBeenCalledWith(expect.stringContaining('No weather forecast available'));
+        expect(budget).toBeNull();
+        expect(mockDeps.log).toHaveBeenCalledWith(expect.stringContaining('skipping dynamic budget'));
     });
 
     test('calculateDailyBudget computes correctly based on forecast', async () => {
@@ -83,5 +84,52 @@ describe('LogicController', () => {
         // Let's expect it to stay within a reasonable realistic range (e.g. max 1.5 kWh/deg)
         // A well insulated house is ~0.2 kw/deg maybe? A drafty one ~1-2?
         expect(coeffs['dev1']).toBeLessThan(2.0);
+    });
+
+    test('updateFeedback does not increase coefficient when target is met', async () => {
+        const devices: TargetDeviceSnapshot[] = [{
+            id: 'dev1',
+            name: 'Heater',
+            deviceType: 'temperature',
+            targets: [{ id: 'target_temperature', value: 21, unit: 'C' }],
+            currentTemperature: 21,
+            capabilities: [],
+            deviceClass: 'heater',
+        } as any];
+
+        await controller.updateFeedback(devices);
+
+        expect(mockDeps.saveCoefficients).not.toHaveBeenCalled();
+    });
+
+    test('updateFeedback increases coefficient once per day when target is missed', async () => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date('2024-01-01T12:00:00Z'));
+        const devices: TargetDeviceSnapshot[] = [{
+            id: 'dev1',
+            name: 'Heater',
+            deviceType: 'temperature',
+            targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
+            currentTemperature: 18,
+            capabilities: [],
+            deviceClass: 'heater',
+        } as any];
+
+        await controller.updateFeedback(devices);
+        await controller.updateFeedback(devices);
+
+        expect(mockDeps.saveCoefficients).toHaveBeenCalledTimes(1);
+        jest.useRealTimers();
+    });
+
+    test('constructor ignores invalid coefficients from settings', () => {
+        mockDeps.loadCoefficients.mockReturnValue({
+            valid: 0.03,
+            invalidText: 'nope',
+            invalidNegative: -1,
+            invalidNaN: NaN,
+        });
+        const next = new LogicController(mockDeps, mockConfig);
+        expect(next.getCoefficients()).toEqual({ valid: 0.03 });
     });
 });

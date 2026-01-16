@@ -11,3 +11,7 @@ export const DAILY_BUDGET_PRICE_SHAPING_ENABLED = 'daily_budget_price_shaping_en
 export const DAILY_BUDGET_STATE = 'daily_budget_state';
 export const DAILY_BUDGET_RESET = 'daily_budget_reset';
 export const DEBUG_LOGGING_TOPICS = 'debug_logging_topics';
+export const LOGIC_CONTROL_ENABLED = 'logic_control_enabled';
+export const LOGIC_BASE_FLOOR_KWH = 'logic_base_floor_kwh';
+export const LOGIC_UNCONTROLLED_KWH = 'logic_uncontrolled_kwh';
+export const LOGIC_INDOOR_TARGET_C = 'logic_indoor_target_c';

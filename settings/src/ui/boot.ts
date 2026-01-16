@@ -57,6 +57,8 @@ import {
 import {
   initDailyBudgetHandlers,
   loadDailyBudgetSettings,
+  loadLogicControlSettings,
+  initLogicControlHandlers,
   refreshDailyBudgetPlan,
 } from './dailyBudget';
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
@@ -444,6 +446,7 @@ const loadInitialData = async () => {
   await renderPowerStats();
   await loadCapacitySettings();
   await loadDailyBudgetSettings();
+  await loadLogicControlSettings();
   await loadStaleDataStatus();
   setInterval(() => {
     void loadStaleDataStatus().catch((error) => {
@@ -489,6 +492,7 @@ export const boot = async () => {
     initModeHandlers();
     initCapacityHandlers();
     initDailyBudgetHandlers();
+    initLogicControlHandlers();
     initPriceHandlers();
     initGridTariffHandlers();
     initAdvancedHandlers();

@@ -70,6 +70,15 @@ describe('WeatherService', () => {
         expect(mockError).toHaveBeenCalledWith('Failed to fetch weather forecast', expect.any(Error));
     });
 
+    test('getForecast handles network errors gracefully', async () => {
+        (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
+
+        const forecast = await service.getForecast(60, 10);
+
+        expect(forecast).toEqual([]);
+        expect(mockError).toHaveBeenCalledWith('Failed to fetch weather forecast', expect.any(Error));
+    });
+
     test('getForecast returns cached data if called frequently', async () => {
         const mockData = {
             properties: {

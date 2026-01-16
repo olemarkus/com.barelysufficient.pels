@@ -7,7 +7,12 @@ import {
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 import { WeatherService } from '../lib/core/weatherService';
-import { DAILY_BUDGET_KWH, DAILY_BUDGET_ENABLED } from '../lib/utils/settingsKeys';
+import { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
+import {
+    DAILY_BUDGET_KWH,
+    DAILY_BUDGET_ENABLED,
+    LOGIC_CONTROL_ENABLED,
+} from '../lib/utils/settingsKeys';
 
 // Use fake timers to control the periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate'] });
@@ -26,8 +31,9 @@ describe('PELS Logic Controller Integration', () => {
 
         // Mock WeatherService.getForecast to return a "cold day" by default
         // -5 degrees C for all hours
+        const baseTimestamp = new Date('2024-01-01T00:00:00.000Z').getTime();
         const coldForecast = Array.from({ length: 24 }).map((_, i) => ({
-            time: new Date(Date.now() + i * 3600 * 1000).toISOString(),
+            time: new Date(baseTimestamp + i * 3600 * 1000).toISOString(),
             air_temperature: -5,
         }));
 
@@ -38,6 +44,7 @@ describe('PELS Logic Controller Integration', () => {
 
     afterEach(async () => {
         await cleanupApps();
+        await jest.runOnlyPendingTimersAsync();
         jest.restoreAllMocks();
     });
 
@@ -57,10 +64,12 @@ describe('PELS Logic Controller Integration', () => {
         // Base static budget (should be overridden)
         mockHomeyInstance.settings.set(DAILY_BUDGET_KWH, 30);
         mockHomeyInstance.settings.set(DAILY_BUDGET_ENABLED, true);
+        mockHomeyInstance.settings.set(LOGIC_CONTROL_ENABLED, true);
 
         // Ensure LogicController coefficients are fresh strings/files if needed,
         // but Homey settings mock handles memory persistence.
 
+        const budgetSpy = jest.spyOn(DailyBudgetService.prototype, 'setDynamicBudget');
         const app = createApp();
         await app.onInit();
 
@@ -68,11 +77,7 @@ describe('PELS Logic Controller Integration', () => {
         // The snapshot refresh interval is 5 * 60 * 1000 (5 mins)
         // Advance time to trigger the interval
         jest.advanceTimersByTime(5 * 60 * 1000 + 100);
-
-        // Wait for promises to resolve (async tasks triggered by interval)
-        // Advance timers enough to cover any internal delays, then flush promises
-        jest.advanceTimersByTime(100);
-        await Promise.resolve(); // Flush microtasks
+        await jest.runOnlyPendingTimersAsync();
 
         // 4. Verify Weather Fetch
         expect(weatherSpy).toHaveBeenCalled();
@@ -89,19 +94,12 @@ describe('PELS Logic Controller Integration', () => {
         // OR we can check if the internal state of dailyBudgetService changed.
         // We can check logs for "Setting dynamic daily budget to..."
 
-        const budgetService = (app as any).dailyBudgetService;
-        // We can't easily access private property 'dynamicBudgetKWh' directly without cast/any
-        // But updateState() uses it.
-
-        // Let's look at the logs (mocks usually catch them? No, we need to spy log)
-        // Actually, checking if setDynamicBudget was called is best.
-        // But we didn't spy on it before init.
-
-        // We can check if `app.dailyBudgetService['dynamicBudgetKWh']` is set (private access in test)
-        const dynamicBudget = (budgetService as any).dynamicBudgetKWh;
-        expect(dynamicBudget).toBeDefined();
+        expect(budgetSpy).toHaveBeenCalled();
+        const lastCall = budgetSpy.mock.calls[budgetSpy.mock.calls.length - 1] || [];
+        const dynamicBudget = lastCall[0] as number;
         expect(dynamicBudget).toBeGreaterThan(0);
         expect(dynamicBudget).not.toBe(30); // Should be different from static config
+        budgetSpy.mockRestore();
     });
 
     it('adjusts coefficients when devices fail to meet target', async () => {
@@ -116,6 +114,8 @@ describe('PELS Logic Controller Integration', () => {
             driverA: new MockDriver('driverA', [heater]),
         });
 
+        mockHomeyInstance.settings.set(DAILY_BUDGET_ENABLED, true);
+        mockHomeyInstance.settings.set(LOGIC_CONTROL_ENABLED, true);
         const app = createApp();
         await app.onInit();
 
@@ -130,15 +130,7 @@ describe('PELS Logic Controller Integration', () => {
 
         // Advance time and wait for async operations
         jest.advanceTimersByTime(5 * 60 * 1000 + 100);
-
-        // Wait for the coefficients to be updated (async)
-        // We poll briefly because the interval calls async functions
-        let retries = 0;
-        // Increase timeout to 500ms (50 * 10ms) to ensure enough time for async processing
-        while (!mockHomeyInstance.settings.get('logic_coefficients') && retries < 50) {
-            await new Promise(r => setTimeout(r, 10)); // Real wait for microtasks/promises
-            retries++;
-        }
+        await jest.runOnlyPendingTimersAsync();
 
         // 3. Verify Coefficients Updated
         coeffs = mockHomeyInstance.settings.get('logic_coefficients');

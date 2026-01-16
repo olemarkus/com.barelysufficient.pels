@@ -1,4 +1,3 @@
-
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
@@ -65,15 +64,28 @@ export class DailyBudgetService {
 
   setDynamicBudget(kwh: number): void {
     const previousBudgetKWh = this.dynamicBudgetKWh;
-    const newBudgetKWh = Math.max(0, kwh);
-    this.dynamicBudgetKWh = newBudgetKWh;
+    const rawBudget = Math.max(0, kwh);
+    const boundedBudget = rawBudget === 0
+      ? 0
+      : Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, rawBudget));
+    this.dynamicBudgetKWh = boundedBudget;
 
-    if (previousBudgetKWh !== newBudgetKWh) {
+    if (previousBudgetKWh !== boundedBudget) {
       this.deps.logDebug('Daily budget: dynamic budget updated', {
         previousBudgetKWh,
-        newBudgetKWh,
+        newBudgetKWh: boundedBudget,
       });
     }
+    this.updateState({ nowMs: Date.now(), forcePlanRebuild: true });
+  }
+
+  clearDynamicBudget(): void {
+    if (this.dynamicBudgetKWh === null) return;
+    const previousBudgetKWh = this.dynamicBudgetKWh;
+    this.dynamicBudgetKWh = null;
+    this.deps.logDebug('Daily budget: dynamic budget cleared', {
+      previousBudgetKWh,
+    });
     this.updateState({ nowMs: Date.now(), forcePlanRebuild: true });
   }
 
@@ -99,7 +111,9 @@ export class DailyBudgetService {
         timeZone,
         settings: {
           ...this.settings,
-          dailyBudgetKWh: this.dynamicBudgetKWh !== null ? this.dynamicBudgetKWh : this.settings.dailyBudgetKWh,
+          dailyBudgetKWh: this.settings.enabled && this.dynamicBudgetKWh !== null
+            ? this.dynamicBudgetKWh
+            : this.settings.dailyBudgetKWh,
         },
         powerTracker: this.deps.getPowerTracker(),
         combinedPrices,
@@ -122,6 +136,7 @@ export class DailyBudgetService {
 
   resetLearning(): void {
     this.manager.resetLearning();
+    this.clearDynamicBudget();
     this.persistState();
   }
 
@@ -139,7 +154,9 @@ export class DailyBudgetService {
         timeZone,
         settings: {
           ...this.settings,
-          dailyBudgetKWh: this.dynamicBudgetKWh !== null ? this.dynamicBudgetKWh : this.settings.dailyBudgetKWh,
+          dailyBudgetKWh: this.settings.enabled && this.dynamicBudgetKWh !== null
+            ? this.dynamicBudgetKWh
+            : this.settings.dailyBudgetKWh,
         },
         combinedPrices,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),

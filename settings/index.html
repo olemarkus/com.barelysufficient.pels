@@ -198,6 +198,37 @@
           <p class="muted">Refreshes every 60s. Uses local day boundaries.</p>
         </div>
       </details>
+
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">🌤️ Weather budget</h3>
+          <span class="section-hint">Adaptive daily kWh</span>
+        </summary>
+        <div class="collapse-content">
+          <form id="logic-control-form" class="form-grid">
+            <label class="field checkbox-field">
+              <input id="logic-control-enabled" name="logic_control_enabled" type="checkbox">
+              <span class="field__label">Enable weather-based daily budget</span>
+            </label>
+            <label class="field">
+              <span class="field__label">Base floor (kWh/day)</span>
+              <input id="logic-base-floor-kwh" name="logic_base_floor_kwh" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off">
+              <small class="field__hint">Minimum daily energy budget for controllable devices.</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Uncontrolled load (kWh/day)</span>
+              <input id="logic-uncontrolled-kwh" name="logic_uncontrolled_kwh" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off">
+              <small class="field__hint">Expected daily energy use from non-controllable loads.</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Indoor target (°C)</span>
+              <input id="logic-indoor-target-c" name="logic_indoor_target_c" type="number" step="0.5" min="5" max="30" inputmode="decimal" autocomplete="off">
+              <small class="field__hint">Fallback target temperature when devices have no setpoint.</small>
+            </label>
+          </form>
+          <p class="muted">Uses Met.no forecasts and learned device coefficients to adapt the daily budget.</p>
+        </div>
+      </details>
     </section>
 
     <section class="card panel hidden" id="usage-panel" data-panel="usage">
