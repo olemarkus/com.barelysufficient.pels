@@ -187,6 +187,28 @@ describe('createSettingsHandler', () => {
     expect(deps.updateDebugLoggingEnabled).toHaveBeenCalledTimes(2);
   });
 
+  it('recomputes combined prices when price threshold changes', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler('price_threshold_percent');
+
+    expect(deps.priceService.updateCombinedPrices).toHaveBeenCalled();
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+  });
+
+  it('recomputes combined prices when minimum price difference changes', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler('price_min_diff_ore');
+
+    expect(deps.priceService.updateCombinedPrices).toHaveBeenCalled();
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+  });
+
   it('refreshes managed devices and rebuilds', async () => {
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);

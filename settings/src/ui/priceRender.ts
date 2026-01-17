@@ -9,6 +9,7 @@ import {
   getDateKeyInTimeZone,
   getHourStartInTimeZone,
 } from './timezone';
+import { calculateThresholds } from './priceThresholds';
 
 const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   if (!priceStatusBadge) return;
@@ -26,7 +27,7 @@ const resolvePriceScheme = (data: CombinedPriceData): PriceScheme => (
 );
 
 const resolvePriceUnit = (data: CombinedPriceData, scheme: PriceScheme): string => (
-  data.priceUnit || (scheme === 'flow' ? 'price units' : 'øre/kWh')
+  scheme === 'flow' ? '' : (data.priceUnit || 'øre/kWh')
 );
 
 const formatPriceValue = (value: number, decimals: number): string => (
@@ -39,6 +40,10 @@ const formatSummaryPrice = (value: number, scheme: PriceScheme): string => (
 
 const formatChipPrice = (value: number, scheme: PriceScheme): string => (
   formatPriceValue(value, scheme === 'flow' ? 4 : 1)
+);
+
+const formatPriceWithUnit = (value: string, unit: string): string => (
+  unit ? `${value} ${unit}` : value
 );
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -106,12 +111,19 @@ const buildPriceSummarySection = (context: PriceRenderContext) => {
       { hour: '2-digit', minute: '2-digit' },
       context.timeZone,
     );
-    const detailText = `(cheapest: ${formatSummaryPrice(cheapest.total, context.priceScheme)} `
-      + `${context.priceUnit} at ${cheapestTime})`;
+    const cheapestValue = formatPriceWithUnit(
+      formatSummaryPrice(cheapest.total, context.priceScheme),
+      context.priceUnit,
+    );
+    const detailText = `(cheapest: ${cheapestValue} at ${cheapestTime})`;
     summarySection.appendChild(buildPriceSummaryItem('cheap', context.cheapHours.length, 'cheap hour', detailText));
   } else {
+    const cheapLimit = formatPriceWithUnit(
+      formatSummaryPrice(context.lowThreshold, context.priceScheme),
+      context.priceUnit,
+    );
     summarySection.appendChild(
-      buildPriceSummaryItem('neutral', null, '', `No cheap hours (<${context.thresholdPct}% below avg)`),
+      buildPriceSummaryItem('neutral', null, '', `No cheap hours (at or below ${cheapLimit})`),
     );
   }
 
@@ -122,8 +134,11 @@ const buildPriceSummarySection = (context: PriceRenderContext) => {
       { hour: '2-digit', minute: '2-digit' },
       context.timeZone,
     );
-    const detailText = `(peak: ${formatSummaryPrice(mostExpensive.total, context.priceScheme)} `
-      + `${context.priceUnit} at ${expensiveTime})`;
+    const expensiveValue = formatPriceWithUnit(
+      formatSummaryPrice(mostExpensive.total, context.priceScheme),
+      context.priceUnit,
+    );
+    const detailText = `(peak: ${expensiveValue} at ${expensiveTime})`;
     summarySection.appendChild(buildPriceSummaryItem(
       'expensive',
       context.expensiveHours.length,
@@ -131,8 +146,12 @@ const buildPriceSummarySection = (context: PriceRenderContext) => {
       detailText,
     ));
   } else {
+    const expensiveLimit = formatPriceWithUnit(
+      formatSummaryPrice(context.highThreshold, context.priceScheme),
+      context.priceUnit,
+    );
     summarySection.appendChild(
-      buildPriceSummaryItem('neutral', null, '', `No expensive hours (>${context.thresholdPct}% above avg)`),
+      buildPriceSummaryItem('neutral', null, '', `No expensive hours (at or above ${expensiveLimit})`),
     );
   }
 
@@ -182,7 +201,8 @@ type PriceRenderContext = {
   currentEntry?: PriceEntry;
   cheapHours: PriceEntry[];
   expensiveHours: PriceEntry[];
-  thresholdPct: number;
+  lowThreshold: number;
+  highThreshold: number;
   avgPrice: number;
   timeZone: string;
   priceUnit: string;
@@ -199,6 +219,23 @@ const buildPriceRenderContext = (data: CombinedPriceData, timeZone: string): Pri
 
   const cheapHours = futurePrices.filter((price) => price.isCheap).sort((a, b) => a.total - b.total);
   const expensiveHours = futurePrices.filter((price) => price.isExpensive).sort((a, b) => b.total - a.total);
+  const thresholdPct = data.thresholdPercent ?? 25;
+  const derivedThresholds = calculateThresholds(data.avgPrice, thresholdPct);
+  const baseLowThreshold = Number.isFinite(data.lowThreshold)
+    ? data.lowThreshold
+    : derivedThresholds.low;
+  const baseHighThreshold = Number.isFinite(data.highThreshold)
+    ? data.highThreshold
+    : derivedThresholds.high;
+  const minDiff = typeof data.minDiffOre === 'number' && Number.isFinite(data.minDiffOre)
+    ? data.minDiffOre
+    : 0;
+  const lowThreshold = minDiff > 0
+    ? Math.min(baseLowThreshold, data.avgPrice - minDiff)
+    : baseLowThreshold;
+  const highThreshold = minDiff > 0
+    ? Math.max(baseHighThreshold, data.avgPrice + minDiff)
+    : baseHighThreshold;
 
   return {
     now,
@@ -206,7 +243,8 @@ const buildPriceRenderContext = (data: CombinedPriceData, timeZone: string): Pri
     currentEntry: findCurrentEntry(data.prices, now),
     cheapHours,
     expensiveHours,
-    thresholdPct: data.thresholdPercent ?? 25,
+    lowThreshold,
+    highThreshold,
     avgPrice: data.avgPrice,
     timeZone,
     priceUnit,
@@ -246,8 +284,11 @@ const renderPriceSections = (context: PriceRenderContext) => {
   const allDetails = document.createElement('details');
   allDetails.className = 'price-details';
   const allSummary = document.createElement('summary');
-  allSummary.textContent = `📊 All prices (${context.futurePrices.length} hours, avg `
-    + `${formatSummaryPrice(context.avgPrice, context.priceScheme)} ${context.priceUnit})`;
+  const avgPriceText = formatPriceWithUnit(
+    formatSummaryPrice(context.avgPrice, context.priceScheme),
+    context.priceUnit,
+  );
+  allSummary.textContent = `📊 All prices (${context.futurePrices.length} hours, avg ${avgPriceText})`;
   allDetails.appendChild(allSummary);
   allEntries.forEach(({ entry, priceClass }) => {
     allDetails.appendChild(createPriceRow(entry, priceClass, context));
@@ -311,7 +352,7 @@ const buildPriceTooltip = (entry: PriceEntry, scheme: PriceScheme, priceUnit: st
     tooltipLines.push(`Electricity support: -${formatOre(support)}`);
   }
 
-  tooltipLines.push(`Total: ${formatChipPrice(entry.total, scheme)} ${priceUnit}`);
+  tooltipLines.push(`Total: ${formatPriceWithUnit(formatChipPrice(entry.total, scheme), priceUnit)}`);
   return tooltipLines.join('\n');
 };
 
@@ -320,9 +361,12 @@ const buildPriceChip = (entry: PriceEntry, priceClass: string, scheme: PriceSche
   chip.className = `chip ${priceClass}`;
   const priceStrong = document.createElement('strong');
   priceStrong.textContent = formatChipPrice(entry.total, scheme);
-  const priceUnitEl = document.createElement('span');
-  priceUnitEl.textContent = priceUnit;
-  chip.append(priceStrong, priceUnitEl);
+  chip.append(priceStrong);
+  if (priceUnit) {
+    const priceUnitEl = document.createElement('span');
+    priceUnitEl.textContent = priceUnit;
+    chip.appendChild(priceUnitEl);
+  }
   chip.dataset.tooltip = buildPriceTooltip(entry, scheme, priceUnit);
   return chip;
 };
@@ -366,8 +410,12 @@ export const renderPrices = (data: CombinedPriceData | null) => {
   }
 
   if (context.currentEntry) {
+    const nowPrice = formatPriceWithUnit(
+      formatChipPrice(context.currentEntry.total, context.priceScheme),
+      context.priceUnit,
+    );
     setPriceStatusBadge(
-      `Now: ${formatChipPrice(context.currentEntry.total, context.priceScheme)} ${context.priceUnit}`,
+      `Now: ${nowPrice}`,
       'ok',
     );
   }

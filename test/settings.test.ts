@@ -554,6 +554,150 @@ describe('settings script', () => {
     expect(detailsSections?.length).toBe(1); // Only "All prices" section
   });
 
+  it('uses the minimum price difference when describing cheap/expensive thresholds', async () => {
+    const now = new Date();
+    const currentHourStartMs = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      now.getUTCHours(),
+      0,
+      0,
+      0,
+    );
+    const hourMs = 60 * 60 * 1000;
+
+    const prices: any[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const date = new Date(currentHourStartMs + hour * hourMs);
+      const total = hour === 9 ? 1.6777 : 1.5057;
+      prices.push({
+        startsAt: date.toISOString(),
+        total,
+        isCheap: false,
+        isExpensive: false,
+      });
+    }
+
+    const combinedPrices = {
+      prices,
+      avgPrice: 1.4608,
+      lowThreshold: 1.3878,
+      highThreshold: 1.5339,
+      thresholdPercent: 5,
+      minDiffOre: 0.5,
+      priceScheme: 'flow',
+      priceUnit: 'price units',
+    };
+
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'combined_prices') return cb(null, combinedPrices);
+      if (key === 'electricity_prices') return cb(null, []);
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+
+    await loadSettingsScript(200);
+
+    const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
+    priceTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const summaryItems = document.querySelectorAll('.price-summary-item');
+    const cheapSummary = summaryItems?.[0]?.textContent ?? '';
+    const expensiveSummary = summaryItems?.[1]?.textContent ?? '';
+
+    expect(cheapSummary).toContain('No cheap hours');
+    expect(cheapSummary).toContain('at or below 0.9608');
+    expect(expensiveSummary).toContain('No expensive hours');
+    expect(expensiveSummary).toContain('at or above 1.9608');
+  });
+
+  it('updates cheap/expensive lists when price settings change', async () => {
+    const now = new Date();
+    const currentHourStartMs = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      now.getUTCHours(),
+      0,
+      0,
+      0,
+    );
+    const hourMs = 60 * 60 * 1000;
+
+    const prices: any[] = [];
+    for (let hourOffset = 0; hourOffset < 6; hourOffset++) {
+      const date = new Date(currentHourStartMs + hourOffset * hourMs);
+      let total = 100;
+      if (hourOffset === 1) total = 70;
+      if (hourOffset === 2) total = 130;
+      prices.push({
+        startsAt: date.toISOString(),
+        total,
+        isCheap: total <= 75,
+        isExpensive: total >= 125,
+      });
+    }
+
+    const combinedPrices = {
+      prices,
+      avgPrice: 100,
+      lowThreshold: 75,
+      highThreshold: 125,
+      thresholdPercent: 25,
+      minDiffOre: 0,
+      priceScheme: 'flow',
+      priceUnit: 'price units',
+    };
+
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'combined_prices') return cb(null, combinedPrices);
+      if (key === 'electricity_prices') return cb(null, []);
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+
+    await loadSettingsScript(200);
+
+    const pricePanel = document.querySelector('#price-panel');
+    pricePanel?.classList.remove('hidden');
+
+    const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
+    priceTab?.click();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const summaryBefore = document.querySelectorAll('.price-summary-item');
+    expect(summaryBefore?.[0]?.textContent).toContain('cheap hour');
+    expect(summaryBefore?.[1]?.textContent).toContain('expensive hour');
+
+    const thresholdInput = document.querySelector('#price-threshold-percent') as HTMLInputElement;
+    const minDiffInput = document.querySelector('#price-min-diff-ore') as HTMLInputElement;
+    thresholdInput.value = '5';
+    minDiffInput.value = '40';
+    minDiffInput.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const summaryAfter = document.querySelectorAll('.price-summary-item');
+    expect(summaryAfter?.[0]?.textContent).toContain('No cheap hours');
+    expect(summaryAfter?.[0]?.textContent).toContain('at or below 60.0000');
+    expect(summaryAfter?.[1]?.textContent).toContain('No expensive hours');
+    expect(summaryAfter?.[1]?.textContent).toContain('at or above 140.0000');
+
+    const detailsSections = document.querySelectorAll('.price-details');
+    expect(detailsSections.length).toBe(1);
+  });
+
   it('falls back to electricity_prices when combined_prices not available', async () => {
     // Create spot-only price data
     const now = new Date();

@@ -44,6 +44,10 @@ export type SettingsHandlerDeps = {
 };
 
 export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) => Promise<void> {
+  const refreshPriceDerivedState = async () => {
+    deps.priceService.updateCombinedPrices();
+    await handleDailyBudgetPriceChange(deps);
+  };
   const handlers: Record<string, () => Promise<void>> = {
     mode_device_targets: async () => handleModeTargetsChange(deps),
     [OPERATING_MODE_SETTING]: async () => handleModeTargetsChange(deps),
@@ -87,16 +91,19 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       }
     },
     [PRICE_SCHEME]: async () => {
-      deps.priceService.updateCombinedPrices();
-      await handleDailyBudgetPriceChange(deps);
+      await refreshPriceDerivedState();
     },
     [FLOW_PRICES_TODAY]: async () => {
-      deps.priceService.updateCombinedPrices();
-      await handleDailyBudgetPriceChange(deps);
+      await refreshPriceDerivedState();
     },
     [FLOW_PRICES_TOMORROW]: async () => {
-      deps.priceService.updateCombinedPrices();
-      await handleDailyBudgetPriceChange(deps);
+      await refreshPriceDerivedState();
+    },
+    price_threshold_percent: async () => {
+      await refreshPriceDerivedState();
+    },
+    price_min_diff_ore: async () => {
+      await refreshPriceDerivedState();
     },
     price_optimization_settings: async () => {
       deps.loadPriceOptimizationSettings();
