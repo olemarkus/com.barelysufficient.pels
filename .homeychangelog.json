@@ -115,5 +115,8 @@
   },
   "1.8.6": {
     "en": "Just a number of smaller bugfixes."
+  },
+  "1.9.0": {
+    "en": "PELS can now receive prices through a flow, for example from the Power by the Hour app."
   }
 }
