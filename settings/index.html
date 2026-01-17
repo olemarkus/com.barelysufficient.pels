@@ -512,8 +512,8 @@
               <small class="field__hint">Hours below/above this % from average are considered cheap/expensive.</small>
             </label>
             <label class="field">
-              <span class="field__label">Minimum price difference (price units)</span>
-              <input type="number" id="price-min-diff-ore" name="price_min_diff_ore" step="1" min="0" max="100" value="0">
+              <span class="field__label" id="price-min-diff-label">Minimum price difference (øre/kWh)</span>
+              <input type="number" id="price-min-diff-ore" name="price_min_diff_ore" step="any" min="0" max="1000" inputmode="decimal" value="0">
               <small class="field__hint">Skip optimization if savings are less than this. Avoids sacrificing comfort for minimal savings.</small>
             </label>
           </form>

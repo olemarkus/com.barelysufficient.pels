@@ -75,6 +75,7 @@ export const priceSettingsForm = document.querySelector('#price-settings-form') 
 export const priceAreaSelect = document.querySelector('#price-area') as HTMLSelectElement;
 export const providerSurchargeInput = document.querySelector('#provider-surcharge') as HTMLInputElement;
 export const priceThresholdInput = document.querySelector('#price-threshold-percent') as HTMLInputElement;
+export const priceMinDiffLabel = document.querySelector('#price-min-diff-label') as HTMLSpanElement;
 export const priceMinDiffInput = document.querySelector('#price-min-diff-ore') as HTMLInputElement;
 export const priceRefreshButton = document.querySelector('#price-refresh-button') as HTMLButtonElement;
 export const gridTariffSettingsForm = document.querySelector('#nettleie-settings-form') as HTMLFormElement;

@@ -6,6 +6,7 @@ import {
   priceNorwaySettings,
   providerSurchargeInput,
   priceThresholdInput,
+  priceMinDiffLabel,
   priceMinDiffInput,
   priceRefreshButton,
   priceOptimizationList,
@@ -29,6 +30,7 @@ import { gridCompanies } from './gridCompanies';
 import { renderPrices } from './priceRender';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { createDeviceRow, createNumberInput } from './components';
+import { calculateThresholds } from './priceThresholds';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../lib/price/priceComponents';
 import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
@@ -90,6 +92,12 @@ const applyPriceSchemeUi = (scheme: PriceScheme) => {
 
   if (priceFlowStatus) {
     priceFlowStatus.hidden = !isFlow;
+  }
+
+  if (priceMinDiffLabel) {
+    priceMinDiffLabel.textContent = isFlow
+      ? 'Minimum price difference'
+      : 'Minimum price difference (øre/kWh)';
   }
 };
 
@@ -187,12 +195,17 @@ type PriceSettingsInput = {
   minDiffOre: number;
 };
 
+type PriceOverrideOptions = {
+  thresholdPercent?: number;
+  minDiffOre?: number;
+};
+
 const parsePriceSettingsInputs = (): PriceSettingsInput => ({
   priceScheme: normalizePriceScheme(priceSchemeSelect?.value || 'norway'),
   priceArea: priceAreaSelect?.value || 'NO1',
   providerSurcharge: parseFloat(providerSurchargeInput?.value || '0') || 0,
   thresholdPercent: parseInt(priceThresholdInput?.value || '25', 10) || 25,
-  minDiffOre: parseInt(priceMinDiffInput?.value || '0', 10) || 0,
+  minDiffOre: parseFloat(priceMinDiffInput?.value || '0') || 0,
 });
 
 const validatePriceArea = (priceArea: string) => {
@@ -204,6 +217,45 @@ const validateNumberRange = (value: number, min: number, max: number, message: s
   if (!Number.isFinite(value) || value < min || value > max) {
     throw new Error(message);
   }
+};
+
+const resolveNumber = (value: number | undefined, fallback: number): number => (
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback
+);
+
+const getAveragePrice = (prices: PriceEntry[], fallback: number): number => {
+  if (prices.length === 0) return fallback;
+  const total = prices.reduce((sum, price) => sum + (Number.isFinite(price.total) ? price.total : 0), 0);
+  return total / prices.length;
+};
+
+const applyPriceOverrides = (data: CombinedPriceData, overrides: PriceOverrideOptions): CombinedPriceData => {
+  // Keep this logic aligned with priceService.updateCombinedPrices.
+  const thresholdPercent = resolveNumber(overrides.thresholdPercent, data.thresholdPercent ?? 25);
+  const minDiffOre = resolveNumber(overrides.minDiffOre, data.minDiffOre ?? 0);
+  const avgPrice = resolveNumber(data.avgPrice, getAveragePrice(data.prices, 0));
+  const { low: lowThreshold, high: highThreshold } = calculateThresholds(avgPrice, thresholdPercent);
+
+  const prices = data.prices.map((entry) => {
+    const total = Number.isFinite(entry.total) ? entry.total : 0;
+    const diffFromAvg = Math.abs(total - avgPrice);
+    const meetsMinDiff = diffFromAvg >= minDiffOre;
+    return {
+      ...entry,
+      isCheap: total <= lowThreshold && meetsMinDiff,
+      isExpensive: total >= highThreshold && meetsMinDiff,
+    };
+  });
+
+  return {
+    ...data,
+    prices,
+    avgPrice,
+    lowThreshold,
+    highThreshold,
+    thresholdPercent,
+    minDiffOre,
+  };
 };
 
 export const savePriceSettings = async () => {
@@ -220,15 +272,16 @@ export const savePriceSettings = async () => {
     validateNumberRange(providerSurcharge, -100, 1000, 'Provider surcharge must be between -100 and 1000 øre.');
   }
   validateNumberRange(thresholdPercent, 0, 100, 'Threshold must be between 0 and 100%.');
-  validateNumberRange(minDiffOre, 0, 1000, 'Minimum difference must be between 0 and 1000 price units.');
+  validateNumberRange(minDiffOre, 0, 1000, 'Minimum difference must be between 0 and 1000.');
 
   await setSetting(PRICE_SCHEME, priceScheme);
   await setSetting('price_area', priceArea);
   await setSetting('provider_surcharge', providerSurcharge);
   await setSetting('price_threshold_percent', thresholdPercent);
   await setSetting('price_min_diff_ore', minDiffOre);
-  await showToast('Price settings saved.', 'ok');
   applyPriceSchemeUi(priceScheme);
+  void showToast('Price settings saved.', 'ok');
+  await refreshPrices({ thresholdPercent, minDiffOre });
 };
 
 const attachSchemeMetadata = (
@@ -308,10 +361,13 @@ const getPriceData = async (): Promise<CombinedPriceData | null> => {
   return buildCombinedFromSpotPrices();
 };
 
-export const refreshPrices = async () => {
+export const refreshPrices = async (overrides?: PriceOverrideOptions) => {
   try {
     const prices = await getPriceData();
-    renderPrices(prices);
+    const hasOverrides = overrides && (
+      Number.isFinite(overrides.thresholdPercent) || Number.isFinite(overrides.minDiffOre)
+    );
+    renderPrices(prices && hasOverrides ? applyPriceOverrides(prices, overrides) : prices);
     await refreshFlowStatus();
   } catch (error) {
     await logSettingsError('Failed to load prices', error, 'refreshPrices');
