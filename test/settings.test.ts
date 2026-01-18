@@ -746,6 +746,144 @@ describe('settings script', () => {
     // Verify status badge shows current price
     expect(priceStatusBadge?.textContent).toContain('Now:');
   });
+
+  it('uses NOK conversion for internal price scheme on daily budget cost', async () => {
+    const dailyBudgetPayload = {
+      days: {
+        '2024-01-01': {
+          dateKey: '2024-01-01',
+          timeZone: 'UTC',
+          nowUtc: '2024-01-01T01:30:00.000Z',
+          dayStartUtc: '2024-01-01T00:00:00.000Z',
+          currentBucketIndex: 1,
+          budget: {
+            enabled: true,
+            dailyBudgetKWh: 2,
+            priceShapingEnabled: true,
+          },
+          state: {
+            usedNowKWh: 1,
+            allowedNowKWh: 1,
+            remainingKWh: 1,
+            deviationKWh: 0,
+            exceeded: false,
+            frozen: false,
+            confidence: 0.5,
+            priceShapingActive: false,
+          },
+          buckets: {
+            startUtc: ['2024-01-01T00:00:00.000Z', '2024-01-01T01:00:00.000Z'],
+            startLocalLabels: ['00:00', '01:00'],
+            plannedWeight: [0.5, 0.5],
+            plannedKWh: [1, 1],
+            actualKWh: [1, 1],
+            allowedCumKWh: [1, 2],
+            price: [100, 200], // øre/kWh
+          },
+        },
+      },
+      todayKey: '2024-01-01',
+      tomorrowKey: null,
+    };
+
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'combined_prices') {
+        return cb(null, { priceScheme: 'norway', priceUnit: 'øre/kWh' });
+      }
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+    // @ts-expect-error mutate mock
+    global.Homey.api = jest.fn((method, uri, bodyOrCallback, cb) => {
+      const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
+      if (!callback) return;
+      if (method === 'GET' && uri === '/daily_budget') {
+        callback(null, dailyBudgetPayload);
+        return;
+      }
+      if (method === 'GET' && uri === '/homey_devices') {
+        callback(null, []);
+        return;
+      }
+      callback(null, null);
+    });
+
+    await loadSettingsScript(200);
+
+    const costText = document.querySelector('#daily-budget-cost')?.textContent;
+    expect(costText).toBe('3.00 kr');
+  });
+
+  it('keeps external price units on daily budget cost', async () => {
+    const dailyBudgetPayload = {
+      days: {
+        '2024-01-01': {
+          dateKey: '2024-01-01',
+          timeZone: 'UTC',
+          nowUtc: '2024-01-01T01:30:00.000Z',
+          dayStartUtc: '2024-01-01T00:00:00.000Z',
+          currentBucketIndex: 1,
+          budget: {
+            enabled: true,
+            dailyBudgetKWh: 2,
+            priceShapingEnabled: true,
+          },
+          state: {
+            usedNowKWh: 1,
+            allowedNowKWh: 1,
+            remainingKWh: 1,
+            deviationKWh: 0,
+            exceeded: false,
+            frozen: false,
+            confidence: 0.5,
+            priceShapingActive: false,
+          },
+          buckets: {
+            startUtc: ['2024-01-01T00:00:00.000Z', '2024-01-01T01:00:00.000Z'],
+            startLocalLabels: ['00:00', '01:00'],
+            plannedWeight: [0.5, 0.5],
+            plannedKWh: [1, 1],
+            actualKWh: [1, 1],
+            allowedCumKWh: [1, 2],
+            price: [100, 200], // external units
+          },
+        },
+      },
+      todayKey: '2024-01-01',
+      tomorrowKey: null,
+    };
+
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'combined_prices') {
+        return cb(null, { priceScheme: 'flow', priceUnit: 'price units' });
+      }
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+    // @ts-expect-error mutate mock
+    global.Homey.api = jest.fn((method, uri, bodyOrCallback, cb) => {
+      const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
+      if (!callback) return;
+      if (method === 'GET' && uri === '/daily_budget') {
+        callback(null, dailyBudgetPayload);
+        return;
+      }
+      if (method === 'GET' && uri === '/homey_devices') {
+        callback(null, []);
+        return;
+      }
+      callback(null, null);
+    });
+
+    await loadSettingsScript(200);
+
+    const costText = document.querySelector('#daily-budget-cost')?.textContent;
+    expect(costText).toBe('300.00');
+  });
 });
 
 describe('Plan sorting', () => {

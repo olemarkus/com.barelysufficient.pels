@@ -42,13 +42,26 @@ const formatSignedKWh = (value: number, digits = 2) => {
 const formatPercent = (value: number) => (
   Number.isFinite(value) ? `${Math.round(value * 100)}%` : '--%'
 );
-const formatNok = (value?: number | null) => (
-  Number.isFinite(value) ? `${(value as number).toFixed(2)} kr` : '-- kr'
-);
+const DEFAULT_COST_UNIT = 'kr';
+const DEFAULT_COST_DIVISOR = 100;
+
+type CostDisplay = {
+  unit: string;
+  divisor: number;
+};
+
+const formatCost = (value: number | null | undefined, display: CostDisplay) => {
+  const unit = display.unit.trim();
+  const suffix = unit ? ` ${unit}` : '';
+  if (!Number.isFinite(value)) return `--${suffix}`;
+  const adjusted = (value as number) / Math.max(1, display.divisor);
+  return `${adjusted.toFixed(2)}${suffix}`;
+};
 
 type DailyBudgetView = 'today' | 'tomorrow';
 let currentDailyBudgetView: DailyBudgetView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
+let costDisplay: CostDisplay = { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
 
 const applyDailyBudgetBounds = () => {
   if (!dailyBudgetKwhInput) return;
@@ -121,7 +134,18 @@ const applyDailyBudgetViewState = () => {
   }
 };
 
-const computeEstimatedCostNok = (params: {
+const resolveCostDisplay = (combinedPrices: unknown | null): CostDisplay => {
+  if (!combinedPrices || typeof combinedPrices !== 'object') {
+    return { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
+  }
+  const { priceScheme } = combinedPrices as { priceScheme?: unknown; priceUnit?: unknown };
+  if (priceScheme === 'flow') {
+    return { unit: '', divisor: 1 };
+  }
+  return { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
+};
+
+const computeEstimatedCost = (params: {
   plannedKWh: number[];
   actualKWh?: number[];
   currentBucketIndex?: number;
@@ -135,7 +159,7 @@ const computeEstimatedCostNok = (params: {
   } = params;
   if (!prices || prices.length === 0) return null;
   if (prices.length < plannedKWh.length) return null;
-  let totalOre = 0;
+  let totalCost = 0;
   for (let index = 0; index < plannedKWh.length; index += 1) {
     const price = prices[index];
     if (!Number.isFinite(price)) return null;
@@ -146,9 +170,9 @@ const computeEstimatedCostNok = (params: {
         kwh = actualValue as number;
       }
     }
-    totalOre += kwh * (price as number);
+    totalCost += kwh * (price as number);
   }
-  return totalOre / 100;
+  return totalCost;
 };
 
 const resolveLabelEvery = (count: number) => {
@@ -307,7 +331,7 @@ const renderDailyBudgetEmptyState = (message = 'Daily budget data not available 
   setText(dailyBudgetRemaining, '-- kWh');
   setText(dailyBudgetDeviation, '-- kWh');
   setText(dailyBudgetCostLabel, isTomorrow ? 'Estimated cost tomorrow' : 'Estimated cost today');
-  setText(dailyBudgetCost, '-- kr');
+  setText(dailyBudgetCost, formatCost(null, costDisplay));
   setTooltip(dailyBudgetDeviation, null);
   setChipStateIfPresent(dailyBudgetConfidence, 'Confidence --');
 };
@@ -335,13 +359,13 @@ const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudge
   if (dailyBudgetCostLabel) {
     dailyBudgetCostLabel.textContent = view === 'tomorrow' ? 'Estimated cost tomorrow' : 'Estimated cost today';
   }
-  const estimatedCost = computeEstimatedCostNok({
+  const estimatedCost = computeEstimatedCost({
     plannedKWh: payload.buckets.plannedKWh || [],
     actualKWh: view === 'today' ? payload.buckets.actualKWh : undefined,
     currentBucketIndex: view === 'today' ? payload.currentBucketIndex : undefined,
     prices: payload.buckets.price,
   });
-  if (dailyBudgetCost) dailyBudgetCost.textContent = formatNok(estimatedCost);
+  if (dailyBudgetCost) dailyBudgetCost.textContent = formatCost(estimatedCost, costDisplay);
 };
 
 const renderDailyBudgetChips = (payload: DailyBudgetDayPayload) => {
@@ -421,7 +445,11 @@ export const saveDailyBudgetSettings = async () => {
 
 export const refreshDailyBudgetPlan = async () => {
   try {
-    const payload = await callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget');
+    const [payload, combinedPrices] = await Promise.all([
+      callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
+      getSetting('combined_prices').catch(() => null),
+    ]);
+    costDisplay = resolveCostDisplay(combinedPrices);
     renderDailyBudget(payload);
   } catch (error) {
     await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');
