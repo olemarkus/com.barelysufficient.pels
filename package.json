@@ -31,35 +31,35 @@
     "parseuri": "3.0.2"
   },
   "dependencies": {
-    "homey-api": "^3.14.22"
+    "homey-api": "^3.16.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
+    "@eslint/js": "^9.39.2",
     "@tsconfig/node22": "^22.0.5",
     "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
     "@types/jest": "^30.0.0",
-    "@types/node": "^22.19.3",
+    "@types/node": "^25.0.9",
     "@types/puppeteer": "^7.0.4",
     "@types/sortablejs": "^1.15.9",
-    "@typescript-eslint/eslint-plugin": "^8.48.1",
-    "@typescript-eslint/parser": "^8.48.1",
-    "esbuild": "^0.27.1",
-    "eslint": "^9.39.1",
+    "@typescript-eslint/eslint-plugin": "^8.53.0",
+    "@typescript-eslint/parser": "^8.53.0",
+    "esbuild": "^0.27.2",
+    "eslint": "^9.39.2",
     "eslint-plugin-functional": "^9.0.2",
     "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-n": "^17.23.1",
+    "eslint-plugin-n": "^17.23.2",
     "eslint-plugin-sonarjs": "^3.0.5",
-    "globals": "^16.5.0",
+    "globals": "^17.0.0",
     "husky": "^9.1.7",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.2.0",
     "lint-staged": "^16.2.7",
-    "puppeteer": "^24.32.0",
+    "puppeteer": "^24.35.0",
     "sortablejs": "^1.15.6",
-    "style-dictionary": "^5.1.1",
+    "style-dictionary": "^5.1.4",
     "tippy.js": "^6.3.7",
     "ts-jest": "^29.4.6",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.48.1"
+    "typescript-eslint": "^8.53.0"
   }
 }
