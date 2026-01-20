@@ -40,9 +40,14 @@ import { getDateKeyInTimeZone } from './timezone';
 
 type PriceScheme = 'norway' | 'flow' | 'homey';
 
-const normalizePriceScheme = (value: unknown): PriceScheme => {
-  if (value === 'flow' || value === 'homey') return value;
+const normalizePriceSchemeSetting = (value: unknown): PriceScheme => {
+  if (value === 'norway' || value === 'flow' || value === 'homey') return value;
   return 'norway';
+};
+
+const normalizePriceSchemeSelection = (value: unknown): PriceScheme => {
+  if (value === 'norway' || value === 'flow' || value === 'homey') return value;
+  return 'homey';
 };
 
 type GridTariffEntry = {
@@ -120,7 +125,7 @@ const applyPriceSchemeUi = (scheme: PriceScheme) => {
 };
 
 export const loadPriceSettings = async () => {
-  const priceScheme = normalizePriceScheme(await getSetting(PRICE_SCHEME));
+  const priceScheme = normalizePriceSchemeSelection(await getSetting(PRICE_SCHEME));
   const priceArea = await getSetting('price_area');
   const providerSurcharge = await getSetting('provider_surcharge');
   const thresholdPercent = await getSetting('price_threshold_percent');
@@ -187,7 +192,7 @@ const formatFlowPayloadStatus = (
 };
 
 export const refreshFlowStatus = async (schemeOverride?: PriceScheme) => {
-  const scheme = schemeOverride ?? normalizePriceScheme(await getSetting(PRICE_SCHEME));
+  const scheme = schemeOverride ?? normalizePriceSchemeSelection(await getSetting(PRICE_SCHEME));
   if (!priceFlowStatus || scheme !== 'flow') return;
 
   const timeZone = getHomeyTimezone();
@@ -207,7 +212,7 @@ export const refreshFlowStatus = async (schemeOverride?: PriceScheme) => {
 };
 
 export const refreshHomeyStatus = async (schemeOverride?: PriceScheme) => {
-  const scheme = schemeOverride ?? normalizePriceScheme(await getSetting(PRICE_SCHEME));
+  const scheme = schemeOverride ?? normalizePriceSchemeSelection(await getSetting(PRICE_SCHEME));
   if (!priceHomeyStatus || scheme !== 'homey') return;
 
   const timeZone = getHomeyTimezone();
@@ -244,7 +249,7 @@ type PriceOverrideOptions = {
 };
 
 const parsePriceSettingsInputs = (): PriceSettingsInput => ({
-  priceScheme: normalizePriceScheme(priceSchemeSelect?.value || 'norway'),
+  priceScheme: normalizePriceSchemeSelection(priceSchemeSelect?.value || 'homey'),
   priceArea: priceAreaSelect?.value || 'NO1',
   providerSurcharge: parseFloat(providerSurchargeInput?.value || '0') || 0,
   thresholdPercent: parseInt(priceThresholdInput?.value || '25', 10) || 25,
@@ -392,7 +397,7 @@ const buildCombinedFromSpotPrices = async (): Promise<CombinedPriceData | null> 
 };
 
 const getPriceData = async (): Promise<CombinedPriceData | null> => {
-  const priceScheme = normalizePriceScheme(await getSetting(PRICE_SCHEME));
+  const priceScheme = normalizePriceSchemeSetting(await getSetting(PRICE_SCHEME));
   const currencySetting = priceScheme === 'homey' ? await getSetting(HOMEY_PRICES_CURRENCY) : null;
   const homeyCurrency = typeof currencySetting === 'string' ? currencySetting : '';
   const priceUnit = priceScheme === 'norway' ? 'øre/kWh' : (homeyCurrency || 'price units');
