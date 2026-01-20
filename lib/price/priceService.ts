@@ -1,6 +1,5 @@
 import Homey from 'homey';
 import { formatDateInTimeZone, getHourStartInTimeZone } from './priceTime';
-import { getDateKeyInTimeZone } from '../utils/dateUtils';
 import {
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
@@ -20,7 +19,14 @@ import {
   fetchAndNormalizeGridTariff,
   shouldUseGridTariffCache,
 } from './gridTariffUtils';
-import { fetchHomeyEnergyCurrency, fetchHomeyEnergyPricesForDate } from './homeyEnergyPriceFetch';
+import {
+  buildHomeyEnergyDateInfo,
+  fetchHomeyEnergyResults,
+  logHomeyEnergyPayloadStatus,
+  shouldUseHomeyEnergyCache,
+  storeHomeyEnergyPayloads,
+  updateHomeyEnergyCurrency,
+} from './homeyEnergyRefresh';
 import {
   buildCombinedHourlyPricesFromPayloads,
   storeFlowPriceData as storeFlowPriceDataHelper,
@@ -31,19 +37,6 @@ import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
-
-type HomeyEnergyFetchResult = Awaited<ReturnType<typeof fetchHomeyEnergyPricesForDate>>;
-type HomeyEnergyDateInfo = {
-  timeZone: string;
-  today: Date;
-  tomorrow: Date;
-  todayKey: string;
-  tomorrowKey: string;
-};
-type HomeyEnergyResults = {
-  todayResult: HomeyEnergyFetchResult;
-  tomorrowResult: HomeyEnergyFetchResult;
-};
 
 export default class PriceService {
   constructor(
@@ -385,86 +378,6 @@ export default class PriceService {
     return getHourStartInTimeZone(new Date(), timeZone);
   }
 
-  private getHomeyEnergyDateInfo(): HomeyEnergyDateInfo {
-    const timeZone = this.homey.clock.getTimezone();
-    const today = new Date();
-    const tomorrow = addDays(today, 1);
-    return {
-      timeZone,
-      today,
-      tomorrow,
-      todayKey: getDateKeyInTimeZone(today, timeZone),
-      tomorrowKey: getDateKeyInTimeZone(tomorrow, timeZone),
-    };
-  }
-
-  private shouldUseHomeyEnergyCache(info: HomeyEnergyDateInfo, forceRefresh: boolean): boolean {
-    if (forceRefresh) return false;
-    const cachedToday = getFlowPricePayload(this.getSettingValue(HOMEY_PRICES_TODAY));
-    const cachedTomorrow = getFlowPricePayload(this.getSettingValue(HOMEY_PRICES_TOMORROW));
-    if (cachedToday?.dateKey === info.todayKey && cachedTomorrow?.dateKey === info.tomorrowKey) {
-      this.logDebug('Homey prices: Using cached data');
-      this.updateCombinedPrices();
-      return true;
-    }
-    return false;
-  }
-
-  private async fetchHomeyEnergyResults(
-    energyApi: HomeyEnergyApi,
-    info: HomeyEnergyDateInfo,
-  ): Promise<HomeyEnergyResults | null> {
-    try {
-      const todayResult = await fetchHomeyEnergyPricesForDate({
-        api: energyApi,
-        date: info.today,
-        timeZone: info.timeZone,
-      });
-      const tomorrowResult = await fetchHomeyEnergyPricesForDate({
-        api: energyApi,
-        date: info.tomorrow,
-        timeZone: info.timeZone,
-      });
-      return { todayResult, tomorrowResult };
-    } catch (error) {
-      if (this.errorLog) {
-        this.errorLog('Homey prices: Failed to fetch price data', error);
-      } else {
-        this.log('Homey prices: Failed to fetch price data', error);
-      }
-      return null;
-    }
-  }
-
-  private async updateHomeyEnergyCurrency(
-    energyApi: HomeyEnergyApi,
-    results: HomeyEnergyResults,
-  ): Promise<void> {
-    let currency: string | null = null;
-    try {
-      currency = await fetchHomeyEnergyCurrency(energyApi);
-    } catch (error) {
-      this.logDebug('Homey prices: Failed to fetch currency', error);
-    }
-    const priceUnit = currency || results.todayResult.priceUnit || results.tomorrowResult.priceUnit;
-    if (priceUnit) {
-      this.homey.settings.set(HOMEY_PRICES_CURRENCY, priceUnit);
-    }
-  }
-
-  private storeHomeyEnergyPayloads(results: HomeyEnergyResults): number {
-    let stored = 0;
-    if (results.todayResult.payload) {
-      this.homey.settings.set(HOMEY_PRICES_TODAY, results.todayResult.payload);
-      stored += 1;
-    }
-    if (results.tomorrowResult.payload) {
-      this.homey.settings.set(HOMEY_PRICES_TOMORROW, results.tomorrowResult.payload);
-      stored += 1;
-    }
-    return stored;
-  }
-
   private async refreshHomeyEnergyPrices(forceRefresh: boolean): Promise<void> {
     if (this.getPriceScheme() !== 'homey') {
       this.logDebug('Homey prices: Skipping refresh (price scheme not homey)');
@@ -475,14 +388,43 @@ export default class PriceService {
       this.log('Homey prices: Homey energy API not available');
       return;
     }
-    const info = this.getHomeyEnergyDateInfo();
-    if (this.shouldUseHomeyEnergyCache(info, forceRefresh)) return;
+    const info = buildHomeyEnergyDateInfo(this.homey.clock.getTimezone());
+    if (shouldUseHomeyEnergyCache({
+      info,
+      forceRefresh,
+      getSettingValue: (key) => this.getSettingValue(key),
+      logDebug: this.logDebug,
+      updateCombinedPrices: () => this.updateCombinedPrices(),
+    })) {
+      return;
+    }
 
-    const results = await this.fetchHomeyEnergyResults(energyApi, info);
+    const results = await fetchHomeyEnergyResults({
+      energyApi,
+      info,
+      log: this.log,
+      errorLog: this.errorLog,
+    });
     if (!results) return;
 
-    await this.updateHomeyEnergyCurrency(energyApi, results);
-    const stored = this.storeHomeyEnergyPayloads(results);
+    logHomeyEnergyPayloadStatus({
+      info,
+      results,
+      log: this.log,
+      logDebug: this.logDebug,
+      errorLog: this.errorLog,
+    });
+
+    await updateHomeyEnergyCurrency({
+      energyApi,
+      results,
+      setSetting: (key, value) => this.homey.settings.set(key, value),
+      logDebug: this.logDebug,
+    });
+    const stored = storeHomeyEnergyPayloads({
+      results,
+      setSetting: (key, value) => this.homey.settings.set(key, value),
+    });
     if (stored === 0) {
       this.log('Homey prices: No price data available');
       return;
