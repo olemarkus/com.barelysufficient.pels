@@ -397,7 +397,7 @@
       </div>
       <div class="price-info">
         <p class="muted">Price-based optimization uses hourly prices to shift energy-intensive tasks to cheaper hours.</p>
-        <p class="muted">Norway source adds grid tariff, provider surcharge, taxes, and electricity support. Flow source uses values as provided (currency/tax may differ).</p>
+        <p class="muted">Norway source adds grid tariff, provider surcharge, taxes, and electricity support. Flow and Homey sources use values as provided (currency/tax may differ).</p>
       </div>
       
       <div class="toggle-row">
@@ -421,6 +421,7 @@
               <select id="price-scheme" name="price_scheme">
                 <option value="norway">Norway (spot + grid tariff)</option>
                 <option value="flow">Flow (Power by the Hour)</option>
+                <option value="homey">Homey Energy (dynamic prices)</option>
               </select>
               <small class="field__hint">Select where PELS should fetch price data.</small>
             </label>
@@ -438,6 +439,24 @@
             <div class="flow-status-row">
               <span class="flow-status-label">Tomorrow</span>
               <span class="flow-status-value" id="price-flow-tomorrow">No data yet</span>
+            </div>
+          </div>
+          <div id="price-homey-status" class="price-notice price-notice-info" hidden>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Homey Energy</span>
+              <span class="flow-status-value" id="price-homey-enabled">Not enabled</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Currency</span>
+              <span class="flow-status-value" id="price-homey-currency">Unknown</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Today</span>
+              <span class="flow-status-value" id="price-homey-today">No data yet</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Tomorrow</span>
+              <span class="flow-status-value" id="price-homey-tomorrow">No data yet</span>
             </div>
           </div>
           <div id="price-norway-settings">

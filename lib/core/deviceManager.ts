@@ -1,5 +1,6 @@
 import Homey from 'homey';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
+import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import { resolveDeviceLabel, resolveZoneLabel } from './deviceManagerHelpers';
 
 type HomeyApiConstructor = {
@@ -19,6 +20,7 @@ type HomeyApiDevicesClient = {
 
 type HomeyApiClient = {
     devices?: HomeyApiDevicesClient;
+    energy?: HomeyEnergyApi;
 };
 
 type PowerEstimateState = {

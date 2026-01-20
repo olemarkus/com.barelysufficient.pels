@@ -5,6 +5,7 @@ import PriceService from './priceService';
 
 export type PriceCoordinatorDeps = {
   homey: Homey.App['homey'];
+  getHomeyEnergyApi?: () => import('../utils/homeyEnergy').HomeyEnergyApi | null;
   getCurrentPriceLevel: () => PriceLevel;
   rebuildPlanFromCache: (reason: string) => Promise<void>;
   log: (...args: unknown[]) => void;
@@ -29,6 +30,7 @@ export class PriceCoordinator {
       deps.log,
       deps.logDebug,
       deps.error,
+      deps.getHomeyEnergyApi,
     );
   }
 

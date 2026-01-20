@@ -138,9 +138,10 @@ const resolveCostDisplay = (combinedPrices: unknown | null): CostDisplay => {
   if (!combinedPrices || typeof combinedPrices !== 'object') {
     return { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
   }
-  const { priceScheme } = combinedPrices as { priceScheme?: unknown; priceUnit?: unknown };
-  if (priceScheme === 'flow') {
-    return { unit: '', divisor: 1 };
+  const { priceScheme, priceUnit } = combinedPrices as { priceScheme?: unknown; priceUnit?: unknown };
+  if (priceScheme === 'flow' || priceScheme === 'homey') {
+    const unit = typeof priceUnit === 'string' && priceUnit !== 'price units' ? priceUnit : '';
+    return { unit, divisor: 1 };
   }
   return { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
 };

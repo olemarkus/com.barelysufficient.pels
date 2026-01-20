@@ -153,6 +153,10 @@ export const mockHomeyInstance = {
   api: {
     getOwnerApiToken: async () => 'mock-token',
     getLocalUrl: async () => 'http://localhost',
+    energy: {
+      fetchDynamicElectricityPrices: async () => ([]),
+      getCurrency: async () => ({ currency: 'NOK' }),
+    },
     _realtimeEvents: [] as Array<{ event: string; data: any }>,
     realtime: async (event: string, data: any) => {
       // Track realtime events for testing
@@ -306,6 +310,10 @@ const homeyModule = {
 
 // Mock for homey-api module - HomeyAPI.createAppAPI
 export const mockHomeyApiInstance = {
+  energy: {
+    fetchDynamicElectricityPrices: async () => ([]),
+    getCurrency: async () => ({ currency: 'NOK' }),
+  },
   devices: {
     // Mirror Homey's device API using the in-memory mock drivers
     getDevices: async () => {
