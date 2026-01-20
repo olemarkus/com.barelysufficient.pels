@@ -340,19 +340,19 @@ const buildPriceTooltip = (entry: PriceEntry, scheme: PriceScheme, priceUnit: st
     const consumptionTax = entry.consumptionTaxExVat ?? 0;
     const enovaFee = entry.enovaFeeExVat ?? 0;
     const vatAmount = entry.vatAmount ?? 0;
-    const support = entry.electricitySupport ?? 0;
+    const supportExVat = entry.electricitySupportExVat ?? 0;
     const vatLabel = entry.vatMultiplier === 1 ? 'VAT (0%)' : 'VAT';
 
-    tooltipLines.push(`Spot price (ex VAT): ${formatOre(spotPrice)}`);
-    tooltipLines.push(`Grid tariff (ex VAT): ${formatOre(gridTariff)}`);
-    tooltipLines.push(`Provider surcharge (ex VAT): ${formatOre(surcharge)}`);
+    tooltipLines.push(`Spot price: ${formatOre(spotPrice)}`);
+    tooltipLines.push(`Grid tariff: ${formatOre(gridTariff)}`);
+    tooltipLines.push(`Provider surcharge: ${formatOre(surcharge)}`);
     tooltipLines.push(`Consumption tax: ${formatOre(consumptionTax)}`);
     tooltipLines.push(`Enova fee: ${formatOre(enovaFee)}`);
+    tooltipLines.push(`Electricity support: -${formatOre(supportExVat)}`);
     tooltipLines.push(`${vatLabel}: ${formatOre(vatAmount)}`);
-    tooltipLines.push(`Electricity support: -${formatOre(support)}`);
   }
 
-  tooltipLines.push(`Total: ${formatPriceWithUnit(formatChipPrice(entry.total, scheme), priceUnit)}`);
+  tooltipLines.push(`Total (incl VAT): ${formatPriceWithUnit(formatChipPrice(entry.total, scheme), priceUnit)}`);
   return tooltipLines.join('\n');
 };
 
