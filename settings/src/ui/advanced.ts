@@ -9,7 +9,7 @@ import {
 import { callApi, setSetting } from './homey';
 import { renderDevices } from './devices';
 import { renderPriorities } from './modes';
-import { renderPriceOptimization } from './prices';
+import { renderPriceOptimization } from './priceOptimization';
 import { showToast, showToastError } from './toast';
 import { logSettingsError } from './logging';
 import { state } from './state';

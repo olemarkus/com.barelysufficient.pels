@@ -1,4 +1,3 @@
-import type { TargetDeviceSnapshot } from '../../../lib/utils/types';
 import {
   priceAreaSelect,
   priceSchemeSelect,
@@ -9,9 +8,6 @@ import {
   priceMinDiffLabel,
   priceMinDiffInput,
   priceRefreshButton,
-  priceOptimizationList,
-  priceOptimizationEmpty,
-  priceOptimizationSection,
   priceOptimizationEnabledCheckbox,
   gridTariffCountySelect,
   gridTariffCompanySelect,
@@ -22,31 +18,37 @@ import {
   priceFlowEnabled,
   priceFlowToday,
   priceFlowTomorrow,
+  priceHomeyStatus,
+  priceHomeyEnabled,
+  priceHomeyCurrency,
+  priceHomeyToday,
+  priceHomeyTomorrow,
 } from './dom';
-import { getSetting, setSetting } from './homey';
-import { showToast, showToastError } from './toast';
-import { resolveManagedState, defaultPriceOptimizationConfig, state } from './state';
+import { getHomeyTimezone, getSetting, setSetting } from './homey';
+import { showToast } from './toast';
 import { gridCompanies } from './gridCompanies';
 import { renderPrices } from './priceRender';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
-import { createDeviceRow, createNumberInput } from './components';
 import { calculateThresholds } from './priceThresholds';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../lib/price/priceComponents';
-import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
+import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, HOMEY_PRICES_CURRENCY, HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
 import { getFlowPricePayload, getMissingFlowHours } from '../../../lib/price/flowPriceUtils';
 import { addDays } from '../../../lib/price/priceServiceUtils';
-import { getHomeyTimezone } from './homey';
 import { getTimeAgo } from './utils';
 import { getDateKeyInTimeZone } from './timezone';
 
-const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
-  device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
-);
+type PriceScheme = 'norway' | 'flow' | 'homey';
 
-type PriceScheme = 'norway' | 'flow';
+const normalizePriceSchemeSetting = (value: unknown): PriceScheme => {
+  if (value === 'norway' || value === 'flow' || value === 'homey') return value;
+  return 'norway';
+};
 
-const normalizePriceScheme = (value: unknown): PriceScheme => (value === 'flow' ? 'flow' : 'norway');
+const normalizePriceSchemeSelection = (value: unknown): PriceScheme => {
+  if (value === 'norway' || value === 'flow' || value === 'homey') return value;
+  return 'homey';
+};
 
 type GridTariffEntry = {
   time: number;
@@ -62,47 +64,68 @@ type GridTariffEntry = {
   datoId?: string;
 };
 
+const setNorwayPriceControlsDisabled = (disabled: boolean) => {
+  if (priceNorwaySettings) priceNorwaySettings.hidden = disabled;
+  if (priceAreaSelect) priceAreaSelect.disabled = disabled;
+  if (providerSurchargeInput) providerSurchargeInput.disabled = disabled;
+  if (gridTariffCountySelect) gridTariffCountySelect.disabled = disabled;
+  if (gridTariffCompanySelect) gridTariffCompanySelect.disabled = disabled;
+  if (gridTariffGroupSelect) gridTariffGroupSelect.disabled = disabled;
+};
+
+const setRefreshButtonState = (isFlow: boolean, isHomey: boolean) => {
+  if (!priceRefreshButton) return;
+  priceRefreshButton.disabled = isFlow;
+  priceRefreshButton.hidden = isFlow;
+  priceRefreshButton.textContent = 'Refresh prices';
+  priceRefreshButton.title = isHomey
+    ? 'Refresh Homey Energy prices.'
+    : 'Refresh Norwegian spot prices.';
+};
+
+const setPriceSchemeNote = (scheme: PriceScheme) => {
+  if (!priceSchemeNote) return;
+  if (scheme === 'flow') {
+    priceSchemeNote.textContent = 'Flow source uses values as provided (currency/tax may vary). '
+      + 'Use this outside Norway or when you prefer external prices. Make sure you feed today and '
+      + 'tomorrow prices into the PELS flow actions.';
+    priceSchemeNote.hidden = false;
+    return;
+  }
+  if (scheme === 'homey') {
+    priceSchemeNote.textContent = 'Homey Energy uses values as provided (currency/tax may vary). '
+      + 'Prices are read from your Homey Energy settings and used directly.';
+    priceSchemeNote.hidden = false;
+    return;
+  }
+  priceSchemeNote.hidden = true;
+};
+
+const setSchemeStatusVisibility = (isFlow: boolean, isHomey: boolean) => {
+  if (priceFlowStatus) priceFlowStatus.hidden = !isFlow;
+  if (priceHomeyStatus) priceHomeyStatus.hidden = !isHomey;
+};
+
+const setMinDiffLabel = (isExternal: boolean) => {
+  if (!priceMinDiffLabel) return;
+  priceMinDiffLabel.textContent = isExternal
+    ? 'Minimum price difference'
+    : 'Minimum price difference (øre/kWh)';
+};
+
 const applyPriceSchemeUi = (scheme: PriceScheme) => {
   const isFlow = scheme === 'flow';
-
-  if (priceNorwaySettings) priceNorwaySettings.hidden = isFlow;
-  if (priceAreaSelect) priceAreaSelect.disabled = isFlow;
-  if (providerSurchargeInput) providerSurchargeInput.disabled = isFlow;
-  if (gridTariffCountySelect) gridTariffCountySelect.disabled = isFlow;
-  if (gridTariffCompanySelect) gridTariffCompanySelect.disabled = isFlow;
-  if (gridTariffGroupSelect) gridTariffGroupSelect.disabled = isFlow;
-
-  if (priceRefreshButton) {
-    priceRefreshButton.disabled = isFlow;
-    priceRefreshButton.hidden = isFlow;
-    priceRefreshButton.textContent = 'Refresh prices';
-    priceRefreshButton.title = 'Refresh Norwegian spot prices.';
-  }
-
-  if (priceSchemeNote) {
-    if (isFlow) {
-      priceSchemeNote.textContent = 'Flow source uses values as provided (currency/tax may vary). '
-        + 'Use this outside Norway or when you prefer external prices. Make sure you feed today and '
-        + 'tomorrow prices into the PELS flow actions.';
-      priceSchemeNote.hidden = false;
-    } else {
-      priceSchemeNote.hidden = true;
-    }
-  }
-
-  if (priceFlowStatus) {
-    priceFlowStatus.hidden = !isFlow;
-  }
-
-  if (priceMinDiffLabel) {
-    priceMinDiffLabel.textContent = isFlow
-      ? 'Minimum price difference'
-      : 'Minimum price difference (øre/kWh)';
-  }
+  const isHomey = scheme === 'homey';
+  const isExternal = isFlow || isHomey;
+  setNorwayPriceControlsDisabled(isExternal);
+  setRefreshButtonState(isFlow, isHomey);
+  setPriceSchemeNote(scheme);
+  setSchemeStatusVisibility(isFlow, isHomey);
+  setMinDiffLabel(isExternal);
 };
 
 export const loadPriceSettings = async () => {
-  const priceScheme = normalizePriceScheme(await getSetting(PRICE_SCHEME));
+  const priceScheme = normalizePriceSchemeSelection(await getSetting(PRICE_SCHEME));
   const priceArea = await getSetting('price_area');
   const providerSurcharge = await getSetting('provider_surcharge');
   const thresholdPercent = await getSetting('price_threshold_percent');
@@ -130,6 +153,7 @@ export const loadPriceSettings = async () => {
 
   applyPriceSchemeUi(priceScheme);
   await refreshFlowStatus(priceScheme);
+  await refreshHomeyStatus(priceScheme);
 };
 
 type FlowStatusTone = 'ok' | 'warn';
@@ -168,7 +192,7 @@ const formatFlowPayloadStatus = (
 };
 
 export const refreshFlowStatus = async (schemeOverride?: PriceScheme) => {
-  const scheme = schemeOverride ?? normalizePriceScheme(await getSetting(PRICE_SCHEME));
+  const scheme = schemeOverride ?? normalizePriceSchemeSelection(await getSetting(PRICE_SCHEME));
   if (!priceFlowStatus || scheme !== 'flow') return;
 
   const timeZone = getHomeyTimezone();
@@ -187,6 +211,30 @@ export const refreshFlowStatus = async (schemeOverride?: PriceScheme) => {
   updateFlowStatusValue(priceFlowTomorrow, tomorrowStatus.text, tomorrowStatus.tone);
 };
 
+export const refreshHomeyStatus = async (schemeOverride?: PriceScheme) => {
+  const scheme = schemeOverride ?? normalizePriceSchemeSelection(await getSetting(PRICE_SCHEME));
+  if (!priceHomeyStatus || scheme !== 'homey') return;
+
+  const timeZone = getHomeyTimezone();
+  const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
+  const tomorrowKey = getDateKeyInTimeZone(addDays(new Date(), 1), timeZone);
+
+  updateFlowStatusValue(priceHomeyEnabled, 'Enabled', 'ok');
+
+  const currencySetting = await getSetting(HOMEY_PRICES_CURRENCY);
+  const currency = typeof currencySetting === 'string' ? currencySetting : 'Unknown';
+  updateFlowStatusValue(priceHomeyCurrency, currency, currency === 'Unknown' ? 'warn' : 'ok');
+
+  const todayPayload = getFlowPricePayload(await getSetting(HOMEY_PRICES_TODAY));
+  const tomorrowPayload = getFlowPricePayload(await getSetting(HOMEY_PRICES_TOMORROW));
+
+  const todayStatus = formatFlowPayloadStatus(todayPayload, todayKey, timeZone);
+  const tomorrowStatus = formatFlowPayloadStatus(tomorrowPayload, tomorrowKey, timeZone);
+
+  updateFlowStatusValue(priceHomeyToday, todayStatus.text, todayStatus.tone);
+  updateFlowStatusValue(priceHomeyTomorrow, tomorrowStatus.text, tomorrowStatus.tone);
+};
+
 type PriceSettingsInput = {
   priceScheme: PriceScheme;
   priceArea: string;
@@ -201,7 +249,7 @@ type PriceOverrideOptions = {
 };
 
 const parsePriceSettingsInputs = (): PriceSettingsInput => ({
-  priceScheme: normalizePriceScheme(priceSchemeSelect?.value || 'norway'),
+  priceScheme: normalizePriceSchemeSelection(priceSchemeSelect?.value || 'homey'),
   priceArea: priceAreaSelect?.value || 'NO1',
   providerSurcharge: parseFloat(providerSurchargeInput?.value || '0') || 0,
   thresholdPercent: parseInt(priceThresholdInput?.value || '25', 10) || 25,
@@ -349,13 +397,15 @@ const buildCombinedFromSpotPrices = async (): Promise<CombinedPriceData | null> 
 };
 
 const getPriceData = async (): Promise<CombinedPriceData | null> => {
-  const priceScheme = normalizePriceScheme(await getSetting(PRICE_SCHEME));
-  const priceUnit = priceScheme === 'flow' ? 'price units' : 'øre/kWh';
+  const priceScheme = normalizePriceSchemeSetting(await getSetting(PRICE_SCHEME));
+  const currencySetting = priceScheme === 'homey' ? await getSetting(HOMEY_PRICES_CURRENCY) : null;
+  const homeyCurrency = typeof currencySetting === 'string' ? currencySetting : '';
+  const priceUnit = priceScheme === 'norway' ? 'øre/kWh' : (homeyCurrency || 'price units');
   const combinedData = await getSetting('combined_prices');
   if (combinedData && typeof combinedData === 'object' && 'prices' in combinedData) {
     return attachSchemeMetadata(combinedData as CombinedPriceData, priceScheme, priceUnit);
   }
-  if (priceScheme === 'flow') return null;
+  if (priceScheme !== 'norway') return null;
   const legacy = buildCombinedFromLegacy(combinedData, priceScheme, priceUnit);
   if (legacy) return legacy;
   return buildCombinedFromSpotPrices();
@@ -369,6 +419,7 @@ export const refreshPrices = async (overrides?: PriceOverrideOptions) => {
     );
     renderPrices(prices && hasOverrides ? applyPriceOverrides(prices, overrides) : prices);
     await refreshFlowStatus();
+    await refreshHomeyStatus();
   } catch (error) {
     await logSettingsError('Failed to load prices', error, 'refreshPrices');
     if (priceStatusBadge) {
@@ -447,98 +498,4 @@ export const refreshGridTariff = async () => {
   } catch (error) {
     await logSettingsError('Failed to load grid tariff data', error, 'refreshGridTariff');
   }
-};
-
-export const loadPriceOptimizationSettings = async () => {
-  const settings = await getSetting('price_optimization_settings');
-  if (settings && typeof settings === 'object') {
-    state.priceOptimizationSettings = settings as Record<string, typeof defaultPriceOptimizationConfig>;
-  }
-};
-
-export const savePriceOptimizationSettings = async () => {
-  await setSetting('price_optimization_settings', state.priceOptimizationSettings);
-};
-
-const getPriceOptimizationConfig = (deviceId: string) => (
-  state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig }
-);
-
-const ensurePriceOptimizationConfig = (deviceId: string) => {
-  if (!state.priceOptimizationSettings[deviceId]) {
-    state.priceOptimizationSettings[deviceId] = { ...defaultPriceOptimizationConfig };
-  }
-  return state.priceOptimizationSettings[deviceId];
-};
-
-const buildPriceOptimizationRow = (device: TargetDeviceSnapshot): HTMLElement => {
-  const config = getPriceOptimizationConfig(device.id);
-
-  const cheapInput = createNumberInput({
-    value: config.cheapDelta ?? 5,
-    min: -20,
-    max: 20,
-    step: 0.5,
-    className: 'price-opt-input',
-    title: 'Temperature adjustment during cheap hours (e.g., +5 to boost)',
-    onChange: async (val) => {
-      const nextConfig = ensurePriceOptimizationConfig(device.id);
-      nextConfig.cheapDelta = val;
-      try {
-        await savePriceOptimizationSettings();
-      } catch (error) {
-        await logSettingsError('Failed to save cheap price delta', error, 'priceOptimizationRow');
-        await showToastError(error, 'Failed to save cheap price delta.');
-      }
-    },
-  });
-
-  const expensiveInput = createNumberInput({
-    value: config.expensiveDelta ?? -5,
-    min: -20,
-    max: 20,
-    step: 0.5,
-    className: 'price-opt-input',
-    title: 'Temperature adjustment during expensive hours (e.g., -5 to reduce)',
-    onChange: async (val) => {
-      const nextConfig = ensurePriceOptimizationConfig(device.id);
-      nextConfig.expensiveDelta = val;
-      try {
-        await savePriceOptimizationSettings();
-      } catch (error) {
-        await logSettingsError('Failed to save expensive price delta', error, 'priceOptimizationRow');
-        await showToastError(error, 'Failed to save expensive price delta.');
-      }
-    },
-  });
-
-  return createDeviceRow({
-    id: device.id,
-    name: device.name,
-    className: 'price-optimization-row',
-    controls: [cheapInput, expensiveInput],
-  });
-};
-
-export const renderPriceOptimization = (devices: TargetDeviceSnapshot[]) => {
-  if (!priceOptimizationList) return;
-  priceOptimizationList.innerHTML = '';
-
-  const enabledDevices = (devices || []).filter((device) => {
-    const config = state.priceOptimizationSettings[device.id];
-    return resolveManagedState(device.id) && config?.enabled === true && supportsTemperatureDevice(device);
-  });
-
-  if (enabledDevices.length === 0) {
-    if (priceOptimizationSection) priceOptimizationSection.hidden = true;
-    if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = false;
-    return;
-  }
-
-  if (priceOptimizationSection) priceOptimizationSection.hidden = false;
-  if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = true;
-
-  enabledDevices.forEach((device) => {
-    priceOptimizationList.appendChild(buildPriceOptimizationRow(device));
-  });
 };

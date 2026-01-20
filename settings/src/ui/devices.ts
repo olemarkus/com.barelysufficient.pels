@@ -5,7 +5,7 @@ import { showToast, showToastError } from './toast';
 import { resolveManagedState, state } from './state';
 import { renderPriorities } from './modes';
 import { refreshPlan } from './plan';
-import { renderPriceOptimization, savePriceOptimizationSettings } from './prices';
+import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization';
 import { createDeviceRow, createCheckboxLabel } from './components';
 import { logSettingsError, logSettingsWarn } from './logging';
 import { debouncedSetSetting } from './utils';

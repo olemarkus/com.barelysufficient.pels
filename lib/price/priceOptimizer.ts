@@ -1,4 +1,4 @@
-import { CombinedHourlyPrice } from './priceService';
+import type { CombinedHourlyPrice } from './priceTypes';
 import { PriceLevel } from './priceLevels';
 
 export type PriceOptimizationSettings = {

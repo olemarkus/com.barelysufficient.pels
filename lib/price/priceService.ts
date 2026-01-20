@@ -1,47 +1,42 @@
 import Homey from 'homey';
-import {
-  calculateElectricitySupport,
-  getRegionalPricingRules,
-} from './priceComponents';
 import { formatDateInTimeZone, getHourStartInTimeZone } from './priceTime';
-import { getDateKeyInTimeZone } from '../utils/dateUtils';
-import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, PRICE_SCHEME } from '../utils/settingsKeys';
+import {
+  FLOW_PRICES_TODAY,
+  FLOW_PRICES_TOMORROW,
+  HOMEY_PRICES_CURRENCY,
+  HOMEY_PRICES_TODAY,
+  HOMEY_PRICES_TOMORROW,
+  PRICE_SCHEME,
+} from '../utils/settingsKeys';
 import {
   addDays,
   buildGridTariffFallbackDates,
   getSpotPriceCacheDecision,
   getSpotPriceDates,
 } from './priceServiceUtils';
-import {
-  buildFlowEntries,
-  getFlowPricePayload,
-  getMissingFlowHours,
-  parseFlowPriceInput,
-  type FlowPricePayload,
-} from './flowPriceUtils';
+import { getFlowPricePayload } from './flowPriceUtils';
 import {
   fetchAndNormalizeGridTariff,
   shouldUseGridTariffCache,
 } from './gridTariffUtils';
+import {
+  buildHomeyEnergyDateInfo,
+  fetchHomeyEnergyResults,
+  logHomeyEnergyPayloadStatus,
+  shouldUseHomeyEnergyCache,
+  storeHomeyEnergyPayloads,
+  updateHomeyEnergyCurrency,
+} from './homeyEnergyRefresh';
+import {
+  buildCombinedHourlyPricesFromPayloads,
+  storeFlowPriceData as storeFlowPriceDataHelper,
+} from './priceServiceFlowHelpers';
+import { buildCombinedPricePayload } from './priceServiceCombined';
+import { buildCombinedHourlyPricesNorway } from './priceServiceNorway';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
-
-export type CombinedHourlyPrice = {
-  startsAt: string;
-  totalPrice: number;
-  spotPriceExVat?: number;
-  gridTariffExVat?: number;
-  providerSurchargeExVat?: number;
-  consumptionTaxExVat?: number;
-  enovaFeeExVat?: number;
-  vatMultiplier?: number;
-  vatAmount?: number;
-  electricitySupportExVat?: number;
-  electricitySupport?: number;
-  totalExVat?: number;
-};
-
-export type PriceScheme = 'norway' | 'flow';
+import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
+import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 
 export default class PriceService {
   constructor(
@@ -49,6 +44,7 @@ export default class PriceService {
     private log: (...args: unknown[]) => void,
     private logDebug: (...args: unknown[]) => void,
     private errorLog?: (...args: unknown[]) => void,
+    private getHomeyEnergyApi?: () => HomeyEnergyApi | null,
   ) { }
   private getSettingValue(key: string): unknown {
     return this.homey.settings.get(key) as unknown;
@@ -65,15 +61,58 @@ export default class PriceService {
 
   private getPriceScheme(): PriceScheme {
     const raw = this.getSettingValue(PRICE_SCHEME);
-    return raw === 'flow' ? 'flow' : 'norway';
+    if (raw === 'flow' || raw === 'homey') return raw;
+    return 'norway';
   }
 
   private getPriceUnitLabel(): string {
-    return this.getPriceScheme() === 'flow' ? 'price units' : 'øre/kWh';
+    const scheme = this.getPriceScheme();
+    if (scheme === 'norway') return 'øre/kWh';
+    if (scheme === 'homey') {
+      const currency = this.getSettingValue(HOMEY_PRICES_CURRENCY);
+      return typeof currency === 'string' && currency.trim() ? currency : 'price units';
+    }
+    return 'price units';
+  }
+
+  private shouldUseSpotPriceCache(params: {
+    forceRefresh: boolean;
+    cachedArea: unknown;
+    priceArea: string;
+    today: Date;
+    dates: { todayStr: string; tomorrowStr: string };
+  }): boolean {
+    const { forceRefresh, cachedArea, priceArea, today, dates } = params;
+    if (forceRefresh) return false;
+    const existingPrices = this.getSettingValue('electricity_prices') as Array<{ startsAt?: string }> | null;
+    const cacheDecision = getSpotPriceCacheDecision({
+      cachedArea,
+      priceArea,
+      existingPrices,
+      dates,
+      now: today,
+    });
+    if (cacheDecision.areaChanged) {
+      this.logDebug(`Spot prices: Price area changed from ${cachedArea} to ${priceArea}, ignoring cache`);
+    }
+    if (cacheDecision.useCache) {
+      this.logDebug(`Spot prices: Using cached data (${existingPrices?.length ?? 0} entries including today)`);
+      this.updateCombinedPrices();
+      return true;
+    }
+    if (cacheDecision.shouldFetchTomorrow) {
+      this.logDebug('Spot prices: Refreshing to fetch tomorrow\'s prices (after 12:15 UTC)');
+    }
+    return false;
   }
   async refreshSpotPrices(forceRefresh = false): Promise<void> {
-    if (this.getPriceScheme() === 'flow') {
+    const scheme = this.getPriceScheme();
+    if (scheme === 'flow') {
       this.logDebug('Spot prices: Skipping refresh (flow price scheme active)');
+      return;
+    }
+    if (scheme === 'homey') {
+      await this.refreshHomeyEnergyPrices(forceRefresh);
       return;
     }
     const priceArea = this.getPriceArea();
@@ -81,26 +120,14 @@ export default class PriceService {
     const today = new Date();
     const dates = getSpotPriceDates(today);
 
-    if (!forceRefresh) {
-      const existingPrices = this.getSettingValue('electricity_prices') as Array<{ startsAt?: string }> | null;
-      const cacheDecision = getSpotPriceCacheDecision({
-        cachedArea,
-        priceArea,
-        existingPrices,
-        dates,
-        now: today,
-      });
-      if (cacheDecision.areaChanged) {
-        this.logDebug(`Spot prices: Price area changed from ${cachedArea} to ${priceArea}, ignoring cache`);
-      }
-      if (cacheDecision.useCache) {
-        this.logDebug(`Spot prices: Using cached data (${existingPrices?.length ?? 0} entries including today)`);
-        this.updateCombinedPrices();
-        return;
-      }
-      if (cacheDecision.shouldFetchTomorrow) {
-        this.logDebug('Spot prices: Refreshing to fetch tomorrow\'s prices (after 12:15 UTC)');
-      }
+    if (this.shouldUseSpotPriceCache({
+      forceRefresh,
+      cachedArea,
+      priceArea,
+      today,
+      dates,
+    })) {
+      return;
     }
 
     const todayPrices = await fetchSpotPricesForDate({
@@ -128,8 +155,8 @@ export default class PriceService {
     this.updateCombinedPrices();
   }
   async refreshGridTariffData(forceRefresh = false): Promise<void> {
-    if (this.getPriceScheme() === 'flow') {
-      this.logDebug('Grid tariff: Skipping refresh (flow price scheme active)');
+    if (this.getPriceScheme() !== 'norway') {
+      this.logDebug('Grid tariff: Skipping refresh (non-Norway price scheme active)');
       return;
     }
     const settings = this.getGridTariffSettings();
@@ -198,197 +225,59 @@ export default class PriceService {
 
   updateCombinedPrices(): void {
     const combined = this.getCombinedHourlyPrices();
-    const priceScheme = this.getPriceScheme();
-    const priceUnit = this.getPriceUnitLabel();
-    if (combined.length === 0) {
-      const emptyPrices = {
-        prices: [], avgPrice: 0, lowThreshold: 0, highThreshold: 0,
-        priceScheme,
-        priceUnit,
-      };
-      this.homey.settings.set('combined_prices', emptyPrices);
-      this.emitRealtime('prices_updated', emptyPrices);
-      return;
-    }
-
-    const avgPrice = combined.reduce((sum, p) => sum + p.totalPrice, 0) / combined.length;
-    const thresholdPercent = this.getNumberSetting('price_threshold_percent', 25);
-    const minDiffOre = this.getNumberSetting('price_min_diff_ore', 0);
-    const thresholdMultiplier = thresholdPercent / 100;
-    const lowThreshold = avgPrice * (1 - thresholdMultiplier);
-    const highThreshold = avgPrice * (1 + thresholdMultiplier);
-    const hasNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
-
-    const prices = combined.map((p) => {
-      const diffFromAvg = Math.abs(p.totalPrice - avgPrice);
-      const meetsMinDiff = diffFromAvg >= minDiffOre;
-      const entry: {
-        startsAt: string;
-        total: number;
-        spotPriceExVat?: number;
-        gridTariffExVat?: number;
-        providerSurchargeExVat?: number;
-        consumptionTaxExVat?: number;
-        enovaFeeExVat?: number;
-        vatMultiplier?: number;
-        vatAmount?: number;
-        electricitySupportExVat?: number;
-        electricitySupport?: number;
-        totalExVat?: number;
-        isCheap: boolean;
-        isExpensive: boolean;
-      } = {
-        startsAt: p.startsAt,
-        total: p.totalPrice,
-        isCheap: p.totalPrice <= lowThreshold && meetsMinDiff,
-        isExpensive: p.totalPrice >= highThreshold && meetsMinDiff,
-      };
-      if (hasNumber(p.spotPriceExVat)) entry.spotPriceExVat = p.spotPriceExVat;
-      if (hasNumber(p.gridTariffExVat)) entry.gridTariffExVat = p.gridTariffExVat;
-      if (hasNumber(p.providerSurchargeExVat)) entry.providerSurchargeExVat = p.providerSurchargeExVat;
-      if (hasNumber(p.consumptionTaxExVat)) entry.consumptionTaxExVat = p.consumptionTaxExVat;
-      if (hasNumber(p.enovaFeeExVat)) entry.enovaFeeExVat = p.enovaFeeExVat;
-      if (hasNumber(p.vatMultiplier)) entry.vatMultiplier = p.vatMultiplier;
-      if (hasNumber(p.vatAmount)) entry.vatAmount = p.vatAmount;
-      if (hasNumber(p.electricitySupportExVat)) entry.electricitySupportExVat = p.electricitySupportExVat;
-      if (hasNumber(p.electricitySupport)) entry.electricitySupport = p.electricitySupport;
-      if (hasNumber(p.totalExVat)) entry.totalExVat = p.totalExVat;
-      return entry;
+    const payload = buildCombinedPricePayload({
+      combined,
+      priceScheme: this.getPriceScheme(),
+      priceUnit: this.getPriceUnitLabel(),
+      thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
+      minDiffOre: this.getNumberSetting('price_min_diff_ore', 0),
+      now: new Date(),
     });
-
-    const combinedPrices = {
-      prices,
-      avgPrice,
-      lowThreshold,
-      highThreshold,
-      thresholdPercent,
-      minDiffOre,
-      lastFetched: new Date().toISOString(),
-      priceScheme,
-      priceUnit,
-    };
-    this.homey.settings.set('combined_prices', combinedPrices);
-    this.emitRealtime('prices_updated', combinedPrices);
+    this.homey.settings.set('combined_prices', payload);
+    this.emitRealtime('prices_updated', payload);
   }
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
-    if (this.getPriceScheme() === 'flow') {
-      return this.getCombinedHourlyPricesFromFlow();
-    }
+    const scheme = this.getPriceScheme();
+    if (scheme === 'flow') return this.getCombinedHourlyPricesFromFlow();
+    if (scheme === 'homey') return this.getCombinedHourlyPricesFromHomey();
     return this.getCombinedHourlyPricesNorway();
   }
 
   private getCombinedHourlyPricesNorway(): CombinedHourlyPrice[] {
-    const spotPrices = this.getSettingValue('electricity_prices');
-    const gridTariffData = this.getSettingValue('nettleie_data');
-    const providerSurchargeIncVat = this.getNumberSetting('provider_surcharge', 0);
-    const spotList = Array.isArray(spotPrices)
-      ? spotPrices as Array<{ startsAt: string; total?: number; spotPriceExVat?: number; totalExVat?: number }>
-      : [];
-    const gridTariffList = Array.isArray(gridTariffData)
-      ? gridTariffData as Array<{
-        time?: number | string;
-        energyFeeExVat?: number | null;
-        energyFeeIncVat?: number | null;
-        energileddEks?: number | null;
-        energileddInk?: number | null;
-      }>
-      : [];
-
     const priceArea = this.getPriceArea();
     const gridTariffSettings = this.getGridTariffSettings();
-    const rules = getRegionalPricingRules(priceArea, gridTariffSettings.countyCode);
-    const providerSurchargeExVat = providerSurchargeIncVat / rules.vatMultiplier;
-
-    const getNumber = (value: unknown): number | null => (
-      typeof value === 'number' && Number.isFinite(value) ? value : null
-    );
-
-    const gridTariffByHour = new Map<number, number>();
-    for (const entry of gridTariffList) {
-      const hourValue = typeof entry.time === 'number' ? entry.time : parseInt(String(entry.time ?? ''), 10);
-      if (Number.isNaN(hourValue)) continue;
-      const energyFeeExVat = getNumber(entry.energyFeeExVat ?? entry.energileddEks);
-      const energyFeeIncVat = getNumber(entry.energyFeeIncVat ?? entry.energileddInk);
-      const resolvedExVat = energyFeeExVat ?? (energyFeeIncVat !== null ? energyFeeIncVat / rules.vatMultiplier : null);
-      if (resolvedExVat !== null) {
-        gridTariffByHour.set(hourValue, resolvedExVat);
-      }
-    }
-
-    const resolveSpotPriceExVat = (entry: { total?: number; spotPriceExVat?: number; totalExVat?: number }): number => {
-      const exVat = getNumber(entry.spotPriceExVat ?? entry.totalExVat);
-      if (exVat !== null) return exVat;
-      const total = getNumber(entry.total);
-      return total !== null ? total / rules.vatMultiplier : 0;
-    };
-
-    return spotList.map((spot) => {
-      const date = new Date(spot.startsAt);
-      const hour = date.getHours();
-      const spotPriceExVat = resolveSpotPriceExVat(spot);
-      const gridTariffExVat = gridTariffByHour.get(hour) || 0;
-      const consumptionTaxExVat = rules.consumptionTaxExVat;
-      const enovaFeeExVat = rules.enovaFeeExVat;
-      const totalExVat = spotPriceExVat + gridTariffExVat + providerSurchargeExVat + consumptionTaxExVat + enovaFeeExVat;
-      const electricitySupportExVat = calculateElectricitySupport(
-        spotPriceExVat,
-        rules.supportThresholdExVat,
-        rules.supportCoverage,
-      );
-      const vatAmount = totalExVat * (rules.vatMultiplier - 1);
-      const electricitySupport = electricitySupportExVat * rules.vatMultiplier;
-      const totalPrice = totalExVat * rules.vatMultiplier - electricitySupport;
-      return {
-        startsAt: spot.startsAt,
-        spotPriceExVat,
-        gridTariffExVat,
-        providerSurchargeExVat,
-        consumptionTaxExVat,
-        enovaFeeExVat,
-        vatMultiplier: rules.vatMultiplier,
-        vatAmount,
-        electricitySupportExVat,
-        electricitySupport,
-        totalExVat,
-        totalPrice,
-      };
-    }).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+    return buildCombinedHourlyPricesNorway({
+      spotPrices: this.getSettingValue('electricity_prices'),
+      gridTariffData: this.getSettingValue('nettleie_data'),
+      providerSurchargeIncVat: this.getNumberSetting('provider_surcharge', 0),
+      priceArea,
+      countyCode: gridTariffSettings.countyCode,
+    });
   }
 
   private getCombinedHourlyPricesFromFlow(): CombinedHourlyPrice[] {
-    const timeZone = this.homey.clock.getTimezone();
-    const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
-    const tomorrowKey = getDateKeyInTimeZone(addDays(new Date(), 1), timeZone);
+    return buildCombinedHourlyPricesFromPayloads({
+      now: new Date(),
+      timeZone: this.homey.clock.getTimezone(),
+      todayPayload: getFlowPricePayload(this.getSettingValue(FLOW_PRICES_TODAY)),
+      tomorrowPayload: getFlowPricePayload(this.getSettingValue(FLOW_PRICES_TOMORROW)),
+      logDebug: this.logDebug,
+      label: 'Flow prices',
+      allowTomorrowAsToday: true,
+    });
+  }
 
-    const todayPayload = getFlowPricePayload(this.getSettingValue(FLOW_PRICES_TODAY));
-    const tomorrowPayload = getFlowPricePayload(this.getSettingValue(FLOW_PRICES_TOMORROW));
-
-    const entries: CombinedHourlyPrice[] = [];
-
-    const usePayload = (payload: FlowPricePayload | null, key: string, label: 'today' | 'tomorrow'): boolean => {
-      if (payload?.dateKey !== key) {
-        if (payload) {
-          this.logDebug(`Flow prices: Ignoring stored ${label} data for ${payload.dateKey} (expected ${key})`);
-        }
-        return false;
-      }
-      entries.push(...buildFlowEntries(payload, timeZone));
-      return true;
-    };
-
-    const usedToday = usePayload(todayPayload, todayKey, 'today');
-    const usedTomorrowAsToday = !usedToday && tomorrowPayload?.dateKey === todayKey;
-    if (usedTomorrowAsToday && tomorrowPayload) {
-      this.logDebug(`Flow prices: Using stored tomorrow data for ${todayKey} as today`);
-      entries.push(...buildFlowEntries(tomorrowPayload, timeZone));
-    }
-
-    if (!usedTomorrowAsToday) {
-      usePayload(tomorrowPayload, tomorrowKey, 'tomorrow');
-    }
-
-    return entries.sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  private getCombinedHourlyPricesFromHomey(): CombinedHourlyPrice[] {
+    return buildCombinedHourlyPricesFromPayloads({
+      now: new Date(),
+      timeZone: this.homey.clock.getTimezone(),
+      todayPayload: getFlowPricePayload(this.getSettingValue(HOMEY_PRICES_TODAY)),
+      tomorrowPayload: getFlowPricePayload(this.getSettingValue(HOMEY_PRICES_TOMORROW)),
+      logDebug: this.logDebug,
+      label: 'Homey prices',
+      allowTomorrowAsToday: false,
+    });
   }
 
   storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {
@@ -396,32 +285,14 @@ export default class PriceService {
     storedCount: number;
     missingHours: number[];
   } {
-    const pricesByHour = parseFlowPriceInput(raw);
-    const timeZone = this.homey.clock.getTimezone();
-    const baseDate = kind === 'tomorrow' ? addDays(new Date(), 1) : new Date();
-    const dateKey = getDateKeyInTimeZone(baseDate, timeZone);
-
-    const payload: FlowPricePayload = {
-      dateKey,
-      pricesByHour,
-      updatedAt: new Date().toISOString(),
-    };
-
-    const settingKey = kind === 'today' ? FLOW_PRICES_TODAY : FLOW_PRICES_TOMORROW;
-    this.homey.settings.set(settingKey, payload);
-
-    const missingHours = getMissingFlowHours(pricesByHour);
-    if (missingHours.length > 0) {
-      this.logDebug(`Flow prices: Missing ${missingHours.length} hour(s) for ${dateKey}`, missingHours);
-    }
-
-    this.updateCombinedPrices();
-
-    return {
-      dateKey,
-      storedCount: Object.keys(pricesByHour).length,
-      missingHours,
-    };
+    return storeFlowPriceDataHelper({
+      kind,
+      raw,
+      timeZone: this.homey.clock.getTimezone(),
+      logDebug: this.logDebug,
+      setSetting: (key, value) => this.homey.settings.set(key, value),
+      updateCombinedPrices: () => this.updateCombinedPrices(),
+    });
   }
 
   findCheapestHours(count: number): string[] {
@@ -454,9 +325,9 @@ export default class PriceService {
     const prices = this.getCombinedHourlyPrices();
     const current = getCurrentHourPrice(prices);
     if (!current) return 'price unknown';
-    return this.getPriceScheme() === 'flow'
-      ? this.formatFlowPriceInfo(current)
-      : this.formatNorwayPriceInfo(current);
+    return this.getPriceScheme() === 'norway'
+      ? this.formatNorwayPriceInfo(current)
+      : this.formatFlowPriceInfo(current);
   }
 
   private formatFlowPriceInfo(current: CombinedHourlyPrice): string {
@@ -505,5 +376,60 @@ export default class PriceService {
     if (current) return new Date(current.startsAt).getTime();
     const timeZone = this.homey.clock.getTimezone();
     return getHourStartInTimeZone(new Date(), timeZone);
+  }
+
+  private async refreshHomeyEnergyPrices(forceRefresh: boolean): Promise<void> {
+    if (this.getPriceScheme() !== 'homey') {
+      this.logDebug('Homey prices: Skipping refresh (price scheme not homey)');
+      return;
+    }
+    const energyApi = this.getHomeyEnergyApi?.();
+    if (!energyApi) {
+      this.log('Homey prices: Homey energy API not available');
+      return;
+    }
+    const info = buildHomeyEnergyDateInfo(this.homey.clock.getTimezone());
+    if (shouldUseHomeyEnergyCache({
+      info,
+      forceRefresh,
+      getSettingValue: (key) => this.getSettingValue(key),
+      logDebug: this.logDebug,
+      updateCombinedPrices: () => this.updateCombinedPrices(),
+    })) {
+      return;
+    }
+
+    const results = await fetchHomeyEnergyResults({
+      energyApi,
+      info,
+      log: this.log,
+      errorLog: this.errorLog,
+    });
+    if (!results) return;
+
+    logHomeyEnergyPayloadStatus({
+      info,
+      results,
+      log: this.log,
+      logDebug: this.logDebug,
+      errorLog: this.errorLog,
+    });
+
+    await updateHomeyEnergyCurrency({
+      energyApi,
+      results,
+      setSetting: (key, value) => this.homey.settings.set(key, value),
+      logDebug: this.logDebug,
+    });
+    const stored = storeHomeyEnergyPayloads({
+      results,
+      setSetting: (key, value) => this.homey.settings.set(key, value),
+    });
+    if (stored === 0) {
+      this.log('Homey prices: No price data available');
+      return;
+    }
+    this.log(`Homey prices: Stored ${stored} day${stored === 1 ? '' : 's'} of price data`);
+    this.updateCombinedPrices();
   }
 }

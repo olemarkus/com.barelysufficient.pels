@@ -24,7 +24,7 @@ jest.mock('../settings/src/ui/modes', () => ({
   renderPriorities: jest.fn(),
 }));
 
-jest.mock('../settings/src/ui/prices', () => ({
+jest.mock('../settings/src/ui/priceOptimization', () => ({
   renderPriceOptimization: jest.fn(),
 }));
 

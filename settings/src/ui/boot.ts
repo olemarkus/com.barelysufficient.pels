@@ -53,9 +53,8 @@ import {
   savePriceSettings,
   saveGridTariffSettings,
   updateGridCompanyOptions,
-  loadPriceOptimizationSettings,
-  renderPriceOptimization,
 } from './prices';
+import { loadPriceOptimizationSettings, renderPriceOptimization } from './priceOptimization';
 import {
   initDailyBudgetHandlers,
   loadDailyBudgetSettings,

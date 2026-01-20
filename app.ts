@@ -13,21 +13,21 @@ import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
 import { type DebugLoggingTopic } from './lib/utils/debugLogging';
-import { getAllModes as getAllModesHelper, getShedBehavior as getShedBehaviorHelper,
-  resolveModeName as resolveModeNameHelper } from './lib/utils/capacityHelpers';
+import { getAllModes as getAllModesHelper, getShedBehavior as getShedBehaviorHelper, resolveModeName as resolveModeNameHelper } from './lib/utils/capacityHelpers';
 import { CONTROLLABLE_DEVICES, MANAGED_DEVICES, OPERATING_MODE_SETTING, PRICE_OPTIMIZATION_SETTINGS } from './lib/utils/settingsKeys';
 import { isBooleanMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
-import { createPlanEngine, createPlanService, registerAppFlowCards,
-  type FlowCardInitApp, type PlanEngineInitApp, type PlanServiceInitApp } from './lib/app/appInit';
+import { createPlanEngine, createPlanService, registerAppFlowCards, type FlowCardInitApp, type PlanEngineInitApp, type PlanServiceInitApp } from './lib/app/appInit';
 import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import { startAppServices } from './lib/app/appLifecycleHelpers';
+import { PowerSampleRebuildState, recordDailyBudgetCap, recordPowerSampleForApp, schedulePlanRebuildFromPowerSample } from './lib/app/appPowerHelpers';
+import { getDateKeyInTimeZone } from './lib/utils/dateUtils';
+import { safeJsonStringify, sanitizeLogValue } from './lib/utils/logUtils';
 import {
-  PowerSampleRebuildState,
-  recordDailyBudgetCap,
-  recordPowerSampleForApp,
-  schedulePlanRebuildFromPowerSample,
-} from './lib/app/appPowerHelpers';
+  resolveHomeyEnergyApiFromHomeyApi,
+  resolveHomeyEnergyApiFromSdk,
+  type HomeyEnergyApi,
+} from './lib/utils/homeyEnergy';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 class PelsApp extends Homey.App {
@@ -59,31 +59,47 @@ class PelsApp extends Homey.App {
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private heartbeatInterval?: ReturnType<typeof setInterval>;
-  private updateLocalSnapshot(
-    deviceId: string,
-    updates: { target?: number | null; on?: boolean },
-  ): void {
+  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     this.deviceManager.updateLocalSnapshot(deviceId, updates);
   }
   private setExpectedOverride(deviceId: string, kw: number): void {
     this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
   }
-
-  private sanitizeLogValue(value: string): string {
-    if (!value) return '';
-    const cleaned = value.replace(/[^a-zA-Z0-9 _.-]/g, ' ');
-    return cleaned.replace(/\s+/g, ' ').trim();
+  private getHomeyEnergyApi(): HomeyEnergyApi | null {
+    const sdkEnergy = resolveHomeyEnergyApiFromSdk(this.homey);
+    if (sdkEnergy) return sdkEnergy;
+    const homeyApi = this.deviceManager?.getHomeyApi?.();
+    return resolveHomeyEnergyApiFromHomeyApi(homeyApi);
   }
-
-  private safeJsonStringify(payload: unknown): string {
+  private async logDynamicElectricityPricesFromHomey(): Promise<void> {
+    const sdkEnergy = resolveHomeyEnergyApiFromSdk(this.homey);
+    const homeyApiEnergy = sdkEnergy ? null : resolveHomeyEnergyApiFromHomeyApi(this.deviceManager?.getHomeyApi?.());
+    let fetcher: { api: HomeyEnergyApi; label: string } | null = null;
+    if (sdkEnergy) {
+      fetcher = { api: sdkEnergy, label: 'Homey SDK' };
+    } else if (homeyApiEnergy) {
+      fetcher = { api: homeyApiEnergy, label: 'HomeyAPI' };
+    }
+    if (!fetcher) {
+      this.log('Dynamic electricity prices not available from Homey SDK or HomeyAPI.');
+      return;
+    }
     try {
-      return JSON.stringify(payload);
+      const timeZone = this.homey.clock.getTimezone();
+      const today = getDateKeyInTimeZone(new Date(), timeZone);
+      const prices = await fetcher.api.fetchDynamicElectricityPrices({ date: today });
+      const count = Array.isArray(prices) ? prices.length : null;
+      const sample = Array.isArray(prices) ? prices[0] : prices;
+      this.log('Fetched dynamic electricity prices from Homey.', {
+        source: fetcher.label,
+        date: today,
+        count,
+        sample: safeJsonStringify(sample),
+      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return `[unserializable device object: ${message}]`;
+      this.error(`Failed to fetch dynamic electricity prices from ${fetcher.label}.`, error as Error);
     }
   }
-
   async getHomeyDevicesForDebug(): Promise<HomeyDeviceLike[]> {
     if (!this.deviceManager) return [];
     try {
@@ -94,19 +110,18 @@ class PelsApp extends Homey.App {
       return [];
     }
   }
-
   async logHomeyDeviceForDebug(deviceId: string): Promise<boolean> {
     if (!deviceId) return false;
     const devices = await this.getHomeyDevicesForDebug();
     const device = devices.find((entry) => entry.id === deviceId);
-    const safeDeviceId = this.sanitizeLogValue(deviceId);
+    const safeDeviceId = sanitizeLogValue(deviceId);
     if (!device) {
       this.log('Homey device dump: device not found', { deviceId: safeDeviceId });
       return false;
     }
     const label = device.name || deviceId;
-    const safeLabel = this.sanitizeLogValue(label) || safeDeviceId;
-    const deviceJson = this.safeJsonStringify(device);
+    const safeLabel = sanitizeLogValue(label) || safeDeviceId;
+    const deviceJson = safeJsonStringify(device);
     this.log('Homey device dump', {
       deviceId: safeDeviceId,
       label: safeLabel,
@@ -146,10 +161,12 @@ class PelsApp extends Homey.App {
       startPriceRefresh: () => this.priceCoordinator.startPriceRefresh(),
       startPriceOptimization: () => this.priceCoordinator.startPriceOptimization(),
     });
+    void this.logDynamicElectricityPricesFromHomey();
   }
   private initPriceCoordinator(): void {
     this.priceCoordinator = new PriceCoordinator({
       homey: this.homey,
+      getHomeyEnergyApi: () => this.getHomeyEnergyApi(),
       getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
       rebuildPlanFromCache: () => this.planService?.rebuildPlanFromCache() ?? Promise.resolve(),
       log: (...args: unknown[]) => this.log(...args),
