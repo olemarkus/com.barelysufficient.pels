@@ -139,7 +139,8 @@ describe('Homey price service', () => {
 
     await service.refreshSpotPrices(true);
 
-    expect(errorLog).toHaveBeenCalledWith('Homey prices: Failed to fetch price data', expect.any(Error));
+    const messages = errorLog.mock.calls.map((call) => call[0]);
+    expect(messages.some((message) => String(message).includes('Failed to fetch price data for'))).toBe(true);
   });
 
   it('stores only today and uses price unit when currency lookup fails', async () => {

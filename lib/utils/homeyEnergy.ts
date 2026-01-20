@@ -88,3 +88,24 @@ export const resolveCurrencyLabel = (value: unknown): string | null => {
   }
   return null;
 };
+
+export const formatHomeyEnergyError = (error: unknown): {
+  message: string;
+  statusCode?: number;
+  description?: string;
+  code?: string;
+} => {
+  const baseMessage = error instanceof Error ? error.message : String(error);
+  if (!isRecord(error)) {
+    return { message: baseMessage };
+  }
+  const statusCode = typeof error.statusCode === 'number' ? error.statusCode : undefined;
+  const description = typeof error.description === 'string' && error.description ? error.description : undefined;
+  const code = typeof error.code === 'string' && error.code ? error.code : undefined;
+  return {
+    message: baseMessage,
+    ...(typeof statusCode === 'number' ? { statusCode } : {}),
+    ...(description ? { description } : {}),
+    ...(code ? { code } : {}),
+  };
+};
