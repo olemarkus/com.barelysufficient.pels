@@ -45,7 +45,7 @@ const setupHarness = async (options: {
   jest.doMock('../settings/src/ui/modes', () => ({
     renderPriorities: jest.fn(),
   }));
-  jest.doMock('../settings/src/ui/prices', () => ({
+  jest.doMock('../settings/src/ui/priceOptimization', () => ({
     renderPriceOptimization: jest.fn(),
     savePriceOptimizationSettings,
   }));

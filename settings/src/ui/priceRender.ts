@@ -20,26 +20,30 @@ const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   }
 };
 
-type PriceScheme = 'norway' | 'flow';
+type PriceScheme = 'norway' | 'flow' | 'homey';
 
 const resolvePriceScheme = (data: CombinedPriceData): PriceScheme => (
-  data.priceScheme === 'flow' ? 'flow' : 'norway'
+  data.priceScheme === 'flow' || data.priceScheme === 'homey' ? data.priceScheme : 'norway'
 );
 
-const resolvePriceUnit = (data: CombinedPriceData, scheme: PriceScheme): string => (
-  scheme === 'flow' ? '' : (data.priceUnit || 'øre/kWh')
-);
+const resolvePriceUnit = (data: CombinedPriceData, scheme: PriceScheme): string => {
+  if (scheme === 'norway') return data.priceUnit || 'øre/kWh';
+  const unit = typeof data.priceUnit === 'string' ? data.priceUnit : '';
+  return unit === 'price units' ? '' : unit;
+};
 
 const formatPriceValue = (value: number, decimals: number): string => (
   value.toFixed(decimals)
 );
 
+const isExternalScheme = (scheme: PriceScheme): boolean => scheme !== 'norway';
+
 const formatSummaryPrice = (value: number, scheme: PriceScheme): string => (
-  formatPriceValue(value, scheme === 'flow' ? 4 : 0)
+  formatPriceValue(value, isExternalScheme(scheme) ? 4 : 0)
 );
 
 const formatChipPrice = (value: number, scheme: PriceScheme): string => (
-  formatPriceValue(value, scheme === 'flow' ? 4 : 1)
+  formatPriceValue(value, isExternalScheme(scheme) ? 4 : 1)
 );
 
 const formatPriceWithUnit = (value: string, unit: string): string => (
@@ -300,9 +304,9 @@ const renderPriceNotices = (context: PriceRenderContext, data: CombinedPriceData
   const lastPriceTime = new Date(context.futurePrices[context.futurePrices.length - 1].startsAt);
   const hoursRemaining = Math.floor((lastPriceTime.getTime() - context.now.getTime()) / (1000 * 60 * 60)) + 1;
   if (hoursRemaining <= 12) {
-    const warningSuffix = context.priceScheme === 'flow'
-      ? 'Make sure your flow supplies tomorrow\'s prices.'
-      : 'Tomorrow\'s prices typically publish around 13:00.';
+    const warningSuffix = context.priceScheme === 'norway'
+      ? 'Tomorrow\'s prices typically publish around 13:00.'
+      : 'Make sure your price source supplies tomorrow\'s prices.';
     priceList.appendChild(buildPriceNotice(
       'price-notice price-notice-warning',
       `⚠️ Price data available for ${hoursRemaining} more hour${hoursRemaining === 1 ? '' : 's'}. `
@@ -334,7 +338,7 @@ const buildPriceTooltip = (entry: PriceEntry, scheme: PriceScheme, priceUnit: st
   const formatOre = (value: number) => `${value.toFixed(1)} øre`;
 
   const spotPrice = entry.spotPriceExVat;
-  if (scheme !== 'flow' && typeof spotPrice === 'number') {
+  if (scheme === 'norway' && typeof spotPrice === 'number') {
     const gridTariff = entry.gridTariffExVat ?? 0;
     const surcharge = entry.providerSurchargeExVat ?? 0;
     const consumptionTax = entry.consumptionTaxExVat ?? 0;

@@ -18,7 +18,7 @@ import { getSetting, setSetting } from './homey';
 import { resolveManagedState, state, defaultPriceOptimizationConfig } from './state';
 import { renderDevices } from './devices';
 import { renderPriorities } from './modes';
-import { renderPriceOptimization, savePriceOptimizationSettings } from './prices';
+import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization';
 import { showToastError } from './toast';
 import { logSettingsError } from './logging';
 

@@ -12,6 +12,9 @@ import {
   DEBUG_LOGGING_TOPICS,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
+  HOMEY_PRICES_CURRENCY,
+  HOMEY_PRICES_TODAY,
+  HOMEY_PRICES_TOMORROW,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
   PRICE_SCHEME,
@@ -97,6 +100,15 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       await refreshPriceDerivedState();
     },
     [FLOW_PRICES_TOMORROW]: async () => {
+      await refreshPriceDerivedState();
+    },
+    [HOMEY_PRICES_TODAY]: async () => {
+      await refreshPriceDerivedState();
+    },
+    [HOMEY_PRICES_TOMORROW]: async () => {
+      await refreshPriceDerivedState();
+    },
+    [HOMEY_PRICES_CURRENCY]: async () => {
       await refreshPriceDerivedState();
     },
     price_threshold_percent: async () => {
