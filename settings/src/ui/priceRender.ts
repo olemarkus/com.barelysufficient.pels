@@ -333,26 +333,55 @@ const formatPriceTimeLabel = (entryTime: Date, timeContext: PriceTimeContext) =>
   return `${timeStr}${dateStr}${nowLabel}`;
 };
 
+const getFiniteNumber = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
+const sumExVatComponents = (entry: PriceEntry): number => (
+  (entry.spotPriceExVat ?? 0)
+  + (entry.gridTariffExVat ?? 0)
+  + (entry.providerSurchargeExVat ?? 0)
+  + (entry.consumptionTaxExVat ?? 0)
+  + (entry.enovaFeeExVat ?? 0)
+);
+
+const resolveVatMultiplier = (entry: PriceEntry): number => {
+  const direct = getFiniteNumber(entry.vatMultiplier);
+  if (direct !== null) return direct;
+
+  const totalExVat = getFiniteNumber(entry.totalExVat) ?? sumExVatComponents(entry);
+  if (!Number.isFinite(totalExVat) || totalExVat <= 0) return 1;
+
+  const vatAmount = getFiniteNumber(entry.vatAmount);
+  if (vatAmount !== null) {
+    const computed = 1 + vatAmount / totalExVat;
+    return Number.isFinite(computed) && computed > 0 ? computed : 1;
+  }
+
+  const support = getFiniteNumber(entry.electricitySupport) ?? 0;
+  const computed = (entry.total + support) / totalExVat;
+  return Number.isFinite(computed) && computed > 0 ? computed : 1;
+};
+
 const buildPriceTooltip = (entry: PriceEntry, scheme: PriceScheme, priceUnit: string) => {
   const tooltipLines: string[] = [];
   const formatOre = (value: number) => `${value.toFixed(1)} øre`;
 
   const spotPrice = entry.spotPriceExVat;
   if (scheme === 'norway' && typeof spotPrice === 'number') {
-    const gridTariff = entry.gridTariffExVat ?? 0;
-    const surcharge = entry.providerSurchargeExVat ?? 0;
-    const consumptionTax = entry.consumptionTaxExVat ?? 0;
-    const enovaFee = entry.enovaFeeExVat ?? 0;
-    const vatAmount = entry.vatAmount ?? 0;
+    const vatMultiplier = resolveVatMultiplier(entry);
+    const withVat = (priceExVat?: number) => (priceExVat ?? 0) * vatMultiplier;
+    const gridTariff = withVat(entry.gridTariffExVat);
+    const surcharge = withVat(entry.providerSurchargeExVat);
+    const consumptionTax = withVat(entry.consumptionTaxExVat);
+    const enovaFee = withVat(entry.enovaFeeExVat);
     const support = entry.electricitySupport ?? 0;
-    const vatLabel = entry.vatMultiplier === 1 ? 'VAT (0%)' : 'VAT';
 
-    tooltipLines.push(`Spot price (ex VAT): ${formatOre(spotPrice)}`);
-    tooltipLines.push(`Grid tariff (ex VAT): ${formatOre(gridTariff)}`);
-    tooltipLines.push(`Provider surcharge (ex VAT): ${formatOre(surcharge)}`);
+    tooltipLines.push(`Spot price: ${formatOre(withVat(spotPrice))}`);
+    tooltipLines.push(`Grid tariff: ${formatOre(gridTariff)}`);
+    tooltipLines.push(`Provider surcharge: ${formatOre(surcharge)}`);
     tooltipLines.push(`Consumption tax: ${formatOre(consumptionTax)}`);
     tooltipLines.push(`Enova fee: ${formatOre(enovaFee)}`);
-    tooltipLines.push(`${vatLabel}: ${formatOre(vatAmount)}`);
     tooltipLines.push(`Electricity support: -${formatOre(support)}`);
   }
 
