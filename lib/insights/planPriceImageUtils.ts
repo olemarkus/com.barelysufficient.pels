@@ -50,12 +50,10 @@ export function resolveCurrentPlanInfo(params: {
     priceUnit,
   } = params;
   const rawIndex = day?.currentBucketIndex;
-  const hasCurrentIndex = typeof rawIndex === 'number'
-    && Number.isFinite(rawIndex)
-    && rawIndex >= 0
-    && rawIndex < bucketCount;
-  const currentIndex = hasCurrentIndex ? rawIndex : clamp(0, 0, Math.max(0, bucketCount - 1));
-  const showNow = isToday && hasCurrentIndex;
+  const hasCurrentIndex = typeof rawIndex === 'number' && Number.isFinite(rawIndex);
+  const maxIndex = Math.max(0, bucketCount - 1);
+  const currentIndex = hasCurrentIndex ? clamp(rawIndex, 0, maxIndex) : 0;
+  const showNow = isToday && hasCurrentIndex && rawIndex >= 0 && rawIndex < bucketCount;
   const currentLabel = resolveLabel(bucketLabels, bucketStartUtc, currentIndex);
   const currentPlan = plannedKWh[currentIndex] ?? 0;
   const currentPrice = priceSeries[currentIndex] ?? null;

@@ -270,20 +270,25 @@ class PelsInsightsDevice extends Homey.Device {
   }
 
   private async refreshPlanImages(options: { force?: boolean } = {}): Promise<void> {
-    for (const [index, slot] of this.planImages.entries()) {
-      await this.refreshPlanImage(index, slot, options);
+    for (const [index] of this.planImages.entries()) {
+      await this.refreshPlanImage(index, options);
     }
   }
 
   private async refreshPlanImage(
     index: number,
-    slot: PlanImageState,
     options: { force?: boolean } = {},
   ): Promise<void> {
+    const slot = this.planImages[index];
+    if (!slot) return;
     const image = slot.image;
     if (!image) return;
     if (slot.generation) {
-      await slot.generation;
+      try {
+        await slot.generation;
+      } catch (error) {
+        this.error(`Failed to refresh plan image ${slot.cameraId} (in-flight generation)`, error);
+      }
       return;
     }
     const renderPromise = (async (): Promise<ImageBuffer> => {
@@ -292,9 +297,10 @@ class PelsInsightsDevice extends Homey.Device {
       const dayKey = slot.resolveDayKey(snapshot);
       const combinedPrices = this.getCombinedPrices();
       const key = this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices);
-      if (!options.force && slot.lastKey === key) {
+      const current = this.planImages[index];
+      if (!options.force && current?.lastKey === key) {
         this.logPlanImageDebug(`${slot.cameraId}: Refresh skipped: cached key ${key}`);
-        return slot.png;
+        return current?.png ?? slot.png;
       }
       this.logPlanImageDebug(`${slot.cameraId}: Refreshing image (force=${options.force === true}) key=${key}`);
       const png = await this.generatePlanImageBuffer(snapshot, dayKey, combinedPrices);
@@ -418,12 +424,17 @@ class PelsInsightsDevice extends Homey.Device {
       } catch (error) {
         this.error(`Failed to generate plan image for stream ${slot.cameraId}`, error);
         return slot.png ?? EMPTY_PNG;
-      } finally {
-        this.updatePlanImageSlot(index, { generation: undefined });
       }
     })();
     this.updatePlanImageSlot(index, { generation });
-    return generation;
+    try {
+      return await generation;
+    } finally {
+      const current = this.planImages[index];
+      if (current?.generation === generation) {
+        this.updatePlanImageSlot(index, { generation: undefined });
+      }
+    }
   }
 
   private async generatePlanImageBuffer(
