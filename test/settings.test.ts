@@ -696,7 +696,7 @@ describe('settings script', () => {
     expect(summaryAfter?.[1]?.textContent).toContain('at or above 140.0000');
 
     const detailsSections = document.querySelectorAll('.price-details');
-    expect(detailsSections.length).toBe(1);
+    expect(detailsSections.length).toBe(2);
   });
 
   it('falls back to electricity_prices when combined_prices not available', async () => {

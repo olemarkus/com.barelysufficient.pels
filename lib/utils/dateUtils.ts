@@ -103,14 +103,6 @@ export function getDateKeyInTimeZone(date: Date, timeZone: string): string {
     return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 }
 
-export function formatLocalDateKey(nowMs: number): string {
-    const date = new Date(nowMs);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
 export function getDateKeyStartMs(dateKey: string, timeZone: string): number {
     const [year, month, day] = dateKey.split('-').map((value) => Number(value));
     const utcMidnight = Date.UTC(year, month - 1, day, 0, 0, 0);
