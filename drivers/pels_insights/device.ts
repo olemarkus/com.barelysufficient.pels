@@ -1,16 +1,15 @@
 import Homey from 'homey';
 import type { CombinedPriceData } from '../../lib/dailyBudget/dailyBudgetMath';
-import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { buildPlanPricePng } from '../../lib/insights/planPriceImage';
 import { normalizeDebugLoggingTopics } from '../../lib/utils/debugLogging';
-import { formatLocalDateKey } from '../../lib/utils/dateUtils';
+import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
 import {
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   DAILY_BUDGET_RESET,
-  DAILY_BUDGET_STATE,
   DEBUG_LOGGING_TOPICS,
   OPERATING_MODE_SETTING,
   PRICE_OPTIMIZATION_ENABLED,
@@ -34,7 +33,7 @@ type DailyBudgetApp = Homey.App & {
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
 };
 
-type ImageBuffer = Buffer<ArrayBufferLike>;
+type ImageBuffer = Buffer;
 type ImageStreamMetadata = {
   contentType: string;
   filename: string;
@@ -81,13 +80,11 @@ const PLAN_IMAGE_SETTINGS_KEYS = new Set([
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
   DAILY_BUDGET_RESET,
-  DAILY_BUDGET_STATE,
   COMBINED_PRICES,
   PRICE_OPTIMIZATION_ENABLED,
 ]);
 
 const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 const EMPTY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=',
   'base64',
@@ -193,7 +190,7 @@ class PelsInsightsDevice extends Homey.Device {
         await this.updateFromStatus();
       }
       if (PLAN_IMAGE_SETTINGS_KEYS.has(key)) {
-        void this.refreshPlanImages({ force: true });
+        void this.refreshPlanImages();
       }
     });
   }
@@ -283,27 +280,39 @@ class PelsInsightsDevice extends Homey.Device {
     slot: PlanImageState,
     options: { force?: boolean } = {},
   ): Promise<void> {
-    if (!slot.image) return;
+    const image = slot.image;
+    if (!image) return;
     if (slot.generation) {
-      this.logPlanImageDebug(`${slot.cameraId}: Refresh skipped: generation already in progress`);
+      await slot.generation;
       return;
     }
-    try {
+    const renderPromise = (async (): Promise<ImageBuffer> => {
       const nowMs = Date.now();
       const snapshot = this.getDailyBudgetSnapshot();
       const dayKey = slot.resolveDayKey(snapshot);
-      const key = this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset);
+      const combinedPrices = this.getCombinedPrices();
+      const key = this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices);
       if (!options.force && slot.lastKey === key) {
         this.logPlanImageDebug(`${slot.cameraId}: Refresh skipped: cached key ${key}`);
-        return;
+        return slot.png;
       }
       this.logPlanImageDebug(`${slot.cameraId}: Refreshing image (force=${options.force === true}) key=${key}`);
-      const png = await this.generatePlanImageBuffer(snapshot, dayKey);
+      const png = await this.generatePlanImageBuffer(snapshot, dayKey, combinedPrices);
       this.updatePlanImageSlot(index, { png, lastKey: key });
-      await slot.image.update();
+      await image.update();
       this.logPlanImageDebug(`${slot.cameraId}: Image updated (${png.length} bytes)`);
+      return png;
+    })();
+    this.updatePlanImageSlot(index, { generation: renderPromise });
+    try {
+      await renderPromise;
     } catch (error) {
       this.error(`Failed to refresh plan image ${slot.cameraId}`, error);
+    } finally {
+      const current = this.planImages[index];
+      if (current?.generation === renderPromise) {
+        this.updatePlanImageSlot(index, { generation: undefined });
+      }
     }
   }
 
@@ -312,16 +321,44 @@ class PelsInsightsDevice extends Homey.Device {
     nowMs: number,
     dayKey: string | null,
     dayOffset: number,
+    combinedPrices?: CombinedPriceData | null,
   ): string {
     const resolvedDayKey = dayKey && dayKey.trim().length > 0 ? dayKey : null;
     const day = resolvedDayKey ? snapshot?.days?.[resolvedDayKey] ?? null : null;
-    const dateKey = day?.dateKey ?? resolvedDayKey ?? formatLocalDateKey(nowMs + dayOffset * DAY_MS);
-    const rawIndex = day?.currentBucketIndex;
-    const fallbackIndex = new Date(nowMs).getHours();
-    const currentIndex = typeof rawIndex === 'number' && Number.isFinite(rawIndex)
-      ? Math.max(0, rawIndex)
-      : fallbackIndex;
-    return `${dateKey}-${currentIndex}`;
+    const timeZone = this.homey.clock.getTimezone();
+    const dateKey = day?.dateKey
+      ?? resolvedDayKey
+      ?? this.resolveFallbackDateKey(nowMs, dayOffset, timeZone);
+    const currentIndex = this.resolveFallbackIndex(day?.currentBucketIndex, nowMs, timeZone);
+    const budgetKey = this.buildBudgetKey(day);
+    const priceKey = this.buildPriceKey(combinedPrices);
+    return `${dateKey}-${currentIndex}-${budgetKey}-${priceKey}`;
+  }
+
+  private resolveFallbackDateKey(nowMs: number, dayOffset: number, timeZone: string): string {
+    const fallbackDate = new Date(nowMs);
+    if (dayOffset !== 0) {
+      fallbackDate.setDate(fallbackDate.getDate() + dayOffset);
+    }
+    return getDateKeyInTimeZone(fallbackDate, timeZone);
+  }
+
+  private resolveFallbackIndex(rawIndex: number | null | undefined, nowMs: number, timeZone: string): number {
+    if (typeof rawIndex === 'number' && Number.isFinite(rawIndex)) {
+      return Math.max(0, rawIndex);
+    }
+    return getZonedParts(new Date(nowMs), timeZone).hour;
+  }
+
+  private buildBudgetKey(day: DailyBudgetDayPayload | null): string {
+    if (!day) return 'budget-na';
+    return `${day.budget.enabled ? 1 : 0}-${day.budget.dailyBudgetKWh}-${day.budget.priceShapingEnabled ? 1 : 0}`;
+  }
+
+  private buildPriceKey(combinedPrices?: CombinedPriceData | null): string {
+    const priceKey = combinedPrices?.lastFetched ?? `prices-${combinedPrices?.prices?.length ?? 0}`;
+    const unitKey = combinedPrices?.priceUnit ?? '';
+    return `${priceKey}-${unitKey}`;
   }
 
   private clearPlanImageTimers(): void {
@@ -368,12 +405,13 @@ class PelsInsightsDevice extends Homey.Device {
       const nowMs = Date.now();
       const snapshot = this.getDailyBudgetSnapshot();
       const dayKey = slot.resolveDayKey(snapshot);
+      const combinedPrices = this.getCombinedPrices();
       try {
         this.logPlanImageDebug(`${slot.cameraId}: Generating image for stream`);
-        const png = await this.generatePlanImageBuffer(snapshot, dayKey);
+        const png = await this.generatePlanImageBuffer(snapshot, dayKey, combinedPrices);
         const updated = this.updatePlanImageSlot(index, {
           png,
-          lastKey: this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset),
+          lastKey: this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices),
         });
         this.logPlanImageDebug(`${slot.cameraId}: Generated image for stream (${png.length} bytes)`);
         return updated.png;
@@ -391,10 +429,14 @@ class PelsInsightsDevice extends Homey.Device {
   private async generatePlanImageBuffer(
     snapshot: DailyBudgetUiPayload | null,
     dayKey: string | null,
+    combinedPrices?: CombinedPriceData | null,
   ): Promise<ImageBuffer> {
-    const combinedPrices = this.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
     const png = await buildPlanPricePng({ snapshot, combinedPrices, dayKey });
     return Buffer.from(png);
+  }
+
+  private getCombinedPrices(): CombinedPriceData | null {
+    return this.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
   }
 
   private async writePlanImageToStream(

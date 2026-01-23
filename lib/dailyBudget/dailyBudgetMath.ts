@@ -9,6 +9,7 @@ export type CombinedPriceEntry = {
 export type CombinedPriceData = {
   prices?: CombinedPriceEntry[];
   lastFetched?: string;
+  priceUnit?: string;
 };
 
 const PREVIOUS_PLAN_BLEND_WEIGHT = 0.7;

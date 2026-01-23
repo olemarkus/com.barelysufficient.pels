@@ -50,6 +50,7 @@ type PlanPriceContext = {
   priceMin: number;
   priceMax: number;
   priceSpan: number;
+  priceUnit: string;
   currentIndex: number;
   currentLabel: string;
   currentPlan: number;
@@ -97,7 +98,6 @@ const COLORS = {
   nowStroke: '#E6EFE8',
 };
 
-const FONT_FAMILY = 'IBM Plex Sans, Arial, sans-serif';
 const FONT_FILES = resolveFontFiles();
 const DEFAULT_FONT_FAMILY = FONT_FILES.length > 0 ? 'IBM Plex Sans' : 'sans-serif';
 let resvgPromise: Promise<typeof import('@resvg/resvg-js')> | null = null;
@@ -170,7 +170,8 @@ export async function buildPlanPricePng(params: PlanPriceImageParams): Promise<U
   try {
     const resvg = new Resvg(svg, { ...baseOptions, ...fontOptions });
     return resvg.render().asPng();
-  } catch (_error) {
+  } catch (error) {
+    console.warn('Plan image: failed to render with custom fonts, falling back', error);
     const resvg = new Resvg(svg, baseOptions);
     return resvg.render().asPng();
   }
@@ -230,7 +231,7 @@ function buildTextMarkup(params: {
   const anchorAttr = anchor ? ` text-anchor="${anchor}"` : '';
   return [
     `<text x="${x}" y="${y}"${anchorAttr}`,
-    ` font-family="${FONT_FAMILY}" font-size="${size}" font-weight="${weight}"`,
+    ` font-family="${DEFAULT_FONT_FAMILY}" font-size="${size}" font-weight="${weight}"`,
     ` fill="${fill}">`,
     `${escapeText(text)}</text>`,
   ].join('');
@@ -279,6 +280,7 @@ function buildPlanPriceContext(params: {
   } = params;
   const bucketLabels = day?.buckets?.startLocalLabels ?? [];
   const bucketStartUtc = day?.buckets?.startUtc ?? [];
+  const priceUnit = combinedPrices?.priceUnit?.trim() || 'øre/kWh';
   const priceSeries = normalizeSeriesLength(
     resolvePriceSeries({
       bucketStartUtc,
@@ -296,6 +298,7 @@ function buildPlanPriceContext(params: {
     bucketStartUtc,
     bucketCount,
     isToday,
+    priceUnit,
   });
   const lines = buildMetaLines({
     day,
@@ -316,6 +319,7 @@ function buildPlanPriceContext(params: {
     priceMin: priceStats.priceMin,
     priceMax: priceStats.priceMax,
     priceSpan: priceStats.priceSpan,
+    priceUnit,
     currentIndex: current.currentIndex,
     currentLabel: current.currentLabel,
     currentPlan: current.currentPlan,
@@ -472,7 +476,7 @@ function buildLegendMarkup(params: { layout: Layout; context: PlanPriceContext }
     ? `Hourly budget range ${formatNumber(Math.min(...context.plannedKWh), 2)}-${formatNumber(Math.max(...context.plannedKWh), 2)} kWh`
     : 'Hourly budget n/a';
   const priceRangeText = context.priceValues.length
-    ? `Price range ${formatNumber(context.priceMin, 0)}-${formatNumber(context.priceMax, 0)} øre/kWh`
+    ? `Price range ${formatNumber(context.priceMin, 0)}-${formatNumber(context.priceMax, 0)} ${context.priceUnit}`
     : 'Price n/a';
   return [
     `<rect x="${layout.chartLeft}" y="${legendY}" width="18" height="12" fill="${COLORS.plan}" rx="3" ry="3"/>`,
