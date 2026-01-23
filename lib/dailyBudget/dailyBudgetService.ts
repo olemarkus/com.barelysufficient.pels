@@ -131,6 +131,69 @@ export class DailyBudgetService {
     }
   }
 
+  private buildYesterdayHistory(nowMs: number): DailyBudgetDayPayload | null {
+    try {
+      const timeZone = this.resolveTimeZone();
+      const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
+      const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
+      // Go back 12 hours from start of today to ensure we are in yesterday
+      const yesterdayMs = todayStartUtcMs - 12 * 60 * 60 * 1000;
+      const yesterdayKey = getDateKeyInTimeZone(new Date(yesterdayMs), timeZone);
+      const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
+
+      const combinedPrices = this.deps.homey.settings.get('combined_prices') as CombinedPriceData | null;
+
+      return this.manager.buildHistory({
+        dayStartUtcMs: yesterdayStartUtcMs,
+        timeZone,
+        powerTracker: this.deps.getPowerTracker(),
+        combinedPrices,
+        priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
+        priceShapingEnabled: this.settings.priceShapingEnabled,
+      });
+    } catch (error) {
+      this.deps.log('Daily budget: failed to build yesterday history', error);
+      // Attempt to return a fallback empty payload if possible
+      try {
+        const timeZone = this.resolveTimeZone();
+        const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
+        const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
+        const yesterdayMs = todayStartUtcMs - 12 * 60 * 60 * 1000;
+        const yesterdayKey = getDateKeyInTimeZone(new Date(yesterdayMs), timeZone);
+        const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
+
+        return {
+          dateKey: yesterdayKey,
+          timeZone,
+          nowUtc: new Date(nowMs).toISOString(),
+          dayStartUtc: new Date(yesterdayStartUtcMs).toISOString(),
+          currentBucketIndex: -1, // Past day
+          budget: { enabled: false, dailyBudgetKWh: 0, priceShapingEnabled: false },
+          state: {
+            usedNowKWh: 0,
+            allowedNowKWh: 0,
+            remainingKWh: 0,
+            deviationKWh: 0,
+            exceeded: false,
+            frozen: false,
+            confidence: 0,
+            priceShapingActive: false,
+          },
+          buckets: {
+            startUtc: [],
+            startLocalLabels: [],
+            plannedWeight: [],
+            plannedKWh: [],
+            actualKWh: [],
+            allowedCumKWh: [],
+          },
+        };
+      } catch (_fallbackError) {
+        return null;
+      }
+    }
+  }
+
   getSnapshot(): DailyBudgetUiPayload | null {
     return this.snapshot;
   }
@@ -176,14 +239,20 @@ export class DailyBudgetService {
     const todayKey = snapshot.dateKey;
     const tomorrowSnapshot = this.buildTomorrowPreview(nowMs);
     const tomorrowKey = tomorrowSnapshot?.dateKey ?? null;
+
+    const yesterdaySnapshot = this.buildYesterdayHistory(nowMs);
+    const yesterdayKey = yesterdaySnapshot?.dateKey ?? null;
+
     this.daySnapshots = {
       [todayKey]: snapshot,
       ...(tomorrowSnapshot ? { [tomorrowSnapshot.dateKey]: tomorrowSnapshot } : {}),
+      ...(yesterdaySnapshot ? { [yesterdaySnapshot.dateKey]: yesterdaySnapshot } : {}),
     };
     this.snapshot = {
       days: { ...this.daySnapshots },
       todayKey,
       tomorrowKey,
+      yesterdayKey,
     };
   }
 

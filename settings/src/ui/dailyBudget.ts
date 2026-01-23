@@ -20,6 +20,7 @@ import {
   dailyBudgetConfidence,
   dailyBudgetToggleToday,
   dailyBudgetToggleTomorrow,
+  dailyBudgetToggleYesterday,
 } from './dom';
 import { callApi, getSetting, setSetting } from './homey';
 import { showToast, showToastError } from './toast';
@@ -59,7 +60,7 @@ const formatCost = (value: number | null | undefined, display: CostDisplay) => {
   return `${adjusted.toFixed(2)}${suffix}`;
 };
 
-type DailyBudgetView = 'today' | 'tomorrow';
+type DailyBudgetView = 'today' | 'tomorrow' | 'yesterday';
 let currentDailyBudgetView: DailyBudgetView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
 let costDisplay: CostDisplay = { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
@@ -118,6 +119,11 @@ const resolveViewPayload = (
   payload: DailyBudgetUiPayload,
   view: DailyBudgetView,
 ): DailyBudgetDayPayload | null => {
+  if (view === 'yesterday') {
+    const key = payload.yesterdayKey;
+    if (!key) return null;
+    return payload.days[key] ?? null;
+  }
   const key = view === 'tomorrow' ? payload.tomorrowKey : payload.todayKey;
   if (!key) return null;
   return payload.days[key] ?? null;
@@ -125,13 +131,20 @@ const resolveViewPayload = (
 
 const applyDailyBudgetViewState = () => {
   const isToday = currentDailyBudgetView === 'today';
+  const isTomorrow = currentDailyBudgetView === 'tomorrow';
+  const isYesterday = currentDailyBudgetView === 'yesterday';
+
   if (dailyBudgetToggleToday) {
     dailyBudgetToggleToday.classList.toggle('is-active', isToday);
     dailyBudgetToggleToday.setAttribute('aria-pressed', String(isToday));
   }
   if (dailyBudgetToggleTomorrow) {
-    dailyBudgetToggleTomorrow.classList.toggle('is-active', !isToday);
-    dailyBudgetToggleTomorrow.setAttribute('aria-pressed', String(!isToday));
+    dailyBudgetToggleTomorrow.classList.toggle('is-active', isTomorrow);
+    dailyBudgetToggleTomorrow.setAttribute('aria-pressed', String(isTomorrow));
+  }
+  if (dailyBudgetToggleYesterday) {
+    dailyBudgetToggleYesterday.classList.toggle('is-active', isYesterday);
+    dailyBudgetToggleYesterday.setAttribute('aria-pressed', String(isYesterday));
   }
 };
 
@@ -172,6 +185,7 @@ const computeEstimatedCost = (params: {
         kwh = actualValue as number;
       }
     }
+
     totalCost += kwh * (price as number);
   }
   return totalCost;
@@ -236,6 +250,7 @@ const buildDailyBudgetBar = (params: {
   } = params;
   const bar = document.createElement('div');
   bar.className = 'daily-budget-bar';
+
   if (currentBucketIndex >= 0 && index < currentBucketIndex) bar.classList.add('is-past');
   if (currentBucketIndex >= 0 && index === currentBucketIndex) bar.classList.add('is-current');
 
@@ -327,12 +342,23 @@ const renderDailyBudgetEmptyState = (message = 'Daily budget data not available 
   setHidden(dailyBudgetLegendActual, true);
   setPillState(false, false);
   const isTomorrow = currentDailyBudgetView === 'tomorrow';
+  const isYesterday = currentDailyBudgetView === 'yesterday';
   setDeviationVisibility(!isTomorrow);
-  setText(dailyBudgetTitle, isTomorrow ? 'Tomorrow plan' : 'Today plan');
+
+  let title = 'Today plan';
+  if (isTomorrow) title = 'Tomorrow plan';
+  if (isYesterday) title = 'Yesterday plan';
+
+  setText(dailyBudgetTitle, title);
   setText(dailyBudgetDay, '--');
   setText(dailyBudgetRemaining, '-- kWh');
   setText(dailyBudgetDeviation, '-- kWh');
-  setText(dailyBudgetCostLabel, isTomorrow ? 'Estimated cost tomorrow' : 'Estimated cost today');
+
+  let costLabel = 'Estimated cost today';
+  if (isTomorrow) costLabel = 'Estimated cost tomorrow';
+  if (isYesterday) costLabel = 'Cost yesterday';
+
+  setText(dailyBudgetCostLabel, costLabel);
   setText(dailyBudgetCost, formatCost(null, costDisplay));
   setTooltip(dailyBudgetDeviation, null);
   setChipStateIfPresent(dailyBudgetConfidence, 'Confidence --');
@@ -340,16 +366,20 @@ const renderDailyBudgetEmptyState = (message = 'Daily budget data not available 
 
 const renderDailyBudgetHeader = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
   if (dailyBudgetTitle) {
-    dailyBudgetTitle.textContent = view === 'tomorrow' ? 'Tomorrow plan' : 'Today plan';
+    let title = 'Today plan';
+    if (view === 'tomorrow') title = 'Tomorrow plan';
+    if (view === 'yesterday') title = 'Yesterday plan';
+    dailyBudgetTitle.textContent = title;
   }
   if (dailyBudgetDay) {
     dailyBudgetDay.textContent = `${payload.dateKey} · ${payload.timeZone}`;
   }
-  setPillState(payload.budget.enabled, view === 'today' ? payload.state.exceeded : false);
+  setPillState(payload.budget.enabled, (view === 'today' || view === 'yesterday') ? payload.state.exceeded : false);
 };
 
 const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
   const isTomorrow = view === 'tomorrow';
+  const isYesterday = view === 'yesterday';
   if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = formatKWh(payload.state.remainingKWh);
   setDeviationVisibility(!isTomorrow);
   if (dailyBudgetDeviation && !isTomorrow) {
@@ -359,12 +389,15 @@ const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudge
     setTooltip(dailyBudgetDeviation, null);
   }
   if (dailyBudgetCostLabel) {
-    dailyBudgetCostLabel.textContent = view === 'tomorrow' ? 'Estimated cost tomorrow' : 'Estimated cost today';
+    let label = 'Estimated cost today';
+    if (isTomorrow) label = 'Estimated cost tomorrow';
+    if (isYesterday) label = 'Cost yesterday';
+    dailyBudgetCostLabel.textContent = label;
   }
   const estimatedCost = computeEstimatedCost({
     plannedKWh: payload.buckets.plannedKWh || [],
-    actualKWh: view === 'today' ? payload.buckets.actualKWh : undefined,
-    currentBucketIndex: view === 'today' ? payload.currentBucketIndex : undefined,
+    actualKWh: (view === 'today' || view === 'yesterday') ? payload.buckets.actualKWh : undefined,
+    currentBucketIndex: (view === 'today' || view === 'yesterday') ? payload.currentBucketIndex : undefined,
     prices: payload.buckets.price,
   });
   if (dailyBudgetCost) dailyBudgetCost.textContent = formatCost(estimatedCost, costDisplay);
@@ -388,10 +421,12 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
 
   const viewPayload = resolveViewPayload(payload, currentDailyBudgetView);
   if (!viewPayload) {
-    renderDailyBudgetEmptyState('Tomorrow plan not available yet.');
+    let msg = 'Tomorrow plan not available yet.';
+    if (currentDailyBudgetView === 'yesterday') msg = 'Yesterday history not available.';
+    renderDailyBudgetEmptyState(msg);
     return;
   }
-  const showActual = currentDailyBudgetView === 'today';
+  const showActual = currentDailyBudgetView === 'today' || currentDailyBudgetView === 'yesterday';
 
   dailyBudgetEmpty.hidden = true;
   dailyBudgetChart.hidden = false;
@@ -481,4 +516,5 @@ export const initDailyBudgetHandlers = () => {
   dailyBudgetForm?.addEventListener('submit', (event) => event.preventDefault());
   dailyBudgetToggleToday?.addEventListener('click', () => setDailyBudgetView('today'));
   dailyBudgetToggleTomorrow?.addEventListener('click', () => setDailyBudgetView('tomorrow'));
+  dailyBudgetToggleYesterday?.addEventListener('click', () => setDailyBudgetView('yesterday'));
 };
