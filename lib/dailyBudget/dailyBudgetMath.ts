@@ -1,5 +1,6 @@
 import { getZonedParts } from '../utils/dateUtils';
 import { clamp } from '../utils/mathUtils';
+import { PRICE_SHAPING_FLEX_SHARE } from './dailyBudgetConstants';
 
 export type CombinedPriceEntry = {
   startsAt: string;
@@ -100,7 +101,6 @@ export function buildPlan(params: {
     : safeCurrentBucketIndex;
 
   const baseWeights = buildHourWeights({ bucketStartUtcMs, profileWeights, timeZone });
-  const normalizedDayWeights = normalizeWeightsWithFallback(baseWeights);
 
   const priceShape = buildPriceFactors({
     bucketStartUtcMs,
@@ -109,12 +109,17 @@ export function buildPlan(params: {
     priceOptimizationEnabled,
     priceShapingEnabled,
   });
+  const combinedWeights = buildCompositeWeights({
+    baseWeights,
+    priceFactors: priceShape.priceFactors,
+    flexShare: PRICE_SHAPING_FLEX_SHARE,
+  });
+  const normalizedDayWeights = normalizeWeightsWithFallback(combinedWeights);
 
   const usedInCurrent = bucketUsage[safeCurrentBucketIndex] ?? 0;
   const normalizedRemaining = resolveRemainingWeights({
-    baseWeights,
+    baseWeights: combinedWeights,
     remainingStartIndex,
-    priceFactors: priceShape.priceFactors,
     previousPlannedKWh: hasPreviousPlan ? previousPlannedKWh : undefined,
   });
   const remainingBudgetForFuture = resolveRemainingBudgetForFuture({
@@ -174,26 +179,36 @@ function normalizeWeightsWithFallback(weights: number[]): number[] {
   return normalized;
 }
 
+export function buildCompositeWeights(params: {
+  baseWeights: number[];
+  priceFactors?: Array<number | null>;
+  flexShare: number;
+}): number[] {
+  const { baseWeights, priceFactors, flexShare } = params;
+  if (!priceFactors || priceFactors.length === 0) {
+    return baseWeights.slice();
+  }
+  const safeFlexShare = clamp(flexShare, 0, 1);
+  const baselineShare = 1 - safeFlexShare;
+  return baseWeights.map((value, index) => {
+    const factor = priceFactors[index];
+    const priceAdjusted = typeof factor === 'number' ? value * factor : value;
+    return value * baselineShare + priceAdjusted * safeFlexShare;
+  });
+}
+
 function resolveRemainingWeights(params: {
   baseWeights: number[];
   remainingStartIndex: number;
-  priceFactors?: Array<number | null>;
   previousPlannedKWh?: number[];
 }): number[] {
   const {
     baseWeights,
     remainingStartIndex,
-    priceFactors,
     previousPlannedKWh,
   } = params;
   const remainingWeightsRaw = baseWeights.slice(remainingStartIndex);
-  const remainingWeights = priceFactors?.length
-    ? remainingWeightsRaw.map((value, index) => {
-      const factor = priceFactors[remainingStartIndex + index];
-      return typeof factor === 'number' ? value * factor : value;
-    })
-    : remainingWeightsRaw;
-  let normalizedRemaining = normalizeWeightsWithFallback(remainingWeights);
+  let normalizedRemaining = normalizeWeightsWithFallback(remainingWeightsRaw);
   if (previousPlannedKWh?.length) {
     const previousRemaining = previousPlannedKWh.slice(remainingStartIndex);
     const previousWeights = normalizeWeights(previousRemaining);

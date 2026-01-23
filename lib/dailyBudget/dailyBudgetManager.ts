@@ -1,23 +1,15 @@
 import type { PowerTrackerState } from '../core/powerTracker';
 import {
-  buildLocalDayBuckets,
-  getNextLocalDayStartUtcMs,
-  getZonedParts,
-} from '../utils/dateUtils';
-import {
   buildDefaultProfile,
   buildPlan,
   buildPriceDebugData,
   getConfidence,
-  normalizeWeights,
   blendProfiles,
-  sumArray,
 } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
 import { buildDailyBudgetPreview } from './dailyBudgetPreview';
 import {
   buildDayContext,
-  buildBucketUsage,
   buildDailyBudgetSnapshot,
   computePlanDeviation,
   computeBudgetState,
@@ -30,6 +22,7 @@ import type {
   DailyBudgetUpdate,
 } from './dailyBudgetTypes';
 import { isDailyBudgetState, type DailyBudgetManagerDeps, type ExistingPlanState, type PlanResult } from './dailyBudgetManagerTypes';
+import { finalizePreviousDayLearning } from './dailyBudgetLearning';
 
 const PLAN_REBUILD_INTERVAL_MS = 60 * 60 * 1000;
 const PLAN_REBUILD_USAGE_DELTA_KWH = 0.05;
@@ -188,12 +181,17 @@ export class DailyBudgetManager {
   }): void {
     const { context, settings, powerTracker } = params;
     if (this.state.dateKey && this.state.dateKey !== context.dateKey && settings.enabled) {
-      this.finalizePreviousDay({
+      const result = finalizePreviousDayLearning({
+        state: this.state,
         timeZone: context.timeZone,
         powerTracker,
         previousDateKey: this.state.dateKey,
         previousDayStartUtcMs: this.state.dayStartUtcMs ?? null,
+        defaultProfile: DEFAULT_PROFILE,
       });
+      if (result.logMessage) this.deps.logDebug(result.logMessage);
+      if (result.shouldMarkDirty) this.markDirty(true);
+      this.state = result.nextState;
     }
   }
 
@@ -459,64 +457,13 @@ export class DailyBudgetManager {
     return blendProfiles(DEFAULT_PROFILE, learned, confidence);
   }
 
-  private finalizePreviousDay(params: {
-    timeZone: string;
-    powerTracker: PowerTrackerState;
-    previousDateKey: string;
-    previousDayStartUtcMs: number | null;
-  }): void {
-    const { timeZone, powerTracker, previousDateKey, previousDayStartUtcMs } = params;
-    if (previousDayStartUtcMs === null) return;
-    const previousNextDayStartUtcMs = getNextLocalDayStartUtcMs(previousDayStartUtcMs, timeZone);
-    const { bucketStartUtcMs } = buildLocalDayBuckets({
-      dayStartUtcMs: previousDayStartUtcMs,
-      nextDayStartUtcMs: previousNextDayStartUtcMs,
-      timeZone,
-    });
-    const { bucketUsage } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
-    const totalKWh = sumArray(bucketUsage);
-    if (totalKWh <= 0) {
-      this.state.frozen = false;
-      this.state.lastPlanBucketStartUtcMs = null;
-      this.state.plannedKWh = [];
-      this.markDirty(true);
-      this.deps.logDebug(`Daily budget: skip learning for ${previousDateKey} (0 kWh)`);
-      return;
-    }
-    const hourlyTotals = Array.from({ length: 24 }, () => 0);
-    bucketStartUtcMs.forEach((ts, index) => {
-      const bucketHour = getZonedParts(new Date(ts), timeZone).hour;
-      hourlyTotals[bucketHour] = (hourlyTotals[bucketHour] ?? 0) + (bucketUsage[index] ?? 0);
-    });
-    const nextWeights = hourlyTotals.map((value) => value / totalKWh);
-    this.updateProfile(nextWeights);
-    this.state.frozen = false;
-    this.state.lastPlanBucketStartUtcMs = null;
-    this.state.plannedKWh = [];
-    this.markDirty(true);
-    this.deps.logDebug(`Daily budget: finalized ${previousDateKey} (${totalKWh.toFixed(2)} kWh)`);
-  }
-
-  private updateProfile(dayWeights: number[]): void {
-    const profile = this.state.profile ?? { weights: [...DEFAULT_PROFILE], sampleCount: 0 };
-    if (dayWeights.length !== 24) return;
-    const sampleCount = Math.max(0, profile.sampleCount ?? 0);
-    const nextCount = sampleCount + 1;
-    const nextWeights = profile.weights.map((value, index) => (
-      (value * sampleCount + dayWeights[index]) / nextCount
-    ));
-    this.state.profile = {
-      weights: normalizeWeights(nextWeights),
-      sampleCount: nextCount,
-    };
-  }
-
   private markDirty(force = false): void { this.dirty = true; if (force) this.lastPersistMs = 0; }
 }
 
 export {
   blendProfiles,
   buildAllowedCumKWh,
+  buildCompositeWeights,
   buildDefaultProfile,
   buildPlan,
   buildPriceDebugData,

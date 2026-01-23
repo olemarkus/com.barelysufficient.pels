@@ -6,6 +6,7 @@ import {
   getConfidence,
   normalizeWeights,
 } from '../lib/dailyBudget/dailyBudgetManager';
+import { CONTROLLED_USAGE_WEIGHT } from '../lib/dailyBudget/dailyBudgetConstants';
 import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
@@ -236,6 +237,115 @@ describe('daily budget planning', () => {
     const nextState = manager.exportState();
     expect(nextState.profile?.sampleCount).toBe(1);
     expect(nextState.profile?.weights[0]).toBeCloseTo(1, 3);
+  });
+
+  it('weights controlled usage lower when learning the profile', () => {
+    const manager = buildManager();
+    const settings = {
+      enabled: true,
+      dailyBudgetKWh: 8,
+      priceShapingEnabled: false,
+    };
+    const previousKey = '2024-01-14';
+    const previousStart = getDateKeyStartMs(previousKey, TZ);
+    const bucketKey0 = new Date(previousStart).toISOString();
+    const bucketKey1 = new Date(previousStart + 60 * 60 * 1000).toISOString();
+    manager.loadState({
+      dateKey: previousKey,
+      dayStartUtcMs: previousStart,
+      profile: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+    });
+
+    manager.update({
+      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      timeZone: TZ,
+      settings,
+      powerTracker: {
+        buckets: { [bucketKey0]: 2, [bucketKey1]: 2 },
+        controlledBuckets: { [bucketKey0]: 0, [bucketKey1]: 2 },
+      },
+      priceOptimizationEnabled: false,
+    });
+
+    const nextState = manager.exportState();
+    const weightedTotal = 2 + 2 * CONTROLLED_USAGE_WEIGHT;
+    expect(nextState.profile?.sampleCount).toBe(1);
+    expect(nextState.profile?.weights[0]).toBeCloseTo(2 / weightedTotal, 4);
+    expect(nextState.profile?.weights[1]).toBeCloseTo((2 * CONTROLLED_USAGE_WEIGHT) / weightedTotal, 4);
+  });
+
+  it('falls back to total usage when controlled data is missing', () => {
+    const manager = buildManager();
+    const settings = {
+      enabled: true,
+      dailyBudgetKWh: 8,
+      priceShapingEnabled: false,
+    };
+    const previousKey = '2024-01-14';
+    const previousStart = getDateKeyStartMs(previousKey, TZ);
+    const bucketKey0 = new Date(previousStart).toISOString();
+    const bucketKey1 = new Date(previousStart + 60 * 60 * 1000).toISOString();
+    manager.loadState({
+      dateKey: previousKey,
+      dayStartUtcMs: previousStart,
+      profile: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+    });
+
+    manager.update({
+      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey0]: 3, [bucketKey1]: 1 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const nextState = manager.exportState();
+    expect(nextState.profile?.weights[0]).toBeCloseTo(0.75, 4);
+    expect(nextState.profile?.weights[1]).toBeCloseTo(0.25, 4);
+  });
+
+  it('skips learning when previous day data is unreliable', () => {
+    const manager = buildManager();
+    const settings = {
+      enabled: true,
+      dailyBudgetKWh: 8,
+      priceShapingEnabled: false,
+    };
+    const previousKey = '2024-01-14';
+    const previousStart = getDateKeyStartMs(previousKey, TZ);
+    const bucketKey0 = new Date(previousStart).toISOString();
+    const previousWeights = normalizeWeights([2, 1, ...Array.from({ length: 22 }, () => 0)]);
+    manager.loadState({
+      dateKey: previousKey,
+      dayStartUtcMs: previousStart,
+      profile: {
+        weights: previousWeights,
+        sampleCount: 3,
+      },
+    });
+
+    manager.update({
+      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      timeZone: TZ,
+      settings,
+      powerTracker: {
+        buckets: { [bucketKey0]: 4 },
+        unreliablePeriods: [
+          { start: previousStart + 10 * 60 * 1000, end: previousStart + 20 * 60 * 1000 },
+        ],
+      },
+      priceOptimizationEnabled: false,
+    });
+
+    const nextState = manager.exportState();
+    expect(nextState.profile?.sampleCount).toBe(3);
+    expect(nextState.profile?.weights).toEqual(previousWeights);
   });
 });
 

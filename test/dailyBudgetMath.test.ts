@@ -2,6 +2,7 @@ import {
   allocateBudgetWithCaps,
   blendProfiles,
   buildAllowedCumKWh,
+  buildCompositeWeights,
   buildDefaultProfile,
   buildPlan,
   buildPriceFactors,
@@ -146,6 +147,25 @@ describe('daily budget math helpers', () => {
     expect(enabled.priceShapingActive).toBe(true);
     expect(enabled.priceFactors?.[0]).toBeNull();
     expect(typeof enabled.priceFactors?.[1]).toBe('number');
+  });
+
+  it('blends price factors into a flex share of weights', () => {
+    const combined = buildCompositeWeights({
+      baseWeights: [1, 1],
+      priceFactors: [1.3, 0.7],
+      flexShare: 0.5,
+    });
+    expect(combined[0]).toBeCloseTo(1.15, 6);
+    expect(combined[1]).toBeCloseTo(0.85, 6);
+  });
+
+  it('keeps base weights when price factors are missing', () => {
+    const combined = buildCompositeWeights({
+      baseWeights: [1, 2],
+      priceFactors: undefined,
+      flexShare: 0.5,
+    });
+    expect(combined).toEqual([1, 2]);
   });
 
   it('builds a plan that respects previous buckets and locked current bucket', () => {
