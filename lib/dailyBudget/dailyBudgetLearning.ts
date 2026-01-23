@@ -11,8 +11,12 @@ import type { DailyBudgetState } from './dailyBudgetTypes';
 export function buildWeightedBucketUsage(params: {
   bucketStartUtcMs: number[];
   powerTracker: PowerTrackerState;
+  controlledUsageWeight: number;
 }): { bucketUsage: number[]; usedControlledData: boolean } {
-  const { bucketStartUtcMs, powerTracker } = params;
+  const { bucketStartUtcMs, powerTracker, controlledUsageWeight } = params;
+  const weight = Number.isFinite(controlledUsageWeight)
+    ? Math.min(1, Math.max(0, controlledUsageWeight))
+    : CONTROLLED_USAGE_WEIGHT;
   const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
   const totalBuckets = powerTracker.buckets || {};
   const controlledBuckets = powerTracker.controlledBuckets || {};
@@ -20,14 +24,14 @@ export function buildWeightedBucketUsage(params: {
   const bucketUsage = bucketKeys.map((key) => {
     const total = totalBuckets[key];
     const controlled = controlledBuckets[key];
-    if (typeof total === 'number' && Number.isFinite(total)
-      && typeof controlled === 'number' && Number.isFinite(controlled)) {
-      usedControlledData = true;
-      const safeTotal = Math.max(0, total);
-      const boundedControlled = Math.max(0, Math.min(controlled, safeTotal));
-      const uncontrolled = Math.max(0, safeTotal - boundedControlled);
-      return uncontrolled + boundedControlled * CONTROLLED_USAGE_WEIGHT;
-    }
+      if (typeof total === 'number' && Number.isFinite(total)
+        && typeof controlled === 'number' && Number.isFinite(controlled)) {
+        usedControlledData = true;
+        const safeTotal = Math.max(0, total);
+        const boundedControlled = Math.max(0, Math.min(controlled, safeTotal));
+        const uncontrolled = Math.max(0, safeTotal - boundedControlled);
+        return uncontrolled + boundedControlled * weight;
+      }
     return typeof total === 'number' && Number.isFinite(total) ? Math.max(0, total) : 0;
   });
   return { bucketUsage, usedControlledData };
@@ -54,6 +58,7 @@ export function finalizePreviousDayLearning(params: {
   previousDateKey: string;
   previousDayStartUtcMs: number | null;
   defaultProfile: number[];
+  controlledUsageWeight: number;
 }): { nextState: DailyBudgetState; shouldMarkDirty: boolean; logMessage?: string } {
   const {
     state,
@@ -62,6 +67,7 @@ export function finalizePreviousDayLearning(params: {
     previousDateKey,
     previousDayStartUtcMs,
     defaultProfile,
+    controlledUsageWeight,
   } = params;
   if (previousDayStartUtcMs === null) {
     return { nextState: state, shouldMarkDirty: false };
@@ -83,7 +89,11 @@ export function finalizePreviousDayLearning(params: {
     nextDayStartUtcMs: previousNextDayStartUtcMs,
     timeZone,
   });
-  const weightedUsage = buildWeightedBucketUsage({ bucketStartUtcMs, powerTracker });
+  const weightedUsage = buildWeightedBucketUsage({
+    bucketStartUtcMs,
+    powerTracker,
+    controlledUsageWeight,
+  });
   const totalKWh = sumArray(weightedUsage.bucketUsage);
   if (totalKWh <= 0) {
     return {

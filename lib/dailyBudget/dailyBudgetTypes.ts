@@ -2,6 +2,8 @@ export type DailyBudgetSettings = {
   enabled: boolean;
   dailyBudgetKWh: number;
   priceShapingEnabled: boolean;
+  controlledUsageWeight: number;
+  priceShapingFlexShare: number;
 };
 
 export type DailyBudgetProfile = {

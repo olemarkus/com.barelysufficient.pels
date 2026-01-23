@@ -107,6 +107,10 @@ const buildDom = () => {
       <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
       <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">
       <input id="debug-topic-settings" data-debug-topic="settings" type="checkbox">
+      <form id="daily-budget-advanced-form">
+        <input id="daily-budget-controlled-weight" type="number">
+        <input id="daily-budget-price-flex-share" type="number">
+      </form>
     </section>
     <button id="refresh-button"></button>
     <button id="reset-stats-button"></button>

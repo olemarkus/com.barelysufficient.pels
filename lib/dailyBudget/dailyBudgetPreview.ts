@@ -79,6 +79,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
       combinedPrices,
       priceOptimizationEnabled,
       priceShapingEnabled,
+      priceShapingFlexShare: settings.priceShapingFlexShare,
       capacityBudgetKWh,
     }).plannedKWh
     : bucketStartUtcMs.map(() => 0);

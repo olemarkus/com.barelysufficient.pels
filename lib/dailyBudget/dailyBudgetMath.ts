@@ -67,6 +67,7 @@ export function buildPlan(params: {
   combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
   priceShapingEnabled: boolean;
+  priceShapingFlexShare?: number;
   previousPlannedKWh?: number[];
   capacityBudgetKWh?: number;
   lockCurrentBucket?: boolean;
@@ -87,6 +88,7 @@ export function buildPlan(params: {
     combinedPrices,
     priceOptimizationEnabled,
     priceShapingEnabled,
+    priceShapingFlexShare,
     previousPlannedKWh,
     capacityBudgetKWh,
     lockCurrentBucket,
@@ -112,7 +114,9 @@ export function buildPlan(params: {
   const combinedWeights = buildCompositeWeights({
     baseWeights,
     priceFactors: priceShape.priceFactors,
-    flexShare: PRICE_SHAPING_FLEX_SHARE,
+    flexShare: typeof priceShapingFlexShare === 'number'
+      ? priceShapingFlexShare
+      : PRICE_SHAPING_FLEX_SHARE,
   });
   const normalizedDayWeights = normalizeWeightsWithFallback(combinedWeights);
 

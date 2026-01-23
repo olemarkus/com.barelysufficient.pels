@@ -188,6 +188,7 @@ export class DailyBudgetManager {
         previousDateKey: this.state.dateKey,
         previousDayStartUtcMs: this.state.dayStartUtcMs ?? null,
         defaultProfile: DEFAULT_PROFILE,
+        controlledUsageWeight: settings.controlledUsageWeight,
       });
       if (result.logMessage) this.deps.logDebug(result.logMessage);
       if (result.shouldMarkDirty) this.markDirty(true);
@@ -357,6 +358,7 @@ export class DailyBudgetManager {
       combinedPrices,
       priceOptimizationEnabled,
       priceShapingEnabled: settings.priceShapingEnabled,
+      priceShapingFlexShare: settings.priceShapingFlexShare,
       previousPlannedKWh: existingPlan ?? undefined,
       capacityBudgetKWh,
       lockCurrentBucket,
