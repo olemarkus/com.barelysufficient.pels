@@ -44,6 +44,7 @@ export const dailyBudgetEmpty = qs('#daily-budget-empty');
 export const dailyBudgetConfidence = qs('#daily-budget-confidence');
 export const dailyBudgetToggleToday = document.querySelector('#daily-budget-toggle-today') as HTMLButtonElement;
 export const dailyBudgetToggleTomorrow = document.querySelector('#daily-budget-toggle-tomorrow') as HTMLButtonElement;
+export const dailyBudgetToggleYesterday = document.querySelector('#daily-budget-toggle-yesterday') as HTMLButtonElement;
 export const dryRunBanner = qs('#dry-run-banner');
 export const staleDataBanner = qs('#stale-data-banner');
 export const staleDataBannerText = qs('#stale-data-text');

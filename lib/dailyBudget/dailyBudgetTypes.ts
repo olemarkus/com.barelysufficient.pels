@@ -57,6 +57,7 @@ export type DailyBudgetUiPayload = {
   days: Record<string, DailyBudgetDayPayload>;
   todayKey: string;
   tomorrowKey?: string | null;
+  yesterdayKey?: string | null;
 };
 
 export type DailyBudgetUpdate = {

@@ -278,7 +278,13 @@ class PelsApp extends Homey.App {
       getCapacityDryRun: () => this.capacityDryRun,
       loadPriceOptimizationSettings: () => this.loadPriceOptimizationSettings(),
       loadDailyBudgetSettings: () => this.dailyBudgetService.loadSettings(),
-      updateDailyBudgetState: (options) => this.dailyBudgetService.updateState(options),
+      updateDailyBudgetState: (options) => {
+        this.dailyBudgetService.updateState(options);
+        this.powerTracker = recordDailyBudgetCap({
+          powerTracker: this.powerTracker,
+          snapshot: this.dailyBudgetService.getSnapshot(),
+        });
+      },
       resetDailyBudgetLearning: () => this.dailyBudgetService.resetLearning(),
       priceService: this.priceCoordinator,
       updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
