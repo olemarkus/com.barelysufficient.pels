@@ -30,6 +30,7 @@ export function resolveCurrentPlanInfo(params: {
   bucketStartUtc: string[];
   bucketCount: number;
   isToday: boolean;
+  priceUnit: string;
 }): {
   currentIndex: number;
   currentLabel: string;
@@ -46,6 +47,7 @@ export function resolveCurrentPlanInfo(params: {
     bucketStartUtc,
     bucketCount,
     isToday,
+    priceUnit,
   } = params;
   const rawIndex = day?.currentBucketIndex;
   const hasCurrentIndex = typeof rawIndex === 'number'
@@ -58,7 +60,7 @@ export function resolveCurrentPlanInfo(params: {
   const currentPlan = plannedKWh[currentIndex] ?? 0;
   const currentPrice = priceSeries[currentIndex] ?? null;
   const currentPriceLabel = typeof currentPrice === 'number' && Number.isFinite(currentPrice)
-    ? `${formatNumber(currentPrice, 0)} øre/kWh`
+    ? `${formatNumber(currentPrice, 0)} ${priceUnit}`
     : 'Price n/a';
   return {
     currentIndex,
