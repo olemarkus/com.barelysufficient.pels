@@ -106,9 +106,6 @@ describe('plan price image utils', () => {
           { startsAt: bucketStartUtc[0], total: 200 },
           { startsAt: bucketStartUtc[1], total: 300 },
         ],
-        avgPrice: 250,
-        lowThreshold: 200,
-        highThreshold: 300,
       },
     });
     expect(series).toEqual([10, null]);
@@ -124,9 +121,6 @@ describe('plan price image utils', () => {
       bucketPrices: [1],
       combinedPrices: {
         prices: [{ startsAt: bucketStartUtc[0], total: 42 }],
-        avgPrice: 42,
-        lowThreshold: 30,
-        highThreshold: 60,
       },
     });
     expect(series).toEqual([42, null]);
