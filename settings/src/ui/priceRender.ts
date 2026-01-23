@@ -9,7 +9,18 @@ import {
   getDateKeyInTimeZone,
   getHourStartInTimeZone,
 } from './timezone';
-import { calculateThresholds } from './priceThresholds';
+import {
+  formatChipPrice,
+  formatPriceWithUnit,
+  formatSummaryPrice,
+  getAverageTotal,
+  groupPricesByDate,
+  resolvePriceScheme,
+  resolvePriceUnit,
+  resolveThresholds,
+  selectDayEntries,
+  type PriceScheme,
+} from './priceRenderUtils';
 
 const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   if (!priceStatusBadge) return;
@@ -20,36 +31,6 @@ const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   }
 };
 
-type PriceScheme = 'norway' | 'flow' | 'homey';
-
-const resolvePriceScheme = (data: CombinedPriceData): PriceScheme => (
-  data.priceScheme === 'flow' || data.priceScheme === 'homey' ? data.priceScheme : 'norway'
-);
-
-const resolvePriceUnit = (data: CombinedPriceData, scheme: PriceScheme): string => {
-  if (scheme === 'norway') return data.priceUnit || 'øre/kWh';
-  const unit = typeof data.priceUnit === 'string' ? data.priceUnit : '';
-  return unit === 'price units' ? '' : unit;
-};
-
-const formatPriceValue = (value: number, decimals: number): string => (
-  value.toFixed(decimals)
-);
-
-const isExternalScheme = (scheme: PriceScheme): boolean => scheme !== 'norway';
-
-const formatSummaryPrice = (value: number, scheme: PriceScheme): string => (
-  formatPriceValue(value, isExternalScheme(scheme) ? 4 : 0)
-);
-
-const formatChipPrice = (value: number, scheme: PriceScheme): string => (
-  formatPriceValue(value, isExternalScheme(scheme) ? 4 : 1)
-);
-
-const formatPriceWithUnit = (value: string, unit: string): string => (
-  unit ? `${value} ${unit}` : value
-);
-
 const HOUR_MS = 60 * 60 * 1000;
 
 const isCurrentHourEntry = (entryTime: Date, now: Date) => {
@@ -58,13 +39,17 @@ const isCurrentHourEntry = (entryTime: Date, now: Date) => {
   return nowMs >= start && nowMs < start + HOUR_MS;
 };
 
-const getCurrentHour = (now: Date, timeZone: string) => (
-  new Date(getHourStartInTimeZone(now, timeZone))
-);
-
-const getFuturePrices = (prices: PriceEntry[], currentHour: Date) => (
-  prices.filter((price) => new Date(price.startsAt) >= currentHour)
-);
+const sortPricesByStart = (prices: PriceEntry[]) => {
+  const sortable: Array<{ entry: PriceEntry; timestamp: number }> = [];
+  prices.forEach((entry) => {
+    if (typeof entry.startsAt !== 'string') return;
+    const timestamp = new Date(entry.startsAt).getTime();
+    if (!Number.isFinite(timestamp)) return;
+    sortable.push({ entry, timestamp });
+  });
+  sortable.sort((a, b) => a.timestamp - b.timestamp);
+  return sortable.map(({ entry }) => entry);
+};
 
 const findCurrentEntry = (prices: PriceEntry[], now: Date) => (
   prices.find((price) => isCurrentHourEntry(new Date(price.startsAt), now))
@@ -201,7 +186,13 @@ const buildPriceNotice = (className: string, text: string) => {
 
 type PriceRenderContext = {
   now: Date;
-  futurePrices: PriceEntry[];
+  allPrices: PriceEntry[];
+  primaryEntries: PriceEntry[];
+  secondaryEntries: PriceEntry[];
+  primaryLabel: string;
+  secondaryLabel: string | null;
+  primaryAvg: number;
+  secondaryAvg: number | null;
   currentEntry?: PriceEntry;
   cheapHours: PriceEntry[];
   expensiveHours: PriceEntry[];
@@ -213,38 +204,74 @@ type PriceRenderContext = {
   priceScheme: PriceScheme;
 };
 
+const createDayPriceSection = (
+  label: string,
+  icon: string,
+  entries: PriceEntry[],
+  avg: number,
+  context: PriceRenderContext,
+) => {
+  const mappedEntries = entries.map((entry) => ({
+    entry,
+    priceClass: getPriceClass(entry),
+  }));
+  const details = document.createElement('details');
+  details.className = 'price-details';
+  const summary = document.createElement('summary');
+  const avgPriceText = formatPriceWithUnit(
+    formatSummaryPrice(avg, context.priceScheme),
+    context.priceUnit,
+  );
+  summary.textContent = `${icon} ${label} (${entries.length} hours, avg ${avgPriceText})`;
+  details.appendChild(summary);
+  mappedEntries.forEach(({ entry, priceClass }) => {
+    details.appendChild(createPriceRow(entry, priceClass, context));
+  });
+  return details;
+};
+
 const buildPriceRenderContext = (data: CombinedPriceData, timeZone: string): PriceRenderContext | null => {
   const priceScheme = resolvePriceScheme(data);
   const priceUnit = resolvePriceUnit(data, priceScheme);
   const now = new Date();
-  const currentHour = getCurrentHour(now, timeZone);
-  const futurePrices = getFuturePrices(data.prices, currentHour);
-  if (futurePrices.length === 0) return null;
+  const allPrices = sortPricesByStart(data.prices);
+  if (allPrices.length === 0) return null;
+  const currentHourStartMs = getHourStartInTimeZone(now, timeZone);
+  const upcomingEntries = allPrices.filter((entry) => (
+    new Date(entry.startsAt).getTime() >= currentHourStartMs
+  ));
+  const summaryEntries = upcomingEntries.length > 0 ? upcomingEntries : allPrices;
 
-  const cheapHours = futurePrices.filter((price) => price.isCheap).sort((a, b) => a.total - b.total);
-  const expensiveHours = futurePrices.filter((price) => price.isExpensive).sort((a, b) => b.total - a.total);
-  const thresholdPct = data.thresholdPercent ?? 25;
-  const derivedThresholds = calculateThresholds(data.avgPrice, thresholdPct);
-  const baseLowThreshold = Number.isFinite(data.lowThreshold)
-    ? data.lowThreshold
-    : derivedThresholds.low;
-  const baseHighThreshold = Number.isFinite(data.highThreshold)
-    ? data.highThreshold
-    : derivedThresholds.high;
-  const minDiff = typeof data.minDiffOre === 'number' && Number.isFinite(data.minDiffOre)
-    ? data.minDiffOre
-    : 0;
-  const lowThreshold = minDiff > 0
-    ? Math.min(baseLowThreshold, data.avgPrice - minDiff)
-    : baseLowThreshold;
-  const highThreshold = minDiff > 0
-    ? Math.max(baseHighThreshold, data.avgPrice + minDiff)
-    : baseHighThreshold;
+  const todayKey = getDateKeyInTimeZone(now, timeZone);
+  const { entriesByDate, dayKeys } = groupPricesByDate(allPrices, timeZone);
+  const {
+    primaryEntries,
+    secondaryEntries,
+    primaryLabel,
+    secondaryLabel,
+  } = selectDayEntries({
+    entriesByDate,
+    dayKeys,
+    todayKey,
+    timeZone,
+  });
+
+  const cheapHours = summaryEntries.filter((price) => price.isCheap).sort((a, b) => a.total - b.total);
+  const expensiveHours = summaryEntries.filter((price) => price.isExpensive).sort((a, b) => b.total - a.total);
+  const { lowThreshold, highThreshold } = resolveThresholds(data);
+  const primaryAvg = getAverageTotal(primaryEntries, data.avgPrice);
+  const secondaryAvg = secondaryEntries.length > 0 ? getAverageTotal(secondaryEntries, data.avgPrice) : null;
 
   return {
     now,
-    futurePrices,
-    currentEntry: findCurrentEntry(data.prices, now),
+    allPrices,
+    primaryEntries,
+    secondaryEntries,
+    primaryLabel,
+    secondaryLabel,
+    primaryAvg,
+    secondaryAvg,
+    currentEntry: findCurrentEntry(allPrices, now),
     cheapHours,
     expensiveHours,
     lowThreshold,
@@ -281,29 +308,32 @@ const renderPriceSections = (context: PriceRenderContext) => {
     );
   }
 
-  const allEntries = context.futurePrices.map((entry) => ({
-    entry,
-    priceClass: getPriceClass(entry),
-  }));
-  const allDetails = document.createElement('details');
-  allDetails.className = 'price-details';
-  const allSummary = document.createElement('summary');
-  const avgPriceText = formatPriceWithUnit(
-    formatSummaryPrice(context.avgPrice, context.priceScheme),
-    context.priceUnit,
-  );
-  allSummary.textContent = `📊 All prices (${context.futurePrices.length} hours, avg ${avgPriceText})`;
-  allDetails.appendChild(allSummary);
-  allEntries.forEach(({ entry, priceClass }) => {
-    allDetails.appendChild(createPriceRow(entry, priceClass, context));
-  });
-  priceList.appendChild(allDetails);
+  priceList.appendChild(createDayPriceSection(
+    context.primaryLabel,
+    '📊',
+    context.primaryEntries,
+    context.primaryAvg,
+    context,
+  ));
+
+  if (context.secondaryEntries.length > 0 && context.secondaryLabel) {
+    priceList.appendChild(createDayPriceSection(
+      context.secondaryLabel,
+      '📅',
+      context.secondaryEntries,
+      context.secondaryAvg ?? context.avgPrice,
+      context,
+    ));
+  }
 };
 
 const renderPriceNotices = (context: PriceRenderContext, data: CombinedPriceData) => {
-  const lastPriceTime = new Date(context.futurePrices[context.futurePrices.length - 1].startsAt);
-  const hoursRemaining = Math.floor((lastPriceTime.getTime() - context.now.getTime()) / (1000 * 60 * 60)) + 1;
-  if (hoursRemaining <= 12) {
+  const lastPriceTime = new Date(context.allPrices[context.allPrices.length - 1].startsAt);
+  const hoursRemaining = Math.max(
+    0,
+    Math.floor((lastPriceTime.getTime() - context.now.getTime()) / (1000 * 60 * 60)) + 1,
+  );
+  if (hoursRemaining > 0 && hoursRemaining <= 12) {
     const warningSuffix = context.priceScheme === 'norway'
       ? 'Tomorrow\'s prices typically publish around 13:00.'
       : 'Make sure your price source supplies tomorrow\'s prices.';
@@ -329,8 +359,7 @@ const formatPriceTimeLabel = (entryTime: Date, timeContext: PriceTimeContext) =>
   const dateStr = entryKey !== nowKey
     ? ` (${formatDateInTimeZone(entryTime, { weekday: 'short' }, timeZone)})`
     : '';
-  const nowLabel = isCurrentHourEntry(entryTime, now) ? ' ← now' : '';
-  return `${timeStr}${dateStr}${nowLabel}`;
+  return `${timeStr}${dateStr}`;
 };
 
 const getFiniteNumber = (value: unknown): number | null => (
@@ -404,6 +433,13 @@ const buildPriceChip = (entry: PriceEntry, priceClass: string, scheme: PriceSche
   return chip;
 };
 
+const buildNowBadge = () => {
+  const badge = document.createElement('span');
+  badge.className = 'price-now-badge';
+  badge.textContent = 'Now';
+  return badge;
+};
+
 const createPriceRow = (
   entry: PriceEntry,
   priceClass: string,
@@ -411,11 +447,16 @@ const createPriceRow = (
 ) => {
   const entryTime = new Date(entry.startsAt);
   const isCurrentHour = isCurrentHourEntry(entryTime, timeContext.now);
+  const controls: HTMLElement[] = [];
+  if (isCurrentHour) {
+    controls.push(buildNowBadge());
+  }
+  controls.push(buildPriceChip(entry, priceClass, timeContext.priceScheme, timeContext.priceUnit));
 
   const row = createDeviceRow({
     name: formatPriceTimeLabel(entryTime, timeContext),
     className: 'price-row',
-    controls: [buildPriceChip(entry, priceClass, timeContext.priceScheme, timeContext.priceUnit)],
+    controls,
     controlsClassName: 'device-row__target',
   });
 

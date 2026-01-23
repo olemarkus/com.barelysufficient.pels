@@ -549,9 +549,10 @@ describe('settings script', () => {
     expect(summaryItems?.[0]?.textContent).toContain('No cheap hours');
     expect(summaryItems?.[1]?.textContent).toContain('No expensive hours');
 
-    // Verify no cheap/expensive collapsible details (only "All prices")
+    // Verify no cheap/expensive collapsible details (only per-day sections)
     const detailsSections = priceList?.querySelectorAll('.price-details');
-    expect(detailsSections?.length).toBe(1); // Only "All prices" section
+    const dayKeys = new Set(prices.map((price) => price.startsAt.split('T')[0]));
+    expect(detailsSections?.length).toBe(dayKeys.size);
   });
 
   it('uses the minimum price difference when describing cheap/expensive thresholds', async () => {
