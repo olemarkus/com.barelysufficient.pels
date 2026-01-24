@@ -217,10 +217,16 @@ describe('daily budget planning', () => {
     manager.loadState({
       dateKey: previousKey,
       dayStartUtcMs: previousStart,
-      profile: {
+      profileUncontrolled: {
         weights: buildDefaultProfile(),
         sampleCount: 0,
       },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 0,
     });
     manager.update({
       nowMs: Date.UTC(2024, 0, 15, 1, 0),
@@ -230,11 +236,12 @@ describe('daily budget planning', () => {
       priceOptimizationEnabled: false,
     });
     const nextState = manager.exportState();
-    expect(nextState.profile?.sampleCount).toBe(1);
-    expect(nextState.profile?.weights[0]).toBeCloseTo(1, 3);
+    expect(nextState.profileSampleCount).toBe(1);
+    expect(nextState.profileUncontrolled?.sampleCount).toBe(1);
+    expect(nextState.profileUncontrolled?.weights[0]).toBeCloseTo(1, 3);
   });
 
-  it('weights controlled usage lower when learning the profile', () => {
+  it('learns controlled and uncontrolled profiles separately', () => {
     const manager = buildManager();
     const settings = buildSettings({ dailyBudgetKWh: 8 });
     const previousKey = '2024-01-14';
@@ -244,10 +251,16 @@ describe('daily budget planning', () => {
     manager.loadState({
       dateKey: previousKey,
       dayStartUtcMs: previousStart,
-      profile: {
+      profileUncontrolled: {
         weights: buildDefaultProfile(),
         sampleCount: 0,
       },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 0,
     });
 
     manager.update({
@@ -262,43 +275,47 @@ describe('daily budget planning', () => {
     });
 
     const nextState = manager.exportState();
-    const weightedTotal = 2 + 2 * CONTROLLED_USAGE_WEIGHT;
-    expect(nextState.profile?.sampleCount).toBe(1);
-    expect(nextState.profile?.weights[0]).toBeCloseTo(2 / weightedTotal, 4);
-    expect(nextState.profile?.weights[1]).toBeCloseTo((2 * CONTROLLED_USAGE_WEIGHT) / weightedTotal, 4);
+    expect(nextState.profileSampleCount).toBe(1);
+    expect(nextState.profileControlledShare).toBeCloseTo(0.5, 4);
+    expect(nextState.profileUncontrolled?.weights[0]).toBeCloseTo(1, 4);
+    expect(nextState.profileUncontrolled?.weights[1]).toBeCloseTo(0, 4);
+    expect(nextState.profileControlled?.weights[0]).toBeCloseTo(0, 4);
+    expect(nextState.profileControlled?.weights[1]).toBeCloseTo(1, 4);
   });
 
-  it('uses the configured controlled usage weight when learning', () => {
+  it('applies the controlled usage weight when building the combined plan', () => {
     const manager = buildManager();
-    const settings = buildSettings({ dailyBudgetKWh: 8, controlledUsageWeight: 0 });
-    const previousKey = '2024-01-14';
-    const previousStart = getDateKeyStartMs(previousKey, TZ);
-    const bucketKey0 = new Date(previousStart).toISOString();
-    const bucketKey1 = new Date(previousStart + 60 * 60 * 1000).toISOString();
     manager.loadState({
-      dateKey: previousKey,
-      dayStartUtcMs: previousStart,
-      profile: {
-        weights: buildDefaultProfile(),
-        sampleCount: 0,
+      profileUncontrolled: {
+        weights: normalizeWeights([1, 0, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
       },
+      profileControlled: {
+        weights: normalizeWeights([0, 1, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+      profileControlledShare: 0.5,
+      profileSampleCount: 14,
     });
+    const settings = buildSettings({ dailyBudgetKWh: 8, controlledUsageWeight: 0 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 30 * 60 * 1000;
+    const bucketKey0 = new Date(dayStart).toISOString();
 
     manager.update({
-      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      nowMs: now,
       timeZone: TZ,
       settings,
-      powerTracker: {
-        buckets: { [bucketKey0]: 2, [bucketKey1]: 2 },
-        controlledBuckets: { [bucketKey0]: 0, [bucketKey1]: 2 },
-      },
+      powerTracker: { buckets: { [bucketKey0]: 0 } },
       priceOptimizationEnabled: false,
     });
 
-    const nextState = manager.exportState();
-    expect(nextState.profile?.sampleCount).toBe(1);
-    expect(nextState.profile?.weights[0]).toBeCloseTo(1, 4);
-    expect(nextState.profile?.weights[1]).toBeCloseTo(0, 4);
+    const snapshot = manager.getSnapshot();
+    expect(snapshot).not.toBeNull();
+    const planned = snapshot?.buckets.plannedKWh ?? [];
+    expect(planned[0]).toBeCloseTo(8, 4);
+    expect(planned[1]).toBeCloseTo(0, 4);
   });
 
   it('falls back to total usage when controlled data is missing', () => {
@@ -311,10 +328,16 @@ describe('daily budget planning', () => {
     manager.loadState({
       dateKey: previousKey,
       dayStartUtcMs: previousStart,
-      profile: {
+      profileUncontrolled: {
         weights: buildDefaultProfile(),
         sampleCount: 0,
       },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 0,
     });
 
     manager.update({
@@ -326,8 +349,9 @@ describe('daily budget planning', () => {
     });
 
     const nextState = manager.exportState();
-    expect(nextState.profile?.weights[0]).toBeCloseTo(0.75, 4);
-    expect(nextState.profile?.weights[1]).toBeCloseTo(0.25, 4);
+    expect(nextState.profileUncontrolled?.weights[0]).toBeCloseTo(0.75, 4);
+    expect(nextState.profileUncontrolled?.weights[1]).toBeCloseTo(0.25, 4);
+    expect(nextState.profileControlledShare).toBeCloseTo(0, 4);
   });
 
   it('skips learning when previous day data is unreliable', () => {
@@ -340,10 +364,16 @@ describe('daily budget planning', () => {
     manager.loadState({
       dateKey: previousKey,
       dayStartUtcMs: previousStart,
-      profile: {
+      profileUncontrolled: {
         weights: previousWeights,
         sampleCount: 3,
       },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 3,
     });
 
     manager.update({
@@ -360,8 +390,8 @@ describe('daily budget planning', () => {
     });
 
     const nextState = manager.exportState();
-    expect(nextState.profile?.sampleCount).toBe(3);
-    expect(nextState.profile?.weights).toEqual(previousWeights);
+    expect(nextState.profileSampleCount).toBe(3);
+    expect(nextState.profileUncontrolled?.weights).toEqual(previousWeights);
   });
 });
 

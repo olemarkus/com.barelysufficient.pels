@@ -20,6 +20,11 @@ export type DailyBudgetState = {
   lastPlanUpdateMs?: number | null;
   lastUsedNowKWh?: number;
   profile?: DailyBudgetProfile;
+  profileUncontrolled?: DailyBudgetProfile;
+  profileControlled?: DailyBudgetProfile;
+  profileControlledShare?: number;
+  profileSampleCount?: number;
+  profileSplitSampleCount?: number;
 };
 
 export type DailyBudgetDayPayload = {
@@ -48,6 +53,8 @@ export type DailyBudgetDayPayload = {
     startLocalLabels: string[];
     plannedWeight: number[];
     plannedKWh: number[];
+    plannedUncontrolledKWh?: number[];
+    plannedControlledKWh?: number[];
     actualKWh: number[];
     allowedCumKWh: number[];
     price?: Array<number | null>;

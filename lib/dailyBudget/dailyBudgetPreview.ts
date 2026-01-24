@@ -27,6 +27,7 @@ type BuildDailyBudgetPreviewParams = {
   enabled: boolean;
   profileWeights: number[];
   profileSampleCount: number;
+  profileSplitSampleCount?: number;
   profileBreakdown?: { uncontrolled: number[]; controlled: number[] };
 };
 
@@ -42,6 +43,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     enabled,
     profileWeights,
     profileSampleCount,
+    profileSplitSampleCount,
     profileBreakdown,
   } = params;
 
@@ -101,6 +103,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     dailyBudgetKWh: settings.dailyBudgetKWh,
     plannedKWh,
     profileSampleCount,
+    profileSplitSampleCount,
   });
 
   const priceData = enabled

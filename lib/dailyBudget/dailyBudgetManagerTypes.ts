@@ -38,6 +38,7 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     && isValidProfile(state.profileControlled)
     && isNumberOrUndefined(state.profileControlledShare)
     && isNumberOrUndefined(state.profileSampleCount)
+    && isNumberOrUndefined(state.profileSplitSampleCount)
     && (!state.plannedKWh || Array.isArray(state.plannedKWh))
   );
 };

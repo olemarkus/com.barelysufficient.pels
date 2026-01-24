@@ -48,6 +48,9 @@ const migrateLegacyProfile = (
     profileSampleCount: typeof state.profileSampleCount === 'number'
       ? state.profileSampleCount
       : (state.profile.sampleCount ?? 0),
+    profileSplitSampleCount: typeof state.profileSplitSampleCount === 'number'
+      ? state.profileSplitSampleCount
+      : 0,
   };
 };
 
@@ -70,12 +73,14 @@ export const ensureDailyBudgetProfile = (
   const nextSampleCount = typeof state.profileSampleCount === 'number'
     ? state.profileSampleCount
     : (nextProfileUncontrolled.sampleCount ?? state.profile?.sampleCount ?? 0);
+  const nextSplitSampleCount = typeof state.profileSplitSampleCount === 'number' ? state.profileSplitSampleCount : 0;
 
   const changed = (
     nextProfileUncontrolled !== state.profileUncontrolled
     || nextProfileControlled !== state.profileControlled
     || nextControlledShare !== state.profileControlledShare
     || nextSampleCount !== state.profileSampleCount
+    || nextSplitSampleCount !== state.profileSplitSampleCount
   );
   if (!changed) return { state, changed: false };
   return {
@@ -85,6 +90,7 @@ export const ensureDailyBudgetProfile = (
       profileControlled: nextProfileControlled,
       profileControlledShare: nextControlledShare,
       profileSampleCount: nextSampleCount,
+      profileSplitSampleCount: nextSplitSampleCount,
     },
     changed: true,
   };
@@ -95,6 +101,10 @@ export const getProfileSampleCount = (state: DailyBudgetState): number => {
   if (typeof state.profileUncontrolled?.sampleCount === 'number') return state.profileUncontrolled.sampleCount;
   return state.profile?.sampleCount ?? 0;
 };
+
+export const getProfileSplitSampleCount = (state: DailyBudgetState): number => (
+  typeof state.profileSplitSampleCount === 'number' ? state.profileSplitSampleCount : 0
+);
 
 const getLearnedProfileParts = (
   state: DailyBudgetState,
@@ -184,15 +194,17 @@ export const getProfileDebugSummary = (
 ): {
   combinedWeights: number[];
   learnedWeights: number[] | null;
-  profileMeta: { sampleCount: number; controlledShare: number };
+  profileMeta: { sampleCount: number; splitSampleCount: number; controlledShare: number };
 } => {
   const profileData = getEffectiveProfileData(state, settings, defaultProfile);
   const learned = getLearnedProfileParts(state, settings, defaultProfile);
+  const splitSampleCount = typeof state.profileSplitSampleCount === 'number' ? state.profileSplitSampleCount : 0;
   return {
     combinedWeights: profileData.combinedWeights,
     learnedWeights: learned?.combined ?? null,
     profileMeta: {
       sampleCount: profileData.sampleCount,
+      splitSampleCount,
       controlledShare: profileData.controlledShare,
     },
   };

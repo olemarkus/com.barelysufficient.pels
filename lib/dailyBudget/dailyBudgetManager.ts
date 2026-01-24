@@ -28,6 +28,7 @@ import {
   getEffectiveProfileData,
   getProfileDebugSummary,
   getProfileSampleCount,
+  getProfileSplitSampleCount,
 } from './dailyBudgetProfile';
 
 const PLAN_REBUILD_INTERVAL_MS = 60 * 60 * 1000;
@@ -63,6 +64,7 @@ export class DailyBudgetManager {
     };
     this.state.profileControlledShare = 0;
     this.state.profileSampleCount = 0;
+    this.state.profileSplitSampleCount = 0;
     this.state.profile = undefined;
     this.state.frozen = false;
     this.markDirty();
@@ -126,6 +128,7 @@ export class DailyBudgetManager {
       dailyBudgetKWh: settings.dailyBudgetKWh,
       plannedKWh: plan.plannedKWh,
       profileSampleCount: getProfileSampleCount(this.state),
+      profileSplitSampleCount: getProfileSplitSampleCount(this.state),
     });
 
     this.maybeFreezeFromDeviation(enabled, budget.deviationKWh);
@@ -197,12 +200,18 @@ export class DailyBudgetManager {
         priceOptimizationEnabled,
         capacityBudgetKWh: Number.isFinite(capacityBudgetKWh) ? capacityBudgetKWh : null,
         profileSampleCount: profileMeta.sampleCount,
+        profileSplitSampleCount: profileMeta.splitSampleCount,
         profileConfidence: getConfidence(profileMeta.sampleCount),
         profileLearnedWeights: learnedWeights,
         profileEffectiveWeights: combinedWeights,
         profileControlledShare: profileMeta.controlledShare,
       },
     };
+    this.deps.logDebug(
+      `Daily budget: profile samples ${profileMeta.sampleCount} total, `
+      + `${profileMeta.splitSampleCount} split, `
+      + `controlled share ${profileMeta.controlledShare.toFixed(2)}`,
+    );
     this.deps.logDebug(`Daily budget: plan debug ${JSON.stringify(debugPayload)}`);
   }
 
@@ -475,6 +484,7 @@ export class DailyBudgetManager {
       priceShapingEnabled: settings.priceShapingEnabled,
       profileWeights: profileData.combinedWeights,
       profileSampleCount: profileData.sampleCount,
+      profileSplitSampleCount: getProfileSplitSampleCount(this.state),
       profileBreakdown: profileData.breakdown,
     });
   }
