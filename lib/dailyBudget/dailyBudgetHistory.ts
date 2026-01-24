@@ -71,12 +71,13 @@ export const buildDailyBudgetHistory = (params: {
     profileSampleCount,
   });
 
+  const canShapePrices = context.currentBucketIndex < bucketStartUtcMs.length;
   const priceData = buildPriceDebugData({
     bucketStartUtcMs,
     currentBucketIndex: context.currentBucketIndex,
     combinedPrices,
-    priceOptimizationEnabled,
-    priceShapingEnabled,
+    priceOptimizationEnabled: priceOptimizationEnabled && canShapePrices,
+    priceShapingEnabled: priceShapingEnabled && canShapePrices,
   });
 
   return buildDailyBudgetSnapshot({

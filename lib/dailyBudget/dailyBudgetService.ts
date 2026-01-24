@@ -136,7 +136,7 @@ export class DailyBudgetService {
     if (!context) return null;
     const { timeZone, yesterdayStartUtcMs } = context;
     try {
-      const combinedPrices = this.deps.homey.settings.get('combined_prices') as CombinedPriceData | null;
+      const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
       return this.manager.buildHistory({
         dayStartUtcMs: yesterdayStartUtcMs,
         timeZone,
