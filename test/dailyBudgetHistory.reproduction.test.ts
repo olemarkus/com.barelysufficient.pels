@@ -14,14 +14,14 @@ describe('daily budget history reproduction', () => {
     // Use a fixed "now" to keep the test deterministic.
     const nowMs = Date.UTC(2024, 0, 15, 12, 0, 0);
     const todayKey = getDateKeyInTimeZone(new Date(nowMs), TZ);
-
-    // Derive yesterday via date keys to avoid DST edge cases.
-    const yesterdayKey = getDateKeyInTimeZone(new Date(nowMs - 12 * 60 * 60 * 1000), TZ);
+    const todayStartUtcMs = getDateKeyStartMs(todayKey, TZ);
+    const yesterdayKey = getDateKeyInTimeZone(new Date(todayStartUtcMs - 12 * 60 * 60 * 1000), TZ);
     const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, TZ);
+    const firstBucketKey = new Date(yesterdayStartUtcMs).toISOString();
 
     const powerTracker: PowerTrackerState = {
-      buckets: {},
-      dailyBudgetCaps: {},
+      buckets: { [firstBucketKey]: 1.2 },
+      dailyBudgetCaps: { [firstBucketKey]: 1 },
     };
 
     const history = manager.buildHistory({
@@ -33,10 +33,9 @@ describe('daily budget history reproduction', () => {
       priceShapingEnabled: true,
     });
 
-    expect(history).toBeDefined();
-    expect(history.dateKey).toBeDefined();
-    expect(history.buckets.plannedKWh.length).toBeGreaterThan(0);
-    // If dailyBudgetCaps is empty, enabled should be false
-    expect(history.budget.enabled).toBe(false);
+    expect(history).not.toBeNull();
+    expect(history?.dateKey).toBeDefined();
+    expect(history?.buckets.plannedKWh.length).toBeGreaterThan(0);
+    expect(history?.budget.enabled).toBe(true);
   });
 });
