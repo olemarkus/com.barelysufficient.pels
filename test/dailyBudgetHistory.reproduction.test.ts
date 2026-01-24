@@ -7,8 +7,8 @@ const TZ = 'Europe/Oslo';
 describe('daily budget history reproduction', () => {
   it('builds history without crashing', () => {
     const manager = new DailyBudgetManager({
-      log: console.log,
-      logDebug: console.log,
+      log: () => undefined,
+      logDebug: () => undefined,
     });
 
     // Use a fixed "now" to keep the test deterministic.
