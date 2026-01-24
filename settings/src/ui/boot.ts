@@ -24,17 +24,19 @@ import {
   priorityForm,
   debugLoggingTopicInputs,
 } from './dom';
-import { getHomeyClient, getSetting, setSetting, waitForHomey } from './homey';
+import { getHomeyClient, setSetting, waitForHomey } from './homey';
 import { showToast, showToastError } from './toast';
 import { refreshDevices, renderDevices } from './devices';
-import { getPowerUsage, renderPowerStats, renderPowerUsage, PowerTracker } from './power';
-import { getHourBucketKey } from '../../../lib/utils/dateUtils';
+import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
+  DAILY_BUDGET_BREAKDOWN_ENABLED,
+  DAILY_BUDGET_CONTROLLED_WEIGHT,
+  DAILY_BUDGET_PRICE_FLEX_SHARE,
   DEBUG_LOGGING_TOPICS,
   OPERATING_MODE_SETTING,
   PRICE_OPTIMIZATION_ENABLED,
@@ -62,6 +64,10 @@ import {
   loadDailyBudgetSettings,
   refreshDailyBudgetPlan,
 } from './dailyBudget';
+import {
+  initDailyBudgetTuningHandlers,
+  loadDailyBudgetTuningSettings,
+} from './dailyBudgetTuning';
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
 import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail';
 import {
@@ -71,9 +77,10 @@ import {
   refreshAdvancedDeviceLogger,
 } from './advanced';
 import { state } from './state';
-import { flushSettingsLogs, logSettingsError, logSettingsInfo, logSettingsWarn } from './logging';
+import { flushSettingsLogs, logSettingsError, logSettingsWarn } from './logging';
 import { initTooltips } from './tooltips';
 import { initDebouncedSaveFlush } from './utils';
+import { handleResetStats } from './resetStats';
 
 const showTab = (tabId: string) => {
   tabs.forEach((tab) => {
@@ -107,32 +114,33 @@ const showTab = (tabId: string) => {
   }
 };
 
+const refreshPlanIfVisible = () => {
+  const overviewPanel = document.querySelector('#overview-panel');
+  if (!overviewPanel || overviewPanel.classList.contains('hidden')) return;
+  refreshPlan().catch((error) => {
+    void logSettingsError('Failed to refresh plan', error, 'settings.set');
+  });
+};
+
+const refreshPricesIfVisible = () => {
+  const pricesPanel = document.querySelector('#price-panel');
+  if (!pricesPanel || pricesPanel.classList.contains('hidden')) return;
+  refreshPrices().catch((error) => {
+    void logSettingsError('Failed to refresh prices', error, 'settings.set');
+  });
+};
+
+const refreshDailyBudgetIfVisible = () => {
+  const budgetPanel = document.querySelector('#budget-panel');
+  if (!budgetPanel || budgetPanel.classList.contains('hidden')) return;
+  refreshDailyBudgetPlan().catch((error) => {
+    void logSettingsError('Failed to refresh daily budget', error, 'settings.set');
+  });
+};
+
 const initRealtimeListeners = () => {
   const homey = getHomeyClient();
   if (!homey || typeof homey.on !== 'function') return;
-
-  const refreshPlanIfVisible = () => {
-    const overviewPanel = document.querySelector('#overview-panel');
-    if (!overviewPanel || overviewPanel.classList.contains('hidden')) return;
-    refreshPlan().catch((error) => {
-      void logSettingsError('Failed to refresh plan', error, 'settings.set');
-    });
-  };
-
-  const refreshPricesIfVisible = () => {
-    const pricesPanel = document.querySelector('#price-panel');
-    if (!pricesPanel || pricesPanel.classList.contains('hidden')) return;
-    refreshPrices().catch((error) => {
-      void logSettingsError('Failed to refresh prices', error, 'settings.set');
-    });
-  };
-  const refreshDailyBudgetIfVisible = () => {
-    const budgetPanel = document.querySelector('#budget-panel');
-    if (!budgetPanel || budgetPanel.classList.contains('hidden')) return;
-    refreshDailyBudgetPlan().catch((error) => {
-      void logSettingsError('Failed to refresh daily budget', error, 'settings.set');
-    });
-  };
 
   homey.on('plan_updated', (plan) => {
     const overviewPanel = document.querySelector('#overview-panel');
@@ -159,6 +167,9 @@ const initRealtimeListeners = () => {
     PRICE_OPTIMIZATION_ENABLED,
     CAPACITY_LIMIT_KW,
     CAPACITY_MARGIN_KW,
+    DAILY_BUDGET_CONTROLLED_WEIGHT,
+    DAILY_BUDGET_PRICE_FLEX_SHARE,
+    DAILY_BUDGET_BREAKDOWN_ENABLED,
   ]);
 
   const dailyBudgetSettingsKeys = new Set([
@@ -167,8 +178,34 @@ const initRealtimeListeners = () => {
     'daily_budget_price_shaping_enabled',
   ]);
 
+  const capacitySettingsKeys = new Set([CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]);
+  const priceRefreshKeys = new Set([COMBINED_PRICES, 'electricity_prices']);
+  const deviceControlKeys = new Set(['managed_devices', 'controllable_devices']);
+  const dailyBudgetTuningKeys = new Set([
+    DAILY_BUDGET_CONTROLLED_WEIGHT,
+    DAILY_BUDGET_PRICE_FLEX_SHARE,
+    DAILY_BUDGET_BREAKDOWN_ENABLED,
+  ]);
+
+  const handleDailyBudgetSettingsSet = (key: string) => {
+    if (!dailyBudgetRefreshKeys.has(key)) return;
+    if (dailyBudgetSettingsKeys.has(key)) {
+      loadDailyBudgetSettings().catch((error) => {
+        void logSettingsError('Failed to load daily budget settings', error, 'settings.set');
+      });
+    }
+    if (dailyBudgetTuningKeys.has(key)) {
+      loadDailyBudgetTuningSettings().catch((error) => {
+        void logSettingsError('Failed to load daily budget tuning', error, 'settings.set');
+      });
+    }
+    refreshDailyBudgetPlan().catch((error) => {
+      void logSettingsError('Failed to refresh daily budget', error, 'settings.set');
+    });
+  };
+
   const handleSettingsSet = (key: string) => {
-    if (key === CAPACITY_LIMIT_KW || key === CAPACITY_MARGIN_KW || key === CAPACITY_DRY_RUN) {
+    if (capacitySettingsKeys.has(key)) {
       loadCapacitySettings().catch((error) => {
         void logSettingsError('Failed to load capacity settings', error, 'settings.set');
       });
@@ -178,7 +215,7 @@ const initRealtimeListeners = () => {
       refreshPlanIfVisible();
     }
 
-    if (key === COMBINED_PRICES || key === 'electricity_prices') {
+    if (priceRefreshKeys.has(key)) {
       refreshPricesIfVisible();
     }
 
@@ -201,7 +238,7 @@ const initRealtimeListeners = () => {
       });
     }
 
-    if (key === 'managed_devices' || key === 'controllable_devices') {
+    if (deviceControlKeys.has(key)) {
       loadModeAndPriorities()
         .then(() => {
           renderPriorities(state.latestDevices);
@@ -220,16 +257,7 @@ const initRealtimeListeners = () => {
       refreshDailyBudgetIfVisible();
     }
 
-    if (dailyBudgetRefreshKeys.has(key)) {
-      if (dailyBudgetSettingsKeys.has(key)) {
-        loadDailyBudgetSettings().catch((error) => {
-          void logSettingsError('Failed to load daily budget settings', error, 'settings.set');
-        });
-      }
-      refreshDailyBudgetPlan().catch((error) => {
-        void logSettingsError('Failed to refresh daily budget', error, 'settings.set');
-      });
-    }
+    handleDailyBudgetSettingsSet(key);
   };
 
   homey.on('settings.set', handleSettingsSet);
@@ -275,85 +303,6 @@ const initCapacityHandlers = () => {
     resetStatsBtn.addEventListener('click', () => handleResetStats(resetStatsBtn));
   } else {
     void logSettingsWarn('Reset stats button not found', undefined, 'initCapacityHandlers');
-  }
-};
-
-let resetTimeout: ReturnType<typeof setTimeout> | null = null;
-
-
-const calculateResetState = (currentState: PowerTracker): PowerTracker => {
-  const currentHourKey = getHourBucketKey();
-
-  const newBuckets: Record<string, number> = {};
-  if (currentState.buckets && currentState.buckets[currentHourKey] !== undefined) {
-    newBuckets[currentHourKey] = currentState.buckets[currentHourKey];
-  }
-
-  const newBudgets: Record<string, number> = {};
-  if (currentState.hourlyBudgets && currentState.hourlyBudgets[currentHourKey] !== undefined) {
-    newBudgets[currentHourKey] = currentState.hourlyBudgets[currentHourKey];
-  }
-
-  return {
-    ...currentState,
-    buckets: newBuckets,
-    hourlyBudgets: newBudgets,
-    dailyTotals: {},
-    hourlyAverages: {},
-    unreliablePeriods: [],
-  };
-};
-
-const handleResetStats = async (btn: HTMLButtonElement) => {
-  // Step 1: Request Confirmation
-  if (!btn.classList.contains('confirming')) {
-    await logSettingsInfo('Reset stats confirmation requested', 'handleResetStats');
-    const b = btn;
-    b.textContent = '⚠️ Click again to confirm reset';
-    b.classList.add('confirming');
-    b.style.color = 'var(--homey-red, #f44336)'; // Visual feedback
-
-    if (resetTimeout) clearTimeout(resetTimeout);
-    resetTimeout = setTimeout(() => {
-      const el = btn;
-      el.textContent = 'Reset all stats';
-      el.classList.remove('confirming');
-      el.style.color = '';
-      resetTimeout = null;
-    }, 5000); // 5 seconds to confirm
-    return;
-  }
-
-  // Step 2: Execute Reset
-  await logSettingsInfo('Reset stats confirmed', 'handleResetStats');
-  if (resetTimeout) clearTimeout(resetTimeout);
-  const b = btn;
-  b.textContent = 'Resetting...';
-
-  try {
-    const currentState = (await getSetting('power_tracker_state') as PowerTracker) || {};
-    const newState = calculateResetState(currentState);
-
-    await setSetting('power_tracker_state', newState);
-
-    // Refresh UI
-    renderPowerUsage(Object.entries(newState.buckets || {}).map(([hour, kWh]) => ({
-      hour: new Date(hour),
-      kWh,
-      budgetKWh: (newState.hourlyBudgets || {})[hour],
-    })));
-    await renderPowerStats();
-    await showToast('Power stats reset (current hour preserved).', 'ok');
-    await logSettingsInfo('Reset stats completed', 'handleResetStats');
-  } catch (error) {
-    await logSettingsError('Reset stats failed', error, 'handleResetStats');
-    await showToastError(error, 'Failed to reset stats.');
-  } finally {
-    const el = btn;
-    el.textContent = 'Reset all stats';
-    el.classList.remove('confirming');
-    el.style.color = '';
-    resetTimeout = null;
   }
 };
 
@@ -447,6 +396,7 @@ const initAdvancedHandlers = () => {
 
   initAdvancedDeviceCleanupHandlers();
   initAdvancedDeviceLoggerHandlers();
+  initDailyBudgetTuningHandlers();
 };
 
 const loadInitialData = async () => {
@@ -462,6 +412,7 @@ const loadInitialData = async () => {
     getPowerUsage(),
     loadCapacitySettings(),
     loadDailyBudgetSettings(),
+    loadDailyBudgetTuningSettings(),
     loadStaleDataStatus(),
     loadShedBehaviors(),
     loadPriceOptimizationSettings(),

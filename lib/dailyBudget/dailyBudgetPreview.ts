@@ -7,6 +7,7 @@ import {
   buildPlan,
   buildPriceDebugData,
 } from './dailyBudgetMath';
+import { buildPlanBreakdown } from './dailyBudgetBreakdown';
 import type { CombinedPriceData } from './dailyBudgetMath';
 import {
   buildDailyBudgetSnapshot,
@@ -26,6 +27,8 @@ type BuildDailyBudgetPreviewParams = {
   enabled: boolean;
   profileWeights: number[];
   profileSampleCount: number;
+  profileSplitSampleCount?: number;
+  profileBreakdown?: { uncontrolled: number[]; controlled: number[] };
 };
 
 export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): DailyBudgetDayPayload => {
@@ -40,6 +43,8 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     enabled,
     profileWeights,
     profileSampleCount,
+    profileSplitSampleCount,
+    profileBreakdown,
   } = params;
 
   const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
@@ -79,9 +84,18 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
       combinedPrices,
       priceOptimizationEnabled,
       priceShapingEnabled,
+      priceShapingFlexShare: settings.priceShapingFlexShare,
       capacityBudgetKWh,
     }).plannedKWh
     : bucketStartUtcMs.map(() => 0);
+  const breakdown = enabled
+    ? buildPlanBreakdown({
+      bucketStartUtcMs,
+      timeZone,
+      plannedKWh,
+      breakdown: profileBreakdown,
+    })
+    : null;
 
   const budget = computeBudgetState({
     context,
@@ -89,6 +103,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     dailyBudgetKWh: settings.dailyBudgetKWh,
     plannedKWh,
     profileSampleCount,
+    profileSplitSampleCount,
   });
 
   const priceData = enabled
@@ -106,6 +121,8 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     settings,
     enabled,
     plannedKWh,
+    plannedUncontrolledKWh: breakdown?.plannedUncontrolledKWh,
+    plannedControlledKWh: breakdown?.plannedControlledKWh,
     priceData,
     budget,
     frozen: false,

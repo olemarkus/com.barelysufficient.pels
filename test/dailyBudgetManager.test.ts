@@ -6,6 +6,7 @@ import {
   getConfidence,
   normalizeWeights,
 } from '../lib/dailyBudget/dailyBudgetManager';
+import { CONTROLLED_USAGE_WEIGHT, PRICE_SHAPING_FLEX_SHARE } from '../lib/dailyBudget/dailyBudgetConstants';
 import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
@@ -18,6 +19,21 @@ const TZ = 'Europe/Oslo';
 const buildManager = () => new DailyBudgetManager({
   log: () => undefined,
   logDebug: () => undefined,
+});
+
+const buildSettings = (overrides: Partial<{
+  enabled: boolean;
+  dailyBudgetKWh: number;
+  priceShapingEnabled: boolean;
+  controlledUsageWeight: number;
+  priceShapingFlexShare: number;
+}> = {}) => ({
+  enabled: true,
+  dailyBudgetKWh: 10,
+  priceShapingEnabled: false,
+  controlledUsageWeight: CONTROLLED_USAGE_WEIGHT,
+  priceShapingFlexShare: PRICE_SHAPING_FLEX_SHARE,
+  ...overrides,
 });
 
 describe('daily budget time boundaries', () => {
@@ -74,11 +90,7 @@ describe('daily budget profile blending', () => {
 describe('daily budget planning', () => {
   it('builds an allowed curve from weights and daily budget', () => {
     const manager = buildManager();
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 10,
-      priceShapingEnabled: false,
-    };
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
     const dayStart = getDateKeyStartMs(dateKey, TZ);
     const now = dayStart + 30 * 60 * 1000;
@@ -103,11 +115,7 @@ describe('daily budget planning', () => {
 
   it('caps planned buckets to the capacity budget per hour', () => {
     const manager = buildManager();
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 10,
-      priceShapingEnabled: false,
-    };
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
     const dayStart = getDateKeyStartMs(dateKey, TZ);
     const now = dayStart + 30 * 60 * 1000;
@@ -134,11 +142,7 @@ describe('daily budget planning', () => {
 
   it('keeps the current bucket plan stable when usage changes within the hour', () => {
     const manager = buildManager();
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 10,
-      priceShapingEnabled: false,
-    };
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
     const dayStart = getDateKeyStartMs(dateKey, TZ);
     const now = dayStart + 10 * 60 * 1000;
@@ -173,11 +177,7 @@ describe('daily budget planning', () => {
 
   it('preserves planned values for past buckets when rebuilding', () => {
     const manager = buildManager();
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 10,
-      priceShapingEnabled: false,
-    };
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 1, 30)), TZ);
     const dayStart = getDateKeyStartMs(dateKey, TZ);
     const now = dayStart + 2.5 * 60 * 60 * 1000;
@@ -210,21 +210,23 @@ describe('daily budget planning', () => {
 
   it('updates the learned profile on day rollover', () => {
     const manager = buildManager();
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 8,
-      priceShapingEnabled: false,
-    };
+    const settings = buildSettings({ dailyBudgetKWh: 8 });
     const previousKey = '2024-01-14';
     const previousStart = getDateKeyStartMs(previousKey, TZ);
     const previousBucketKey = new Date(previousStart).toISOString();
     manager.loadState({
       dateKey: previousKey,
       dayStartUtcMs: previousStart,
-      profile: {
+      profileUncontrolled: {
         weights: buildDefaultProfile(),
         sampleCount: 0,
       },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 0,
     });
     manager.update({
       nowMs: Date.UTC(2024, 0, 15, 1, 0),
@@ -234,8 +236,162 @@ describe('daily budget planning', () => {
       priceOptimizationEnabled: false,
     });
     const nextState = manager.exportState();
-    expect(nextState.profile?.sampleCount).toBe(1);
-    expect(nextState.profile?.weights[0]).toBeCloseTo(1, 3);
+    expect(nextState.profileSampleCount).toBe(1);
+    expect(nextState.profileUncontrolled?.sampleCount).toBe(1);
+    expect(nextState.profileUncontrolled?.weights[0]).toBeCloseTo(1, 3);
+  });
+
+  it('learns controlled and uncontrolled profiles separately', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 8 });
+    const previousKey = '2024-01-14';
+    const previousStart = getDateKeyStartMs(previousKey, TZ);
+    const bucketKey0 = new Date(previousStart).toISOString();
+    const bucketKey1 = new Date(previousStart + 60 * 60 * 1000).toISOString();
+    manager.loadState({
+      dateKey: previousKey,
+      dayStartUtcMs: previousStart,
+      profileUncontrolled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 0,
+    });
+
+    manager.update({
+      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      timeZone: TZ,
+      settings,
+      powerTracker: {
+        buckets: { [bucketKey0]: 2, [bucketKey1]: 2 },
+        controlledBuckets: { [bucketKey0]: 0, [bucketKey1]: 2 },
+      },
+      priceOptimizationEnabled: false,
+    });
+
+    const nextState = manager.exportState();
+    expect(nextState.profileSampleCount).toBe(1);
+    expect(nextState.profileControlledShare).toBeCloseTo(0.5, 4);
+    expect(nextState.profileUncontrolled?.weights[0]).toBeCloseTo(1, 4);
+    expect(nextState.profileUncontrolled?.weights[1]).toBeCloseTo(0, 4);
+    expect(nextState.profileControlled?.weights[0]).toBeCloseTo(0, 4);
+    expect(nextState.profileControlled?.weights[1]).toBeCloseTo(1, 4);
+  });
+
+  it('applies the controlled usage weight when building the combined plan', () => {
+    const manager = buildManager();
+    manager.loadState({
+      profileUncontrolled: {
+        weights: normalizeWeights([1, 0, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+      profileControlled: {
+        weights: normalizeWeights([0, 1, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+      profileControlledShare: 0.5,
+      profileSampleCount: 14,
+    });
+    const settings = buildSettings({ dailyBudgetKWh: 8, controlledUsageWeight: 0 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 30 * 60 * 1000;
+    const bucketKey0 = new Date(dayStart).toISOString();
+
+    manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey0]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const snapshot = manager.getSnapshot();
+    expect(snapshot).not.toBeNull();
+    const planned = snapshot?.buckets.plannedKWh ?? [];
+    expect(planned[0]).toBeCloseTo(8, 4);
+    expect(planned[1]).toBeCloseTo(0, 4);
+  });
+
+  it('falls back to total usage when controlled data is missing', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 8 });
+    const previousKey = '2024-01-14';
+    const previousStart = getDateKeyStartMs(previousKey, TZ);
+    const bucketKey0 = new Date(previousStart).toISOString();
+    const bucketKey1 = new Date(previousStart + 60 * 60 * 1000).toISOString();
+    manager.loadState({
+      dateKey: previousKey,
+      dayStartUtcMs: previousStart,
+      profileUncontrolled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 0,
+    });
+
+    manager.update({
+      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey0]: 3, [bucketKey1]: 1 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const nextState = manager.exportState();
+    expect(nextState.profileUncontrolled?.weights[0]).toBeCloseTo(0.75, 4);
+    expect(nextState.profileUncontrolled?.weights[1]).toBeCloseTo(0.25, 4);
+    expect(nextState.profileControlledShare).toBeCloseTo(0, 4);
+  });
+
+  it('skips learning when previous day data is unreliable', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 8 });
+    const previousKey = '2024-01-14';
+    const previousStart = getDateKeyStartMs(previousKey, TZ);
+    const bucketKey0 = new Date(previousStart).toISOString();
+    const previousWeights = normalizeWeights([2, 1, ...Array.from({ length: 22 }, () => 0)]);
+    manager.loadState({
+      dateKey: previousKey,
+      dayStartUtcMs: previousStart,
+      profileUncontrolled: {
+        weights: previousWeights,
+        sampleCount: 3,
+      },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 3,
+    });
+
+    manager.update({
+      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      timeZone: TZ,
+      settings,
+      powerTracker: {
+        buckets: { [bucketKey0]: 4 },
+        unreliablePeriods: [
+          { start: previousStart + 10 * 60 * 1000, end: previousStart + 20 * 60 * 1000 },
+        ],
+      },
+      priceOptimizationEnabled: false,
+    });
+
+    const nextState = manager.exportState();
+    expect(nextState.profileSampleCount).toBe(3);
+    expect(nextState.profileUncontrolled?.weights).toEqual(previousWeights);
   });
 });
 
@@ -266,11 +422,7 @@ describe('daily budget price shaping', () => {
 describe('daily budget preview', () => {
   it('builds a tomorrow preview without a current bucket', () => {
     const manager = buildManager();
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 24,
-      priceShapingEnabled: false,
-    };
+    const settings = buildSettings({ dailyBudgetKWh: 24 });
     const dayStart = getDateKeyStartMs('2024-01-15', TZ);
     const preview = manager.buildPreview({
       dayStartUtcMs: dayStart,
@@ -289,11 +441,7 @@ describe('daily budget preview', () => {
 describe('daily budget exceeded state', () => {
   it('freezes when usage exceeds the allowed curve', () => {
     const manager = buildManager();
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 1,
-      priceShapingEnabled: false,
-    };
+    const settings = buildSettings({ dailyBudgetKWh: 1 });
     const dayStart = getDateKeyStartMs('2024-01-15', TZ);
     const bucketKey = new Date(dayStart).toISOString();
     const update = manager.update({
@@ -309,11 +457,7 @@ describe('daily budget exceeded state', () => {
 
   it('unfreezes once usage returns under plan', () => {
     const manager = buildManager();
-    const settings = {
-      enabled: true,
-      dailyBudgetKWh: 10,
-      priceShapingEnabled: false,
-    };
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
     const dayStart = getDateKeyStartMs('2024-01-15', TZ);
     const bucketKey = new Date(dayStart).toISOString();
     const nextBucketKey = new Date(dayStart + 60 * 60 * 1000).toISOString();

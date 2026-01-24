@@ -56,10 +56,12 @@ npm install          # Install dependencies
 npx lint-staged      # Pre-commit hook: ESLint + type check on staged files
 npm test             # Full test suite (pre-commit)
 npm run ci           # Run regularly during implementation
+npm run validate     # Validate Homey manifest (safe)
 npx tsc --noEmit     # Type check (extra safety if needed)
+homey app validate   # Allowed Homey CLI command (updates app.json on compose changes)
 ```
 
-Note: Do not run `homey` CLI commands - these deploy to hardware and should be run manually by the user.
+Note: Do not run `homey` CLI commands that deploy to hardware. `homey app validate` is allowed.
 
 ## Writing Tests
 

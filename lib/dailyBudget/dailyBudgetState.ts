@@ -127,6 +127,7 @@ export const computeBudgetState = (params: {
   dailyBudgetKWh: number;
   plannedKWh: number[];
   profileSampleCount: number;
+  profileSplitSampleCount?: number;
 }): BudgetState => {
   const {
     context,
@@ -134,6 +135,7 @@ export const computeBudgetState = (params: {
     dailyBudgetKWh,
     plannedKWh,
     profileSampleCount,
+    profileSplitSampleCount,
   } = params;
   const plannedWeight = buildWeightsFromPlan(plannedKWh);
   const { allowedCumKWh, allowedNowKWh, deviationKWh } = computePlanDeviation({
@@ -145,7 +147,11 @@ export const computeBudgetState = (params: {
     usedNowKWh: context.usedNowKWh,
   });
   const remainingKWh = enabled ? dailyBudgetKWh - context.usedNowKWh : 0;
-  const confidence = getConfidence(profileSampleCount);
+  const baseConfidence = getConfidence(profileSampleCount);
+  const splitConfidence = typeof profileSplitSampleCount === 'number'
+    ? getConfidence(profileSplitSampleCount)
+    : baseConfidence;
+  const confidence = Math.min(baseConfidence, splitConfidence);
   const exceeded = enabled && (context.usedNowKWh > dailyBudgetKWh || deviationKWh > 0);
 
   return {
@@ -193,6 +199,8 @@ export const buildDailyBudgetSnapshot = (params: {
   settings: DailyBudgetSettings;
   enabled: boolean;
   plannedKWh: number[];
+  plannedUncontrolledKWh?: number[];
+  plannedControlledKWh?: number[];
   priceData: PriceData;
   budget: BudgetState;
   frozen: boolean;
@@ -202,6 +210,8 @@ export const buildDailyBudgetSnapshot = (params: {
     settings,
     enabled,
     plannedKWh,
+    plannedUncontrolledKWh,
+    plannedControlledKWh,
     priceData,
     budget,
     frozen,
@@ -233,6 +243,8 @@ export const buildDailyBudgetSnapshot = (params: {
       startLocalLabels: context.bucketStartLocalLabels,
       plannedWeight: budget.plannedWeight,
       plannedKWh,
+      plannedUncontrolledKWh,
+      plannedControlledKWh,
       actualKWh: context.bucketUsage,
       allowedCumKWh: budget.allowedCumKWh,
       price: priceData.prices,
