@@ -12,6 +12,7 @@ import {
   normalizeWeights,
   resolveCurrentBucketIndex,
 } from '../lib/dailyBudget/dailyBudgetMath';
+import { buildPlanBreakdown } from '../lib/dailyBudget/dailyBudgetBreakdown';
 
 describe('allocateBudgetWithCaps', () => {
   it('caps all buckets when every bucket hits its cap', () => {
@@ -166,6 +167,27 @@ describe('daily budget math helpers', () => {
       flexShare: 0.5,
     });
     expect(combined).toEqual([1, 2]);
+  });
+
+  it('builds a breakdown that sums to planned values', () => {
+    const plannedKWh = [4, 2, 0, 6];
+    const breakdown = buildPlanBreakdown({
+      bucketStartUtcMs,
+      timeZone,
+      plannedKWh,
+      breakdown: {
+        uncontrolled: [1, 0, 0, 0, ...Array.from({ length: 20 }, () => 0)],
+        controlled: [0, 1, 0, 0, ...Array.from({ length: 20 }, () => 0)],
+      },
+    });
+    expect(breakdown).not.toBeNull();
+    const plannedUncontrolled = breakdown?.plannedUncontrolledKWh ?? [];
+    const plannedControlled = breakdown?.plannedControlledKWh ?? [];
+    expect(plannedUncontrolled[0]).toBeCloseTo(4, 6);
+    expect(plannedControlled[0]).toBeCloseTo(0, 6);
+    expect(plannedUncontrolled[1]).toBeCloseTo(0, 6);
+    expect(plannedControlled[1]).toBeCloseTo(2, 6);
+    expect(plannedUncontrolled[3] + plannedControlled[3]).toBeCloseTo(6, 6);
   });
 
   it('builds a plan that respects previous buckets and locked current bucket', () => {

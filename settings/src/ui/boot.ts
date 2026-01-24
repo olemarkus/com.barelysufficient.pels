@@ -24,17 +24,17 @@ import {
   priorityForm,
   debugLoggingTopicInputs,
 } from './dom';
-import { getHomeyClient, getSetting, setSetting, waitForHomey } from './homey';
+import { getHomeyClient, setSetting, waitForHomey } from './homey';
 import { showToast, showToastError } from './toast';
 import { refreshDevices, renderDevices } from './devices';
-import { getPowerUsage, renderPowerStats, renderPowerUsage, PowerTracker } from './power';
-import { getHourBucketKey } from '../../../lib/utils/dateUtils';
+import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
+  DAILY_BUDGET_BREAKDOWN_ENABLED,
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DEBUG_LOGGING_TOPICS,
@@ -77,9 +77,10 @@ import {
   refreshAdvancedDeviceLogger,
 } from './advanced';
 import { state } from './state';
-import { flushSettingsLogs, logSettingsError, logSettingsInfo, logSettingsWarn } from './logging';
+import { flushSettingsLogs, logSettingsError, logSettingsWarn } from './logging';
 import { initTooltips } from './tooltips';
 import { initDebouncedSaveFlush } from './utils';
+import { handleResetStats } from './resetStats';
 
 const showTab = (tabId: string) => {
   tabs.forEach((tab) => {
@@ -168,6 +169,7 @@ const initRealtimeListeners = () => {
     CAPACITY_MARGIN_KW,
     DAILY_BUDGET_CONTROLLED_WEIGHT,
     DAILY_BUDGET_PRICE_FLEX_SHARE,
+    DAILY_BUDGET_BREAKDOWN_ENABLED,
   ]);
 
   const dailyBudgetSettingsKeys = new Set([
@@ -179,7 +181,11 @@ const initRealtimeListeners = () => {
   const capacitySettingsKeys = new Set([CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]);
   const priceRefreshKeys = new Set([COMBINED_PRICES, 'electricity_prices']);
   const deviceControlKeys = new Set(['managed_devices', 'controllable_devices']);
-  const dailyBudgetTuningKeys = new Set([DAILY_BUDGET_CONTROLLED_WEIGHT, DAILY_BUDGET_PRICE_FLEX_SHARE]);
+  const dailyBudgetTuningKeys = new Set([
+    DAILY_BUDGET_CONTROLLED_WEIGHT,
+    DAILY_BUDGET_PRICE_FLEX_SHARE,
+    DAILY_BUDGET_BREAKDOWN_ENABLED,
+  ]);
 
   const handleDailyBudgetSettingsSet = (key: string) => {
     if (!dailyBudgetRefreshKeys.has(key)) return;
@@ -297,85 +303,6 @@ const initCapacityHandlers = () => {
     resetStatsBtn.addEventListener('click', () => handleResetStats(resetStatsBtn));
   } else {
     void logSettingsWarn('Reset stats button not found', undefined, 'initCapacityHandlers');
-  }
-};
-
-let resetTimeout: ReturnType<typeof setTimeout> | null = null;
-
-
-const calculateResetState = (currentState: PowerTracker): PowerTracker => {
-  const currentHourKey = getHourBucketKey();
-
-  const newBuckets: Record<string, number> = {};
-  if (currentState.buckets && currentState.buckets[currentHourKey] !== undefined) {
-    newBuckets[currentHourKey] = currentState.buckets[currentHourKey];
-  }
-
-  const newBudgets: Record<string, number> = {};
-  if (currentState.hourlyBudgets && currentState.hourlyBudgets[currentHourKey] !== undefined) {
-    newBudgets[currentHourKey] = currentState.hourlyBudgets[currentHourKey];
-  }
-
-  return {
-    ...currentState,
-    buckets: newBuckets,
-    hourlyBudgets: newBudgets,
-    dailyTotals: {},
-    hourlyAverages: {},
-    unreliablePeriods: [],
-  };
-};
-
-const handleResetStats = async (btn: HTMLButtonElement) => {
-  // Step 1: Request Confirmation
-  if (!btn.classList.contains('confirming')) {
-    await logSettingsInfo('Reset stats confirmation requested', 'handleResetStats');
-    const b = btn;
-    b.textContent = '⚠️ Click again to confirm reset';
-    b.classList.add('confirming');
-    b.style.color = 'var(--homey-red, #f44336)'; // Visual feedback
-
-    if (resetTimeout) clearTimeout(resetTimeout);
-    resetTimeout = setTimeout(() => {
-      const el = btn;
-      el.textContent = 'Reset all stats';
-      el.classList.remove('confirming');
-      el.style.color = '';
-      resetTimeout = null;
-    }, 5000); // 5 seconds to confirm
-    return;
-  }
-
-  // Step 2: Execute Reset
-  await logSettingsInfo('Reset stats confirmed', 'handleResetStats');
-  if (resetTimeout) clearTimeout(resetTimeout);
-  const b = btn;
-  b.textContent = 'Resetting...';
-
-  try {
-    const currentState = (await getSetting('power_tracker_state') as PowerTracker) || {};
-    const newState = calculateResetState(currentState);
-
-    await setSetting('power_tracker_state', newState);
-
-    // Refresh UI
-    renderPowerUsage(Object.entries(newState.buckets || {}).map(([hour, kWh]) => ({
-      hour: new Date(hour),
-      kWh,
-      budgetKWh: (newState.hourlyBudgets || {})[hour],
-    })));
-    await renderPowerStats();
-    await showToast('Power stats reset (current hour preserved).', 'ok');
-    await logSettingsInfo('Reset stats completed', 'handleResetStats');
-  } catch (error) {
-    await logSettingsError('Reset stats failed', error, 'handleResetStats');
-    await showToastError(error, 'Failed to reset stats.');
-  } finally {
-    const el = btn;
-    el.textContent = 'Reset all stats';
-    el.classList.remove('confirming');
-    el.style.color = '';
-    resetTimeout = null;
   }
 };
 
