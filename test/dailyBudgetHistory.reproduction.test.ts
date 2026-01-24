@@ -11,12 +11,13 @@ describe('daily budget history reproduction', () => {
       logDebug: console.log,
     });
 
-    const nowMs = Date.now();
+    // Use a fixed "now" to keep the test deterministic.
+    const nowMs = Date.UTC(2024, 0, 15, 12, 0, 0);
     const todayKey = getDateKeyInTimeZone(new Date(nowMs), TZ);
-    const todayStartUtcMs = getDateKeyStartMs(todayKey, TZ);
 
-    // Go back 24 hours
-    const yesterdayStartUtcMs = todayStartUtcMs - 24 * 60 * 60 * 1000;
+    // Derive yesterday via date keys to avoid DST edge cases.
+    const yesterdayKey = getDateKeyInTimeZone(new Date(nowMs - 12 * 60 * 60 * 1000), TZ);
+    const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, TZ);
 
     const powerTracker: PowerTrackerState = {
       buckets: {},

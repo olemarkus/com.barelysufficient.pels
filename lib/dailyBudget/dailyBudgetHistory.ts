@@ -44,6 +44,7 @@ export const buildDailyBudgetHistory = (params: {
   const usedNowKWh = sumArray(bucketUsage);
   const enabled = dailyBudgetKWh > 0;
 
+  const currentBucketIndex = bucketStartUtcMs.length;
   const context: DayContext = {
     nowMs: nextDayStartUtcMs - 1,
     timeZone,
@@ -52,11 +53,11 @@ export const buildDailyBudgetHistory = (params: {
     bucketStartUtcMs,
     bucketStartLocalLabels,
     bucketKeys,
-    currentBucketIndex: bucketStartUtcMs.length - 1,
+    currentBucketIndex,
     currentBucketProgress: 1,
     bucketUsage,
     usedNowKWh,
-    currentBucketUsage: bucketUsage[bucketUsage.length - 1] ?? 0,
+    currentBucketUsage: bucketUsage[currentBucketIndex] ?? 0,
   };
 
   const budget = computeBudgetState({

@@ -70,12 +70,12 @@ export const finalizePreviousDay = (params: {
   }
   const hourlyTotals = bucketStartUtcMs.reduce((totals, ts, index) => {
     const bucketHour = getZonedParts(new Date(ts), timeZone).hour;
-    const current = totals[bucketHour] ?? 0;
-    return totals.map((value, idx) => (
-      idx === bucketHour ? current + (bucketUsage[index] ?? 0) : value
-    ));
-  }, Array.from({ length: 24 }, () => 0));
-  const nextWeights = hourlyTotals.map((value) => value / totalKWh);
+    const current = totals.get(bucketHour) ?? 0;
+    totals.set(bucketHour, current + (bucketUsage[index] ?? 0));
+    return totals;
+  }, new Map<number, number>());
+  const hourlyTotalsArray = Array.from({ length: 24 }, (_, hour) => hourlyTotals.get(hour) ?? 0);
+  const nextWeights = hourlyTotalsArray.map((value) => value / totalKWh);
   const nextState = updateProfile(state, nextWeights);
   markDirty(true);
   logDebug(`Daily budget: finalized ${previousDateKey} (${totalKWh.toFixed(2)} kWh)`);

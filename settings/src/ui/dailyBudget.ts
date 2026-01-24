@@ -65,6 +65,18 @@ let currentDailyBudgetView: DailyBudgetView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
 let costDisplay: CostDisplay = { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
 
+const resolveDailyBudgetTitle = (view: DailyBudgetView) => {
+  if (view === 'tomorrow') return 'Tomorrow plan';
+  if (view === 'yesterday') return 'Yesterday plan';
+  return 'Today plan';
+};
+
+const resolveDailyBudgetCostLabel = (view: DailyBudgetView) => {
+  if (view === 'tomorrow') return 'Estimated cost tomorrow';
+  if (view === 'yesterday') return 'Cost yesterday';
+  return 'Estimated cost today';
+};
+
 const applyDailyBudgetBounds = () => {
   if (!dailyBudgetKwhInput) return;
   dailyBudgetKwhInput.min = MIN_DAILY_BUDGET_KWH.toString();
@@ -342,23 +354,14 @@ const renderDailyBudgetEmptyState = (message = 'Daily budget data not available 
   setHidden(dailyBudgetLegendActual, true);
   setPillState(false, false);
   const isTomorrow = currentDailyBudgetView === 'tomorrow';
-  const isYesterday = currentDailyBudgetView === 'yesterday';
   setDeviationVisibility(!isTomorrow);
 
-  let title = 'Today plan';
-  if (isTomorrow) title = 'Tomorrow plan';
-  if (isYesterday) title = 'Yesterday plan';
-
-  setText(dailyBudgetTitle, title);
+  setText(dailyBudgetTitle, resolveDailyBudgetTitle(currentDailyBudgetView));
   setText(dailyBudgetDay, '--');
   setText(dailyBudgetRemaining, '-- kWh');
   setText(dailyBudgetDeviation, '-- kWh');
 
-  let costLabel = 'Estimated cost today';
-  if (isTomorrow) costLabel = 'Estimated cost tomorrow';
-  if (isYesterday) costLabel = 'Cost yesterday';
-
-  setText(dailyBudgetCostLabel, costLabel);
+  setText(dailyBudgetCostLabel, resolveDailyBudgetCostLabel(currentDailyBudgetView));
   setText(dailyBudgetCost, formatCost(null, costDisplay));
   setTooltip(dailyBudgetDeviation, null);
   setChipStateIfPresent(dailyBudgetConfidence, 'Confidence --');
@@ -366,10 +369,7 @@ const renderDailyBudgetEmptyState = (message = 'Daily budget data not available 
 
 const renderDailyBudgetHeader = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
   if (dailyBudgetTitle) {
-    let title = 'Today plan';
-    if (view === 'tomorrow') title = 'Tomorrow plan';
-    if (view === 'yesterday') title = 'Yesterday plan';
-    dailyBudgetTitle.textContent = title;
+    dailyBudgetTitle.textContent = resolveDailyBudgetTitle(view);
   }
   if (dailyBudgetDay) {
     dailyBudgetDay.textContent = `${payload.dateKey} · ${payload.timeZone}`;
@@ -379,7 +379,6 @@ const renderDailyBudgetHeader = (payload: DailyBudgetDayPayload, view: DailyBudg
 
 const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
   const isTomorrow = view === 'tomorrow';
-  const isYesterday = view === 'yesterday';
   if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = formatKWh(payload.state.remainingKWh);
   setDeviationVisibility(!isTomorrow);
   if (dailyBudgetDeviation && !isTomorrow) {
@@ -388,12 +387,7 @@ const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudge
   } else {
     setTooltip(dailyBudgetDeviation, null);
   }
-  if (dailyBudgetCostLabel) {
-    let label = 'Estimated cost today';
-    if (isTomorrow) label = 'Estimated cost tomorrow';
-    if (isYesterday) label = 'Cost yesterday';
-    dailyBudgetCostLabel.textContent = label;
-  }
+  if (dailyBudgetCostLabel) dailyBudgetCostLabel.textContent = resolveDailyBudgetCostLabel(view);
   const estimatedCost = computeEstimatedCost({
     plannedKWh: payload.buckets.plannedKWh || [],
     actualKWh: (view === 'today' || view === 'yesterday') ? payload.buckets.actualKWh : undefined,

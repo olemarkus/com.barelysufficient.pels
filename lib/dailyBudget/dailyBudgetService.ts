@@ -132,17 +132,11 @@ export class DailyBudgetService {
   }
 
   private buildYesterdayHistory(nowMs: number): DailyBudgetDayPayload | null {
+    const context = this.resolveYesterdayContext(nowMs);
+    if (!context) return null;
+    const { timeZone, yesterdayStartUtcMs } = context;
     try {
-      const timeZone = this.resolveTimeZone();
-      const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
-      const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
-      // Go back 12 hours from start of today to ensure we are in yesterday
-      const yesterdayMs = todayStartUtcMs - 12 * 60 * 60 * 1000;
-      const yesterdayKey = getDateKeyInTimeZone(new Date(yesterdayMs), timeZone);
-      const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
-
       const combinedPrices = this.deps.homey.settings.get('combined_prices') as CombinedPriceData | null;
-
       return this.manager.buildHistory({
         dayStartUtcMs: yesterdayStartUtcMs,
         timeZone,
@@ -153,44 +147,23 @@ export class DailyBudgetService {
       });
     } catch (error) {
       this.deps.log('Daily budget: failed to build yesterday history', error);
-      // Attempt to return a fallback empty payload if possible
-      try {
-        const timeZone = this.resolveTimeZone();
-        const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
-        const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
-        const yesterdayMs = todayStartUtcMs - 12 * 60 * 60 * 1000;
-        const yesterdayKey = getDateKeyInTimeZone(new Date(yesterdayMs), timeZone);
-        const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
+      return null;
+    }
+  }
 
-        return {
-          dateKey: yesterdayKey,
-          timeZone,
-          nowUtc: new Date(nowMs).toISOString(),
-          dayStartUtc: new Date(yesterdayStartUtcMs).toISOString(),
-          currentBucketIndex: -1, // Past day
-          budget: { enabled: false, dailyBudgetKWh: 0, priceShapingEnabled: false },
-          state: {
-            usedNowKWh: 0,
-            allowedNowKWh: 0,
-            remainingKWh: 0,
-            deviationKWh: 0,
-            exceeded: false,
-            frozen: false,
-            confidence: 0,
-            priceShapingActive: false,
-          },
-          buckets: {
-            startUtc: [],
-            startLocalLabels: [],
-            plannedWeight: [],
-            plannedKWh: [],
-            actualKWh: [],
-            allowedCumKWh: [],
-          },
-        };
-      } catch (_fallbackError) {
-        return null;
-      }
+  private resolveYesterdayContext(nowMs: number): { timeZone: string; yesterdayStartUtcMs: number } | null {
+    try {
+      const timeZone = this.resolveTimeZone();
+      const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
+      const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
+      // Go back 12 hours from start of today to ensure we are in yesterday
+      const yesterdayMs = todayStartUtcMs - 12 * 60 * 60 * 1000;
+      const yesterdayKey = getDateKeyInTimeZone(new Date(yesterdayMs), timeZone);
+      const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
+      return { timeZone, yesterdayStartUtcMs };
+    } catch (error) {
+      this.deps.log('Daily budget: failed to resolve yesterday date', error);
+      return null;
     }
   }
 
