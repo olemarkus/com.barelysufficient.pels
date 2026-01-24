@@ -278,13 +278,7 @@ class PelsApp extends Homey.App {
       getCapacityDryRun: () => this.capacityDryRun,
       loadPriceOptimizationSettings: () => this.loadPriceOptimizationSettings(),
       loadDailyBudgetSettings: () => this.dailyBudgetService.loadSettings(),
-      updateDailyBudgetState: (options) => {
-        this.dailyBudgetService.updateState(options);
-        this.powerTracker = recordDailyBudgetCap({
-          powerTracker: this.powerTracker,
-          snapshot: this.dailyBudgetService.getSnapshot(),
-        });
-      },
+      updateDailyBudgetState: (options) => this.updateDailyBudgetAndRecordCap(options),
       resetDailyBudgetLearning: () => this.dailyBudgetService.resetLearning(),
       priceService: this.priceCoordinator,
       updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
@@ -463,12 +457,16 @@ class PelsApp extends Homey.App {
     const pruned = aggregateAndPruneHistory(nextState);
     this.powerTracker = pruned;
     const nowMs = typeof pruned.lastTimestamp === 'number' ? pruned.lastTimestamp : Date.now();
-    this.dailyBudgetService.updateState({ nowMs });
+    this.updateDailyBudgetAndRecordCap({ nowMs });
+    this.homey.settings.set('power_tracker_state', this.powerTracker);
+  }
+
+  private updateDailyBudgetAndRecordCap(options?: { nowMs?: number; forcePlanRebuild?: boolean }): void {
+    this.dailyBudgetService.updateState(options);
     this.powerTracker = recordDailyBudgetCap({
       powerTracker: this.powerTracker,
       snapshot: this.dailyBudgetService.getSnapshot(),
     });
-    this.homey.settings.set('power_tracker_state', this.powerTracker);
   }
   private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
     await recordPowerSampleForApp({

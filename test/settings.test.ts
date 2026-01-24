@@ -561,7 +561,7 @@ describe('settings script', () => {
       now.getUTCFullYear(),
       now.getUTCMonth(),
       now.getUTCDate(),
-      now.getUTCHours(),
+      22,
       0,
       0,
       0,
