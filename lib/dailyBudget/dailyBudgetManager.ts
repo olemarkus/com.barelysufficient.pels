@@ -427,7 +427,7 @@ export class DailyBudgetManager {
     combinedPrices?: CombinedPriceData | null;
     priceOptimizationEnabled: boolean;
     priceShapingEnabled: boolean;
-  }): DailyBudgetDayPayload {
+  }): DailyBudgetDayPayload | null {
     return buildDailyBudgetHistory({
       ...params,
       profileSampleCount: this.state.profile?.sampleCount ?? 0,

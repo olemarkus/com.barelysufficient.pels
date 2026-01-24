@@ -21,7 +21,7 @@ export const buildDailyBudgetHistory = (params: {
   priceOptimizationEnabled: boolean;
   priceShapingEnabled: boolean;
   profileSampleCount: number;
-}): DailyBudgetDayPayload => {
+}): DailyBudgetDayPayload | null => {
   const {
     dayStartUtcMs,
     timeZone,
@@ -40,6 +40,9 @@ export const buildDailyBudgetHistory = (params: {
   });
   const { bucketKeys, bucketUsage } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
   const plannedKWh = bucketKeys.map((key) => powerTracker.dailyBudgetCaps?.[key] ?? 0);
+  const hasPlanned = plannedKWh.some((value) => value > 0);
+  const hasUsage = bucketUsage.some((value) => value > 0);
+  if (!hasPlanned && !hasUsage) return null;
   const dailyBudgetKWh = sumArray(plannedKWh);
   const usedNowKWh = sumArray(bucketUsage);
   const enabled = dailyBudgetKWh > 0;

@@ -65,17 +65,14 @@ let currentDailyBudgetView: DailyBudgetView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
 let costDisplay: CostDisplay = { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
 
-const resolveDailyBudgetTitle = (view: DailyBudgetView) => {
-  if (view === 'tomorrow') return 'Tomorrow plan';
-  if (view === 'yesterday') return 'Yesterday plan';
-  return 'Today plan';
+const viewLabels: Record<DailyBudgetView, { title: string; costLabel: string }> = {
+  today: { title: 'Today plan', costLabel: 'Estimated cost today' },
+  tomorrow: { title: 'Tomorrow plan', costLabel: 'Estimated cost tomorrow' },
+  yesterday: { title: 'Yesterday plan', costLabel: 'Cost yesterday' },
 };
 
-const resolveDailyBudgetCostLabel = (view: DailyBudgetView) => {
-  if (view === 'tomorrow') return 'Estimated cost tomorrow';
-  if (view === 'yesterday') return 'Cost yesterday';
-  return 'Estimated cost today';
-};
+const resolveDailyBudgetTitle = (view: DailyBudgetView) => viewLabels[view].title;
+const resolveDailyBudgetCostLabel = (view: DailyBudgetView) => viewLabels[view].costLabel;
 
 const applyDailyBudgetBounds = () => {
   if (!dailyBudgetKwhInput) return;
@@ -142,22 +139,18 @@ const resolveViewPayload = (
 };
 
 const applyDailyBudgetViewState = () => {
-  const isToday = currentDailyBudgetView === 'today';
-  const isTomorrow = currentDailyBudgetView === 'tomorrow';
-  const isYesterday = currentDailyBudgetView === 'yesterday';
+  const views = [
+    { view: 'today', element: dailyBudgetToggleToday },
+    { view: 'tomorrow', element: dailyBudgetToggleTomorrow },
+    { view: 'yesterday', element: dailyBudgetToggleYesterday },
+  ] as const;
 
-  if (dailyBudgetToggleToday) {
-    dailyBudgetToggleToday.classList.toggle('is-active', isToday);
-    dailyBudgetToggleToday.setAttribute('aria-pressed', String(isToday));
-  }
-  if (dailyBudgetToggleTomorrow) {
-    dailyBudgetToggleTomorrow.classList.toggle('is-active', isTomorrow);
-    dailyBudgetToggleTomorrow.setAttribute('aria-pressed', String(isTomorrow));
-  }
-  if (dailyBudgetToggleYesterday) {
-    dailyBudgetToggleYesterday.classList.toggle('is-active', isYesterday);
-    dailyBudgetToggleYesterday.setAttribute('aria-pressed', String(isYesterday));
-  }
+  views.forEach(({ view, element }) => {
+    if (!element) return;
+    const isActive = currentDailyBudgetView === view;
+    element.classList.toggle('is-active', isActive);
+    element.setAttribute('aria-pressed', String(isActive));
+  });
 };
 
 const resolveCostDisplay = (combinedPrices: unknown | null): CostDisplay => {
@@ -388,10 +381,17 @@ const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudge
     setTooltip(dailyBudgetDeviation, null);
   }
   if (dailyBudgetCostLabel) dailyBudgetCostLabel.textContent = resolveDailyBudgetCostLabel(view);
+  const plannedKWh = payload.buckets.plannedKWh || [];
+  let costIndex: number | undefined;
+  if (view === 'yesterday') {
+    costIndex = plannedKWh.length;
+  } else if (view === 'today') {
+    costIndex = payload.currentBucketIndex;
+  }
   const estimatedCost = computeEstimatedCost({
-    plannedKWh: payload.buckets.plannedKWh || [],
+    plannedKWh,
     actualKWh: (view === 'today' || view === 'yesterday') ? payload.buckets.actualKWh : undefined,
-    currentBucketIndex: (view === 'today' || view === 'yesterday') ? payload.currentBucketIndex : undefined,
+    currentBucketIndex: costIndex,
     prices: payload.buckets.price,
   });
   if (dailyBudgetCost) dailyBudgetCost.textContent = formatCost(estimatedCost, costDisplay);
