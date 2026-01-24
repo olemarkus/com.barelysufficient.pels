@@ -47,10 +47,11 @@ type PlanImageState = {
   cameraId: string;
   cameraName: string;
   filename: string;
+  contentType: string;
   dayOffset: number;
   resolveDayKey: (snapshot: DailyBudgetUiPayload | null) => string | null;
   image?: Homey.Image;
-  png: ImageBuffer;
+  buffer: ImageBuffer;
   generation?: Promise<ImageBuffer>;
   lastKey?: string;
 };
@@ -103,18 +104,20 @@ class PelsInsightsDevice extends Homey.Device {
       cameraId: 'plan_budget',
       cameraName: 'Budget and Price',
       filename: 'pels-plan.png',
+      contentType: 'image/png',
       dayOffset: 0,
       resolveDayKey: (snapshot) => snapshot?.todayKey ?? null,
-      png: EMPTY_PNG,
+      buffer: EMPTY_PNG,
     },
     {
       target: 'tomorrow',
       cameraId: 'plan_budget_tomorrow',
       cameraName: 'Budget and Price (Tomorrow)',
       filename: 'pels-plan-tomorrow.png',
+      contentType: 'image/png',
       dayOffset: 1,
       resolveDayKey: (snapshot) => snapshot?.tomorrowKey ?? null,
-      png: EMPTY_PNG,
+      buffer: EMPTY_PNG,
     },
   ];
   private planImageTimer?: ReturnType<typeof setTimeout>;
@@ -300,14 +303,19 @@ class PelsInsightsDevice extends Homey.Device {
       const current = this.planImages[index];
       if (!options.force && current?.lastKey === key) {
         this.logPlanImageDebug(`${slot.cameraId}: Refresh skipped: cached key ${key}`);
-        return current?.png ?? slot.png;
+        return current?.buffer ?? slot.buffer;
       }
       this.logPlanImageDebug(`${slot.cameraId}: Refreshing image (force=${options.force === true}) key=${key}`);
-      const png = await this.generatePlanImageBuffer(snapshot, dayKey, combinedPrices);
-      this.updatePlanImageSlot(index, { png, lastKey: key });
+      const payload = await this.generatePlanImagePayload(snapshot, dayKey, combinedPrices, slot.filename);
+      this.updatePlanImageSlot(index, {
+        buffer: payload.buffer,
+        contentType: payload.contentType,
+        filename: payload.filename,
+        lastKey: key,
+      });
       await image.update();
-      this.logPlanImageDebug(`${slot.cameraId}: Image updated (${png.length} bytes)`);
-      return png;
+      this.logPlanImageDebug(`${slot.cameraId}: Image updated (${payload.buffer.length} bytes)`);
+      return payload.buffer;
     })();
     this.updatePlanImageSlot(index, { generation: renderPromise });
     try {
@@ -414,16 +422,18 @@ class PelsInsightsDevice extends Homey.Device {
       const combinedPrices = this.getCombinedPrices();
       try {
         this.logPlanImageDebug(`${slot.cameraId}: Generating image for stream`);
-        const png = await this.generatePlanImageBuffer(snapshot, dayKey, combinedPrices);
+        const payload = await this.generatePlanImagePayload(snapshot, dayKey, combinedPrices, slot.filename);
         const updated = this.updatePlanImageSlot(index, {
-          png,
+          buffer: payload.buffer,
+          contentType: payload.contentType,
+          filename: payload.filename,
           lastKey: this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices),
         });
-        this.logPlanImageDebug(`${slot.cameraId}: Generated image for stream (${png.length} bytes)`);
-        return updated.png;
+        this.logPlanImageDebug(`${slot.cameraId}: Generated image for stream (${payload.buffer.length} bytes)`);
+        return updated.buffer;
       } catch (error) {
         this.error(`Failed to generate plan image for stream ${slot.cameraId}`, error);
-        return slot.png ?? EMPTY_PNG;
+        return slot.buffer ?? EMPTY_PNG;
       }
     })();
     this.updatePlanImageSlot(index, { generation });
@@ -437,13 +447,18 @@ class PelsInsightsDevice extends Homey.Device {
     }
   }
 
-  private async generatePlanImageBuffer(
+  private async generatePlanImagePayload(
     snapshot: DailyBudgetUiPayload | null,
     dayKey: string | null,
     combinedPrices?: CombinedPriceData | null,
-  ): Promise<ImageBuffer> {
+    filename?: string,
+  ): Promise<{ buffer: ImageBuffer; contentType: string; filename: string }> {
     const png = await buildPlanPricePng({ snapshot, combinedPrices, dayKey });
-    return Buffer.from(png);
+    return {
+      buffer: Buffer.from(png),
+      contentType: 'image/png',
+      filename: filename ?? 'pels-plan.png',
+    };
   }
 
   private getCombinedPrices(): CombinedPriceData | null {
@@ -471,7 +486,7 @@ class PelsInsightsDevice extends Homey.Device {
     try {
       const png = await this.getPlanImageForStream(index);
       const meta = {
-        contentType: 'image/png',
+        contentType: slot.contentType || 'image/png',
         filename: slot.filename,
         contentLength: png.length,
       };
@@ -482,9 +497,9 @@ class PelsInsightsDevice extends Homey.Device {
       return meta;
     } catch (error) {
       this.error(`Failed to stream plan image ${slot.cameraId}`, error);
-      const fallback = slot.png ?? EMPTY_PNG;
+      const fallback = slot.buffer ?? EMPTY_PNG;
       const meta = {
-        contentType: 'image/png',
+        contentType: slot.contentType || 'image/png',
         filename: slot.filename,
         contentLength: fallback.length,
       };
@@ -502,7 +517,7 @@ class PelsInsightsDevice extends Homey.Device {
     this.planImageWarmupTimer = setTimeout(() => {
       this.planImageWarmupTimer = undefined;
       const needsWarmup = this.planImages.some((slot) => (
-        slot.image && slot.png.length <= EMPTY_PNG.length
+        slot.image && slot.buffer.length <= EMPTY_PNG.length
       ));
       if (needsWarmup) {
         this.logPlanImageDebug('Warmup refresh: placeholder image detected');

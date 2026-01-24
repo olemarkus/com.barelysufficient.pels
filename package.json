@@ -5,12 +5,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc && npm run build:tokens && npm run build:settings",
+    "build": "npm run ensure:resvg-arm64 && tsc && npm run build:tokens && npm run build:settings",
     "build:tokens": "style-dictionary build --config style-dictionary.config.mjs",
     "build:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --minify",
     "watch:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
     "start": "npm run build:settings && homey app run",
-    "install-app": "npm run build:settings && homey app install",
+    "install-app": "npm run ensure:resvg-arm64 && npm run build:settings && homey app install",
     "lint": "eslint .",
     "test:unit": "jest --testPathIgnorePatterns=settings-ui",
     "ci": "npm run build && npm run test:unit && npm run test:ui && npm run lint",
@@ -19,6 +19,7 @@
     "test:all": "npm run test:ui && npm test",
     "validate": "npm run build:settings && homey app validate",
     "check": "npm run test:ui && npm test",
+    "ensure:resvg-arm64": "node scripts/ensure-resvg-arm64.mjs",
     "prepare": "husky"
   },
   "lint-staged": {
