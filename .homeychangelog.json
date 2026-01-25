@@ -127,5 +127,8 @@
   },
   "1.11.0": {
     "en": "Daily Budget experience has been expanded and corrected: the Budget view now includes yesterday’s history, and several fixes improve how daily history is calculated and displayed. The Price view now contains prices with VAT, which makes it easier to compare prices to other sources.\n\nThe PELS Insights device now provides generated plan/price images (today and tomorrow) as camera tiles."
+  },
+  "1.11.1": {
+    "en": "Fix a bug where images won't render on Homey due to Homey running on arm64"
   }
 }
