@@ -67,6 +67,8 @@ export type PlanServiceDeps = {
 
 export class PlanService {
   private lastPlanSignature = '';
+  private lastPlanSnapshotSignature = '';
+  private lastPelsStatusJson = '';
   private rebuildPlanQueue: Promise<void> = Promise.resolve();
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
@@ -111,33 +113,45 @@ export class PlanService {
     await this.rebuildPlanQueue;
   }
 
+  private trackPlanChanges(plan: DevicePlan): string {
+    const deviceSignature = buildPlanSignature(plan);
+    if (deviceSignature !== this.lastPlanSignature) {
+      try {
+        const lines = buildPlanChangeLines(plan);
+        if (lines.length) {
+          this.deps.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
+        }
+      } catch (err) {
+        this.deps.logDebug('Plan updated (logging failed)', err);
+      }
+      this.lastPlanSignature = deviceSignature;
+    } else {
+      incPerfCounter('plan_rebuild_no_change_total');
+    }
+    return deviceSignature;
+  }
+
+  private updatePlanSnapshot(plan: DevicePlan, deviceSignature: string): void {
+    const planSnapshotSignature = `${deviceSignature}|${JSON.stringify(plan.meta)}`;
+    if (planSnapshotSignature === this.lastPlanSnapshotSignature) return;
+    this.lastPlanSnapshotSignature = planSnapshotSignature;
+    this.deps.homey.settings.set('device_plan_snapshot', plan);
+    incPerfCounter('settings_set.device_plan_snapshot');
+
+    const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
+    const realtime = api?.realtime;
+    if (typeof realtime === 'function') {
+      realtime.call(api, 'plan_updated', plan)
+        .catch((err: unknown) => this.deps.error('Failed to emit plan_updated event', err as Error));
+    }
+  }
+
   private async performPlanRebuild(): Promise<void> {
     const rebuildStart = Date.now();
     try {
       const plan = await this.buildDevicePlanSnapshot(this.deps.getPlanDevices() ?? []);
-      const signature = buildPlanSignature(plan);
-      if (signature !== this.lastPlanSignature) {
-        try {
-          const lines = buildPlanChangeLines(plan);
-          if (lines.length) {
-            this.deps.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
-          }
-        } catch (err) {
-          this.deps.logDebug('Plan updated (logging failed)', err);
-        }
-        this.lastPlanSignature = signature;
-      } else {
-        incPerfCounter('plan_rebuild_no_change_total');
-      }
-      this.deps.homey.settings.set('device_plan_snapshot', plan);
-      incPerfCounter('settings_set.device_plan_snapshot');
-
-      const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
-      const realtime = api?.realtime;
-      if (typeof realtime === 'function') {
-        realtime.call(api, 'plan_updated', plan)
-          .catch((err: unknown) => this.deps.error('Failed to emit plan_updated event', err as Error));
-      }
+      const deviceSignature = this.trackPlanChanges(plan);
+      this.updatePlanSnapshot(plan, deviceSignature);
       this.updatePelsStatus(plan);
       const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
       if (this.deps.getCapacityDryRun() && hasShedding) {
@@ -157,15 +171,27 @@ export class PlanService {
   }
 
   updatePelsStatus(plan: DevicePlan): void {
-    this.lastNotifiedPriceLevel = updatePelsStatusDirect({
-      homey: this.deps.homey,
+    const result = buildPelsStatus({
       plan,
       isCheap: this.deps.isCurrentHourCheap(),
       isExpensive: this.deps.isCurrentHourExpensive(),
       combinedPrices: this.deps.getCombinedPrices(),
       lastPowerUpdate: this.deps.getLastPowerUpdate(),
-      lastNotifiedPriceLevel: this.lastNotifiedPriceLevel,
-      error: (...args: unknown[]) => this.deps.error(...args),
     });
+    const statusJson = JSON.stringify(result.status);
+    if (statusJson !== this.lastPelsStatusJson) {
+      this.lastPelsStatusJson = statusJson;
+      this.deps.homey.settings.set('pels_status', result.status);
+      incPerfCounter('settings_set.pels_status');
+    }
+    if (result.priceLevel !== this.lastNotifiedPriceLevel) {
+      const card = this.deps.homey.flow?.getTriggerCard?.('price_level_changed');
+      if (card) {
+        card
+          .trigger({ level: result.priceLevel }, { priceLevel: result.priceLevel })
+          .catch((err: Error) => this.deps.error('Failed to trigger price_level_changed', err));
+      }
+    }
+    this.lastNotifiedPriceLevel = result.priceLevel;
   }
 }

@@ -30,7 +30,11 @@ import {
   resolveHomeyEnergyApiFromSdk,
   type HomeyEnergyApi,
 } from './lib/utils/homeyEnergy';
-const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
+const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
+const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 30 * 1000;
+const POWER_SAMPLE_REBUILD_MIN_DELTA_RATIO = 0.01;
+const POWER_SAMPLE_REBUILD_MIN_DELTA_W = 50;
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
   private capacityGuard?: CapacityGuard;
@@ -296,7 +300,6 @@ class PelsApp extends Homey.App {
     updateHeartbeat();
     this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
   }
-
   private startPerfLogging(): void {
     this.stopPerfLogging = startPerfLogger({
       isEnabled: () => this.debugLoggingTopics.has('perf'),
@@ -345,11 +348,9 @@ class PelsApp extends Homey.App {
     const managedRaw = this.homey.settings.get(MANAGED_DEVICES) as unknown;
     const controllableRaw = this.homey.settings.get(CONTROLLABLE_DEVICES) as unknown;
     const priceRaw = this.homey.settings.get(PRICE_OPTIMIZATION_SETTINGS) as unknown;
-
     const managed = isBooleanMap(managedRaw) ? { ...managedRaw } : {};
     const controllable = isBooleanMap(controllableRaw) ? { ...controllableRaw } : {};
     const priceEnabled = new Set<string>();
-
     if (priceRaw && typeof priceRaw === 'object') {
       Object.entries(priceRaw as Record<string, unknown>).forEach(([deviceId, entry]) => {
         if (entry && typeof entry === 'object' && (entry as { enabled?: unknown }).enabled === true) {
@@ -357,24 +358,20 @@ class PelsApp extends Homey.App {
         }
       });
     }
-
     let managedChanged = false;
     let controllableChanged = false;
-
     priceEnabled.forEach((deviceId) => {
       if (!Object.prototype.hasOwnProperty.call(managed, deviceId)) {
         managed[deviceId] = true;
         managedChanged = true;
       }
     });
-
     Object.entries(controllable).forEach(([deviceId, isControllable]) => {
       if (isControllable === true && !Object.prototype.hasOwnProperty.call(managed, deviceId)) {
         managed[deviceId] = true;
         managedChanged = true;
       }
     });
-
     Object.entries(managed).forEach(([deviceId, isManaged]) => {
       if (isManaged !== true) return;
       const hasCapacity = typeof controllable[deviceId] === 'boolean';
@@ -384,14 +381,12 @@ class PelsApp extends Homey.App {
         controllableChanged = true;
       }
     });
-
     if (managedChanged) {
       this.homey.settings.set(MANAGED_DEVICES, managed);
     }
     if (controllableChanged) {
       this.homey.settings.set(CONTROLLABLE_DEVICES, controllable);
     }
-
     if (managedChanged || controllableChanged) {
       this.log('Migrated managed device settings to explicit managed devices.');
     }
@@ -455,7 +450,6 @@ class PelsApp extends Homey.App {
     this.homey.settings.set('power_tracker_state', this.powerTracker);
     incPerfCounter('settings_set.power_tracker_state');
   }
-
   private updateDailyBudgetAndRecordCap(options?: { nowMs?: number; forcePlanRebuild?: boolean }): void {
     const updateStart = Date.now();
     this.dailyBudgetService.updateState(options);
@@ -483,6 +477,12 @@ class PelsApp extends Homey.App {
             this.powerSampleRebuildState = state;
           },
           minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
+          maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
+          minPowerDeltaW: Math.max(
+            POWER_SAMPLE_REBUILD_MIN_DELTA_W,
+            this.capacitySettings.limitKw * 1000 * POWER_SAMPLE_REBUILD_MIN_DELTA_RATIO,
+          ),
+          currentPowerW,
           rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache(),
           logError: (error) => {
             // Log error but don't throw - state is already persisted
