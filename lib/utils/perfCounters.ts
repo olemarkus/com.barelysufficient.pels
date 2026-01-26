@@ -2,6 +2,7 @@ export type PerfDuration = {
   totalMs: number;
   maxMs: number;
   count: number;
+  windowMaxMs?: number;
 };
 
 export type PerfSnapshot = {
@@ -30,11 +31,12 @@ export const incPerfCounter = (key: string, delta = 1): void => {
 export const addPerfDuration = (key: string, ms: number): void => {
   if (!key) return;
   const safeMs = Number.isFinite(ms) ? Math.max(0, ms) : 0;
-  const entry = state.durations[key] || { totalMs: 0, maxMs: 0, count: 0 };
+  const entry = state.durations[key] || { totalMs: 0, maxMs: 0, count: 0, windowMaxMs: 0 };
   const nextEntry = {
     totalMs: entry.totalMs + safeMs,
     maxMs: Math.max(entry.maxMs, safeMs),
     count: entry.count + 1,
+    windowMaxMs: Math.max(entry.windowMaxMs || 0, safeMs),
   };
   state = {
     ...state,
@@ -52,3 +54,15 @@ export const getPerfSnapshot = (): PerfSnapshot => ({
     Object.entries(state.durations).map(([key, value]) => [key, { ...value }]),
   ),
 });
+
+export const getPerfSnapshotAndResetWindow = (): PerfSnapshot => {
+  const snapshot = getPerfSnapshot();
+  const nextDurations = Object.fromEntries(
+    Object.entries(state.durations).map(([key, value]) => [key, { ...value, windowMaxMs: 0 }]),
+  );
+  state = {
+    ...state,
+    durations: nextDurations,
+  };
+  return snapshot;
+};

@@ -4,15 +4,51 @@ import type { PowerTrackerState } from '../core/powerTracker';
 import { recordPowerSample as recordPowerSampleCore } from '../core/powerTracker';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { sumControlledUsageKw } from '../plan/planUsage';
+import { incPerfCounter } from '../utils/perfCounters';
 import type { TargetDeviceSnapshot } from '../utils/types';
 
 export type PowerSampleRebuildState = {
   lastMs: number;
-  lastPowerW?: number;
-  pendingPowerW?: number;
+  lastRebuildPowerW?: number;
+  lastSoftLimitKw?: number;
   pending?: Promise<void>;
   timer?: ReturnType<typeof setTimeout>;
+  pendingPowerW?: number;
+  pendingSoftLimitKw?: number;
 };
+
+type RebuildDecision = {
+  shouldRebuild: boolean;
+  deltaW: number;
+  deltaMeaningful: boolean;
+  softLimitChanged: boolean;
+  maxIntervalExceeded: boolean;
+  isDangerZone: boolean;
+  headroomTight: boolean;
+};
+
+export function applyPowerDeltaToTracker(params: {
+  powerTracker: PowerTrackerState;
+  capacityGuard?: CapacityGuard;
+  deltaKw?: number;
+}): PowerTrackerState {
+  const { powerTracker, capacityGuard, deltaKw } = params;
+  if (typeof deltaKw !== 'number' || !Number.isFinite(deltaKw)) return powerTracker;
+  let basePowerW: number | null = null;
+  if (typeof powerTracker.lastPowerW === 'number' && Number.isFinite(powerTracker.lastPowerW)) {
+    basePowerW = powerTracker.lastPowerW;
+  } else {
+    const guardKw = capacityGuard?.getLastTotalPower?.();
+    if (typeof guardKw === 'number' && Number.isFinite(guardKw)) {
+      basePowerW = guardKw * 1000;
+    }
+  }
+  if (typeof basePowerW !== 'number' || !Number.isFinite(basePowerW)) return powerTracker;
+  const nextPowerW = Math.max(0, basePowerW + deltaKw * 1000);
+  capacityGuard?.reportTotalPower(nextPowerW / 1000);
+  if (powerTracker.lastPowerW === nextPowerW) return powerTracker;
+  return { ...powerTracker, lastPowerW: nextPowerW };
+}
 
 export function recordDailyBudgetCap(params: {
   powerTracker: PowerTrackerState;
@@ -33,57 +69,199 @@ export function recordDailyBudgetCap(params: {
   return { ...powerTracker, dailyBudgetCaps: nextCaps };
 }
 
+const DANGER_ZONE_MARGIN_RATIO = 0.1; // 10%
+const MIN_REBUILD_DELTA_W = 100;
+const MIN_REBUILD_DELTA_RATIO = 0.005; // 0.5% of limit
+const MIN_SOFT_LIMIT_DELTA_KW = 0.1;
+const MIN_SOFT_LIMIT_DELTA_RATIO = 0.01; // 1% of limit
+
+const resolveDangerZone = (currentPowerW: number | undefined, limitKw: number): boolean => {
+  if (typeof currentPowerW !== 'number') return false;
+  const dangerLimitW = (limitKw * (1 - DANGER_ZONE_MARGIN_RATIO)) * 1000;
+  return currentPowerW >= dangerLimitW;
+};
+
+const resolveHeadroomTight = (headroomKw: number | null | undefined): boolean => {
+  return typeof headroomKw === 'number' && headroomKw <= 0;
+};
+
+const resolvePowerDelta = (params: {
+  currentPowerW?: number;
+  powerDeltaW?: number;
+  lastRebuildPowerW?: number;
+  limitKw: number;
+}): { deltaW: number; deltaMeaningful: boolean } => {
+  const { currentPowerW, powerDeltaW, lastRebuildPowerW, limitKw } = params;
+  const deltaThresholdW = Math.max(MIN_REBUILD_DELTA_W, limitKw * 1000 * MIN_REBUILD_DELTA_RATIO);
+  const deltaFromSample = (typeof currentPowerW === 'number' && typeof lastRebuildPowerW === 'number')
+    ? Math.abs(currentPowerW - lastRebuildPowerW)
+    : 0;
+  const deltaFromHint = typeof powerDeltaW === 'number' ? Math.abs(powerDeltaW) : 0;
+  const deltaW = Math.max(deltaFromSample, deltaFromHint);
+  return { deltaW, deltaMeaningful: deltaW >= deltaThresholdW };
+};
+
+const resolveSoftLimitChange = (params: {
+  softLimitKw?: number;
+  lastSoftLimitKw?: number;
+  limitKw: number;
+}): { softLimitChanged: boolean } => {
+  const { softLimitKw, lastSoftLimitKw, limitKw } = params;
+  if (typeof softLimitKw !== 'number') return { softLimitChanged: false };
+  const softLimitDeltaThresholdKw = Math.max(MIN_SOFT_LIMIT_DELTA_KW, limitKw * MIN_SOFT_LIMIT_DELTA_RATIO);
+  if (typeof lastSoftLimitKw !== 'number') return { softLimitChanged: true };
+  const softLimitDeltaKw = Math.abs(softLimitKw - lastSoftLimitKw);
+  return { softLimitChanged: softLimitDeltaKw >= softLimitDeltaThresholdKw };
+};
+
+const resolveRebuildDecision = (params: {
+  state: PowerSampleRebuildState;
+  elapsedMs: number;
+  maxIntervalMs: number;
+  limitKw: number;
+  currentPowerW?: number;
+  powerDeltaW?: number;
+  softLimitKw?: number;
+  headroomKw?: number | null;
+  isInShortfall?: boolean;
+}): RebuildDecision => {
+  const {
+    state,
+    elapsedMs,
+    maxIntervalMs,
+    limitKw,
+    currentPowerW,
+    powerDeltaW,
+    softLimitKw,
+    headroomKw,
+    isInShortfall,
+  } = params;
+  const isDangerZone = resolveDangerZone(currentPowerW, limitKw);
+  const headroomTight = resolveHeadroomTight(headroomKw);
+  const { deltaW, deltaMeaningful } = resolvePowerDelta({
+    currentPowerW,
+    powerDeltaW,
+    lastRebuildPowerW: state.lastRebuildPowerW,
+    limitKw,
+  });
+  const { softLimitChanged } = resolveSoftLimitChange({
+    softLimitKw,
+    lastSoftLimitKw: state.lastSoftLimitKw,
+    limitKw,
+  });
+  const maxIntervalExceeded = maxIntervalMs > 0 && elapsedMs >= maxIntervalMs;
+  const shouldRebuild = state.lastMs === 0
+    || isDangerZone
+    || headroomTight
+    || isInShortfall
+    || softLimitChanged
+    || deltaMeaningful
+    || maxIntervalExceeded;
+  return {
+    shouldRebuild,
+    deltaW,
+    deltaMeaningful,
+    softLimitChanged,
+    maxIntervalExceeded,
+    isDangerZone,
+    headroomTight,
+  };
+};
+
 export function schedulePlanRebuildFromPowerSample(params: {
   getState: () => PowerSampleRebuildState;
   setState: (state: PowerSampleRebuildState) => void;
   minIntervalMs: number;
-  minPowerDeltaW: number;
   maxIntervalMs: number;
-  currentPowerW: number;
   rebuildPlanFromCache: () => Promise<void>;
   logError: (error: Error) => void;
+  currentPowerW?: number;
+  powerDeltaW?: number;
+  limitKw: number;
+  softLimitKw?: number;
+  headroomKw?: number | null;
+  isInShortfall?: boolean;
 }): Promise<void> {
   const {
     getState,
     setState,
     minIntervalMs,
-    minPowerDeltaW,
     maxIntervalMs,
-    currentPowerW,
     rebuildPlanFromCache,
     logError,
+    currentPowerW,
+    powerDeltaW,
+    limitKw,
+    softLimitKw,
+    headroomKw,
+    isInShortfall,
   } = params;
   const state = getState();
   const now = Date.now();
   const elapsedMs = now - state.lastMs;
-  const lastPowerW = state.lastPowerW;
-  const deltaW = typeof lastPowerW === 'number' ? Math.abs(currentPowerW - lastPowerW) : null;
-  const shouldRebuild = deltaW === null || deltaW >= minPowerDeltaW || elapsedMs >= maxIntervalMs;
-  if (!shouldRebuild) {
+
+  const decision = resolveRebuildDecision({
+    state,
+    elapsedMs,
+    maxIntervalMs,
+    limitKw,
+    currentPowerW,
+    powerDeltaW,
+    softLimitKw,
+    headroomKw,
+    isInShortfall,
+  });
+
+  if (!decision.shouldRebuild) {
+    incPerfCounter('plan_rebuild_skipped_total');
+    incPerfCounter('plan_rebuild_skipped_insignificant_total');
+    // Skip rebuild, but don't update lastMs or state, so we stay ready.
     return Promise.resolve();
   }
-  if (elapsedMs >= minIntervalMs) {
+
+  const resolvePendingPowerW = (snapshot: PowerSampleRebuildState): number | undefined => {
+    if (typeof snapshot.pendingPowerW === 'number') return snapshot.pendingPowerW;
+    if (typeof currentPowerW === 'number') return currentPowerW;
+    return snapshot.lastRebuildPowerW;
+  };
+  const resolvePendingSoftLimitKw = (snapshot: PowerSampleRebuildState): number | undefined => {
+    if (typeof snapshot.pendingSoftLimitKw === 'number') return snapshot.pendingSoftLimitKw;
+    if (typeof softLimitKw === 'number') return softLimitKw;
+    return snapshot.lastSoftLimitKw;
+  };
+
+  const performRebuild = async (snapshot: PowerSampleRebuildState): Promise<void> => {
+    const nextPowerW = resolvePendingPowerW(snapshot);
+    const nextSoftLimitKw = resolvePendingSoftLimitKw(snapshot);
     setState({
-      ...state,
-      lastMs: now,
-      lastPowerW: currentPowerW,
+      ...snapshot,
+      lastRebuildPowerW: typeof nextPowerW === 'number' ? nextPowerW : snapshot.lastRebuildPowerW,
+      lastSoftLimitKw: typeof nextSoftLimitKw === 'number' ? nextSoftLimitKw : snapshot.lastSoftLimitKw,
       pendingPowerW: undefined,
+      pendingSoftLimitKw: undefined,
     });
     return rebuildPlanFromCache();
+  };
+
+  if (elapsedMs >= minIntervalMs) {
+    const nextState = {
+      ...state,
+      lastMs: now,
+      pendingPowerW: undefined,
+      pendingSoftLimitKw: undefined,
+    };
+    setState(nextState);
+    return performRebuild(nextState);
   }
+
   if (!state.pending) {
     const waitMs = Math.max(0, minIntervalMs - elapsedMs);
     const pending = new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         const latest = getState();
-        setState({
-          ...latest,
-          timer: undefined,
-          lastMs: Date.now(),
-          lastPowerW: typeof latest.pendingPowerW === 'number' ? latest.pendingPowerW : currentPowerW,
-          pendingPowerW: undefined,
-        });
-        rebuildPlanFromCache()
+        const nextState = { ...latest, timer: undefined, lastMs: Date.now() };
+        setState(nextState);
+        performRebuild(nextState)
           .catch((error) => {
             logError(error as Error);
           })
@@ -92,13 +270,94 @@ export function schedulePlanRebuildFromPowerSample(params: {
             resolve();
           });
       }, waitMs);
-      setState({ ...getState(), timer, pendingPowerW: currentPowerW });
+      setState({
+        ...getState(),
+        timer,
+        pendingPowerW: typeof currentPowerW === 'number' ? currentPowerW : state.pendingPowerW,
+        pendingSoftLimitKw: typeof softLimitKw === 'number' ? softLimitKw : state.pendingSoftLimitKw,
+      });
     });
     setState({ ...getState(), pending });
     return pending;
   }
-  setState({ ...getState(), pendingPowerW: currentPowerW });
+  setState({
+    ...getState(),
+    pendingPowerW: typeof currentPowerW === 'number' ? currentPowerW : state.pendingPowerW,
+    pendingSoftLimitKw: typeof softLimitKw === 'number' ? softLimitKw : state.pendingSoftLimitKw,
+  });
   return getState().pending ?? Promise.resolve();
+}
+
+export function schedulePlanRebuildFromSignal(params: {
+  getState: () => PowerSampleRebuildState;
+  setState: (state: PowerSampleRebuildState) => void;
+  minIntervalMs: number;
+  stableMinIntervalMs?: number;
+  maxIntervalMs: number;
+  rebuildPlanFromCache: () => Promise<void>;
+  logError: (error: Error) => void;
+  currentPowerW?: number;
+  powerDeltaW?: number;
+  capacitySettings: { limitKw: number; marginKw: number };
+  capacityGuard?: CapacityGuard;
+}): Promise<void> {
+  const {
+    getState,
+    setState,
+    minIntervalMs,
+    stableMinIntervalMs,
+    maxIntervalMs,
+    rebuildPlanFromCache,
+    logError,
+    currentPowerW,
+    powerDeltaW,
+    capacitySettings,
+    capacityGuard,
+  } = params;
+  const softLimitKw = capacityGuard?.getSoftLimit()
+    ?? Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
+  const headroomKw = capacityGuard?.getHeadroom()
+    ?? (typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null);
+  const isInShortfall = capacityGuard?.isInShortfall() ?? false;
+  const isDangerZone = resolveDangerZone(currentPowerW, capacitySettings.limitKw);
+  const headroomTight = resolveHeadroomTight(headroomKw);
+  const stableIntervalMs = typeof stableMinIntervalMs === 'number' ? stableMinIntervalMs : minIntervalMs;
+  const effectiveMinIntervalMs = (!isDangerZone && !headroomTight && !isInShortfall)
+    ? Math.max(minIntervalMs, stableIntervalMs)
+    : minIntervalMs;
+  return schedulePlanRebuildFromPowerSample({
+    getState,
+    setState,
+    minIntervalMs: effectiveMinIntervalMs,
+    maxIntervalMs,
+    rebuildPlanFromCache,
+    logError,
+    currentPowerW,
+    powerDeltaW,
+    limitKw: capacitySettings.limitKw,
+    softLimitKw,
+    headroomKw,
+    isInShortfall,
+  });
+}
+
+export function buildPowerSignalFromDeviceChange(params: {
+  powerTracker: PowerTrackerState;
+  capacityGuard?: CapacityGuard;
+  deltaKw?: number;
+}): { currentPowerW?: number; powerDeltaW?: number } {
+  const { powerTracker, capacityGuard, deltaKw } = params;
+  let lastPowerW: number | undefined;
+  if (typeof powerTracker.lastPowerW === 'number') {
+    lastPowerW = powerTracker.lastPowerW;
+  } else {
+    const guardPowerKw = capacityGuard?.getLastTotalPower();
+    if (typeof guardPowerKw === 'number') {
+      lastPowerW = guardPowerKw * 1000;
+    }
+  }
+  const powerDeltaW = typeof deltaKw === 'number' && Number.isFinite(deltaKw) ? deltaKw * 1000 : undefined;
+  return { currentPowerW: lastPowerW, powerDeltaW };
 }
 
 export async function recordPowerSampleForApp(params: {

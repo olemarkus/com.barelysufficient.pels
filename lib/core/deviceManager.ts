@@ -1,4 +1,5 @@
 import Homey from 'homey';
+import { EventEmitter } from 'events';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import { resolveDeviceLabel, resolveZoneLabel } from './deviceManagerHelpers';
@@ -15,7 +16,8 @@ const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
 const SUPPORTED_DEVICE_CLASSES = new Set(['thermostat', 'heater', 'socket', 'heatpump', 'airconditioning']);
 const POWER_CAPABILITY_PREFIXES = ['measure_power', 'meter_power'] as const;
 const POWER_CAPABILITY_SET = new Set(POWER_CAPABILITY_PREFIXES);
-const MIN_SIGNIFICANT_POWER_W = 50;
+const MIN_SIGNIFICANT_POWER_W = 5;
+const MIN_POWER_CHANGE_FOR_REBUILD_KW = 0.05; // 50W
 
 type HomeyApiDevicesClient = {
     getDevices?: () => Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]>;
@@ -29,13 +31,16 @@ type HomeyApiClient = {
 };
 
 type CapabilityValue = { value?: unknown; units?: string };
+type CapabilityInstance = { destroy?: () => void };
+type MakeCapabilityInstance = (capabilityId: string, listener: (value: number | null) => void) => CapabilityInstance | Promise<CapabilityInstance>;
 
-export class DeviceManager {
+export class DeviceManager extends EventEmitter {
     private homeyApi?: HomeyApiClient;
     private logger: Logger;
     private homey: Homey.App;
     private latestSnapshot: TargetDeviceSnapshot[] = [];
     private powerState: Required<PowerEstimateState>;
+    private capabilityInstances: Map<string, CapabilityInstance> = new Map();
 
     private providers: {
         getPriority?: (deviceId: string) => number;
@@ -48,6 +53,7 @@ export class DeviceManager {
         getControllable?: (deviceId: string) => boolean;
         getManaged?: (deviceId: string) => boolean;
     }, powerState?: PowerEstimateState) {
+        super();
         this.homey = homey;
         this.logger = logger;
         if (providers) this.providers = providers;
@@ -204,6 +210,7 @@ export class DeviceManager {
                 const devicesObj = await devicesApi.getDevices();
                 const list = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj || {});
                 this.logger.debug(`HomeyAPI returned ${list.length} devices`);
+                await this.initRealtimeListeners(devicesObj);
                 return list;
             } catch (error) {
                 this.logger.debug('HomeyAPI.getDevices failed, falling back to raw API', error as Error);
@@ -228,6 +235,69 @@ export class DeviceManager {
                 return [];
             }
         }
+    }
+
+    private async initRealtimeListeners(devicesObj: Record<string, HomeyDeviceLike> | HomeyDeviceLike[]): Promise<void> {
+        const devices = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj);
+        for (const device of devices) {
+            const deviceId = this.getDeviceId(device);
+            if (!deviceId || !device.capabilities?.includes('measure_power')) continue;
+
+            // Check if listener already exists
+            if (this.capabilityInstances.has(deviceId)) continue;
+
+            try {
+                const makeCapabilityInstance = (device as { makeCapabilityInstance?: MakeCapabilityInstance }).makeCapabilityInstance;
+                if (typeof makeCapabilityInstance === 'function') {
+                    const instance = await makeCapabilityInstance.call(device, 'measure_power', (value: number | null) => {
+                        this.handlePowerUpdate(deviceId, device.name || deviceId, value);
+                    });
+                    this.capabilityInstances.set(deviceId, instance);
+                    this.logger.debug(`Real-time power listener attached for ${device.name || deviceId}`);
+                }
+            } catch (error) {
+                const label = device.name || deviceId || 'unknown';
+                const message = `Failed to attach capability listener for ${label}`;
+                this.logger.error(message, error);
+                this.writeErrorToStderr(message, error);
+            }
+        }
+    }
+
+    private handlePowerUpdate(deviceId: string, label: string, value: number | null): void {
+        if (typeof value !== 'number' || !Number.isFinite(value)) return;
+
+        const measuredKw = value / 1000;
+        const previous = this.powerState.lastMeasuredPowerKw[deviceId]?.kw ?? 0;
+
+        // Always update internal state
+        this.powerState.lastMeasuredPowerKw[deviceId] = { kw: measuredKw, ts: Date.now() };
+        this.updateLastKnownPower(deviceId, measuredKw, label);
+
+        // Update snapshot cache if exists
+        const snap = this.latestSnapshot.find(d => d.id === deviceId);
+        if (snap) {
+            snap.measuredPowerKw = measuredKw;
+            snap.powerKw = measuredKw; // simplistic update, proper calculation is in refresh
+        }
+
+        // Check threshold
+        const deltaKw = measuredKw - previous;
+        const deltaAbs = Math.abs(deltaKw);
+        if (deltaAbs >= MIN_POWER_CHANGE_FOR_REBUILD_KW) {
+            this.logger.debug(`Significant power change for ${label}: ${previous.toFixed(3)} -> ${measuredKw.toFixed(3)} kW (delta ${deltaAbs.toFixed(3)} kW). Emitting update.`);
+            this.emit('powerChanged', { deviceId, kw: measuredKw, delta: deltaAbs, deltaKw });
+        }
+    }
+
+    public destroy(): void {
+        for (const instance of this.capabilityInstances.values()) {
+            try {
+                if (typeof instance.destroy === 'function') instance.destroy();
+            } catch (_) { /* ignore */ }
+        }
+        this.capabilityInstances.clear();
+        this.removeAllListeners();
     }
 
     private parseDeviceList(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
@@ -416,5 +486,18 @@ export class DeviceManager {
     private extractHomeyApi(homey: Homey.App): { get?: (path: string) => Promise<unknown> } | undefined {
         const homeyInstance = this.resolveHomeyInstance(homey);
         return (homeyInstance as { api?: { get?: (path: string) => Promise<unknown> } }).api;
+    }
+
+    private writeErrorToStderr(message: string, error: unknown): void {
+        const stderr = typeof process !== 'undefined' ? process.stderr : undefined;
+        if (!stderr || typeof stderr.write !== 'function') return;
+        const errorText = error instanceof Error
+            ? (error.stack || error.message)
+            : String(error);
+        try {
+            stderr.write(`[PelsApp] ${message} ${errorText}\n`);
+        } catch (_) {
+            // ignore stderr failures
+        }
     }
 }

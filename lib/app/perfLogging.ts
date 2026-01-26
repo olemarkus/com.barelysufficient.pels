@@ -1,4 +1,4 @@
-import { getPerfSnapshot, type PerfSnapshot } from '../utils/perfCounters';
+import { getPerfSnapshotAndResetWindow, type PerfSnapshot } from '../utils/perfCounters';
 
 type PerfDurationEntry = {
   totalMs: number;
@@ -26,12 +26,15 @@ const buildPerfDelta = (current: PerfSnapshot, previous?: PerfSnapshot | null): 
     const deltaCount = currentEntry.count - previousEntry.count;
     if (deltaTotalMs === 0 && deltaCount === 0) return acc;
     const avgMs = deltaCount > 0 ? deltaTotalMs / deltaCount : 0;
+    const windowMaxMs = typeof currentEntry.windowMaxMs === 'number'
+      ? currentEntry.windowMaxMs
+      : currentEntry.maxMs;
     return {
       ...acc,
       [key]: {
         totalMs: deltaTotalMs,
         count: deltaCount,
-        maxMs: currentEntry.maxMs,
+        maxMs: windowMaxMs,
         avgMs,
       },
     };
@@ -60,7 +63,7 @@ export const startPerfLogger = (params: {
   let lastSnapshot: PerfSnapshot | null = null;
   const logCounters = () => {
     if (!params.isEnabled()) return;
-    const snapshot = getPerfSnapshot();
+    const snapshot = getPerfSnapshotAndResetWindow();
     const delta = buildPerfDelta(snapshot, lastSnapshot);
     lastSnapshot = snapshot;
     const uptimeSec = Math.round((Date.now() - snapshot.startedAt) / 1000);

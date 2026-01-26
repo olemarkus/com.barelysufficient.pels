@@ -65,6 +65,10 @@ export type PlanServiceDeps = {
   error: (...args: unknown[]) => void;
 };
 
+const PLAN_META_KW_STEP = 0.1;
+const PLAN_META_KWH_STEP = 0.01;
+const STATUS_POWER_BUCKET_MS = 30 * 1000;
+
 export class PlanService {
   private lastPlanSignature = '';
   private lastPlanSnapshotSignature = '';
@@ -132,7 +136,7 @@ export class PlanService {
   }
 
   private updatePlanSnapshot(plan: DevicePlan, deviceSignature: string): void {
-    const planSnapshotSignature = `${deviceSignature}|${JSON.stringify(plan.meta)}`;
+    const planSnapshotSignature = `${deviceSignature}|${JSON.stringify(normalizePlanMeta(plan.meta))}`;
     if (planSnapshotSignature === this.lastPlanSnapshotSignature) return;
     this.lastPlanSnapshotSignature = planSnapshotSignature;
     this.deps.homey.settings.set('device_plan_snapshot', plan);
@@ -178,7 +182,7 @@ export class PlanService {
       combinedPrices: this.deps.getCombinedPrices(),
       lastPowerUpdate: this.deps.getLastPowerUpdate(),
     });
-    const statusJson = JSON.stringify(result.status);
+    const statusJson = JSON.stringify(normalizePelsStatus(result.status, STATUS_POWER_BUCKET_MS));
     if (statusJson !== this.lastPelsStatusJson) {
       this.lastPelsStatusJson = statusJson;
       this.deps.homey.settings.set('pels_status', result.status);
@@ -195,3 +199,61 @@ export class PlanService {
     this.lastNotifiedPriceLevel = result.priceLevel;
   }
 }
+
+const roundNullable = (value: number | null, step: number): number | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
+  return Math.round(value / step) * step;
+};
+
+const roundOptional = (value: number | undefined, step: number): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
+  return Math.round(value / step) * step;
+};
+
+const roundOptionalNullable = (value: number | null | undefined, step: number): number | null | undefined => {
+  if (value === null || value === undefined) return value;
+  return roundNullable(value, step);
+};
+
+const normalizeMinutesRemaining = (value: number | undefined): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
+  return Math.max(0, Math.round(value));
+};
+
+const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] => ({
+  ...meta,
+  totalKw: roundNullable(meta.totalKw, PLAN_META_KW_STEP),
+  softLimitKw: roundOptional(meta.softLimitKw, PLAN_META_KW_STEP) ?? meta.softLimitKw,
+  capacitySoftLimitKw: roundOptional(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
+  dailySoftLimitKw: roundOptionalNullable(meta.dailySoftLimitKw, PLAN_META_KW_STEP),
+  headroomKw: roundNullable(meta.headroomKw, PLAN_META_KW_STEP),
+  usedKWh: roundOptional(meta.usedKWh, PLAN_META_KWH_STEP),
+  budgetKWh: roundOptional(meta.budgetKWh, PLAN_META_KWH_STEP),
+  minutesRemaining: normalizeMinutesRemaining(meta.minutesRemaining),
+  controlledKw: roundOptional(meta.controlledKw, PLAN_META_KW_STEP),
+  uncontrolledKw: roundOptional(meta.uncontrolledKw, PLAN_META_KW_STEP),
+  hourControlledKWh: roundOptional(meta.hourControlledKWh, PLAN_META_KWH_STEP),
+  hourUncontrolledKWh: roundOptional(meta.hourUncontrolledKWh, PLAN_META_KWH_STEP),
+  dailyBudgetRemainingKWh: roundOptional(meta.dailyBudgetRemainingKWh, PLAN_META_KWH_STEP),
+  dailyBudgetHourKWh: roundOptional(meta.dailyBudgetHourKWh, PLAN_META_KWH_STEP),
+});
+
+const normalizePelsStatus = (
+  status: ReturnType<typeof buildPelsStatus>['status'],
+  powerBucketMs: number,
+): ReturnType<typeof buildPelsStatus>['status'] => {
+  const safeBucketMs = Math.max(1, powerBucketMs);
+  const lastPowerUpdate = typeof status.lastPowerUpdate === 'number' && Number.isFinite(status.lastPowerUpdate)
+    ? Math.floor(status.lastPowerUpdate / safeBucketMs) * safeBucketMs
+    : status.lastPowerUpdate;
+  return {
+    ...status,
+    headroomKw: roundNullable(status.headroomKw, PLAN_META_KW_STEP),
+    hourlyLimitKw: roundOptional(status.hourlyLimitKw, PLAN_META_KW_STEP),
+    hourlyUsageKwh: roundOptional(status.hourlyUsageKwh, PLAN_META_KWH_STEP) ?? status.hourlyUsageKwh,
+    dailyBudgetRemainingKwh: roundOptional(status.dailyBudgetRemainingKwh, PLAN_META_KWH_STEP),
+    controlledKw: roundOptional(status.controlledKw, PLAN_META_KW_STEP),
+    uncontrolledKw: roundOptional(status.uncontrolledKw, PLAN_META_KW_STEP),
+    lastPowerUpdate,
+  };
+};
