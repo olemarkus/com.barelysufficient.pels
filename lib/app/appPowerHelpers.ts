@@ -8,6 +8,8 @@ import type { TargetDeviceSnapshot } from '../utils/types';
 
 export type PowerSampleRebuildState = {
   lastMs: number;
+  lastPowerW?: number;
+  pendingPowerW?: number;
   pending?: Promise<void>;
   timer?: ReturnType<typeof setTimeout>;
 };
@@ -35,22 +37,52 @@ export function schedulePlanRebuildFromPowerSample(params: {
   getState: () => PowerSampleRebuildState;
   setState: (state: PowerSampleRebuildState) => void;
   minIntervalMs: number;
+  minPowerDeltaW: number;
+  maxIntervalMs: number;
+  currentPowerW: number;
   rebuildPlanFromCache: () => Promise<void>;
   logError: (error: Error) => void;
 }): Promise<void> {
-  const { getState, setState, minIntervalMs, rebuildPlanFromCache, logError } = params;
+  const {
+    getState,
+    setState,
+    minIntervalMs,
+    minPowerDeltaW,
+    maxIntervalMs,
+    currentPowerW,
+    rebuildPlanFromCache,
+    logError,
+  } = params;
   const state = getState();
   const now = Date.now();
   const elapsedMs = now - state.lastMs;
+  const lastPowerW = state.lastPowerW;
+  const deltaW = typeof lastPowerW === 'number' ? Math.abs(currentPowerW - lastPowerW) : null;
+  const shouldRebuild = deltaW === null || deltaW >= minPowerDeltaW || elapsedMs >= maxIntervalMs;
+  if (!shouldRebuild) {
+    return Promise.resolve();
+  }
   if (elapsedMs >= minIntervalMs) {
-    setState({ ...state, lastMs: now });
+    setState({
+      ...state,
+      lastMs: now,
+      lastPowerW: currentPowerW,
+      pendingPowerW: undefined,
+    });
     return rebuildPlanFromCache();
   }
   if (!state.pending) {
     const waitMs = Math.max(0, minIntervalMs - elapsedMs);
     const pending = new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
-        setState({ ...getState(), timer: undefined, lastMs: Date.now() });
+        const latest = getState();
+        setState({
+          ...latest,
+          timer: undefined,
+          lastMs: Date.now(),
+          lastPowerW: typeof latest.pendingPowerW === 'number' ? latest.pendingPowerW : currentPowerW,
+          pendingPowerW: undefined,
+        });
         rebuildPlanFromCache()
           .catch((error) => {
             logError(error as Error);
@@ -60,11 +92,12 @@ export function schedulePlanRebuildFromPowerSample(params: {
             resolve();
           });
       }, waitMs);
-      setState({ ...getState(), timer });
+      setState({ ...getState(), timer, pendingPowerW: currentPowerW });
     });
     setState({ ...getState(), pending });
     return pending;
   }
+  setState({ ...getState(), pendingPowerW: currentPowerW });
   return getState().pending ?? Promise.resolve();
 }
 

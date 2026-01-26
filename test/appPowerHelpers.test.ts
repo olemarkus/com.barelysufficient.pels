@@ -64,6 +64,9 @@ describe('schedulePlanRebuildFromPowerSample', () => {
         state = next;
       },
       minIntervalMs: 500,
+      minPowerDeltaW: 0,
+      maxIntervalMs: 10000,
+      currentPowerW: 1000,
       rebuildPlanFromCache,
       logError: jest.fn(),
     });
@@ -84,6 +87,9 @@ describe('schedulePlanRebuildFromPowerSample', () => {
         state = next;
       },
       minIntervalMs: 1000,
+      minPowerDeltaW: 0,
+      maxIntervalMs: 10000,
+      currentPowerW: 1000,
       rebuildPlanFromCache,
       logError,
     });
@@ -93,6 +99,9 @@ describe('schedulePlanRebuildFromPowerSample', () => {
         state = next;
       },
       minIntervalMs: 1000,
+      minPowerDeltaW: 0,
+      maxIntervalMs: 10000,
+      currentPowerW: 1000,
       rebuildPlanFromCache,
       logError,
     });
@@ -117,6 +126,9 @@ describe('schedulePlanRebuildFromPowerSample', () => {
         state = next;
       },
       minIntervalMs: 1000,
+      minPowerDeltaW: 0,
+      maxIntervalMs: 10000,
+      currentPowerW: 1000,
       rebuildPlanFromCache,
       logError,
     });
@@ -125,5 +137,25 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     await pending;
 
     expect(logError).toHaveBeenCalledWith(expect.any(Error));
+  });
+
+  it('skips rebuild when power change is below threshold', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now(), lastPowerW: 1000 };
+    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 500,
+      minPowerDeltaW: 200,
+      maxIntervalMs: 10000,
+      currentPowerW: 1100,
+      rebuildPlanFromCache,
+      logError: jest.fn(),
+    });
+
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 });
