@@ -16,6 +16,7 @@ import {
 } from './planReasons';
 import { getHourBucketKey } from '../utils/dateUtils';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import { incPerfCounter } from '../utils/perfCounters';
 
 export type PlanBuilderDeps = {
   homey: Homey.App['homey'];
@@ -284,6 +285,7 @@ export class PlanBuilder {
     if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
       this.state.inShortfall = sheddingPlan.guardInShortfall;
       this.deps.homey.settings.set('capacity_in_shortfall', sheddingPlan.guardInShortfall);
+      incPerfCounter('settings_set.capacity_in_shortfall');
     }
   }
 

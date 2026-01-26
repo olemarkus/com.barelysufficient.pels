@@ -12,6 +12,7 @@ import {
 } from './planConstants';
 import { getShedCooldownState } from './planTiming';
 import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
+import { incPerfCounter } from '../utils/perfCounters';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -412,6 +413,7 @@ export class PlanExecutor {
 
     this.state.inShortfall = true;
     this.deps.homey.settings.set('capacity_in_shortfall', true);
+    incPerfCounter('settings_set.capacity_in_shortfall');
 
     // Create timeline notification
     this.deps.homey.notifications.createNotification({
@@ -431,6 +433,7 @@ export class PlanExecutor {
     this.log('Capacity shortfall resolved');
     this.state.inShortfall = false;
     this.deps.homey.settings.set('capacity_in_shortfall', false);
+    incPerfCounter('settings_set.capacity_in_shortfall');
 
     // Create timeline notification
     this.deps.homey.notifications.createNotification({

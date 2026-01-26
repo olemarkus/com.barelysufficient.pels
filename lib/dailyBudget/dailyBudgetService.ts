@@ -17,6 +17,7 @@ import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from './dailyBudgetConstan
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
 import type { DailyBudgetDayPayload, DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
+import { incPerfCounter } from '../utils/perfCounters';
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
@@ -101,6 +102,7 @@ export class DailyBudgetService {
 
   persistState(): void {
     this.deps.homey.settings.set(DAILY_BUDGET_STATE, this.manager.exportState());
+    incPerfCounter('settings_set.daily_budget_state');
   }
 
   resetLearning(): void {
