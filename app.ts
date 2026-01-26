@@ -21,16 +21,17 @@ import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import { disableUnsupportedDevices as disableUnsupportedDevicesHelper } from './lib/app/appDeviceSupport';
 import { startAppServices } from './lib/app/appLifecycleHelpers';
-import { PowerSampleRebuildState, recordDailyBudgetCap, recordPowerSampleForApp, schedulePlanRebuildFromPowerSample } from './lib/app/appPowerHelpers';
-import { safeJsonStringify, sanitizeLogValue } from './lib/utils/logUtils';
+import { PowerSampleRebuildState, applyPowerDeltaToTracker, buildPowerSignalFromDeviceChange } from './lib/app/appPowerHelpers';
+import { recordDailyBudgetCap, recordPowerSampleForApp, schedulePlanRebuildFromSignal } from './lib/app/appPowerHelpers';
+import { getHomeyDevicesForDebug, logHomeyDeviceForDebug } from './lib/app/appDeviceDebug';
 import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
 import { logDynamicElectricityPricesFromHomey } from './lib/app/appEnergyDebug';
 import { resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi } from './lib/utils/homeyEnergy';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
-const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 30 * 1000;
-const POWER_SAMPLE_REBUILD_MIN_DELTA_RATIO = 0.01; const POWER_SAMPLE_REBUILD_MIN_DELTA_W = 50;
+const POWER_SAMPLE_REBUILD_STABLE_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 5000;
+const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = 30 * 1000;
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
   private capacityGuard?: CapacityGuard;
@@ -62,46 +63,15 @@ class PelsApp extends Homey.App {
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private heartbeatInterval?: ReturnType<typeof setInterval>;
   private stopPerfLogging?: () => void;
-  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
-    this.deviceManager.updateLocalSnapshot(deviceId, updates);
-  }
-  private setExpectedOverride(deviceId: string, kw: number): void {
-    this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
-  }
+  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void { this.deviceManager.updateLocalSnapshot(deviceId, updates); }
+  private setExpectedOverride(deviceId: string, kw: number): void { this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() }; }
   private getHomeyEnergyApi(): HomeyEnergyApi | null {
     const sdkEnergy = resolveHomeyEnergyApiFromSdk(this.homey);
-    if (sdkEnergy) return sdkEnergy;
-    const homeyApi = this.deviceManager?.getHomeyApi?.();
-    return resolveHomeyEnergyApiFromHomeyApi(homeyApi);
+    return sdkEnergy ?? resolveHomeyEnergyApiFromHomeyApi(this.deviceManager?.getHomeyApi?.());
   }
-  async getHomeyDevicesForDebug(): Promise<HomeyDeviceLike[]> {
-    if (!this.deviceManager) return [];
-    try {
-      await this.deviceManager.init();
-      return await this.deviceManager.getDevicesForDebug();
-    } catch (error) {
-      this.error('Failed to fetch Homey devices for debug', error as Error);
-      return [];
-    }
-  }
+  async getHomeyDevicesForDebug(): Promise<HomeyDeviceLike[]> { return getHomeyDevicesForDebug({ deviceManager: this.deviceManager, error: this.error.bind(this) }); }
   async logHomeyDeviceForDebug(deviceId: string): Promise<boolean> {
-    if (!deviceId) return false;
-    const devices = await this.getHomeyDevicesForDebug();
-    const device = devices.find((entry) => entry.id === deviceId);
-    const safeDeviceId = sanitizeLogValue(deviceId);
-    if (!device) {
-      this.log('Homey device dump: device not found', { deviceId: safeDeviceId });
-      return false;
-    }
-    const label = device.name || deviceId;
-    const safeLabel = sanitizeLogValue(label) || safeDeviceId;
-    const deviceJson = safeJsonStringify(device);
-    this.log('Homey device dump', {
-      deviceId: safeDeviceId,
-      label: safeLabel,
-      payload: deviceJson,
-    });
-    return true;
+    return logHomeyDeviceForDebug({ deviceId, getDevicesForDebug: () => this.getHomeyDevicesForDebug(), log: this.log.bind(this) });
   }
   async onInit() {
     this.log('PELS has been initialized');
@@ -111,10 +81,8 @@ class PelsApp extends Homey.App {
     this.loadCapacitySettings();
     this.initDailyBudgetService();
     await this.initDeviceManager();
-    this.initCapacityGuard();
-    this.initPlanEngine();
-    this.initPlanService();
-    this.initCapacityGuardProviders();
+    this.initCapacityGuard(); this.initPlanEngine();
+    this.initPlanService(); this.initCapacityGuardProviders();
     this.initSettingsHandler();
     await startAppServices({
       loadPowerTracker: () => this.loadPowerTracker(),
@@ -181,6 +149,37 @@ class PelsApp extends Homey.App {
       lastMeasuredPowerKw: this.lastMeasuredPowerKw,
     });
     await this.deviceManager.init();
+    this.deviceManager.on('powerChanged', (event: { deviceId: string; kw: number; delta?: number; deltaKw?: number }) => {
+      const deltaKw = typeof event.deltaKw === 'number' ? event.deltaKw : event.delta;
+      this.powerTracker = applyPowerDeltaToTracker({
+        powerTracker: this.powerTracker,
+        capacityGuard: this.capacityGuard,
+        deltaKw,
+      });
+      const signal = buildPowerSignalFromDeviceChange({
+        powerTracker: this.powerTracker,
+        capacityGuard: this.capacityGuard,
+        deltaKw,
+      });
+      void schedulePlanRebuildFromSignal({
+        getState: () => this.powerSampleRebuildState,
+        setState: (state) => {
+          this.powerSampleRebuildState = state;
+        },
+        minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
+        stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_MIN_INTERVAL_MS,
+        maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
+        rebuildPlanFromCache: () => this.planService?.rebuildPlanFromCache() ?? Promise.resolve(),
+        logError: (error) => {
+          // Log error but don't throw - state is already persisted
+          this.error('PowerTracker: Failed to rebuild plan after power signal:', error);
+        },
+        currentPowerW: signal.currentPowerW,
+        powerDeltaW: signal.powerDeltaW,
+        capacitySettings: this.capacitySettings,
+        capacityGuard: this.capacityGuard,
+      });
+    });
   }
   private initCapacityGuard(): void {
     this.capacityGuard = new CapacityGuard({
@@ -286,6 +285,9 @@ class PelsApp extends Homey.App {
       this.stopPerfLogging = undefined;
     }
     this.priceCoordinator.stop();
+    if (this.deviceManager) {
+      this.deviceManager.destroy(); // stop listeners
+    }
   }
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
     if (this.debugLoggingTopics.has(topic)) {
@@ -468,23 +470,22 @@ class PelsApp extends Homey.App {
         powerTracker: this.powerTracker,
         capacityGuard: this.capacityGuard,
         homey: this.homey,
-        schedulePlanRebuild: () => schedulePlanRebuildFromPowerSample({
+        schedulePlanRebuild: () => schedulePlanRebuildFromSignal({
           getState: () => this.powerSampleRebuildState,
           setState: (state) => {
             this.powerSampleRebuildState = state;
           },
           minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
+          stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_MIN_INTERVAL_MS,
           maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
-          minPowerDeltaW: Math.max(
-            POWER_SAMPLE_REBUILD_MIN_DELTA_W,
-            this.capacitySettings.limitKw * 1000 * POWER_SAMPLE_REBUILD_MIN_DELTA_RATIO,
-          ),
-          currentPowerW,
-          rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache(),
+          rebuildPlanFromCache: () => this.planService?.rebuildPlanFromCache() ?? Promise.resolve(),
           logError: (error) => {
             // Log error but don't throw - state is already persisted
-            this.error('PowerTracker: Failed to rebuild plan after power sample:', error);
+            this.error('PowerTracker: Failed to rebuild plan after power signal:', error);
           },
+          currentPowerW,
+          capacitySettings: this.capacitySettings,
+          capacityGuard: this.capacityGuard,
         }),
         saveState: (state) => this.savePowerTracker(state),
       });
