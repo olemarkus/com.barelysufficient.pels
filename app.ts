@@ -21,15 +21,16 @@ import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import { startAppServices } from './lib/app/appLifecycleHelpers';
 import { PowerSampleRebuildState, recordDailyBudgetCap, recordPowerSampleForApp, schedulePlanRebuildFromPowerSample } from './lib/app/appPowerHelpers';
-import { getDateKeyInTimeZone } from './lib/utils/dateUtils';
 import { safeJsonStringify, sanitizeLogValue } from './lib/utils/logUtils';
+import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
+import { startPerfLogger } from './lib/app/perfLogging';
+import { logDynamicElectricityPricesFromHomey } from './lib/app/appEnergyDebug';
 import {
   resolveHomeyEnergyApiFromHomeyApi,
   resolveHomeyEnergyApiFromSdk,
   type HomeyEnergyApi,
 } from './lib/utils/homeyEnergy';
-const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
+const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
   private capacityGuard?: CapacityGuard;
@@ -59,6 +60,7 @@ class PelsApp extends Homey.App {
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private heartbeatInterval?: ReturnType<typeof setInterval>;
+  private stopPerfLogging?: () => void;
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     this.deviceManager.updateLocalSnapshot(deviceId, updates);
   }
@@ -70,35 +72,6 @@ class PelsApp extends Homey.App {
     if (sdkEnergy) return sdkEnergy;
     const homeyApi = this.deviceManager?.getHomeyApi?.();
     return resolveHomeyEnergyApiFromHomeyApi(homeyApi);
-  }
-  private async logDynamicElectricityPricesFromHomey(): Promise<void> {
-    const sdkEnergy = resolveHomeyEnergyApiFromSdk(this.homey);
-    const homeyApiEnergy = sdkEnergy ? null : resolveHomeyEnergyApiFromHomeyApi(this.deviceManager?.getHomeyApi?.());
-    let fetcher: { api: HomeyEnergyApi; label: string } | null = null;
-    if (sdkEnergy) {
-      fetcher = { api: sdkEnergy, label: 'Homey SDK' };
-    } else if (homeyApiEnergy) {
-      fetcher = { api: homeyApiEnergy, label: 'HomeyAPI' };
-    }
-    if (!fetcher) {
-      this.log('Dynamic electricity prices not available from Homey SDK or HomeyAPI.');
-      return;
-    }
-    try {
-      const timeZone = this.homey.clock.getTimezone();
-      const today = getDateKeyInTimeZone(new Date(), timeZone);
-      const prices = await fetcher.api.fetchDynamicElectricityPrices({ date: today });
-      const count = Array.isArray(prices) ? prices.length : null;
-      const sample = Array.isArray(prices) ? prices[0] : prices;
-      this.log('Fetched dynamic electricity prices from Homey.', {
-        source: fetcher.label,
-        date: today,
-        count,
-        sample: safeJsonStringify(sample),
-      });
-    } catch (error) {
-      this.error(`Failed to fetch dynamic electricity prices from ${fetcher.label}.`, error as Error);
-    }
   }
   async getHomeyDevicesForDebug(): Promise<HomeyDeviceLike[]> {
     if (!this.deviceManager) return [];
@@ -161,7 +134,13 @@ class PelsApp extends Homey.App {
       startPriceRefresh: () => this.priceCoordinator.startPriceRefresh(),
       startPriceOptimization: () => this.priceCoordinator.startPriceOptimization(),
     });
-    void this.logDynamicElectricityPricesFromHomey();
+    this.startPerfLogging();
+    void logDynamicElectricityPricesFromHomey({
+      homey: this.homey,
+      deviceManager: this.deviceManager,
+      log: (...args: unknown[]) => this.log(...args),
+      error: (...args: unknown[]) => this.error(...args),
+    });
   }
   private initPriceCoordinator(): void {
     this.priceCoordinator = new PriceCoordinator({
@@ -301,6 +280,10 @@ class PelsApp extends Homey.App {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = undefined;
     }
+    if (this.stopPerfLogging) {
+      this.stopPerfLogging();
+      this.stopPerfLogging = undefined;
+    }
     this.priceCoordinator.stop();
   }
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
@@ -312,6 +295,14 @@ class PelsApp extends Homey.App {
     const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now());
     updateHeartbeat();
     this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
+  }
+
+  private startPerfLogging(): void {
+    this.stopPerfLogging = startPerfLogger({
+      isEnabled: () => this.debugLoggingTopics.has('perf'),
+      log: (...args: unknown[]) => this.logDebug('perf', ...args),
+      intervalMs: 30 * 1000,
+    });
   }
   private getDynamicSoftLimitOverride(): number | null {
     if (!this.defaultComputeDynamicSoftLimit || this.computeDynamicSoftLimit === this.defaultComputeDynamicSoftLimit) return null;
@@ -454,43 +445,56 @@ class PelsApp extends Homey.App {
     }
   }
   private savePowerTracker(nextState: PowerTrackerState = this.powerTracker): void {
+    const pruneStart = Date.now();
     const pruned = aggregateAndPruneHistory(nextState);
+    addPerfDuration('power_tracker_prune_ms', Date.now() - pruneStart);
+    incPerfCounter('power_tracker_save_total');
     this.powerTracker = pruned;
     const nowMs = typeof pruned.lastTimestamp === 'number' ? pruned.lastTimestamp : Date.now();
     this.updateDailyBudgetAndRecordCap({ nowMs });
     this.homey.settings.set('power_tracker_state', this.powerTracker);
+    incPerfCounter('settings_set.power_tracker_state');
   }
 
   private updateDailyBudgetAndRecordCap(options?: { nowMs?: number; forcePlanRebuild?: boolean }): void {
+    const updateStart = Date.now();
     this.dailyBudgetService.updateState(options);
+    addPerfDuration('daily_budget_update_ms', Date.now() - updateStart);
+    incPerfCounter('daily_budget_update_total');
     this.powerTracker = recordDailyBudgetCap({
       powerTracker: this.powerTracker,
       snapshot: this.dailyBudgetService.getSnapshot(),
     });
   }
   private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
-    await recordPowerSampleForApp({
-      currentPowerW,
-      nowMs,
-      capacitySettings: this.capacitySettings,
-      getLatestTargetSnapshot: () => this.latestTargetSnapshot,
-      powerTracker: this.powerTracker,
-      capacityGuard: this.capacityGuard,
-      homey: this.homey,
-      schedulePlanRebuild: () => schedulePlanRebuildFromPowerSample({
-        getState: () => this.powerSampleRebuildState,
-        setState: (state) => {
-          this.powerSampleRebuildState = state;
-        },
-        minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
-        rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache(),
-        logError: (error) => {
-          // Log error but don't throw - state is already persisted
-          this.error('PowerTracker: Failed to rebuild plan after power sample:', error);
-        },
-      }),
-      saveState: (state) => this.savePowerTracker(state),
-    });
+    const sampleStart = Date.now();
+    try {
+      await recordPowerSampleForApp({
+        currentPowerW,
+        nowMs,
+        capacitySettings: this.capacitySettings,
+        getLatestTargetSnapshot: () => this.latestTargetSnapshot,
+        powerTracker: this.powerTracker,
+        capacityGuard: this.capacityGuard,
+        homey: this.homey,
+        schedulePlanRebuild: () => schedulePlanRebuildFromPowerSample({
+          getState: () => this.powerSampleRebuildState,
+          setState: (state) => {
+            this.powerSampleRebuildState = state;
+          },
+          minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
+          rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache(),
+          logError: (error) => {
+            // Log error but don't throw - state is already persisted
+            this.error('PowerTracker: Failed to rebuild plan after power sample:', error);
+          },
+        }),
+        saveState: (state) => this.savePowerTracker(state),
+      });
+    } finally {
+      addPerfDuration('power_sample_ms', Date.now() - sampleStart);
+      incPerfCounter('power_sample_total');
+    }
   }
   private registerFlowCards(): void {
     const deps: FlowCardInitApp = {

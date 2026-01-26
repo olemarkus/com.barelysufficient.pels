@@ -4,6 +4,7 @@ export const DEBUG_LOGGING_TOPICS = [
   { id: 'daily_budget', label: 'Daily budget', description: 'Daily plan and rollover.' },
   { id: 'devices', label: 'Devices', description: 'Device snapshots and Homey API interactions.' },
   { id: 'settings', label: 'Settings', description: 'Settings changes and housekeeping.' },
+  { id: 'perf', label: 'Performance', description: 'Hotpath counters and timings.' },
 ] as const;
 
 export type DebugLoggingTopic = typeof DEBUG_LOGGING_TOPICS[number]['id'];

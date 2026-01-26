@@ -2,6 +2,7 @@ import Homey from 'homey';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import { resolveDeviceLabel, resolveZoneLabel } from './deviceManagerHelpers';
+import { incPerfCounter } from '../utils/perfCounters';
 
 type HomeyApiConstructor = {
     createAppAPI: (opts: { homey: Homey.App['homey']; debug?: ((...args: unknown[]) => void) | null }) => Promise<HomeyApiClient>;
@@ -153,6 +154,8 @@ export class DeviceManager {
         const setCapabilityValue = this.homeyApi?.devices?.setCapabilityValue;
         if (!setCapabilityValue) throw new Error('HomeyAPI not ready');
 
+        incPerfCounter('device_action_total');
+        incPerfCounter(`device_action.capability.${capabilityId}`);
         await setCapabilityValue({
             deviceId,
             capabilityId,
