@@ -1,4 +1,5 @@
 import type Homey from 'homey';
+import { HomeyEnergyApi } from '../utils/homeyEnergy';
 import type CapacityGuard from '../core/capacityGuard';
 import type { DeviceManager } from '../core/deviceManager';
 import type { PowerTrackerState } from '../core/powerTracker';
@@ -14,6 +15,7 @@ import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { COMBINED_PRICES } from '../utils/settingsKeys';
 import type { CapacitySettingsSnapshot } from './appSettingsHelpers';
+import { PriceCoordinator } from '../price/priceCoordinator';
 
 export type { CapacitySettingsSnapshot };
 
@@ -149,5 +151,27 @@ export function registerAppFlowCards(app: FlowCardInitApp): void {
     updateDailyBudgetState: (options) => app.updateDailyBudgetState(options),
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug('settings', ...args),
+  });
+}
+
+export type PriceCoordinatorInitApp = {
+  homey: Homey.App['homey'];
+  getHomeyEnergyApi: () => HomeyEnergyApi | null;
+  getCurrentPriceLevel: () => PriceLevel;
+  rebuildPlanFromCache: () => Promise<void>;
+  log: (...args: unknown[]) => void;
+  logDebug: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
+};
+
+export function createPriceCoordinator(app: PriceCoordinatorInitApp): PriceCoordinator {
+  return new PriceCoordinator({
+    homey: app.homey,
+    getHomeyEnergyApi: () => app.getHomeyEnergyApi(),
+    getCurrentPriceLevel: () => app.getCurrentPriceLevel(),
+    rebuildPlanFromCache: () => app.rebuildPlanFromCache(),
+    log: (...args: unknown[]) => app.log(...args),
+    logDebug: (...args: unknown[]) => app.logDebug(...args),
+    error: (...args: unknown[]) => app.error(...args),
   });
 }
