@@ -148,8 +148,10 @@ export function persistPowerTrackerStateForApp(params: {
   error: (msg: string, err: Error) => void;
 }): void {
   const { homey, powerTracker, error } = params;
+  const writeStart = Date.now();
   try {
     homey.settings.set('power_tracker_state', powerTracker);
+    addPerfDuration('settings_write_ms', Date.now() - writeStart);
     incPerfCounter('settings_set.power_tracker_state');
   } catch (err) {
     error('Failed to persist power tracker', err as Error);
