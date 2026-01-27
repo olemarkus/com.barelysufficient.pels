@@ -79,8 +79,7 @@ describe('power tracker integration', () => {
       hourlyAverages: {},
     };
 
-    // Call savePowerTracker which triggers aggregation
-    // Call savePowerTracker which triggers aggregation
+    // Call prunePowerTrackerHistory which triggers aggregation
     app['prunePowerTrackerHistory']();
 
     const state = mockHomeyInstance.settings.get('power_tracker_state');

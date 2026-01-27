@@ -93,7 +93,12 @@ class PelsApp extends Homey.App {
     return resolveHomeyEnergyApiFromHomeyApi(homeyApi);
   }
   async getHomeyDevicesForDebug(): Promise<HomeyDeviceLike[]> {
-    return getHomeyDevicesForDebugHelper(this.deviceManager);
+    try {
+      return await getHomeyDevicesForDebugHelper(this.deviceManager);
+    } catch (err) {
+      this.log("Failed to get Homey devices for debug", err);
+      return [];
+    }
   }
   async logHomeyDeviceForDebug(deviceId: string): Promise<boolean> {
     return logHomeyDeviceForDebugHelper({
@@ -135,6 +140,7 @@ class PelsApp extends Homey.App {
       startPriceOptimization: () => this.priceCoordinator.startPriceOptimization(),
     });
     this.startPowerTrackerPruning();
+    this.startPerfLogging();
     void logDynamicElectricityPricesFromHomey({
       homey: this.homey,
       deviceManager: this.deviceManager,
@@ -271,6 +277,10 @@ class PelsApp extends Homey.App {
     if (this.powerTrackerSaveTimer) {
       this.persistPowerTrackerState();
     }
+    if (this.powerTrackerPruneTimer) {
+      clearTimeout(this.powerTrackerPruneTimer);
+      this.powerTrackerPruneTimer = undefined;
+    }
     if (this.powerTrackerPruneInterval) {
       clearInterval(this.powerTrackerPruneInterval);
       this.powerTrackerPruneInterval = undefined;
@@ -319,7 +329,7 @@ class PelsApp extends Homey.App {
     this.priceCoordinator.updatePriceOptimizationEnabled(logChange);
   }
   private get priceOptimizationEnabled(): boolean { return this.priceCoordinator.getPriceOptimizationEnabled(); }
-  private get priceOptimizationSettings() { return this.priceCoordinator.getPriceOptimizationSettings(); }
+  private get priceOptimizationSettings(): Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }> { return this.priceCoordinator.getPriceOptimizationSettings(); }
   private updateDebugLoggingEnabled(logChange = false): void {
     this.debugLoggingTopics = buildDebugLoggingTopics({
       settings: this.homey.settings,
@@ -440,6 +450,7 @@ class PelsApp extends Homey.App {
   }
   private powerTrackerSaveTimer?: NodeJS.Timeout;
   private powerTrackerPruneInterval?: NodeJS.Timeout;
+  private powerTrackerPruneTimer?: NodeJS.Timeout;
 
   private persistPowerTrackerState(): void {
     if (this.powerTrackerSaveTimer) {
@@ -463,7 +474,7 @@ class PelsApp extends Homey.App {
   }
 
   private startPowerTrackerPruning(): void {
-    setTimeout(() => this.prunePowerTrackerHistory(), 10 * 1000);
+    this.powerTrackerPruneTimer = setTimeout(() => this.prunePowerTrackerHistory(), 10 * 1000);
     this.powerTrackerPruneInterval = setInterval(() => this.prunePowerTrackerHistory(), 60 * 60 * 1000);
   }
 
