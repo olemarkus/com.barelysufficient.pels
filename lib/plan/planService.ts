@@ -36,7 +36,9 @@ export const updatePelsStatusDirect = (params: PelsStatusUpdateParams): PriceLev
     lastPowerUpdate,
   });
 
+  const writeStart = Date.now();
   homey.settings.set('pels_status', result.status);
+  addPerfDuration('settings_write_ms', Date.now() - writeStart);
   incPerfCounter('settings_set.pels_status');
 
   if (result.priceLevel !== lastNotifiedPriceLevel) {
@@ -65,10 +67,14 @@ export type PlanServiceDeps = {
   error: (...args: unknown[]) => void;
 };
 
+const VOLATILE_WRITE_THROTTLE_MS = 60 * 1000;
+
 export class PlanService {
   private lastPlanSignature = '';
   private lastPlanSnapshotSignature = '';
   private lastPelsStatusJson = '';
+  private lastPlanSnapshotWriteMs = 0;
+  private lastPelsStatusWriteMs = 0;
   private rebuildPlanQueue: Promise<void> = Promise.resolve();
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
@@ -113,9 +119,10 @@ export class PlanService {
     await this.rebuildPlanQueue;
   }
 
-  private trackPlanChanges(plan: DevicePlan): string {
+  private trackPlanChanges(plan: DevicePlan): { signature: string; changed: boolean } {
     const deviceSignature = buildPlanSignature(plan);
-    if (deviceSignature !== this.lastPlanSignature) {
+    const changed = deviceSignature !== this.lastPlanSignature;
+    if (changed) {
       try {
         const lines = buildPlanChangeLines(plan);
         if (lines.length) {
@@ -128,15 +135,24 @@ export class PlanService {
     } else {
       incPerfCounter('plan_rebuild_no_change_total');
     }
-    return deviceSignature;
+    return { signature: deviceSignature, changed };
   }
 
-  private updatePlanSnapshot(plan: DevicePlan, deviceSignature: string): void {
+  private updatePlanSnapshot(plan: DevicePlan, deviceSignature: string, deviceStateChanged: boolean): void {
+    const now = Date.now();
     const planSnapshotSignature = `${deviceSignature}|${JSON.stringify(plan.meta)}`;
     if (planSnapshotSignature === this.lastPlanSnapshotSignature) return;
     this.lastPlanSnapshotSignature = planSnapshotSignature;
-    this.deps.homey.settings.set('device_plan_snapshot', plan);
-    incPerfCounter('settings_set.device_plan_snapshot');
+
+    const throttleElapsed = now - this.lastPlanSnapshotWriteMs > VOLATILE_WRITE_THROTTLE_MS;
+
+    if (deviceStateChanged || throttleElapsed || this.lastPlanSnapshotWriteMs === 0) {
+      const writeStart = Date.now();
+      this.deps.homey.settings.set('device_plan_snapshot', plan);
+      this.lastPlanSnapshotWriteMs = now;
+      addPerfDuration('settings_write_ms', Date.now() - writeStart);
+      incPerfCounter('settings_set.device_plan_snapshot');
+    }
 
     const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
     const realtime = api?.realtime;
@@ -150,9 +166,9 @@ export class PlanService {
     const rebuildStart = Date.now();
     try {
       const plan = await this.buildDevicePlanSnapshot(this.deps.getPlanDevices() ?? []);
-      const deviceSignature = this.trackPlanChanges(plan);
-      this.updatePlanSnapshot(plan, deviceSignature);
-      this.updatePelsStatus(plan);
+      const { signature, changed } = this.trackPlanChanges(plan);
+      this.updatePlanSnapshot(plan, signature, changed);
+      this.updatePelsStatus(plan, changed);
       const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
       if (this.deps.getCapacityDryRun() && hasShedding) {
         this.deps.log('Dry run: shedding planned but not executed');
@@ -170,7 +186,8 @@ export class PlanService {
     }
   }
 
-  updatePelsStatus(plan: DevicePlan): void {
+  updatePelsStatus(plan: DevicePlan, deviceStateChanged?: boolean): void {
+    const now = Date.now();
     const result = buildPelsStatus({
       plan,
       isCheap: this.deps.isCurrentHourCheap(),
@@ -180,9 +197,17 @@ export class PlanService {
     });
     const statusJson = JSON.stringify(result.status);
     if (statusJson !== this.lastPelsStatusJson) {
-      this.lastPelsStatusJson = statusJson;
-      this.deps.homey.settings.set('pels_status', result.status);
-      incPerfCounter('settings_set.pels_status');
+      const stateChanged = deviceStateChanged ?? (buildPlanSignature(plan) !== this.lastPlanSignature);
+      const throttleElapsed = now - this.lastPelsStatusWriteMs > VOLATILE_WRITE_THROTTLE_MS;
+
+      if (stateChanged || throttleElapsed || this.lastPelsStatusWriteMs === 0) {
+        const writeStart = Date.now();
+        this.lastPelsStatusJson = statusJson;
+        this.deps.homey.settings.set('pels_status', result.status);
+        this.lastPelsStatusWriteMs = now;
+        addPerfDuration('settings_write_ms', Date.now() - writeStart);
+        incPerfCounter('settings_set.pels_status');
+      }
     }
     if (result.priceLevel !== this.lastNotifiedPriceLevel) {
       const card = this.deps.homey.flow?.getTriggerCard?.('price_level_changed');

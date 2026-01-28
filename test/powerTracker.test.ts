@@ -13,8 +13,8 @@ import {
   truncateToHourInHomeyTimezone,
 } from '../lib/core/powerTracker';
 
-// Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+// Use fake timers to control throttling
+jest.useFakeTimers();
 
 describe('power tracker integration', () => {
   beforeEach(() => {
@@ -43,6 +43,7 @@ describe('power tracker integration', () => {
     await app['recordPowerSample'](1000, start + 30 * 60 * 1000);
 
     const bucketKey = new Date(truncateToHourInHomeyTimezone(mockHomeyInstance as any, start)).toISOString();
+    jest.advanceTimersByTime(60000);
     const state = mockHomeyInstance.settings.get('power_tracker_state');
     expect(state.buckets[bucketKey]).toBeCloseTo(0.5, 3);
   });
@@ -54,7 +55,7 @@ describe('power tracker integration', () => {
     // Simulate persisted state being cleared via settings UI.
     mockHomeyInstance.settings.set('power_tracker_state', {});
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    jest.advanceTimersByTime(10);
     expect(app['powerTracker'].buckets).toBeUndefined();
   });
 
@@ -78,8 +79,8 @@ describe('power tracker integration', () => {
       hourlyAverages: {},
     };
 
-    // Call savePowerTracker which triggers aggregation
-    app['savePowerTracker']();
+    // Call prunePowerTrackerHistory which triggers aggregation
+    app['prunePowerTrackerHistory']();
 
     const state = mockHomeyInstance.settings.get('power_tracker_state');
 
@@ -115,7 +116,8 @@ describe('power tracker integration', () => {
       hourlyAverages: {},
     };
 
-    app['savePowerTracker']();
+    // Pruning shouldn't affect recent buckets
+    app['prunePowerTrackerHistory']();
 
     const state = mockHomeyInstance.settings.get('power_tracker_state');
 
