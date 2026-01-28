@@ -130,5 +130,8 @@
   },
   "1.11.1": {
     "en": "Fix a bug where images won't render on Homey due to Homey running on arm64"
+  },
+  "1.11.2": {
+    "en": "Increase performance by reducing plan generation churn."
   }
 }
