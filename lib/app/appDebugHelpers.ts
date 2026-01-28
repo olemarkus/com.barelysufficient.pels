@@ -2,13 +2,17 @@ import type { DeviceManager } from '../core/deviceManager';
 import { HomeyDeviceLike } from '../utils/types';
 import { safeJsonStringify, sanitizeLogValue } from '../utils/logUtils';
 
-export async function getHomeyDevicesForDebug(deviceManager: DeviceManager): Promise<HomeyDeviceLike[]> {
+export async function getHomeyDevicesForDebug(params: {
+  deviceManager: DeviceManager;
+  error: (msg: string, err: Error) => void;
+}): Promise<HomeyDeviceLike[]> {
+  const { deviceManager, error } = params;
   if (!deviceManager) return [];
   try {
     await deviceManager.init();
     return await deviceManager.getDevicesForDebug();
-  } catch (error) {
-    console.error('Failed to fetch Homey devices for debug', (error as Error)?.message || error);
+  } catch (err) {
+    error('Failed to fetch Homey devices for debug', err as Error);
     return [];
   }
 }
@@ -17,11 +21,12 @@ export async function logHomeyDeviceForDebug(params: {
   deviceId: string;
   deviceManager: DeviceManager;
   log: (msg: string, metadata?: unknown) => void;
+  error: (msg: string, err: Error) => void;
 }): Promise<boolean> {
-  const { deviceId, deviceManager, log } = params;
+  const { deviceId, deviceManager, log, error } = params;
   if (!deviceId) return false;
 
-  const devices = await getHomeyDevicesForDebug(deviceManager);
+  const devices = await getHomeyDevicesForDebug({ deviceManager, error });
   const device = devices.find((entry) => entry.id === deviceId);
   const safeDeviceId = sanitizeLogValue(deviceId);
 

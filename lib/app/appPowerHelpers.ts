@@ -186,9 +186,7 @@ export function updateDailyBudgetAndRecordCapForApp(params: {
   options?: { nowMs?: number; forcePlanRebuild?: boolean };
 }): PowerTrackerState {
   const { powerTracker, dailyBudgetService, options } = params;
-  const updateStart = Date.now();
   dailyBudgetService.updateState(options);
-  addPerfDuration('daily_budget_update_ms', Date.now() - updateStart);
   incPerfCounter('daily_budget_update_total');
   return recordDailyBudgetCap({
     powerTracker,

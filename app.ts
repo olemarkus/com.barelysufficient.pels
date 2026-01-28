@@ -94,7 +94,10 @@ class PelsApp extends Homey.App {
   }
   async getHomeyDevicesForDebug(): Promise<HomeyDeviceLike[]> {
     try {
-      return await getHomeyDevicesForDebugHelper(this.deviceManager);
+      return await getHomeyDevicesForDebugHelper({
+        deviceManager: this.deviceManager,
+        error: (msg, err) => this.error(msg, err),
+      });
     } catch (err) {
       this.log("Failed to get Homey devices for debug", err);
       return [];
@@ -105,6 +108,7 @@ class PelsApp extends Homey.App {
       deviceId,
       deviceManager: this.deviceManager,
       log: (msg, payload) => this.log(msg, payload),
+      error: (msg, err) => this.error(msg, err),
     });
   }
   async onInit() {

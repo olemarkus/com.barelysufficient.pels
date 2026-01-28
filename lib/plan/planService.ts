@@ -142,6 +142,7 @@ export class PlanService {
     const now = Date.now();
     const planSnapshotSignature = `${deviceSignature}|${JSON.stringify(plan.meta)}`;
     if (planSnapshotSignature === this.lastPlanSnapshotSignature) return;
+    this.lastPlanSnapshotSignature = planSnapshotSignature;
 
     const throttleElapsed = now - this.lastPlanSnapshotWriteMs > VOLATILE_WRITE_THROTTLE_MS;
 
@@ -149,7 +150,6 @@ export class PlanService {
       const writeStart = Date.now();
       this.deps.homey.settings.set('device_plan_snapshot', plan);
       this.lastPlanSnapshotWriteMs = now;
-      this.lastPlanSnapshotSignature = planSnapshotSignature;
       addPerfDuration('settings_write_ms', Date.now() - writeStart);
       incPerfCounter('settings_set.device_plan_snapshot');
     }
