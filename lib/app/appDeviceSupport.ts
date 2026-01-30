@@ -24,30 +24,28 @@ export function disableUnsupportedDevices(params: {
   const managedChanged = unsupportedIds.some((id) => managed[id] !== false);
   const controllableChanged = unsupportedIds.some((id) => controllable[id] !== false);
 
+  const falseOverrides = Object.fromEntries(unsupportedIds.map((id) => [id, false] as const));
   if (managedChanged) {
-    const nextManaged = unsupportedIds.reduce<Record<string, boolean>>((acc, id) => (
-      acc[id] === false ? acc : { ...acc, [id]: false }
-    ), managed);
+    const nextManaged = { ...managed, ...falseOverrides };
     settings.set(MANAGED_DEVICES, nextManaged);
   }
   if (controllableChanged) {
-    const nextControllable = unsupportedIds.reduce<Record<string, boolean>>((acc, id) => (
-      acc[id] === false ? acc : { ...acc, [id]: false }
-    ), controllable);
+    const nextControllable = { ...controllable, ...falseOverrides };
     settings.set(CONTROLLABLE_DEVICES, nextControllable);
   }
 
   const priceSettings = priceRaw && typeof priceRaw === 'object'
     ? priceRaw as Record<string, { enabled?: boolean }>
     : null;
-  const priceChanged = Boolean(priceSettings) && unsupportedIds.some((id) => priceSettings?.[id]?.enabled === true);
+  const priceUpdates = priceSettings
+    ? Object.fromEntries(unsupportedIds.flatMap((id) => {
+      const entry = priceSettings[id];
+      return entry?.enabled === true ? [[id, { ...entry, enabled: false }]] : [];
+    }))
+    : {};
+  const priceChanged = priceSettings ? Object.keys(priceUpdates).length > 0 : false;
   if (priceSettings && priceChanged) {
-    const nextPriceSettings = unsupportedIds.reduce<Record<string, { enabled?: boolean }>>((acc, id) => {
-      const entry = acc[id];
-      if (!entry || entry.enabled !== true) return acc;
-      return { ...acc, [id]: { ...entry, enabled: false } };
-    }, priceSettings);
-    settings.set(PRICE_OPTIMIZATION_SETTINGS, nextPriceSettings);
+    settings.set(PRICE_OPTIMIZATION_SETTINGS, { ...priceSettings, ...priceUpdates });
   }
 
   if (managedChanged || controllableChanged || priceChanged) {
