@@ -16,6 +16,8 @@ type PowerMeasurementResult = {
   updates: PowerMeasurementUpdates;
 };
 
+const MIN_METER_DELTA_HOURS = 1 / 3600; // Require at least 1 second between readings
+
 export function getMeasuredPowerKw(params: {
   deviceId: string;
   deviceLabel: string;
@@ -120,7 +122,7 @@ const resolveMeterDelta = (params: {
     return { updates: meterUpdate };
   }
   const deltaHours = (now - previous.ts) / (1000 * 60 * 60);
-  if (!Number.isFinite(deltaHours) || deltaHours <= 0) {
+  if (!Number.isFinite(deltaHours) || deltaHours < MIN_METER_DELTA_HOURS) {
     return { updates: meterUpdate };
   }
   const deltaKwh = meterPowerRaw - previous.kwh;

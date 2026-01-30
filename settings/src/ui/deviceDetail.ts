@@ -248,7 +248,7 @@ const renderDeviceDetailModes = (device: TargetDeviceSnapshot) => {
   if (!supportsPowerDevice(device)) {
     const note = document.createElement('p');
     note.className = 'muted';
-    note.textContent = 'Temperature targets require power measurement and are disabled for this device.';
+    note.textContent = 'Temperature targets require power measurement or a configured load and are disabled for this device.';
     deviceDetailModes.appendChild(note);
     return;
   }
