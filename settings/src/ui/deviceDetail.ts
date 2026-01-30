@@ -21,6 +21,7 @@ import { renderPriorities } from './modes';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization';
 import { showToastError } from './toast';
 import { logSettingsError } from './logging';
+import { supportsPowerDevice } from './deviceUtils';
 
 let currentDetailDeviceId: string | null = null;
 
@@ -31,15 +32,6 @@ const getDeviceById = (deviceId: string) => state.latestDevices.find((device) =>
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot | null): boolean => (
   Boolean(device && (device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0))
 );
-
-const supportsPowerDevice = (device: TargetDeviceSnapshot | null): boolean => {
-  if (!device) return false;
-  if (device.powerCapable !== undefined) return device.powerCapable;
-  return typeof device.powerKw === 'number'
-    || typeof device.expectedPowerKw === 'number'
-    || typeof device.measuredPowerKw === 'number'
-    || typeof device.loadKw === 'number';
-};
 
 const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = name;

@@ -9,6 +9,7 @@ import { renderPriceOptimization, savePriceOptimizationSettings } from './priceO
 import { createDeviceRow, createCheckboxLabel } from './components';
 import { logSettingsError, logSettingsWarn } from './logging';
 import { debouncedSetSetting } from './utils';
+import { supportsPowerDevice } from './deviceUtils';
 
 const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
   const snapshot = await getSetting('target_devices_snapshot');
@@ -115,14 +116,6 @@ const resolveDeviceClassLabel = (deviceClass?: string): string => {
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
 );
-
-const supportsPowerDevice = (device: TargetDeviceSnapshot): boolean => {
-  if (device.powerCapable !== undefined) return device.powerCapable;
-  return typeof device.powerKw === 'number'
-    || typeof device.expectedPowerKw === 'number'
-    || typeof device.measuredPowerKw === 'number'
-    || typeof device.loadKw === 'number';
-};
 
 const getManagedTitle = (isLoadingComplete: boolean, supportsPower: boolean): string => {
   if (!isLoadingComplete) return 'Loading...';

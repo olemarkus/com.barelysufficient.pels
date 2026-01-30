@@ -5,18 +5,11 @@ import { getSetting, setSetting } from './homey';
 import { logSettingsError } from './logging';
 import { resolveManagedState, defaultPriceOptimizationConfig, state } from './state';
 import { showToastError } from './toast';
+import { supportsPowerDevice } from './deviceUtils';
 
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
 );
-
-const supportsPowerDevice = (device: TargetDeviceSnapshot): boolean => {
-  if (device.powerCapable !== undefined) return device.powerCapable;
-  return typeof device.powerKw === 'number'
-    || typeof device.expectedPowerKw === 'number'
-    || typeof device.measuredPowerKw === 'number'
-    || typeof device.loadKw === 'number';
-};
 
 export const loadPriceOptimizationSettings = async () => {
   const settings = await getSetting('price_optimization_settings');

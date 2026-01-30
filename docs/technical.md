@@ -150,9 +150,9 @@ When headroom becomes available:
 
 PELS needs to estimate how much power a device will draw when turned on:
 
-1. **settings.load capability**: If configured on the device, always use this first
-2. **Most recent reading**: Live `measure_power` when available, or an average derived from `meter_power` deltas
-3. **Temporary override**: From the "Set expected power for device" Flow action (until a new meter reading arrives)
+1. **settings.load capability**: If configured on the device, use it as the expected power (manual override can supersede it)
+2. **Manual override**: From the "Set expected power for device" Flow action; it remains in effect until a *higher* measured reading arrives
+3. **Measured peak**: The last known peak derived from live `measure_power` or `meter_power` deltas
 4. **Fallback**: Assume 1 kW if no better estimate available
 
 This estimation is inherently imperfect, which is why PELS:
@@ -162,7 +162,7 @@ This estimation is inherently imperfect, which is why PELS:
 
 For shedding decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
 
-For `meter_power`, PELS computes an average kW from the change in kWh over time. If the counter decreases (reset/rollover), the delta is ignored and the baseline is reset.
+For `meter_power`, PELS computes an average kW from the change in kWh over time and updates the peak. If the counter decreases (reset/rollover), the delta is ignored and the baseline is reset.
 
 ---
 
@@ -202,7 +202,7 @@ Devices without power capability are listed for visibility, but are forced unman
 The **"Is there headroom for device?"** Flow condition is intended for capacity-controlled devices such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
 
 - Current headroom (soft limit minus current load)
-- Device's expected usage (estimator order: `settings.load` → `measure_power`/`meter_power` delta → flow override → last known on-state draw → fallback **1 kW**). Devices with `settings.load > 0` are excluded from this card entirely.
+- Device's expected usage (estimator order: `settings.load` → flow override → measured-peak from `measure_power`/`meter_power` → fallback **1 kW**). Devices with `settings.load > 0` use that configured value (unless a manual override is set) for this card.
 - A conservative fallback of **1 kW** when no estimate exists, to avoid over-promising capacity
 
 Using 0 kW as a fallback would risk reporting that capacity exists when the actual load is unknown, so PELS never reports headroom based on a zero/unknown estimate.
