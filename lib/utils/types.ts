@@ -12,6 +12,7 @@ export type TargetDeviceSnapshot = {
     currentOn?: boolean;
     currentTemperature?: number;
     measuredPowerKw?: number;
+    powerCapable?: boolean;
     zone?: string;
     controllable?: boolean;
     managed?: boolean;
@@ -72,6 +73,7 @@ export type HomeyDeviceLike = {
     capabilitiesObj?: Record<string, CapabilityValue<unknown> | undefined> & {
         measure_temperature?: CapabilityValue<number>;
         measure_power?: CapabilityValue<number>;
+        meter_power?: CapabilityValue<number>;
         onoff?: CapabilityValue<boolean>;
         target_temperature?: CapabilityValue<number>;
     };

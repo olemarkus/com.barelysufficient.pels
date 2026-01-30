@@ -151,8 +151,9 @@ When headroom becomes available:
 PELS needs to estimate how much power a device will draw when turned on:
 
 1. **settings.load capability**: If configured on the device, always use this first
-2. **Most recent reading**: Whichever is newer between live `measure_power` and a temporary override from the "Set expected power for device" Flow action
-3. **Fallback**: Assume 1 kW if no better estimate available
+2. **Most recent reading**: Live `measure_power` when available, or an average derived from `meter_power` deltas
+3. **Temporary override**: From the "Set expected power for device" Flow action (until a new meter reading arrives)
+4. **Fallback**: Assume 1 kW if no better estimate available
 
 This estimation is inherently imperfect, which is why PELS:
 - Restores only one device at a time
@@ -160,6 +161,8 @@ This estimation is inherently imperfect, which is why PELS:
 - Uses a hysteresis buffer for safety
 
 For shedding decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
+
+For `meter_power`, PELS computes an average kW from the change in kWh over time. If the counter decreases (reset/rollover), the delta is ignored and the baseline is reset.
 
 ---
 
@@ -186,18 +189,20 @@ Aggregation happens automatically when power data is saved—you don't need to m
 
 PELS only manages devices that expose the capabilities it needs:
 
-- **All devices**: `measure_power` (without this, PELS cannot estimate impact or headroom)
-- **Temperature devices**: `target_temperature` + `measure_temperature` + `measure_power`
-- **On/off devices**: `onoff` + `measure_power`
+- **All devices**: `measure_power` or `meter_power` (or a configured `settings.load`)
+- **Temperature devices**: `target_temperature` + `measure_temperature` + power capability
+- **On/off devices**: `onoff` + power capability
 
 Devices are **disabled by default**. You must explicitly enable management and control in the Devices tab.
+
+Devices without power capability are listed for visibility, but are forced unmanaged and cannot enable capacity or price features until power capability is available.
 
 ### Headroom check for capacity-controlled loads
 
 The **"Is there headroom for device?"** Flow condition is intended for capacity-controlled devices such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
 
 - Current headroom (soft limit minus current load)
-- Device's expected usage (estimator order: `settings.load` → newest of meter reading or flow override → last known on-state draw → fallback **1 kW**). Devices with `settings.load > 0` are excluded from this card entirely.
+- Device's expected usage (estimator order: `settings.load` → `measure_power`/`meter_power` delta → flow override → last known on-state draw → fallback **1 kW**). Devices with `settings.load > 0` are excluded from this card entirely.
 - A conservative fallback of **1 kW** when no estimate exists, to avoid over-promising capacity
 
 Using 0 kW as a fallback would risk reporting that capacity exists when the actual load is unknown, so PELS never reports headroom based on a zero/unknown estimate.

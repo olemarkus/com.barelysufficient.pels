@@ -17,16 +17,18 @@ const setupDom = () => {
   `;
 };
 
-const buildDevice = (): TargetDeviceSnapshot => ({
+const buildDevice = (overrides?: Partial<TargetDeviceSnapshot>): TargetDeviceSnapshot => ({
   id: 'device-1',
   name: 'Test Device',
   targets: [],
   deviceType: 'temperature',
+  ...overrides,
 });
 
 const setupHarness = async (options: {
   initialLoadComplete: boolean;
   isManaged?: boolean;
+  deviceOverrides?: Partial<TargetDeviceSnapshot>;
 }): Promise<Harness> => {
   setupDom();
   jest.resetModules();
@@ -65,7 +67,7 @@ const setupHarness = async (options: {
     ({ state } = require('../settings/src/ui/state') as typeof import('../settings/src/ui/state'));
   });
 
-  const device = buildDevice();
+  const device = buildDevice(options.deviceOverrides);
   state.initialLoadComplete = options.initialLoadComplete;
   state.latestDevices = [device];
   state.managedMap = options.isManaged ? { [device.id]: true } : {};
@@ -132,6 +134,7 @@ describe('device settings initial load guard', () => {
   it('allows managed toggle after initial load completes', async () => {
     const { managedCheckbox, debouncedSetSetting, logSettingsWarn } = await setupHarness({
       initialLoadComplete: true,
+      deviceOverrides: { powerCapable: true },
     });
 
     managedCheckbox.checked = false;
@@ -172,7 +175,7 @@ describe('device settings initial load guard', () => {
       priceOptCheckbox,
       debouncedSetSetting,
       savePriceOptimizationSettings,
-    } = await setupHarness({ initialLoadComplete: true, isManaged: true });
+    } = await setupHarness({ initialLoadComplete: true, isManaged: true, deviceOverrides: { powerCapable: true } });
 
     expect(controllableCheckbox.disabled).toBe(false);
     expect(priceOptCheckbox.disabled).toBe(false);
@@ -186,5 +189,22 @@ describe('device settings initial load guard', () => {
     expect(debouncedSetSetting).toHaveBeenCalledTimes(1);
     expect(debouncedSetSetting).toHaveBeenCalledWith('controllable_devices', expect.any(Function));
     expect(savePriceOptimizationSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables feature toggles for devices without power capability', async () => {
+    const {
+      managedCheckbox,
+      controllableCheckbox,
+      priceOptCheckbox,
+    } = await setupHarness({
+      initialLoadComplete: true,
+      isManaged: true,
+      deviceOverrides: { powerCapable: false },
+    });
+
+    expect(managedCheckbox.checked).toBe(false);
+    expect(managedCheckbox.disabled).toBe(true);
+    expect(controllableCheckbox.disabled).toBe(true);
+    expect(priceOptCheckbox.disabled).toBe(true);
   });
 });

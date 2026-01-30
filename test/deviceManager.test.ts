@@ -164,6 +164,96 @@ describe('DeviceManager', () => {
             expect(getPriority).toHaveBeenCalledWith('dev1');
             expect(getControllable).toHaveBeenCalledWith('dev1');
         });
+
+        it('uses meter_power delta when measure_power is missing', async () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+
+            await deviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'AC',
+                    class: 'airconditioning',
+                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
+                    capabilitiesObj: {
+                        meter_power: { value: 100, id: 'meter_power' },
+                        target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            jest.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'AC',
+                    class: 'airconditioning',
+                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
+                    capabilitiesObj: {
+                        meter_power: { value: 101, id: 'meter_power' },
+                        target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+            const snapshot = deviceManager.getSnapshot();
+
+            expect(snapshot[0].measuredPowerKw).toBeCloseTo(1, 3);
+            expect(snapshot[0].powerCapable).toBe(true);
+
+            jest.useRealTimers();
+        });
+
+        it('handles meter_power resets by ignoring negative deltas', async () => {
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+
+            await deviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'AC',
+                    class: 'airconditioning',
+                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
+                    capabilitiesObj: {
+                        meter_power: { value: 100, id: 'meter_power' },
+                        target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            jest.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'AC',
+                    class: 'airconditioning',
+                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
+                    capabilitiesObj: {
+                        meter_power: { value: 99, id: 'meter_power' },
+                        target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                        measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+            const snapshot = deviceManager.getSnapshot();
+
+            expect(snapshot[0].measuredPowerKw).toBeUndefined();
+            expect(snapshot[0].expectedPowerSource).toBe('default');
+
+            jest.useRealTimers();
+        });
     });
 
     describe('applyDeviceTargets', () => {

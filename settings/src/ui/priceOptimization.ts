@@ -10,6 +10,14 @@ const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
 );
 
+const supportsPowerDevice = (device: TargetDeviceSnapshot): boolean => {
+  if (device.powerCapable !== undefined) return device.powerCapable;
+  return typeof device.powerKw === 'number'
+    || typeof device.expectedPowerKw === 'number'
+    || typeof device.measuredPowerKw === 'number'
+    || typeof device.loadKw === 'number';
+};
+
 export const loadPriceOptimizationSettings = async () => {
   const settings = await getSetting('price_optimization_settings');
   if (settings && typeof settings === 'object') {
@@ -87,7 +95,10 @@ export const renderPriceOptimization = (devices: TargetDeviceSnapshot[]) => {
 
   const enabledDevices = (devices || []).filter((device) => {
     const config = state.priceOptimizationSettings[device.id];
-    return resolveManagedState(device.id) && config?.enabled === true && supportsTemperatureDevice(device);
+    return resolveManagedState(device.id)
+      && config?.enabled === true
+      && supportsTemperatureDevice(device)
+      && supportsPowerDevice(device);
   });
 
   if (enabledDevices.length === 0) {
