@@ -119,7 +119,7 @@ const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
 
 const getManagedTitle = (isLoadingComplete: boolean, supportsPower: boolean): string => {
   if (!isLoadingComplete) return 'Loading...';
-  if (!supportsPower) return 'Managed by PELS (requires power measurement)';
+  if (!supportsPower) return 'Managed by PELS (requires power measurement or configured load)';
   return 'Managed by PELS';
 };
 
@@ -130,7 +130,7 @@ const getCapacityTitle = (params: {
 }): string => {
   const { isLoadingComplete, supportsPower, isManaged } = params;
   if (!isLoadingComplete) return 'Loading...';
-  if (!supportsPower) return 'Capacity-based control (requires power measurement)';
+  if (!supportsPower) return 'Capacity-based control (requires power measurement or configured load)';
   if (isManaged) return 'Capacity-based control';
   return 'Capacity-based control (requires Managed by PELS)';
 };
@@ -149,7 +149,7 @@ const getPriceTitle = (params: {
   } = params;
   if (!isLoadingComplete) return 'Loading...';
   if (!supportsTemperature) return 'Price-based control (temperature devices only)';
-  if (!supportsPower) return 'Price-based control (requires power measurement)';
+  if (!supportsPower) return 'Price-based control (requires power measurement or configured load)';
   if (isManaged) return 'Price-based control';
   return 'Price-based control (requires Managed by PELS)';
 };

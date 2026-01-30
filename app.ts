@@ -26,16 +26,11 @@ import { safeJsonStringify, sanitizeLogValue } from './lib/utils/logUtils';
 import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
 import { logDynamicElectricityPricesFromHomey } from './lib/app/appEnergyDebug';
-import {
-  resolveHomeyEnergyApiFromHomeyApi,
-  resolveHomeyEnergyApiFromSdk,
-  type HomeyEnergyApi,
-} from './lib/utils/homeyEnergy';
+import { resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi } from './lib/utils/homeyEnergy';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 30 * 1000;
-const POWER_SAMPLE_REBUILD_MIN_DELTA_RATIO = 0.01;
-const POWER_SAMPLE_REBUILD_MIN_DELTA_W = 50;
+const POWER_SAMPLE_REBUILD_MIN_DELTA_RATIO = 0.01; const POWER_SAMPLE_REBUILD_MIN_DELTA_W = 50;
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
   private capacityGuard?: CapacityGuard;
@@ -56,6 +51,7 @@ class PelsApp extends Homey.App {
   private planService!: PlanService;
   private defaultComputeDynamicSoftLimit?: () => number;
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
+  private isSnapshotRefreshing = false;
   private lastKnownPowerKw: Record<string, number> = {};
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
   private overheadToken?: Homey.FlowToken;
@@ -568,11 +564,16 @@ class PelsApp extends Homey.App {
     return this.deviceManager.parseDeviceListForTests(list);
   }
   private async refreshTargetDevicesSnapshot(): Promise<void> {
+    if (this.isSnapshotRefreshing) { this.logDebug('devices', 'Snapshot refresh already in progress, skipping'); return; }
+    this.isSnapshotRefreshing = true;
     this.logDebug('devices', 'Refreshing target devices snapshot');
-    await this.deviceManager.refreshSnapshot();
-    const snapshot = this.deviceManager.getSnapshot();
-    this.homey.settings.set('target_devices_snapshot', snapshot);
-    disableUnsupportedDevicesHelper({ snapshot, settings: this.homey.settings, logDebug: (...args: unknown[]) => this.logDebug('devices', ...args) });
+    try {
+      await this.deviceManager.refreshSnapshot();
+      const snapshot = this.deviceManager.getSnapshot(); this.homey.settings.set('target_devices_snapshot', snapshot);
+      disableUnsupportedDevicesHelper({ snapshot, settings: this.homey.settings, logDebug: (...args: unknown[]) => this.logDebug('devices', ...args) });
+    } finally {
+      this.isSnapshotRefreshing = false;
+    }
   }
   private getCombinedHourlyPrices(): unknown {
     return this.priceCoordinator.getCombinedHourlyPrices();

@@ -13,7 +13,8 @@ const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
 const SUPPORTED_DEVICE_CLASSES = new Set(['thermostat', 'heater', 'socket', 'heatpump', 'airconditioning']);
-const POWER_CAPABILITIES = new Set(['measure_power', 'meter_power']);
+const POWER_CAPABILITY_PREFIXES = ['measure_power', 'meter_power'] as const;
+const POWER_CAPABILITY_SET = new Set(POWER_CAPABILITY_PREFIXES);
 const MIN_SIGNIFICANT_POWER_W = 50;
 
 type HomeyApiDevicesClient = {
@@ -250,8 +251,8 @@ export class DeviceManager {
         if (!capsStatus) return null;
         const capabilityObj = this.getCapabilityObj(device);
         const currentTemperature = this.getCurrentTemperature(capabilityObj);
-        const powerRaw = capabilityObj.measure_power?.value;
-        const meterPowerRaw = capabilityObj.meter_power?.value;
+        const powerRaw = this.getCapabilityValueByPrefix(capabilities, capabilityObj, 'measure_power');
+        const meterPowerRaw = this.getCapabilityValueByPrefix(capabilities, capabilityObj, 'meter_power');
         const powerEstimate = estimatePower({
             device,
             deviceId,
@@ -316,7 +317,7 @@ export class DeviceManager {
         return Array.isArray(device.capabilities) ? device.capabilities : [];
     }
     private resolveDeviceCapabilities(capabilities: string[]): { targetCaps: string[]; hasPower: boolean } | null {
-        const hasPower = capabilities.some((cap) => POWER_CAPABILITIES.has(cap));
+        const hasPower = this.hasPowerCapability(capabilities);
         const targetCaps = this.getTargetCaps(capabilities);
         const hasOnOff = capabilities.includes('onoff');
         if (targetCaps.length > 0 && !capabilities.includes('measure_temperature')) {
@@ -332,6 +333,22 @@ export class DeviceManager {
             return device.capabilitiesObj as Record<string, CapabilityValue>;
         }
         return {};
+    }
+    private hasPowerCapability(capabilities: string[]): boolean {
+        return capabilities.some((cap) => (
+            POWER_CAPABILITY_SET.has(cap as (typeof POWER_CAPABILITY_PREFIXES)[number])
+            || POWER_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(`${prefix}.`))
+        ));
+    }
+    private getCapabilityValueByPrefix(
+        capabilities: string[],
+        capabilityObj: Record<string, CapabilityValue>,
+        prefix: (typeof POWER_CAPABILITY_PREFIXES)[number],
+    ): unknown {
+        const direct = capabilityObj[prefix]?.value;
+        if (direct !== undefined) return direct;
+        const capId = capabilities.find((cap) => cap === prefix || cap.startsWith(`${prefix}.`));
+        return capId ? capabilityObj[capId]?.value : undefined;
     }
     private getCurrentTemperature(capabilityObj: Record<string, CapabilityValue>): number | undefined {
         const temp = capabilityObj.measure_temperature?.value;
