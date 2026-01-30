@@ -252,7 +252,7 @@ describe('Heatpump device integration', () => {
         expect(planDevice?.shedTemperature).toBe(15);
     });
 
-    it('excludes heatpump devices without measure_power', async () => {
+    it('includes heatpump devices without power capability but marks them unsupported', async () => {
         setMockDrivers({});
         const app = createApp();
         await app.onInit();
@@ -269,7 +269,9 @@ describe('Heatpump device integration', () => {
 
         await (app as any).refreshTargetDevicesSnapshot();
 
-        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string }>;
-        expect(snapshot.find((entry) => entry.id === 'heatpump-a')).toBeUndefined();
+        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string; powerCapable?: boolean }>;
+        const entry = snapshot.find((device) => device.id === 'heatpump-a');
+        expect(entry).toBeDefined();
+        expect(entry?.powerCapable).toBe(false);
     });
 });

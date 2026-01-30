@@ -116,6 +116,51 @@ const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
 );
 
+const supportsPowerDevice = (device: TargetDeviceSnapshot): boolean => {
+  if (device.powerCapable !== undefined) return device.powerCapable;
+  return typeof device.powerKw === 'number'
+    || typeof device.expectedPowerKw === 'number'
+    || typeof device.measuredPowerKw === 'number'
+    || typeof device.loadKw === 'number';
+};
+
+const getManagedTitle = (isLoadingComplete: boolean, supportsPower: boolean): string => {
+  if (!isLoadingComplete) return 'Loading...';
+  if (!supportsPower) return 'Managed by PELS (requires power measurement)';
+  return 'Managed by PELS';
+};
+
+const getCapacityTitle = (params: {
+  isLoadingComplete: boolean;
+  supportsPower: boolean;
+  isManaged: boolean;
+}): string => {
+  const { isLoadingComplete, supportsPower, isManaged } = params;
+  if (!isLoadingComplete) return 'Loading...';
+  if (!supportsPower) return 'Capacity-based control (requires power measurement)';
+  if (isManaged) return 'Capacity-based control';
+  return 'Capacity-based control (requires Managed by PELS)';
+};
+
+const getPriceTitle = (params: {
+  isLoadingComplete: boolean;
+  supportsTemperature: boolean;
+  supportsPower: boolean;
+  isManaged: boolean;
+}): string => {
+  const {
+    isLoadingComplete,
+    supportsTemperature,
+    supportsPower,
+    isManaged,
+  } = params;
+  if (!isLoadingComplete) return 'Loading...';
+  if (!supportsTemperature) return 'Price-based control (temperature devices only)';
+  if (!supportsPower) return 'Price-based control (requires power measurement)';
+  if (isManaged) return 'Price-based control';
+  return 'Price-based control (requires Managed by PELS)';
+};
+
 const setBusy = (busy: boolean) => {
   state.isBusy = busy;
   refreshButton.disabled = busy;
@@ -132,85 +177,77 @@ const withInitialLoadGuard = (
   await handler(checked);
 };
 
+const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('managed', async (checked) => {
+  // Optimistic UI: update state immediately
+  state.managedMap[deviceId] = checked;
+  renderDevices(state.latestDevices);
+  renderPriorities(state.latestDevices);
+  renderPriceOptimization(state.latestDevices);
+  // Debounced save: coalesces rapid toggles into single save
+  try {
+    await debouncedSetSetting('managed_devices', () => ({ ...state.managedMap }));
+  } catch (error) {
+    await logSettingsError('Failed to update managed device', error, 'device list');
+    await showToastError(error, 'Failed to update managed devices.');
+  }
+});
+
+const buildControllableToggleHandler = (deviceId: string) => withInitialLoadGuard('controllable', async (checked) => {
+  // Optimistic UI: update state immediately
+  state.controllableMap[deviceId] = checked;
+  // Debounced save: coalesces rapid toggles into single save
+  try {
+    await debouncedSetSetting('controllable_devices', () => ({ ...state.controllableMap }));
+  } catch (error) {
+    await logSettingsError('Failed to update controllable device', error, 'device list');
+    await showToastError(error, 'Failed to update controllable devices.');
+  }
+});
+
+const buildPriceToggleHandler = (deviceId: string) => withInitialLoadGuard('price opt', async (checked) => {
+  if (!state.priceOptimizationSettings[deviceId]) {
+    state.priceOptimizationSettings[deviceId] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
+  }
+  state.priceOptimizationSettings[deviceId].enabled = checked;
+  try {
+    await savePriceOptimizationSettings();
+    renderPriceOptimization(state.latestDevices);
+  } catch (error) {
+    await logSettingsError('Failed to update price optimization settings', error, 'device list');
+    await showToastError(error, 'Failed to update price optimization settings.');
+  }
+});
+
 const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   const supportsTemperature = supportsTemperatureDevice(device);
-  const isManaged = resolveManagedState(device.id);
+  const supportsPower = supportsPowerDevice(device);
+  const isManaged = supportsPower && resolveManagedState(device.id);
   const isLoadingComplete = state.initialLoadComplete;
 
   const managedCheckbox = createCheckboxLabel({
-    title: isLoadingComplete ? 'Managed by PELS' : 'Loading...',
-    checked: isManaged,
-    disabled: !isLoadingComplete,
-    onChange: withInitialLoadGuard('managed', async (checked) => {
-      // Optimistic UI: update state immediately
-      state.managedMap[device.id] = checked;
-      renderDevices(state.latestDevices);
-      renderPriorities(state.latestDevices);
-      renderPriceOptimization(state.latestDevices);
-      // Debounced save: coalesces rapid toggles into single save
-      try {
-        await debouncedSetSetting('managed_devices', () => ({ ...state.managedMap }));
-      } catch (error) {
-        await logSettingsError('Failed to update managed device', error, 'device list');
-        await showToastError(error, 'Failed to update managed devices.');
-      }
-    }),
+    title: getManagedTitle(isLoadingComplete, supportsPower),
+    checked: supportsPower && isManaged,
+    disabled: !isLoadingComplete || !supportsPower,
+    onChange: buildManagedToggleHandler(device.id),
   });
-
-  let ctrlTitle: string;
-  if (!isLoadingComplete) {
-    ctrlTitle = 'Loading...';
-  } else if (isManaged) {
-    ctrlTitle = 'Capacity-based control';
-  } else {
-    ctrlTitle = 'Capacity-based control (requires Managed by PELS)';
-  }
 
   const ctrlCheckbox = createCheckboxLabel({
-    title: ctrlTitle,
-    checked: state.controllableMap[device.id] === true,
-    disabled: !isLoadingComplete || !isManaged,
-    onChange: withInitialLoadGuard('controllable', async (checked) => {
-      // Optimistic UI: update state immediately
-      state.controllableMap[device.id] = checked;
-      // Debounced save: coalesces rapid toggles into single save
-      try {
-        await debouncedSetSetting('controllable_devices', () => ({ ...state.controllableMap }));
-      } catch (error) {
-        await logSettingsError('Failed to update controllable device', error, 'device list');
-        await showToastError(error, 'Failed to update controllable devices.');
-      }
-    }),
+    title: getCapacityTitle({ isLoadingComplete, supportsPower, isManaged }),
+    checked: supportsPower && state.controllableMap[device.id] === true,
+    disabled: !isLoadingComplete || !supportsPower || !isManaged,
+    onChange: buildControllableToggleHandler(device.id),
   });
 
-  let priceTitle: string;
-  if (!isLoadingComplete) {
-    priceTitle = 'Loading...';
-  } else if (!supportsTemperature) {
-    priceTitle = 'Price-based control (temperature devices only)';
-  } else if (isManaged) {
-    priceTitle = 'Price-based control';
-  } else {
-    priceTitle = 'Price-based control (requires Managed by PELS)';
-  }
-
   const priceOptCheckbox = createCheckboxLabel({
-    title: priceTitle,
-    checked: supportsTemperature && state.priceOptimizationSettings[device.id]?.enabled === true,
-    disabled: !isLoadingComplete || !supportsTemperature || !isManaged,
-    onChange: withInitialLoadGuard('price opt', async (checked) => {
-      if (!state.priceOptimizationSettings[device.id]) {
-        state.priceOptimizationSettings[device.id] = { enabled: false, cheapDelta: 5, expensiveDelta: -5 };
-      }
-      state.priceOptimizationSettings[device.id].enabled = checked;
-      try {
-        await savePriceOptimizationSettings();
-        renderPriceOptimization(state.latestDevices);
-      } catch (error) {
-        await logSettingsError('Failed to update price optimization settings', error, 'device list');
-        await showToastError(error, 'Failed to update price optimization settings.');
-      }
+    title: getPriceTitle({
+      isLoadingComplete,
+      supportsTemperature,
+      supportsPower,
+      isManaged,
     }),
+    checked: supportsTemperature && supportsPower && state.priceOptimizationSettings[device.id]?.enabled === true,
+    disabled: !isLoadingComplete || !supportsTemperature || !supportsPower || !isManaged,
+    onChange: buildPriceToggleHandler(device.id),
   });
 
   return createDeviceRow({

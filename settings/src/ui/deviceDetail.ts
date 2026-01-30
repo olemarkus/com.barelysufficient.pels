@@ -32,6 +32,15 @@ const supportsTemperatureDevice = (device: TargetDeviceSnapshot | null): boolean
   Boolean(device && (device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0))
 );
 
+const supportsPowerDevice = (device: TargetDeviceSnapshot | null): boolean => {
+  if (!device) return false;
+  if (device.powerCapable !== undefined) return device.powerCapable;
+  return typeof device.powerKw === 'number'
+    || typeof device.expectedPowerKw === 'number'
+    || typeof device.measuredPowerKw === 'number'
+    || typeof device.loadKw === 'number';
+};
+
 const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = name;
 };
@@ -39,38 +48,43 @@ const setDeviceDetailTitle = (name: string) => {
 const setDeviceDetailControlStates = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   const supportsTemperature = supportsTemperatureDevice(device);
-  const isManaged = resolveManagedState(deviceId);
+  const supportsPower = supportsPowerDevice(device);
+  const isManaged = supportsPower && resolveManagedState(deviceId);
   if (deviceDetailManaged) {
     deviceDetailManaged.checked = isManaged;
+    deviceDetailManaged.disabled = !supportsPower;
   }
   if (deviceDetailControllable) {
-    deviceDetailControllable.checked = state.controllableMap[deviceId] === true;
-    deviceDetailControllable.disabled = !isManaged;
+    deviceDetailControllable.checked = supportsPower && state.controllableMap[deviceId] === true;
+    deviceDetailControllable.disabled = !supportsPower || !isManaged;
   }
 
   const priceConfig = state.priceOptimizationSettings[deviceId];
   if (deviceDetailPriceOpt) {
-    deviceDetailPriceOpt.checked = supportsTemperature && priceConfig?.enabled === true;
-    deviceDetailPriceOpt.disabled = !supportsTemperature || !isManaged;
+    deviceDetailPriceOpt.checked = supportsTemperature && supportsPower && priceConfig?.enabled === true;
+    deviceDetailPriceOpt.disabled = !supportsTemperature || !supportsPower || !isManaged;
   }
 };
 
 const setDeviceDetailShedBehavior = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   const supportsTemperature = supportsTemperatureDevice(device);
+  const supportsPower = supportsPowerDevice(device);
+  const canConfigure = supportsTemperature && supportsPower;
   const shedConfig = state.shedBehaviors[deviceId];
   if (deviceDetailShedAction) {
     const setTempOption = deviceDetailShedAction.querySelector('option[value="set_temperature"]');
     if (setTempOption) {
-      setTempOption.disabled = !supportsTemperature;
+      setTempOption.disabled = !canConfigure;
       setTempOption.hidden = !supportsTemperature;
     }
-    deviceDetailShedAction.disabled = !supportsTemperature;
-    deviceDetailShedAction.value = supportsTemperature ? shedConfig?.action || 'turn_off' : 'turn_off';
+    deviceDetailShedAction.disabled = !canConfigure;
+    deviceDetailShedAction.value = canConfigure ? shedConfig?.action || 'turn_off' : 'turn_off';
   }
   if (deviceDetailShedTemp) {
     const temp = shedConfig?.temperature;
-    deviceDetailShedTemp.value = supportsTemperature && typeof temp === 'number' ? temp.toString() : '';
+    deviceDetailShedTemp.value = canConfigure && typeof temp === 'number' ? temp.toString() : '';
+    deviceDetailShedTemp.disabled = !canConfigure;
   }
 };
 
@@ -93,7 +107,7 @@ const showDeviceDetailOverlay = () => {
 const updateDeltaSectionVisibility = () => {
   if (!deviceDetailDeltaSection || !deviceDetailPriceOpt) return;
   const device = currentDetailDeviceId ? getDeviceById(currentDetailDeviceId) : null;
-  if (!supportsTemperatureDevice(device)) {
+  if (!supportsTemperatureDevice(device) || !supportsPowerDevice(device)) {
     deviceDetailDeltaSection.style.display = 'none';
     return;
   }
@@ -137,7 +151,7 @@ const resolveTemperatureShedBehavior = (deviceId: string): {
 const updateShedTempVisibility = () => {
   if (!deviceDetailShedAction || !deviceDetailShedTempRow) return;
   const device = currentDetailDeviceId ? getDeviceById(currentDetailDeviceId) : null;
-  if (!supportsTemperatureDevice(device)) {
+  if (!supportsTemperatureDevice(device) || !supportsPowerDevice(device)) {
     deviceDetailShedTempRow.hidden = true;
     if (deviceDetailShedTemp) {
       deviceDetailShedTemp.disabled = true;
@@ -239,6 +253,13 @@ const renderDeviceDetailModes = (device: TargetDeviceSnapshot) => {
     deviceDetailModes.appendChild(note);
     return;
   }
+  if (!supportsPowerDevice(device)) {
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = 'Temperature targets require power measurement and are disabled for this device.';
+    deviceDetailModes.appendChild(note);
+    return;
+  }
 
   getAllModes().forEach((mode) => {
     deviceDetailModes.appendChild(buildDeviceDetailModeRow(mode, device));
@@ -249,7 +270,7 @@ const saveShedBehavior = async () => {
   const deviceId = currentDetailDeviceId;
   if (!deviceId) return;
   const device = getDeviceById(deviceId);
-  if (!supportsTemperatureDevice(device)) {
+  if (!supportsTemperatureDevice(device) || !supportsPowerDevice(device)) {
     state.shedBehaviors[deviceId] = { action: 'turn_off' };
     await setSetting('overshoot_behaviors', state.shedBehaviors);
     return;

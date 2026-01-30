@@ -8,7 +8,7 @@ import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { aggregateAndPruneHistory, PowerTrackerState } from './lib/core/powerTracker';
 import { PriceLevel } from './lib/price/priceLevels';
-import { buildPeriodicStatusLog } from './lib/core/periodicStatus';
+import { logPeriodicStatus as logPeriodicStatusHelper } from './lib/app/appStatusLog';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
@@ -19,6 +19,7 @@ import { isBooleanMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
 import { createPlanEngine, createPlanService, registerAppFlowCards, type FlowCardInitApp, type PlanEngineInitApp, type PlanServiceInitApp } from './lib/app/appInit';
 import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
+import { disableUnsupportedDevices as disableUnsupportedDevicesHelper } from './lib/app/appDeviceSupport';
 import { startAppServices } from './lib/app/appLifecycleHelpers';
 import { PowerSampleRebuildState, recordDailyBudgetCap, recordPowerSampleForApp, schedulePlanRebuildFromPowerSample } from './lib/app/appPowerHelpers';
 import { safeJsonStringify, sanitizeLogValue } from './lib/utils/logUtils';
@@ -546,21 +547,16 @@ class PelsApp extends Homey.App {
     if (this.snapshotRefreshInterval) clearInterval(this.snapshotRefreshInterval);
     this.snapshotRefreshInterval = setInterval(() => {
       this.refreshTargetDevicesSnapshot().catch((e) => this.error('Periodic snapshot refresh failed', e));
-      this.logPeriodicStatus();
+      logPeriodicStatusHelper({
+        capacityGuard: this.capacityGuard,
+        powerTracker: this.powerTracker,
+        capacitySettings: this.capacitySettings,
+        operatingMode: this.operatingMode,
+        capacityDryRun: this.capacityDryRun,
+        dailyBudgetService: this.dailyBudgetService,
+        log: (...args: unknown[]) => this.log(...args),
+      });
     }, SNAPSHOT_REFRESH_INTERVAL_MS);
-  }
-  private logPeriodicStatus(): void {
-    this.log(buildPeriodicStatusLog({
-      capacityGuard: this.capacityGuard,
-      powerTracker: this.powerTracker,
-      capacitySettings: this.capacitySettings,
-      operatingMode: this.operatingMode,
-      capacityDryRun: this.capacityDryRun,
-    }));
-    const dailyBudgetLog = this.dailyBudgetService.getPeriodicStatusLog();
-    if (dailyBudgetLog) {
-      this.log(dailyBudgetLog);
-    }
   }
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
     return this.deviceManager?.getSnapshot() ?? [];
@@ -574,7 +570,9 @@ class PelsApp extends Homey.App {
   private async refreshTargetDevicesSnapshot(): Promise<void> {
     this.logDebug('devices', 'Refreshing target devices snapshot');
     await this.deviceManager.refreshSnapshot();
-    this.homey.settings.set('target_devices_snapshot', this.deviceManager.getSnapshot());
+    const snapshot = this.deviceManager.getSnapshot();
+    this.homey.settings.set('target_devices_snapshot', snapshot);
+    disableUnsupportedDevicesHelper({ snapshot, settings: this.homey.settings, logDebug: (...args: unknown[]) => this.logDebug('devices', ...args) });
   }
   private getCombinedHourlyPrices(): unknown {
     return this.priceCoordinator.getCombinedHourlyPrices();

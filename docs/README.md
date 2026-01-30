@@ -133,13 +133,13 @@ After installation:
 
 ### Devices Tab
 
-The Devices tab shows all devices in your home that have temperature control capabilities (thermostats, water heaters, etc.).
+The Devices tab shows temperature and on/off devices that PELS can detect. Devices without power capability (no `measure_power`, no `meter_power`, and no configured load) are listed for visibility but are locked and unmanaged.
 
 | Setting | Description |
 |---------|-------------|
-| **Managed by PELS** | Toggle whether PELS should include the device in modes and price optimization. Unmanaged devices are treated as uncontrolled load and hidden from the Overview plan. |
-| **Capacity-based control** | Toggle whether PELS can shed/restore this device for capacity. You can keep this off while still using price optimization. |
-| **Price Optimization** | Enable temperature adjustments based on electricity prices (managed devices only). |
+| **Managed by PELS** | Toggle whether PELS should include the device in modes and price optimization. Unmanaged devices are treated as uncontrolled load and hidden from the Overview plan. Requires power capability. |
+| **Capacity-based control** | Toggle whether PELS can shed/restore this device for capacity. You can keep this off while still using price optimization. Requires power capability. |
+| **Price Optimization** | Enable temperature adjustments based on electricity prices (managed devices only). Requires power capability. |
 | **When shedding** | Choose what happens during capacity shedding: turn off (default) or drop to a minimum temperature. |
 
 > **Note:** Only managed devices appear in the Modes tab and Price optimization list.
@@ -416,7 +416,7 @@ For the Flow tag price source:
 | Issue | Solution |
 |-------|----------|
 | "No power samples received" | Create a Flow to report power usage |
-| Devices not appearing | Make sure they have temperature capabilities |
+| Devices not appearing | Make sure they have temperature or on/off capabilities and a supported class |
 | No price data | Configure price area and/or grid company |
 | PELS not controlling devices | Check "Managed by PELS" and "Capacity-based control" are enabled (and "Dry run" is disabled) |
 

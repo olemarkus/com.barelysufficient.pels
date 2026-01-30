@@ -127,7 +127,7 @@ describe('On/off device integration', () => {
     expect(setCapSpy).not.toHaveBeenCalled();
   });
 
-  it('excludes on/off devices without measure_power', async () => {
+  it('includes on/off devices without power capability but marks them unsupported', async () => {
     setMockDrivers({});
     const app = createApp();
     await app.onInit();
@@ -144,8 +144,10 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string }>;
-    expect(snapshot.find((entry) => entry.id === 'device-a')).toBeUndefined();
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string; powerCapable?: boolean }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry?.powerCapable).toBe(false);
   });
 
   it('excludes devices missing onoff capability when no temperature targets exist', async () => {

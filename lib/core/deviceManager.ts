@@ -3,6 +3,8 @@ import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import { resolveDeviceLabel, resolveZoneLabel } from './deviceManagerHelpers';
 import { incPerfCounter } from '../utils/perfCounters';
+import { estimatePower, type PowerEstimateState } from './powerEstimate';
+import type { PowerMeasurementUpdates } from './powerMeasurement';
 
 type HomeyApiConstructor = {
     createAppAPI: (opts: { homey: Homey.App['homey']; debug?: ((...args: unknown[]) => void) | null }) => Promise<HomeyApiClient>;
@@ -10,7 +12,8 @@ type HomeyApiConstructor = {
 const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
-const SUPPORTED_DEVICE_CLASSES = new Set(['thermostat', 'heater', 'socket', 'heatpump']);
+const SUPPORTED_DEVICE_CLASSES = new Set(['thermostat', 'heater', 'socket', 'heatpump', 'airconditioning']);
+const POWER_CAPABILITIES = new Set(['measure_power', 'meter_power']);
 const MIN_SIGNIFICANT_POWER_W = 50;
 
 type HomeyApiDevicesClient = {
@@ -24,21 +27,7 @@ type HomeyApiClient = {
     energy?: HomeyEnergyApi;
 };
 
-type PowerEstimateState = {
-    expectedPowerKwOverrides?: Record<string, { kw: number; ts: number }>;
-    lastKnownPowerKw?: Record<string, number>;
-    lastMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
-};
-
 type CapabilityValue = { value?: unknown; units?: string };
-
-type PowerEstimateResult = {
-    powerKw?: number;
-    expectedPowerKw?: number;
-    expectedPowerSource?: TargetDeviceSnapshot['expectedPowerSource'];
-    measuredPowerKw?: number;
-    loadKw?: number;
-};
 
 export class DeviceManager {
     private homeyApi?: HomeyApiClient;
@@ -65,6 +54,7 @@ export class DeviceManager {
             expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
             lastKnownPowerKw: powerState?.lastKnownPowerKw ?? {},
             lastMeasuredPowerKw: powerState?.lastMeasuredPowerKw ?? {},
+            lastMeterEnergyKwh: powerState?.lastMeterEnergyKwh ?? {},
         };
     }
 
@@ -261,18 +251,26 @@ export class DeviceManager {
         const capabilityObj = this.getCapabilityObj(device);
         const currentTemperature = this.getCurrentTemperature(capabilityObj);
         const powerRaw = capabilityObj.measure_power?.value;
-        const powerEstimate = this.updateAndGetPowerEstimate({
+        const meterPowerRaw = capabilityObj.meter_power?.value;
+        const powerEstimate = estimatePower({
             device,
             deviceId,
             deviceLabel,
             powerRaw,
+            meterPowerRaw,
             now,
+            state: this.powerState,
+            logger: this.logger,
+            minSignificantPowerW: MIN_SIGNIFICANT_POWER_W,
+            updateLastKnownPower: (id, kw, label) => this.updateLastKnownPower(id, kw, label),
+            applyMeasurementUpdates: (id, updates, label) => this.applyMeasurementUpdates(id, updates, label),
         });
         const { targetCaps } = capsStatus;
         const targets = this.buildTargets(targetCaps, capabilityObj);
         const currentOn = this.getCurrentOn(capabilityObj, powerRaw);
         const zone = resolveZoneLabel(device);
         const deviceType: TargetDeviceSnapshot['deviceType'] = targetCaps.length > 0 ? 'temperature' : 'onoff';
+        const powerCapable = capsStatus.hasPower || typeof powerEstimate.loadKw === 'number';
 
         return {
             id: deviceId,
@@ -284,6 +282,7 @@ export class DeviceManager {
             expectedPowerKw: powerEstimate.expectedPowerKw,
             expectedPowerSource: powerEstimate.expectedPowerSource,
             loadKw: powerEstimate.loadKw,
+            powerCapable,
             priority: this.providers.getPriority ? this.providers.getPriority(deviceId) : undefined,
             currentOn,
             currentTemperature,
@@ -316,10 +315,8 @@ export class DeviceManager {
     private getCapabilities(device: HomeyDeviceLike): string[] {
         return Array.isArray(device.capabilities) ? device.capabilities : [];
     }
-    private resolveDeviceCapabilities(capabilities: string[]): { targetCaps: string[] } | null {
-        if (!capabilities.includes('measure_power')) {
-            return null;
-        }
+    private resolveDeviceCapabilities(capabilities: string[]): { targetCaps: string[]; hasPower: boolean } | null {
+        const hasPower = capabilities.some((cap) => POWER_CAPABILITIES.has(cap));
         const targetCaps = this.getTargetCaps(capabilities);
         const hasOnOff = capabilities.includes('onoff');
         if (targetCaps.length > 0 && !capabilities.includes('measure_temperature')) {
@@ -328,7 +325,7 @@ export class DeviceManager {
         if (targetCaps.length === 0 && !hasOnOff) {
             return null;
         }
-        return { targetCaps };
+        return { targetCaps, hasPower };
     }
     private getCapabilityObj(device: HomeyDeviceLike): Record<string, CapabilityValue> {
         if (device.capabilitiesObj && typeof device.capabilitiesObj === 'object') {
@@ -359,171 +356,21 @@ export class DeviceManager {
         }
         return undefined;
     }
-    private updateAndGetPowerEstimate(params: {
-        device: HomeyDeviceLike;
-        deviceId: string;
-        deviceLabel: string;
-        powerRaw: unknown;
-        now: number;
-    }): PowerEstimateResult {
-        const { device, deviceId, deviceLabel, powerRaw, now } = params;
-        const loadW = this.getLoadSettingWatts(device);
-        const expectedOverride = this.powerState.expectedPowerKwOverrides[deviceId];
-
-        if (loadW !== null) {
-            const measured = this.getMeasuredPowerKw({
-                deviceId,
-                deviceLabel,
-                powerRaw,
-                now,
-            });
-            const loadEstimate = this.getPowerFromLoad({
-                deviceId,
-                deviceLabel,
-                loadW,
-                expectedOverride,
-            });
-            return {
-                ...loadEstimate,
-                measuredPowerKw: measured.measuredPowerKw,
-            };
-        }
-        return this.getPowerFromMeasurement({
-            deviceId,
-            deviceLabel,
-            powerRaw,
-            expectedOverride,
-            now,
-        });
-    }
-
-    private getLoadSettingWatts(device: HomeyDeviceLike): number | null {
-        const loadW = typeof device.settings?.load === 'number' ? device.settings.load : null;
-        return loadW && loadW > 0 ? loadW : null;
-    }
-
-    private getPowerFromLoad(params: {
-        deviceId: string;
-        deviceLabel: string;
-        loadW: number;
-        expectedOverride?: { kw: number; ts: number };
-    }): PowerEstimateResult {
-        const { deviceId, deviceLabel, loadW, expectedOverride } = params;
-        const loadKw = loadW / 1000;
-        this.updateLastKnownPower(deviceId, loadKw, deviceLabel);
-
-        if (expectedOverride) {
-            this.logger.debug(`Power estimate: using override (manual) for ${deviceLabel}: ${expectedOverride.kw.toFixed(3)} kW`);
-            return {
-                powerKw: expectedOverride.kw,
-                expectedPowerKw: expectedOverride.kw,
-                expectedPowerSource: 'manual',
-                loadKw,
-            };
-        }
-        this.logger.debug(`Power estimate: using settings.load for ${deviceLabel}: ${loadKw.toFixed(3)} kW`);
-        return {
-            powerKw: loadKw,
-            expectedPowerKw: loadKw,
-            expectedPowerSource: 'load-setting',
-            loadKw,
-        };
-    }
-
-    private getPowerFromMeasurement(params: {
-        deviceId: string;
-        deviceLabel: string;
-        powerRaw: unknown;
-        expectedOverride?: { kw: number; ts: number };
-        now: number;
-    }): PowerEstimateResult {
-        const { deviceId, deviceLabel, powerRaw, expectedOverride, now } = params;
-        const measured = this.getMeasuredPowerKw({
-            deviceId,
-            deviceLabel,
-            powerRaw,
-            now,
-        });
-        const peak = this.powerState.lastKnownPowerKw[deviceId];
-
-        if (expectedOverride) {
-            return this.resolveOverrideEstimate({
-                deviceLabel,
-                expectedOverride,
-                measuredKw: measured.measuredKw,
-            });
-        }
-        if (peak) {
-            this.logger.debug(`Power estimate: using peak measured for ${deviceLabel}: ${peak.toFixed(3)} kW`);
-            return {
-                powerKw: peak,
-                expectedPowerKw: peak,
-                expectedPowerSource: 'measured-peak',
-                measuredPowerKw: measured.measuredPowerKw,
-            };
-        }
-        this.logger.debug(`Power estimate: fallback 1 kW for ${deviceLabel} (no measured/override/load)`);
-        return {
-            powerKw: 1,
-            expectedPowerKw: undefined,
-            expectedPowerSource: 'default',
-            measuredPowerKw: measured.measuredPowerKw,
-        };
-    }
-
-    private getMeasuredPowerKw(params: {
-        deviceId: string;
-        deviceLabel: string;
-        powerRaw: unknown;
-        now: number;
-    }): { measuredKw?: number; measuredPowerKw?: number } {
-        const { deviceId, deviceLabel, powerRaw, now } = params;
-        if (typeof powerRaw !== 'number' || !Number.isFinite(powerRaw)) {
-            return {};
-        }
-        if (powerRaw === 0) {
-            return { measuredKw: 0, measuredPowerKw: 0 };
-        }
-        if (powerRaw > MIN_SIGNIFICANT_POWER_W) {
-            const measuredKw = powerRaw / 1000;
-            this.powerState.lastMeasuredPowerKw[deviceId] = { kw: measuredKw, ts: now };
-            this.updateLastKnownPower(deviceId, measuredKw, deviceLabel);
-            return { measuredKw, measuredPowerKw: measuredKw };
-        }
-        this.logger.debug(`Power estimate: ignoring low reading for ${deviceLabel}: ${powerRaw} W`);
-        return {};
-    }
-
-    private resolveOverrideEstimate(params: {
-        deviceLabel: string;
-        expectedOverride: { kw: number; ts: number };
-        measuredKw?: number;
-    }): PowerEstimateResult {
-        const { deviceLabel, expectedOverride, measuredKw } = params;
-        const measuredValue = measuredKw ?? 0;
-        if (measuredKw !== undefined && measuredValue > expectedOverride.kw) {
-            this.logger.debug(`Power estimate: current ${measuredValue.toFixed(3)} kW > override ${expectedOverride.kw.toFixed(3)} kW for ${deviceLabel}`);
-            return {
-                powerKw: measuredValue,
-                expectedPowerKw: measuredValue,
-                expectedPowerSource: 'measured-peak',
-                measuredPowerKw: measuredKw,
-            };
-        }
-        this.logger.debug(`Power estimate: using override for ${deviceLabel}: ${expectedOverride.kw.toFixed(3)} kW`);
-        return {
-            powerKw: expectedOverride.kw,
-            expectedPowerKw: expectedOverride.kw,
-            expectedPowerSource: 'manual',
-            measuredPowerKw: measuredKw,
-        };
-    }
-
     private updateLastKnownPower(deviceId: string, measuredKw: number, deviceLabel: string): void {
         const previousPeak = this.powerState.lastKnownPowerKw[deviceId] || 0;
         if (measuredKw > previousPeak) {
             this.powerState.lastKnownPowerKw[deviceId] = measuredKw;
             this.logger.debug(`Power estimate: updated peak power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW (was ${previousPeak.toFixed(3)} kW)`);
+        }
+    }
+
+    private applyMeasurementUpdates(deviceId: string, updates: PowerMeasurementUpdates, deviceLabel: string): void {
+        if (updates.lastMeterEnergyKwh) {
+            this.powerState.lastMeterEnergyKwh[deviceId] = updates.lastMeterEnergyKwh;
+        }
+        if (updates.lastMeasuredPowerKw) {
+            this.powerState.lastMeasuredPowerKw[deviceId] = updates.lastMeasuredPowerKw;
+            this.updateLastKnownPower(deviceId, updates.lastMeasuredPowerKw.kw, deviceLabel);
         }
     }
 
