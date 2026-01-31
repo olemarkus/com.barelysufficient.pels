@@ -64,7 +64,7 @@ export const startPerfLogger = (params: {
     const delta = buildPerfDelta(snapshot, lastSnapshot);
     lastSnapshot = snapshot;
     const uptimeSec = Math.round((Date.now() - snapshot.startedAt) / 1000);
-    params.log('Perf counters', {
+    const payload = {
       uptimeSec,
       totals: {
         counts: snapshot.counts,
@@ -74,7 +74,8 @@ export const startPerfLogger = (params: {
         counts: delta.counts,
         durations: formatDurations(delta.durations, true),
       },
-    });
+    };
+    params.log(`Perf counters ${JSON.stringify(payload)}`);
   };
   logCounters();
   const timer = setInterval(logCounters, intervalMs);
