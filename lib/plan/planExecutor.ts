@@ -276,6 +276,21 @@ export class PlanExecutor {
     await this.applyTargetUpdatePlan(dev, plan.targetCap, plan.isRestoring);
   }
 
+  private async applyUncontrolledRestore(dev: DevicePlan['devices'][number]): Promise<void> {
+    if (dev.currentState !== 'off') return;
+    const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
+    const hasOnOff = snapshot?.capabilities?.includes('onoff');
+    if (!hasOnOff) return;
+    const name = dev.name || dev.id;
+    try {
+      await this.deviceManager.setCapability(dev.id, 'onoff', true);
+      this.log(`Capacity control off: turning on ${name}`);
+      this.updateLocalSnapshot(dev.id, { on: true });
+    } catch (error) {
+      this.error(`Failed to restore ${name} via DeviceManager`, error);
+    }
+  }
+
   private getTargetUpdatePlan(dev: DevicePlan['devices'][number]): { targetCap: string; isRestoring: boolean } | null {
     if (typeof dev.plannedTarget !== 'number' || dev.plannedTarget === dev.currentTarget) return null;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
@@ -446,6 +461,7 @@ export class PlanExecutor {
 
     for (const dev of plan.devices) {
       if (dev.controllable === false) {
+        await this.applyUncontrolledRestore(dev);
         await this.applyTargetUpdate(dev);
         continue;
       }

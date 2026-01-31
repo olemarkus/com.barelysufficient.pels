@@ -213,6 +213,10 @@ function resolveHoldDecision(params: {
     holdDuringRestoreCooldown,
   } = params;
 
+  if (dev.controllable === false) {
+    return { type: 'skip' };
+  }
+
   if (behavior.action !== 'set_temperature' || behavior.temperature === null) {
     return { type: 'skip' };
   }
