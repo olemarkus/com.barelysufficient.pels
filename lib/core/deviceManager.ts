@@ -89,13 +89,6 @@ export class DeviceManager extends EventEmitter {
         return this.fetchDevices();
     }
 
-    /**
-     * @deprecated Since v1.1.1. Use getDevicesForDebug instead; planned removal in v2.0.0.
-     */
-    async fetchDevicesRaw(): Promise<HomeyDeviceLike[]> {
-        return this.getDevicesForDebug();
-    }
-
     async init(): Promise<void> {
         if (this.homeyApi) return;
 

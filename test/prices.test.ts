@@ -1096,8 +1096,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    // Access private method via bracket notation for testing
-    const combinedPrices = app['getCombinedHourlyPrices']();
+    const combinedPrices = (app as any).priceCoordinator.getCombinedHourlyPrices();
 
     expect(Array.isArray(combinedPrices)).toBe(true);
     expect(combinedPrices.length).toBeGreaterThan(0);
@@ -1159,7 +1158,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const [firstPrice] = app['getCombinedHourlyPrices']();
+    const [firstPrice] = (app as any).priceCoordinator.getCombinedHourlyPrices();
     expect(firstPrice.providerSurchargeExVat).toBeCloseTo(10, 5);
   });
 
@@ -1193,7 +1192,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const [firstPrice] = app['getCombinedHourlyPrices']();
+    const [firstPrice] = (app as any).priceCoordinator.getCombinedHourlyPrices();
     const expectedSupportExVat = (spotPriceExVat - ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT) * ELECTRICITY_SUPPORT_COVERAGE;
     expect(firstPrice.electricitySupportExVat).toBeCloseTo(expectedSupportExVat, 5);
     expect(firstPrice.electricitySupport).toBeCloseTo(expectedSupportExVat * firstPrice.vatMultiplier, 5);
@@ -1244,7 +1243,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const [firstPrice] = app['getCombinedHourlyPrices']();
+    const [firstPrice] = (app as any).priceCoordinator.getCombinedHourlyPrices();
     expect(firstPrice.spotPriceExVat).toBeCloseTo(160, 5);
     expect(firstPrice.gridTariffExVat).toBeCloseTo(28, 5);
     expect(firstPrice.consumptionTaxExVat * firstPrice.vatMultiplier).toBeCloseTo(8.91, 2);
@@ -1307,14 +1306,14 @@ describe('Price optimization', () => {
     await flushPromises();
 
     // Find 4 cheapest hours
-    const cheapestHours = app['findCheapestHours'](4);
+    const cheapestHours = (app as any).priceCoordinator.findCheapestHours(4);
 
     // Should get up to 4 hours (or fewer if not enough cheap hours exist in next 24h)
     expect(cheapestHours.length).toBeGreaterThan(0);
     expect(cheapestHours.length).toBeLessThanOrEqual(4);
 
     // Verify the returned hours are sorted by price (cheapest first)
-    const combinedPrices = app['getCombinedHourlyPrices']();
+    const combinedPrices = (app as any).priceCoordinator.getCombinedHourlyPrices();
     const cheapestPrices = cheapestHours.map((hourStr: string) => {
       const price = combinedPrices.find((p: any) => p.startsAt === hourStr);
       return price ? price.totalPrice : Infinity;
@@ -1648,7 +1647,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const priceInfo = app['getCurrentHourPriceInfo']();
+    const priceInfo = (app as any).priceCoordinator.getCurrentHourPriceInfo();
 
     expect(typeof priceInfo).toBe('string');
     expect(priceInfo).toContain('øre/kWh');

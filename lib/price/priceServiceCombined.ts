@@ -1,4 +1,5 @@
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
+import { calculateAveragePrice, calculateThresholds, getPriceLevelFlags } from './priceMath';
 
 type CombinedPriceEntry = {
   startsAt: string;
@@ -56,20 +57,24 @@ export const buildCombinedPricePayload = (params: {
     };
   }
 
-  const avgPrice = combined.reduce((sum, p) => sum + p.totalPrice, 0) / combined.length;
-  const thresholdMultiplier = thresholdPercent / 100;
-  const lowThreshold = avgPrice * (1 - thresholdMultiplier);
-  const highThreshold = avgPrice * (1 + thresholdMultiplier);
+  const avgPrice = calculateAveragePrice(combined, (entry) => entry.totalPrice);
+  const { low: lowThreshold, high: highThreshold } = calculateThresholds(avgPrice, thresholdPercent);
   const hasNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
+  const thresholds = { low: lowThreshold, high: highThreshold };
+
   const prices = combined.map((p) => {
-    const diffFromAvg = Math.abs(p.totalPrice - avgPrice);
-    const meetsMinDiff = diffFromAvg >= minDiffOre;
+    const flags = getPriceLevelFlags({
+      price: p.totalPrice,
+      avgPrice,
+      thresholds,
+      minDiff: minDiffOre,
+    });
     const baseEntry: CombinedPriceEntry = {
       startsAt: p.startsAt,
       total: p.totalPrice,
-      isCheap: p.totalPrice <= lowThreshold && meetsMinDiff,
-      isExpensive: p.totalPrice >= highThreshold && meetsMinDiff,
+      isCheap: flags.isCheap,
+      isExpensive: flags.isExpensive,
     };
     const extra: Partial<CombinedPriceEntry> = {
       ...(hasNumber(p.spotPriceExVat) ? { spotPriceExVat: p.spotPriceExVat } : {}),

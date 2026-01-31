@@ -6,51 +6,6 @@ import { buildPelsStatus } from '../core/pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 
-export type PelsStatusUpdateParams = {
-  homey: Homey.App['homey'];
-  plan: DevicePlan;
-  isCheap: boolean;
-  isExpensive: boolean;
-  combinedPrices: unknown;
-  lastPowerUpdate: number | null;
-  lastNotifiedPriceLevel: PriceLevel;
-  error: (...args: unknown[]) => void;
-};
-
-export const updatePelsStatusDirect = (params: PelsStatusUpdateParams): PriceLevel => {
-  const {
-    homey,
-    plan,
-    isCheap,
-    isExpensive,
-    combinedPrices,
-    lastPowerUpdate,
-    lastNotifiedPriceLevel,
-    error,
-  } = params;
-  const result = buildPelsStatus({
-    plan,
-    isCheap,
-    isExpensive,
-    combinedPrices,
-    lastPowerUpdate,
-  });
-
-  homey.settings.set('pels_status', result.status);
-  incPerfCounter('settings_set.pels_status');
-
-  if (result.priceLevel !== lastNotifiedPriceLevel) {
-    const card = homey.flow?.getTriggerCard?.('price_level_changed');
-    if (card) {
-      card
-        .trigger({ level: result.priceLevel }, { priceLevel: result.priceLevel })
-        .catch((err: Error) => error('Failed to trigger price_level_changed', err));
-    }
-  }
-
-  return result.priceLevel;
-};
-
 export type PlanServiceDeps = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;

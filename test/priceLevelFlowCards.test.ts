@@ -1,5 +1,5 @@
 import { PriceLevel, PRICE_LEVEL_OPTIONS, getPriceLevelFromTitle, getPriceLevelTitle } from '../lib/price/priceLevels';
-import { updatePelsStatusDirect } from '../lib/plan/planService';
+import { PlanService } from '../lib/plan/planService';
 import { mockHomeyInstance } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
@@ -74,19 +74,24 @@ describe('Price level flow cards', () => {
     (app as any).registerFlowCards();
     mockHomeyInstance.settings.set('combined_prices', { prices: [{ total: 10 }] });
 
-    updatePelsStatusDirect({
+    const planService = new PlanService({
       homey: mockHomeyInstance as any,
-      plan: {
-        meta: { totalKw: null, softLimitKw: 0, headroomKw: null },
-        devices: [],
-      },
-      isCheap: true,
-      isExpensive: false,
-      combinedPrices: mockHomeyInstance.settings.get('combined_prices'),
-      lastPowerUpdate: null,
-      lastNotifiedPriceLevel: PriceLevel.UNKNOWN,
+      planEngine: {} as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => true,
+      isCurrentHourCheap: () => true,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => mockHomeyInstance.settings.get('combined_prices'),
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
       error: jest.fn(),
     });
+
+    planService.updatePelsStatus({
+      meta: { totalKw: null, softLimitKw: 0, headroomKw: null },
+      devices: [],
+    } as any);
 
     const triggers = mockHomeyInstance.flow._triggerCardTriggers.price_level_changed;
     expect(triggers?.[0]?.tokens?.level).toBe(PriceLevel.CHEAP);
