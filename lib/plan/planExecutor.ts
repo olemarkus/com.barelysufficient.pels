@@ -291,6 +291,7 @@ export class PlanExecutor {
       await this.deviceManager.setCapability(dev.id, 'onoff', true);
       this.log(`Capacity control off: turning on ${name}`);
       this.updateLocalSnapshot(dev.id, { on: true });
+      delete this.state.lastDeviceShedMs[dev.id];
     } catch (error) {
       this.error(`Failed to restore ${name} via DeviceManager`, error);
     }
