@@ -7,6 +7,7 @@ import {
   MockDevice,
   MockDriver,
   setAutoEnableMockDevices,
+  mockHomeyApiInstance,
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
@@ -507,6 +508,84 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.shedAction).toBe('set_temperature');
     expect(devPlan?.plannedTarget).toBe(16);
     expect(devPlan?.reason).toContain('cooldown (shedding');
+  });
+
+  it('does not hold minimum-temperature shedding when capacity control is disabled', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    await dev1.setCapabilityValue('target_temperature', 16);
+    await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 20 } });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': false });
+    mockHomeyInstance.settings.set('price_optimization_enabled', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
+        powerKw: 1.2,
+        currentOn: true,
+      },
+    ]);
+
+    (app as any).planEngine.state.lastSheddingMs = Date.now();
+    (app as any).planEngine.state.lastOvershootMs = Date.now();
+    (app as any).planEngine.state.lastPlannedShedIds = new Set(['dev-1']);
+
+    await (app as any).planService.rebuildPlanFromCache();
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('keep');
+    expect(devPlan?.plannedTarget).toBe(20);
+    expect(devPlan?.reason).toBe('capacity control off');
+  });
+
+  it('restores on/off devices when capacity control is disabled', async () => {
+    const dev1 = new MockDevice('dev-1', 'Lamp', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('onoff', false);
+    await dev1.setCapabilityValue('measure_power', 0);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': false });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+    (app as any).deviceManager.homeyApi = mockHomeyApiInstance;
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Lamp',
+        targets: [],
+        currentOn: false,
+        capabilities: ['onoff'],
+      },
+    ]);
+
+    await (app as any).planService.rebuildPlanFromCache();
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('keep');
+    expect(await dev1.getCapabilityValue('onoff')).toBe(true);
   });
 
   it('restores minimum-temperature shedding after cooldown with normal reason and targets', async () => {
