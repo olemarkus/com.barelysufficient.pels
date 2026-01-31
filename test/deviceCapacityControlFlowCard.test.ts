@@ -79,7 +79,7 @@ describe('Capacity control device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).setSnapshotForTests([{ id: 'dev-1', name: 'Heater', targets: [] }]);
+    (app as any).deviceManager.setSnapshotForTests([{ id: 'dev-1', name: 'Heater', targets: [] }]);
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.is_device_capacity_controlled;
     expect(runCondition).toBeDefined();

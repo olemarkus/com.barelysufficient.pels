@@ -128,7 +128,7 @@ describe('Expected power flow card', () => {
     Object.keys((app as any).expectedPowerKwOverrides).forEach((k) => delete (app as any).expectedPowerKwOverrides[k]);
     Object.keys((app as any).lastMeasuredPowerKw).forEach((k) => delete (app as any).lastMeasuredPowerKw[k]);
     Object.keys((app as any).lastKnownPowerKw).forEach((k) => delete (app as any).lastKnownPowerKw[k]);
-    const snapshotFallback = (app as any).parseDevicesForTests([
+    const snapshotFallback = (app as any).deviceManager.parseDeviceListForTests([
       {
         id: 'dev-3',
         capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],

@@ -32,6 +32,7 @@ import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { calculateThresholds } from './priceThresholds';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../lib/price/priceComponents';
+import { calculateAveragePrice } from '../../../lib/price/priceMath';
 import {
   COMBINED_PRICES,
   FLOW_PRICES_TODAY,
@@ -280,17 +281,11 @@ const resolveNumber = (value: number | undefined, fallback: number): number => (
   typeof value === 'number' && Number.isFinite(value) ? value : fallback
 );
 
-const getAveragePrice = (prices: PriceEntry[], fallback: number): number => {
-  if (prices.length === 0) return fallback;
-  const total = prices.reduce((sum, price) => sum + (Number.isFinite(price.total) ? price.total : 0), 0);
-  return total / prices.length;
-};
-
 const applyPriceOverrides = (data: CombinedPriceData, overrides: PriceOverrideOptions): CombinedPriceData => {
   // Keep this logic aligned with priceService.updateCombinedPrices.
   const thresholdPercent = resolveNumber(overrides.thresholdPercent, data.thresholdPercent ?? 25);
   const minDiffOre = resolveNumber(overrides.minDiffOre, data.minDiffOre ?? 0);
-  const avgPrice = resolveNumber(data.avgPrice, getAveragePrice(data.prices, 0));
+  const avgPrice = resolveNumber(data.avgPrice, calculateAveragePrice(data.prices, (entry) => entry.total));
   const { low: lowThreshold, high: highThreshold } = calculateThresholds(avgPrice, thresholdPercent);
 
   const prices = data.prices.map((entry) => {

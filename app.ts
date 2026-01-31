@@ -558,12 +558,6 @@ class PelsApp extends Homey.App {
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
     return this.deviceManager?.getSnapshot() ?? [];
   }
-  setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
-    this.deviceManager.setSnapshotForTests(snapshot);
-  }
-  parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
-    return this.deviceManager.parseDeviceListForTests(list);
-  }
   private async refreshTargetDevicesSnapshot(): Promise<void> {
     if (this.isSnapshotRefreshing) { this.logDebug('devices', 'Snapshot refresh already in progress, skipping'); return; }
     this.isSnapshotRefreshing = true;
@@ -576,20 +570,11 @@ class PelsApp extends Homey.App {
       this.isSnapshotRefreshing = false;
     }
   }
-  private getCombinedHourlyPrices(): unknown {
-    return this.priceCoordinator.getCombinedHourlyPrices();
-  }
-  private findCheapestHours(count: number): string[] {
-    return this.priceCoordinator.findCheapestHours(count);
-  }
   private isCurrentHourCheap(): boolean {
     return this.priceCoordinator.isCurrentHourCheap();
   }
   private isCurrentHourExpensive(): boolean {
     return this.priceCoordinator.isCurrentHourExpensive();
-  }
-  private getCurrentHourPriceInfo(): string {
-    return this.priceCoordinator.getCurrentHourPriceInfo();
   }
   storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {
     dateKey: string;
@@ -597,9 +582,6 @@ class PelsApp extends Homey.App {
     missingHours: number[];
   } {
     return this.priceCoordinator.storeFlowPriceData(kind, raw);
-  }
-  private async applyPriceOptimization() {
-    return this.priceCoordinator.applyPriceOptimization();
   }
   private async getDeviceLoadSetting(deviceId: string): Promise<number | null> {
     return getDeviceLoadSetting({

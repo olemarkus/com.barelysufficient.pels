@@ -530,7 +530,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater',
@@ -571,7 +571,7 @@ describe('Device plan snapshot', () => {
     (app as any).deviceManager.homeyApi = mockHomeyApiInstance;
     (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Lamp',
@@ -606,7 +606,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
     (app as any).deviceManager.homeyApi = mockHomeyApiInstance;
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Lamp',
@@ -642,7 +642,7 @@ describe('Device plan snapshot', () => {
     (app as any).deviceManager.homeyApi = mockHomeyApiInstance;
     (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Lamp',
@@ -656,7 +656,7 @@ describe('Device plan snapshot', () => {
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
 
     await dev1.setCapabilityValue('onoff', false);
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Lamp',
@@ -1152,7 +1152,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1180,7 +1180,7 @@ describe('Device plan snapshot', () => {
     expect(initialShed).toEqual(['dev-2']);
 
     // Simulate the shed device turning off, but no new measurement arrives.
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1221,7 +1221,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1245,7 +1245,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(2000, 1000);
 
     // Simulate the first shed taking effect.
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1294,11 +1294,11 @@ describe('Device plan snapshot', () => {
     (app as any).deviceManager.homeyApi = mockHomeyApi;
 
     // Clear snapshot so the second call would normally try again.
-    app.setSnapshotForTests([]);
+    (app as any).deviceManager.setSnapshotForTests([]);
 
     await (app as any).applySheddingToDevice('dev-1', 'Heater A');
     // Simulate plan still thinks it is on to force a second attempt.
-    app.setSnapshotForTests([]);
+    (app as any).deviceManager.setSnapshotForTests([]);
     await (app as any).applySheddingToDevice('dev-1', 'Heater A');
 
     expect(mockHomeyApi.devices.setCapabilityValue).toHaveBeenCalledTimes(1);
@@ -1363,7 +1363,7 @@ describe('Device plan snapshot', () => {
       settings: { load: 450 },
     };
 
-    const parsed = app.parseDevicesForTests([sampleDevice]);
+    const parsed = (app as any).deviceManager.parseDeviceListForTests([sampleDevice]);
     expect(parsed[0].powerKw).toBeCloseTo(0.45, 2);
     expect(parsed[0].targets[0].value).toBe(22);
   });
@@ -1426,7 +1426,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Only 1 kW available to shed
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1505,7 +1505,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1556,7 +1556,7 @@ describe('Device plan snapshot', () => {
     (app as any).isCurrentHourCheap = () => true;
     (app as any).isCurrentHourExpensive = () => false;
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -1808,7 +1808,7 @@ describe('Device plan snapshot', () => {
     // Trigger mode change via flow card
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'hoiax-1',
         name: 'Connected 300',
@@ -2513,7 +2513,7 @@ describe('Dry run mode', () => {
     const applyPlanSpy = jest.spyOn(app as any, 'applyPlanActions');
 
     // Rebuild plan with shedding needed
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -2555,7 +2555,7 @@ describe('Dry run mode', () => {
     });
 
     // Setup snapshot with a device that will be shed
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -2765,7 +2765,7 @@ describe('Dry run mode', () => {
     (app as any).isCurrentHourExpensive = () => false;
 
     // Ensure the device is in snapshot with correct structure
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -2777,7 +2777,7 @@ describe('Dry run mode', () => {
     ]);
 
     // Manually trigger price optimization
-    await (app as any).applyPriceOptimization();
+    await (app as any).priceCoordinator.applyPriceOptimization();
 
     // Temperature should NOT have been changed in dry run mode
     // (would be 65 if price optimization was applied: 55 + 10)
@@ -2822,7 +2822,7 @@ describe('Dry run mode', () => {
     (app as any).isCurrentHourCheap = () => true;
     (app as any).isCurrentHourExpensive = () => false;
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -2869,7 +2869,7 @@ describe('Dry run mode', () => {
     (app as any).isCurrentHourCheap = () => true;
     (app as any).isCurrentHourExpensive = () => false;
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -2926,7 +2926,7 @@ describe('Dry run mode', () => {
     (app as any).isCurrentHourCheap = () => true;
     (app as any).isCurrentHourExpensive = () => false;
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',
@@ -3198,7 +3198,7 @@ describe('Dry run mode', () => {
       await dev2.setCapabilityValue('target_temperature', 15);
     }
     // Refresh snapshot so the plan sees the new shed temperature.
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater A',

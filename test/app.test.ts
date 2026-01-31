@@ -508,7 +508,7 @@ describe('MyApp initialization', () => {
       },
     };
 
-    app.setSnapshotForTests([
+    (app as any).deviceManager.setSnapshotForTests([
       {
         id: 'dev-1',
         name: 'Heater',

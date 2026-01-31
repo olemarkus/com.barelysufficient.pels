@@ -10,8 +10,8 @@ import {
   getUtcDayOfWeek,
   getUtcHour,
   recordPowerSample,
-  truncateToHourInHomeyTimezone,
 } from '../lib/core/powerTracker';
+import { getHourStartInTimeZone } from '../lib/utils/dateUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
@@ -42,7 +42,7 @@ describe('power tracker integration', () => {
     await app['recordPowerSample'](1000, start);
     await app['recordPowerSample'](1000, start + 30 * 60 * 1000);
 
-    const bucketKey = new Date(truncateToHourInHomeyTimezone(mockHomeyInstance as any, start)).toISOString();
+    const bucketKey = new Date(getHourStartInTimeZone(new Date(start), mockHomeyInstance.clock.getTimezone())).toISOString();
     const state = mockHomeyInstance.settings.get('power_tracker_state');
     expect(state.buckets[bucketKey]).toBeCloseTo(0.5, 3);
   });
@@ -65,7 +65,7 @@ describe('power tracker integration', () => {
     // Create data that is 35 days old (older than 30-day hourly retention)
     const now = Date.now();
     const oldTimestamp = now - (35 * 24 * 60 * 60 * 1000); // 35 days ago
-    const oldHourStart = truncateToHourInHomeyTimezone(mockHomeyInstance as any, oldTimestamp);
+    const oldHourStart = getHourStartInTimeZone(new Date(oldTimestamp), mockHomeyInstance.clock.getTimezone());
     const oldBucketKey = new Date(oldHourStart).toISOString();
     const oldDateKey = formatDateUtc(new Date(oldHourStart));
 
