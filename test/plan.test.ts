@@ -624,6 +624,52 @@ describe('Device plan snapshot', () => {
     expect(await dev1.getCapabilityValue('onoff')).toBe(false);
   });
 
+  it('clears shed marker after restoring uncontrolled devices', async () => {
+    const dev1 = new MockDevice('dev-1', 'Lamp', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('onoff', false);
+    await dev1.setCapabilityValue('measure_power', 0);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': false });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+    (app as any).deviceManager.homeyApi = mockHomeyApiInstance;
+    (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
+
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Lamp',
+        targets: [],
+        currentOn: false,
+        capabilities: ['onoff'],
+      },
+    ]);
+
+    await (app as any).planService.rebuildPlanFromCache();
+    expect(await dev1.getCapabilityValue('onoff')).toBe(true);
+
+    await dev1.setCapabilityValue('onoff', false);
+    app.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Lamp',
+        targets: [],
+        currentOn: false,
+        capabilities: ['onoff'],
+      },
+    ]);
+
+    await (app as any).planService.rebuildPlanFromCache();
+    expect(await dev1.getCapabilityValue('onoff')).toBe(false);
+  });
+
   it('restores minimum-temperature shedding after cooldown with normal reason and targets', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 21);
