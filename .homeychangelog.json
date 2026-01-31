@@ -133,5 +133,8 @@
   },
   "1.11.2": {
     "en": "Increase performance by reducing plan generation churn."
+  },
+  "1.12.0": {
+    "en": "Adds support for devices with only cumulating power meter capabilities. Adds support for aircon devices."
   }
 }
