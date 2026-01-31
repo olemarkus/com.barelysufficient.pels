@@ -270,16 +270,21 @@ export class PlanExecutor {
     return 'insufficient headroom';
   }
 
-  private async applyTargetUpdate(dev: DevicePlan['devices'][number]): Promise<void> {
-    const plan = this.getTargetUpdatePlan(dev);
+  private async applyTargetUpdate(dev: DevicePlan['devices'][number], snapshot?: TargetDeviceSnapshot): Promise<void> {
+    const plan = this.getTargetUpdatePlan(dev, snapshot);
     if (!plan) return;
     await this.applyTargetUpdatePlan(dev, plan.targetCap, plan.isRestoring);
   }
 
-  private async applyUncontrolledRestore(dev: DevicePlan['devices'][number]): Promise<void> {
+  private async applyUncontrolledRestore(
+    dev: DevicePlan['devices'][number],
+    snapshot?: TargetDeviceSnapshot,
+  ): Promise<void> {
     if (dev.currentState !== 'off') return;
-    const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
-    const hasOnOff = snapshot?.capabilities?.includes('onoff');
+    const lastShed = this.state.lastDeviceShedMs[dev.id];
+    if (!lastShed) return;
+    const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
+    const hasOnOff = entry?.capabilities?.includes('onoff');
     if (!hasOnOff) return;
     const name = dev.name || dev.id;
     try {
@@ -291,10 +296,13 @@ export class PlanExecutor {
     }
   }
 
-  private getTargetUpdatePlan(dev: DevicePlan['devices'][number]): { targetCap: string; isRestoring: boolean } | null {
+  private getTargetUpdatePlan(
+    dev: DevicePlan['devices'][number],
+    snapshot?: TargetDeviceSnapshot,
+  ): { targetCap: string; isRestoring: boolean } | null {
     if (typeof dev.plannedTarget !== 'number' || dev.plannedTarget === dev.currentTarget) return null;
-    const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
-    const targetCap = snapshot?.targets?.[0]?.id;
+    const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
+    const targetCap = entry?.targets?.[0]?.id;
     if (!targetCap) return null;
 
     // Check if this is a restoration (increasing temperature from shed state)
@@ -459,16 +467,18 @@ export class PlanExecutor {
   public async applyPlanActions(plan: DevicePlan): Promise<void> {
     if (!plan || !Array.isArray(plan.devices)) return;
 
+    const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
     for (const dev of plan.devices) {
+      const snapshot = snapshotMap.get(dev.id);
       if (dev.controllable === false) {
-        await this.applyUncontrolledRestore(dev);
-        await this.applyTargetUpdate(dev);
+        await this.applyUncontrolledRestore(dev, snapshot);
+        await this.applyTargetUpdate(dev, snapshot);
         continue;
       }
       const handledShed = await this.applyShedAction(dev);
       if (handledShed) continue;
       await this.applyRestorePower(dev);
-      await this.applyTargetUpdate(dev);
+      await this.applyTargetUpdate(dev, snapshot);
     }
   }
 }
