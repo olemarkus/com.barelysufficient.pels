@@ -136,5 +136,8 @@
   },
   "1.12.0": {
     "en": "Adds support for devices with only cumulating power meter capabilities. Adds support for aircon devices."
+  },
+  "1.12.1": {
+    "en": "The app is now more responsive to real‑time power changes: plan rebuilds can now be triggered by device power updates, so shedding/restoring reacts faster to actual load shifts. There’s also clearer, safer behavior around capacity control for individual devices. Devices are restored when capacity control is disabled, and uncontrolled devices won’t be toggled on unless they were actually shed."
   }
 }
