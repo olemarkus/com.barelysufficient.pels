@@ -27,6 +27,32 @@ const findSnapshotDevice = <T extends { id: string }>(
     return undefined;
 };
 
+const makeCapabilityInstanceImpl = (destroyInstanceMock: jest.Mock) => (
+    _cap: string,
+    cb: (value: number | null) => void,
+) => Promise.resolve({
+    destroy: destroyInstanceMock,
+    __trigger: cb,
+});
+
+const buildRealtimeDevices = (
+    makeInstanceMock: jest.Mock,
+    destroyInstanceMock: jest.Mock,
+) => ({
+    dev1: {
+        id: 'dev1',
+        name: 'Heater',
+        capabilities: ['measure_power', 'onoff'],
+        class: 'heater',
+        makeCapabilityInstance: makeInstanceMock.mockImplementation(
+            makeCapabilityInstanceImpl(destroyInstanceMock),
+        ),
+        capabilitiesObj: {
+            measure_power: { value: 1000, id: 'measure_power' },
+        },
+    },
+});
+
 describe('DeviceManager', () => {
     let deviceManager: DeviceManager;
     let homeyMock: Homey.App;
@@ -302,25 +328,10 @@ describe('DeviceManager', () => {
             destroyInstanceMock = jest.fn();
 
             // Setup device with makeCapabilityInstance
-            mockGetDevices.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    makeCapabilityInstance: makeInstanceMock.mockImplementation((cap, cb) => {
-                        // Simulate instance
-                        return Promise.resolve({
-                            destroy: destroyInstanceMock,
-                            // expose callback for testing
-                            __trigger: cb,
-                        });
-                    }),
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                    },
-                },
-            });
+            mockGetDevices.mockResolvedValue(buildRealtimeDevices(
+                makeInstanceMock,
+                destroyInstanceMock,
+            ));
             await deviceManager.init();
         });
 
