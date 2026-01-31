@@ -26,7 +26,10 @@ describe('startPerfLogger', () => {
     jest.advanceTimersByTime(1000);
 
     expect(log).toHaveBeenCalledTimes(2);
-    const payload = log.mock.calls[1][1] as { delta?: { counts?: Record<string, number> } };
+    const message = log.mock.calls[1][0] as string;
+    const jsonStart = message.indexOf('{');
+    expect(jsonStart).toBeGreaterThan(-1);
+    const payload = JSON.parse(message.slice(jsonStart)) as { delta?: { counts?: Record<string, number> } };
     expect(payload.delta?.counts?.['perf.logging.enabled']).toBe(1);
 
     stop();
