@@ -1000,7 +1000,7 @@ describe('Device plan snapshot', () => {
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('keep');
   });
 
-  it('does not turn a shed device back on if headroom is below its power need', async () => {
+  it('restores devices when plan says keep even if headroom is below its power need', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -1030,11 +1030,19 @@ describe('Device plan snapshot', () => {
       ],
     };
 
-    const findSpy = jest.fn();
-    (app as any).findDeviceInstance = findSpy;
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
 
     await (app as any).applyPlanActions(plan);
-    expect(findSpy).not.toHaveBeenCalled();
+    expect(mockSetCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+    });
   });
 
   it('keeps planned state as shed when headroom is below device need even after turn-off', async () => {
@@ -1070,6 +1078,36 @@ describe('Device plan snapshot', () => {
     ]);
     const nextState = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(nextState?.plannedState).toBe('shed');
+  });
+
+  it('marks off devices as shed when headroom is unknown', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 0);
+    await dev1.setCapabilityValue('onoff', false);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    setManagedControllableDevices({ 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    const plan = await (app as any).planService.buildDevicePlanSnapshot([
+      {
+        id: 'dev-1',
+        name: 'Heater A',
+        targets: [],
+        powerKw: 1,
+        priority: 1,
+        currentOn: false,
+        controllable: true,
+      },
+    ]);
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+    expect(devPlan?.reason).toContain('headroom unknown');
   });
 
   it('sheds a controllable device when overshooting with real power sample (non-dry-run)', async () => {
@@ -1585,7 +1623,7 @@ describe('Device plan snapshot', () => {
   });
 
 
-  it('does not restore immediately after shedding (prevents flapping)', async () => {
+  it('restores when plan says keep even immediately after shedding', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 500);
     await dev1.setCapabilityValue('onoff', false); // assumed off after a shed event
@@ -1606,7 +1644,12 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.isSheddingActive = () => false;
     }
 
-    const onSpy = jest.spyOn(dev1 as any, 'setCapabilityValue');
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
 
     const plan = {
       devices: [
@@ -1625,10 +1668,14 @@ describe('Device plan snapshot', () => {
 
     await (app as any).applyPlanActions(plan);
 
-    expect(onSpy).not.toHaveBeenCalled();
+    expect(mockSetCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+    });
   });
 
-  it('does not restore devices while in shortfall state (prevents restore-then-reshed cycle)', async () => {
+  it('restores when plan says keep even while in shortfall state', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 500);
     await dev1.setCapabilityValue('onoff', false); // off after being shed
@@ -1652,8 +1699,12 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.isInShortfall = () => true; // still in shortfall, waiting for sustained period
     }
 
-    // Spy on log to verify the reason for not restoring
-    const logSpy = jest.spyOn(app as any, 'log');
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
 
     const plan = {
       devices: [
@@ -1672,10 +1723,11 @@ describe('Device plan snapshot', () => {
 
     await (app as any).applyPlanActions(plan);
 
-    // Should log that we're keeping the device off due to shortfall
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('in shortfall'),
-    );
+    expect(mockSetCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+    });
   });
 
   it('uses settings.load as fallback power when device is off', async () => {
@@ -2956,10 +3008,7 @@ describe('Dry run mode', () => {
     expect(devPlan.plannedTarget).toBe(12);
   });
 
-  it('plan reason should reflect actual restore status when blocked by shortfall', async () => {
-    // Bug: Device shows "restore (need X, headroom Y)" even though restore is blocked
-    // by shortfall state. The reason should accurately reflect that the device will stay off.
-
+  it('marks off devices as shed during shortfall and avoids restore actions', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 1500); // 1.5 kW
     await dev1.setCapabilityValue('onoff', false); // Currently OFF
@@ -2976,55 +3025,38 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    // Set a generous soft limit with plenty of headroom
+    // Set a generous soft limit with plenty of headroom.
     (app as any).computeDynamicSoftLimit = () => 8;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 8);
     }
 
-    // Simulate being in shortfall state (Guard detected overshoot previously)
+    // Simulate being in shortfall state.
     if ((app as any).capacityGuard) {
-      (app as any).capacityGuard.inShortfall = true;
+      (app as any).capacityGuard.isInShortfall = () => true;
     }
     (app as any).planEngine.state.inShortfall = true;
 
-    // Report low power - plenty of headroom mathematically, but we're in shortfall
+    // Report low power - plenty of headroom mathematically, but we're in shortfall.
     await (app as any).recordPowerSample(2000); // 2 kW, headroom = 6 kW
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan).toBeTruthy();
     expect(dev1Plan.currentState).toBe('off');
+    expect(dev1Plan.plannedState).toBe('shed');
+    expect(dev1Plan.reason).toContain('shortfall');
 
-    // The bug: plan shows "restore" reason but device won't actually restore due to shortfall
-    // If the reason says "restore", the applyPlanActions should actually restore it
-    // OR the reason should accurately reflect that it will stay off
-    if (dev1Plan.reason.includes('restore') && dev1Plan.plannedState !== 'shed') {
-      // This is the bug - reason says restore, plannedState says keep, but applyPlanActions won't restore
-      // because we're in shortfall. The plan is misleading.
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
 
-      // Let's verify applyPlanActions will NOT restore due to shortfall
-      const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-      (app as any).deviceManager.homeyApi = {
-        devices: {
-          setCapabilityValue: mockSetCapability,
-        },
-      };
+    await (app as any).applyPlanActions(plan);
 
-      await (app as any).applyPlanActions(plan);
-
-      // Due to shortfall, the restore should NOT happen even though reason says "restore"
-      // This assertion will PASS (proving the bug exists), because the device won't be restored
-      const restoreCall = mockSetCapability.mock.calls.find(
-        (call: any) => call[0].deviceId === 'dev-1' && call[0].capabilityId === 'onoff' && call[0].value === true,
-      );
-
-      // The REAL assertion: if plan says "restore" in reason, the device SHOULD be restored
-      // This should FAIL, demonstrating the bug
-      if (dev1Plan.reason.includes('restore')) {
-        expect(restoreCall).toBeDefined(); // This will FAIL because shortfall blocks restore
-      }
-    }
+    expect(mockSetCapability).not.toHaveBeenCalled();
   });
 
   it('should restore device when headroom is sufficient even if device power exceeds 50% of headroom', async () => {

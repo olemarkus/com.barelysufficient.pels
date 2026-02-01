@@ -4,14 +4,6 @@ import { DeviceManager } from '../core/deviceManager';
 import type { DevicePlan, ShedAction } from './planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type { PlanEngineState } from './planState';
-import {
-  RECENT_SHED_EXTRA_BUFFER_KW,
-  RECENT_SHED_RESTORE_BACKOFF_MS,
-  RECENT_SHED_RESTORE_MULTIPLIER,
-  SHED_COOLDOWN_MS,
-} from './planConstants';
-import { getShedCooldownState } from './planTiming';
-import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
 import { incPerfCounter } from '../utils/perfCounters';
 
 export type PlanExecutorDeps = {
@@ -79,16 +71,6 @@ export class PlanExecutor {
 
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
     return this.deviceManager.getSnapshot();
-  }
-
-  private getCooldownState(): { cooldownRemainingMs: number; inCooldown: boolean } {
-    const cooldown = getShedCooldownState({
-      lastSheddingMs: this.state.lastSheddingMs,
-      lastOvershootMs: this.state.lastOvershootMs,
-      cooldownMs: SHED_COOLDOWN_MS,
-    });
-    const cooldownRemainingMs = cooldown.cooldownRemainingMs ?? 0;
-    return { cooldownRemainingMs, inCooldown: cooldown.inCooldown };
   }
 
   private async applyShedAction(dev: DevicePlan['devices'][number]): Promise<boolean> {
@@ -178,15 +160,6 @@ export class PlanExecutor {
       this.logDebug(`Capacity: skip restoring ${name}, already in progress`);
       return;
     }
-    const metrics = this.getRestoreMetrics(dev);
-    const skipReason = this.getRestoreSkipReason(metrics);
-    if (skipReason) {
-      this.log(`Capacity: keeping ${name} off (${skipReason})`);
-      this.logDebug(
-        `  → need ${metrics.neededForDevice.toFixed(2)}kW, headroom ${metrics.headroom === null ? 'unknown' : metrics.headroom.toFixed(2)}kW, device ~${metrics.plannedPower.toFixed(2)}kW`,
-      );
-      return;
-    }
     // Mark as pending before async operation
     this.state.pendingRestores.add(dev.id);
     try {
@@ -204,70 +177,6 @@ export class PlanExecutor {
     } finally {
       this.state.pendingRestores.delete(dev.id);
     }
-  }
-
-  private getRestoreMetrics(dev: DevicePlan['devices'][number]): {
-    headroom: number | null;
-    sheddingActive: boolean;
-    inShortfall: boolean;
-    inCooldown: boolean;
-    cooldownRemainingMs: number;
-    plannedPower: number;
-    neededForDevice: number;
-    recentlyShed: boolean;
-  } {
-    const headroom = this.capacityGuard ? this.capacityGuard.getHeadroom() : null;
-    const sheddingActive = this.capacityGuard?.isSheddingActive() === true;
-    const inShortfall = this.capacityGuard?.isInShortfall() === true;
-    const plannedPower = estimateRestorePower(dev);
-    const restoreBuffer = computeRestoreBufferKw(plannedPower);
-    const baseNeededForDevice = plannedPower + restoreBuffer;
-    const lastDeviceShed = this.state.lastDeviceShedMs[dev.id];
-    const recentlyShed = Boolean(
-      lastDeviceShed && Date.now() - lastDeviceShed < RECENT_SHED_RESTORE_BACKOFF_MS,
-    );
-    const neededForDevice = recentlyShed
-      ? Math.max(baseNeededForDevice * RECENT_SHED_RESTORE_MULTIPLIER, baseNeededForDevice + RECENT_SHED_EXTRA_BUFFER_KW)
-      : baseNeededForDevice;
-    const { cooldownRemainingMs, inCooldown } = this.getCooldownState();
-    return {
-      headroom,
-      sheddingActive,
-      inShortfall,
-      inCooldown,
-      cooldownRemainingMs,
-      plannedPower,
-      neededForDevice,
-      recentlyShed,
-    };
-  }
-
-  private getRestoreSkipReason(metrics: {
-    headroom: number | null;
-    sheddingActive: boolean;
-    inShortfall: boolean;
-    inCooldown: boolean;
-    cooldownRemainingMs: number;
-    neededForDevice: number;
-    recentlyShed: boolean;
-  }): string | null {
-    const {
-      headroom,
-      sheddingActive,
-      inShortfall,
-      inCooldown,
-      cooldownRemainingMs,
-      neededForDevice,
-      recentlyShed,
-    } = metrics;
-    if (!(sheddingActive || inShortfall || inCooldown || headroom === null || headroom <= 0 || headroom < neededForDevice)) {
-      return null;
-    }
-    if (sheddingActive) return 'shedding active';
-    if (inShortfall) return 'in shortfall';
-    if (inCooldown) return `cooldown (${(cooldownRemainingMs / 1000).toFixed(1)}s remaining)`;
-    if (recentlyShed) return 'recently shed, waiting for stable headroom';
-    return 'insufficient headroom';
   }
 
   private async applyTargetUpdate(dev: DevicePlan['devices'][number], snapshot?: TargetDeviceSnapshot): Promise<void> {
