@@ -16,7 +16,7 @@ import {
 } from './planReasons';
 import { getHourBucketKey } from '../utils/dateUtils';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import { incPerfCounter } from '../utils/perfCounters';
+import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 
 export type PlanBuilderDeps = {
   homey: Homey.App['homey'];
@@ -79,6 +79,24 @@ export class PlanBuilder {
     return this.deps.getDailyBudgetSnapshot?.() ?? null;
   }
 
+  private trackDuration<T>(key: string, fn: () => T): T {
+    const start = Date.now();
+    try {
+      return fn();
+    } finally {
+      addPerfDuration(key, Date.now() - start);
+    }
+  }
+
+  private async trackDurationAsync<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const start = Date.now();
+    try {
+      return await fn();
+    } finally {
+      addPerfDuration(key, Date.now() - start);
+    }
+  }
+
   public computeDynamicSoftLimit(): number {
     const override = this.deps.getDynamicSoftLimitOverride?.();
     if (typeof override === 'number' && Number.isFinite(override)) {
@@ -108,13 +126,55 @@ export class PlanBuilder {
   }
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
+    const planStart = Date.now();
+    try {
+      return await this.buildPlanSnapshotWithTimings(devices);
+    } finally {
+      addPerfDuration('plan_build_ms', Date.now() - planStart);
+    }
+  }
+
+  private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
+    const { context, dailyBudgetSnapshot, sheddingPlan } = await this.buildContextAndShedding(devices);
+    this.updateOvershootState(context);
+
+    let planDevices = this.buildPlanDevices(context, sheddingPlan);
+    const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan);
+    planDevices = restoreResult.planDevices;
+
+    const holdResult = this.applyHoldPlanWithTiming(planDevices, restoreResult, sheddingPlan);
+    planDevices = holdResult.planDevices;
+
+    if (restoreResult.restoredThisCycle.size > 0) {
+      this.state.lastRestoreMs = Date.now();
+    }
+
+    planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan);
+    const finalized = this.finalizePlanWithTiming(planDevices);
+    this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
+
+    const meta = this.trackDuration('plan_meta_ms', () => (
+      this.buildPlanMeta(context, finalized.planDevices, dailyBudgetSnapshot)
+    ));
+    return {
+      meta,
+      devices: finalized.planDevices,
+    };
+  }
+
+  private async buildContextAndShedding(devices: PlanInputDevice[]): Promise<{
+    context: PlanContext;
+    dailyBudgetSnapshot: DailyBudgetUiPayload | null;
+    sheddingPlan: SheddingPlan;
+  }> {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
     const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
     const capacitySoftLimit = this.computeDynamicSoftLimit();
     const dailySoftLimit = this.computeDailySoftLimit(dailyBudgetSnapshot);
     const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
     const softLimitSource = this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit);
-    const context = buildPlanContext({
+
+    const context = this.trackDuration('plan_context_ms', () => buildPlanContext({
       devices,
       capacityGuard: this.capacityGuard,
       capacitySettings: this.capacitySettings,
@@ -126,18 +186,22 @@ export class PlanBuilder {
       desiredForMode,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       dailyBudget: this.buildDailyBudgetContext(dailyBudgetSnapshot),
-    });
+    }));
 
-    const sheddingPlan = await buildSheddingPlan(context, this.state, {
+    const sheddingPlan = await this.trackDurationAsync('plan_shedding_ms', () => buildSheddingPlan(context, this.state, {
       capacityGuard: this.capacityGuard,
       powerTracker: this.powerTracker,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
       getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
       log: (...args: unknown[]) => this.deps.log(...args),
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
-    });
+    }));
     this.applySheddingUpdates(sheddingPlan);
 
+    return { context, dailyBudgetSnapshot, sheddingPlan };
+  }
+
+  private updateOvershootState(context: PlanContext): void {
     const overshootActive = context.headroom !== null && context.headroom < 0;
     const prevOvershoot = this.state.wasOvershoot;
     if (overshootActive && !prevOvershoot) {
@@ -148,8 +212,10 @@ export class PlanBuilder {
       this.state.overshootLogged = false;
     }
     this.state.wasOvershoot = overshootActive;
+  }
 
-    let planDevices = buildInitialPlanDevices({
+  private buildPlanDevices(context: PlanContext, sheddingPlan: SheddingPlan): DevicePlanDevice[] {
+    return this.trackDuration('plan_devices_ms', () => buildInitialPlanDevices({
       context,
       state: this.state,
       shedSet: sheddingPlan.shedSet,
@@ -163,16 +229,27 @@ export class PlanBuilder {
         getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
       },
-    });
+    }));
+  }
 
-    const restoreResult = this.applyRestorePlanAndUpdateState({
+  private applyRestorePlanWithTiming(
+    planDevices: DevicePlanDevice[],
+    context: PlanContext,
+    sheddingPlan: SheddingPlan,
+  ): RestorePlanResult {
+    return this.trackDuration('plan_restore_ms', () => this.applyRestorePlanAndUpdateState({
       planDevices,
       context,
       sheddingActive: sheddingPlan.sheddingActive,
-    });
-    planDevices = restoreResult.planDevices;
+    }));
+  }
 
-    const holdResult = applyShedTemperatureHold({
+  private applyHoldPlanWithTiming(
+    planDevices: DevicePlanDevice[],
+    restoreResult: RestorePlanResult,
+    sheddingPlan: SheddingPlan,
+  ): { planDevices: DevicePlanDevice[]; availableHeadroom: number; restoredOneThisCycle: boolean } {
+    return this.trackDuration('plan_hold_ms', () => applyShedTemperatureHold({
       planDevices,
       state: this.state,
       shedReasons: sheddingPlan.shedReasons,
@@ -185,14 +262,16 @@ export class PlanBuilder {
       shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
       holdDuringRestoreCooldown: restoreResult.inRestoreCooldown,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-    });
-    planDevices = holdResult.planDevices;
+    }));
+  }
 
-    if (restoreResult.restoredThisCycle.size > 0) {
-      this.state.lastRestoreMs = Date.now();
-    }
-
-    planDevices = normalizeShedReasons({
+  private normalizeReasonsWithTiming(
+    planDevices: DevicePlanDevice[],
+    context: PlanContext,
+    restoreResult: RestorePlanResult,
+    sheddingPlan: SheddingPlan,
+  ): DevicePlanDevice[] {
+    return this.trackDuration('plan_reasons_ms', () => normalizeShedReasons({
       planDevices,
       shedReasons: sheddingPlan.shedReasons,
       guardInShortfall: sheddingPlan.guardInShortfall,
@@ -202,16 +281,14 @@ export class PlanBuilder {
       inRestoreCooldown: restoreResult.inRestoreCooldown,
       shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
       restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
-    });
+    }));
+  }
 
-    const finalized = finalizePlanDevices(planDevices);
-    planDevices = finalized.planDevices;
-    this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
-
-    return {
-      meta: this.buildPlanMeta(context, planDevices, dailyBudgetSnapshot),
-      devices: planDevices,
-    };
+  private finalizePlanWithTiming(planDevices: DevicePlanDevice[]): {
+    planDevices: DevicePlanDevice[];
+    lastPlannedShedIds: Set<string>;
+  } {
+    return this.trackDuration('plan_finalize_ms', () => finalizePlanDevices(planDevices));
   }
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {
