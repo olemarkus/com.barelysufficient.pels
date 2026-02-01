@@ -4,9 +4,9 @@ import {
   buildPlan,
   buildPriceDebugData,
   getConfidence,
-  blendProfiles,
 } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
+import { buildPlanBreakdown } from './dailyBudgetBreakdown';
 import { buildDailyBudgetPreview } from './dailyBudgetPreview';
 import {
   buildDayContext,
@@ -15,7 +15,6 @@ import {
   computeBudgetState,
 } from './dailyBudgetState';
 import { buildDailyBudgetHistory } from './dailyBudgetHistory';
-import { finalizePreviousDay } from './dailyBudgetFinalize';
 import type { DayContext, PriceData } from './dailyBudgetState';
 import type {
   DailyBudgetDayPayload,
@@ -24,6 +23,14 @@ import type {
   DailyBudgetUpdate,
 } from './dailyBudgetTypes';
 import { isDailyBudgetState, type DailyBudgetManagerDeps, type ExistingPlanState, type PlanResult } from './dailyBudgetManagerTypes';
+import { finalizePreviousDayLearning } from './dailyBudgetLearning';
+import {
+  ensureDailyBudgetProfile,
+  getEffectiveProfileData,
+  getProfileDebugSummary,
+  getProfileSampleCount,
+  getProfileSplitSampleCount,
+} from './dailyBudgetProfile';
 
 const PLAN_REBUILD_INTERVAL_MS = 60 * 60 * 1000;
 const PLAN_REBUILD_USAGE_DELTA_KWH = 0.05;
@@ -38,20 +45,32 @@ export class DailyBudgetManager {
   private lastPersistMs = 0;
   private lastPlanRebuildMs = 0;
 
-  constructor(private deps: DailyBudgetManagerDeps) {}
+  constructor(private deps: DailyBudgetManagerDeps) { }
   loadState(raw: unknown): void {
     if (isDailyBudgetState(raw)) {
       this.state = { ...raw };
     }
   }
   exportState(): DailyBudgetState {
-    return this.state;
+    const state = { ...this.state };
+    if (typeof state.profileSampleCount === 'number' && state.profile) {
+      state.profile = { ...state.profile, sampleCount: state.profileSampleCount };
+    }
+    return state;
   }
   resetLearning(): void {
-    this.state.profile = {
+    this.state.profileUncontrolled = {
       weights: [...DEFAULT_PROFILE],
       sampleCount: 0,
     };
+    this.state.profileControlled = {
+      weights: [...DEFAULT_PROFILE],
+      sampleCount: 0,
+    };
+    this.state.profileControlledShare = 0;
+    this.state.profileSampleCount = 0;
+    this.state.profileSplitSampleCount = 0;
+    this.state.profile = undefined;
     this.state.frozen = false;
     this.markDirty();
   }
@@ -77,7 +96,9 @@ export class DailyBudgetManager {
     } = params;
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker });
-    this.ensureProfile();
+    const profileResult = ensureDailyBudgetProfile(this.state, DEFAULT_PROFILE);
+    if (profileResult.changed) this.markDirty();
+    this.state = profileResult.state;
     this.handleRollover({ context, settings, powerTracker });
 
     const enabled = this.isEnabled(settings);
@@ -111,7 +132,8 @@ export class DailyBudgetManager {
       enabled,
       dailyBudgetKWh: settings.dailyBudgetKWh,
       plannedKWh: plan.plannedKWh,
-      profileSampleCount: this.state.profile?.sampleCount ?? 0,
+      profileSampleCount: getProfileSampleCount(this.state),
+      profileSplitSampleCount: getProfileSplitSampleCount(this.state),
     });
 
     this.maybeFreezeFromDeviation(enabled, budget.deviationKWh);
@@ -126,11 +148,20 @@ export class DailyBudgetManager {
       );
     }
 
+    const profileData = getEffectiveProfileData(this.state, settings, DEFAULT_PROFILE);
+    const breakdown = buildPlanBreakdown({
+      bucketStartUtcMs: context.bucketStartUtcMs,
+      timeZone: context.timeZone,
+      plannedKWh: plan.plannedKWh,
+      breakdown: profileData.breakdown,
+    });
     const snapshot = buildDailyBudgetSnapshot({
       context,
       settings,
       enabled,
       plannedKWh: plan.plannedKWh,
+      plannedUncontrolledKWh: breakdown?.plannedUncontrolledKWh,
+      plannedControlledKWh: breakdown?.plannedControlledKWh,
       priceData: plan.priceData,
       budget,
       frozen: Boolean(this.state.frozen),
@@ -142,6 +173,7 @@ export class DailyBudgetManager {
         snapshot,
         priceOptimizationEnabled,
         capacityBudgetKWh,
+        settings,
       });
     }
 
@@ -158,20 +190,33 @@ export class DailyBudgetManager {
     snapshot: DailyBudgetDayPayload;
     priceOptimizationEnabled: boolean;
     capacityBudgetKWh?: number;
+    settings: DailyBudgetSettings;
   }): void {
-    const { snapshot, priceOptimizationEnabled, capacityBudgetKWh } = params;
-    const profileSampleCount = this.state.profile?.sampleCount ?? 0;
+    const {
+      snapshot,
+      priceOptimizationEnabled,
+      capacityBudgetKWh,
+      settings,
+    } = params;
+    const { combinedWeights, learnedWeights, profileMeta } = getProfileDebugSummary(this.state, settings, DEFAULT_PROFILE);
     const debugPayload = {
       ...snapshot,
       meta: {
         priceOptimizationEnabled,
         capacityBudgetKWh: Number.isFinite(capacityBudgetKWh) ? capacityBudgetKWh : null,
-        profileSampleCount,
-        profileConfidence: getConfidence(profileSampleCount),
-        profileLearnedWeights: this.state.profile?.weights ?? null,
-        profileEffectiveWeights: this.getEffectiveProfile(),
+        profileSampleCount: profileMeta.sampleCount,
+        profileSplitSampleCount: profileMeta.splitSampleCount,
+        profileConfidence: getConfidence(profileMeta.sampleCount),
+        profileLearnedWeights: learnedWeights,
+        profileEffectiveWeights: combinedWeights,
+        profileControlledShare: profileMeta.controlledShare,
       },
     };
+    this.deps.logDebug(
+      `Daily budget: profile samples ${profileMeta.sampleCount} total, `
+      + `${profileMeta.splitSampleCount} split, `
+      + `controlled share ${profileMeta.controlledShare.toFixed(2)}`,
+    );
     this.deps.logDebug(`Daily budget: plan debug ${JSON.stringify(debugPayload)}`);
   }
 
@@ -182,15 +227,17 @@ export class DailyBudgetManager {
   }): void {
     const { context, settings, powerTracker } = params;
     if (this.state.dateKey && this.state.dateKey !== context.dateKey && settings.enabled) {
-      this.state = finalizePreviousDay({
+      const result = finalizePreviousDayLearning({
         state: this.state,
         timeZone: context.timeZone,
         powerTracker,
         previousDateKey: this.state.dateKey,
         previousDayStartUtcMs: this.state.dayStartUtcMs ?? null,
-        logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
-        markDirty: (force) => this.markDirty(force),
+        defaultProfile: DEFAULT_PROFILE,
       });
+      if (result.logMessage) this.deps.logDebug(result.logMessage);
+      if (result.shouldMarkDirty) this.markDirty(true);
+      this.state = result.nextState;
     }
   }
 
@@ -345,17 +392,19 @@ export class DailyBudgetManager {
     } = params;
     const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
     const lockCurrentBucket = this.state.lastPlanBucketStartUtcMs === currentBucketStartUtcMs;
+    const profileData = getEffectiveProfileData(this.state, settings, DEFAULT_PROFILE);
     const buildResult = buildPlan({
       bucketStartUtcMs: context.bucketStartUtcMs,
       bucketUsage: context.bucketUsage,
       currentBucketIndex: context.currentBucketIndex,
       usedNowKWh: context.usedNowKWh,
       dailyBudgetKWh: settings.dailyBudgetKWh,
-      profileWeights: this.getEffectiveProfile(),
+      profileWeights: profileData.combinedWeights,
       timeZone: context.timeZone,
       combinedPrices,
       priceOptimizationEnabled,
       priceShapingEnabled: settings.priceShapingEnabled,
+      priceShapingFlexShare: settings.priceShapingFlexShare,
       previousPlannedKWh: existingPlan ?? undefined,
       capacityBudgetKWh,
       lockCurrentBucket,
@@ -442,32 +491,21 @@ export class DailyBudgetManager {
     priceOptimizationEnabled: boolean;
     capacityBudgetKWh?: number;
   }): DailyBudgetDayPayload {
-    this.ensureProfile();
+    const profileResult = ensureDailyBudgetProfile(this.state, DEFAULT_PROFILE);
+    if (profileResult.changed) this.markDirty();
+    this.state = profileResult.state;
     const { settings } = params;
     const enabled = this.isEnabled(settings);
+    const profileData = getEffectiveProfileData(this.state, settings, DEFAULT_PROFILE);
     return buildDailyBudgetPreview({
       ...params,
       enabled,
       priceShapingEnabled: settings.priceShapingEnabled,
-      profileWeights: this.getEffectiveProfile(),
-      profileSampleCount: this.state.profile?.sampleCount ?? 0,
+      profileWeights: profileData.combinedWeights,
+      profileSampleCount: profileData.sampleCount,
+      profileSplitSampleCount: getProfileSplitSampleCount(this.state),
+      profileBreakdown: profileData.breakdown,
     });
-  }
-
-  private ensureProfile(): void {
-    if (!this.state.profile || !Array.isArray(this.state.profile.weights) || this.state.profile.weights.length !== 24) {
-      this.state.profile = {
-        weights: [...DEFAULT_PROFILE],
-        sampleCount: 0,
-      };
-      this.markDirty();
-    }
-  }
-
-  private getEffectiveProfile(): number[] {
-    const learned = this.state.profile?.weights ?? DEFAULT_PROFILE;
-    const confidence = getConfidence(this.state.profile?.sampleCount ?? 0);
-    return blendProfiles(DEFAULT_PROFILE, learned, confidence);
   }
 
   private markDirty(force = false): void { this.dirty = true; if (force) this.lastPersistMs = 0; }
@@ -476,6 +514,7 @@ export class DailyBudgetManager {
 export {
   blendProfiles,
   buildAllowedCumKWh,
+  buildCompositeWeights,
   buildDefaultProfile,
   buildPlan,
   buildPriceDebugData,
