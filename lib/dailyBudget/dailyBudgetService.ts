@@ -11,9 +11,16 @@ import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  DAILY_BUDGET_CONTROLLED_WEIGHT,
+  DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_STATE,
 } from '../utils/settingsKeys';
-import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from './dailyBudgetConstants';
+import {
+  CONTROLLED_USAGE_WEIGHT,
+  MAX_DAILY_BUDGET_KWH,
+  MIN_DAILY_BUDGET_KWH,
+  PRICE_SHAPING_FLEX_SHARE,
+} from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
 import type { DailyBudgetDayPayload, DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
@@ -34,6 +41,8 @@ export class DailyBudgetService {
     enabled: false,
     dailyBudgetKWh: 0,
     priceShapingEnabled: true,
+    controlledUsageWeight: CONTROLLED_USAGE_WEIGHT,
+    priceShapingFlexShare: PRICE_SHAPING_FLEX_SHARE,
   };
   private snapshot: DailyBudgetUiPayload | null = null;
   private daySnapshots: Record<string, DailyBudgetDayPayload> = {};
@@ -49,14 +58,24 @@ export class DailyBudgetService {
     const enabled = this.deps.homey.settings.get(DAILY_BUDGET_ENABLED) as unknown;
     const budgetKWh = this.deps.homey.settings.get(DAILY_BUDGET_KWH) as unknown;
     const priceShapingEnabled = this.deps.homey.settings.get(DAILY_BUDGET_PRICE_SHAPING_ENABLED) as unknown;
+    const controlledWeight = this.deps.homey.settings.get(DAILY_BUDGET_CONTROLLED_WEIGHT) as unknown;
+    const priceFlexShare = this.deps.homey.settings.get(DAILY_BUDGET_PRICE_FLEX_SHARE) as unknown;
     const rawBudget = isFiniteNumber(budgetKWh) ? Math.max(0, budgetKWh) : 0;
     const boundedBudget = rawBudget === 0
       ? 0
       : Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, rawBudget));
+    const boundedControlledWeight = isFiniteNumber(controlledWeight)
+      ? Math.min(1, Math.max(0, controlledWeight))
+      : CONTROLLED_USAGE_WEIGHT;
+    const boundedPriceFlexShare = isFiniteNumber(priceFlexShare)
+      ? Math.min(1, Math.max(0, priceFlexShare))
+      : PRICE_SHAPING_FLEX_SHARE;
     this.settings = {
       enabled: enabled === true,
       dailyBudgetKWh: boundedBudget,
       priceShapingEnabled: priceShapingEnabled !== false,
+      controlledUsageWeight: boundedControlledWeight,
+      priceShapingFlexShare: boundedPriceFlexShare,
     };
   }
 

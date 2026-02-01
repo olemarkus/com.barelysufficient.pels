@@ -9,6 +9,8 @@ import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  DAILY_BUDGET_CONTROLLED_WEIGHT,
+  DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
   FLOW_PRICES_TODAY,
@@ -128,6 +130,8 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     [DAILY_BUDGET_KWH]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_PRICE_SHAPING_ENABLED]: async () => handleDailyBudgetChange(deps),
     [COMBINED_PRICES]: async () => handleDailyBudgetPriceChange(deps),
+    [DAILY_BUDGET_CONTROLLED_WEIGHT]: async () => handleDailyBudgetChange(deps),
+    [DAILY_BUDGET_PRICE_FLEX_SHARE]: async () => handleDailyBudgetChange(deps),
     overshoot_behaviors: async () => {
       deps.loadCapacitySettings();
       await deps.rebuildPlanFromCache();

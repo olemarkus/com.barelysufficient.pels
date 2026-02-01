@@ -1,2 +1,4 @@
 export const MIN_DAILY_BUDGET_KWH = 20;
 export const MAX_DAILY_BUDGET_KWH = 360;
+export const CONTROLLED_USAGE_WEIGHT = 0.3;
+export const PRICE_SHAPING_FLEX_SHARE = 0.35;

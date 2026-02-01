@@ -12,6 +12,7 @@ import {
   type DayContext,
 } from './dailyBudgetState';
 import type { DailyBudgetDayPayload } from './dailyBudgetTypes';
+import { CONTROLLED_USAGE_WEIGHT, PRICE_SHAPING_FLEX_SHARE } from './dailyBudgetConstants';
 
 export const buildDailyBudgetHistory = (params: {
   dayStartUtcMs: number;
@@ -82,7 +83,13 @@ export const buildDailyBudgetHistory = (params: {
 
   return buildDailyBudgetSnapshot({
     context,
-    settings: { enabled, dailyBudgetKWh, priceShapingEnabled },
+    settings: {
+      enabled,
+      dailyBudgetKWh,
+      priceShapingEnabled,
+      controlledUsageWeight: CONTROLLED_USAGE_WEIGHT,
+      priceShapingFlexShare: PRICE_SHAPING_FLEX_SHARE,
+    },
     enabled,
     plannedKWh,
     priceData,

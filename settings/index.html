@@ -181,8 +181,12 @@
 
           <div class="daily-budget-legend" id="daily-budget-legend">
             <div class="daily-budget-legend__item">
-              <span class="daily-budget-legend__swatch daily-budget-legend__swatch--planned" aria-hidden="true"></span>
-              <span class="muted">Planned</span>
+              <span id="daily-budget-legend-planned-swatch" class="daily-budget-legend__swatch daily-budget-legend__swatch--planned" aria-hidden="true"></span>
+              <span class="muted" id="daily-budget-legend-planned-label">Planned</span>
+            </div>
+            <div class="daily-budget-legend__item" id="daily-budget-legend-controlled" hidden>
+              <span class="daily-budget-legend__swatch daily-budget-legend__swatch--controlled" aria-hidden="true"></span>
+              <span class="muted">Controlled</span>
             </div>
             <div class="daily-budget-legend__item" id="daily-budget-legend-actual">
               <span class="daily-budget-legend__swatch daily-budget-legend__swatch--actual" aria-hidden="true"></span>
@@ -319,80 +323,126 @@
           <h2>Diagnostics</h2>
         </div>
       </div>
-      <div class="form-grid">
-        <label class="field checkbox-field">
-          <input id="debug-topic-plan" data-debug-topic="plan" type="checkbox">
-          <div>
-            <span class="field__label">Plan engine</span>
-            <small class="field__hint">Shedding, restore, and soft-limit decisions.</small>
+      <details class="settings-collapse" open>
+        <summary>
+          <h3 class="section-title">Debug logging</h3>
+          <span class="section-hint">Targeted diagnostics</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="form-grid">
+            <label class="field checkbox-field">
+              <input id="debug-topic-plan" data-debug-topic="plan" type="checkbox">
+              <div>
+                <span class="field__label">Plan engine</span>
+                <small class="field__hint">Shedding, restore, and soft-limit decisions.</small>
+              </div>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-price" data-debug-topic="price" type="checkbox">
+              <div>
+                <span class="field__label">Price optimization</span>
+                <small class="field__hint">Spot prices, tariffs, and price shaping.</small>
+              </div>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
+              <div>
+                <span class="field__label">Daily budget</span>
+                <small class="field__hint">Daily plan and rollover.</small>
+              </div>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">
+              <div>
+                <span class="field__label">Devices</span>
+                <small class="field__hint">Device snapshots and Homey API interactions.</small>
+              </div>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-settings" data-debug-topic="settings" type="checkbox">
+              <div>
+                <span class="field__label">Settings</span>
+                <small class="field__hint">Settings changes and housekeeping.</small>
+              </div>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-perf" data-debug-topic="perf" type="checkbox">
+              <div>
+                <span class="field__label">Performance</span>
+                <small class="field__hint">Hotpath counters and timings.</small>
+              </div>
+            </label>
+            <p class="muted">Select only what you need. Debug logging stays enabled across restarts.</p>
           </div>
-        </label>
-        <label class="field checkbox-field">
-          <input id="debug-topic-price" data-debug-topic="price" type="checkbox">
-          <div>
-            <span class="field__label">Price optimization</span>
-            <small class="field__hint">Spot prices, tariffs, and price shaping.</small>
-          </div>
-        </label>
-        <label class="field checkbox-field">
-          <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
-          <div>
-            <span class="field__label">Daily budget</span>
-            <small class="field__hint">Daily plan and rollover.</small>
-          </div>
-        </label>
-        <label class="field checkbox-field">
-          <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">
-          <div>
-            <span class="field__label">Devices</span>
-            <small class="field__hint">Device snapshots and Homey API interactions.</small>
-          </div>
-        </label>
-        <label class="field checkbox-field">
-          <input id="debug-topic-settings" data-debug-topic="settings" type="checkbox">
-          <div>
-            <span class="field__label">Settings</span>
-            <small class="field__hint">Settings changes and housekeeping.</small>
-          </div>
-        </label>
-        <label class="field checkbox-field">
-          <input id="debug-topic-perf" data-debug-topic="perf" type="checkbox">
-          <div>
-            <span class="field__label">Performance</span>
-            <small class="field__hint">Hotpath counters and timings.</small>
-          </div>
-        </label>
-        <p class="muted">Select only what you need. Debug logging stays enabled across restarts.</p>
-      </div>
-      <div class="section-header">
-        <h3 class="section-title">Device cleanup</h3>
-      </div>
-      <div class="form-grid">
-        <label class="field">
-          <span class="field__label">Device</span>
-          <select id="advanced-device-select"></select>
-          <small class="field__hint">Removes PELS settings for this device only.</small>
-        </label>
-        <div class="inline-actions">
-          <button type="button" class="btn ghost" id="advanced-device-clear">Clear device data</button>
         </div>
-        <p class="muted">Clears modes, priorities, control flags, overshoot behavior, and price optimization for the selected device.</p>
-      </div>
-      <div class="section-header">
-        <h3 class="section-title">Device log</h3>
-      </div>
-      <div class="form-grid">
-        <label class="field">
-          <span class="field__label">Homey device</span>
-          <select id="advanced-api-device-select"></select>
-          <small class="field__hint">Loads the raw device from the Homey API.</small>
-        </label>
-        <div class="inline-actions">
-          <button type="button" class="btn ghost" id="advanced-api-device-refresh">Refresh list</button>
-          <button type="button" class="btn ghost" id="advanced-api-device-log">Log device</button>
+      </details>
+      <details class="settings-collapse" open>
+        <summary>
+          <h3 class="section-title">Daily budget tuning</h3>
+          <span class="section-hint">Behavior shaping</span>
+        </summary>
+        <div class="collapse-content">
+          <form id="daily-budget-advanced-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">Controlled usage weight</span>
+              <input id="daily-budget-controlled-weight" type="number" min="0" max="1" step="0.05">
+              <small class="field__hint">Scale controlled usage when learning the budget (0 = ignore, 1 = full).</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Price flex share</span>
+              <input id="daily-budget-price-flex-share" type="number" min="0" max="1" step="0.05">
+              <small class="field__hint">Share of the plan shaped by price (0 = none, 1 = fully price-shaped).</small>
+            </label>
+            <label class="field checkbox-field">
+              <input id="daily-budget-breakdown" type="checkbox">
+              <div>
+                <span class="field__label">Show daily budget breakdown in the chart</span>
+                <small class="field__hint">Stack uncontrolled vs. controlled contributions.</small>
+              </div>
+            </label>
+            <p class="muted">These apply when the plan rebuilds. Defaults are best unless you are tuning behavior.</p>
+          </form>
         </div>
-        <p class="muted">Writes the selected device payload to the app logs for inspection.</p>
-      </div>
+      </details>
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">Device cleanup</h3>
+          <span class="section-hint">Remove stored metadata</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="form-grid">
+            <label class="field">
+              <span class="field__label">Device</span>
+              <select id="advanced-device-select"></select>
+              <small class="field__hint">Removes PELS settings for this device only.</small>
+            </label>
+            <div class="inline-actions">
+              <button type="button" class="btn ghost" id="advanced-device-clear">Clear device data</button>
+            </div>
+            <p class="muted">Clears modes, priorities, control flags, overshoot behavior, and price optimization for the selected device.</p>
+          </div>
+        </div>
+      </details>
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">Device log</h3>
+          <span class="section-hint">Homey API payload</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="form-grid">
+            <label class="field">
+              <span class="field__label">Homey device</span>
+              <select id="advanced-api-device-select"></select>
+              <small class="field__hint">Loads the raw device from the Homey API.</small>
+            </label>
+            <div class="inline-actions">
+              <button type="button" class="btn ghost" id="advanced-api-device-refresh">Refresh list</button>
+              <button type="button" class="btn ghost" id="advanced-api-device-log">Log device</button>
+            </div>
+            <p class="muted">Writes the selected device payload to the app logs for inspection.</p>
+          </div>
+        </div>
+      </details>
     </section>
 
     <section class="card panel hidden" id="price-panel" data-panel="price">

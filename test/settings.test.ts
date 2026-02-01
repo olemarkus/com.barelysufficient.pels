@@ -1,3 +1,5 @@
+const { getDateKeyInTimeZone } = require('../settings/src/ui/timezone');
+
 /**
  * Basic render test for the settings UI with Homey mocked.
  */
@@ -49,7 +51,20 @@ const buildDom = () => {
       <div id="daily-budget-chart"></div>
       <div id="daily-budget-bars"></div>
       <div id="daily-budget-labels"></div>
-      <div id="daily-budget-legend"></div>
+      <div id="daily-budget-legend">
+        <div class="daily-budget-legend__item">
+          <span id="daily-budget-legend-planned-swatch"></span>
+          <span id="daily-budget-legend-planned-label" class="muted">Planned</span>
+        </div>
+        <div class="daily-budget-legend__item" id="daily-budget-legend-controlled" hidden>
+          <span class="daily-budget-legend__swatch daily-budget-legend__swatch--controlled"></span>
+          <span class="muted">Controlled</span>
+        </div>
+        <div class="daily-budget-legend__item" id="daily-budget-legend-actual">
+          <span class="daily-budget-legend__swatch daily-budget-legend__swatch--actual"></span>
+          <span class="muted">Actual</span>
+        </div>
+      </div>
       <div id="daily-budget-empty"></div>
       <div id="daily-budget-status-pill"></div>
       <div id="daily-budget-title"></div>
@@ -59,7 +74,6 @@ const buildDom = () => {
       <div id="daily-budget-cost-label"></div>
       <div id="daily-budget-cost"></div>
       <div id="daily-budget-confidence"></div>
-      <div id="daily-budget-legend-actual"></div>
       <button id="daily-budget-toggle-today"></button>
       <button id="daily-budget-toggle-tomorrow"></button>
     </section>
@@ -107,6 +121,11 @@ const buildDom = () => {
       <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
       <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">
       <input id="debug-topic-settings" data-debug-topic="settings" type="checkbox">
+      <form id="daily-budget-advanced-form">
+        <input id="daily-budget-controlled-weight" type="number">
+        <input id="daily-budget-price-flex-share" type="number">
+        <input id="daily-budget-breakdown" type="checkbox">
+      </form>
     </section>
     <button id="refresh-button"></button>
     <button id="reset-stats-button"></button>
@@ -696,8 +715,12 @@ describe('settings script', () => {
     expect(summaryAfter?.[1]?.textContent).toContain('at or above 140.0000');
 
     const detailsSections = document.querySelectorAll('.price-details');
-    const dayKeys = new Set(prices.map((price) => price.startsAt.split('T')[0]));
-    expect(detailsSections.length).toBe(dayKeys.size);
+    const timeZone = 'UTC';
+    const dayKeys = new Set(
+      combinedPrices.prices.map((entry: any) => getDateKeyInTimeZone(new Date(entry.startsAt), timeZone)),
+    );
+    const expectedDetails = Math.min(dayKeys.size, 2);
+    expect(detailsSections.length).toBe(expectedDetails);
   });
 
   it('falls back to electricity_prices when combined_prices not available', async () => {
@@ -885,6 +908,96 @@ describe('settings script', () => {
 
     const costText = document.querySelector('#daily-budget-cost')?.textContent;
     expect(costText).toBe('300.00');
+  });
+
+  it('toggles daily budget legend when breakdown is enabled', async () => {
+    const dailyBudgetPayload = {
+      days: {
+        '2024-01-01': {
+          dateKey: '2024-01-01',
+          timeZone: 'UTC',
+          nowUtc: '2024-01-01T01:30:00.000Z',
+          dayStartUtc: '2024-01-01T00:00:00.000Z',
+          currentBucketIndex: 1,
+          budget: {
+            enabled: true,
+            dailyBudgetKWh: 2,
+            priceShapingEnabled: true,
+          },
+          state: {
+            usedNowKWh: 1,
+            allowedNowKWh: 1,
+            remainingKWh: 1,
+            deviationKWh: 0,
+            exceeded: false,
+            frozen: false,
+            confidence: 1,
+            priceShapingActive: false,
+          },
+          buckets: {
+            startUtc: ['2024-01-01T00:00:00.000Z', '2024-01-01T01:00:00.000Z'],
+            startLocalLabels: ['00:00', '01:00'],
+            plannedWeight: [0.5, 0.5],
+            plannedKWh: [1, 1],
+            plannedUncontrolledKWh: [0.3, 0.7],
+            plannedControlledKWh: [0.7, 0.3],
+            actualKWh: [1, 1],
+            allowedCumKWh: [1, 2],
+            price: [100, 200],
+          },
+        },
+      },
+      todayKey: '2024-01-01',
+      tomorrowKey: null,
+    };
+
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'daily_budget_breakdown_enabled') return cb(null, false);
+      if (key === 'combined_prices') {
+        return cb(null, { priceScheme: 'flow', priceUnit: 'price units' });
+      }
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+    // @ts-expect-error mutate mock
+    global.Homey.api = jest.fn((method, uri, bodyOrCallback, cb) => {
+      const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
+      if (!callback) return;
+      if (method === 'GET' && uri === '/daily_budget') {
+        callback(null, dailyBudgetPayload);
+        return;
+      }
+      if (method === 'GET' && uri === '/homey_devices') {
+        callback(null, []);
+        return;
+      }
+      callback(null, null);
+    });
+
+    await loadSettingsScript(200);
+
+    const plannedLabel = document.querySelector('#daily-budget-legend-planned-label') as HTMLElement;
+    const plannedSwatch = document.querySelector('#daily-budget-legend-planned-swatch') as HTMLElement;
+    const controlledLegend = document.querySelector('#daily-budget-legend-controlled') as HTMLElement | null;
+
+    expect(plannedLabel.textContent).toBe('Planned');
+    expect(controlledLegend).toBeNull();
+    expect(plannedSwatch.classList.contains('daily-budget-legend__swatch--uncontrolled')).toBe(false);
+
+    const { dailyBudgetBreakdownInput } = require('../settings/src/ui/dom');
+    dailyBudgetBreakdownInput.checked = true;
+    dailyBudgetBreakdownInput.dispatchEvent(new Event('change', { bubbles: true }));
+    const { rerenderDailyBudget } = require('../settings/src/ui/dailyBudget');
+    rerenderDailyBudget();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(plannedLabel.textContent).toBe('Uncontrolled');
+    const controlledLegendAfter = document.querySelector('#daily-budget-legend-controlled') as HTMLElement | null;
+    expect(controlledLegendAfter).not.toBeNull();
+    expect(controlledLegendAfter?.hasAttribute('hidden')).toBe(false);
+    expect(plannedSwatch.classList.contains('daily-budget-legend__swatch--uncontrolled')).toBe(true);
   });
 });
 
