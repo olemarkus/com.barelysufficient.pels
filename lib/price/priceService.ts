@@ -1,5 +1,5 @@
 import Homey from 'homey';
-import { formatDateInTimeZone, getHourStartInTimeZone } from '../utils/dateUtils';
+import { getDateKeyInTimeZone, getHourStartInTimeZone } from '../utils/dateUtils';
 import {
   COMBINED_PRICES,
   FLOW_PRICES_TODAY,
@@ -173,11 +173,7 @@ export default class PriceService {
 
     const todayDate = new Date();
     const timeZone = this.homey.clock.getTimezone();
-    const today = formatDateInTimeZone(todayDate, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }, timeZone);
+    const today = getDateKeyInTimeZone(todayDate, timeZone);
     const existingData = this.getSettingValue('nettleie_data') as Array<{ dateKey?: string; datoId?: string }> | null;
     if (!forceRefresh && shouldUseGridTariffCache(existingData, today, this.logDebug)) {
       this.updateCombinedPrices();
@@ -197,11 +193,7 @@ export default class PriceService {
     }
 
     for (const fallback of buildGridTariffFallbackDates(todayDate)) {
-      const fallbackDate = formatDateInTimeZone(fallback.date, {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }, timeZone);
+      const fallbackDate = getDateKeyInTimeZone(fallback.date, timeZone);
       if (attempts.some((attempt) => attempt.date === fallbackDate)) {
         continue;
       }

@@ -91,7 +91,14 @@ export function applyRestorePlan(params: {
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
     }
-  } else if (context.headroomRaw !== null && (sheddingActive || timing.inCooldown || timing.inRestoreCooldown)) {
+  } else if (context.headroomRaw === null) {
+    markOffDevicesStayOff(deviceMap, timing, deps.logDebug, (dev) => {
+      const plannedPower = estimateRestorePower(dev);
+      const restoreBuffer = computeRestoreBufferKw(plannedPower);
+      const needed = plannedPower + restoreBuffer;
+      return `insufficient headroom (need ${needed.toFixed(2)}kW, headroom unknown)`;
+    });
+  } else if (sheddingActive || timing.inCooldown || timing.inRestoreCooldown) {
     markOffDevicesStayOff(deviceMap, timing, deps.logDebug);
   }
 
@@ -472,12 +479,13 @@ function markOffDevicesStayOff(
   deviceMap: Map<string, DevicePlanDevice>,
   timing: { activeOvershoot: boolean; inCooldown: boolean; restoreCooldownSeconds: number; shedCooldownRemainingSec: number | null },
   logDebug: (...args: unknown[]) => void,
+  reasonOverride?: (dev: DevicePlanDevice) => string,
 ): void {
   const offDevices = Array.from(deviceMap.values())
     .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed');
   for (const dev of offDevices) {
     const defaultReason = dev.reason || 'shed due to capacity';
-    const nextReason = resolveOffDeviceReason(dev, timing, defaultReason);
+    const nextReason = reasonOverride ? reasonOverride(dev) : resolveOffDeviceReason(dev, timing, defaultReason);
     setDevice(deviceMap, dev.id, { plannedState: 'shed', reason: nextReason });
     logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) - ${nextReason}`);
   }
