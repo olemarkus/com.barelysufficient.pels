@@ -353,3 +353,274 @@ describe('daily budget exceeded state', () => {
     expect(underUpdate.snapshot.state.frozen).toBe(false);
   });
 });
+
+describe('daily budget profile learning math', () => {
+  let manager: ReturnType<typeof buildManager>;
+  const settings = {
+    enabled: true,
+    dailyBudgetKWh: 10,
+    priceShapingEnabled: false,
+  };
+  const PREVIOUS_DATE_KEY = '2024-01-14';
+
+  beforeEach(() => {
+    manager = buildManager();
+  });
+
+  it('learns usage pattern from a single day', () => {
+    const previousStart = getDateKeyStartMs(PREVIOUS_DATE_KEY, TZ);
+    // Create bucket keys for hours 18 and 3
+    const bucket18 = new Date(previousStart + 18 * 60 * 60 * 1000).toISOString();
+    const bucket3 = new Date(previousStart + 3 * 60 * 60 * 1000).toISOString();
+
+    manager.loadState({
+      dateKey: PREVIOUS_DATE_KEY,
+      dayStartUtcMs: previousStart,
+      profile: {
+        weights: buildDefaultProfile(),
+        sampleCount: 0,
+      },
+    });
+
+    // Simulate rollover with usage spike at hour 18, small usage at hour 3
+    manager.update({
+      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucket18]: 8, [bucket3]: 1 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const nextState = manager.exportState();
+    expect(nextState.profile?.sampleCount).toBe(1);
+    // Hour 18 should have high weight, hour 3 should have low weight
+    expect(nextState.profile?.weights[18]).toBeGreaterThan(nextState.profile?.weights[3] ?? 0);
+    // With only one sample, weights should directly reflect usage pattern
+    // 8 / 9 = 0.889 for hour 18, 1 / 9 = 0.111 for hour 3
+    expect(nextState.profile?.weights[18]).toBeCloseTo(8 / 9, 3);
+    expect(nextState.profile?.weights[3]).toBeCloseTo(1 / 9, 3);
+  });
+
+  it('averages usage patterns across multiple days using cumulative formula', () => {
+    // Start with a profile weighted towards hour 10
+    const initialWeights = Array.from({ length: 24 }, (_, hour) => (hour === 10 ? 1 : 0));
+    manager.loadState({
+      dateKey: PREVIOUS_DATE_KEY,
+      dayStartUtcMs: getDateKeyStartMs(PREVIOUS_DATE_KEY, TZ),
+      profile: {
+        weights: normalizeWeights(initialWeights),
+        sampleCount: 4,
+      },
+    });
+
+    // New day with ALL usage at hour 20
+    const previousStart = getDateKeyStartMs(PREVIOUS_DATE_KEY, TZ);
+    const bucket20 = new Date(previousStart + 20 * 60 * 60 * 1000).toISOString();
+
+    manager.update({
+      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucket20]: 5 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const nextState = manager.exportState();
+    expect(nextState.profile?.sampleCount).toBe(5);
+
+    // Cumulative average: (oldWeight * 4 + newWeight) / 5
+    // Hour 10: (1.0 * 4 + 0) / 5 = 0.8
+    // Hour 20: (0.0 * 4 + 1) / 5 = 0.2
+    // After normalization, hour 10 should still be dominant
+    const weights = nextState.profile?.weights ?? [];
+    expect(weights[10]).toBeGreaterThan(weights[20]);
+    // Verify the ratio: hour10 / hour20 should be approximately 4:1
+    expect(weights[10] / weights[20]).toBeCloseTo(4, 0);
+  });
+
+  it('dampens single day outliers when history exists', () => {
+    // Profile with 9 samples, evenly distributed
+    const evenWeights = normalizeWeights(Array.from({ length: 24 }, () => 1));
+    manager.loadState({
+      dateKey: PREVIOUS_DATE_KEY,
+      dayStartUtcMs: getDateKeyStartMs(PREVIOUS_DATE_KEY, TZ),
+      profile: {
+        weights: evenWeights,
+        sampleCount: 9,
+      },
+    });
+
+    // Massive outlier: single-hour usage (100 kWh) dominates the daily pattern
+    const previousStart = getDateKeyStartMs(PREVIOUS_DATE_KEY, TZ);
+    const bucket18 = new Date(previousStart + 18 * 60 * 60 * 1000).toISOString();
+
+    manager.update({
+      nowMs: Date.UTC(2024, 0, 15, 1, 0),
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucket18]: 100 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const nextState = manager.exportState();
+    expect(nextState.profile?.sampleCount).toBe(10);
+
+    // Hour 18 should only increase by ~10% (1/10th contribution)
+    // Original: 1/24, new day: 1.0, next: (1/24 * 9 + 1) / 10 = 0.1375
+    // All other hours: (1/24 * 9 + 0) / 10 = 0.0375
+    const weights = nextState.profile?.weights ?? [];
+    const expectedHour18 = ((1 / 24) * 9 + 1) / 10;
+    const expectedOther = ((1 / 24) * 9 + 0) / 10;
+    // After normalization, hour 18 should be higher but not dominating
+    expect(weights[18]).toBeGreaterThan(weights[0]);
+    // The ratio should be approximately expectedHour18 / expectedOther ≈ 3.67
+    expect(weights[18] / weights[0]).toBeCloseTo(expectedHour18 / expectedOther, 1);
+  });
+});
+
+describe('daily budget plan allocation math', () => {
+  let manager: ReturnType<typeof buildManager>;
+  const settings = {
+    enabled: true,
+    dailyBudgetKWh: 10,
+    priceShapingEnabled: false,
+  };
+  const PRECISION_EPSILON = 1e-6;
+
+  beforeEach(() => {
+    manager = buildManager();
+  });
+
+  it('distributes remaining budget proportionally to profile weights', () => {
+    // Profile with weights concentrated in first 3 hours: [0.5, 0.3, 0.2]
+    const weights = [0.5, 0.3, 0.2, ...Array.from({ length: 21 }, () => 0)];
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights(weights),
+        sampleCount: 14,
+      },
+    });
+
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const bucketKey = new Date(dayStart).toISOString();
+
+    const update = manager.update({
+      nowMs: dayStart + 5 * 60 * 1000, // 5 minutes into first bucket
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const planned = update.snapshot.buckets.plannedKWh;
+    // Should distribute 10 kWh as [5, 3, 2] based on weights
+    expect(planned[0]).toBeCloseTo(5, 1);
+    expect(planned[1]).toBeCloseTo(3, 1);
+    expect(planned[2]).toBeCloseTo(2, 1);
+  });
+
+  it('redistributes overflow when capacity cap is hit', () => {
+    // Profile wants 80% in first hour (8 kWh) but cap is 2 kWh
+    const weights = [0.8, 0.1, 0.1, ...Array.from({ length: 21 }, () => 0)];
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights(weights),
+        sampleCount: 14,
+      },
+    });
+
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const bucketKey = new Date(dayStart).toISOString();
+
+    const update = manager.update({
+      nowMs: dayStart + 5 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0 } },
+      priceOptimizationEnabled: false,
+      capacityBudgetKWh: 2,
+    });
+
+    const planned = update.snapshot.buckets.plannedKWh;
+    // Hour 0 should be capped at 2 kWh (with tolerance for floating point)
+    expect(planned[0]).toBeLessThanOrEqual(2 + PRECISION_EPSILON);
+    // Total should still sum to budget
+    const total = planned.reduce((sum, value) => sum + value, 0);
+    expect(total).toBeCloseTo(10, 1);
+  });
+
+  it('uses blended weights for future buckets when previous plan exists', () => {
+    const settings = {
+      enabled: true,
+      dailyBudgetKWh: 24,
+      priceShapingEnabled: false,
+    };
+    // Flat profile: 1 kWh per hour
+    const flatWeights = normalizeWeights(Array.from({ length: 24 }, () => 1));
+    // Previous plan with 2 kWh at hour 10, 1 kWh elsewhere
+    const previousPlan = Array.from({ length: 24 }, (_, i) => (i === 10 ? 2 : 1));
+    // Flat plan would allocate 1 kWh per hour (24 kWh / 24 hours)
+    const flatPlanHour10 = 1;
+    // Previous plan has 2 kWh at hour 10
+    const previousPlanHour10 = 2;
+    // The implementation blends normalized weight distributions derived from the
+    // previous plan with newly computed weights, then scales to the remaining budget.
+    // This causes hour 10 to land between the flat and previous allocations,
+    // biased towards the previous plan due to the 70/30 blend ratio.
+
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    manager.loadState({
+      dateKey: '2024-01-15',
+      dayStartUtcMs: dayStart,
+      plannedKWh: previousPlan,
+      profile: {
+        weights: flatWeights,
+        sampleCount: 14,
+      },
+    });
+
+    const bucketKey = new Date(dayStart).toISOString();
+    const update = manager.update({
+      nowMs: dayStart + 5 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0 } },
+      priceOptimizationEnabled: false,
+      forcePlanRebuild: true,
+    });
+
+    const planned = update.snapshot.buckets.plannedKWh;
+    // Hour 10 should be blended: strictly between flat (1) and previous (2)
+    // The 70/30 blend means it should be closer to 2 than to 1
+    expect(planned[10]).toBeGreaterThan(flatPlanHour10);
+    expect(planned[10]).toBeLessThan(previousPlanHour10);
+    // Verify it's closer to previous than to flat (due to 70/30 weighting)
+    const distanceToFlat = planned[10] - flatPlanHour10;
+    const distanceToPrevious = previousPlanHour10 - planned[10];
+    expect(distanceToFlat).toBeGreaterThan(distanceToPrevious);
+  });
+});
+
+describe('daily budget default profile shape', () => {
+  const profile = buildDefaultProfile();
+
+  it('has evening peak higher than night hours', () => {
+    expect(profile).toHaveLength(24);
+    // Hour 19 (7 PM) should be higher than hour 3 (3 AM)
+    expect(profile[19]).toBeGreaterThan(profile[3] * 1.5);
+  });
+
+  it('has morning peak higher than night hours', () => {
+    // Hour 7 (7 AM) should be higher than hour 3 (3 AM)
+    expect(profile[7]).toBeGreaterThan(profile[3]);
+  });
+
+  it('has highest weight in evening hours', () => {
+    // Find the maximum weight and its index
+    const maxWeight = Math.max(...profile);
+    const maxIndex = profile.indexOf(maxWeight);
+    // Peak should be in evening hours (17-22)
+    expect(maxIndex).toBeGreaterThanOrEqual(17);
+    expect(maxIndex).toBeLessThanOrEqual(22);
+  });
+});
