@@ -1374,11 +1374,11 @@ describe('Device plan snapshot', () => {
 
     // First overshoot triggers shedding.
     await (app as any).recordPowerSample(5000);
-    // Wait for async applyPlanActions to complete before second sample.
-    await new Promise((r) => setTimeout(r, 100));
+    // Let async plan actions flush before second sample.
+    await flushPromises();
     // Second overshoot arrives before cooldown; should not call setCapabilityValue again.
     await (app as any).recordPowerSample(5000);
-    await new Promise((r) => setTimeout(r, 100));
+    await flushPromises();
 
     expect(mockHomeyApi.devices.setCapabilityValue).toHaveBeenCalledTimes(1);
   });
@@ -1806,7 +1806,7 @@ describe('Device plan snapshot', () => {
 
     // Report high power - should trigger shedding
     await (app as any).recordPowerSample(5000);
-    await new Promise((r) => setTimeout(r, 100));
+    await flushPromises();
 
     // Verify the device was turned off
     expect(setSpy).toHaveBeenCalledWith({
@@ -2377,7 +2377,7 @@ describe('Device plan snapshot', () => {
 
     // First power sample - should plan the swap
     await (app as any).recordPowerSample(3000);
-    await new Promise((r) => setTimeout(r, 50)); // Let async shedding attempt complete
+    await flushPromises(); // Let async shedding attempt complete
 
     const swapApprovedAfterFirst = logCalls.filter((msg) => msg.includes('swap approved')).length;
     expect(swapApprovedAfterFirst).toBe(1);
@@ -2388,7 +2388,7 @@ describe('Device plan snapshot', () => {
     // Second power sample - should NOT re-plan the same swap
     // The swap is already pending (dev-high in pendingSwapTargets)
     await (app as any).recordPowerSample(3000);
-    await new Promise((r) => setTimeout(r, 50));
+    await flushPromises();
 
     const swapApprovedAfterSecond = logCalls.filter((msg) => msg.includes('swap approved')).length;
 

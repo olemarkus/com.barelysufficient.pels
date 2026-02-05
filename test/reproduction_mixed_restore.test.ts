@@ -89,6 +89,13 @@ describe('Mixed Type Restoration Throttling', () => {
         (app as any).planEngine.state.lastDeviceShedMs = {};
     });
 
+    afterEach(async () => {
+        if (app && typeof app.onUninit === 'function') {
+            await app.onUninit();
+        }
+        app = undefined;
+    });
+
     test('should throttle restoration and enforce cooldown between mixed device types', async () => {
         // 1. Trigger Overshoot to shed BOTH devices
         // Limit 10. Usage 15.

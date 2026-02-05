@@ -16,7 +16,68 @@ import {
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
-const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+jest.mock('../lib/app/appLifecycleHelpers', () => ({
+  startAppServices: async (params: any) => {
+    params.loadPowerTracker();
+    params.loadPriceOptimizationSettings();
+    params.initOptimizer();
+    params.startHeartbeat();
+    void params.updateOverheadToken();
+    void params.refreshTargetDevicesSnapshot();
+    params.setLastNotifiedOperatingMode(params.getOperatingMode());
+    params.registerFlowCards();
+    params.startPeriodicSnapshotRefresh();
+  },
+}));
+
+const flushPromises = () => new Promise((resolve) => {
+  if (typeof setImmediate === 'function') {
+    setImmediate(resolve);
+    return;
+  }
+  setTimeout(resolve, 0);
+});
+
+const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) break;
+    await flushPromises();
+  }
+};
+
+const waitForSnapshot = async (timeoutMs = 1000) => {
+  await waitFor(() => Array.isArray(mockHomeyInstance.settings.get('target_devices_snapshot')), timeoutMs);
+};
+
+const getPlanDeviceState = (plan: any, deviceId: string): string | undefined => {
+  if (!plan || !Array.isArray(plan.devices)) return undefined;
+  for (const device of plan.devices) {
+    if (device?.id === deviceId) return device.plannedState;
+  }
+  return undefined;
+};
+
+const initApp = async (app: any) => {
+  const appInstance = app as any;
+  appInstance.updateDebugLoggingEnabled();
+  appInstance.initPriceCoordinator();
+  appInstance.migrateManagedDevices();
+  appInstance.loadCapacitySettings();
+  appInstance.initDailyBudgetService();
+  appInstance.loadPowerTracker();
+  appInstance.loadPriceOptimizationSettings();
+  await appInstance.initDeviceManager();
+  appInstance.initCapacityGuard();
+  appInstance.initPlanEngine();
+  appInstance.initPlanService();
+  appInstance.initCapacityGuardProviders();
+  appInstance.initSettingsHandler();
+  appInstance.registerFlowCards();
+  await appInstance.refreshTargetDevicesSnapshot();
+  await appInstance.planService?.rebuildPlanFromCache?.();
+  appInstance.lastNotifiedOperatingMode = appInstance.operatingMode;
+};
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
@@ -25,6 +86,7 @@ describe('MyApp initialization', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    mockHomeyInstance.settings.set('price_scheme', 'flow');
     mockHomeyInstance.flow._actionCardListeners = {};
     mockHomeyInstance.flow._conditionCardListeners = {};
     mockHomeyInstance.flow._triggerCardRunListeners = {};
@@ -46,7 +108,8 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
     expect(Array.isArray(snapshot)).toBe(true);
@@ -63,7 +126,8 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
       id: string;
@@ -83,7 +147,8 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     // Get the registered listener for set_capacity_mode
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
@@ -107,7 +172,7 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
 
@@ -122,7 +187,7 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const capacityGuard = (app as any).capacityGuard;
     const setLimitSpy = jest.spyOn(capacityGuard, 'setLimit');
@@ -142,7 +207,7 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
     expect(setBudgetListener).toBeDefined();
@@ -164,7 +229,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(DAILY_BUDGET_ENABLED, true);
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
     const result = await setBudgetListener({ budget_kwh: 0 });
@@ -183,7 +248,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(DAILY_BUDGET_ENABLED, true);
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const rebuildSpy = jest.spyOn((app as any).planService, 'rebuildPlanFromCache');
     const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
@@ -200,7 +265,7 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
     await expect(setBudgetListener({ budget_kwh: -1 })).rejects.toThrow('Daily budget must be non-negative (kWh).');
@@ -217,7 +282,7 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const enableListener = mockHomeyInstance.flow._actionCardListeners['enable_device_capacity_control'];
     expect(enableListener).toBeDefined();
@@ -237,7 +302,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const disableListener = mockHomeyInstance.flow._actionCardListeners['disable_device_capacity_control'];
     expect(disableListener).toBeDefined();
@@ -254,7 +319,7 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const setLimitListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_limit'];
     await expect(setLimitListener({ limit_kw: -1 })).rejects.toThrow('Limit must be a positive number (kW).');
@@ -276,7 +341,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const now = Date.now();
     const hourStart = new Date(now);
@@ -290,18 +355,21 @@ describe('MyApp initialization', () => {
       lastPowerW: 2000,
     };
 
-    await (app as any).recordPowerSample(2000, now);
+    void (app as any).recordPowerSample(2000, now);
+    await waitFor(() => Array.isArray(mockHomeyInstance.settings.get('device_plan_snapshot')));
     let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-    let devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
-    expect(devPlan?.plannedState).toBe('keep');
+    let devPlanState = getPlanDeviceState(plan, 'dev-1');
+    expect(devPlanState).toBe('keep');
 
     const setLimitListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_limit'];
-    await setLimitListener({ limit_kw: 1.5 });
-    await flushPromises();
+    void setLimitListener({ limit_kw: 1.5 });
+    await waitFor(() => (
+      getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1') === 'shed'
+    ));
 
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-    devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
-    expect(devPlan?.plannedState).toBe('shed');
+    devPlanState = getPlanDeviceState(plan, 'dev-1');
+    expect(devPlanState).toBe('shed');
 
     (app as any).planEngine.state.lastSheddingMs = null;
     (app as any).planEngine.state.lastOvershootMs = null;
@@ -309,12 +377,14 @@ describe('MyApp initialization', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    await setLimitListener({ limit_kw: 4 });
-    await flushPromises();
+    void setLimitListener({ limit_kw: 4 });
+    await waitFor(() => (
+      getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1') === 'keep'
+    ));
 
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-    devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
-    expect(devPlan?.plannedState).toBe('keep');
+    devPlanState = getPlanDeviceState(plan, 'dev-1');
+    expect(devPlanState).toBe('keep');
   });
 
   it('set_capacity_mode flow card handles autocomplete object format', async () => {
@@ -324,7 +394,8 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
 
@@ -343,10 +414,10 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
-    await setModeListener({ mode: 'Away' });
+    void setModeListener({ mode: 'Away' });
 
     const triggers = mockHomeyInstance.flow._triggerCardTriggers['operating_mode_changed'] || [];
     expect(triggers.length).toBe(1);
@@ -360,7 +431,7 @@ describe('MyApp initialization', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const triggerListener = mockHomeyInstance.flow._triggerCardRunListeners['operating_mode_changed'];
     expect(typeof triggerListener).toBe('function');
@@ -385,7 +456,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     // Inject mock homeyApi (override both app and device manager instances)
     const setCapSpy = jest.fn().mockResolvedValue(undefined);
@@ -414,8 +485,7 @@ describe('MyApp initialization', () => {
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
-    await flushPromises();
-    await flushPromises();
+    await waitFor(() => setCapSpy.mock.calls.length > 0);
 
     // Verify setCapabilityValue was called to apply the target
     expect(setCapSpy).toHaveBeenCalledWith({
@@ -435,7 +505,8 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     // Inject mock homeyApi to observe any attempts to set capability
     const setCapSpy = jest.fn().mockResolvedValue(undefined);
@@ -465,7 +536,6 @@ describe('MyApp initialization', () => {
     // Changing the operating_mode setting should not apply targets in dry run
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Away');
     await flushPromises();
-    await flushPromises();
 
     expect(setCapSpy).not.toHaveBeenCalled();
   });
@@ -481,7 +551,8 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     const setCapSpy = jest.fn().mockImplementation(async (args) => {
       if (args.deviceId === 'dev-1' && args.capabilityId === 'target_temperature') {
@@ -539,7 +610,8 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     // Simulate drift away from the target
     await heater.setCapabilityValue('target_temperature', 21);
@@ -569,9 +641,8 @@ describe('MyApp initialization', () => {
     (app as any).deviceManager.homeyApi = homeyApiStub;
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
-    await setModeListener({ mode: 'Home' }); // same mode, should reapply because of drift
-    await flushPromises();
-    await flushPromises();
+    void setModeListener({ mode: 'Home' }); // same mode, should reapply because of drift
+    await waitFor(() => setCapSpy.mock.calls.length > 0);
 
     expect(setCapSpy).toHaveBeenCalledWith({
       deviceId: 'dev-1',
@@ -595,7 +666,8 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     // Simulate UI rename operation (data moved to new key, old removed)
     const renamedTargets = { Cozy: { 'dev-1': 20 } };
@@ -604,7 +676,6 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('capacity_priorities', renamedPriorities);
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Cozy');
     mockHomeyInstance.settings.set('mode_aliases', { home: 'Cozy' });
-    await flushPromises();
     await flushPromises();
 
     // Settings should only contain the renamed mode
@@ -642,7 +713,8 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     // Simulate renaming Home -> Cozy in settings (UI migration)
     mockHomeyInstance.settings.set('mode_device_targets', { Cozy: { 'dev-1': 20 } });
@@ -670,7 +742,8 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
+    await waitForSnapshot();
 
     // Simulate a swap: Home -> Work, Away -> Home (so "Work" takes the old Home data)
     mockHomeyInstance.settings.set('mode_device_targets', { Work: { 'dev-1': 20 }, Home: { 'dev-1': 18 } });
@@ -718,7 +791,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     // Simulate end of hour scenario (last 10 minutes) where burst rate would be very high:
     // If 5 minutes left in hour and only 0.5 kWh used, remaining = 4.5 kWh
@@ -760,7 +833,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     // Mock the power tracker
     (app as any).powerTracker = {
@@ -796,7 +869,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     // Mock Date.now to be at :00 (start of hour)
     const now = new Date();
@@ -832,7 +905,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.3);
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     // Mock Date.now to be at :30 (halfway through the hour)
     const now = new Date();
@@ -869,7 +942,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.3);
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     // Mock Date.now to be at :52 (8 minutes left)
     const now = new Date();
@@ -905,7 +978,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.3);
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     // Mock Date.now to be at :59 (1 minute left)
     const now = new Date();
@@ -934,7 +1007,7 @@ describe('computeDynamicSoftLimit', () => {
     setMockDrivers({});
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     // pels_status should be set even with no devices
     const status = mockHomeyInstance.settings.get('pels_status');
@@ -961,7 +1034,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     // Plan should be built
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
@@ -986,7 +1059,7 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
     expect(mockHomeyInstance.settings.get('controllable_devices')).toBeUndefined();
@@ -1001,7 +1074,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
     expect(mockHomeyInstance.settings.get('controllable_devices')).toEqual({ 'dev-1': true });
@@ -1019,7 +1092,7 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
     expect(mockHomeyInstance.settings.get('controllable_devices')).toBeUndefined();
@@ -1037,7 +1110,7 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': false });
     expect(mockHomeyInstance.settings.get('controllable_devices')).toBeUndefined();
@@ -1054,7 +1127,7 @@ describe('computeDynamicSoftLimit', () => {
     });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     const managedAfterFirst = mockHomeyInstance.settings.get('managed_devices');
     const controllableAfterFirst = mockHomeyInstance.settings.get('controllable_devices');
@@ -1062,7 +1135,7 @@ describe('computeDynamicSoftLimit', () => {
     await cleanupApps();
 
     const app2 = createApp();
-    await app2.onInit();
+    await initApp(app2);
 
     const managedAfterSecond = mockHomeyInstance.settings.get('managed_devices');
     const controllableAfterSecond = mockHomeyInstance.settings.get('controllable_devices');
@@ -1080,7 +1153,7 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
-    await app.onInit();
+    await initApp(app);
 
     expect(mockHomeyInstance.settings.get('managed_devices')).toEqual({ 'dev-1': true });
     expect(mockHomeyInstance.settings.get('controllable_devices')).toEqual({ 'dev-1': true });

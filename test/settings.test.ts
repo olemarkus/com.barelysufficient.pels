@@ -1,5 +1,20 @@
 const { getDateKeyInTimeZone } = require('../settings/src/ui/timezone');
 
+jest.mock('../settings/src/ui/toast', () => ({
+  showToast: jest.fn().mockResolvedValue(undefined),
+  showToastError: jest.fn().mockResolvedValue(undefined),
+}));
+
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) break;
+    await flushPromises();
+  }
+};
+
 /**
  * Basic render test for the settings UI with Homey mocked.
  */
@@ -133,9 +148,14 @@ const buildDom = () => {
 };
 
 const loadSettingsScript = async (delay = 50) => {
+  void delay;
   // Use require to avoid Node --experimental-vm-modules requirement for dynamic import under Jest 30
   require('../settings/script.js');
-  await new Promise((resolve) => setTimeout(resolve, delay));
+  await flushPromises();
+  await waitFor(() => {
+    const select = document.querySelector('#mode-select') as HTMLSelectElement | null;
+    return Boolean(select && select.options.length > 0);
+  });
 };
 
 describe('settings script', () => {
@@ -208,7 +228,7 @@ describe('settings script', () => {
     modeSelect.value = 'home';
     modeInput.value = 'cozy';
     renameBtn.click();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitFor(() => Array.from(modeSelect.options).some((o) => o.value === 'cozy'));
 
     const modeOptions = Array.from(modeSelect.options).map((o) => o.value);
     expect(modeOptions).toContain('cozy');
@@ -248,14 +268,14 @@ describe('settings script', () => {
     // Change the editing mode to 'Away'
     modeSelect.value = 'Away';
     modeSelect.dispatchEvent(new Event('change'));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flushPromises();
 
     // Active mode select should still show 'Home'
     expect(activeModeSelect.value).toBe('Home');
 
     // Submit the priority form (save priorities for Away mode)
     priorityForm.dispatchEvent(new Event('submit'));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flushPromises();
 
     // Verify that operating_mode was NOT saved (active mode unchanged)
     const operatingModeCalls = setSpy.mock.calls.filter((c) => c[0] === 'operating_mode');
@@ -301,7 +321,7 @@ describe('settings script', () => {
 
     modeInput.value = 'Cozy';
     addBtn.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(() => Boolean(store.capacity_priorities?.Cozy));
 
     expect(store.capacity_priorities).toEqual({
       Home: { 'dev-1': 1, 'dev-2': 2 },
@@ -338,7 +358,7 @@ describe('settings script', () => {
     // Change active mode to 'Away' - should auto-save on change
     activeModeSelect.value = 'Away';
     activeModeSelect.dispatchEvent(new Event('change'));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flushPromises();
 
     // Now operating_mode should be saved as 'Away'
     expect(setSpy).toHaveBeenCalledWith('operating_mode', 'Away', expect.any(Function));
@@ -370,7 +390,7 @@ describe('settings script', () => {
     // Change only the editing mode
     modeSelect.value = 'Away';
     modeSelect.dispatchEvent(new Event('change'));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flushPromises();
 
     // The two dropdowns should now show different values
     expect(modeSelect.value).toBe('Away');
@@ -406,7 +426,7 @@ describe('settings script', () => {
     modeSelect.value = 'Home';
     modeInput.value = 'Cozy';
     renameBtn.click();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitFor(() => Array.from(modeSelect.options).some((o) => o.value === 'Cozy'));
 
     // Both dropdowns should now show 'Cozy' (since we renamed the active mode)
     const editingOptions = Array.from(modeSelect.options).map((o) => o.value);
@@ -476,7 +496,7 @@ describe('settings script', () => {
     // Switch to price tab to trigger refresh
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
     priceTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await flushPromises();
 
     const priceList = document.querySelector('#price-list');
     const priceStatusBadge = document.querySelector('#price-status-badge');
@@ -554,7 +574,7 @@ describe('settings script', () => {
     // Switch to price tab to trigger refresh
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
     priceTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await flushPromises();
 
     const priceList = document.querySelector('#price-list');
 
@@ -626,7 +646,7 @@ describe('settings script', () => {
 
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
     priceTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await flushPromises();
 
     const summaryItems = document.querySelectorAll('.price-summary-item');
     const cheapSummary = summaryItems?.[0]?.textContent ?? '';
@@ -695,7 +715,7 @@ describe('settings script', () => {
 
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
     priceTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await flushPromises();
 
     const summaryBefore = document.querySelectorAll('.price-summary-item');
     expect(summaryBefore?.[0]?.textContent).toContain('cheap hour');
@@ -706,7 +726,11 @@ describe('settings script', () => {
     thresholdInput.value = '5';
     minDiffInput.value = '40';
     minDiffInput.dispatchEvent(new Event('change', { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await waitFor(() => {
+      const summary = document.querySelectorAll('.price-summary-item');
+      const cheapText = summary?.[0]?.textContent ?? '';
+      return cheapText.includes('No cheap hours');
+    });
 
     const summaryAfter = document.querySelectorAll('.price-summary-item');
     expect(summaryAfter?.[0]?.textContent).toContain('No cheap hours');
@@ -760,7 +784,7 @@ describe('settings script', () => {
     // Switch to price tab to trigger refresh
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
     priceTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await flushPromises();
 
     const priceList = document.querySelector('#price-list');
     const priceStatusBadge = document.querySelector('#price-status-badge');
@@ -991,7 +1015,7 @@ describe('settings script', () => {
     dailyBudgetBreakdownInput.dispatchEvent(new Event('change', { bubbles: true }));
     const { rerenderDailyBudget } = require('../settings/src/ui/dailyBudget');
     rerenderDailyBudget();
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await flushPromises();
 
     expect(plannedLabel.textContent).toBe('Uncontrolled');
     const controlledLegendAfter = document.querySelector('#daily-budget-legend-controlled') as HTMLElement | null;
@@ -1048,7 +1072,7 @@ describe('Plan sorting', () => {
     // Switch to overview tab
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
     overviewTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await flushPromises();
 
     const planList = document.querySelector('#plan-list');
     const deviceRows = planList?.querySelectorAll('.device-row');
@@ -1088,7 +1112,7 @@ describe('Plan sorting', () => {
 
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
     overviewTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await flushPromises();
 
     const deviceRows = document.querySelectorAll('#plan-list .device-row');
     const deviceNames = Array.from(deviceRows).map(
@@ -1128,7 +1152,7 @@ describe('Plan sorting', () => {
 
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
     overviewTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await flushPromises();
 
     const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
       .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
@@ -1162,7 +1186,7 @@ describe('Plan sorting', () => {
 
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
     overviewTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await flushPromises();
 
     const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
       .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
@@ -1206,7 +1230,7 @@ describe('Plan sorting', () => {
 
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
     overviewTab?.click();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await flushPromises();
 
     const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
       .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')

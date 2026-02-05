@@ -54,7 +54,7 @@ describe('power tracker integration', () => {
     // Simulate persisted state being cleared via settings UI.
     mockHomeyInstance.settings.set('power_tracker_state', {});
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
     expect(app['powerTracker'].buckets).toBeUndefined();
   });
 
