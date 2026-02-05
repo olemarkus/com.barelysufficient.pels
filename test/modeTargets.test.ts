@@ -18,6 +18,7 @@ jest.mock('../lib/app/appLifecycleHelpers', () => ({
     params.setLastNotifiedOperatingMode(params.getOperatingMode());
     params.registerFlowCards();
     params.startPeriodicSnapshotRefresh();
+    // Intentionally skip price refresh/optimization timers to keep tests fast and deterministic.
   },
 }));
 
@@ -37,7 +38,9 @@ const flushPromises = () => new Promise<void>((resolve) => {
 const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
   const start = Date.now();
   while (!predicate()) {
-    if (Date.now() - start > timeoutMs) break;
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`waitFor timed out after ${timeoutMs}ms`);
+    }
     await flushPromises();
   }
 };

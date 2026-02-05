@@ -16,32 +16,20 @@ import {
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
-jest.mock('../lib/app/appLifecycleHelpers', () => ({
-  startAppServices: async (params: any) => {
-    params.loadPowerTracker();
-    params.loadPriceOptimizationSettings();
-    params.initOptimizer();
-    params.startHeartbeat();
-    void params.updateOverheadToken();
-    void params.refreshTargetDevicesSnapshot();
-    params.setLastNotifiedOperatingMode(params.getOperatingMode());
-    params.registerFlowCards();
-    params.startPeriodicSnapshotRefresh();
-  },
-}));
-
-const flushPromises = () => new Promise((resolve) => {
+const flushPromises = () => new Promise<void>((resolve) => {
   if (typeof setImmediate === 'function') {
-    setImmediate(resolve);
+    setImmediate(() => resolve());
     return;
   }
-  setTimeout(resolve, 0);
+  setTimeout(() => resolve(), 0);
 });
 
 const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
   const start = Date.now();
   while (!predicate()) {
-    if (Date.now() - start > timeoutMs) break;
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`waitFor timed out after ${timeoutMs}ms`);
+    }
     await flushPromises();
   }
 };
@@ -356,7 +344,10 @@ describe('MyApp initialization', () => {
     };
 
     void (app as any).recordPowerSample(2000, now);
-    await waitFor(() => Array.isArray(mockHomeyInstance.settings.get('device_plan_snapshot')));
+    await waitFor(() => {
+      const planSnapshot = mockHomeyInstance.settings.get('device_plan_snapshot');
+      return Boolean(planSnapshot?.devices?.length);
+    });
     let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     let devPlanState = getPlanDeviceState(plan, 'dev-1');
     expect(devPlanState).toBe('keep');
