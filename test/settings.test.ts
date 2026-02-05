@@ -5,12 +5,31 @@ jest.mock('../settings/src/ui/toast', () => ({
   showToastError: jest.fn().mockResolvedValue(undefined),
 }));
 
-const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+const flushPromises = () => new Promise<void>((resolve) => {
+  const queueMicrotaskFn = (globalThis as any).queueMicrotask as ((cb: () => void) => void) | undefined;
+  if (typeof queueMicrotaskFn === 'function') {
+    queueMicrotaskFn(() => {
+      if (typeof setImmediate === 'function') {
+        setImmediate(() => resolve());
+      } else {
+        setTimeout(() => resolve(), 0);
+      }
+    });
+    return;
+  }
+  if (typeof setImmediate === 'function') {
+    setImmediate(() => resolve());
+    return;
+  }
+  setTimeout(() => resolve(), 0);
+});
 
 const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
   const start = Date.now();
   while (!predicate()) {
-    if (Date.now() - start > timeoutMs) break;
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`waitFor timed out after ${timeoutMs}ms`);
+    }
     await flushPromises();
   }
 };
@@ -147,8 +166,7 @@ const buildDom = () => {
   `;
 };
 
-const loadSettingsScript = async (delay = 50) => {
-  void delay;
+const loadSettingsScript = async () => {
   // Use require to avoid Node --experimental-vm-modules requirement for dynamic import under Jest 30
   require('../settings/script.js');
   await flushPromises();
@@ -486,7 +504,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
 
-    await loadSettingsScript(200);
+    await loadSettingsScript();
 
     // Check that the price panel exists and make it visible first
     const pricePanel = document.querySelector('#price-panel');
@@ -569,7 +587,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
 
-    await loadSettingsScript(200);
+    await loadSettingsScript();
 
     // Switch to price tab to trigger refresh
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
@@ -642,7 +660,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
 
-    await loadSettingsScript(200);
+    await loadSettingsScript();
 
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
     priceTab?.click();
@@ -708,7 +726,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
 
-    await loadSettingsScript(200);
+    await loadSettingsScript();
 
     const pricePanel = document.querySelector('#price-panel');
     pricePanel?.classList.remove('hidden');
@@ -779,7 +797,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
 
-    await loadSettingsScript(200);
+    await loadSettingsScript();
 
     // Switch to price tab to trigger refresh
     const priceTab = document.querySelector('[data-tab="price"]') as HTMLButtonElement;
@@ -859,7 +877,7 @@ describe('settings script', () => {
       callback(null, null);
     });
 
-    await loadSettingsScript(200);
+    await loadSettingsScript();
 
     const costText = document.querySelector('#daily-budget-cost')?.textContent;
     expect(costText).toBe('3.00 kr');
@@ -928,7 +946,7 @@ describe('settings script', () => {
       callback(null, null);
     });
 
-    await loadSettingsScript(200);
+    await loadSettingsScript();
 
     const costText = document.querySelector('#daily-budget-cost')?.textContent;
     expect(costText).toBe('300.00');
@@ -1000,7 +1018,7 @@ describe('settings script', () => {
       callback(null, null);
     });
 
-    await loadSettingsScript(200);
+    await loadSettingsScript();
 
     const plannedLabel = document.querySelector('#daily-budget-legend-planned-label') as HTMLElement;
     const plannedSwatch = document.querySelector('#daily-budget-legend-planned-swatch') as HTMLElement;
@@ -1067,7 +1085,7 @@ describe('Plan sorting', () => {
 
     setupPlanHomeyMock(planSnapshot);
 
-    await loadSettingsScript(100);
+    await loadSettingsScript();
 
     // Switch to overview tab
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
@@ -1108,7 +1126,7 @@ describe('Plan sorting', () => {
 
     setupPlanHomeyMock(planSnapshot);
 
-    await loadSettingsScript(100);
+    await loadSettingsScript();
 
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
     overviewTab?.click();
@@ -1148,7 +1166,7 @@ describe('Plan sorting', () => {
 
     setupPlanHomeyMock(planSnapshot);
 
-    await loadSettingsScript(100);
+    await loadSettingsScript();
 
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
     overviewTab?.click();
@@ -1182,7 +1200,7 @@ describe('Plan sorting', () => {
 
     setupPlanHomeyMock(planSnapshot);
 
-    await loadSettingsScript(100);
+    await loadSettingsScript();
 
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
     overviewTab?.click();
@@ -1226,7 +1244,7 @@ describe('Plan sorting', () => {
       }),
     };
 
-    await loadSettingsScript(100);
+    await loadSettingsScript();
 
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
     overviewTab?.click();
