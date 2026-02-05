@@ -6,13 +6,47 @@ import {
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
-// Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+jest.mock('../lib/app/appLifecycleHelpers', () => ({
+  startAppServices: async (params: any) => {
+    params.loadPowerTracker();
+    params.loadPriceOptimizationSettings();
+    params.initOptimizer();
+    params.startHeartbeat();
+    await params.updateOverheadToken();
+    await params.refreshTargetDevicesSnapshot();
+    await params.rebuildPlanFromCache();
+    params.setLastNotifiedOperatingMode(params.getOperatingMode());
+    params.registerFlowCards();
+    params.startPeriodicSnapshotRefresh();
+  },
+}));
+
+const flushPromises = () => new Promise<void>((resolve) => {
+  const queueMicrotaskFn = (globalThis as any).queueMicrotask as ((cb: () => void) => void) | undefined;
+  if (typeof queueMicrotaskFn === 'function') {
+    queueMicrotaskFn(() => resolve());
+    return;
+  }
+  if (typeof setImmediate === 'function') {
+    setImmediate(() => resolve());
+    return;
+  }
+  setTimeout(() => resolve(), 0);
+});
+
+const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) break;
+    await flushPromises();
+  }
+};
 
 describe('Mode device targets', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    mockHomeyInstance.settings.set('price_scheme', 'flow');
     jest.clearAllTimers();
   });
 
@@ -66,7 +100,7 @@ describe('Mode device targets', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 19 } });
     mockHomeyInstance.settings.set('operating_mode', 'Home');
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(() => heater.getSetCapabilityValue('target_temperature') === 19);
 
     expect(heater.getSetCapabilityValue('target_temperature')).toBe(19);
   });
@@ -119,7 +153,7 @@ describe('Mode device targets', () => {
     // Update targets for the current mode; should immediately apply.
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21.5 } });
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(() => heater.getSetCapabilityValue('target_temperature') === 21.5);
 
     expect(heater.getSetCapabilityValue('target_temperature')).toBe(21.5);
   });

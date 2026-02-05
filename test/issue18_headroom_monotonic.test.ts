@@ -84,16 +84,13 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         expect(snapshot[0].expectedPowerKw).toBe(1.67);
 
         // 2. Flow action: Set expected power to 3.0 kW
-        const overrideTs = Date.now();
+        const overrideTs = Date.now() - 10;
         expectedPowerKwOverrides[deviceId] = { kw: 3.0, ts: overrideTs };
 
         // Refresh again (simulating next tick or manual refresh)
         // Measured power is still 1.67 kW, but timestamp is now (simulated)
         // In real app, measured power updates come in asynchronously or are fetched.
         // DeviceManager uses Date.now() in parseDeviceList for *newly fetched* data.
-
-        // Wait a bit to ensure timestamp diff
-        await new Promise(r => setTimeout(r, 10));
 
         // Mock getDevices again with new timestamp implicit (DeviceManager calls Date.now())
         mockGetDevices.mockResolvedValue({

@@ -9,7 +9,18 @@ const setupDom = () => {
   `;
 };
 
-const flushPromises = async () => new Promise((resolve) => setTimeout(resolve, 0));
+const flushPromises = async () => new Promise<void>((resolve) => {
+  const queueMicrotaskFn = (globalThis as any).queueMicrotask as ((cb: () => void) => void) | undefined;
+  if (typeof queueMicrotaskFn === 'function') {
+    queueMicrotaskFn(() => resolve());
+    return;
+  }
+  if (typeof setImmediate === 'function') {
+    setImmediate(() => resolve());
+    return;
+  }
+  setTimeout(() => resolve(), 0);
+});
 
 jest.mock('../settings/src/ui/homey', () => ({
   callApi: jest.fn(),

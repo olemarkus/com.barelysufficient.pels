@@ -19,10 +19,10 @@ class MockDevice {
   };
 
   // Helper to set mock settings and trigger listeners
-  setMockSetting(key: string, value: unknown): void {
+  async setMockSetting(key: string, value: unknown): Promise<void> {
     this.mockSettings.set(key, value);
     const listeners = this.settingsListeners.get('set') || [];
-    listeners.forEach((cb) => cb(key));
+    await Promise.all(listeners.map((cb) => cb(key)));
   }
 
   // Simulate having a capability
@@ -226,10 +226,7 @@ describe('PelsStatusDevice', () => {
       await device.onInit();
 
       // Trigger setting change
-      device.setMockSetting('capacity_in_shortfall', true);
-
-      // Give async listener time to execute
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await device.setMockSetting('capacity_in_shortfall', true);
 
       expect(device.getCapabilityValue('alarm_generic')).toBe(true);
     });
@@ -240,9 +237,7 @@ describe('PelsStatusDevice', () => {
 
       await device.onInit();
 
-      device.setMockSetting('operating_mode', 'night');
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await device.setMockSetting('operating_mode', 'night');
 
       expect(device.getCapabilityValue('pels_status')).toBe('night');
     });
