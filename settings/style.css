@@ -605,6 +605,33 @@ input:focus-visible {
   font-size: var(--font-size-sm);
 }
 
+.plan-row__name {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.plan-state-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--text-secondary);
+  box-shadow: 0 0 0 1px var(--panel-border);
+  flex: 0 0 auto;
+}
+
+.plan-state-dot--active {
+  background: var(--color-base-success-default);
+}
+
+.plan-state-dot--shed {
+  background: var(--color-base-danger-default);
+}
+
+.plan-state-dot--uncontrolled {
+  background: var(--text-secondary);
+}
+
 .plan-meta-line {
   display: flex;
   gap: var(--spacing-1);
