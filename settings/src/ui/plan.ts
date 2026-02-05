@@ -231,6 +231,28 @@ const buildPlanUsageLine = (dev: PlanDeviceSnapshot) => {
 
 const buildPlanStatusLine = (dev: PlanDeviceSnapshot) => createMetaLine('Status', dev.reason || 'Waiting for headroom');
 
+const resolvePlanBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'shed' | 'uncontrolled' => {
+  if (dev.controllable === false) return 'uncontrolled';
+  if (dev.plannedState === 'shed') return 'shed';
+  return 'active';
+};
+
+const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
+  const badge = document.createElement('span');
+  const state = resolvePlanBadgeState(dev);
+  let label = 'Active';
+  if (state === 'shed') {
+    label = 'Shed';
+  } else if (state === 'uncontrolled') {
+    label = 'Uncontrolled';
+  }
+  badge.className = `plan-state-dot plan-state-dot--${state}`;
+  badge.setAttribute('role', 'img');
+  badge.setAttribute('aria-label', label);
+  badge.title = label;
+  return badge;
+};
+
 const buildPlanRow = (dev: PlanDeviceSnapshot) => {
   const row = document.createElement('div');
   row.className = 'device-row plan-row';
@@ -238,8 +260,8 @@ const buildPlanRow = (dev: PlanDeviceSnapshot) => {
   row.dataset.deviceId = dev.id;
 
   const name = document.createElement('div');
-  name.className = 'device-row__name';
-  name.textContent = dev.name;
+  name.className = 'device-row__name plan-row__name';
+  name.append(buildPlanStateBadge(dev), document.createTextNode(dev.name));
 
   const metaWrap = document.createElement('div');
   metaWrap.className = 'device-row__target plan-row__meta';
