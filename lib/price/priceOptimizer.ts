@@ -1,5 +1,6 @@
 import type { CombinedHourlyPrice } from './priceTypes';
 import { PriceLevel } from './priceLevels';
+import { incPerfCounter } from '../utils/perfCounters';
 
 export type PriceOptimizationSettings = {
   enabled: boolean;
@@ -67,6 +68,9 @@ export class PriceOptimizer {
     } else if (isExpensive) {
       hourLabel = 'expensive';
     }
+    incPerfCounter('plan_rebuild_requested_total');
+    incPerfCounter('plan_rebuild_requested.price_optimizer_total');
+    incPerfCounter(`plan_rebuild_requested.price_optimizer.${hourLabel}_total`);
     await this.deps.rebuildPlan(`price optimization (${hourLabel} hour)`);
   }
 

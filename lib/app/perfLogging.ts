@@ -12,6 +12,21 @@ type PerfDelta = {
   durations: Record<string, { totalMs: number; count: number; maxMs: number; avgMs: number }>;
 };
 
+type PerfSummary = {
+  planRebuilds: number;
+  powerSamples: number;
+  rebuildSkipRate: number;
+  rebuildNoChangeRate: number;
+  queueDepthGe2: number;
+  queueDepthGe4: number;
+  queueWaitAvgMs: number;
+  queueWaitMaxMs: number;
+  planBuildAvgMs: number;
+  planBuildMaxMs: number;
+  dailyBudgetAvgMs: number;
+  settingsWriteAvgMs: number;
+};
+
 const buildPerfDelta = (current: PerfSnapshot, previous?: PerfSnapshot | null): PerfDelta => {
   if (!previous) return { counts: {}, durations: {} };
   const countsDelta = Object.keys(current.counts).reduce<Record<string, number>>((acc, key) => {
@@ -54,6 +69,52 @@ const formatDurations = (durations: Record<string, PerfDurationEntry>, useProvid
   })
 );
 
+const roundTo = (value: number, decimals: number): number => {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+};
+
+const getCounter = (counts: Record<string, number>, key: string): number => counts[key] || 0;
+
+const getDuration = (
+  durations: PerfDelta['durations'],
+  key: string,
+): { totalMs: number; count: number; maxMs: number; avgMs: number } => (
+  durations[key] || { totalMs: 0, count: 0, maxMs: 0, avgMs: 0 }
+);
+
+const buildPerfSummary = (delta: PerfDelta): PerfSummary => {
+  const planRebuilds = getCounter(delta.counts, 'plan_rebuild_total');
+  const powerSamples = getCounter(delta.counts, 'power_sample_total');
+  const skipped = getCounter(delta.counts, 'plan_rebuild_skipped_total');
+  const noChange = getCounter(delta.counts, 'plan_rebuild_no_change_total');
+  const queueDepthGe2 = getCounter(delta.counts, 'plan_rebuild_queue_depth_ge_2_total');
+  const queueDepthGe4 = getCounter(delta.counts, 'plan_rebuild_queue_depth_ge_4_total');
+
+  const queueWait = getDuration(delta.durations, 'plan_rebuild_queue_wait_ms');
+  const planBuild = getDuration(delta.durations, 'plan_build_ms');
+  const dailyBudget = getDuration(delta.durations, 'daily_budget_update_ms');
+  const settingsWrite = getDuration(delta.durations, 'settings_write_ms');
+
+  const rebuildSkipRate = planRebuilds > 0 ? skipped / planRebuilds : 0;
+  const rebuildNoChangeRate = planRebuilds > 0 ? noChange / planRebuilds : 0;
+
+  return {
+    planRebuilds,
+    powerSamples,
+    rebuildSkipRate: roundTo(rebuildSkipRate, 3),
+    rebuildNoChangeRate: roundTo(rebuildNoChangeRate, 3),
+    queueDepthGe2,
+    queueDepthGe4,
+    queueWaitAvgMs: roundTo(queueWait.avgMs || 0, 2),
+    queueWaitMaxMs: roundTo(queueWait.maxMs || 0, 2),
+    planBuildAvgMs: roundTo(planBuild.avgMs || 0, 2),
+    planBuildMaxMs: roundTo(planBuild.maxMs || 0, 2),
+    dailyBudgetAvgMs: roundTo(dailyBudget.avgMs || 0, 2),
+    settingsWriteAvgMs: roundTo(settingsWrite.avgMs || 0, 2),
+  };
+};
+
 export const startPerfLogger = (params: {
   isEnabled: () => boolean;
   log: (...args: unknown[]) => void;
@@ -69,6 +130,7 @@ export const startPerfLogger = (params: {
     const uptimeSec = Math.round((Date.now() - snapshot.startedAt) / 1000);
     const payload = {
       uptimeSec,
+      summary: buildPerfSummary(delta),
       totals: {
         counts: snapshot.counts,
         durations: formatDurations(snapshot.durations),

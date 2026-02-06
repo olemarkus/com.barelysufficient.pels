@@ -24,6 +24,7 @@ import {
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_SCHEME,
 } from './settingsKeys';
+import { incPerfCounter } from './perfCounters';
 export type PriceServiceLike = {
   refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
@@ -62,24 +63,24 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     mode_aliases: async () => deps.loadCapacitySettings(),
     capacity_priorities: async () => {
       deps.loadCapacitySettings();
-      await deps.rebuildPlanFromCache();
+      await rebuildPlanFromSettings(deps, 'capacity_priorities');
     },
     controllable_devices: async () => {
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after controllable change');
-      await deps.rebuildPlanFromCache();
+      await rebuildPlanFromSettings(deps, 'controllable_devices');
     },
     [MANAGED_DEVICES]: async () => {
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after managed change');
-      await deps.rebuildPlanFromCache();
+      await rebuildPlanFromSettings(deps, 'managed_devices');
     },
     power_tracker_state: async () => deps.loadPowerTracker(),
     [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_MARGIN_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_DRY_RUN]: async () => {
       deps.loadCapacitySettings();
-      await deps.rebuildPlanFromCache();
+      await rebuildPlanFromSettings(deps, 'capacity_dry_run');
     },
     refresh_target_devices_snapshot: async () => {
       await refreshSnapshotWithLog(deps, 'Failed to refresh target devices snapshot');
@@ -134,18 +135,18 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     [DAILY_BUDGET_PRICE_FLEX_SHARE]: async () => handleDailyBudgetChange(deps),
     overshoot_behaviors: async () => {
       deps.loadCapacitySettings();
-      await deps.rebuildPlanFromCache();
+      await rebuildPlanFromSettings(deps, 'overshoot_behaviors');
     },
     [PRICE_OPTIMIZATION_ENABLED]: async () => {
       deps.updatePriceOptimizationEnabled(true);
       deps.updateDailyBudgetState({ forcePlanRebuild: true });
-      await deps.rebuildPlanFromCache();
+      await rebuildPlanFromSettings(deps, 'price_optimization_enabled');
     },
     [DAILY_BUDGET_RESET]: async () => {
       deps.resetDailyBudgetLearning();
       deps.updateDailyBudgetState({ forcePlanRebuild: true });
       deps.homey.settings.set(DAILY_BUDGET_RESET, null);
-      await deps.rebuildPlanFromCache();
+      await rebuildPlanFromSettings(deps, 'daily_budget_reset');
     },
     debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
     [DEBUG_LOGGING_TOPICS]: async () => deps.updateDebugLoggingEnabled(true),
@@ -191,10 +192,10 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
   deps.loadCapacitySettings();
   try {
     await deps.refreshTargetDevicesSnapshot();
-    await deps.rebuildPlanFromCache();
+    await rebuildPlanFromSettings(deps, 'mode_targets');
   } catch (error) {
     deps.errorLog('Failed to refresh devices after mode target change', error);
-    await deps.rebuildPlanFromCache();
+    await rebuildPlanFromSettings(deps, 'mode_targets_fallback');
   }
 }
 
@@ -206,17 +207,28 @@ async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<voi
   guard?.setSoftMargin(marginKw);
   await deps.updateOverheadToken(marginKw);
   deps.updateDailyBudgetState({ forcePlanRebuild: true });
-  await deps.rebuildPlanFromCache();
+  await rebuildPlanFromSettings(deps, 'capacity_limit_or_margin');
 }
 
 async function handleDailyBudgetChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.loadDailyBudgetSettings();
   deps.updateDailyBudgetState({ forcePlanRebuild: true });
-  await deps.rebuildPlanFromCache();
+  await rebuildPlanFromSettings(deps, 'daily_budget_settings');
 }
 
 async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.updateDailyBudgetState({ forcePlanRebuild: true });
+  await rebuildPlanFromSettings(deps, 'daily_budget_price');
+}
+
+function recordSettingsRebuildRequest(source: string): void {
+  incPerfCounter('plan_rebuild_requested_total');
+  incPerfCounter('plan_rebuild_requested.settings_total');
+  incPerfCounter(`plan_rebuild_requested.settings.${source}_total`);
+}
+
+async function rebuildPlanFromSettings(deps: SettingsHandlerDeps, source: string): Promise<void> {
+  recordSettingsRebuildRequest(source);
   await deps.rebuildPlanFromCache();
 }
 

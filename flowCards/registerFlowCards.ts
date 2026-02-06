@@ -8,6 +8,7 @@ import {
   DAILY_BUDGET_KWH,
 } from '../lib/utils/settingsKeys';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
+import { incPerfCounter } from '../lib/utils/perfCounters';
 
 type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
 
@@ -46,7 +47,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     getDeviceLoadSetting: (deviceId) => deps.getDeviceLoadSetting(deviceId),
     setExpectedOverride: (deviceId, kw) => deps.setExpectedOverride(deviceId, kw),
     refreshSnapshot: () => deps.refreshSnapshot(),
-    rebuildPlan: () => deps.rebuildPlan(),
+    rebuildPlan: () => requestPlanRebuildFromFlow(deps, 'expected_power'),
     log: (...args: unknown[]) => deps.log(...args),
   });
 
@@ -204,7 +205,7 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     deps.homey.settings.set(DAILY_BUDGET_ENABLED, nextEnabled);
     deps.loadDailyBudgetSettings();
     deps.updateDailyBudgetState({ forcePlanRebuild: true });
-    deps.rebuildPlan();
+    requestPlanRebuildFromFlow(deps, 'daily_budget_action');
     if (isDisabling) {
       deps.log('Flow: daily budget disabled (0 kWh)');
     } else {
@@ -351,6 +352,13 @@ async function setDeviceCapacityControl(
   deps.homey.settings.set('controllable_devices', next);
   deps.log(`Flow: capacity control ${enabled ? 'enabled' : 'disabled'} for ${deviceName}`);
   await deps.refreshSnapshot();
+  requestPlanRebuildFromFlow(deps, 'device_capacity_control');
+}
+
+function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
+  incPerfCounter('plan_rebuild_requested_total');
+  incPerfCounter('plan_rebuild_requested.flow_total');
+  incPerfCounter(`plan_rebuild_requested.flow.${source}_total`);
   deps.rebuildPlan();
 }
 
