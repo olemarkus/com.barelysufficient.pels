@@ -340,6 +340,57 @@ describe('daily budget math helpers', () => {
     expect(result.plannedKWh[1]).toBeCloseTo(expectedPlanned[1], 6);
   });
 
+  it('falls back to base weights when split profiles are incomplete', () => {
+    const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 2);
+    const combinedPrices = {
+      prices: shortBucketStartUtcMs.map((ts, index) => ({
+        startsAt: new Date(ts).toISOString(),
+        total: index === 0 ? 10 : 30,
+      })),
+    };
+    const baseProfile = Array.from({ length: 24 }, () => 0);
+    baseProfile[0] = 2;
+    baseProfile[1] = 4;
+    const controlledProfile = Array.from({ length: 24 }, () => 0);
+    controlledProfile[0] = 9;
+    controlledProfile[1] = 1;
+
+    const priceShape = buildPriceFactors({
+      bucketStartUtcMs: shortBucketStartUtcMs,
+      currentBucketIndex: 0,
+      combinedPrices,
+      priceOptimizationEnabled: true,
+      priceShapingEnabled: true,
+    });
+
+    const baseWeights = [baseProfile[0], baseProfile[1]];
+    const shapedWeights = buildCompositeWeights({
+      baseWeights,
+      priceFactors: priceShape.priceFactors,
+      flexShare: 1,
+    });
+    const expectedWeights = normalizeWeights(shapedWeights);
+    const expectedPlanned = expectedWeights.map((weight) => 10 * weight);
+
+    const result = buildPlan({
+      bucketStartUtcMs: shortBucketStartUtcMs,
+      bucketUsage: [0, 0],
+      currentBucketIndex: 0,
+      usedNowKWh: 0,
+      dailyBudgetKWh: 10,
+      profileWeights: baseProfile,
+      profileWeightsControlled: controlledProfile,
+      timeZone,
+      combinedPrices,
+      priceOptimizationEnabled: true,
+      priceShapingEnabled: true,
+      priceShapingFlexShare: 1,
+    });
+
+    expect(result.plannedKWh[0]).toBeCloseTo(expectedPlanned[0], 6);
+    expect(result.plannedKWh[1]).toBeCloseTo(expectedPlanned[1], 6);
+  });
+
   it('handles cumulative budgets and weight normalization helpers', () => {
     expect(buildAllowedCumKWh([1, 2], 0)).toEqual([0, 0]);
     expect(buildAllowedCumKWh([1, 2], 10)).toEqual([1, 3]);
