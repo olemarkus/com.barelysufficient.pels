@@ -57,14 +57,14 @@ const buildDailyBudgetBarTitle = (params: {
     titleParts.push(`Uncontrolled ${formatKWh(plannedUncontrolledKWh)}`);
     titleParts.push(`Controlled ${formatKWh(plannedControlledKWh)}`);
   }
-  if (Number.isFinite(actualKWh)) {
-    const actualLabel = isCurrent ? 'Actual so far' : 'Actual';
-    titleParts.push(`${actualLabel} ${formatKWh(actualKWh as number)}`);
-  }
-  if (Number.isFinite(actualControlledKWh) && Number.isFinite(actualUncontrolledKWh)) {
+  const hasActualSplit = Number.isFinite(actualControlledKWh) && Number.isFinite(actualUncontrolledKWh);
+  if (hasActualSplit) {
     const actualLabel = isCurrent ? 'Actual so far' : 'Actual';
     titleParts.push(`${actualLabel} controlled ${formatKWh(actualControlledKWh as number)}`);
     titleParts.push(`${actualLabel} uncontrolled ${formatKWh(actualUncontrolledKWh as number)}`);
+  } else if (Number.isFinite(actualKWh)) {
+    const actualLabel = isCurrent ? 'Actual so far' : 'Actual';
+    titleParts.push(`${actualLabel} ${formatKWh(actualKWh as number)}`);
   }
   return titleParts.join(' \u00B7 ');
 };
