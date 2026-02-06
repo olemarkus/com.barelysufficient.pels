@@ -25,6 +25,12 @@ const getStateText = () => {
   return stateLine?.querySelector('span:last-child')?.textContent?.trim();
 };
 
+const getBadgeClassList = (deviceId: string) => {
+  const dot = document.querySelector(`[data-device-id="${deviceId}"] .plan-state-indicator`) as HTMLElement | null;
+  if (!dot) return '';
+  return dot.className;
+};
+
 const getPlanMetaText = () => {
   const meta = document.querySelector('#plan-meta') as HTMLElement | null;
   if (!meta) return [];
@@ -156,6 +162,46 @@ describe('plan device state', () => {
     });
 
     expect(getStateText()).toBe('Capacity control off');
+  });
+
+  it('renders badge color classes per device plan state', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-active',
+          name: 'Device Active',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+        },
+        {
+          id: 'dev-shed',
+          name: 'Device Shed',
+          currentState: 'on',
+          plannedState: 'shed',
+          controllable: true,
+        },
+        {
+          id: 'dev-uncontrolled',
+          name: 'Device Uncontrolled',
+          currentState: 'off',
+          plannedState: 'keep',
+          controllable: false,
+        },
+        {
+          id: 'dev-on-uncontrolled',
+          name: 'Device On Uncontrolled',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: false,
+        },
+      ],
+    });
+
+    expect(getBadgeClassList('dev-active')).toContain('cheap');
+    expect(getBadgeClassList('dev-shed')).toContain('expensive');
+    expect(getBadgeClassList('dev-uncontrolled')).toContain('neutral');
+    expect(getBadgeClassList('dev-on-uncontrolled')).toContain('neutral');
   });
 });
 

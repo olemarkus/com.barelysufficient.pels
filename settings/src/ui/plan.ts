@@ -231,22 +231,43 @@ const buildPlanUsageLine = (dev: PlanDeviceSnapshot) => {
 
 const buildPlanStatusLine = (dev: PlanDeviceSnapshot) => createMetaLine('Status', dev.reason || 'Waiting for headroom');
 
+const isOnLikeState = (value: string | undefined): boolean => {
+  const normalized = (value || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized !== 'off' && normalized !== 'unknown';
+};
+
 const resolvePlanBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'shed' | 'uncontrolled' => {
   if (dev.controllable === false) return 'uncontrolled';
   if (dev.plannedState === 'shed') return 'shed';
+  if (isOnLikeState(dev.currentState)) return 'active';
   return 'active';
+};
+
+const getPlanStateTone = (state: 'active' | 'shed' | 'uncontrolled'): 'cheap' | 'expensive' | 'neutral' => {
+  if (state === 'shed') return 'expensive';
+  if (state === 'uncontrolled') return 'neutral';
+  return 'cheap';
+};
+
+const getPlanStateIndicatorIcon = (tone: 'cheap' | 'expensive' | 'neutral') => {
+  if (tone === 'cheap') return '🟢';
+  if (tone === 'expensive') return '🔴';
+  return '⚪';
 };
 
 const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
   const badge = document.createElement('span');
   const state = resolvePlanBadgeState(dev);
+  const tone = getPlanStateTone(state);
   let label = 'Active';
   if (state === 'shed') {
     label = 'Shed';
   } else if (state === 'uncontrolled') {
     label = 'Uncontrolled';
   }
-  badge.className = `plan-state-dot plan-state-dot--${state}`;
+  badge.className = `plan-state-indicator price-indicator ${tone}`;
+  badge.dataset.icon = getPlanStateIndicatorIcon(tone);
   badge.setAttribute('role', 'img');
   badge.setAttribute('aria-label', label);
   badge.title = label;
