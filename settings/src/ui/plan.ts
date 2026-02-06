@@ -1,6 +1,7 @@
 import { planList, planEmpty, planMeta } from './dom';
 import { getSetting } from './homey';
 import { createMetaLine } from './components';
+import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator';
 
 type PlanDeviceSnapshot = {
   id: string;
@@ -237,23 +238,17 @@ const isOnLikeState = (value: string | undefined): boolean => {
   return normalized !== 'off' && normalized !== 'unknown';
 };
 
-const resolvePlanBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'shed' | 'uncontrolled' => {
+const resolvePlanBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'shed' | 'uncontrolled' | 'restoring' => {
   if (dev.controllable === false) return 'uncontrolled';
   if (dev.plannedState === 'shed') return 'shed';
   if (isOnLikeState(dev.currentState)) return 'active';
-  return 'active';
+  return 'restoring';
 };
 
-const getPlanStateTone = (state: 'active' | 'shed' | 'uncontrolled'): 'cheap' | 'expensive' | 'neutral' => {
+const getPlanStateTone = (state: 'active' | 'shed' | 'uncontrolled' | 'restoring'): PriceIndicatorTone => {
   if (state === 'shed') return 'expensive';
-  if (state === 'uncontrolled') return 'neutral';
+  if (state === 'uncontrolled' || state === 'restoring') return 'neutral';
   return 'cheap';
-};
-
-const getPlanStateIndicatorIcon = (tone: 'cheap' | 'expensive' | 'neutral') => {
-  if (tone === 'cheap') return '🟢';
-  if (tone === 'expensive') return '🔴';
-  return '⚪';
 };
 
 const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
@@ -265,9 +260,11 @@ const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
     label = 'Shed';
   } else if (state === 'uncontrolled') {
     label = 'Uncontrolled';
+  } else if (state === 'restoring') {
+    label = 'Restoring';
   }
   badge.className = `plan-state-indicator price-indicator ${tone}`;
-  badge.dataset.icon = getPlanStateIndicatorIcon(tone);
+  badge.dataset.icon = getPriceIndicatorIcon(tone);
   badge.setAttribute('role', 'img');
   badge.setAttribute('aria-label', label);
   badge.title = label;

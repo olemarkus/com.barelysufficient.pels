@@ -21,6 +21,7 @@ import {
   selectDayEntries,
   type PriceScheme,
 } from './priceRenderUtils';
+import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator';
 
 const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   if (!priceStatusBadge) return;
@@ -55,14 +56,8 @@ const findCurrentEntry = (prices: PriceEntry[], now: Date) => (
   prices.find((price) => isCurrentHourEntry(new Date(price.startsAt), now))
 );
 
-const getPriceIndicatorIcon = (tone: 'cheap' | 'expensive' | 'neutral') => {
-  if (tone === 'cheap') return '🟢';
-  if (tone === 'expensive') return '🔴';
-  return '⚪';
-};
-
 const buildPriceSummaryItem = (
-  tone: 'cheap' | 'expensive' | 'neutral',
+  tone: PriceIndicatorTone,
   count: number | null,
   label: string,
   detailText: string,
