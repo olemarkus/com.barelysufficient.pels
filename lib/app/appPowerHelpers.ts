@@ -16,6 +16,7 @@ export type PowerSampleRebuildState = {
   timer?: ReturnType<typeof setTimeout>;
   pendingPowerW?: number;
   pendingSoftLimitKw?: number;
+  pendingReason?: string;
 };
 
 type RebuildDecision = {
@@ -146,6 +147,69 @@ const resolveRebuildDecision = (params: {
   };
 };
 
+const resolveRebuildReason = (params: {
+  state: PowerSampleRebuildState;
+  decision: RebuildDecision;
+  isInShortfall?: boolean;
+}): string => {
+  const { state, decision, isInShortfall } = params;
+  if (state.lastMs === 0) return 'initial';
+  if (decision.isDangerZone) return 'danger_zone';
+  if (decision.headroomTight) return 'headroom_tight';
+  if (isInShortfall) return 'shortfall';
+  if (decision.softLimitChanged) return 'soft_limit_changed';
+  if (decision.deltaMeaningful) return 'power_delta';
+  if (decision.maxIntervalExceeded) return 'max_interval';
+  return 'unknown';
+};
+
+const incReasonCounter = (base: string, reason: string): void => {
+  incPerfCounter(`${base}.${reason}_total`);
+};
+
+const resolvePendingPowerW = (
+  snapshot: PowerSampleRebuildState,
+  currentPowerW?: number,
+): number | undefined => {
+  if (typeof snapshot.pendingPowerW === 'number') return snapshot.pendingPowerW;
+  if (typeof currentPowerW === 'number') return currentPowerW;
+  return snapshot.lastRebuildPowerW;
+};
+
+const resolvePendingSoftLimitKw = (
+  snapshot: PowerSampleRebuildState,
+  softLimitKw?: number,
+): number | undefined => {
+  if (typeof snapshot.pendingSoftLimitKw === 'number') return snapshot.pendingSoftLimitKw;
+  if (typeof softLimitKw === 'number') return softLimitKw;
+  return snapshot.lastSoftLimitKw;
+};
+
+const buildPostRebuildState = (
+  snapshot: PowerSampleRebuildState,
+  nextPowerW: number | undefined,
+  nextSoftLimitKw: number | undefined,
+): PowerSampleRebuildState => ({
+  ...snapshot,
+  lastRebuildPowerW: typeof nextPowerW === 'number' ? nextPowerW : snapshot.lastRebuildPowerW,
+  lastSoftLimitKw: typeof nextSoftLimitKw === 'number' ? nextSoftLimitKw : snapshot.lastSoftLimitKw,
+  pendingPowerW: undefined,
+  pendingSoftLimitKw: undefined,
+  pendingReason: undefined,
+});
+
+const recordPowerSampleRebuildRequest = (reason: string): void => {
+  incPerfCounter('plan_rebuild_requested_total');
+  incPerfCounter('plan_rebuild_requested.power_sample_total');
+  incReasonCounter('plan_rebuild_requested.power_sample_reason', reason);
+};
+
+const recordPowerSampleRebuildExecution = (reason: string): void => {
+  incPerfCounter('plan_rebuild_execute_total');
+  incPerfCounter('plan_rebuild_execute.power_sample_total');
+  incReasonCounter('plan_rebuild_execute.power_sample_reason', reason);
+};
+
 export function schedulePlanRebuildFromPowerSample(params: {
   getState: () => PowerSampleRebuildState;
   setState: (state: PowerSampleRebuildState) => void;
@@ -189,35 +253,26 @@ export function schedulePlanRebuildFromPowerSample(params: {
     headroomKw,
     isInShortfall,
   });
+  const triggerReason = resolveRebuildReason({
+    state,
+    decision,
+    isInShortfall,
+  });
 
   if (!decision.shouldRebuild) {
     incPerfCounter('plan_rebuild_skipped_total');
     incPerfCounter('plan_rebuild_skipped_insignificant_total');
+    incPerfCounter('plan_rebuild_skipped_reason.stable_total');
     // Skip rebuild, but don't update lastMs or state, so we stay ready.
     return Promise.resolve();
   }
+  recordPowerSampleRebuildRequest(triggerReason);
 
-  const resolvePendingPowerW = (snapshot: PowerSampleRebuildState): number | undefined => {
-    if (typeof snapshot.pendingPowerW === 'number') return snapshot.pendingPowerW;
-    if (typeof currentPowerW === 'number') return currentPowerW;
-    return snapshot.lastRebuildPowerW;
-  };
-  const resolvePendingSoftLimitKw = (snapshot: PowerSampleRebuildState): number | undefined => {
-    if (typeof snapshot.pendingSoftLimitKw === 'number') return snapshot.pendingSoftLimitKw;
-    if (typeof softLimitKw === 'number') return softLimitKw;
-    return snapshot.lastSoftLimitKw;
-  };
-
-  const performRebuild = async (snapshot: PowerSampleRebuildState): Promise<void> => {
-    const nextPowerW = resolvePendingPowerW(snapshot);
-    const nextSoftLimitKw = resolvePendingSoftLimitKw(snapshot);
-    setState({
-      ...snapshot,
-      lastRebuildPowerW: typeof nextPowerW === 'number' ? nextPowerW : snapshot.lastRebuildPowerW,
-      lastSoftLimitKw: typeof nextSoftLimitKw === 'number' ? nextSoftLimitKw : snapshot.lastSoftLimitKw,
-      pendingPowerW: undefined,
-      pendingSoftLimitKw: undefined,
-    });
+  const performRebuild = async (snapshot: PowerSampleRebuildState, reason: string): Promise<void> => {
+    recordPowerSampleRebuildExecution(reason);
+    const nextPowerW = resolvePendingPowerW(snapshot, currentPowerW);
+    const nextSoftLimitKw = resolvePendingSoftLimitKw(snapshot, softLimitKw);
+    setState(buildPostRebuildState(snapshot, nextPowerW, nextSoftLimitKw));
     return rebuildPlanFromCache();
   };
 
@@ -227,24 +282,27 @@ export function schedulePlanRebuildFromPowerSample(params: {
       lastMs: now,
       pendingPowerW: undefined,
       pendingSoftLimitKw: undefined,
+      pendingReason: undefined,
     };
     setState(nextState);
-    return performRebuild(nextState);
+    return performRebuild(nextState, triggerReason);
   }
 
   if (!state.pending) {
+    incPerfCounter('plan_rebuild_pending_created_total');
     const waitMs = Math.max(0, minIntervalMs - elapsedMs);
     const pending = new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         const latest = getState();
+        const reason = latest.pendingReason ?? triggerReason;
         const nextState = { ...latest, timer: undefined, lastMs: Date.now() };
         setState(nextState);
-        performRebuild(nextState)
+        performRebuild(nextState, reason)
           .catch((error) => {
             logError(error as Error);
           })
           .finally(() => {
-            setState({ ...getState(), pending: undefined });
+            setState({ ...getState(), pending: undefined, pendingReason: undefined });
             resolve();
           });
       }, waitMs);
@@ -253,15 +311,18 @@ export function schedulePlanRebuildFromPowerSample(params: {
         timer,
         pendingPowerW: typeof currentPowerW === 'number' ? currentPowerW : state.pendingPowerW,
         pendingSoftLimitKw: typeof softLimitKw === 'number' ? softLimitKw : state.pendingSoftLimitKw,
+        pendingReason: triggerReason,
       });
     });
     setState({ ...getState(), pending });
     return pending;
   }
+  incPerfCounter('plan_rebuild_pending_coalesced_total');
   setState({
     ...getState(),
     pendingPowerW: typeof currentPowerW === 'number' ? currentPowerW : state.pendingPowerW,
     pendingSoftLimitKw: typeof softLimitKw === 'number' ? softLimitKw : state.pendingSoftLimitKw,
+    pendingReason: triggerReason,
   });
   return getState().pending ?? Promise.resolve();
 }
@@ -303,6 +364,9 @@ export function schedulePlanRebuildFromSignal(params: {
   const effectiveMinIntervalMs = (!isDangerZone && !headroomTight && !isInShortfall)
     ? Math.max(minIntervalMs, stableIntervalMs)
     : minIntervalMs;
+  if (effectiveMinIntervalMs > minIntervalMs) {
+    incPerfCounter('plan_rebuild_signal_stable_interval_total');
+  }
   return schedulePlanRebuildFromPowerSample({
     getState,
     setState,

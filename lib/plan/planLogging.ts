@@ -6,8 +6,23 @@ export function buildPlanSignature(plan: DevicePlan): string {
       id: d.id,
       plannedState: d.plannedState,
       plannedTarget: d.plannedTarget,
+      shedAction: d.shedAction,
+      controllable: d.controllable,
+    })),
+  );
+}
+
+export function buildPlanDetailSignature(plan: DevicePlan): string {
+  return JSON.stringify(
+    plan.devices.map((d) => ({
+      id: d.id,
+      plannedState: d.plannedState,
+      plannedTarget: d.plannedTarget,
       currentState: d.currentState,
+      currentTarget: d.currentTarget,
       reason: d.reason,
+      shedAction: d.shedAction,
+      controllable: d.controllable,
     })),
   );
 }
