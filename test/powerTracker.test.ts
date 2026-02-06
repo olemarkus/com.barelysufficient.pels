@@ -11,10 +11,10 @@ import {
   getUtcHour,
   recordPowerSample,
 } from '../lib/core/powerTracker';
-import { getHourStartInTimeZone } from '../lib/utils/dateUtils';
+import { getHourBucketKey, truncateToUtcHour } from '../lib/utils/dateUtils';
 
-// Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+// Use fake timers to control throttling, but keep real Date behavior
+jest.useFakeTimers({ doNotFake: ['Date'] });
 
 describe('power tracker integration', () => {
   beforeEach(() => {
@@ -42,7 +42,8 @@ describe('power tracker integration', () => {
     await app['recordPowerSample'](1000, start);
     await app['recordPowerSample'](1000, start + 30 * 60 * 1000);
 
-    const bucketKey = new Date(getHourStartInTimeZone(new Date(start), mockHomeyInstance.clock.getTimezone())).toISOString();
+    const bucketKey = getHourBucketKey(start);
+    jest.advanceTimersByTime(60000);
     const state = mockHomeyInstance.settings.get('power_tracker_state');
     expect(state.buckets[bucketKey]).toBeCloseTo(0.5, 3);
   });
@@ -54,7 +55,7 @@ describe('power tracker integration', () => {
     // Simulate persisted state being cleared via settings UI.
     mockHomeyInstance.settings.set('power_tracker_state', {});
 
-    await Promise.resolve();
+    jest.advanceTimersByTime(10);
     expect(app['powerTracker'].buckets).toBeUndefined();
   });
 
@@ -65,7 +66,7 @@ describe('power tracker integration', () => {
     // Create data that is 35 days old (older than 30-day hourly retention)
     const now = Date.now();
     const oldTimestamp = now - (35 * 24 * 60 * 60 * 1000); // 35 days ago
-    const oldHourStart = getHourStartInTimeZone(new Date(oldTimestamp), mockHomeyInstance.clock.getTimezone());
+    const oldHourStart = truncateToUtcHour(oldTimestamp);
     const oldBucketKey = new Date(oldHourStart).toISOString();
     const oldDateKey = formatDateUtc(new Date(oldHourStart));
 
@@ -78,8 +79,8 @@ describe('power tracker integration', () => {
       hourlyAverages: {},
     };
 
-    // Call savePowerTracker which triggers aggregation
-    app['savePowerTracker']();
+    // Call prunePowerTrackerHistory which triggers aggregation
+    app['prunePowerTrackerHistory']();
 
     const state = mockHomeyInstance.settings.get('power_tracker_state');
 
@@ -104,7 +105,7 @@ describe('power tracker integration', () => {
     // Create data that is 5 days old (within 30-day retention)
     const now = Date.now();
     const recentTimestamp = now - (5 * 24 * 60 * 60 * 1000); // 5 days ago
-    const recentHourStart = recentTimestamp - (recentTimestamp % (60 * 60 * 1000));
+    const recentHourStart = truncateToUtcHour(recentTimestamp);
     const recentBucketKey = new Date(recentHourStart).toISOString();
 
     app['powerTracker'] = {
@@ -115,7 +116,8 @@ describe('power tracker integration', () => {
       hourlyAverages: {},
     };
 
-    app['savePowerTracker']();
+    // Pruning shouldn't affect recent buckets
+    app['prunePowerTrackerHistory']();
 
     const state = mockHomeyInstance.settings.get('power_tracker_state');
 

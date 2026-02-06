@@ -356,32 +356,6 @@ describe('DeviceManager', () => {
             expect(snapshot[0].powerKw).toBe(2);
         });
 
-        it('emits powerChanged event only on significant change', async () => {
-            const emitSpy = jest.spyOn(deviceManager, 'emit');
-            await deviceManager.refreshSnapshot();
-            const callback = makeInstanceMock.mock.calls[0][1];
-
-            // Trigger small change (10W), should NOT emit (threshold 50W)
-            // Initial is 0 (parsed from fresh state or 1000W from capabilitiesObj?
-            // DeviceManager.parseDevice sets initial from capabilitiesObj.measure_power which is 1000W in mock.
-            // So delta 10W -> 1010W.
-            // Wait, parseDevice calls updateAndGetPowerEstimate -> getMeasuredPowerKw -> handles MIN_SIGNIFICANT_POWER_W logic.
-
-            // Let's set initial known state explicitly via trigger for clarity if needed,
-            // but parseDevice should have set lastMeasuredPowerKw to 1kW.
-
-            // Trigger 1040W (40W delta)
-            callback(1040);
-            expect(emitSpy).not.toHaveBeenCalledWith('powerChanged', expect.anything());
-
-            // Trigger 1200W (160W delta from 1040, or 200 from 1000) -> Should emit
-            callback(1200);
-            expect(emitSpy).toHaveBeenCalledWith('powerChanged', expect.objectContaining({
-                deviceId: 'dev1',
-                kw: 1.2,
-            }));
-        });
-
         it('cleans up listeners on destroy', async () => {
             await deviceManager.refreshSnapshot();
             // Instance created

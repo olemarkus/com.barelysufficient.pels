@@ -5,7 +5,7 @@ import { buildPlanChangeLines, buildPlanSignature } from './planLogging';
 import { buildPelsStatus } from '../core/pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-
+import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 export type PlanServiceDeps = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;
@@ -28,6 +28,9 @@ export class PlanService {
   private lastPlanSignature = '';
   private lastPlanSnapshotSignature = '';
   private lastPelsStatusJson = '';
+  private lastPelsStatusWrittenJson = '';
+  // 0 means "not yet written" for the first throttled write.
+  private lastPelsStatusWriteMs = 0;
   private rebuildPlanQueue: Promise<void> = Promise.resolve();
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
@@ -72,9 +75,10 @@ export class PlanService {
     await this.rebuildPlanQueue;
   }
 
-  private trackPlanChanges(plan: DevicePlan): string {
+  private trackPlanChanges(plan: DevicePlan): { signature: string; changed: boolean } {
     const deviceSignature = buildPlanSignature(plan);
-    if (deviceSignature !== this.lastPlanSignature) {
+    const changed = deviceSignature !== this.lastPlanSignature;
+    if (changed) {
       try {
         const lines = buildPlanChangeLines(plan);
         if (lines.length) {
@@ -87,14 +91,17 @@ export class PlanService {
     } else {
       incPerfCounter('plan_rebuild_no_change_total');
     }
-    return deviceSignature;
+    return { signature: deviceSignature, changed };
   }
 
   private updatePlanSnapshot(plan: DevicePlan, deviceSignature: string): void {
     const planSnapshotSignature = `${deviceSignature}|${JSON.stringify(normalizePlanMeta(plan.meta))}`;
     if (planSnapshotSignature === this.lastPlanSnapshotSignature) return;
     this.lastPlanSnapshotSignature = planSnapshotSignature;
+
+    const writeStart = Date.now();
     this.deps.homey.settings.set('device_plan_snapshot', plan);
+    addPerfDuration('settings_write_ms', Date.now() - writeStart);
     incPerfCounter('settings_set.device_plan_snapshot');
 
     const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
@@ -109,9 +116,9 @@ export class PlanService {
     const rebuildStart = Date.now();
     try {
       const plan = await this.buildDevicePlanSnapshot(this.deps.getPlanDevices() ?? []);
-      const deviceSignature = this.trackPlanChanges(plan);
-      this.updatePlanSnapshot(plan, deviceSignature);
-      this.updatePelsStatus(plan);
+      const { signature, changed } = this.trackPlanChanges(plan);
+      this.updatePlanSnapshot(plan, signature);
+      this.updatePelsStatus(plan, changed);
       const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
       if (this.deps.getCapacityDryRun() && hasShedding) {
         this.deps.log('Dry run: shedding planned but not executed');
@@ -129,7 +136,8 @@ export class PlanService {
     }
   }
 
-  updatePelsStatus(plan: DevicePlan): void {
+  updatePelsStatus(plan: DevicePlan, deviceStateChanged?: boolean): void {
+    const now = Date.now();
     const result = buildPelsStatus({
       plan,
       isCheap: this.deps.isCurrentHourCheap(),
@@ -140,8 +148,18 @@ export class PlanService {
     const statusJson = JSON.stringify(normalizePelsStatus(result.status, STATUS_POWER_BUCKET_MS));
     if (statusJson !== this.lastPelsStatusJson) {
       this.lastPelsStatusJson = statusJson;
-      this.deps.homey.settings.set('pels_status', result.status);
-      incPerfCounter('settings_set.pels_status');
+    }
+    if (statusJson !== this.lastPelsStatusWrittenJson) {
+      const stateChanged = deviceStateChanged === true;
+      const throttleElapsed = now - this.lastPelsStatusWriteMs > VOLATILE_WRITE_THROTTLE_MS;
+      if (stateChanged || throttleElapsed || this.lastPelsStatusWriteMs === 0) {
+        const writeStart = Date.now();
+        this.deps.homey.settings.set('pels_status', result.status);
+        this.lastPelsStatusWrittenJson = statusJson;
+        this.lastPelsStatusWriteMs = now;
+        addPerfDuration('settings_write_ms', Date.now() - writeStart);
+        incPerfCounter('settings_set.pels_status');
+      }
     }
     if (result.priceLevel !== this.lastNotifiedPriceLevel) {
       const card = this.deps.homey.flow?.getTriggerCard?.('price_level_changed');
