@@ -3,7 +3,7 @@ import { EventEmitter } from 'events';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import { resolveDeviceLabel, resolveZoneLabel } from './deviceManagerHelpers';
-import { incPerfCounter } from '../utils/perfCounters';
+import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
 import type { PowerMeasurementUpdates } from './powerMeasurement';
 
@@ -17,7 +17,6 @@ const SUPPORTED_DEVICE_CLASSES = new Set(['thermostat', 'heater', 'socket', 'hea
 const POWER_CAPABILITY_PREFIXES = ['measure_power', 'meter_power'] as const;
 const POWER_CAPABILITY_SET = new Set(POWER_CAPABILITY_PREFIXES);
 const MIN_SIGNIFICANT_POWER_W = 5;
-const MIN_POWER_CHANGE_FOR_REBUILD_KW = 0.05; // 50W
 
 type HomeyApiDevicesClient = {
     getDevices?: () => Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]>;
@@ -120,10 +119,15 @@ export class DeviceManager extends EventEmitter {
     }
 
     async refreshSnapshot(): Promise<void> {
-        const list = await this.fetchDevices();
-        const snapshot = this.parseDeviceList(list);
-        this.latestSnapshot = snapshot;
-        this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
+        const start = Date.now();
+        try {
+            const list = await this.fetchDevices();
+            const snapshot = this.parseDeviceList(list);
+            this.latestSnapshot = snapshot;
+            this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
+        } finally {
+            addPerfDuration('device_refresh_ms', Date.now() - start);
+        }
     }
 
     updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
@@ -197,36 +201,41 @@ export class DeviceManager extends EventEmitter {
     }
 
     private async fetchDevices(): Promise<HomeyDeviceLike[]> {
-        const devicesApi = this.homeyApi?.devices;
-        if (devicesApi?.getDevices) {
-            try {
-                const devicesObj = await devicesApi.getDevices();
-                const list = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj || {});
-                this.logger.debug(`HomeyAPI returned ${list.length} devices`);
-                await this.initRealtimeListeners(devicesObj);
-                return list;
-            } catch (error) {
-                this.logger.debug('HomeyAPI.getDevices failed, falling back to raw API', error as Error);
-            }
-        }
-
-        // Fallback to manager/devices then /devices
+        const start = Date.now();
         try {
-            const devices = await this.getRawDevices('manager/devices');
-            const list = Array.isArray(devices) ? devices : Object.values(devices || {});
-            this.logger.debug(`Manager API returned ${list.length} devices`);
-            return list;
-        } catch (err) {
-            this.logger.debug('Manager API manager/devices failed, retrying devices', err as Error);
-            try {
-                const devices = await this.getRawDevices('devices');
-                const list = Array.isArray(devices) ? devices : Object.values(devices || {});
-                this.logger.debug(`Manager API devices returned ${list.length} devices`);
-                return list;
-            } catch (error) {
-                this.logger.debug('Manager API devices failed as well', error as Error);
-                return [];
+            const devicesApi = this.homeyApi?.devices;
+            if (devicesApi?.getDevices) {
+                try {
+                    const devicesObj = await devicesApi.getDevices();
+                    const list = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj || {});
+                    this.logger.debug(`HomeyAPI returned ${list.length} devices`);
+                    await this.initRealtimeListeners(devicesObj);
+                    return list;
+                } catch (error) {
+                    this.logger.debug('HomeyAPI.getDevices failed, falling back to raw API', error as Error);
+                }
             }
+
+            // Fallback to manager/devices then /devices
+            try {
+                const devices = await this.getRawDevices('manager/devices');
+                const list = Array.isArray(devices) ? devices : Object.values(devices || {});
+                this.logger.debug(`Manager API returned ${list.length} devices`);
+                return list;
+            } catch (err) {
+                this.logger.debug('Manager API manager/devices failed, retrying devices', err as Error);
+                try {
+                    const devices = await this.getRawDevices('devices');
+                    const list = Array.isArray(devices) ? devices : Object.values(devices || {});
+                    this.logger.debug(`Manager API devices returned ${list.length} devices`);
+                    return list;
+                } catch (error) {
+                    this.logger.debug('Manager API devices failed as well', error as Error);
+                    return [];
+                }
+            }
+        } finally {
+            addPerfDuration('device_fetch_ms', Date.now() - start);
         }
     }
 
@@ -261,8 +270,6 @@ export class DeviceManager extends EventEmitter {
         if (typeof value !== 'number' || !Number.isFinite(value)) return;
 
         const measuredKw = value / 1000;
-        const previous = this.powerState.lastMeasuredPowerKw[deviceId]?.kw ?? 0;
-
         // Always update internal state
         this.powerState.lastMeasuredPowerKw[deviceId] = { kw: measuredKw, ts: Date.now() };
         this.updateLastKnownPower(deviceId, measuredKw, label);
@@ -274,13 +281,7 @@ export class DeviceManager extends EventEmitter {
             snap.powerKw = measuredKw; // simplistic update, proper calculation is in refresh
         }
 
-        // Check threshold
-        const deltaKw = measuredKw - previous;
-        const deltaAbs = Math.abs(deltaKw);
-        if (deltaAbs >= MIN_POWER_CHANGE_FOR_REBUILD_KW) {
-            this.logger.debug(`Significant power change for ${label}: ${previous.toFixed(3)} -> ${measuredKw.toFixed(3)} kW (delta ${deltaAbs.toFixed(3)} kW). Emitting update.`);
-            this.emit('powerChanged', { deviceId, kw: measuredKw, delta: deltaAbs, deltaKw });
-        }
+        // No realtime rebuild hook here; rebuilds are driven by power samples.
     }
 
     public destroy(): void {

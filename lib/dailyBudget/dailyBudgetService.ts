@@ -24,7 +24,7 @@ import {
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
 import type { DailyBudgetDayPayload, DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
-import { incPerfCounter } from '../utils/perfCounters';
+import { incPerfCounter, addPerfDuration } from '../utils/perfCounters';
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
@@ -94,6 +94,7 @@ export class DailyBudgetService {
   }
 
   updateState(params: { nowMs?: number; forcePlanRebuild?: boolean } = {}): void {
+    const start = Date.now();
     const nowMs = params.nowMs ?? Date.now();
     const timeZone = this.resolveTimeZone();
     const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
@@ -116,6 +117,9 @@ export class DailyBudgetService {
       }
     } catch (error) {
       this.deps.log('Daily budget: failed to update state', error);
+    } finally {
+      incPerfCounter('daily_budget_update_total');
+      addPerfDuration('daily_budget_update_ms', Date.now() - start);
     }
   }
 

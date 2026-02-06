@@ -1,0 +1,1 @@
+export const VOLATILE_WRITE_THROTTLE_MS = 60 * 1000;

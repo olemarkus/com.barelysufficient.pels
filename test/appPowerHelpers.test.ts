@@ -1,7 +1,6 @@
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PowerSampleRebuildState } from '../lib/app/appPowerHelpers';
-import CapacityGuard from '../lib/core/capacityGuard';
-import { applyPowerDeltaToTracker, recordDailyBudgetCap, schedulePlanRebuildFromPowerSample } from '../lib/app/appPowerHelpers';
+import { recordDailyBudgetCap, schedulePlanRebuildFromPowerSample } from '../lib/app/appPowerHelpers';
 
 describe('recordDailyBudgetCap', () => {
   it('returns existing state for invalid snapshots', () => {
@@ -306,37 +305,5 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     expect(state.lastSoftLimitKw).toBe(8);
-  });
-});
-
-describe('applyPowerDeltaToTracker', () => {
-  it('returns the same state when delta is invalid', () => {
-    const state: PowerTrackerState = { lastPowerW: 1000 };
-    const result = applyPowerDeltaToTracker({ powerTracker: state, deltaKw: Number.NaN });
-    expect(result).toBe(state);
-  });
-
-  it('uses lastPowerW when available', () => {
-    const state: PowerTrackerState = { lastPowerW: 5000 };
-    const guard = new CapacityGuard({ limitKw: 10, softMarginKw: 0.5, log: jest.fn() });
-    const result = applyPowerDeltaToTracker({ powerTracker: state, capacityGuard: guard, deltaKw: -1 });
-    expect(result).not.toBe(state);
-    expect(result.lastPowerW).toBe(4000);
-    expect(guard.getLastTotalPower()).toBeCloseTo(4, 5);
-  });
-
-  it('falls back to capacity guard total power when tracker is missing', () => {
-    const state: PowerTrackerState = {};
-    const guard = new CapacityGuard({ limitKw: 10, softMarginKw: 0.5, log: jest.fn() });
-    guard.reportTotalPower(3);
-    const result = applyPowerDeltaToTracker({ powerTracker: state, capacityGuard: guard, deltaKw: 0.25 });
-    expect(result.lastPowerW).toBe(3250);
-    expect(guard.getLastTotalPower()).toBeCloseTo(3.25, 5);
-  });
-
-  it('returns the same state when no base power is available', () => {
-    const state: PowerTrackerState = {};
-    const result = applyPowerDeltaToTracker({ powerTracker: state, deltaKw: 1 });
-    expect(result).toBe(state);
   });
 });
