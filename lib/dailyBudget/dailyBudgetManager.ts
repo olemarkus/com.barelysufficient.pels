@@ -400,6 +400,8 @@ export class DailyBudgetManager {
       usedNowKWh: context.usedNowKWh,
       dailyBudgetKWh: settings.dailyBudgetKWh,
       profileWeights: profileData.combinedWeights,
+      profileWeightsControlled: profileData.breakdown.controlled,
+      profileWeightsUncontrolled: profileData.breakdown.uncontrolled,
       timeZone: context.timeZone,
       combinedPrices,
       priceOptimizationEnabled,

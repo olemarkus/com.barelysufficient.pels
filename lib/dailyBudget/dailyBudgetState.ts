@@ -26,6 +26,8 @@ export type DayContext = {
   currentBucketIndex: number;
   currentBucketProgress: number;
   bucketUsage: number[];
+  bucketUsageControlled?: Array<number | null>;
+  bucketUsageUncontrolled?: Array<number | null>;
   usedNowKWh: number;
   currentBucketUsage: number;
 };
@@ -60,7 +62,12 @@ export const buildDayContext = (params: {
     nextDayStartUtcMs,
     timeZone,
   });
-  const { bucketKeys, bucketUsage } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
+  const {
+    bucketKeys,
+    bucketUsage,
+    bucketUsageControlled,
+    bucketUsageUncontrolled,
+  } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
   const currentBucketIndex = resolveCurrentBucketIndex(dayStartUtcMs, bucketStartUtcMs.length, nowMs);
   const currentBucketProgress = resolveBucketProgress({
     nowMs,
@@ -82,6 +89,8 @@ export const buildDayContext = (params: {
     currentBucketIndex,
     currentBucketProgress,
     bucketUsage,
+    bucketUsageControlled,
+    bucketUsageUncontrolled,
     usedNowKWh,
     currentBucketUsage,
   };
@@ -90,11 +99,45 @@ export const buildDayContext = (params: {
 export const buildBucketUsage = (params: {
   bucketStartUtcMs: number[];
   powerTracker: PowerTrackerState;
-}): { bucketKeys: string[]; bucketUsage: number[] } => {
+}): {
+  bucketKeys: string[];
+  bucketUsage: number[];
+  bucketUsageControlled?: Array<number | null>;
+  bucketUsageUncontrolled?: Array<number | null>;
+} => {
   const { bucketStartUtcMs, powerTracker } = params;
   const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
   const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
-  return { bucketKeys, bucketUsage };
+  const controlledRaw = powerTracker.controlledBuckets ?? {};
+  const uncontrolledRaw = powerTracker.uncontrolledBuckets ?? {};
+  const bucketUsageControlled = bucketKeys.map((key, index) => {
+    const value = controlledRaw[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const total = bucketUsage[index] ?? 0;
+    const uncontrolled = uncontrolledRaw[key];
+    if (typeof uncontrolled === 'number' && Number.isFinite(uncontrolled)) {
+      return Math.max(0, total - uncontrolled);
+    }
+    return null;
+  });
+  const bucketUsageUncontrolled = bucketKeys.map((key, index) => {
+    const value = uncontrolledRaw[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const total = bucketUsage[index] ?? 0;
+    const controlled = controlledRaw[key];
+    if (typeof controlled === 'number' && Number.isFinite(controlled)) {
+      return Math.max(0, total - controlled);
+    }
+    return null;
+  });
+  const hasSplit = bucketUsageControlled.some((value) => typeof value === 'number')
+    || bucketUsageUncontrolled.some((value) => typeof value === 'number');
+  return {
+    bucketKeys,
+    bucketUsage,
+    bucketUsageControlled: hasSplit ? bucketUsageControlled : undefined,
+    bucketUsageUncontrolled: hasSplit ? bucketUsageUncontrolled : undefined,
+  };
 };
 
 export const computePlanDeviation = (params: {
@@ -246,6 +289,8 @@ export const buildDailyBudgetSnapshot = (params: {
       plannedUncontrolledKWh,
       plannedControlledKWh,
       actualKWh: context.bucketUsage,
+      actualControlledKWh: context.bucketUsageControlled,
+      actualUncontrolledKWh: context.bucketUsageUncontrolled,
       allowedCumKWh: budget.allowedCumKWh,
       price: priceData.prices,
       priceFactor: priceData.priceFactors,

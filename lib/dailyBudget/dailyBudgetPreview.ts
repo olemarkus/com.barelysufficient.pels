@@ -68,6 +68,8 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     currentBucketIndex,
     currentBucketProgress: 0,
     bucketUsage,
+    bucketUsageControlled: undefined,
+    bucketUsageUncontrolled: undefined,
     usedNowKWh,
     currentBucketUsage: 0,
   };
@@ -80,6 +82,8 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
       usedNowKWh,
       dailyBudgetKWh: settings.dailyBudgetKWh,
       profileWeights,
+      profileWeightsControlled: profileBreakdown?.controlled,
+      profileWeightsUncontrolled: profileBreakdown?.uncontrolled,
       timeZone,
       combinedPrices,
       priceOptimizationEnabled,

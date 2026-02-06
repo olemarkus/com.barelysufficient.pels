@@ -47,6 +47,71 @@ export function buildDefaultProfile(): number[] {
   return normalizeWeights(weights);
 }
 
+const resolvePlanBounds = (params: {
+  currentBucketIndex: number;
+  bucketCount: number;
+  previousPlannedKWh?: number[];
+  lockCurrentBucket?: boolean;
+}) => {
+  const { currentBucketIndex, bucketCount, previousPlannedKWh, lockCurrentBucket } = params;
+  const safeCurrentBucketIndex = Math.max(0, currentBucketIndex);
+  const hasPreviousPlan = Array.isArray(previousPlannedKWh)
+    && previousPlannedKWh.length === bucketCount;
+  const shouldLockCurrent = Boolean(lockCurrentBucket) && hasPreviousPlan;
+  const remainingStartIndex = shouldLockCurrent
+    ? Math.min(safeCurrentBucketIndex + 1, bucketCount)
+    : safeCurrentBucketIndex;
+  return {
+    safeCurrentBucketIndex,
+    hasPreviousPlan,
+    shouldLockCurrent,
+    remainingStartIndex,
+  };
+};
+
+const buildPlanWeights = (params: {
+  bucketStartUtcMs: number[];
+  timeZone: string;
+  profileWeights: number[];
+  profileWeightsControlled?: number[];
+  profileWeightsUncontrolled?: number[];
+  priceFactors?: Array<number | null>;
+  flexShare: number;
+}): number[] => {
+  const {
+    bucketStartUtcMs,
+    timeZone,
+    profileWeights,
+    profileWeightsControlled,
+    profileWeightsUncontrolled,
+    priceFactors,
+    flexShare,
+  } = params;
+  const hasSplitProfiles = Array.isArray(profileWeightsControlled)
+    && Array.isArray(profileWeightsUncontrolled)
+    && profileWeightsControlled.length > 0
+    && profileWeightsUncontrolled.length > 0;
+  const uncontrolledWeights = buildHourWeights({
+    bucketStartUtcMs,
+    profileWeights: hasSplitProfiles ? profileWeightsUncontrolled : profileWeights,
+    timeZone,
+  });
+  if (!hasSplitProfiles) {
+    return buildCompositeWeights({ baseWeights: uncontrolledWeights, priceFactors, flexShare });
+  }
+  const controlledWeights = buildHourWeights({
+    bucketStartUtcMs,
+    profileWeights: profileWeightsControlled,
+    timeZone,
+  });
+  const controlledShapedWeights = buildCompositeWeights({
+    baseWeights: controlledWeights,
+    priceFactors,
+    flexShare,
+  });
+  return uncontrolledWeights.map((value, index) => value + (controlledShapedWeights[index] ?? 0));
+};
+
 export function buildPlan(params: {
   bucketStartUtcMs: number[];
   bucketUsage: number[];
@@ -54,6 +119,8 @@ export function buildPlan(params: {
   usedNowKWh: number;
   dailyBudgetKWh: number;
   profileWeights: number[];
+  profileWeightsControlled?: number[];
+  profileWeightsUncontrolled?: number[];
   timeZone: string;
   combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
@@ -75,6 +142,8 @@ export function buildPlan(params: {
     usedNowKWh,
     dailyBudgetKWh,
     profileWeights,
+    profileWeightsControlled,
+    profileWeightsUncontrolled,
     timeZone,
     combinedPrices,
     priceOptimizationEnabled,
@@ -85,15 +154,17 @@ export function buildPlan(params: {
     lockCurrentBucket,
   } = params;
 
-  const safeCurrentBucketIndex = Math.max(0, currentBucketIndex);
-  const hasPreviousPlan = Array.isArray(previousPlannedKWh)
-    && previousPlannedKWh.length === bucketStartUtcMs.length;
-  const shouldLockCurrent = Boolean(lockCurrentBucket) && hasPreviousPlan;
-  const remainingStartIndex = shouldLockCurrent
-    ? Math.min(safeCurrentBucketIndex + 1, bucketStartUtcMs.length)
-    : safeCurrentBucketIndex;
-
-  const baseWeights = buildHourWeights({ bucketStartUtcMs, profileWeights, timeZone });
+  const {
+    safeCurrentBucketIndex,
+    hasPreviousPlan,
+    shouldLockCurrent,
+    remainingStartIndex,
+  } = resolvePlanBounds({
+    currentBucketIndex,
+    bucketCount: bucketStartUtcMs.length,
+    previousPlannedKWh,
+    lockCurrentBucket,
+  });
 
   const priceShape = buildPriceFactors({
     bucketStartUtcMs,
@@ -102,12 +173,17 @@ export function buildPlan(params: {
     priceOptimizationEnabled,
     priceShapingEnabled,
   });
-  const combinedWeights = buildCompositeWeights({
-    baseWeights,
+  const flexShare = typeof priceShapingFlexShare === 'number'
+    ? priceShapingFlexShare
+    : PRICE_SHAPING_FLEX_SHARE;
+  const combinedWeights = buildPlanWeights({
+    bucketStartUtcMs,
+    timeZone,
+    profileWeights,
+    profileWeightsControlled,
+    profileWeightsUncontrolled,
     priceFactors: priceShape.priceFactors,
-    flexShare: typeof priceShapingFlexShare === 'number'
-      ? priceShapingFlexShare
-      : PRICE_SHAPING_FLEX_SHARE,
+    flexShare,
   });
   const normalizedDayWeights = normalizeWeightsWithFallback(combinedWeights);
 
