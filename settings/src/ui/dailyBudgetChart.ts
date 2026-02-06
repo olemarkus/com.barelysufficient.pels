@@ -30,6 +30,8 @@ const buildDailyBudgetBarTitle = (params: {
   label: string;
   plannedKWh: number;
   actualKWh: number | undefined;
+  actualControlledKWh?: number;
+  actualUncontrolledKWh?: number;
   isCurrent: boolean;
   plannedUncontrolledKWh?: number;
   plannedControlledKWh?: number;
@@ -39,6 +41,8 @@ const buildDailyBudgetBarTitle = (params: {
     label,
     plannedKWh,
     actualKWh,
+    actualControlledKWh,
+    actualUncontrolledKWh,
     isCurrent,
     plannedUncontrolledKWh,
     plannedControlledKWh,
@@ -56,6 +60,11 @@ const buildDailyBudgetBarTitle = (params: {
   if (Number.isFinite(actualKWh)) {
     const actualLabel = isCurrent ? 'Actual so far' : 'Actual';
     titleParts.push(`${actualLabel} ${formatKWh(actualKWh as number)}`);
+  }
+  if (Number.isFinite(actualControlledKWh) && Number.isFinite(actualUncontrolledKWh)) {
+    const actualLabel = isCurrent ? 'Actual so far' : 'Actual';
+    titleParts.push(`${actualLabel} controlled ${formatKWh(actualControlledKWh as number)}`);
+    titleParts.push(`${actualLabel} uncontrolled ${formatKWh(actualUncontrolledKWh as number)}`);
   }
   return titleParts.join(' \u00B7 ');
 };
@@ -158,6 +167,8 @@ const appendActualDot = (params: {
 const buildDailyBudgetBar = (params: {
   value: number;
   actualValue: number | undefined;
+  actualControlledValue?: number;
+  actualUncontrolledValue?: number;
   plannedUncontrolledValue?: number;
   plannedControlledValue?: number;
   showBreakdown: boolean;
@@ -169,6 +180,8 @@ const buildDailyBudgetBar = (params: {
   const {
     value,
     actualValue,
+    actualControlledValue,
+    actualUncontrolledValue,
     plannedUncontrolledValue,
     plannedControlledValue,
     showBreakdown,
@@ -202,6 +215,8 @@ const buildDailyBudgetBar = (params: {
     label,
     plannedKWh: value,
     actualKWh: actualValue,
+    actualControlledKWh: actualControlledValue,
+    actualUncontrolledKWh: actualUncontrolledValue,
     isCurrent: index === currentBucketIndex,
     plannedUncontrolledKWh: plannedUncontrolledValue,
     plannedControlledKWh: plannedControlledValue,
@@ -244,6 +259,8 @@ export const renderDailyBudgetChart = (params: {
   } = params;
   const planned = payload.buckets.plannedKWh || [];
   const actual = showActual ? payload.buckets.actualKWh || [] : [];
+  const actualControlled = showActual ? payload.buckets.actualControlledKWh || [] : [];
+  const actualUncontrolled = showActual ? payload.buckets.actualUncontrolledKWh || [] : [];
   const plannedUncontrolled = payload.buckets.plannedUncontrolledKWh || [];
   const plannedControlled = payload.buckets.plannedControlledKWh || [];
   const labels = payload.buckets.startLocalLabels || [];
@@ -258,9 +275,13 @@ export const renderDailyBudgetChart = (params: {
   planned.forEach((value, index) => {
     const label = labels[index] ?? '';
     const actualValue = showActual ? actual[index] : undefined;
+    const actualControlledValue = showActual ? actualControlled[index] : undefined;
+    const actualUncontrolledValue = showActual ? actualUncontrolled[index] : undefined;
     const bar = buildDailyBudgetBar({
       value,
       actualValue,
+      actualControlledValue: typeof actualControlledValue === 'number' ? actualControlledValue : undefined,
+      actualUncontrolledValue: typeof actualUncontrolledValue === 'number' ? actualUncontrolledValue : undefined,
       plannedUncontrolledValue: showBreakdown ? plannedUncontrolled[index] : undefined,
       plannedControlledValue: showBreakdown ? plannedControlled[index] : undefined,
       showBreakdown,

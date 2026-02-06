@@ -56,6 +56,8 @@ export type DailyBudgetDayPayload = {
     plannedUncontrolledKWh?: number[];
     plannedControlledKWh?: number[];
     actualKWh: number[];
+    actualControlledKWh?: Array<number | null>;
+    actualUncontrolledKWh?: Array<number | null>;
     allowedCumKWh: number[];
     price?: Array<number | null>;
     priceFactor?: Array<number | null>;

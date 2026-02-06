@@ -39,7 +39,12 @@ export const buildDailyBudgetHistory = (params: {
     nextDayStartUtcMs,
     timeZone,
   });
-  const { bucketKeys, bucketUsage } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
+  const {
+    bucketKeys,
+    bucketUsage,
+    bucketUsageControlled,
+    bucketUsageUncontrolled,
+  } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
   const plannedKWh = bucketKeys.map((key) => powerTracker.dailyBudgetCaps?.[key] ?? 0);
   const hasPlanned = plannedKWh.some((value) => value > 0);
   const hasUsage = bucketUsage.some((value) => value > 0);
@@ -60,6 +65,8 @@ export const buildDailyBudgetHistory = (params: {
     currentBucketIndex,
     currentBucketProgress: 1,
     bucketUsage,
+    bucketUsageControlled,
+    bucketUsageUncontrolled,
     usedNowKWh,
     currentBucketUsage: bucketUsage[currentBucketIndex] ?? 0,
   };
