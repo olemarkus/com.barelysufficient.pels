@@ -25,10 +25,10 @@ const getStateText = () => {
   return stateLine?.querySelector('span:last-child')?.textContent?.trim();
 };
 
-const getBadgeClassList = (deviceId: string) => {
+const getBadgeClassList = (deviceId: string): DOMTokenList | null => {
   const dot = document.querySelector(`[data-device-id="${deviceId}"] .plan-state-indicator`) as HTMLElement | null;
-  if (!dot) return '';
-  return dot.className;
+  if (!dot) return null;
+  return dot.classList;
 };
 
 const getPlanMetaText = () => {
@@ -195,13 +195,21 @@ describe('plan device state', () => {
           plannedState: 'keep',
           controllable: false,
         },
+        {
+          id: 'dev-off-controllable',
+          name: 'Device Off Controllable',
+          currentState: 'off',
+          plannedState: 'keep',
+          controllable: true,
+        },
       ],
     });
 
-    expect(getBadgeClassList('dev-active')).toContain('cheap');
-    expect(getBadgeClassList('dev-shed')).toContain('expensive');
-    expect(getBadgeClassList('dev-uncontrolled')).toContain('neutral');
-    expect(getBadgeClassList('dev-on-uncontrolled')).toContain('neutral');
+    expect(getBadgeClassList('dev-active')?.contains('cheap')).toBe(true);
+    expect(getBadgeClassList('dev-shed')?.contains('expensive')).toBe(true);
+    expect(getBadgeClassList('dev-uncontrolled')?.contains('neutral')).toBe(true);
+    expect(getBadgeClassList('dev-on-uncontrolled')?.contains('neutral')).toBe(true);
+    expect(getBadgeClassList('dev-off-controllable')?.contains('neutral')).toBe(true);
   });
 });
 
