@@ -110,26 +110,33 @@ export const buildBucketUsage = (params: {
   const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
   const controlledRaw = powerTracker.controlledBuckets ?? {};
   const uncontrolledRaw = powerTracker.uncontrolledBuckets ?? {};
-  const bucketUsageControlled = bucketKeys.map((key, index) => {
-    const value = controlledRaw[key];
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    const total = bucketUsage[index] ?? 0;
-    const uncontrolled = uncontrolledRaw[key];
-    if (typeof uncontrolled === 'number' && Number.isFinite(uncontrolled)) {
-      return Math.max(0, total - uncontrolled);
+  const splitUsage = bucketKeys.map((key, index) => {
+    const total = Math.max(0, bucketUsage[index] ?? 0);
+    const rawControlled = controlledRaw[key];
+    const rawUncontrolled = uncontrolledRaw[key];
+    const hasControlled = typeof rawControlled === 'number' && Number.isFinite(rawControlled);
+    const hasUncontrolled = typeof rawUncontrolled === 'number' && Number.isFinite(rawUncontrolled);
+
+    if (!hasControlled && !hasUncontrolled) {
+      return { controlled: null, uncontrolled: null };
     }
-    return null;
-  });
-  const bucketUsageUncontrolled = bucketKeys.map((key, index) => {
-    const value = uncontrolledRaw[key];
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    const total = bucketUsage[index] ?? 0;
-    const controlled = controlledRaw[key];
-    if (typeof controlled === 'number' && Number.isFinite(controlled)) {
-      return Math.max(0, total - controlled);
+
+    if (hasControlled) {
+      const controlled = clamp(rawControlled as number, 0, total);
+      return {
+        controlled,
+        uncontrolled: Math.max(0, total - controlled),
+      };
     }
-    return null;
+
+    const uncontrolled = clamp(rawUncontrolled as number, 0, total);
+    return {
+      controlled: Math.max(0, total - uncontrolled),
+      uncontrolled,
+    };
   });
+  const bucketUsageControlled = splitUsage.map((entry) => entry.controlled);
+  const bucketUsageUncontrolled = splitUsage.map((entry) => entry.uncontrolled);
   const hasSplit = bucketUsageControlled.some((value) => typeof value === 'number')
     || bucketUsageUncontrolled.some((value) => typeof value === 'number');
   return {
