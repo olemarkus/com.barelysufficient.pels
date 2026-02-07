@@ -135,6 +135,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     [DAILY_BUDGET_PRICE_FLEX_SHARE]: async () => handleDailyBudgetChange(deps),
     overshoot_behaviors: async () => {
       deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after overshoot behavior change');
       await rebuildPlanFromSettings(deps, 'overshoot_behaviors');
     },
     [PRICE_OPTIMIZATION_ENABLED]: async () => {
