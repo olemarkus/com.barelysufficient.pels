@@ -142,5 +142,8 @@
   },
   "1.13.0": {
     "en": "Uncontrolled load will now have a stronger influence on the budget than controlled load. Both because PELS can then better predict the need for load from devices it doesn't control and that it avoids the budget becoming a self-fulfilling prophecy."
+  },
+  "1.13.1": {
+    "en": "The Overview now gives clearer at-a-glance plan status with new state badges and price-style indicators, and several daily budget/price shaping details have been refined so planning better reflects real household load (including better handling of uncontrolled load and budget split edge cases). Under the hood, this release reduces planning churn and CPU spikes by tightening plan rebuild scheduling and throttling non-critical snapshot writes, while still keeping plan data fresh. Performance logging was also streamlined to focus on high-value metrics, making diagnostics easier and less noisy."
   }
 }
