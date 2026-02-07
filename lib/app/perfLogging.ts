@@ -27,6 +27,36 @@ type PerfSummary = {
   settingsWriteAvgMs: number;
 };
 
+const VALUE_COUNT_KEY_PATTERNS: RegExp[] = [
+  /^plan_rebuild_requested_total$/,
+  /^plan_rebuild_total$/,
+  /^plan_rebuild_skipped_total$/,
+  /^plan_rebuild_no_change_total$/,
+  /^plan_rebuild_action_signature_changed_total$/,
+  /^plan_rebuild_reason_or_state_only_changed_total$/,
+  /^plan_rebuild_meta_only_changed_total$/,
+  /^plan_rebuild_queue_depth_ge_2_total$/,
+  /^plan_rebuild_queue_depth_ge_4_total$/,
+  /^plan_rebuild_queue_waited_total$/,
+  /^power_sample_total$/,
+  /^daily_budget_update_total$/,
+  /^settings_set\.device_plan_snapshot/,
+  /^settings_set\.pels_status/,
+  /^device_action_total$/,
+  /^device_action\.capability\.(onoff|target_temperature)$/,
+];
+
+const VALUE_DURATION_KEYS = new Set([
+  'plan_rebuild_ms',
+  'plan_rebuild_queue_wait_ms',
+  'plan_build_ms',
+  'power_sample_ms',
+  'daily_budget_update_ms',
+  'settings_write_ms',
+  'device_fetch_ms',
+  'device_refresh_ms',
+]);
+
 const buildPerfDelta = (current: PerfSnapshot, previous?: PerfSnapshot | null): PerfDelta => {
   if (!previous) return { counts: {}, durations: {} };
   const countsDelta = Object.keys(current.counts).reduce<Record<string, number>>((acc, key) => {
@@ -67,6 +97,22 @@ const formatDurations = (durations: Record<string, PerfDurationEntry>, useProvid
     }
     return `${key}: count=${value.count} totalMs=${value.totalMs.toFixed(1)} avgMs=${avgMs.toFixed(1)} maxMs=${value.maxMs.toFixed(1)}`;
   })
+);
+
+const isValuableCountKey = (key: string): boolean => VALUE_COUNT_KEY_PATTERNS.some((pattern) => pattern.test(key));
+
+const filterDeltaCounts = (counts: PerfDelta['counts']): PerfDelta['counts'] => (
+  Object.keys(counts).reduce<Record<string, number>>((acc, key) => {
+    if (!isValuableCountKey(key)) return acc;
+    return { ...acc, [key]: counts[key] };
+  }, {})
+);
+
+const filterDeltaDurations = (durations: PerfDelta['durations']): PerfDelta['durations'] => (
+  Object.keys(durations).reduce<PerfDelta['durations']>((acc, key) => {
+    if (!VALUE_DURATION_KEYS.has(key)) return acc;
+    return { ...acc, [key]: durations[key] };
+  }, {})
 );
 
 const roundTo = (value: number, decimals: number): number => {
@@ -127,17 +173,15 @@ export const startPerfLogger = (params: {
     const snapshot = getPerfSnapshotAndResetWindow();
     const delta = buildPerfDelta(snapshot, lastSnapshot);
     lastSnapshot = snapshot;
+    const filteredDeltaCounts = filterDeltaCounts(delta.counts);
+    const filteredDeltaDurations = filterDeltaDurations(delta.durations);
     const uptimeSec = Math.round((Date.now() - snapshot.startedAt) / 1000);
     const payload = {
       uptimeSec,
       summary: buildPerfSummary(delta),
-      totals: {
-        counts: snapshot.counts,
-        durations: formatDurations(snapshot.durations),
-      },
       delta: {
-        counts: delta.counts,
-        durations: formatDurations(delta.durations, true),
+        counts: filteredDeltaCounts,
+        durations: formatDurations(filteredDeltaDurations, true),
       },
     };
     params.log(`Perf counters ${JSON.stringify(payload)}`);
