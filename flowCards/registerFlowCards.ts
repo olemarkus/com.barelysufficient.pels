@@ -8,7 +8,7 @@ import {
   DAILY_BUDGET_KWH,
 } from '../lib/utils/settingsKeys';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
-import { incPerfCounter } from '../lib/utils/perfCounters';
+import { incPerfCounters } from '../lib/utils/perfCounters';
 
 type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
 
@@ -356,9 +356,11 @@ async function setDeviceCapacityControl(
 }
 
 function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
-  incPerfCounter('plan_rebuild_requested_total');
-  incPerfCounter('plan_rebuild_requested.flow_total');
-  incPerfCounter(`plan_rebuild_requested.flow.${source}_total`);
+  incPerfCounters([
+    'plan_rebuild_requested_total',
+    'plan_rebuild_requested.flow_total',
+    `plan_rebuild_requested.flow.${source}_total`,
+  ]);
   deps.rebuildPlan();
 }
 

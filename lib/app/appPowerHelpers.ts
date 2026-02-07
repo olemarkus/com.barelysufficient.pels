@@ -13,6 +13,7 @@ export type PowerSampleRebuildState = {
   lastRebuildPowerW?: number;
   lastSoftLimitKw?: number;
   pending?: Promise<void>;
+  pendingResolve?: () => void;
   timer?: ReturnType<typeof setTimeout>;
   pendingPowerW?: number;
   pendingSoftLimitKw?: number;
@@ -213,6 +214,8 @@ const withPendingInputs = (
 const clearPendingState = (snapshot: PowerSampleRebuildState): PowerSampleRebuildState => ({
   ...snapshot,
   pending: undefined,
+  pendingResolve: undefined,
+  timer: undefined,
   pendingReason: undefined,
   pendingPowerW: undefined,
   pendingSoftLimitKw: undefined,
@@ -303,18 +306,28 @@ export function schedulePlanRebuildFromPowerSample(params: {
   };
 
   if (elapsedMs >= minIntervalMs) {
+    const latest = getState();
+    const pendingResolve = latest.pendingResolve;
+    if (latest.timer) {
+      clearTimeout(latest.timer);
+    }
     const nextState = {
-      ...clearPendingState(state),
+      ...clearPendingState(latest),
       lastMs: now,
     };
     setState(nextState);
-    return performRebuild(nextState, triggerReason);
+    return performRebuild(nextState, triggerReason)
+      .finally(() => {
+        pendingResolve?.();
+      });
   }
 
   if (!state.pending) {
     incPerfCounter('plan_rebuild_pending_created_total');
     const waitMs = Math.max(0, minIntervalMs - elapsedMs);
+    let pendingResolve: (() => void) | undefined;
     const pending = new Promise<void>((resolve) => {
+      pendingResolve = resolve;
       const timer = setTimeout(() => {
         const latest = getState();
         const reason = latest.pendingReason ?? triggerReason;
@@ -334,9 +347,10 @@ export function schedulePlanRebuildFromPowerSample(params: {
       setState({
         ...withPendingInputs(latest, currentPowerW, softLimitKw, triggerReason),
         timer,
+        pendingResolve: resolve,
       });
     });
-    setState({ ...getState(), pending });
+    setState({ ...getState(), pending, pendingResolve });
     return pending;
   }
   incPerfCounter('plan_rebuild_pending_coalesced_total');

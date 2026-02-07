@@ -43,7 +43,10 @@ export class PlanService {
   private lastDetailPlanSignature = '';
   private lastPlanMetaSignature = '';
   private lastPlanSnapshotWriteMs = 0;
-  private hasPendingMetaSnapshot = false;
+  private hasPendingNonActionSnapshot = false;
+  private pendingNonActionSnapshotReason: Exclude<PlanSnapshotWriteReason, 'action_changed'> = 'meta_only';
+  private pendingNonActionSnapshotPlan: DevicePlan | null = null;
+  private pendingNonActionSnapshotTimer?: ReturnType<typeof setTimeout>;
   private lastPelsStatusJson = '';
   private lastPelsStatusWrittenJson = '';
   // 0 means "not yet written" for the first throttled write.
@@ -158,39 +161,79 @@ export class PlanService {
     const now = Date.now();
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
     if (!changed) {
-      this.flushPendingMetaSnapshot(plan, now);
+      this.flushPendingNonActionSnapshot(now);
       return;
     }
 
     if (changes.actionChanged) {
       this.writePlanSnapshot(plan, 'action_changed', now);
-      this.hasPendingMetaSnapshot = false;
+      this.clearPendingNonActionSnapshot();
     } else if (changes.detailChanged) {
       this.writePlanSnapshot(plan, 'detail_changed', now);
-      this.hasPendingMetaSnapshot = false;
-    } else if (changes.metaChanged) {
-      if (this.canWriteMetaSnapshot(now)) {
+      this.clearPendingNonActionSnapshot();
+    } else {
+      if (this.canWriteNonActionSnapshot(now)) {
         this.writePlanSnapshot(plan, 'meta_only', now);
-        this.hasPendingMetaSnapshot = false;
-        incPerfCounter('settings_set.device_plan_snapshot_meta_write_flushed_total');
+        this.clearPendingNonActionSnapshot();
       } else {
-        this.hasPendingMetaSnapshot = true;
+        this.schedulePendingNonActionSnapshot(plan, 'meta_only', now);
         incPerfCounter('settings_set.device_plan_snapshot_meta_write_throttled_total');
       }
     }
     this.emitPlanUpdated(plan);
   }
 
-  private canWriteMetaSnapshot(nowMs: number): boolean {
+  private canWriteNonActionSnapshot(nowMs: number): boolean {
     if (this.lastPlanSnapshotWriteMs === 0) return true;
     return nowMs - this.lastPlanSnapshotWriteMs > DETAIL_SNAPSHOT_WRITE_THROTTLE_MS;
   }
 
-  private flushPendingMetaSnapshot(plan: DevicePlan, nowMs: number): void {
-    if (!this.hasPendingMetaSnapshot || !this.canWriteMetaSnapshot(nowMs)) return;
-    this.writePlanSnapshot(plan, 'meta_only', nowMs);
-    this.hasPendingMetaSnapshot = false;
+  private resolveNonActionWaitMs(nowMs: number): number {
+    if (this.lastPlanSnapshotWriteMs === 0) return 0;
+    const elapsedMs = nowMs - this.lastPlanSnapshotWriteMs;
+    return Math.max(0, DETAIL_SNAPSHOT_WRITE_THROTTLE_MS - elapsedMs);
+  }
+
+  private schedulePendingNonActionSnapshot(
+    plan: DevicePlan,
+    reason: Exclude<PlanSnapshotWriteReason, 'action_changed'>,
+    nowMs: number,
+  ): void {
+    this.hasPendingNonActionSnapshot = true;
+    this.pendingNonActionSnapshotPlan = plan;
+    this.pendingNonActionSnapshotReason = reason;
+    if (this.pendingNonActionSnapshotTimer) return;
+
+    const waitMs = this.resolveNonActionWaitMs(nowMs);
+    this.pendingNonActionSnapshotTimer = setTimeout(() => {
+      this.pendingNonActionSnapshotTimer = undefined;
+      this.flushPendingNonActionSnapshot(Date.now());
+    }, waitMs);
+  }
+
+  private flushPendingNonActionSnapshot(nowMs: number): void {
+    if (!this.hasPendingNonActionSnapshot || !this.pendingNonActionSnapshotPlan) return;
+    if (!this.canWriteNonActionSnapshot(nowMs)) {
+      this.schedulePendingNonActionSnapshot(
+        this.pendingNonActionSnapshotPlan,
+        this.pendingNonActionSnapshotReason,
+        nowMs,
+      );
+      return;
+    }
+    this.writePlanSnapshot(this.pendingNonActionSnapshotPlan, this.pendingNonActionSnapshotReason, nowMs);
+    this.clearPendingNonActionSnapshot();
     incPerfCounter('settings_set.device_plan_snapshot_meta_write_flushed_total');
+  }
+
+  private clearPendingNonActionSnapshot(): void {
+    if (this.pendingNonActionSnapshotTimer) {
+      clearTimeout(this.pendingNonActionSnapshotTimer);
+      this.pendingNonActionSnapshotTimer = undefined;
+    }
+    this.hasPendingNonActionSnapshot = false;
+    this.pendingNonActionSnapshotPlan = null;
+    this.pendingNonActionSnapshotReason = 'meta_only';
   }
 
   private writePlanSnapshot(plan: DevicePlan, reason: PlanSnapshotWriteReason, nowMs: number): void {

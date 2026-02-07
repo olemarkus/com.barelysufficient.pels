@@ -24,7 +24,7 @@ import {
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_SCHEME,
 } from './settingsKeys';
-import { incPerfCounter } from './perfCounters';
+import { incPerfCounters } from './perfCounters';
 export type PriceServiceLike = {
   refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
@@ -222,9 +222,11 @@ async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<
 }
 
 function recordSettingsRebuildRequest(source: string): void {
-  incPerfCounter('plan_rebuild_requested_total');
-  incPerfCounter('plan_rebuild_requested.settings_total');
-  incPerfCounter(`plan_rebuild_requested.settings.${source}_total`);
+  incPerfCounters([
+    'plan_rebuild_requested_total',
+    'plan_rebuild_requested.settings_total',
+    `plan_rebuild_requested.settings.${source}_total`,
+  ]);
 }
 
 async function rebuildPlanFromSettings(deps: SettingsHandlerDeps, source: string): Promise<void> {
