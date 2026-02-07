@@ -142,7 +142,7 @@ const buildPerfSummary = (delta: PerfDelta): PerfSummary => {
   const dailyBudget = getDuration(delta.durations, 'daily_budget_update_ms');
   const settingsWrite = getDuration(delta.durations, 'settings_write_ms');
 
-  const rebuildSkipRate = planRebuilds > 0 ? skipped / planRebuilds : 0;
+  const rebuildSkipRate = powerSamples > 0 ? skipped / powerSamples : 0;
   const rebuildNoChangeRate = planRebuilds > 0 ? noChange / planRebuilds : 0;
 
   return {
