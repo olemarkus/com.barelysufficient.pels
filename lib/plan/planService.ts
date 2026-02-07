@@ -185,7 +185,7 @@ export class PlanService {
 
   private canWriteNonActionSnapshot(nowMs: number): boolean {
     if (this.lastPlanSnapshotWriteMs === 0) return true;
-    return nowMs - this.lastPlanSnapshotWriteMs > DETAIL_SNAPSHOT_WRITE_THROTTLE_MS;
+    return nowMs - this.lastPlanSnapshotWriteMs >= DETAIL_SNAPSHOT_WRITE_THROTTLE_MS;
   }
 
   private resolveNonActionWaitMs(nowMs: number): number {

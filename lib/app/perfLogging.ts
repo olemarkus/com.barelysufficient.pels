@@ -102,17 +102,15 @@ const formatDurations = (durations: Record<string, PerfDurationEntry>, useProvid
 const isValuableCountKey = (key: string): boolean => VALUE_COUNT_KEY_PATTERNS.some((pattern) => pattern.test(key));
 
 const filterDeltaCounts = (counts: PerfDelta['counts']): PerfDelta['counts'] => (
-  Object.keys(counts).reduce<Record<string, number>>((acc, key) => {
-    if (!isValuableCountKey(key)) return acc;
-    return { ...acc, [key]: counts[key] };
-  }, {})
+  Object.fromEntries(
+    Object.entries(counts).filter(([key]) => isValuableCountKey(key)),
+  )
 );
 
 const filterDeltaDurations = (durations: PerfDelta['durations']): PerfDelta['durations'] => (
-  Object.keys(durations).reduce<PerfDelta['durations']>((acc, key) => {
-    if (!VALUE_DURATION_KEYS.has(key)) return acc;
-    return { ...acc, [key]: durations[key] };
-  }, {})
+  Object.fromEntries(
+    Object.entries(durations).filter(([key]) => VALUE_DURATION_KEYS.has(key)),
+  )
 );
 
 const roundTo = (value: number, decimals: number): number => {

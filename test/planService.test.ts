@@ -131,7 +131,7 @@ describe('PlanService', () => {
     const realtimeAfterThrottle = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(realtimeAfterThrottle).toHaveLength(2);
 
-    jest.advanceTimersByTime(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS + 1);
+    jest.advanceTimersByTime(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
 
     const snapshotWritesAfterFlush = settingsSet.mock.calls
       .filter((call: unknown[]) => call[0] === 'device_plan_snapshot')
