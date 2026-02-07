@@ -87,6 +87,14 @@ const buildPriceSummaryItem = (
 const buildPriceSummarySection = (context: PriceRenderContext) => {
   const summarySection = document.createElement('div');
   summarySection.className = 'price-summary';
+  const cheapLimit = formatPriceWithUnit(
+    formatSummaryPrice(context.lowThreshold, context.priceScheme),
+    context.priceUnit,
+  );
+  const expensiveLimit = formatPriceWithUnit(
+    formatSummaryPrice(context.highThreshold, context.priceScheme),
+    context.priceUnit,
+  );
 
   if (context.cheapHours.length > 0) {
     const cheapest = context.cheapHours[0];
@@ -99,13 +107,9 @@ const buildPriceSummarySection = (context: PriceRenderContext) => {
       formatSummaryPrice(cheapest.total, context.priceScheme),
       context.priceUnit,
     );
-    const detailText = `(cheapest: ${cheapestValue} at ${cheapestTime})`;
+    const detailText = `(cap <= ${cheapLimit}; cheapest: ${cheapestValue} at ${cheapestTime})`;
     summarySection.appendChild(buildPriceSummaryItem('cheap', context.cheapHours.length, 'cheap hour', detailText));
   } else {
-    const cheapLimit = formatPriceWithUnit(
-      formatSummaryPrice(context.lowThreshold, context.priceScheme),
-      context.priceUnit,
-    );
     summarySection.appendChild(
       buildPriceSummaryItem('neutral', null, '', `No cheap hours (at or below ${cheapLimit})`),
     );
@@ -122,7 +126,7 @@ const buildPriceSummarySection = (context: PriceRenderContext) => {
       formatSummaryPrice(mostExpensive.total, context.priceScheme),
       context.priceUnit,
     );
-    const detailText = `(peak: ${expensiveValue} at ${expensiveTime})`;
+    const detailText = `(cap >= ${expensiveLimit}; peak: ${expensiveValue} at ${expensiveTime})`;
     summarySection.appendChild(buildPriceSummaryItem(
       'expensive',
       context.expensiveHours.length,
@@ -130,10 +134,6 @@ const buildPriceSummarySection = (context: PriceRenderContext) => {
       detailText,
     ));
   } else {
-    const expensiveLimit = formatPriceWithUnit(
-      formatSummaryPrice(context.highThreshold, context.priceScheme),
-      context.priceUnit,
-    );
     summarySection.appendChild(
       buildPriceSummaryItem('neutral', null, '', `No expensive hours (at or above ${expensiveLimit})`),
     );

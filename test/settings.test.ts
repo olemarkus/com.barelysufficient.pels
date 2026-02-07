@@ -531,6 +531,10 @@ describe('settings script', () => {
     expect(summaryItems?.length).toBe(2); // Cheap and expensive summaries
     expect(summaryItems?.[0]?.textContent).toContain('cheap hour');
     expect(summaryItems?.[1]?.textContent).toContain('expensive hour');
+    expect(summaryItems?.[0]?.textContent).toContain('cap <=');
+    expect(summaryItems?.[0]?.textContent).toContain('75 øre/kWh');
+    expect(summaryItems?.[1]?.textContent).toContain('cap >=');
+    expect(summaryItems?.[1]?.textContent).toContain('125 øre/kWh');
 
     // Verify collapsible details sections exist
     const detailsSections = priceList?.querySelectorAll('.price-details');
