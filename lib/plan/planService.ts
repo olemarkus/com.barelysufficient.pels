@@ -43,7 +43,7 @@ export class PlanService {
   private lastDetailPlanSignature = '';
   private lastPlanMetaSignature = '';
   private lastPlanSnapshotWriteMs = 0;
-  private hasPendingDetailSnapshot = false;
+  private hasPendingMetaSnapshot = false;
   private lastPelsStatusJson = '';
   private lastPelsStatusWrittenJson = '';
   // 0 means "not yet written" for the first throttled write.
@@ -158,42 +158,39 @@ export class PlanService {
     const now = Date.now();
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
     if (!changed) {
-      this.flushPendingDetailSnapshot(plan, now);
+      this.flushPendingMetaSnapshot(plan, now);
       return;
     }
 
-    let reason: PlanSnapshotWriteReason = 'meta_only';
     if (changes.actionChanged) {
-      reason = 'action_changed';
-      this.writePlanSnapshot(plan, reason, now);
-      this.hasPendingDetailSnapshot = false;
-    } else if (changes.metaChanged) {
-      this.writePlanSnapshot(plan, reason, now);
-      this.hasPendingDetailSnapshot = false;
+      this.writePlanSnapshot(plan, 'action_changed', now);
+      this.hasPendingMetaSnapshot = false;
     } else if (changes.detailChanged) {
-      reason = 'detail_changed';
-      if (this.canWriteDetailSnapshot(now)) {
-        this.writePlanSnapshot(plan, reason, now);
-        this.hasPendingDetailSnapshot = false;
-        incPerfCounter('settings_set.device_plan_snapshot_detail_write_flushed_total');
+      this.writePlanSnapshot(plan, 'detail_changed', now);
+      this.hasPendingMetaSnapshot = false;
+    } else if (changes.metaChanged) {
+      if (this.canWriteMetaSnapshot(now)) {
+        this.writePlanSnapshot(plan, 'meta_only', now);
+        this.hasPendingMetaSnapshot = false;
+        incPerfCounter('settings_set.device_plan_snapshot_meta_write_flushed_total');
       } else {
-        this.hasPendingDetailSnapshot = true;
-        incPerfCounter('settings_set.device_plan_snapshot_detail_write_throttled_total');
+        this.hasPendingMetaSnapshot = true;
+        incPerfCounter('settings_set.device_plan_snapshot_meta_write_throttled_total');
       }
     }
     this.emitPlanUpdated(plan);
   }
 
-  private canWriteDetailSnapshot(nowMs: number): boolean {
+  private canWriteMetaSnapshot(nowMs: number): boolean {
     if (this.lastPlanSnapshotWriteMs === 0) return true;
     return nowMs - this.lastPlanSnapshotWriteMs > DETAIL_SNAPSHOT_WRITE_THROTTLE_MS;
   }
 
-  private flushPendingDetailSnapshot(plan: DevicePlan, nowMs: number): void {
-    if (!this.hasPendingDetailSnapshot || !this.canWriteDetailSnapshot(nowMs)) return;
-    this.writePlanSnapshot(plan, 'detail_changed', nowMs);
-    this.hasPendingDetailSnapshot = false;
-    incPerfCounter('settings_set.device_plan_snapshot_detail_write_flushed_total');
+  private flushPendingMetaSnapshot(plan: DevicePlan, nowMs: number): void {
+    if (!this.hasPendingMetaSnapshot || !this.canWriteMetaSnapshot(nowMs)) return;
+    this.writePlanSnapshot(plan, 'meta_only', nowMs);
+    this.hasPendingMetaSnapshot = false;
+    incPerfCounter('settings_set.device_plan_snapshot_meta_write_flushed_total');
   }
 
   private writePlanSnapshot(plan: DevicePlan, reason: PlanSnapshotWriteReason, nowMs: number): void {
