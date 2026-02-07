@@ -9,7 +9,7 @@ import {
 import { buildPelsStatus } from '../core/pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
+import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS, VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 export type PlanServiceDeps = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;
@@ -42,6 +42,8 @@ export class PlanService {
   private lastActionPlanSignature = '';
   private lastDetailPlanSignature = '';
   private lastPlanMetaSignature = '';
+  private lastPlanSnapshotWriteMs = 0;
+  private hasPendingDetailSnapshot = false;
   private lastPelsStatusJson = '';
   private lastPelsStatusWrittenJson = '';
   // 0 means "not yet written" for the first throttled write.
@@ -153,20 +155,57 @@ export class PlanService {
   }
 
   private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): void {
-    if (!changes.actionChanged && !changes.detailChanged && !changes.metaChanged) return;
+    const now = Date.now();
+    const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
+    if (!changed) {
+      this.flushPendingDetailSnapshot(plan, now);
+      return;
+    }
+
     let reason: PlanSnapshotWriteReason = 'meta_only';
     if (changes.actionChanged) {
       reason = 'action_changed';
+      this.writePlanSnapshot(plan, reason, now);
+      this.hasPendingDetailSnapshot = false;
+    } else if (changes.metaChanged) {
+      this.writePlanSnapshot(plan, reason, now);
+      this.hasPendingDetailSnapshot = false;
     } else if (changes.detailChanged) {
       reason = 'detail_changed';
+      if (this.canWriteDetailSnapshot(now)) {
+        this.writePlanSnapshot(plan, reason, now);
+        this.hasPendingDetailSnapshot = false;
+        incPerfCounter('settings_set.device_plan_snapshot_detail_write_flushed_total');
+      } else {
+        this.hasPendingDetailSnapshot = true;
+        incPerfCounter('settings_set.device_plan_snapshot_detail_write_throttled_total');
+      }
     }
+    this.emitPlanUpdated(plan);
+  }
 
+  private canWriteDetailSnapshot(nowMs: number): boolean {
+    if (this.lastPlanSnapshotWriteMs === 0) return true;
+    return nowMs - this.lastPlanSnapshotWriteMs > DETAIL_SNAPSHOT_WRITE_THROTTLE_MS;
+  }
+
+  private flushPendingDetailSnapshot(plan: DevicePlan, nowMs: number): void {
+    if (!this.hasPendingDetailSnapshot || !this.canWriteDetailSnapshot(nowMs)) return;
+    this.writePlanSnapshot(plan, 'detail_changed', nowMs);
+    this.hasPendingDetailSnapshot = false;
+    incPerfCounter('settings_set.device_plan_snapshot_detail_write_flushed_total');
+  }
+
+  private writePlanSnapshot(plan: DevicePlan, reason: PlanSnapshotWriteReason, nowMs: number): void {
     const writeStart = Date.now();
     this.deps.homey.settings.set('device_plan_snapshot', plan);
+    this.lastPlanSnapshotWriteMs = nowMs;
     addPerfDuration('settings_write_ms', Date.now() - writeStart);
     incPerfCounter('settings_set.device_plan_snapshot');
     incPerfCounter(`settings_set.device_plan_snapshot_reason.${reason}_total`);
+  }
 
+  private emitPlanUpdated(plan: DevicePlan): void {
     const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {

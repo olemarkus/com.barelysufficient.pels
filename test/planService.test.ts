@@ -1,5 +1,6 @@
 import { PlanService } from '../lib/plan/planService';
 import type { DevicePlan } from '../lib/plan/planTypes';
+import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../lib/utils/timingConstants';
 
 const buildPlan = (currentTarget: number, reason: string): DevicePlan => ({
   meta: {
@@ -22,13 +23,23 @@ const buildPlan = (currentTarget: number, reason: string): DevicePlan => ({
 });
 
 describe('PlanService', () => {
-  it('writes snapshot when only detail fields change', async () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-02-07T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('throttles detail-only snapshot writes but emits realtime immediately', async () => {
     const settingsSet = jest.fn();
     const realtime = jest.fn().mockResolvedValue(undefined);
     const planEngine = {
       buildDevicePlanSnapshot: jest
         .fn()
         .mockResolvedValueOnce(buildPlan(19, 'stable'))
+        .mockResolvedValueOnce(buildPlan(21, 'sensor_update'))
         .mockResolvedValueOnce(buildPlan(21, 'sensor_update')),
       computeDynamicSoftLimit: jest.fn(() => 0),
       computeShortfallThreshold: jest.fn(() => 0),
@@ -62,11 +73,22 @@ describe('PlanService', () => {
     const snapshotWrites = settingsSet.mock.calls
       .filter((call: unknown[]) => call[0] === 'device_plan_snapshot')
       .map((call: unknown[]) => call[1] as DevicePlan);
-    expect(snapshotWrites).toHaveLength(2);
+    expect(snapshotWrites).toHaveLength(1);
     expect(snapshotWrites[0].devices[0].currentTarget).toBe(19);
-    expect(snapshotWrites[1].devices[0].currentTarget).toBe(21);
 
     const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(planUpdatedCalls).toHaveLength(2);
+
+    jest.advanceTimersByTime(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS + 1);
+    await service.rebuildPlanFromCache();
+
+    const flushedSnapshotWrites = settingsSet.mock.calls
+      .filter((call: unknown[]) => call[0] === 'device_plan_snapshot')
+      .map((call: unknown[]) => call[1] as DevicePlan);
+    expect(flushedSnapshotWrites).toHaveLength(2);
+    expect(flushedSnapshotWrites[1].devices[0].currentTarget).toBe(21);
+
+    const finalPlanUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
+    expect(finalPlanUpdatedCalls).toHaveLength(2);
   });
 });
