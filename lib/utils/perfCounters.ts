@@ -17,14 +17,35 @@ let state: PerfSnapshot = {
   durations: {},
 };
 
-export const incPerfCounter = (key: string, delta = 1): void => {
-  if (!key) return;
+type PerfCounterEntry = string | [string, number];
+
+const normalizeDelta = (delta: number): number => {
   const safeDelta = Number.isFinite(delta) ? delta : 0;
-  if (safeDelta === 0) return;
-  const nextCounts = {
-    ...state.counts,
-    [key]: (state.counts[key] || 0) + safeDelta,
-  };
+  return safeDelta === 0 ? 0 : safeDelta;
+};
+
+export const incPerfCounter = (key: string, delta = 1): void => {
+  incPerfCounters([[key, delta]]);
+};
+
+export const incPerfCounters = (entries: PerfCounterEntry[]): void => {
+  if (!Array.isArray(entries) || entries.length === 0) return;
+  const deltas = entries.reduce<Record<string, number>>((acc, entry) => {
+    const [key, delta] = typeof entry === 'string' ? [entry, 1] : entry;
+    if (!key) return acc;
+    const safeDelta = normalizeDelta(delta);
+    if (safeDelta === 0) return acc;
+    return {
+      ...acc,
+      [key]: (acc[key] || 0) + safeDelta,
+    };
+  }, {});
+  const deltaKeys = Object.keys(deltas);
+  if (deltaKeys.length === 0) return;
+  const nextCounts = deltaKeys.reduce<Record<string, number>>((acc, key) => ({
+    ...acc,
+    [key]: (acc[key] || 0) + (deltas[key] || 0),
+  }), state.counts);
   state = { ...state, counts: nextCounts };
 };
 

@@ -6,7 +6,7 @@ import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { sumControlledUsageKw } from '../plan/planUsage';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { aggregateAndPruneHistory } from '../core/powerTracker';
-import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { addPerfDuration, incPerfCounter, incPerfCounters } from '../utils/perfCounters';
 
 export type PowerSampleRebuildState = {
   lastMs: number;
@@ -198,15 +198,39 @@ const buildPostRebuildState = (
   pendingReason: undefined,
 });
 
+const withPendingInputs = (
+  snapshot: PowerSampleRebuildState,
+  currentPowerW: number | undefined,
+  softLimitKw: number | undefined,
+  pendingReason: string,
+): PowerSampleRebuildState => ({
+  ...snapshot,
+  pendingPowerW: typeof currentPowerW === 'number' ? currentPowerW : snapshot.pendingPowerW,
+  pendingSoftLimitKw: typeof softLimitKw === 'number' ? softLimitKw : snapshot.pendingSoftLimitKw,
+  pendingReason,
+});
+
+const clearPendingState = (snapshot: PowerSampleRebuildState): PowerSampleRebuildState => ({
+  ...snapshot,
+  pending: undefined,
+  pendingReason: undefined,
+  pendingPowerW: undefined,
+  pendingSoftLimitKw: undefined,
+});
+
 const recordPowerSampleRebuildRequest = (reason: string): void => {
-  incPerfCounter('plan_rebuild_requested_total');
-  incPerfCounter('plan_rebuild_requested.power_sample_total');
+  incPerfCounters([
+    'plan_rebuild_requested_total',
+    'plan_rebuild_requested.power_sample_total',
+  ]);
   incReasonCounter('plan_rebuild_requested.power_sample_reason', reason);
 };
 
 const recordPowerSampleRebuildExecution = (reason: string): void => {
-  incPerfCounter('plan_rebuild_execute_total');
-  incPerfCounter('plan_rebuild_execute.power_sample_total');
+  incPerfCounters([
+    'plan_rebuild_execute_total',
+    'plan_rebuild_execute.power_sample_total',
+  ]);
   incReasonCounter('plan_rebuild_execute.power_sample_reason', reason);
 };
 
@@ -260,9 +284,11 @@ export function schedulePlanRebuildFromPowerSample(params: {
   });
 
   if (!decision.shouldRebuild) {
-    incPerfCounter('plan_rebuild_skipped_total');
-    incPerfCounter('plan_rebuild_skipped_insignificant_total');
-    incPerfCounter('plan_rebuild_skipped_reason.stable_total');
+    incPerfCounters([
+      'plan_rebuild_skipped_total',
+      'plan_rebuild_skipped_insignificant_total',
+      'plan_rebuild_skipped_reason.stable_total',
+    ]);
     // Skip rebuild, but don't update lastMs or state, so we stay ready.
     return Promise.resolve();
   }
@@ -278,11 +304,8 @@ export function schedulePlanRebuildFromPowerSample(params: {
 
   if (elapsedMs >= minIntervalMs) {
     const nextState = {
-      ...state,
+      ...clearPendingState(state),
       lastMs: now,
-      pendingPowerW: undefined,
-      pendingSoftLimitKw: undefined,
-      pendingReason: undefined,
     };
     setState(nextState);
     return performRebuild(nextState, triggerReason);
@@ -302,28 +325,23 @@ export function schedulePlanRebuildFromPowerSample(params: {
             logError(error as Error);
           })
           .finally(() => {
-            setState({ ...getState(), pending: undefined, pendingReason: undefined });
+            const latest = getState();
+            setState(clearPendingState(latest));
             resolve();
           });
       }, waitMs);
+      const latest = getState();
       setState({
-        ...getState(),
+        ...withPendingInputs(latest, currentPowerW, softLimitKw, triggerReason),
         timer,
-        pendingPowerW: typeof currentPowerW === 'number' ? currentPowerW : state.pendingPowerW,
-        pendingSoftLimitKw: typeof softLimitKw === 'number' ? softLimitKw : state.pendingSoftLimitKw,
-        pendingReason: triggerReason,
       });
     });
     setState({ ...getState(), pending });
     return pending;
   }
   incPerfCounter('plan_rebuild_pending_coalesced_total');
-  setState({
-    ...getState(),
-    pendingPowerW: typeof currentPowerW === 'number' ? currentPowerW : state.pendingPowerW,
-    pendingSoftLimitKw: typeof softLimitKw === 'number' ? softLimitKw : state.pendingSoftLimitKw,
-    pendingReason: triggerReason,
-  });
+  const latest = getState();
+  setState(withPendingInputs(latest, currentPowerW, softLimitKw, triggerReason));
   return getState().pending ?? Promise.resolve();
 }
 

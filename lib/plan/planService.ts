@@ -35,7 +35,7 @@ type PlanChangeSet = {
   metaChanged: boolean;
 };
 
-type PlanSnapshotWriteReason = 'action_changed' | 'meta_only';
+type PlanSnapshotWriteReason = 'action_changed' | 'detail_changed' | 'meta_only';
 type PelsStatusWriteReason = 'initial' | 'action_changed' | 'throttle';
 
 export class PlanService {
@@ -153,8 +153,13 @@ export class PlanService {
   }
 
   private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): void {
-    if (!changes.actionChanged && !changes.metaChanged) return;
-    const reason: PlanSnapshotWriteReason = changes.actionChanged ? 'action_changed' : 'meta_only';
+    if (!changes.actionChanged && !changes.detailChanged && !changes.metaChanged) return;
+    let reason: PlanSnapshotWriteReason = 'meta_only';
+    if (changes.actionChanged) {
+      reason = 'action_changed';
+    } else if (changes.detailChanged) {
+      reason = 'detail_changed';
+    }
 
     const writeStart = Date.now();
     this.deps.homey.settings.set('device_plan_snapshot', plan);
