@@ -1,4 +1,4 @@
-import { incPerfCounter } from '../utils/perfCounters';
+import { incPerfCounters } from '../utils/perfCounters';
 
 export async function startAppServices(params: {
   loadPowerTracker: () => void;
@@ -40,8 +40,10 @@ export async function startAppServices(params: {
   startHeartbeat();
   void updateOverheadToken();
   await refreshTargetDevicesSnapshot();
-  incPerfCounter('plan_rebuild_requested_total');
-  incPerfCounter('plan_rebuild_requested.startup_total');
+  incPerfCounters([
+    'plan_rebuild_requested_total',
+    'plan_rebuild_requested.startup_total',
+  ]);
   await rebuildPlanFromCache();
   setLastNotifiedOperatingMode(getOperatingMode());
   registerFlowCards();

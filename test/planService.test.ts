@@ -85,14 +85,13 @@ describe('PlanService', () => {
     expect(planUpdatedCalls).toHaveLength(2);
   });
 
-  it('throttles meta-only snapshot writes and flushes later without realtime event', async () => {
+  it('flushes throttled meta-only snapshot without requiring another rebuild', async () => {
     const settingsSet = jest.fn();
     const realtime = jest.fn().mockResolvedValue(undefined);
     const planEngine = {
       buildDevicePlanSnapshot: jest
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.0 }))
-        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.2 }))
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.2 })),
       computeDynamicSoftLimit: jest.fn(() => 0),
       computeShortfallThreshold: jest.fn(() => 0),
@@ -133,7 +132,6 @@ describe('PlanService', () => {
     expect(realtimeAfterThrottle).toHaveLength(2);
 
     jest.advanceTimersByTime(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS + 1);
-    await service.rebuildPlanFromCache();
 
     const snapshotWritesAfterFlush = settingsSet.mock.calls
       .filter((call: unknown[]) => call[0] === 'device_plan_snapshot')

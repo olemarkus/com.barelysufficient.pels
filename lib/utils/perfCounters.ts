@@ -30,22 +30,21 @@ export const incPerfCounter = (key: string, delta = 1): void => {
 
 export const incPerfCounters = (entries: PerfCounterEntry[]): void => {
   if (!Array.isArray(entries) || entries.length === 0) return;
-  const deltas = entries.reduce<Record<string, number>>((acc, entry) => {
+  const deltas = entries.reduce<Map<string, number>>((acc, entry) => {
     const [key, delta] = typeof entry === 'string' ? [entry, 1] : entry;
     if (!key) return acc;
     const safeDelta = normalizeDelta(delta);
     if (safeDelta === 0) return acc;
-    return {
-      ...acc,
-      [key]: (acc[key] || 0) + safeDelta,
-    };
-  }, {});
-  const deltaKeys = Object.keys(deltas);
+    const existing = acc.get(key) || 0;
+    acc.set(key, existing + safeDelta);
+    return acc;
+  }, new Map());
+  const deltaKeys = Array.from(deltas.keys());
   if (deltaKeys.length === 0) return;
-  const nextCounts = deltaKeys.reduce<Record<string, number>>((acc, key) => ({
-    ...acc,
-    [key]: (acc[key] || 0) + (deltas[key] || 0),
-  }), state.counts);
+  const allKeys = new Set([...Object.keys(state.counts), ...deltaKeys]);
+  const nextCounts = Object.fromEntries(
+    Array.from(allKeys).map((key) => [key, (state.counts[key] || 0) + (deltas.get(key) || 0)]),
+  );
   state = { ...state, counts: nextCounts };
 };
 

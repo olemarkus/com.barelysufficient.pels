@@ -363,4 +363,54 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(state.pendingPowerW).toBeUndefined();
     expect(state.pendingSoftLimitKw).toBeUndefined();
   });
+
+  it('cancels pending timer and performs an immediate rebuild when interval is exceeded', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 1000, lastSoftLimitKw: 9 };
+    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const logError = jest.fn();
+
+    const first = schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 1000,
+      maxIntervalMs: 10000,
+      rebuildPlanFromCache,
+      logError,
+      currentPowerW: 1100,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: 7.9,
+    });
+
+    expect(state.pending).toBeDefined();
+    state = { ...state, lastMs: Date.now() - 2000 };
+
+    const second = schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 1000,
+      maxIntervalMs: 10000,
+      rebuildPlanFromCache,
+      logError,
+      currentPowerW: 1300,
+      limitKw: 10,
+      softLimitKw: 8.8,
+      headroomKw: 7.4,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    await second;
+    await first;
+
+    jest.advanceTimersByTime(1000);
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(logError).not.toHaveBeenCalled();
+    expect(state.pending).toBeUndefined();
+    expect(state.timer).toBeUndefined();
+  });
 });
