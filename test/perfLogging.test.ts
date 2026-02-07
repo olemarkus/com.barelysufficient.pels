@@ -63,6 +63,27 @@ describe('startPerfLogger', () => {
     stop();
   });
 
+  it('computes rebuildSkipRate against power samples', () => {
+    const log = jest.fn();
+    const stop = startPerfLogger({
+      isEnabled: () => true,
+      log,
+      intervalMs: 1000,
+    });
+
+    incPerfCounter('power_sample_total', 4);
+    incPerfCounter('plan_rebuild_skipped_total', 2);
+    incPerfCounter('plan_rebuild_total', 1);
+    jest.advanceTimersByTime(1000);
+
+    const message = log.mock.calls[1][0] as string;
+    const jsonStart = message.indexOf('{');
+    const payload = JSON.parse(message.slice(jsonStart)) as { summary?: { rebuildSkipRate?: number } };
+    expect(payload.summary?.rebuildSkipRate).toBe(0.5);
+
+    stop();
+  });
+
   it('skips logging when disabled', () => {
     const log = jest.fn();
     const stop = startPerfLogger({
