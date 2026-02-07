@@ -1,5 +1,6 @@
 import { PriceLevel } from '../price/priceLevels';
 import type { DevicePlan } from '../plan/planTypes';
+import type { DevicePlanDevice } from '../plan/planTypes';
 
 export function buildPelsStatus(params: {
   plan: DevicePlan;
@@ -71,34 +72,59 @@ function hasPrices(value: unknown): value is { prices: Array<{ total: number }> 
   return Array.isArray(record.prices) && record.prices.length > 0;
 }
 
+type LimitSource = DevicePlan['meta']['softLimitSource'];
+
+type SharedLimitParams = {
+  plan: DevicePlan;
+  hasLimitDrivenShedDevices: boolean;
+  headroomNegative: boolean;
+};
+
+type HourlyLimitParams = SharedLimitParams & {
+  limitSource: LimitSource;
+  capacitySourceActive: boolean;
+};
+
+type DailyLimitParams = SharedLimitParams & {
+  dailySourceActive: boolean;
+};
+
 function hasShedReason(plan: DevicePlan, reasonFragment: string): boolean {
   return plan.devices.some((d) => d.plannedState === 'shed' && d.reason?.includes(reasonFragment));
 }
 
-function isDailySourceActive(limitSource: DevicePlan['meta']['softLimitSource']): boolean {
+function isDailySourceActive(limitSource: LimitSource): boolean {
   return limitSource === 'daily' || limitSource === 'both';
 }
 
-function isCapacitySourceActive(limitSource: DevicePlan['meta']['softLimitSource']): boolean {
+function isCapacitySourceActive(limitSource: LimitSource): boolean {
   return limitSource === 'capacity' || limitSource === 'both';
 }
 
-function resolveHourlyLimited(params: {
-  plan: DevicePlan;
-  hasShedDevices: boolean;
-  headroomNegative: boolean;
-  limitSource: DevicePlan['meta']['softLimitSource'];
-  capacitySourceActive: boolean;
-}): boolean {
+function isRestoreHoldShedReason(reason: string | undefined): boolean {
+  if (!reason) return false;
+  return reason.startsWith('cooldown (restore') || reason === 'restore throttled';
+}
+
+function isLimitDrivenShedDevice(device: DevicePlanDevice): boolean {
+  if (device.plannedState !== 'shed') return false;
+  return !isRestoreHoldShedReason(device.reason);
+}
+
+function hasLimitDrivenShedDevices(plan: DevicePlan): boolean {
+  return plan.devices.some((d) => isLimitDrivenShedDevice(d));
+}
+
+function resolveHourlyLimited(params: HourlyLimitParams): boolean {
   const {
     plan,
-    hasShedDevices,
+    hasLimitDrivenShedDevices,
     headroomNegative,
     limitSource,
     capacitySourceActive,
   } = params;
   const hourlyLimitedByReason = hasShedReason(plan, 'hourly budget') || hasShedReason(plan, 'capacity');
-  const hourlyLimitedByShedState = hasShedDevices && capacitySourceActive;
+  const hourlyLimitedByShedState = hasLimitDrivenShedDevices && capacitySourceActive;
   const hourlyLimitedByNegativeHeadroom = headroomNegative && (limitSource ? capacitySourceActive : true);
   return Boolean(plan.meta.hourlyBudgetExhausted)
     || hourlyLimitedByReason
@@ -106,35 +132,30 @@ function resolveHourlyLimited(params: {
     || hourlyLimitedByNegativeHeadroom;
 }
 
-function resolveDailyLimited(params: {
-  plan: DevicePlan;
-  hasShedDevices: boolean;
-  headroomNegative: boolean;
-  dailySourceActive: boolean;
-}): boolean {
-  const { plan, hasShedDevices, headroomNegative, dailySourceActive } = params;
+function resolveDailyLimited(params: DailyLimitParams): boolean {
+  const { plan, hasLimitDrivenShedDevices, headroomNegative, dailySourceActive } = params;
   const dailyLimitedByReason = hasShedReason(plan, 'daily budget');
-  const dailyLimitedByShedState = hasShedDevices && dailySourceActive;
+  const dailyLimitedByShedState = hasLimitDrivenShedDevices && dailySourceActive;
   const dailyLimitedByNegativeHeadroom = headroomNegative && dailySourceActive;
   return dailyLimitedByReason || dailyLimitedByShedState || dailyLimitedByNegativeHeadroom;
 }
 
 function resolveLimitReason(plan: DevicePlan): 'none' | 'hourly' | 'daily' | 'both' {
-  const hasShedDevices = plan.devices.some((d) => d.plannedState === 'shed');
+  const hasShedDevices = hasLimitDrivenShedDevices(plan);
   const headroomNegative = plan.meta.headroomKw !== null && plan.meta.headroomKw < 0;
   const limitSource = plan.meta.softLimitSource;
   const dailySourceActive = isDailySourceActive(limitSource);
   const capacitySourceActive = isCapacitySourceActive(limitSource);
   const hourlyLimited = resolveHourlyLimited({
     plan,
-    hasShedDevices,
+    hasLimitDrivenShedDevices: hasShedDevices,
     headroomNegative,
     limitSource,
     capacitySourceActive,
   });
   const dailyLimitedResolved = resolveDailyLimited({
     plan,
-    hasShedDevices,
+    hasLimitDrivenShedDevices: hasShedDevices,
     headroomNegative,
     dailySourceActive,
   });
