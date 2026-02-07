@@ -1,4 +1,4 @@
-import { addPerfDuration, getPerfSnapshot, incPerfCounter } from '../lib/utils/perfCounters';
+import { addPerfDuration, getPerfSnapshot, incPerfCounter, incPerfCounters } from '../lib/utils/perfCounters';
 
 describe('perfCounters', () => {
   it('increments counters and durations', () => {
@@ -24,5 +24,19 @@ describe('perfCounters', () => {
     expect(afterDuration.count).toBe(beforeDuration.count + 3);
     expect(afterDuration.totalMs).toBeCloseTo(beforeDuration.totalMs + 15, 5);
     expect(afterDuration.maxMs).toBeGreaterThanOrEqual(beforeDuration.maxMs);
+  });
+
+  it('increments counters in a single batch', () => {
+    const before = getPerfSnapshot();
+    incPerfCounters([
+      'perf.batch.counter',
+      ['perf.batch.counter', 2],
+      ['', 5],
+      ['perf.batch.counter', Number.NaN],
+    ]);
+    const after = getPerfSnapshot();
+    const beforeCount = before.counts['perf.batch.counter'] || 0;
+    const afterCount = after.counts['perf.batch.counter'] || 0;
+    expect(afterCount).toBe(beforeCount + 3);
   });
 });
