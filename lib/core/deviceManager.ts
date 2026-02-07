@@ -13,7 +13,7 @@ type HomeyApiConstructor = {
 const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
-const SUPPORTED_DEVICE_CLASSES = new Set(['thermostat', 'heater', 'socket', 'heatpump', 'airconditioning']);
+const SUPPORTED_DEVICE_CLASSES = new Set(['thermostat', 'heater', 'socket', 'heatpump', 'airconditioning', 'airtreatment']);
 const POWER_CAPABILITY_PREFIXES = ['measure_power', 'meter_power'] as const;
 const POWER_CAPABILITY_SET = new Set(POWER_CAPABILITY_PREFIXES);
 const MIN_SIGNIFICANT_POWER_W = 5;

@@ -323,6 +323,13 @@ export class PlanExecutor {
   }
 
   private async turnOffDevice(deviceId: string, name: string, reason?: string): Promise<void> {
+    const snapshotEntry = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
+    const hasOnOff = snapshotEntry?.capabilities?.includes('onoff') === true;
+    const isAirtreatment = (snapshotEntry?.deviceClass || '').trim().toLowerCase() === 'airtreatment';
+    if (!hasOnOff && isAirtreatment) {
+      this.logDebug(`Capacity: skip turn_off for ${name}, device has no onoff capability`);
+      return;
+    }
     const now = Date.now();
     try {
       await this.deviceManager.setCapability(deviceId, 'onoff', false);
