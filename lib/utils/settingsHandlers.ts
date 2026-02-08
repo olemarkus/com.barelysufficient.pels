@@ -16,6 +16,7 @@ import {
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
   HOMEY_PRICES_CURRENCY,
+  NORWAY_PRICE_MODEL,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
   MANAGED_DEVICES,
@@ -115,6 +116,9 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       await refreshPriceDerivedState();
     },
     [HOMEY_PRICES_CURRENCY]: async () => {
+      await refreshPriceDerivedState();
+    },
+    [NORWAY_PRICE_MODEL]: async () => {
       await refreshPriceDerivedState();
     },
     price_threshold_percent: async () => {

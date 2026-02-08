@@ -10,6 +10,8 @@ export type PriceEntry = {
   vatMultiplier?: number;
   electricitySupportExVat?: number;
   electricitySupport?: number;
+  norgesprisAdjustmentExVat?: number;
+  norgesprisAdjustment?: number;
   totalExVat?: number;
   isCheap?: boolean;
   isExpensive?: boolean;

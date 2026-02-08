@@ -1,5 +1,10 @@
 import Homey from 'homey';
-import { getDateKeyInTimeZone, getHourStartInTimeZone } from '../utils/dateUtils';
+import {
+  getDateKeyInTimeZone,
+  getHourStartInTimeZone,
+  getMonthStartInTimeZone,
+  getZonedParts,
+} from '../utils/dateUtils';
 import {
   COMBINED_PRICES,
   FLOW_PRICES_TODAY,
@@ -7,6 +12,7 @@ import {
   HOMEY_PRICES_CURRENCY,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
+  NORWAY_PRICE_MODEL,
   PRICE_SCHEME,
 } from '../utils/settingsKeys';
 import {
@@ -33,6 +39,9 @@ import {
   storeFlowPriceData as storeFlowPriceDataHelper,
 } from './priceServiceFlowHelpers';
 import { buildCombinedPricePayload } from './priceServiceCombined';
+import {
+  DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH,
+} from './norwayPriceDefaults';
 import { buildCombinedHourlyPricesNorway } from './priceServiceNorway';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
@@ -248,12 +257,22 @@ export default class PriceService {
   private getCombinedHourlyPricesNorway(): CombinedHourlyPrice[] {
     const priceArea = this.getPriceArea();
     const gridTariffSettings = this.getGridTariffSettings();
+    const norwayPriceModel = this.getNorwayPriceModel();
+    const timeZone = this.homey.clock.getTimezone();
+    const currentMonthKey = getDateKeyInTimeZone(new Date(), timeZone).slice(0, 7);
     return buildCombinedHourlyPricesNorway({
       spotPrices: this.getSettingValue('electricity_prices'),
       gridTariffData: this.getSettingValue('nettleie_data'),
       providerSurchargeIncVat: this.getNumberSetting('provider_surcharge', 0),
       priceArea,
       countyCode: gridTariffSettings.countyCode,
+      tariffGroup: gridTariffSettings.tariffGroup,
+      norwayPriceModel,
+      monthUsageKwh: norwayPriceModel === 'norgespris' ? this.getCurrentMonthUsageKwh() : 0,
+      hourlyUsageEstimateKwh: norwayPriceModel === 'norgespris' ? this.getHourlyUsageEstimateKwh() : 0,
+      now: new Date(),
+      currentMonthKey,
+      timeZone,
     });
   }
 
@@ -337,13 +356,19 @@ export default class PriceService {
 
   private formatNorwayPriceInfo(current: CombinedHourlyPrice): string {
     const format = (value: number | undefined) => (value ?? 0).toFixed(1);
+    const hasNorgesprisAdjustment = typeof current.norgesprisAdjustment === 'number' && Number.isFinite(current.norgesprisAdjustment);
+    const norgesprisMagnitude = Math.abs(current.norgesprisAdjustment ?? 0);
+    const norgesprisOperator = (current.norgesprisAdjustment ?? 0) < 0 ? '-' : '+';
+    const supportSegment = hasNorgesprisAdjustment
+      ? ` ${norgesprisOperator} norgespris adjustment ${norgesprisMagnitude.toFixed(1)}`
+      : ` - electricity support ${format(current.electricitySupport)}`;
     return `${current.totalPrice.toFixed(1)} øre/kWh (spot price ${format(current.spotPriceExVat)} ex VAT`
       + ` + grid tariff ${format(current.gridTariffExVat)}`
       + ` + surcharge ${format(current.providerSurchargeExVat)}`
       + ` + consumption tax ${format(current.consumptionTaxExVat)}`
       + ` + Enova fee ${format(current.enovaFeeExVat)}`
       + ` + VAT ${format(current.vatAmount)}`
-      + ` - electricity support ${format(current.electricitySupport)})`;
+      + `${supportSegment})`;
   }
 
   private getPriceArea(): string {
@@ -361,6 +386,71 @@ export default class PriceService {
       ? tariffGroupSetting
       : 'Husholdning';
     return { countyCode, organizationNumber, tariffGroup };
+  }
+
+  private getNorwayPriceModel(): 'stromstotte' | 'norgespris' {
+    const raw = this.getSettingValue(NORWAY_PRICE_MODEL);
+    return raw === 'norgespris' ? 'norgespris' : 'stromstotte';
+  }
+
+  private getCurrentMonthUsageKwh(): number {
+    const raw = this.getSettingValue('power_tracker_state');
+    if (!raw || typeof raw !== 'object') return 0;
+    const tracker = raw as { dailyTotals?: unknown; buckets?: unknown };
+    const timeZone = this.homey.clock.getTimezone();
+    const now = new Date();
+    const monthStartMs = getMonthStartInTimeZone(now, timeZone);
+    const { year, month } = getZonedParts(now, timeZone);
+    const nextMonthProbe = new Date(Date.UTC(year, month, 15, 12, 0, 0));
+    const monthEndMs = getMonthStartInTimeZone(nextMonthProbe, timeZone);
+    const hasFiniteMonthEnd = Number.isFinite(monthEndMs);
+
+    let usageKwh = 0;
+    const bucketDayKeys = new Set<string>();
+    const dailyTotals = tracker.dailyTotals;
+    const buckets = tracker.buckets;
+    if (buckets && typeof buckets === 'object') {
+      Object.entries(buckets as Record<string, unknown>).forEach(([isoHour, value]) => {
+        if (typeof value !== 'number' || !Number.isFinite(value)) return;
+        const date = new Date(isoHour);
+        const ts = date.getTime();
+        if (!Number.isFinite(ts)) return;
+        if (ts < monthStartMs) return;
+        if (hasFiniteMonthEnd && ts >= monthEndMs) return;
+        usageKwh += value;
+        bucketDayKeys.add(isoHour.slice(0, 10));
+      });
+    }
+
+    // Daily totals are keyed by UTC date (formatDateUtc in powerTracker). Only include full UTC days
+    // wholly inside the local-month window to avoid month-boundary misclassification.
+    if (dailyTotals && typeof dailyTotals === 'object') {
+      Object.entries(dailyTotals as Record<string, unknown>).forEach(([dateKey, value]) => {
+        if (typeof value !== 'number' || !Number.isFinite(value)) return;
+        if (bucketDayKeys.has(dateKey)) return;
+        const dayStartUtcMs = Date.parse(`${dateKey}T00:00:00.000Z`);
+        if (!Number.isFinite(dayStartUtcMs)) return;
+        const dayEndUtcMs = dayStartUtcMs + 24 * 60 * 60 * 1000;
+        const isFullyInsideMonth = dayStartUtcMs >= monthStartMs
+          && (!hasFiniteMonthEnd || dayEndUtcMs <= monthEndMs);
+        if (isFullyInsideMonth) {
+          usageKwh += value;
+        }
+      });
+    }
+
+    return usageKwh;
+  }
+
+  private getHourlyUsageEstimateKwh(): number {
+    const raw = this.getSettingValue('power_tracker_state');
+    if (!raw || typeof raw !== 'object') return DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH;
+    const tracker = raw as { lastPowerW?: unknown };
+    const lastPowerW = tracker.lastPowerW;
+    if (typeof lastPowerW === 'number' && Number.isFinite(lastPowerW) && lastPowerW > 0) {
+      return lastPowerW / 1000;
+    }
+    return DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH;
   }
 
   private isCurrentHourAtLevel(level: 'cheap' | 'expensive'): boolean {

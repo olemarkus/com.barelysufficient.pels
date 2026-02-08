@@ -17,6 +17,7 @@ export const DAILY_BUDGET_RESET = 'daily_budget_reset';
 export const COMBINED_PRICES = 'combined_prices';
 export const DEBUG_LOGGING_TOPICS = 'debug_logging_topics';
 export const PRICE_SCHEME = 'price_scheme';
+export const NORWAY_PRICE_MODEL = 'norway_price_model';
 export const FLOW_PRICES_TODAY = 'flow_prices_today';
 export const FLOW_PRICES_TOMORROW = 'flow_prices_tomorrow';
 export const HOMEY_PRICES_TODAY = 'homey_prices_today';

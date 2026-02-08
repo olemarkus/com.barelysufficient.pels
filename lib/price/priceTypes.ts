@@ -10,6 +10,8 @@ export type CombinedHourlyPrice = {
   vatAmount?: number;
   electricitySupportExVat?: number;
   electricitySupport?: number;
+  norgesprisAdjustmentExVat?: number;
+  norgesprisAdjustment?: number;
   totalExVat?: number;
 };
 
