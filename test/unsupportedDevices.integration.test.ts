@@ -11,28 +11,19 @@ jest.useFakeTimers({ doNotFake: ['nextTick', 'Date'] });
 const buildVentilationApiDevice = (overrides?: Partial<{
     id: string;
     name: string;
-    targetTemperature: number;
-    measureTemperature: number;
+    onoff: boolean;
     class: string;
     capabilities: string[];
 }>) => ({
     id: overrides?.id ?? 'vent-1',
-    name: overrides?.name ?? 'Ventilation',
-    class: overrides?.class ?? 'thermostat',
+    name: overrides?.name ?? 'Ventilation Relay',
+    class: overrides?.class ?? 'socket',
     virtualClass: null,
     capabilities: overrides?.capabilities ?? [
-        'target_temperature',
-        'measure_temperature',
+        'onoff',
     ],
     capabilitiesObj: {
-        target_temperature: {
-            id: 'target_temperature',
-            value: overrides?.targetTemperature ?? 20,
-            units: '°C',
-            min: 12,
-            max: 30,
-        },
-        measure_temperature: { id: 'measure_temperature', value: overrides?.measureTemperature ?? 20.5, units: '°C' },
+        onoff: { id: 'onoff', value: overrides?.onoff ?? true },
     },
     settings: {},
 });

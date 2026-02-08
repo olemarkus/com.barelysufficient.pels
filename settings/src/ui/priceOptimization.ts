@@ -5,11 +5,7 @@ import { getSetting, setSetting } from './homey';
 import { logSettingsError } from './logging';
 import { resolveManagedState, defaultPriceOptimizationConfig, state } from './state';
 import { showToastError } from './toast';
-import { supportsPowerDevice } from './deviceUtils';
-
-const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
-  device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
-);
+import { supportsTemperatureDevice } from './deviceUtils';
 
 export const loadPriceOptimizationSettings = async () => {
   const settings = await getSetting('price_optimization_settings');
@@ -90,8 +86,7 @@ export const renderPriceOptimization = (devices: TargetDeviceSnapshot[]) => {
     const config = state.priceOptimizationSettings[device.id];
     return resolveManagedState(device.id)
       && config?.enabled === true
-      && supportsTemperatureDevice(device)
-      && supportsPowerDevice(device);
+      && supportsTemperatureDevice(device);
   });
 
   if (enabledDevices.length === 0) {

@@ -191,7 +191,7 @@ describe('device settings initial load guard', () => {
     expect(savePriceOptimizationSettings).toHaveBeenCalledTimes(1);
   });
 
-  it('disables feature toggles for devices without power capability', async () => {
+  it('allows managed and price toggles, but keeps capacity toggle disabled, for temperature devices without power capability', async () => {
     const {
       managedCheckbox,
       controllableCheckbox,
@@ -202,9 +202,9 @@ describe('device settings initial load guard', () => {
       deviceOverrides: { powerCapable: false },
     });
 
-    expect(managedCheckbox.checked).toBe(false);
-    expect(managedCheckbox.disabled).toBe(true);
+    expect(managedCheckbox.checked).toBe(true);
+    expect(managedCheckbox.disabled).toBe(false);
     expect(controllableCheckbox.disabled).toBe(true);
-    expect(priceOptCheckbox.disabled).toBe(true);
+    expect(priceOptCheckbox.disabled).toBe(false);
   });
 });
