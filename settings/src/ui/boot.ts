@@ -6,6 +6,7 @@ import {
   planRefreshButton,
   priceSettingsForm,
   priceSchemeSelect,
+  norwayPriceModelSelect,
   priceAreaSelect,
   providerSurchargeInput,
   priceThresholdInput,
@@ -38,6 +39,7 @@ import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DEBUG_LOGGING_TOPICS,
+  NORWAY_PRICE_MODEL,
   OPERATING_MODE_SETTING,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
@@ -57,6 +59,7 @@ import {
   savePriceSettings,
   saveGridTariffSettings,
   updateGridCompanyOptions,
+  updatePriceSchemeUiFromSelection,
 } from './prices';
 import { loadPriceOptimizationSettings, renderPriceOptimization } from './priceOptimization';
 import {
@@ -219,7 +222,10 @@ const initRealtimeListeners = () => {
       refreshPricesIfVisible();
     }
 
-    if (key === PRICE_SCHEME) {
+    if (
+      key === PRICE_SCHEME
+      || key === NORWAY_PRICE_MODEL
+    ) {
       loadPriceSettings().catch((error) => {
         void logSettingsError('Failed to load price settings', error, 'settings.set');
       });
@@ -315,7 +321,14 @@ const initPriceHandlers = () => {
       await showToastError(error, 'Failed to save price settings.');
     }
   };
-  priceSchemeSelect?.addEventListener('change', autoSavePriceSettings);
+  priceSchemeSelect?.addEventListener('change', () => {
+    updatePriceSchemeUiFromSelection();
+    void autoSavePriceSettings();
+  });
+  norwayPriceModelSelect?.addEventListener('change', () => {
+    updatePriceSchemeUiFromSelection();
+    void autoSavePriceSettings();
+  });
   priceAreaSelect?.addEventListener('change', autoSavePriceSettings);
   providerSurchargeInput?.addEventListener('change', autoSavePriceSettings);
   priceThresholdInput?.addEventListener('change', autoSavePriceSettings);

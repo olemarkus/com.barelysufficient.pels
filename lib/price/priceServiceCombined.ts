@@ -13,6 +13,8 @@ type CombinedPriceEntry = {
   vatAmount?: number;
   electricitySupportExVat?: number;
   electricitySupport?: number;
+  norgesprisAdjustmentExVat?: number;
+  norgesprisAdjustment?: number;
   totalExVat?: number;
   isCheap: boolean;
   isExpensive: boolean;
@@ -86,6 +88,8 @@ export const buildCombinedPricePayload = (params: {
       ...(hasNumber(p.vatAmount) ? { vatAmount: p.vatAmount } : {}),
       ...(hasNumber(p.electricitySupportExVat) ? { electricitySupportExVat: p.electricitySupportExVat } : {}),
       ...(hasNumber(p.electricitySupport) ? { electricitySupport: p.electricitySupport } : {}),
+      ...(hasNumber(p.norgesprisAdjustmentExVat) ? { norgesprisAdjustmentExVat: p.norgesprisAdjustmentExVat } : {}),
+      ...(hasNumber(p.norgesprisAdjustment) ? { norgesprisAdjustment: p.norgesprisAdjustment } : {}),
       ...(hasNumber(p.totalExVat) ? { totalExVat: p.totalExVat } : {}),
     };
     return { ...baseEntry, ...extra };

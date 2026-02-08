@@ -564,6 +564,14 @@
           <h4>Spot price (Norway)</h4>
           <form id="price-norway-form" class="form-grid">
             <label class="field">
+              <span class="field__label">Norway pricing model</span>
+              <select id="norway-price-model" name="norway_price_model">
+                <option value="stromstotte" selected>Electricity Subsidy Scheme (Strømstøtte)</option>
+                <option value="norgespris">Norway Price (Norgespris)</option>
+              </select>
+              <small class="field__hint">Choose whether Norway prices use the Electricity Subsidy Scheme (Strømstøtte) or Norway Price (Norgespris).</small>
+            </label>
+            <label class="field">
               <span class="field__label">Price area</span>
               <select id="price-area" name="price_area">
                 <option value="NO1">NO1 - Oslo / East Norway</option>
@@ -579,6 +587,13 @@
               <input type="number" id="provider-surcharge" name="provider_surcharge" step="0.1" min="-100" max="100" value="0">
               <small class="field__hint">Your electricity provider's surcharge on top of the spot price, including VAT. Can be negative if you have a discount (check your contract).</small>
             </label>
+            <div class="field" id="norgespris-rules-row" hidden>
+              <span class="field__label">Norway Price (Norgespris) rules</span>
+              <small class="field__hint">
+                Official rules are applied automatically: fixed spot target 50 øre/kWh incl. VAT (40 øre/kWh ex. VAT).
+                Monthly eligibility cap is based on tariff group: household 5000 kWh, cabin/holiday home 1000 kWh.
+              </small>
+            </div>
           </form>
           </div>
           <h4>Price signal</h4>

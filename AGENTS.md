@@ -56,6 +56,7 @@ npm install          # Install dependencies
 npx lint-staged      # Pre-commit hook: ESLint + type check on staged files
 npm test             # Full test suite (pre-commit)
 npm run ci           # Run regularly during implementation
+npm run test:unit:tz # Run timezone regression suites (host TZ invariance)
 npm run validate     # Validate Homey manifest (safe)
 npx tsc --noEmit     # Type check (extra safety if needed)
 homey app validate   # Allowed Homey CLI command (updates app.json on compose changes)

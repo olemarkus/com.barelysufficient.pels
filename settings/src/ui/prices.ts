@@ -3,7 +3,9 @@ import {
   priceSchemeSelect,
   priceSchemeNote,
   priceNorwaySettings,
+  norwayPriceModelSelect,
   providerSurchargeInput,
+  norgesprisRulesRow,
   priceThresholdInput,
   priceMinDiffLabel,
   priceMinDiffInput,
@@ -40,6 +42,7 @@ import {
   HOMEY_PRICES_CURRENCY,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
+  NORWAY_PRICE_MODEL,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
@@ -49,6 +52,7 @@ import { getTimeAgo } from './utils';
 import { getDateKeyInTimeZone } from './timezone';
 
 type PriceScheme = 'norway' | 'flow' | 'homey';
+type NorwayPriceModel = 'stromstotte' | 'norgespris';
 
 const normalizePriceSchemeSetting = (value: unknown): PriceScheme => {
   if (value === 'norway' || value === 'flow' || value === 'homey') return value;
@@ -59,6 +63,10 @@ const normalizePriceSchemeSelection = (value: unknown): PriceScheme => {
   if (value === 'norway' || value === 'flow' || value === 'homey') return value;
   return 'homey';
 };
+
+const normalizeNorwayPriceModel = (value: unknown): NorwayPriceModel => (
+  value === 'norgespris' ? 'norgespris' : 'stromstotte'
+);
 
 type GridTariffEntry = {
   time: number;
@@ -76,11 +84,19 @@ type GridTariffEntry = {
 
 const setNorwayPriceControlsDisabled = (disabled: boolean) => {
   if (priceNorwaySettings) priceNorwaySettings.hidden = disabled;
+  if (norwayPriceModelSelect) norwayPriceModelSelect.disabled = disabled;
   if (priceAreaSelect) priceAreaSelect.disabled = disabled;
   if (providerSurchargeInput) providerSurchargeInput.disabled = disabled;
   if (gridTariffCountySelect) gridTariffCountySelect.disabled = disabled;
   if (gridTariffCompanySelect) gridTariffCompanySelect.disabled = disabled;
   if (gridTariffGroupSelect) gridTariffGroupSelect.disabled = disabled;
+};
+
+const setNorgesprisVisibility = (show: boolean) => {
+  if (!norgesprisRulesRow) return;
+  norgesprisRulesRow.hidden = !show;
+  norgesprisRulesRow.setAttribute('aria-hidden', show ? 'false' : 'true');
+  norgesprisRulesRow.style.display = show ? '' : 'none';
 };
 
 const setRefreshButtonState = (isFlow: boolean, isHomey: boolean) => {
@@ -123,19 +139,27 @@ const setMinDiffLabel = (isExternal: boolean) => {
     : 'Minimum price difference (øre/kWh)';
 };
 
-const applyPriceSchemeUi = (scheme: PriceScheme) => {
+const applyPriceSchemeUi = (scheme: PriceScheme, norwayModel: NorwayPriceModel) => {
   const isFlow = scheme === 'flow';
   const isHomey = scheme === 'homey';
   const isExternal = isFlow || isHomey;
   setNorwayPriceControlsDisabled(isExternal);
+  setNorgesprisVisibility(!isExternal && norwayModel === 'norgespris');
   setRefreshButtonState(isFlow, isHomey);
   setPriceSchemeNote(scheme);
   setSchemeStatusVisibility(isFlow, isHomey);
   setMinDiffLabel(isExternal);
 };
 
+export const updatePriceSchemeUiFromSelection = () => {
+  const scheme = normalizePriceSchemeSelection(priceSchemeSelect?.value || 'homey');
+  const norwayModel = normalizeNorwayPriceModel(norwayPriceModelSelect?.value || 'stromstotte');
+  applyPriceSchemeUi(scheme, norwayModel);
+};
+
 export const loadPriceSettings = async () => {
   const priceScheme = normalizePriceSchemeSelection(await getSetting(PRICE_SCHEME));
+  const norwayPriceModel = normalizeNorwayPriceModel(await getSetting(NORWAY_PRICE_MODEL));
   const priceArea = await getSetting('price_area');
   const providerSurcharge = await getSetting('provider_surcharge');
   const thresholdPercent = await getSetting('price_threshold_percent');
@@ -144,6 +168,9 @@ export const loadPriceSettings = async () => {
 
   if (priceSchemeSelect) {
     priceSchemeSelect.value = priceScheme;
+  }
+  if (norwayPriceModelSelect) {
+    norwayPriceModelSelect.value = norwayPriceModel;
   }
   if (priceAreaSelect) {
     priceAreaSelect.value = typeof priceArea === 'string' ? priceArea : 'NO1';
@@ -161,7 +188,7 @@ export const loadPriceSettings = async () => {
     priceOptimizationEnabledCheckbox.checked = priceOptEnabled !== false;
   }
 
-  applyPriceSchemeUi(priceScheme);
+  applyPriceSchemeUi(priceScheme, norwayPriceModel);
   await refreshFlowStatus(priceScheme);
   await refreshHomeyStatus(priceScheme);
 };
@@ -247,6 +274,7 @@ export const refreshHomeyStatus = async (schemeOverride?: PriceScheme) => {
 
 type PriceSettingsInput = {
   priceScheme: PriceScheme;
+  norwayPriceModel: NorwayPriceModel;
   priceArea: string;
   providerSurcharge: number;
   thresholdPercent: number;
@@ -258,12 +286,23 @@ type PriceOverrideOptions = {
   minDiffOre?: number;
 };
 
+const parseFloatInput = (value: string | undefined, fallback: number): number => {
+  const parsed = Number.parseFloat(value ?? '');
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const parseIntInput = (value: string | undefined, fallback: number): number => {
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 const parsePriceSettingsInputs = (): PriceSettingsInput => ({
   priceScheme: normalizePriceSchemeSelection(priceSchemeSelect?.value || 'homey'),
+  norwayPriceModel: normalizeNorwayPriceModel(norwayPriceModelSelect?.value || 'stromstotte'),
   priceArea: priceAreaSelect?.value || 'NO1',
-  providerSurcharge: parseFloat(providerSurchargeInput?.value || '0') || 0,
-  thresholdPercent: parseInt(priceThresholdInput?.value || '25', 10) || 25,
-  minDiffOre: parseFloat(priceMinDiffInput?.value || '0') || 0,
+  providerSurcharge: parseFloatInput(providerSurchargeInput?.value, 0),
+  thresholdPercent: parseIntInput(priceThresholdInput?.value, 25),
+  minDiffOre: parseFloatInput(priceMinDiffInput?.value, 0),
 });
 
 const validatePriceArea = (priceArea: string) => {
@@ -313,6 +352,7 @@ const applyPriceOverrides = (data: CombinedPriceData, overrides: PriceOverrideOp
 export const savePriceSettings = async () => {
   const {
     priceScheme,
+    norwayPriceModel,
     priceArea,
     providerSurcharge,
     thresholdPercent,
@@ -321,17 +361,21 @@ export const savePriceSettings = async () => {
 
   if (priceScheme === 'norway') {
     validatePriceArea(priceArea);
+    if (norwayPriceModel !== 'stromstotte' && norwayPriceModel !== 'norgespris') {
+      throw new Error('Invalid Norway pricing model.');
+    }
     validateNumberRange(providerSurcharge, -100, 1000, 'Provider surcharge must be between -100 and 1000 øre.');
   }
   validateNumberRange(thresholdPercent, 0, 100, 'Threshold must be between 0 and 100%.');
   validateNumberRange(minDiffOre, 0, 1000, 'Minimum difference must be between 0 and 1000.');
 
   await setSetting(PRICE_SCHEME, priceScheme);
+  await setSetting(NORWAY_PRICE_MODEL, norwayPriceModel);
   await setSetting('price_area', priceArea);
   await setSetting('provider_surcharge', providerSurcharge);
   await setSetting('price_threshold_percent', thresholdPercent);
   await setSetting('price_min_diff_ore', minDiffOre);
-  applyPriceSchemeUi(priceScheme);
+  applyPriceSchemeUi(priceScheme, norwayPriceModel);
   void showToast('Price settings saved.', 'ok');
   await refreshPrices({ thresholdPercent, minDiffOre });
 };

@@ -58,4 +58,79 @@ describe('price rendering', () => {
     const nowBadge = document.querySelector('.price-now-badge');
     expect(nowBadge?.textContent).toBe('Now');
   });
+
+  test('shows norgespris adjustment in tooltip when present', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-01-15T10:15:00Z'));
+
+    const { setHomeyClient } = require('../settings/src/ui/homey') as typeof import('../settings/src/ui/homey');
+    setHomeyClient({ clock: { getTimezone: () => 'UTC' } } as any);
+    const { renderPrices } = require('../settings/src/ui/priceRender') as typeof import('../settings/src/ui/priceRender');
+
+    const currentHourStart = new Date('2026-01-15T10:00:00.000Z').toISOString();
+    const entry = {
+      startsAt: currentHourStart,
+      total: 95.2,
+      spotPriceExVat: 160,
+      gridTariffExVat: 28,
+      providerSurchargeExVat: 0,
+      consumptionTaxExVat: 7.13,
+      enovaFeeExVat: 1,
+      vatMultiplier: 1.25,
+      vatAmount: 49.03,
+      totalExVat: 196.13,
+      norgesprisAdjustment: -150,
+      electricitySupport: 0,
+    } as PriceEntry;
+    const data: CombinedPriceData = {
+      prices: [entry],
+      avgPrice: 95.2,
+      lowThreshold: 80,
+      highThreshold: 110,
+      priceScheme: 'norway',
+      priceUnit: 'øre/kWh',
+    };
+
+    renderPrices(data);
+
+    const chip = document.querySelector('.price-row .chip') as HTMLElement | null;
+    expect(chip?.dataset.tooltip).toContain('Norway Price adjustment: -150.0 øre');
+    expect(chip?.dataset.tooltip).not.toContain('Electricity subsidy:');
+  });
+
+  test('shows electricity support in tooltip when norgespris adjustment is absent', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-01-15T10:15:00Z'));
+
+    const { setHomeyClient } = require('../settings/src/ui/homey') as typeof import('../settings/src/ui/homey');
+    setHomeyClient({ clock: { getTimezone: () => 'UTC' } } as any);
+    const { renderPrices } = require('../settings/src/ui/priceRender') as typeof import('../settings/src/ui/priceRender');
+
+    const currentHourStart = new Date('2026-01-15T10:00:00.000Z').toISOString();
+    const entry = {
+      startsAt: currentHourStart,
+      total: 145.2,
+      spotPriceExVat: 160,
+      gridTariffExVat: 28,
+      providerSurchargeExVat: 0,
+      consumptionTaxExVat: 7.13,
+      enovaFeeExVat: 1,
+      vatMultiplier: 1.25,
+      vatAmount: 49.03,
+      totalExVat: 196.13,
+      electricitySupport: 50,
+    } as PriceEntry;
+    const data: CombinedPriceData = {
+      prices: [entry],
+      avgPrice: 145.2,
+      lowThreshold: 80,
+      highThreshold: 110,
+      priceScheme: 'norway',
+      priceUnit: 'øre/kWh',
+    };
+
+    renderPrices(data);
+
+    const chip = document.querySelector('.price-row .chip') as HTMLElement | null;
+    expect(chip?.dataset.tooltip).toContain('Electricity subsidy: -50.0 øre');
+    expect(chip?.dataset.tooltip).not.toContain('Norway Price adjustment:');
+  });
 });

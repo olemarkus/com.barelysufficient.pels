@@ -130,6 +130,30 @@ const buildDom = () => {
     </section>
     <section class="panel hidden" id="price-panel" data-panel="price">
       <div id="price-status-badge">No data</div>
+      <select id="price-scheme">
+        <option value="norway">Norway</option>
+        <option value="homey">Homey</option>
+        <option value="flow">Flow</option>
+      </select>
+      <p id="price-scheme-note" hidden></p>
+      <div id="price-flow-status" hidden>
+        <span id="price-flow-enabled"></span>
+        <span id="price-flow-today"></span>
+        <span id="price-flow-tomorrow"></span>
+      </div>
+      <div id="price-homey-status" hidden>
+        <span id="price-homey-enabled"></span>
+        <span id="price-homey-currency"></span>
+        <span id="price-homey-today"></span>
+        <span id="price-homey-tomorrow"></span>
+      </div>
+      <div id="price-norway-settings">
+        <select id="norway-price-model">
+          <option value="stromstotte">Electricity Subsidy Scheme (Strømstøtte)</option>
+          <option value="norgespris">Norway Price (Norgespris)</option>
+        </select>
+        <div id="norgespris-rules-row" hidden></div>
+      </div>
       <form id="nettleie-settings-form">
         <select id="nettleie-fylke"></select>
         <select id="nettleie-company"></select>
@@ -678,6 +702,36 @@ describe('settings script', () => {
     expect(cheapSummary).toContain('at or below 0.9608');
     expect(expensiveSummary).toContain('No expensive hours');
     expect(expensiveSummary).toContain('at or above 1.9608');
+  });
+
+  it('shows norgespris rules only when Norway model is norgespris', async () => {
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'price_scheme') return cb(null, 'norway');
+      if (key === 'norway_price_model') return cb(null, 'stromstotte');
+      if (key === 'electricity_prices') return cb(null, []);
+      if (key === 'combined_prices') return cb(null, null);
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+
+    await loadSettingsScript();
+
+    const modelSelect = document.querySelector('#norway-price-model') as HTMLSelectElement;
+    const rulesRow = document.querySelector('#norgespris-rules-row') as HTMLElement;
+    expect(rulesRow.hidden).toBe(true);
+
+    modelSelect.value = 'norgespris';
+    modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    await waitFor(() => rulesRow.hidden === false);
+
+    modelSelect.value = 'stromstotte';
+    modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    await waitFor(() => rulesRow.hidden === true);
   });
 
   it('updates cheap/expensive lists when price settings change', async () => {

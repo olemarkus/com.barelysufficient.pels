@@ -1,6 +1,6 @@
 # PELS - User Guide
 
-**PELS** (Pris- og Effektstyrt Energilagringssystem) is a Homey app that helps you optimize energy usage in your home. It manages when your largest energy consumers run, keeping you within power limits and taking advantage of cheaper electricity prices (Norway pricing or flow tag pricing from external providers).
+**PELS** (Pris- og Effektstyrt Energilagringssystem) is a Homey app that helps you optimize energy usage in your home. It manages when your largest energy consumers run, keeping you within power limits and taking advantage of cheaper electricity prices (Norway pricing, Homey Energy prices, or flow tag pricing from external providers).
 
 For the short Homey App Store description, see `README.txt` in the repository root.
 
@@ -40,8 +40,9 @@ Inspired by the Sparegris (Piggy Bank) Homey app.
 - **Automatic Recovery** – Restores devices when headroom becomes available
 - **Norwegian Grid Tariffs** – Fetches grid tariff energy components (nettleie) from NVE
 - **Spot Prices (Norway)** – Integrates with hvakosterstrommen.no for spot prices (spotpris)
+- **Homey Energy Prices** – Can use dynamic electricity prices from Homey Energy directly
 - **Flow Tag Prices** – Accepts hourly price data from Power by the Hour (or any flow tag source) when you want to supply external prices
-- **Price Breakdown** – Adds consumption tax (elavgift), Enova fee (enovaavgift), VAT (mva), and electricity support (strømstøtte) to the hourly total (Norway only)
+- **Price Breakdown** – Adds consumption tax (elavgift), Enova fee (enovaavgift), VAT (mva), and either electricity support (strømstøtte) or Norgespris adjustment to the hourly total (Norway only)
 
 ---
 
@@ -227,7 +228,7 @@ Configure electricity price sources and price-based optimization.
 
 | Setting | Description |
 |---------|-------------|
-| **Price source** | Choose **Norway (spot + grid tariff)** or **Flow tag (Power by the Hour/other providers)**. Flow tag prices are used as provided (currency/tax unknown), and can be used alongside Norway pricing when you prefer external feeds. |
+| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy**, or **Flow tag (Power by the Hour/other providers)**. Homey/Flow prices are used as provided (currency/tax unknown), and are useful when you prefer external feeds or non-Norway markets. |
 
 #### Grid Tariff Settings (Nettleie)
 
@@ -239,10 +240,11 @@ Configure electricity price sources and price-based optimization.
 
 > These settings are only used with the Norway price source.
 
-#### Spot Price Settings
+#### Norway Price Settings
 
 | Setting | Description |
 |---------|-------------|
+| **Norway pricing model** | Choose **Strømstøtte** (threshold support model) or **Norgespris** (official fixed spot component target with tariff-group monthly cap) |
 | **Price area** | Your electricity price zone (NO1-NO5). Used only for Norway pricing. |
 | **Provider surcharge** | Your provider's markup on spot price (øre/kWh, incl. VAT) |
 | **Price threshold (%)** | Hours below/above this % from average are marked cheap/expensive (default: 25%) |
@@ -264,7 +266,7 @@ PBTH (Power by the Hour) tips:
 
 #### Price Calculation
 
-The Norway price source builds the hourly total price from:
+For the Norway price source, the hourly total starts from:
 
 - Spot price (spotpris)
 - Grid tariff energy component (nettleie)
@@ -272,11 +274,22 @@ The Norway price source builds the hourly total price from:
 - Consumption tax (elavgift)
 - Enova fee (enovaavgift)
 - VAT (mva) when applicable
-- Electricity support (strømstøtte) applied to the spot price above the threshold
+- Electricity support (strømstøtte) or Norgespris adjustment (depending on Norway pricing model)
 
 All component rates are treated as ex VAT, and VAT is applied once after summing the components.
 
-Current electricity support uses a 77 øre/kWh (ex VAT, 96.25 incl. VAT) threshold with 90% coverage above the threshold.
+Norway pricing models:
+
+- **Strømstøtte**: Uses a 77 øre/kWh (ex VAT, 96.25 incl. VAT) threshold with 90% coverage above the threshold.
+- **Norgespris**: Replaces strømstøtte with a `Norgespris adjustment` line that adjusts the spot component toward the official target price (40 øre/kWh ex. VAT, i.e. 50 øre/kWh incl. VAT in VAT areas).
+
+Norgespris cap behavior:
+
+- Monthly cap applies per calendar month.
+- Cap is derived from tariff group: **Husholdning** = 5000 kWh/month, **Hytter og fritidshus** = 1000 kWh/month.
+- Cap usage is consumed in chronological order for the current/future hours in the loaded price window.
+- If the cap is partly remaining for an hour, the adjustment is partial for that hour.
+- Above cap, the app uses non-support behavior (no strømstøtte and no Norgespris adjustment).
 
 Regional rules:
 
@@ -285,7 +298,7 @@ Regional rules:
 
 The Price tab tooltips show the full breakdown per hour.
 
-Flow tag pricing skips the calculation and uses the provided values directly.
+Homey Energy and Flow tag pricing skip the Norway calculation and use the provided values directly.
 
 #### Price Optimization
 
@@ -379,12 +392,12 @@ The device shows:
 For the Norway price source:
 1. Fetches spot prices from hvakosterstrommen.no
 2. Fetches grid tariffs from NVE
-3. Calculates total cost per hour (spot + grid tariff + provider surcharge (incl. VAT) + consumption tax (elavgift) + Enova fee (enovaavgift) + VAT (mva) - electricity support (strømstøtte))
+3. Calculates total cost per hour (spot + grid tariff + provider surcharge (incl. VAT) + consumption tax (elavgift) + Enova fee (enovaavgift) + VAT (mva) and then either strømstøtte or Norgespris adjustment)
 4. Marks hours as "cheap" or "expensive" based on your threshold
 5. Applies temperature deltas to devices during those hours
 
-For the Flow tag price source:
-- Uses hourly prices supplied by your flows and treats values as provided.
+For the Homey Energy and Flow tag price sources:
+- Uses hourly prices supplied by Homey/flows and treats values as provided.
 
 > **Want more detail?** See the [Technical Documentation](technical.md) for in-depth information about the capacity budget model, cooldown logic, priority swapping, and system assumptions.
 

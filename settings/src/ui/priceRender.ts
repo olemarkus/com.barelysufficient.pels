@@ -399,6 +399,7 @@ const buildPriceTooltip = (entry: PriceEntry, scheme: PriceScheme, priceUnit: st
     const surcharge = withVat(entry.providerSurchargeExVat);
     const consumptionTax = withVat(entry.consumptionTaxExVat);
     const enovaFee = withVat(entry.enovaFeeExVat);
+    const norgesprisAdjustment = getFiniteNumber(entry.norgesprisAdjustment);
     const support = entry.electricitySupport ?? 0;
 
     tooltipLines.push(`Spot price: ${formatOre(withVat(spotPrice))}`);
@@ -406,7 +407,11 @@ const buildPriceTooltip = (entry: PriceEntry, scheme: PriceScheme, priceUnit: st
     tooltipLines.push(`Provider surcharge: ${formatOre(surcharge)}`);
     tooltipLines.push(`Consumption tax: ${formatOre(consumptionTax)}`);
     tooltipLines.push(`Enova fee: ${formatOre(enovaFee)}`);
-    tooltipLines.push(`Electricity support: -${formatOre(support)}`);
+    if (norgesprisAdjustment !== null) {
+      tooltipLines.push(`Norway Price adjustment: ${formatOre(norgesprisAdjustment)}`);
+    } else {
+      tooltipLines.push(`Electricity subsidy: -${formatOre(support)}`);
+    }
   }
 
   tooltipLines.push(`Total: ${formatPriceWithUnit(formatChipPrice(entry.total, scheme), priceUnit)}`);

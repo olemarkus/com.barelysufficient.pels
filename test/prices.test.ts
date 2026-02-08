@@ -54,6 +54,15 @@ const formatDateInOslo = (date: Date): string => {
   return formatter.format(date);
 };
 
+const getHourInOslo = (date: Date): number => {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Oslo',
+    hour: '2-digit',
+    hour12: false,
+  });
+  return parseInt(formatter.format(date), 10);
+};
+
 const subtractMonths = (date: Date, months: number): Date => {
   const target = new Date(date);
   const day = target.getDate();
@@ -430,9 +439,9 @@ describe('Spot price fetching', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    // Freeze time to a morning hour (before tomorrow-price window) for deterministic cache logic
+    // Freeze time to a morning UTC hour (before tomorrow-price window) for deterministic cache logic
     const now = new Date();
-    now.setHours(10, 0, 0, 0);
+    now.setUTCHours(10, 0, 0, 0);
     const todayStr = now.toISOString().split('T')[0];
     const originalDate = global.Date;
     const MockDate = class extends Date {
@@ -487,15 +496,15 @@ describe('Spot price fetching', () => {
     }
   });
 
-  it('refreshes prices after 13:15 if tomorrow prices are missing', async () => {
+  it('refreshes prices after 12:15 UTC if tomorrow prices are missing', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    // Set time to 14:00 (after 13:15)
+    // Set time to 14:00 UTC (after 12:15 UTC threshold)
     const now = new Date();
-    now.setHours(14, 0, 0, 0);
+    now.setUTCHours(14, 0, 0, 0);
     const todayStr = now.toISOString().split('T')[0];
 
     // Pre-populate with only today's prices (no tomorrow)
@@ -519,7 +528,7 @@ describe('Spot price fetching', () => {
       };
     });
 
-    // Mock Date to return 14:00
+    // Mock Date to return 14:00 UTC
     const MockDate = class extends Date {
       constructor(...args: any[]) {
         if (args.length === 0) {
@@ -544,7 +553,7 @@ describe('Spot price fetching', () => {
       await app.onInit();
       await flushPromises();
 
-      // Should have fetched prices because it's after 13:15 and tomorrow's prices are missing
+      // Should have fetched prices because it's after 12:15 UTC and tomorrow prices are missing
       expect(fetchCount).toBeGreaterThan(0);
     } finally {
       setAllowConsoleError(false);
@@ -552,15 +561,15 @@ describe('Spot price fetching', () => {
     }
   });
 
-  it('uses cache if tomorrow prices already exist after 13:15', async () => {
+  it('uses cache if tomorrow prices already exist after 12:15 UTC', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    // Set time to 14:00 (after 13:15)
+    // Set time to 14:00 UTC (after 12:15 UTC threshold)
     const now = new Date();
-    now.setHours(14, 0, 0, 0);
+    now.setUTCHours(14, 0, 0, 0);
     const todayStr = now.toISOString().split('T')[0];
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
@@ -591,7 +600,7 @@ describe('Spot price fetching', () => {
       };
     });
 
-    // Mock Date to return 14:00
+    // Mock Date to return 14:00 UTC
     const MockDate = class extends Date {
       constructor(...args: any[]) {
         if (args.length === 0) {
@@ -621,15 +630,15 @@ describe('Spot price fetching', () => {
     }
   });
 
-  it('uses cache before 13:15 even without tomorrow prices', async () => {
+  it('uses cache before 12:15 UTC even without tomorrow prices', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    // Set time to 10:00 (before 13:15)
+    // Set time to 10:00 UTC (before 12:15 UTC threshold)
     const now = new Date();
-    now.setHours(10, 0, 0, 0);
+    now.setUTCHours(10, 0, 0, 0);
     const todayStr = now.toISOString().split('T')[0];
 
     // Pre-populate with only today's prices (no tomorrow)
@@ -676,7 +685,7 @@ describe('Spot price fetching', () => {
       await app.onInit();
       await flushPromises();
 
-      // Should NOT have fetched because it's before 13:15 (tomorrow's prices not expected yet)
+      // Should NOT have fetched because it's before 12:15 UTC (tomorrow prices are not expected yet)
       expect(fetchCount).toBe(0);
     } finally {
       global.Date = originalDate;
@@ -1229,7 +1238,7 @@ describe('Price optimization', () => {
     ]);
     mockHomeyInstance.settings.set('nettleie_data', [{
       dateKey: now.toISOString().split('T')[0],
-      time: now.getHours(),
+      time: getHourInOslo(now),
       energyFeeExVat: gridTariffExVat,
     }]);
 
@@ -1653,6 +1662,49 @@ describe('Price optimization', () => {
     expect(priceInfo).toContain('øre/kWh');
     expect(priceInfo).toContain('spot');
     expect(priceInfo).toContain('grid tariff');
+  });
+
+  it('formats norgespris adjustment segment with explicit sign', async () => {
+    const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [waterHeater]),
+    });
+
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    const spotPrices = [{
+      startsAt: now.toISOString(),
+      spotPriceExVat: 160,
+      currency: 'NOK',
+    }];
+
+    mockHomeyInstance.settings.set('price_scheme', 'norway');
+    mockHomeyInstance.settings.set('norway_price_model', 'norgespris');
+    mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
+    mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+    mockHomeyInstance.settings.set('nettleie_data', [{
+      dateKey: formatDateInOslo(now),
+      time: getHourInOslo(now),
+      energyFeeExVat: 28,
+    }]);
+    mockHomeyInstance.settings.set('power_tracker_state', {
+      dailyTotals: { [now.toISOString().slice(0, 10)]: 0 },
+      lastPowerW: 1000,
+    });
+
+    mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
+      const response = createMockHttpsResponse(200, []);
+      callback(response);
+      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+    });
+
+    const app = createApp();
+    await app.onInit();
+    await flushPromises();
+
+    const priceInfo = (app as any).priceCoordinator.getCurrentHourPriceInfo();
+    expect(priceInfo).toContain(' - norgespris adjustment ');
+    expect(priceInfo).not.toContain('+ norgespris adjustment -');
   });
 
   it('stores flow price data from single-quote JSON and builds combined prices', async () => {

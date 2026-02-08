@@ -233,7 +233,15 @@ PELS controls devices through Homey's local API. Cloud-only devices may have add
 
 ## Pricing Model
 
-PELS stores spot prices as øre/kWh **ex VAT** from hvakosterstrommen.no. Hourly totals are computed from:
+PELS supports three price schemes:
+
+- **Norway** (spot + grid tariff + taxes/fees + support/adjustment)
+- **Homey Energy** (values as provided by Homey)
+- **Flow tag** (values as provided by flows)
+
+### Norway Price Scheme
+
+PELS stores spot prices as øre/kWh **ex VAT** from hvakosterstrommen.no. Norway hourly totals are computed from:
 
 - Spot price (spotpris)
 - Grid tariff energy component (nettleie)
@@ -241,13 +249,30 @@ PELS stores spot prices as øre/kWh **ex VAT** from hvakosterstrommen.no. Hourly
 - Consumption tax (elavgift)
 - Enova fee (enovaavgift)
 - VAT (mva) where applicable
-- Electricity support (strømstøtte) applied to the spot price above the threshold
+- Either electricity support (strømstøtte) or Norgespris adjustment, depending on the selected Norway pricing model
 
 Calculation summary:
 
 - `totalExVat = spot + gridTariff + providerSurchargeExVat + consumptionTax + enovaFee`
-- `electricitySupportExVat = max(0, spotPriceExVat - threshold) * coverage`
-- `totalPrice = totalExVat * vatMultiplier - electricitySupportExVat * vatMultiplier`
+
+Norway pricing models:
+
+- **Strømstøtte**:
+  - `electricitySupportExVat = max(0, spotPriceExVat - threshold) * coverage`
+  - `totalPrice = totalExVat * vatMultiplier - electricitySupportExVat * vatMultiplier`
+- **Norgespris**:
+  - `spotPriceIncVat = spotPriceExVat * vatMultiplier`
+  - `eligibleShare = min(1, remainingMonthlyCapKwh / hourlyUsageEstimateKwh)` (or `0` if cap is exhausted)
+  - `norgesprisAdjustment = (norgesprisTargetIncVat - spotPriceIncVat) * eligibleShare`
+  - `totalPrice = totalExVat * vatMultiplier + norgesprisAdjustment`
+
+Norgespris cap behavior:
+
+- Target is fixed by policy at 40 øre/kWh ex. VAT (50 øre/kWh incl. VAT where VAT applies).
+- Monthly cap is fixed by tariff group: 5000 kWh for `Husholdning`, 1000 kWh for `Hytter og fritidshus`.
+- Cap tracking is month-based and resets at calendar month boundaries.
+- Cap is consumed in chronological order for current/future hours in the loaded price window.
+- Past hours in the same price window do not consume current cap.
 
 All component rates are treated as ex VAT, and VAT is applied once after summing the components.
 
@@ -259,9 +284,11 @@ Current policy values:
 Regional rules:
 
 - VAT is 25% by default, but price area NO4 is VAT-exempt.
-
-Flow tag pricing (Power by the Hour or other providers) stores hourly prices exactly as provided and skips the Norwegian price breakdown logic.
 - Reduced consumption tax applies to Troms and Finnmark counties (fylker). Municipality-level exceptions are ignored.
+
+### Homey and Flow Price Schemes
+
+Homey Energy pricing and Flow tag pricing (Power by the Hour or other providers) store hourly prices exactly as provided and skip the Norwegian price breakdown logic.
 
 ## Future Work / TODOs
 
