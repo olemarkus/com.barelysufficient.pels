@@ -9,7 +9,11 @@ import { renderPriceOptimization, savePriceOptimizationSettings } from './priceO
 import { createDeviceRow, createCheckboxLabel } from './components';
 import { logSettingsError, logSettingsWarn } from './logging';
 import { debouncedSetSetting } from './utils';
-import { supportsPowerDevice } from './deviceUtils';
+import {
+  supportsManagedDevice,
+  supportsPowerDevice,
+  supportsTemperatureDevice,
+} from './deviceUtils';
 
 const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
   const snapshot = await getSetting('target_devices_snapshot');
@@ -113,13 +117,9 @@ const resolveDeviceClassLabel = (deviceClass?: string): string => {
   return DEVICE_CLASS_LABELS[key] || toTitleCase(key);
 };
 
-const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
-  device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
-);
-
-const getManagedTitle = (isLoadingComplete: boolean, supportsPower: boolean): string => {
+const getManagedTitle = (isLoadingComplete: boolean, supportsManage: boolean): string => {
   if (!isLoadingComplete) return 'Loading...';
-  if (!supportsPower) return 'Managed by PELS (requires power measurement or configured load)';
+  if (!supportsManage) return 'Managed by PELS (requires a temperature target or power capability)';
   return 'Managed by PELS';
 };
 
@@ -138,18 +138,15 @@ const getCapacityTitle = (params: {
 const getPriceTitle = (params: {
   isLoadingComplete: boolean;
   supportsTemperature: boolean;
-  supportsPower: boolean;
   isManaged: boolean;
 }): string => {
   const {
     isLoadingComplete,
     supportsTemperature,
-    supportsPower,
     isManaged,
   } = params;
   if (!isLoadingComplete) return 'Loading...';
   if (!supportsTemperature) return 'Price-based control (temperature devices only)';
-  if (!supportsPower) return 'Price-based control (requires power measurement or configured load)';
   if (isManaged) return 'Price-based control';
   return 'Price-based control (requires Managed by PELS)';
 };
@@ -214,13 +211,14 @@ const buildPriceToggleHandler = (deviceId: string) => withInitialLoadGuard('pric
 const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
-  const isManaged = supportsPower && resolveManagedState(device.id);
+  const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
+  const isManaged = supportsManage && resolveManagedState(device.id);
   const isLoadingComplete = state.initialLoadComplete;
 
   const managedCheckbox = createCheckboxLabel({
-    title: getManagedTitle(isLoadingComplete, supportsPower),
-    checked: supportsPower && isManaged,
-    disabled: !isLoadingComplete || !supportsPower,
+    title: getManagedTitle(isLoadingComplete, supportsManage),
+    checked: isManaged,
+    disabled: !isLoadingComplete || !supportsManage,
     onChange: buildManagedToggleHandler(device.id),
   });
 
@@ -235,11 +233,10 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
     title: getPriceTitle({
       isLoadingComplete,
       supportsTemperature,
-      supportsPower,
       isManaged,
     }),
-    checked: supportsTemperature && supportsPower && state.priceOptimizationSettings[device.id]?.enabled === true,
-    disabled: !isLoadingComplete || !supportsTemperature || !supportsPower || !isManaged,
+    checked: supportsTemperature && isManaged && state.priceOptimizationSettings[device.id]?.enabled === true,
+    disabled: !isLoadingComplete || !supportsTemperature || !isManaged,
     onChange: buildPriceToggleHandler(device.id),
   });
 

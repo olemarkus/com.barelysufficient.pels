@@ -21,17 +21,17 @@ import { renderPriorities } from './modes';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization';
 import { showToastError } from './toast';
 import { logSettingsError } from './logging';
-import { supportsPowerDevice } from './deviceUtils';
+import {
+  supportsManagedDevice,
+  supportsPowerDevice,
+  supportsTemperatureDevice,
+} from './deviceUtils';
 
 let currentDetailDeviceId: string | null = null;
 
 type ShedAction = 'turn_off' | 'set_temperature';
 
 const getDeviceById = (deviceId: string) => state.latestDevices.find((device) => device.id === deviceId) || null;
-
-const supportsTemperatureDevice = (device: TargetDeviceSnapshot | null): boolean => (
-  Boolean(device && (device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0))
-);
 
 const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = name;
@@ -41,10 +41,11 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
-  const isManaged = supportsPower && resolveManagedState(deviceId);
+  const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
+  const isManaged = supportsManage && resolveManagedState(deviceId);
   if (deviceDetailManaged) {
     deviceDetailManaged.checked = isManaged;
-    deviceDetailManaged.disabled = !supportsPower;
+    deviceDetailManaged.disabled = !supportsManage;
   }
   if (deviceDetailControllable) {
     deviceDetailControllable.checked = supportsPower && state.controllableMap[deviceId] === true;
@@ -53,8 +54,8 @@ const setDeviceDetailControlStates = (deviceId: string) => {
 
   const priceConfig = state.priceOptimizationSettings[deviceId];
   if (deviceDetailPriceOpt) {
-    deviceDetailPriceOpt.checked = supportsTemperature && supportsPower && priceConfig?.enabled === true;
-    deviceDetailPriceOpt.disabled = !supportsTemperature || !supportsPower || !isManaged;
+    deviceDetailPriceOpt.checked = supportsTemperature && isManaged && priceConfig?.enabled === true;
+    deviceDetailPriceOpt.disabled = !supportsTemperature || !isManaged;
   }
 };
 
@@ -99,7 +100,7 @@ const showDeviceDetailOverlay = () => {
 const updateDeltaSectionVisibility = () => {
   if (!deviceDetailDeltaSection || !deviceDetailPriceOpt) return;
   const device = currentDetailDeviceId ? getDeviceById(currentDetailDeviceId) : null;
-  if (!supportsTemperatureDevice(device) || !supportsPowerDevice(device)) {
+  if (!supportsTemperatureDevice(device)) {
     deviceDetailDeltaSection.style.display = 'none';
     return;
   }
@@ -245,14 +246,6 @@ const renderDeviceDetailModes = (device: TargetDeviceSnapshot) => {
     deviceDetailModes.appendChild(note);
     return;
   }
-  if (!supportsPowerDevice(device)) {
-    const note = document.createElement('p');
-    note.className = 'muted';
-    note.textContent = 'Temperature targets require power measurement or a configured load and are disabled for this device.';
-    deviceDetailModes.appendChild(note);
-    return;
-  }
-
   getAllModes().forEach((mode) => {
     deviceDetailModes.appendChild(buildDeviceDetailModeRow(mode, device));
   });

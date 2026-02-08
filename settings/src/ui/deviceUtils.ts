@@ -8,3 +8,13 @@ export const supportsPowerDevice = (device?: TargetDeviceSnapshot | null): boole
     || typeof device.measuredPowerKw === 'number'
     || typeof device.loadKw === 'number';
 };
+
+export const supportsTemperatureDevice = (device?: TargetDeviceSnapshot | null): boolean => {
+  if (!device) return false;
+  if (device.deviceType) return device.deviceType === 'temperature';
+  return (device.targets?.length ?? 0) > 0;
+};
+
+export const supportsManagedDevice = (supportsPower: boolean, supportsTemperature: boolean): boolean => (
+  supportsPower || supportsTemperature
+);
