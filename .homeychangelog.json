@@ -145,5 +145,8 @@
   },
   "1.13.1": {
     "en": "The Overview now gives clearer at-a-glance plan status with new state badges and price-style indicators, and several daily budget/price shaping details have been refined so planning better reflects real household load (including better handling of uncontrolled load and budget split edge cases). Under the hood, this release reduces planning churn and CPU spikes by tightening plan rebuild scheduling and throttling non-critical snapshot writes, while still keeping plan data fresh. Performance logging was also streamlined to focus on high-value metrics, making diagnostics easier and less noisy."
+  },
+  "1.14.0": {
+    "en": "PELS now supports temperature-only devices (like VThermo) as managed devices for price optimization even when they have no power measurement or configured load; capacity control remains disabled for those devices. Limit-reason reporting is more accurate around restore cooldown/shed scenarios, and the price summary now shows cheap/expensive threshold caps."
   }
 }
