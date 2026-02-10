@@ -148,5 +148,8 @@
   },
   "1.14.0": {
     "en": "PELS now supports temperature-only devices (like VThermo) as managed devices for price optimization even when they have no power measurement or configured load; capacity control remains disabled for those devices. Limit-reason reporting is more accurate around restore cooldown/shed scenarios, and the price summary now shows cheap/expensive threshold caps."
+  },
+  "1.14.1": {
+    "en": "Added support for Norgespris support scheme."
   }
 }
