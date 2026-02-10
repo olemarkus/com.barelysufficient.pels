@@ -406,7 +406,6 @@ export default class PriceService {
     const hasFiniteMonthEnd = Number.isFinite(monthEndMs);
 
     let usageKwh = 0;
-    const bucketDayKeys = new Set<string>();
     const dailyTotals = tracker.dailyTotals;
     const buckets = tracker.buckets;
     if (buckets && typeof buckets === 'object') {
@@ -418,7 +417,6 @@ export default class PriceService {
         if (ts < monthStartMs) return;
         if (hasFiniteMonthEnd && ts >= monthEndMs) return;
         usageKwh += value;
-        bucketDayKeys.add(isoHour.slice(0, 10));
       });
     }
 
@@ -427,7 +425,6 @@ export default class PriceService {
     if (dailyTotals && typeof dailyTotals === 'object') {
       Object.entries(dailyTotals as Record<string, unknown>).forEach(([dateKey, value]) => {
         if (typeof value !== 'number' || !Number.isFinite(value)) return;
-        if (bucketDayKeys.has(dateKey)) return;
         const dayStartUtcMs = Date.parse(`${dateKey}T00:00:00.000Z`);
         if (!Number.isFinite(dayStartUtcMs)) return;
         const dayEndUtcMs = dayStartUtcMs + 24 * 60 * 60 * 1000;
