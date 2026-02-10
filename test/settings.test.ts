@@ -705,33 +705,54 @@ describe('settings script', () => {
   });
 
   it('shows norgespris rules only when Norway model is norgespris', async () => {
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const settingsStore: Record<string, unknown> = {
+      price_scheme: 'norway',
+      norway_price_model: 'stromstotte',
+      price_area: 'NO1',
+      provider_surcharge: 0,
+      price_threshold_percent: 25,
+      price_min_diff_ore: 0,
+      electricity_prices: [],
+      combined_prices: null,
+      target_devices_snapshot: [],
+      price_optimization_settings: {},
+    };
+    const setSpy = jest.fn((key, val, cb) => {
+      settingsStore[key] = val;
+      if (cb) cb(null);
+    });
     // @ts-expect-error mutate mock
     global.Homey.set = setSpy;
     // @ts-expect-error mutate mock
     global.Homey.get = jest.fn((key, cb) => {
-      if (key === 'price_scheme') return cb(null, 'norway');
-      if (key === 'norway_price_model') return cb(null, 'stromstotte');
-      if (key === 'electricity_prices') return cb(null, []);
-      if (key === 'combined_prices') return cb(null, null);
-      if (key === 'target_devices_snapshot') return cb(null, []);
-      if (key === 'price_optimization_settings') return cb(null, {});
+      if (Object.prototype.hasOwnProperty.call(settingsStore, key)) {
+        return cb(null, settingsStore[key]);
+      }
       return cb(null, null);
     });
 
     await loadSettingsScript();
 
     const modelSelect = document.querySelector('#norway-price-model') as HTMLSelectElement;
+    const priceAreaSelect = document.querySelector('#price-area') as HTMLSelectElement;
     const rulesRow = document.querySelector('#norgespris-rules-row') as HTMLElement;
+    priceAreaSelect.innerHTML = '<option value="NO1">NO1</option>';
+    priceAreaSelect.value = 'NO1';
     expect(rulesRow.hidden).toBe(true);
+    setSpy.mockClear();
 
     modelSelect.value = 'norgespris';
     modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
     await waitFor(() => rulesRow.hidden === false);
+    await waitFor(() => setSpy.mock.calls.some((call) => call[0] === 'norway_price_model'));
+    expect(setSpy.mock.calls.map((call) => call[0])).toEqual(['norway_price_model']);
 
+    setSpy.mockClear();
     modelSelect.value = 'stromstotte';
     modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
     await waitFor(() => rulesRow.hidden === true);
+    await waitFor(() => setSpy.mock.calls.some((call) => call[0] === 'norway_price_model'));
+    expect(setSpy.mock.calls.map((call) => call[0])).toEqual(['norway_price_model']);
   });
 
   it('updates cheap/expensive lists when price settings change', async () => {

@@ -6,6 +6,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
+  CONTROLLABLE_DEVICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -26,6 +27,7 @@ import {
   PRICE_SCHEME,
 } from './settingsKeys';
 import { incPerfCounters } from './perfCounters';
+import { toStableFingerprint } from './stableFingerprint';
 export type PriceServiceLike = {
   refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
@@ -53,6 +55,83 @@ export type SettingsHandlerDeps = {
   errorLog: (message: string, error: unknown) => void;
 };
 
+const DEDUPED_CAPACITY_KEYS = [
+  'mode_device_targets',
+  OPERATING_MODE_SETTING,
+  'mode_aliases',
+  'capacity_priorities',
+  CONTROLLABLE_DEVICES,
+  MANAGED_DEVICES,
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  CAPACITY_DRY_RUN,
+  'overshoot_behaviors',
+];
+
+const DEDUPED_PRICE_KEYS = [
+  PRICE_SCHEME,
+  FLOW_PRICES_TODAY,
+  FLOW_PRICES_TOMORROW,
+  HOMEY_PRICES_TODAY,
+  HOMEY_PRICES_TOMORROW,
+  HOMEY_PRICES_CURRENCY,
+  NORWAY_PRICE_MODEL,
+  'provider_surcharge',
+  'price_threshold_percent',
+  'price_min_diff_ore',
+  PRICE_OPTIMIZATION_SETTINGS,
+  PRICE_OPTIMIZATION_ENABLED,
+];
+
+const DEDUPED_DAILY_BUDGET_KEYS = [
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
+  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  DAILY_BUDGET_CONTROLLED_WEIGHT,
+  DAILY_BUDGET_PRICE_FLEX_SHARE,
+];
+
+const DEDUPED_LOGGING_KEYS = [
+  'debug_logging_enabled',
+  DEBUG_LOGGING_TOPICS,
+];
+
+const DEDUPED_WRITE_KEYS = new Set<string>([
+  ...DEDUPED_CAPACITY_KEYS,
+  ...DEDUPED_PRICE_KEYS,
+  ...DEDUPED_DAILY_BUDGET_KEYS,
+  ...DEDUPED_LOGGING_KEYS,
+]);
+
+type NoopWriteSkipper = {
+  shouldSkipNoopWrite: (key: string) => boolean;
+  markProcessedWrite: (key: string) => void;
+};
+
+const createNoopWriteSkipper = (deps: SettingsHandlerDeps): NoopWriteSkipper => {
+  const lastProcessedFingerprints = new Map<string, string>();
+
+  const readFingerprint = (key: string): string | null => {
+    if (!DEDUPED_WRITE_KEYS.has(key)) return null;
+    return toStableFingerprint(deps.homey.settings.get(key) as unknown);
+  };
+
+  const shouldSkipNoopWrite = (key: string): boolean => {
+    const fingerprint = readFingerprint(key);
+    if (fingerprint === null) return false;
+    return lastProcessedFingerprints.get(key) === fingerprint;
+  };
+
+  const markProcessedWrite = (key: string): void => {
+    const fingerprint = readFingerprint(key);
+    if (fingerprint !== null) {
+      lastProcessedFingerprints.set(key, fingerprint);
+    }
+  };
+
+  return { shouldSkipNoopWrite, markProcessedWrite };
+};
+
 export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) => Promise<void> {
   const refreshPriceDerivedState = async () => {
     deps.priceService.updateCombinedPrices();
@@ -66,7 +145,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, 'capacity_priorities');
     },
-    controllable_devices: async () => {
+    [CONTROLLABLE_DEVICES]: async () => {
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after controllable change');
       await rebuildPlanFromSettings(deps, 'controllable_devices');
@@ -121,6 +200,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     [NORWAY_PRICE_MODEL]: async () => {
       await refreshPriceDerivedState();
     },
+    provider_surcharge: async () => { await refreshPriceDerivedState(); },
     price_threshold_percent: async () => {
       await refreshPriceDerivedState();
     },
@@ -157,11 +237,17 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     settings_ui_log: async () => handleSettingsUiLog(deps),
   };
 
+  const { shouldSkipNoopWrite, markProcessedWrite } = createNoopWriteSkipper(deps);
+
   let queue = Promise.resolve();
   return async (key: string) => {
     const handler = handlers[key];
     if (!handler) return;
-    queue = queue.then(() => handler()).catch((error) => {
+    queue = queue.then(async () => {
+      if (shouldSkipNoopWrite(key)) return;
+      await handler();
+      markProcessedWrite(key);
+    }).catch((error) => {
       deps.errorLog('Settings handler failed', error);
     });
     await queue;

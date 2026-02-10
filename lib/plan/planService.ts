@@ -324,6 +324,10 @@ export class PlanService {
     }
     this.lastNotifiedPriceLevel = result.priceLevel;
   }
+
+  destroy(): void {
+    this.clearPendingNonActionSnapshot();
+  }
 }
 
 const roundNullable = (value: number | null, step: number): number | null => {

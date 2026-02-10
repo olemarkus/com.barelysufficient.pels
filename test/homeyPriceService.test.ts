@@ -1,6 +1,8 @@
 import PriceService from '../lib/price/priceService';
 import { mockHomeyInstance } from './mocks/homey';
 import {
+  COMBINED_PRICES,
+  FLOW_PRICES_TODAY,
   HOMEY_PRICES_CURRENCY,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
@@ -25,6 +27,7 @@ describe('Homey price service', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
+    mockHomeyInstance.api.clearRealtimeEvents();
   });
 
   afterEach(() => {
@@ -226,5 +229,69 @@ describe('Homey price service', () => {
     expect(logDebug).toHaveBeenCalledWith(
       `Homey prices: Ignoring stored today data for ${wrongKey} (expected ${todayKey})`,
     );
+  });
+
+  it('persists refreshed lastFetched when combined prices are otherwise unchanged', () => {
+    jest.useFakeTimers().setSystemTime(fixedNow);
+    const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
+    mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+      dateKey: todayKey,
+      pricesByHour: { '0': 1.5, '1': 1.7 },
+      updatedAt: fixedNow.toISOString(),
+    });
+
+    const service = new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      () => {},
+      () => {},
+      () => {},
+    );
+    const setSpy = jest.spyOn(mockHomeyInstance.settings, 'set');
+
+    service.updateCombinedPrices();
+    jest.advanceTimersByTime(1000);
+    service.updateCombinedPrices();
+
+    const combinedWrites = setSpy.mock.calls.filter(([key]) => key === COMBINED_PRICES);
+    expect(combinedWrites).toHaveLength(2);
+    const firstPayload = combinedWrites[0][1] as { lastFetched?: string };
+    const secondPayload = combinedWrites[1][1] as { lastFetched?: string };
+    expect(firstPayload.lastFetched).toBe(fixedNow.toISOString());
+    expect(secondPayload.lastFetched).toBe(new Date(fixedNow.getTime() + 1000).toISOString());
+    expect(mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'prices_updated')).toHaveLength(2);
+  });
+
+  it('rewrites combined prices when underlying values change', () => {
+    jest.useFakeTimers().setSystemTime(fixedNow);
+    const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
+    mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+      dateKey: todayKey,
+      pricesByHour: { '0': 1.5, '1': 1.7 },
+      updatedAt: fixedNow.toISOString(),
+    });
+
+    const service = new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      () => {},
+      () => {},
+      () => {},
+    );
+    const setSpy = jest.spyOn(mockHomeyInstance.settings, 'set');
+
+    service.updateCombinedPrices();
+
+    mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
+      dateKey: todayKey,
+      pricesByHour: { '0': 2.5, '1': 2.7 },
+      updatedAt: new Date(fixedNow.getTime() + 1000).toISOString(),
+    });
+    jest.advanceTimersByTime(1000);
+    service.updateCombinedPrices();
+
+    const combinedWrites = setSpy.mock.calls.filter(([key]) => key === COMBINED_PRICES);
+    expect(combinedWrites).toHaveLength(2);
+    expect(mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'prices_updated')).toHaveLength(2);
   });
 });

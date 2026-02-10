@@ -44,9 +44,9 @@ import { disableUnsupportedDevices as disableUnsupportedDevicesHelper } from './
 import { startAppServices } from './lib/app/appLifecycleHelpers';
 import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
-import { logDynamicElectricityPricesFromHomey } from './lib/app/appEnergyDebug';
 import { getHomeyDevicesForDebug as getHomeyDevicesForDebugHelper, logHomeyDeviceForDebug as logHomeyDeviceForDebugHelper } from './lib/app/appDebugHelpers';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
+import { toStableFingerprint } from './lib/utils/stableFingerprint';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
@@ -87,9 +87,7 @@ class PelsApp extends Homey.App {
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     this.deviceManager.updateLocalSnapshot(deviceId, updates);
   }
-  private setExpectedOverride(deviceId: string, kw: number): void {
-    this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
-  }
+  private setExpectedOverride(deviceId: string, kw: number): void { this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() }; }
   private getHomeyEnergyApi(): HomeyEnergyApi | null {
     const sdkEnergy = resolveHomeyEnergyApiFromSdk(this.homey);
     if (sdkEnergy) return sdkEnergy;
@@ -97,14 +95,10 @@ class PelsApp extends Homey.App {
     return resolveHomeyEnergyApiFromHomeyApi(homeyApi);
   }
   async getHomeyDevicesForDebug(): Promise<HomeyDeviceLike[]> {
-    try {
-      return await getHomeyDevicesForDebugHelper({
-        deviceManager: this.deviceManager,
-      });
-    } catch (err) {
+    return getHomeyDevicesForDebugHelper({ deviceManager: this.deviceManager }).catch((err) => {
       this.log('Failed to get Homey devices for debug', err);
       return [];
-    }
+    });
   }
   async logHomeyDeviceForDebug(deviceId: string): Promise<boolean> {
     return logHomeyDeviceForDebugHelper({
@@ -135,9 +129,7 @@ class PelsApp extends Homey.App {
       updateOverheadToken: () => this.updateOverheadToken(),
       refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
       rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache(),
-      setLastNotifiedOperatingMode: (mode) => {
-        this.lastNotifiedOperatingMode = mode;
-      },
+      setLastNotifiedOperatingMode: (mode) => { this.lastNotifiedOperatingMode = mode; },
       getOperatingMode: () => this.operatingMode,
       registerFlowCards: () => this.registerFlowCards(),
       startPeriodicSnapshotRefresh: () => this.startPeriodicSnapshotRefresh(),
@@ -148,12 +140,6 @@ class PelsApp extends Homey.App {
     });
     this.startPowerTrackerPruning();
     this.startPerfLogging();
-    void logDynamicElectricityPricesFromHomey({
-      homey: this.homey,
-      deviceManager: this.deviceManager,
-      log: (...args: unknown[]) => this.log(...args),
-      error: (...args: unknown[]) => this.error(...args),
-    });
   }
   private initPriceCoordinator(): void {
     this.priceCoordinator = createPriceCoordinator({
@@ -308,6 +294,7 @@ class PelsApp extends Homey.App {
       this.stopPerfLogging();
       this.stopPerfLogging = undefined;
     }
+    this.planService?.destroy();
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
   }
@@ -565,7 +552,10 @@ class PelsApp extends Homey.App {
     if (resolved !== rawMode) this.logDebug('settings', `Mode '${rawMode}' resolved via alias to '${resolved}'`);
     this.operatingMode = resolved;
     this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
-    this.homey.settings.set('mode_alias_used', rawMode !== resolved ? rawMode : null);
+    const aliasUsed = rawMode !== resolved ? rawMode : null;
+    if (this.homey.settings.get('mode_alias_used') !== aliasUsed) {
+      this.homey.settings.set('mode_alias_used', aliasUsed);
+    }
     if (previousMode?.toLowerCase() === resolved.toLowerCase()) {
       this.logDebug('settings', `Mode '${resolved}' already active`);
     }
@@ -598,9 +588,7 @@ class PelsApp extends Homey.App {
       capacityDryRun: this.capacityDryRun,
     }));
     const dailyBudgetLog = this.dailyBudgetService.getPeriodicStatusLog();
-    if (dailyBudgetLog) {
-      this.log(dailyBudgetLog);
-    }
+    if (dailyBudgetLog) this.log(dailyBudgetLog);
   }
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] { return this.deviceManager?.getSnapshot() ?? []; }
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.deviceManager.setSnapshotForTests(snapshot); }
@@ -612,7 +600,12 @@ class PelsApp extends Homey.App {
     try {
       await this.deviceManager.refreshSnapshot();
       const snapshot = this.deviceManager.getSnapshot();
-      this.homey.settings.set('target_devices_snapshot', snapshot);
+      const existingSnapshot = this.homey.settings.get('target_devices_snapshot') as unknown;
+      if (toStableFingerprint(existingSnapshot) !== toStableFingerprint(snapshot)) {
+        this.homey.settings.set('target_devices_snapshot', snapshot);
+      } else {
+        this.logDebug('devices', 'Target devices snapshot unchanged, skipping settings write');
+      }
       disableUnsupportedDevicesHelper({ snapshot, settings: this.homey.settings, logDebug: (...args: unknown[]) => this.logDebug('devices', ...args) });
     } finally { this.isSnapshotRefreshing = false; }
   }

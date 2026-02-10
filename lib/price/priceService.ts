@@ -39,14 +39,28 @@ import {
   storeFlowPriceData as storeFlowPriceDataHelper,
 } from './priceServiceFlowHelpers';
 import { buildCombinedPricePayload } from './priceServiceCombined';
-import {
-  DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH,
-} from './norwayPriceDefaults';
+import { DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH } from './norwayPriceDefaults';
 import { buildCombinedHourlyPricesNorway } from './priceServiceNorway';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
+import { toStableFingerprint } from '../utils/stableFingerprint';
+
+const stripLastFetched = (value: unknown): unknown => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, 'lastFetched')) return record;
+  return Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'lastFetched'));
+};
+
+const toCombinedPayloadFingerprint = (value: unknown): string => toStableFingerprint(stripLastFetched(value));
+
+const getLastFetchedTimestamp = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const lastFetched = (value as { lastFetched?: unknown }).lastFetched;
+  return typeof lastFetched === 'string' ? lastFetched : null;
+};
 
 export default class PriceService {
   constructor(
@@ -56,12 +70,9 @@ export default class PriceService {
     private errorLog?: (...args: unknown[]) => void,
     private getHomeyEnergyApi?: () => HomeyEnergyApi | null,
   ) { }
-  private getSettingValue(key: string): unknown {
-    return this.homey.settings.get(key) as unknown;
-  }
+  private getSettingValue(key: string): unknown { return this.homey.settings.get(key) as unknown; }
   private getNumberSetting(key: string, fallback: number): number {
-    const value = this.getSettingValue(key);
-    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+    const value = this.getSettingValue(key); return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
   }
   private emitRealtime(event: string, payload: unknown): void {
     const api = (this.homey as { api?: { realtime?: (evt: string, data: unknown) => Promise<void> } }).api;
@@ -243,6 +254,17 @@ export default class PriceService {
       minDiffOre: this.getNumberSetting('price_min_diff_ore', 0),
       now: new Date(),
     });
+    const existingPayload = this.getSettingValue(COMBINED_PRICES);
+    if (toCombinedPayloadFingerprint(existingPayload) === toCombinedPayloadFingerprint(payload)) {
+      this.logDebug('Combined prices unchanged, skipping settings update');
+      const nextLastFetched = getLastFetchedTimestamp(payload);
+      const previousLastFetched = getLastFetchedTimestamp(existingPayload);
+      if (nextLastFetched && nextLastFetched !== previousLastFetched) {
+        this.homey.settings.set(COMBINED_PRICES, payload);
+      }
+      this.emitRealtime('prices_updated', payload);
+      return;
+    }
     this.homey.settings.set(COMBINED_PRICES, payload);
     this.emitRealtime('prices_updated', payload);
   }

@@ -4,7 +4,8 @@ import {
   dailyBudgetPriceFlexShareInput,
   dailyBudgetBreakdownInput,
 } from './dom';
-import { getSetting, setSetting } from './homey';
+import { getSetting } from './homey';
+import { pushSettingWriteIfChanged } from './settingWrites';
 import { logSettingsError } from './logging';
 import { showToast, showToastError } from './toast';
 import {
@@ -67,11 +68,34 @@ const saveDailyBudgetTuningSettings = async () => {
   );
   const breakdownEnabled = dailyBudgetBreakdownInput?.checked ?? false;
 
-  await Promise.all([
-    setSetting(DAILY_BUDGET_CONTROLLED_WEIGHT, controlledWeight),
-    setSetting(DAILY_BUDGET_PRICE_FLEX_SHARE, priceFlexShare),
-    setSetting(DAILY_BUDGET_BREAKDOWN_ENABLED, breakdownEnabled),
+  const [currentControlledWeight, currentPriceFlexShare, currentBreakdown] = await Promise.all([
+    getSetting(DAILY_BUDGET_CONTROLLED_WEIGHT),
+    getSetting(DAILY_BUDGET_PRICE_FLEX_SHARE),
+    getSetting(DAILY_BUDGET_BREAKDOWN_ENABLED),
   ]);
+
+  const writes: Array<Promise<void>> = [];
+  pushSettingWriteIfChanged(
+    writes,
+    DAILY_BUDGET_CONTROLLED_WEIGHT,
+    currentControlledWeight,
+    controlledWeight,
+  );
+  pushSettingWriteIfChanged(
+    writes,
+    DAILY_BUDGET_PRICE_FLEX_SHARE,
+    currentPriceFlexShare,
+    priceFlexShare,
+  );
+  pushSettingWriteIfChanged(
+    writes,
+    DAILY_BUDGET_BREAKDOWN_ENABLED,
+    currentBreakdown,
+    breakdownEnabled,
+  );
+  if (writes.length > 0) {
+    await Promise.all(writes);
+  }
 
   setInputValue(dailyBudgetControlledWeightInput, controlledWeight);
   setInputValue(dailyBudgetPriceFlexShareInput, priceFlexShare);
