@@ -60,13 +60,15 @@ const toFingerprintNode = (value: unknown, seen: WeakSet<object>): FingerprintNo
 
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    const entries = Object.keys(record)
-      .sort()
-      .map((key): readonly [string, FingerprintNode] => [key, toFingerprintNode(record[key], seen)]);
     return serializeWithSeenTracking(
       record,
       seen,
-      () => ['object', entries],
+      () => {
+        const entries = Object.keys(record)
+          .sort()
+          .map((key): readonly [string, FingerprintNode] => [key, toFingerprintNode(record[key], seen)]);
+        return ['object', entries];
+      },
     );
   }
 

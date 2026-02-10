@@ -1331,15 +1331,63 @@ describe('Device plan snapshot', () => {
     };
     (app as any).deviceManager.homeyApi = mockHomeyApi;
 
-    // Clear snapshot so the second call would normally try again.
-    (app as any).deviceManager.setSnapshotForTests([]);
+    // Keep an onoff-capable snapshot entry so turn_off is attempted, then force a second attempt.
+    (app as any).deviceManager.setSnapshotForTests([{
+      id: 'dev-1',
+      name: 'Heater A',
+      targets: [],
+      capabilities: ['onoff'],
+      currentOn: true,
+      controllable: true,
+    }]);
 
     await (app as any).applySheddingToDevice('dev-1', 'Heater A');
     // Simulate plan still thinks it is on to force a second attempt.
-    (app as any).deviceManager.setSnapshotForTests([]);
+    (app as any).deviceManager.setSnapshotForTests([{
+      id: 'dev-1',
+      name: 'Heater A',
+      targets: [],
+      capabilities: ['onoff'],
+      currentOn: true,
+      controllable: true,
+    }]);
     await (app as any).applySheddingToDevice('dev-1', 'Heater A');
 
     expect(mockHomeyApi.devices.setCapabilityValue).toHaveBeenCalledTimes(1);
+  });
+
+  it('records shed timestamp and skips turn_off for devices without onoff and temperature target', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    const mockHomeyApi = {
+      devices: {
+        setCapabilityValue: jest.fn().mockResolvedValue(undefined),
+      },
+    };
+    (app as any).deviceManager.homeyApi = mockHomeyApi;
+
+    (app as any).deviceManager.setSnapshotForTests([{
+      id: 'dev-1',
+      name: 'No On/Off Device',
+      targets: [],
+      capabilities: ['measure_power'],
+      currentOn: true,
+      controllable: true,
+    }]);
+
+    const before = (app as any).planEngine.state.lastDeviceShedMs['dev-1'];
+    await (app as any).applySheddingToDevice('dev-1', 'No On/Off Device');
+
+    expect(mockHomeyApi.devices.setCapabilityValue).not.toHaveBeenCalled();
+    const after = (app as any).planEngine.state.lastDeviceShedMs['dev-1'];
+    expect(typeof after).toBe('number');
+    if (typeof before === 'number') {
+      expect(after).toBeGreaterThanOrEqual(before);
+    }
   });
 
   it('does not repeatedly shed the same device across consecutive samples (flap guard)', async () => {

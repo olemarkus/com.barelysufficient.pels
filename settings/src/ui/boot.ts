@@ -41,6 +41,7 @@ import {
   DEBUG_LOGGING_TOPICS,
   NORWAY_PRICE_MODEL,
   OPERATING_MODE_SETTING,
+  OVERSHOOT_BEHAVIORS,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
@@ -238,7 +239,7 @@ const initRealtimeListeners = () => {
       });
     }
 
-    if (key === 'overshoot_behaviors') {
+    if (key === OVERSHOOT_BEHAVIORS) {
       loadShedBehaviors().catch((error) => {
         void logSettingsError('Failed to load shed behaviors', error, 'settings.set');
       });

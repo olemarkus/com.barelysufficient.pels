@@ -28,4 +28,11 @@ describe('toStableFingerprint', () => {
 
     expect(toStableFingerprint(cyclic)).toContain('"circular"');
   });
+
+  it('handles cyclic object references without recursing infinitely', () => {
+    const cyclic: { self?: unknown } = {};
+    cyclic.self = cyclic;
+
+    expect(toStableFingerprint(cyclic)).toContain('"circular"');
+  });
 });

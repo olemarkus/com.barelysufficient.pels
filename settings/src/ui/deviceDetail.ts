@@ -26,12 +26,77 @@ import {
   supportsPowerDevice,
   supportsTemperatureDevice,
 } from './deviceUtils';
+import { AIRTREATMENT_SHED_FLOOR_C, NON_ONOFF_TEMPERATURE_SHED_FLOOR_C } from '../../../lib/utils/airtreatmentConstants';
+import {
+  OVERSHOOT_BEHAVIORS,
+} from '../../../lib/utils/settingsKeys';
+import {
+  computeDefaultAirtreatmentShedTemperature,
+  normalizeShedTemperature,
+} from '../../../lib/utils/airtreatmentShedTemperature';
 
 let currentDetailDeviceId: string | null = null;
 
 type ShedAction = 'turn_off' | 'set_temperature';
 
 const getDeviceById = (deviceId: string) => state.latestDevices.find((device) => device.id === deviceId) || null;
+
+const isTemperatureDeviceWithoutOnOff = (device: TargetDeviceSnapshot | null): boolean => (
+  Boolean(
+    device
+    && supportsTemperatureDevice(device)
+    && !device.capabilities?.includes('onoff'),
+  )
+);
+
+const resolveTemperatureShedFloor = (device: TargetDeviceSnapshot | null): number => {
+  const classKey = (device?.deviceClass || '').trim().toLowerCase();
+  return classKey === 'airtreatment' ? AIRTREATMENT_SHED_FLOOR_C : NON_ONOFF_TEMPERATURE_SHED_FLOOR_C;
+};
+
+const updateShedActionOptions = (params: {
+  canConfigure: boolean;
+  forceTemperatureOnly: boolean;
+  supportsTemperature: boolean;
+}): void => {
+  if (!deviceDetailShedAction) return;
+  const { canConfigure, forceTemperatureOnly, supportsTemperature } = params;
+  const turnOffOption = deviceDetailShedAction.querySelector('option[value="turn_off"]');
+  const setTempOption = deviceDetailShedAction.querySelector('option[value="set_temperature"]');
+  if (turnOffOption) {
+    turnOffOption.disabled = !canConfigure || forceTemperatureOnly;
+    turnOffOption.hidden = forceTemperatureOnly;
+  }
+  if (setTempOption) {
+    setTempOption.disabled = !canConfigure;
+    setTempOption.hidden = !supportsTemperature;
+  }
+  deviceDetailShedAction.disabled = !canConfigure || forceTemperatureOnly;
+};
+
+const resolveShedActionValue = (params: {
+  canConfigure: boolean;
+  forceTemperatureOnly: boolean;
+  configuredAction: ShedAction | undefined;
+}): ShedAction => {
+  const { canConfigure, forceTemperatureOnly, configuredAction } = params;
+  if (!canConfigure) return 'turn_off';
+  if (forceTemperatureOnly) return 'set_temperature';
+  return configuredAction || 'turn_off';
+};
+
+const resolveShedTemperatureValue = (params: {
+  canConfigure: boolean;
+  forceTemperatureOnly: boolean;
+  configuredTemperature: number | undefined;
+  fallbackTemperature: number;
+}): string => {
+  const { canConfigure, forceTemperatureOnly, configuredTemperature, fallbackTemperature } = params;
+  if (!canConfigure) return '';
+  if (typeof configuredTemperature === 'number') return configuredTemperature.toString();
+  if (forceTemperatureOnly) return fallbackTemperature.toString();
+  return '';
+};
 
 const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = name;
@@ -64,19 +129,26 @@ const setDeviceDetailShedBehavior = (deviceId: string) => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
   const canConfigure = supportsTemperature && supportsPower;
+  const forceTemperatureOnly = canConfigure && isTemperatureDeviceWithoutOnOff(device);
   const shedConfig = state.shedBehaviors[deviceId];
+  updateShedActionOptions({ canConfigure, forceTemperatureOnly, supportsTemperature });
   if (deviceDetailShedAction) {
-    const setTempOption = deviceDetailShedAction.querySelector('option[value="set_temperature"]');
-    if (setTempOption) {
-      setTempOption.disabled = !canConfigure;
-      setTempOption.hidden = !supportsTemperature;
-    }
-    deviceDetailShedAction.disabled = !canConfigure;
-    deviceDetailShedAction.value = canConfigure ? shedConfig?.action || 'turn_off' : 'turn_off';
+    const nextAction = resolveShedActionValue({
+      canConfigure,
+      forceTemperatureOnly,
+      configuredAction: shedConfig?.action,
+    });
+    deviceDetailShedAction.value = nextAction;
   }
   if (deviceDetailShedTemp) {
-    const temp = shedConfig?.temperature;
-    deviceDetailShedTemp.value = canConfigure && typeof temp === 'number' ? temp.toString() : '';
+    const fallback = getShedDefaultTemp(deviceId);
+    const nextTempValue = resolveShedTemperatureValue({
+      canConfigure,
+      forceTemperatureOnly,
+      configuredTemperature: shedConfig?.temperature,
+      fallbackTemperature: fallback,
+    });
+    deviceDetailShedTemp.value = nextTempValue;
     deviceDetailShedTemp.disabled = !canConfigure;
   }
 };
@@ -110,11 +182,23 @@ const updateDeltaSectionVisibility = () => {
 
 const getShedDefaultTemp = (deviceId: string | null): number => {
   if (!deviceId) return 10;
-  const modeTarget = state.modeTargets[state.activeMode]?.[deviceId] ?? state.modeTargets[state.editingMode]?.[deviceId];
-  if (typeof modeTarget === 'number') return modeTarget;
   const device = state.latestDevices.find((d) => d.id === deviceId);
-  const currentTarget = device?.targets?.[0]?.value;
-  if (typeof currentTarget === 'number') return currentTarget;
+  const modeTarget = state.modeTargets[state.activeMode]?.[deviceId] ?? state.modeTargets[state.editingMode]?.[deviceId];
+  const normalizedModeTarget = typeof modeTarget === 'number' ? modeTarget : null;
+  const currentTarget = typeof device?.targets?.[0]?.value === 'number'
+    ? device.targets[0].value
+    : null;
+
+  if (isTemperatureDeviceWithoutOnOff(device)) {
+    return computeDefaultAirtreatmentShedTemperature({
+      modeTarget: normalizedModeTarget,
+      currentTarget,
+      minFloorC: resolveTemperatureShedFloor(device),
+    });
+  }
+
+  if (normalizedModeTarget !== null) return normalizedModeTarget;
+  if (currentTarget !== null) return currentTarget;
   return 10;
 };
 
@@ -129,15 +213,23 @@ const resolveTemperatureShedBehavior = (deviceId: string): {
   behavior: { action: ShedAction; temperature?: number };
   updateTempInput?: number;
 } => {
-  const action: ShedAction = deviceDetailShedAction?.value === 'set_temperature' ? 'set_temperature' : 'turn_off';
+  const device = getDeviceById(deviceId);
+  const forceTemperatureOnly = isTemperatureDeviceWithoutOnOff(device);
+  const action: ShedAction = forceTemperatureOnly || deviceDetailShedAction?.value === 'set_temperature'
+    ? 'set_temperature'
+    : 'turn_off';
   if (action === 'turn_off') {
     return { behavior: { action: 'turn_off' } };
   }
   const parsedTemp = parseShedTemperatureInput();
-  const temperature = parsedTemp ?? state.shedBehaviors[deviceId]?.temperature ?? getShedDefaultTemp(deviceId);
+  let temperature = parsedTemp ?? state.shedBehaviors[deviceId]?.temperature ?? getShedDefaultTemp(deviceId);
+  if (forceTemperatureOnly) {
+    temperature = Math.max(resolveTemperatureShedFloor(device), normalizeShedTemperature(temperature));
+  }
+  const shouldUpdateTempInput = parsedTemp === null || (forceTemperatureOnly && parsedTemp !== temperature);
   return {
     behavior: { action: 'set_temperature', temperature },
-    updateTempInput: parsedTemp === null ? temperature : undefined,
+    updateTempInput: shouldUpdateTempInput ? temperature : undefined,
   };
 };
 
@@ -151,7 +243,7 @@ const updateShedTempVisibility = () => {
     }
     return;
   }
-  const isTemp = deviceDetailShedAction.value === 'set_temperature';
+  const isTemp = isTemperatureDeviceWithoutOnOff(device) || deviceDetailShedAction.value === 'set_temperature';
   deviceDetailShedTempRow.hidden = !isTemp;
   if (deviceDetailShedTemp) {
     deviceDetailShedTemp.disabled = !isTemp;
@@ -257,7 +349,7 @@ const saveShedBehavior = async () => {
   const device = getDeviceById(deviceId);
   if (!supportsTemperatureDevice(device) || !supportsPowerDevice(device)) {
     state.shedBehaviors[deviceId] = { action: 'turn_off' };
-    await setSetting('overshoot_behaviors', state.shedBehaviors);
+    await setSetting(OVERSHOOT_BEHAVIORS, state.shedBehaviors);
     return;
   }
   const { behavior, updateTempInput } = resolveTemperatureShedBehavior(deviceId);
@@ -265,12 +357,12 @@ const saveShedBehavior = async () => {
   if (typeof updateTempInput === 'number' && deviceDetailShedTemp) {
     deviceDetailShedTemp.value = updateTempInput.toString();
   }
-  await setSetting('overshoot_behaviors', state.shedBehaviors);
+  await setSetting(OVERSHOOT_BEHAVIORS, state.shedBehaviors);
 };
 
 export const loadShedBehaviors = async () => {
   try {
-    const behaviors = await getSetting('overshoot_behaviors');
+    const behaviors = await getSetting(OVERSHOOT_BEHAVIORS);
     state.shedBehaviors = behaviors && typeof behaviors === 'object'
       ? behaviors as Record<string, { action: ShedAction; temperature?: number }>
       : {};
