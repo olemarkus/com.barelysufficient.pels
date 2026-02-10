@@ -151,5 +151,8 @@
   },
   "1.14.1": {
     "en": "Added support for Norgespris support scheme."
+  },
+  "1.14.2": {
+    "en": "Added support for the airtreatment class including Flexit Nordic balanced ventilation units."
   }
 }
