@@ -21,6 +21,7 @@ import {
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
   MANAGED_DEVICES,
+  OVERSHOOT_BEHAVIORS,
   OPERATING_MODE_SETTING,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
@@ -65,7 +66,7 @@ const DEDUPED_CAPACITY_KEYS = [
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
-  'overshoot_behaviors',
+  OVERSHOOT_BEHAVIORS,
 ];
 
 const DEDUPED_PRICE_KEYS = [
@@ -217,9 +218,10 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     [COMBINED_PRICES]: async () => handleDailyBudgetPriceChange(deps),
     [DAILY_BUDGET_CONTROLLED_WEIGHT]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_PRICE_FLEX_SHARE]: async () => handleDailyBudgetChange(deps),
-    overshoot_behaviors: async () => {
+    [OVERSHOOT_BEHAVIORS]: async () => {
       deps.loadCapacitySettings();
-      await rebuildPlanFromSettings(deps, 'overshoot_behaviors');
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after overshoot behavior change');
+      await rebuildPlanFromSettings(deps, OVERSHOOT_BEHAVIORS);
     },
     [PRICE_OPTIMIZATION_ENABLED]: async () => {
       deps.updatePriceOptimizationEnabled(true);

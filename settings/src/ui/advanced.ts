@@ -13,6 +13,7 @@ import { renderPriceOptimization } from './priceOptimization';
 import { showToast, showToastError } from './toast';
 import { logSettingsError } from './logging';
 import { state } from './state';
+import { OVERSHOOT_BEHAVIORS } from '../../../lib/utils/settingsKeys';
 
 type HomeyApiDevice = {
   id: string;
@@ -137,7 +138,7 @@ const clearDeviceSettings = async (deviceId: string) => {
   await Promise.all([
     setSetting('controllable_devices', nextControllableMap),
     setSetting('managed_devices', nextManagedMap),
-    setSetting('overshoot_behaviors', nextShedBehaviors),
+    setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
     setSetting('price_optimization_settings', nextPriceOptimization),
     setSetting('capacity_priorities', nextCapacityPriorities),
     setSetting('mode_device_targets', nextModeTargets),
@@ -169,7 +170,7 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
   await Promise.all([
     setSetting('controllable_devices', nextControllableMap),
     setSetting('managed_devices', nextManagedMap),
-    setSetting('overshoot_behaviors', nextShedBehaviors),
+    setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
     setSetting('price_optimization_settings', nextPriceOptimization),
     setSetting('capacity_priorities', nextCapacityPriorities),
     setSetting('mode_device_targets', nextModeTargets),

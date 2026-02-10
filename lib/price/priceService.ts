@@ -256,12 +256,11 @@ export default class PriceService {
     });
     const existingPayload = this.getSettingValue(COMBINED_PRICES);
     if (toCombinedPayloadFingerprint(existingPayload) === toCombinedPayloadFingerprint(payload)) {
-      this.logDebug('Combined prices unchanged, skipping settings update');
       const nextLastFetched = getLastFetchedTimestamp(payload);
       const previousLastFetched = getLastFetchedTimestamp(existingPayload);
-      if (nextLastFetched && nextLastFetched !== previousLastFetched) {
-        this.homey.settings.set(COMBINED_PRICES, payload);
-      }
+      const shouldUpdateLastFetched = Boolean(nextLastFetched && nextLastFetched !== previousLastFetched);
+      this.logDebug(shouldUpdateLastFetched ? 'Combined prices unchanged, updating lastFetched timestamp' : 'Combined prices unchanged, skipping settings update');
+      if (shouldUpdateLastFetched) this.homey.settings.set(COMBINED_PRICES, payload);
       this.emitRealtime('prices_updated', payload);
       return;
     }

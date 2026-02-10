@@ -136,6 +136,31 @@ describe('DeviceManager', () => {
             expect(light?.targets).toEqual([]);
         });
 
+        it('includes airtreatment temperature devices in snapshot', async () => {
+            await deviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Nordic S4 REL',
+                    class: 'airtreatment',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
+                    capabilitiesObj: {
+                        measure_power: { value: 250, id: 'measure_power' },
+                        measure_temperature: { value: 18, id: 'measure_temperature', units: '°C' },
+                        target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            const snapshot = deviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            expect(snapshot[0].deviceClass).toBe('airtreatment');
+            expect(snapshot[0].deviceType).toBe('temperature');
+            expect(snapshot[0].powerCapable).toBe(true);
+        });
+
         it('includes measured power zero when load setting is present', async () => {
             await deviceManager.init();
             mockGetDevices.mockResolvedValue({

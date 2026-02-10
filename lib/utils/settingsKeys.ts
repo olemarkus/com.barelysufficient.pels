@@ -4,6 +4,7 @@ export const CAPACITY_DRY_RUN = 'capacity_dry_run';
 export const OPERATING_MODE_SETTING = 'operating_mode';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
+export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';
 export const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';
 export const PRICE_OPTIMIZATION_ENABLED = 'price_optimization_enabled';
 export const DAILY_BUDGET_ENABLED = 'daily_budget_enabled';

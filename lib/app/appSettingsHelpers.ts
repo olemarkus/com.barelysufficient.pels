@@ -3,7 +3,14 @@ import type { ShedBehavior } from '../plan/planTypes';
 import { normalizeShedBehaviors as normalizeShedBehaviorsHelper, resolveModeName as resolveModeNameHelper } from '../utils/capacityHelpers';
 import { createSettingsHandler } from '../utils/settingsHandlers';
 import { isBooleanMap, isFiniteNumber, isModeDeviceTargets, isPrioritySettings, isStringMap } from '../utils/appTypeGuards';
-import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, MANAGED_DEVICES, OPERATING_MODE_SETTING } from '../utils/settingsKeys';
+import {
+  CAPACITY_DRY_RUN,
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  MANAGED_DEVICES,
+  OPERATING_MODE_SETTING,
+  OVERSHOOT_BEHAVIORS,
+} from '../utils/settingsKeys';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type CapacityGuard from '../core/capacityGuard';
 
@@ -33,7 +40,7 @@ export function buildCapacitySettingsSnapshot(params: {
   const dryRun = settings.get(CAPACITY_DRY_RUN) as unknown;
   const controllables = settings.get('controllable_devices') as unknown;
   const managed = settings.get(MANAGED_DEVICES) as unknown;
-  const rawShedBehaviors = settings.get('overshoot_behaviors') as unknown;
+  const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
 
   const nextCapacity = {
     limitKw: isFiniteNumber(limit) ? limit : current.capacitySettings.limitKw,
