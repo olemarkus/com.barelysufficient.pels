@@ -266,6 +266,52 @@ describe('Norway norgespris pricing', () => {
     expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(1), 2);
   });
 
+  it('includes dailyTotals usage even when the same UTC day also has bucket entries', () => {
+    const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
+    jest.useFakeTimers().setSystemTime(now);
+    setNorwayNorgesprisSettings({
+      now,
+      monthUsageKwh: 0,
+      lastPowerW: 2000,
+      tariffGroup: 'Husholdning',
+      usageSource: 'buckets',
+      usageBucketIso: now.toISOString(),
+    });
+
+    const dayKeyUtc = now.toISOString().slice(0, 10);
+    mockHomeyInstance.settings.set('power_tracker_state', {
+      lastPowerW: 2000,
+      dailyTotals: {
+        [dayKeyUtc]: NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH - 1,
+      },
+      buckets: {
+        [now.toISOString()]: 2,
+      },
+    });
+
+    const [firstPrice] = createService().getCombinedHourlyPrices();
+    expect((firstPrice as any).norgesprisAdjustment).toBeCloseTo(0, 5);
+    expect(firstPrice.totalPrice).toBeCloseTo(buildExpectedBaseTotalIncVat(), 2);
+  });
+
+  it('ignores spot entries with invalid startsAt timestamps', () => {
+    const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
+    jest.useFakeTimers().setSystemTime(now);
+    setNorwayNorgesprisSettings({
+      now,
+      monthUsageKwh: 0,
+      lastPowerW: 2000,
+      spotPrices: [
+        { startsAt: now.toISOString(), spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+        { startsAt: 'not-a-valid-date', spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+      ],
+    });
+
+    const prices = createService().getCombinedHourlyPrices();
+    expect(prices).toHaveLength(1);
+    expect(prices[0].startsAt).toBe(now.toISOString());
+  });
+
   it('uses Homey timezone hour for grid tariff matching', () => {
     const now = new Date('2026-01-31T23:30:00.000Z'); // Europe/Oslo: 00:30 next day
     jest.useFakeTimers().setSystemTime(now);

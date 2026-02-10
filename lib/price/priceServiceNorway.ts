@@ -69,6 +69,7 @@ const normalizeSpotList = (spotPrices: unknown, timeZone: string): Array<{ spot:
   const spotList = Array.isArray(spotPrices) ? spotPrices as SpotEntry[] : [];
   return spotList
     .map((spot) => ({ spot, timeInfo: getZonedTimeInfo(spot.startsAt, timeZone) }))
+    .filter(({ timeInfo }) => Number.isFinite(timeInfo.startsAtMs))
     .sort((a, b) => sortByStartsAtMs(a.timeInfo.startsAtMs, b.timeInfo.startsAtMs));
 };
 
@@ -198,7 +199,7 @@ export const buildCombinedHourlyPricesNorway = (params: {
     monthUsageKwh: validMonthUsageKwh,
   });
 
-  return normalizedSpotList.map(({ spot, timeInfo }) => {
+  return normalizedSpotList.reduce<CombinedHourlyPrice[]>((prices, { spot, timeInfo }) => {
     const { hour, monthKey, startsAtMs } = timeInfo;
     const spotPriceExVat = resolveSpotPriceExVat(spot, vatMultiplier);
     const gridTariffExVat = gridTariffByHour.get(hour) || 0;
@@ -241,7 +242,9 @@ export const buildCombinedHourlyPricesNorway = (params: {
       totalPrice -= electricitySupport;
     }
 
-    return {
+    return [
+      ...prices,
+      {
       startsAt: spot.startsAt,
       spotPriceExVat,
       gridTariffExVat,
@@ -256,6 +259,7 @@ export const buildCombinedHourlyPricesNorway = (params: {
       totalPrice,
       ...(typeof norgesprisAdjustmentExVat === 'number' ? { norgesprisAdjustmentExVat } : {}),
       ...(typeof norgesprisAdjustment === 'number' ? { norgesprisAdjustment } : {}),
-    };
-  });
+      },
+    ];
+  }, []);
 };
