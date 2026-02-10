@@ -26,8 +26,9 @@ import {
   dailyBudgetToggleYesterday,
   dailyBudgetBreakdownInput,
 } from './dom';
-import { callApi, getSetting, setSetting } from './homey';
+import { callApi, getSetting } from './homey';
 import { showToast, showToastError } from './toast';
+import { pushSettingWriteIfChanged } from './settingWrites';
 import { logSettingsError } from './logging';
 import { formatKWh, formatPercent, formatSignedKWh } from './dailyBudgetFormat';
 import { renderDailyBudgetChart } from './dailyBudgetChart';
@@ -380,9 +381,23 @@ export const saveDailyBudgetSettings = async () => {
   const boundedKwh = Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, kwhValue));
   const priceShapingEnabled = dailyBudgetPriceShapingInput?.checked ?? true;
 
-  await setSetting(DAILY_BUDGET_ENABLED, enabled);
-  await setSetting(DAILY_BUDGET_KWH, boundedKwh);
-  await setSetting(DAILY_BUDGET_PRICE_SHAPING_ENABLED, priceShapingEnabled);
+  const [currentEnabled, currentKwh, currentPriceShaping] = await Promise.all([
+    getSetting(DAILY_BUDGET_ENABLED),
+    getSetting(DAILY_BUDGET_KWH),
+    getSetting(DAILY_BUDGET_PRICE_SHAPING_ENABLED),
+  ]);
+  const writes: Array<Promise<void>> = [];
+  pushSettingWriteIfChanged(writes, DAILY_BUDGET_ENABLED, currentEnabled, enabled);
+  pushSettingWriteIfChanged(writes, DAILY_BUDGET_KWH, currentKwh, boundedKwh);
+  pushSettingWriteIfChanged(
+    writes,
+    DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+    currentPriceShaping,
+    priceShapingEnabled,
+  );
+  if (writes.length > 0) {
+    await Promise.all(writes);
+  }
   await showToast('Daily budget settings saved.', 'ok');
 };
 

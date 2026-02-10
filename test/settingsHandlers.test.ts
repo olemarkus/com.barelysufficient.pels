@@ -209,6 +209,44 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 
+  it('recomputes combined prices when provider surcharge changes', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler('provider_surcharge');
+
+    expect(deps.priceService.updateCombinedPrices).toHaveBeenCalled();
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+  });
+
+  it('skips repeated no-op writes for deduped settings keys', async () => {
+    const deps = buildDeps();
+    deps.homey.settings.get = jest.fn().mockReturnValue(25);
+    const handler = createSettingsHandler(deps);
+
+    await handler('price_threshold_percent');
+    await handler('price_threshold_percent');
+
+    expect(deps.priceService.updateCombinedPrices).toHaveBeenCalledTimes(1);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('processes deduped settings keys again when value changes', async () => {
+    const deps = buildDeps();
+    const values = [25, 30];
+    deps.homey.settings.get = jest.fn(() => values.shift());
+    const handler = createSettingsHandler(deps);
+
+    await handler('price_threshold_percent');
+    await handler('price_threshold_percent');
+
+    expect(deps.priceService.updateCombinedPrices).toHaveBeenCalledTimes(2);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+  });
+
   it('refreshes managed devices and rebuilds', async () => {
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);

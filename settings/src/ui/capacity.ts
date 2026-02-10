@@ -7,10 +7,11 @@ import {
   staleDataBannerText,
   debugLoggingTopicInputs,
 } from './dom';
-import { getSetting, setSetting } from './homey';
+import { getSetting } from './homey';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEBUG_LOGGING_TOPICS } from '../../../lib/utils/settingsKeys';
 import { ALL_DEBUG_LOGGING_TOPICS, normalizeDebugLoggingTopics } from '../../../lib/utils/debugLogging';
 import { showToast } from './toast';
+import { pushSettingWriteIfChanged } from './settingWrites';
 
 const STALE_DATA_THRESHOLD_MS = 60 * 1000;
 const HEARTBEAT_THRESHOLD_MS = 90 * 1000;
@@ -83,9 +84,19 @@ export const saveCapacitySettings = async () => {
   if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
   if (margin > limit) throw new Error('Margin cannot exceed the limit.');
 
-  await setSetting(CAPACITY_LIMIT_KW, limit);
-  await setSetting(CAPACITY_MARGIN_KW, margin);
-  await setSetting(CAPACITY_DRY_RUN, dryRun);
+  const [currentLimit, currentMargin, currentDryRun] = await Promise.all([
+    getSetting(CAPACITY_LIMIT_KW),
+    getSetting(CAPACITY_MARGIN_KW),
+    getSetting(CAPACITY_DRY_RUN),
+  ]);
+
+  const writes: Array<Promise<void>> = [];
+  pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, currentLimit, limit);
+  pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, currentMargin, margin);
+  pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, currentDryRun, dryRun);
+  if (writes.length > 0) {
+    await Promise.all(writes);
+  }
   updateDryRunBanner(dryRun);
   await showToast('Capacity settings saved.', 'ok');
 };

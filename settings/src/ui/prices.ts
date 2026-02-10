@@ -27,14 +27,13 @@ import {
   priceHomeyTomorrow,
 } from './dom';
 import { getHomeyTimezone, getSetting, setSetting } from './homey';
+import { pushSettingWriteIfChanged } from './settingWrites';
 import { showToast } from './toast';
 import { gridCompanies } from './gridCompanies';
 import { renderPrices } from './priceRender';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
-import { calculateThresholds } from './priceThresholds';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../lib/price/priceComponents';
-import { calculateAveragePrice } from '../../../lib/price/priceMath';
 import {
   COMBINED_PRICES,
   FLOW_PRICES_TODAY,
@@ -49,24 +48,19 @@ import {
 import { getFlowPricePayload, getMissingFlowHours } from '../../../lib/price/flowPriceUtils';
 import { addDays } from '../../../lib/price/priceServiceUtils';
 import { getTimeAgo } from './utils';
+import { applyPriceOverrides, type PriceOverrideOptions } from './priceOverrides';
 import { getDateKeyInTimeZone } from './timezone';
 
-type PriceScheme = 'norway' | 'flow' | 'homey';
-type NorwayPriceModel = 'stromstotte' | 'norgespris';
-
-const normalizePriceSchemeSetting = (value: unknown): PriceScheme => {
-  if (value === 'norway' || value === 'flow' || value === 'homey') return value;
-  return 'norway';
-};
-
-const normalizePriceSchemeSelection = (value: unknown): PriceScheme => {
-  if (value === 'norway' || value === 'flow' || value === 'homey') return value;
-  return 'homey';
-};
-
-const normalizeNorwayPriceModel = (value: unknown): NorwayPriceModel => (
-  value === 'norgespris' ? 'norgespris' : 'stromstotte'
-);
+import {
+  normalizeNorwayPriceModel,
+  normalizePriceSchemeSelection,
+  normalizePriceSchemeSetting,
+  parsePriceSettingsInputs,
+  readCurrentPriceSettings,
+  resolveChangedPriceSettingWrites,
+  type NorwayPriceModel,
+  type PriceScheme,
+} from './priceSettingsPersistence';
 
 type GridTariffEntry = {
   time: number;
@@ -272,39 +266,6 @@ export const refreshHomeyStatus = async (schemeOverride?: PriceScheme) => {
   updateFlowStatusValue(priceHomeyTomorrow, tomorrowStatus.text, tomorrowStatus.tone);
 };
 
-type PriceSettingsInput = {
-  priceScheme: PriceScheme;
-  norwayPriceModel: NorwayPriceModel;
-  priceArea: string;
-  providerSurcharge: number;
-  thresholdPercent: number;
-  minDiffOre: number;
-};
-
-type PriceOverrideOptions = {
-  thresholdPercent?: number;
-  minDiffOre?: number;
-};
-
-const parseFloatInput = (value: string | undefined, fallback: number): number => {
-  const parsed = Number.parseFloat(value ?? '');
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const parseIntInput = (value: string | undefined, fallback: number): number => {
-  const parsed = Number.parseInt(value ?? '', 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const parsePriceSettingsInputs = (): PriceSettingsInput => ({
-  priceScheme: normalizePriceSchemeSelection(priceSchemeSelect?.value || 'homey'),
-  norwayPriceModel: normalizeNorwayPriceModel(norwayPriceModelSelect?.value || 'stromstotte'),
-  priceArea: priceAreaSelect?.value || 'NO1',
-  providerSurcharge: parseFloatInput(providerSurchargeInput?.value, 0),
-  thresholdPercent: parseIntInput(priceThresholdInput?.value, 25),
-  minDiffOre: parseFloatInput(priceMinDiffInput?.value, 0),
-});
-
 const validatePriceArea = (priceArea: string) => {
   const validPriceAreas = ['NO1', 'NO2', 'NO3', 'NO4', 'NO5'];
   if (!validPriceAreas.includes(priceArea)) throw new Error('Invalid price area.');
@@ -316,40 +277,15 @@ const validateNumberRange = (value: number, min: number, max: number, message: s
   }
 };
 
-const resolveNumber = (value: number | undefined, fallback: number): number => (
-  typeof value === 'number' && Number.isFinite(value) ? value : fallback
-);
-
-const applyPriceOverrides = (data: CombinedPriceData, overrides: PriceOverrideOptions): CombinedPriceData => {
-  // Keep this logic aligned with priceService.updateCombinedPrices.
-  const thresholdPercent = resolveNumber(overrides.thresholdPercent, data.thresholdPercent ?? 25);
-  const minDiffOre = resolveNumber(overrides.minDiffOre, data.minDiffOre ?? 0);
-  const avgPrice = resolveNumber(data.avgPrice, calculateAveragePrice(data.prices, (entry) => entry.total));
-  const { low: lowThreshold, high: highThreshold } = calculateThresholds(avgPrice, thresholdPercent);
-
-  const prices = data.prices.map((entry) => {
-    const total = Number.isFinite(entry.total) ? entry.total : 0;
-    const diffFromAvg = Math.abs(total - avgPrice);
-    const meetsMinDiff = diffFromAvg >= minDiffOre;
-    return {
-      ...entry,
-      isCheap: total <= lowThreshold && meetsMinDiff,
-      isExpensive: total >= highThreshold && meetsMinDiff,
-    };
-  });
-
-  return {
-    ...data,
-    prices,
-    avgPrice,
-    lowThreshold,
-    highThreshold,
-    thresholdPercent,
-    minDiffOre,
-  };
-};
-
 export const savePriceSettings = async () => {
+  const nextSettings = parsePriceSettingsInputs({
+    priceSchemeValue: priceSchemeSelect?.value || 'homey',
+    norwayPriceModelValue: norwayPriceModelSelect?.value || 'stromstotte',
+    priceAreaValue: priceAreaSelect?.value,
+    providerSurchargeValue: providerSurchargeInput?.value,
+    thresholdPercentValue: priceThresholdInput?.value,
+    minDiffOreValue: priceMinDiffInput?.value,
+  });
   const {
     priceScheme,
     norwayPriceModel,
@@ -357,7 +293,7 @@ export const savePriceSettings = async () => {
     providerSurcharge,
     thresholdPercent,
     minDiffOre,
-  } = parsePriceSettingsInputs();
+  } = nextSettings;
 
   if (priceScheme === 'norway') {
     validatePriceArea(priceArea);
@@ -369,12 +305,13 @@ export const savePriceSettings = async () => {
   validateNumberRange(thresholdPercent, 0, 100, 'Threshold must be between 0 and 100%.');
   validateNumberRange(minDiffOre, 0, 1000, 'Minimum difference must be between 0 and 1000.');
 
-  await setSetting(PRICE_SCHEME, priceScheme);
-  await setSetting(NORWAY_PRICE_MODEL, norwayPriceModel);
-  await setSetting('price_area', priceArea);
-  await setSetting('provider_surcharge', providerSurcharge);
-  await setSetting('price_threshold_percent', thresholdPercent);
-  await setSetting('price_min_diff_ore', minDiffOre);
+  const currentSettings = await readCurrentPriceSettings();
+  const writes = resolveChangedPriceSettingWrites(nextSettings, currentSettings);
+  if (writes.length > 0) {
+    for (const write of writes) {
+      await setSetting(write.key, write.value);
+    }
+  }
   applyPriceSchemeUi(priceScheme, norwayPriceModel);
   void showToast('Price settings saved.', 'ok');
   await refreshPrices({ thresholdPercent, minDiffOre });
@@ -525,13 +462,22 @@ export const saveGridTariffSettings = async () => {
 
   if (gridTariffOrgNumberInput) gridTariffOrgNumberInput.value = organizationNumber;
 
-  await setSetting('nettleie_fylke', countyCode);
-  await setSetting('nettleie_orgnr', organizationNumber);
-  await setSetting('nettleie_tariffgruppe', tariffGroup);
-  await showToast('Grid tariff settings saved.', 'ok');
+  const [currentCountyCode, currentOrganizationNumber, currentTariffGroup] = await Promise.all([
+    getSetting('nettleie_fylke'),
+    getSetting('nettleie_orgnr'),
+    getSetting('nettleie_tariffgruppe'),
+  ]);
 
-  await setSetting('refresh_nettleie', Date.now());
-  await refreshGridTariff();
+  const writes: Array<Promise<void>> = [];
+  pushSettingWriteIfChanged(writes, 'nettleie_fylke', currentCountyCode, countyCode);
+  pushSettingWriteIfChanged(writes, 'nettleie_orgnr', currentOrganizationNumber, organizationNumber);
+  pushSettingWriteIfChanged(writes, 'nettleie_tariffgruppe', currentTariffGroup, tariffGroup);
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    await setSetting('refresh_nettleie', Date.now());
+    await refreshGridTariff();
+  }
+  await showToast('Grid tariff settings saved.', 'ok');
 };
 
 const getGridTariffData = async (): Promise<GridTariffEntry[]> => {

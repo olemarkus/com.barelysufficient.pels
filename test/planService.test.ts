@@ -142,4 +142,54 @@ describe('PlanService', () => {
     const realtimeAfterFlush = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(realtimeAfterFlush).toHaveLength(2);
   });
+
+  it('clears pending throttled snapshot timer on destroy', async () => {
+    const settingsSet = jest.fn();
+    const planEngine = {
+      buildDevicePlanSnapshot: jest
+        .fn()
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.0 }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.2 })),
+      computeDynamicSoftLimit: jest.fn(() => 0),
+      computeShortfallThreshold: jest.fn(() => 0),
+      handleShortfall: jest.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+      applyPlanActions: jest.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache();
+
+    const snapshotWritesAfterThrottle = settingsSet.mock.calls
+      .filter((call: unknown[]) => call[0] === 'device_plan_snapshot');
+    expect(snapshotWritesAfterThrottle).toHaveLength(1);
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
+
+    service.destroy();
+    expect(jest.getTimerCount()).toBe(0);
+
+    jest.advanceTimersByTime(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
+    const snapshotWritesAfterDestroy = settingsSet.mock.calls
+      .filter((call: unknown[]) => call[0] === 'device_plan_snapshot');
+    expect(snapshotWritesAfterDestroy).toHaveLength(1);
+  });
 });

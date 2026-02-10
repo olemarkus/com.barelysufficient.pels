@@ -106,6 +106,23 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('does not rewrite target snapshot when refresh returns unchanged devices', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const setSpy = jest.spyOn(mockHomeyInstance.settings, 'set');
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    const snapshotWrites = setSpy.mock.calls.filter(([key]) => key === 'target_devices_snapshot');
+    expect(snapshotWrites).toHaveLength(1);
+  });
+
   it('keeps devices disabled by default when no settings exist', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
 
