@@ -154,5 +154,8 @@
   },
   "1.14.2": {
     "en": "Added support for the airtreatment class including Flexit Nordic balanced ventilation units."
+  },
+  "1.14.3": {
+    "en": "Fix restore loop for devices without onoff capability."
   }
 }
