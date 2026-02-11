@@ -1669,6 +1669,17 @@ input[type="text"]:focus {
   --day-view-color-now: var(--color-state-info-border);
 }
 
+#usage-panel {
+  --day-view-color-primary: var(--color-base-accent-default);
+  --day-view-color-budget: var(--color-base-info-default);
+  --day-view-color-warn: var(--color-base-warning-default);
+  --day-view-color-now: var(--color-state-info-border);
+}
+
+.usage-day-summary {
+  margin-bottom: var(--spacing-4);
+}
+
 .day-view-chart,
 .daily-budget-chart {
   display: grid;

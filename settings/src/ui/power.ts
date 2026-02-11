@@ -19,6 +19,7 @@ import { createUsageBar } from './components';
 import { setTooltip } from './tooltips';
 import type { PowerTrackerState } from '../../../lib/core/powerTracker';
 import { buildDayContext } from '../../../lib/dailyBudget/dailyBudgetState';
+import { initUsageDayViewHandlers, renderUsageDayView, type UsageDayEntry } from './usageDayView';
 import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
@@ -32,12 +33,7 @@ import {
 
 export type PowerTracker = PowerTrackerState;
 
-type PowerUsageEntry = {
-  hour: Date;
-  kWh: number;
-  budgetKWh?: number;
-  unreliable?: boolean;
-};
+type PowerUsageEntry = UsageDayEntry;
 
 type PowerStatsSummary = {
   today: number;
@@ -444,6 +440,8 @@ export const renderPowerStats = async () => {
 
 export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
   powerUsageEntries = entries;
+  initUsageDayViewHandlers();
+  renderUsageDayView(entries);
   ensurePowerUsageNav();
   const now = new Date(Date.now());
   const timeZone = getHomeyTimezone();

@@ -234,6 +234,60 @@
             </div>
           </div>
 
+          <div class="day-view-header">
+            <div>
+              <h4 id="usage-day-title">Today usage</h4>
+              <p class="muted" id="usage-day-label">--</p>
+            </div>
+            <div class="day-view-actions">
+              <div class="day-view-toggle" role="group" aria-label="Usage day view">
+                <button type="button" class="day-view-toggle__button" id="usage-day-toggle-yesterday" aria-pressed="false">Yesterday</button>
+                <button type="button" class="day-view-toggle__button is-active" id="usage-day-toggle-today" aria-pressed="true">Today</button>
+              </div>
+              <div class="pill" id="usage-day-status-pill">No data</div>
+            </div>
+          </div>
+
+          <div class="usage-summary usage-day-summary">
+            <div class="summary-card">
+              <span class="summary-label">Day total</span>
+              <span class="summary-value" id="usage-day-total">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Peak hour</span>
+              <span class="summary-value" id="usage-day-peak">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Over cap hours</span>
+              <span class="summary-value" id="usage-day-over-cap">--</span>
+            </div>
+          </div>
+
+          <div id="usage-day-chart" class="day-view-chart">
+            <div class="day-view-bars-wrap">
+              <div id="usage-day-bars" class="day-view-bars"></div>
+            </div>
+            <div id="usage-day-labels" class="day-view-labels"></div>
+          </div>
+
+          <div class="day-view-legend" id="usage-day-legend">
+            <div class="day-view-legend__item">
+              <span class="day-view-legend__swatch day-view-legend__swatch--measured" aria-hidden="true"></span>
+              <span class="muted">Measured</span>
+            </div>
+            <div class="day-view-legend__item">
+              <span class="day-view-legend__swatch day-view-legend__swatch--budget" aria-hidden="true"></span>
+              <span class="muted">Budget</span>
+            </div>
+            <div class="day-view-legend__item">
+              <span class="day-view-legend__swatch day-view-legend__swatch--warn" aria-hidden="true"></span>
+              <span class="muted">Warning (over cap or unreliable)</span>
+            </div>
+          </div>
+
+          <p id="usage-day-empty" class="muted" hidden>No hourly usage for the selected day yet.</p>
+          <p class="muted" id="usage-day-meta">Hourly kWh within your local day.</p>
+
           <h4>Weekday vs weekend average</h4>
           <div id="weekday-weekend-stats" class="usage-summary">
             <div class="summary-card">
