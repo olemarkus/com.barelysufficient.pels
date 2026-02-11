@@ -1673,6 +1673,10 @@ input[type="text"]:focus {
   --day-view-color-primary: var(--color-base-accent-default);
   --day-view-color-budget: var(--color-base-info-default);
   --day-view-color-warn: var(--color-base-warning-default);
+  --day-view-color-cheap: var(--color-base-accent-default);
+  --day-view-color-normal: var(--color-surface-5);
+  --day-view-color-expensive: var(--color-base-danger-default);
+  --day-view-color-price: var(--color-state-info-border);
   --day-view-color-now: var(--color-state-info-border);
 }
 
@@ -1823,6 +1827,25 @@ input[type="text"]:focus {
   background: var(--day-view-color-budget, var(--color-base-info-default));
 }
 
+.day-view-marker--price {
+  width: 6px;
+  height: 6px;
+  border-width: 1px;
+  background: var(--day-view-color-price, var(--color-state-info-border));
+}
+
+.day-view-marker--price-cheap {
+  background: var(--day-view-color-cheap, var(--color-base-accent-default));
+}
+
+.day-view-marker--price-normal {
+  background: var(--day-view-color-normal, var(--color-surface-5));
+}
+
+.day-view-marker--price-expensive {
+  background: var(--day-view-color-expensive, var(--color-base-danger-default));
+}
+
 .day-view-marker--actual {
   background: var(--day-view-color-actual, var(--color-base-gray-50));
 }
@@ -1892,6 +1915,14 @@ input[type="text"]:focus {
 
 .day-view-legend__swatch--budget {
   background: var(--day-view-color-budget, var(--color-base-info-default));
+}
+
+.day-view-legend__swatch--price {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--day-view-color-price, var(--color-state-info-border));
+  border: 2px solid var(--color-surface-1);
 }
 
 .day-view-legend__swatch--warn {

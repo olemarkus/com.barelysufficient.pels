@@ -26,6 +26,8 @@ import {
 } from './timezone';
 
 type UsageDayView = 'today' | 'yesterday';
+type UsageDayBarState = 'past' | 'current' | undefined;
+type PriceTone = 'Cheap' | 'Normal' | 'Expensive';
 
 export type UsageDayEntry = {
   hour: Date;
@@ -33,6 +35,10 @@ export type UsageDayEntry = {
   budgetKWh?: number;
   controlledKWh?: number;
   uncontrolledKWh?: number;
+  priceTotal?: number;
+  priceIsCheap?: boolean;
+  priceIsExpensive?: boolean;
+  priceUnit?: string;
   unreliable?: boolean;
 };
 
@@ -43,6 +49,10 @@ type UsageDayBucket = {
   budgetKWh: number | null;
   controlledKWh: number | null;
   uncontrolledKWh: number | null;
+  priceTotal: number | null;
+  priceIsCheap: boolean;
+  priceIsExpensive: boolean;
+  priceUnit: string | null;
   unreliable: boolean;
   hasMeasurement: boolean;
 };
@@ -50,6 +60,7 @@ type UsageDayBucket = {
 let usageDayView: UsageDayView = 'today';
 let usageDayViewHandlersReady = false;
 let latestEntries: UsageDayEntry[] = [];
+const OVER_CAP_EPSILON = 0.001;
 
 const setUsageDayToggleState = () => {
   const options = [
@@ -86,6 +97,50 @@ const getUsageDayDateKey = (view: UsageDayView, now: Date, timeZone: string) => 
 
 const formatUsageDayTitle = (view: UsageDayView) => (view === 'today' ? 'Today usage' : 'Yesterday usage');
 
+const getFiniteNumber = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
+const getPositiveFiniteNumber = (value: unknown): number | null => {
+  const parsed = getFiniteNumber(value);
+  return parsed !== null && parsed > 0 ? parsed : null;
+};
+
+const getNonEmptyString = (value: unknown): string | null => (
+  typeof value === 'string' && value.trim() ? value : null
+);
+
+type UsageDayBucketValues = Omit<UsageDayBucket, 'startMs' | 'label'>;
+
+const buildUsageDayBucketValues = (entry: UsageDayEntry | undefined): UsageDayBucketValues => ({
+  measuredKWh: getFiniteNumber(entry?.kWh) ?? 0,
+  budgetKWh: getPositiveFiniteNumber(entry?.budgetKWh),
+  controlledKWh: getFiniteNumber(entry?.controlledKWh),
+  uncontrolledKWh: getFiniteNumber(entry?.uncontrolledKWh),
+  priceTotal: getFiniteNumber(entry?.priceTotal),
+  priceIsCheap: entry?.priceIsCheap === true,
+  priceIsExpensive: entry?.priceIsExpensive === true,
+  priceUnit: getNonEmptyString(entry?.priceUnit),
+  unreliable: entry?.unreliable === true,
+  hasMeasurement: Boolean(entry),
+});
+
+const isUsageDayOverCap = (bucket: Pick<UsageDayBucket, 'budgetKWh' | 'measuredKWh'>): boolean => (
+  bucket.budgetKWh !== null && bucket.measuredKWh > bucket.budgetKWh + OVER_CAP_EPSILON
+);
+
+const getPriceTone = (bucket: Pick<UsageDayBucket, 'priceIsCheap' | 'priceIsExpensive'>): PriceTone => {
+  if (bucket.priceIsCheap) return 'Cheap';
+  if (bucket.priceIsExpensive) return 'Expensive';
+  return 'Normal';
+};
+
+const getPriceMarkerToneClass = (bucket: Pick<UsageDayBucket, 'priceIsCheap' | 'priceIsExpensive'>): string => {
+  if (bucket.priceIsCheap) return 'day-view-marker--price-cheap';
+  if (bucket.priceIsExpensive) return 'day-view-marker--price-expensive';
+  return 'day-view-marker--price-normal';
+};
+
 const buildUsageDayBuckets = (
   entries: UsageDayEntry[],
   dateKey: string,
@@ -105,24 +160,11 @@ const buildUsageDayBuckets = (
 
   const buckets = bucketStartUtcMs.map((startMs, index) => {
     const entry = entriesByStart.get(startMs);
-    const measuredKWh = entry?.kWh ?? 0;
-    const budgetKWh = typeof entry?.budgetKWh === 'number' && entry.budgetKWh > 0 ? entry.budgetKWh : null;
-    const controlledKWh = typeof entry?.controlledKWh === 'number' && Number.isFinite(entry.controlledKWh)
-      ? entry.controlledKWh
-      : null;
-    const uncontrolledKWh = typeof entry?.uncontrolledKWh === 'number' && Number.isFinite(entry.uncontrolledKWh)
-      ? entry.uncontrolledKWh
-      : null;
-    const unreliable = entry?.unreliable === true;
+    const values = buildUsageDayBucketValues(entry);
     return {
       startMs,
       label: bucketStartLocalLabels[index] ?? '',
-      measuredKWh,
-      budgetKWh,
-      controlledKWh,
-      uncontrolledKWh,
-      unreliable,
-      hasMeasurement: Boolean(entry),
+      ...values,
     };
   });
   return { buckets, nextDayStartUtcMs };
@@ -147,9 +189,14 @@ const buildUsageDayBarTitle = (bucket: UsageDayBucket) => {
     lines.push(`Controlled ${bucket.controlledKWh.toFixed(2)} kWh`);
     lines.push(`Uncontrolled ${bucket.uncontrolledKWh.toFixed(2)} kWh`);
   }
+  if (bucket.priceTotal !== null) {
+    const priceTone = getPriceTone(bucket);
+    const unitSuffix = bucket.priceUnit ? ` ${bucket.priceUnit}` : '';
+    lines.push(`Price ${bucket.priceTotal.toFixed(1)}${unitSuffix} (${priceTone})`);
+  }
   if (bucket.budgetKWh !== null) {
     lines.push(`Budget ${bucket.budgetKWh.toFixed(2)} kWh`);
-    if (bucket.measuredKWh > bucket.budgetKWh + 0.001) {
+    if (isUsageDayOverCap(bucket)) {
       lines.push(`Over cap by ${(bucket.measuredKWh - bucket.budgetKWh).toFixed(2)} kWh`);
     }
   }
@@ -167,9 +214,11 @@ const renderUsageDayHeader = (dateKey: string, timeZone: string) => {
     day: 'numeric',
   }, timeZone)} · ${timeZone}`;
   if (usageDayMeta) {
-    usageDayMeta.textContent = usageDayView === 'today'
-      ? 'Hourly kWh within your local day (updates live).'
-      : 'Hourly kWh for the previous local day.';
+    if (usageDayView === 'today') {
+      usageDayMeta.textContent = 'Hourly kWh with relative price overlay in your local day (updates live).';
+    } else {
+      usageDayMeta.textContent = 'Hourly kWh with relative price overlay for the previous local day.';
+    }
   }
 };
 
@@ -194,11 +243,9 @@ const renderUsageDayHasData = (buckets: UsageDayBucket[]) => {
   const peakBucket = buckets.reduce((max, bucket) => (
     bucket.measuredKWh > max.measuredKWh ? bucket : max
   ), buckets[0]);
-  const overCapHours = buckets.filter((bucket) => (
-    bucket.budgetKWh !== null && bucket.measuredKWh > bucket.budgetKWh + 0.001
-  )).length;
+  const overCapHours = buckets.filter((bucket) => isUsageDayOverCap(bucket)).length;
   const warnHours = buckets.filter((bucket) => (
-    bucket.unreliable || (bucket.budgetKWh !== null && bucket.measuredKWh > bucket.budgetKWh + 0.001)
+    bucket.unreliable || isUsageDayOverCap(bucket)
   )).length;
 
   setUsageDaySummaryValue(usageDayTotal, `${totalKWh.toFixed(1)} kWh`);
@@ -214,31 +261,76 @@ const renderUsageDayHasData = (buckets: UsageDayBucket[]) => {
   }
 };
 
-const getUsageDayBars = (buckets: UsageDayBucket[], currentBucketIndex: number): DayViewBar[] => (
-  buckets.map((bucket, index) => {
-    const isOverCap = bucket.budgetKWh !== null && bucket.measuredKWh > bucket.budgetKWh + 0.001;
-    const warn = bucket.unreliable || isOverCap;
-    let state: 'past' | 'current' | undefined;
-    if (currentBucketIndex >= 0) {
-      if (index < currentBucketIndex) state = 'past';
-      if (index === currentBucketIndex) state = 'current';
-    }
+const getUsageOverlayMax = (buckets: UsageDayBucket[]): number => (
+  buckets.reduce((max, bucket) => (
+    Math.max(max, bucket.measuredKWh, bucket.budgetKWh ?? 0)
+  ), 0)
+);
+
+type UsageDayPriceRange = {
+  min: number;
+  max: number;
+};
+
+const getUsageDayPriceRange = (buckets: UsageDayBucket[]): UsageDayPriceRange | null => {
+  const priceValues = buckets
+    .map((bucket) => bucket.priceTotal)
+    .filter((value): value is number => value !== null);
+  if (!priceValues.length) return null;
+  return {
+    min: Math.min(...priceValues),
+    max: Math.max(...priceValues),
+  };
+};
+
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
+const getUsageDayPriceMarkerValue = (
+  bucket: UsageDayBucket,
+  usageOverlayMax: number,
+  priceRange: UsageDayPriceRange | null,
+): number | null => {
+  if (bucket.priceTotal === null || usageOverlayMax <= 0 || priceRange === null) return null;
+  const span = priceRange.max - priceRange.min;
+  if (span <= OVER_CAP_EPSILON) {
+    return usageOverlayMax * 0.5;
+  }
+  const normalized = clamp((bucket.priceTotal - priceRange.min) / span, 0, 1);
+  return usageOverlayMax * normalized;
+};
+
+const getUsageDayBarState = (index: number, currentBucketIndex: number): UsageDayBarState => {
+  if (currentBucketIndex < 0) return undefined;
+  if (index < currentBucketIndex) return 'past';
+  if (index === currentBucketIndex) return 'current';
+  return undefined;
+};
+
+const getUsageDayBars = (buckets: UsageDayBucket[], currentBucketIndex: number): DayViewBar[] => {
+  const usageOverlayMax = getUsageOverlayMax(buckets);
+  const priceRange = getUsageDayPriceRange(buckets);
+
+  return buckets.map((bucket, index) => {
+    const warn = bucket.unreliable || isUsageDayOverCap(bucket);
+    const markerValue = getUsageDayPriceMarkerValue(bucket, usageOverlayMax, priceRange);
+    const marker = markerValue === null
+      ? undefined
+      : {
+        value: markerValue,
+        className: `day-view-marker--price ${getPriceMarkerToneClass(bucket)}`,
+      };
+
     return {
       label: bucket.label,
       value: bucket.measuredKWh,
       title: buildUsageDayBarTitle(bucket),
-      state,
+      state: getUsageDayBarState(index, currentBucketIndex),
       className: warn ? 'usage-day-bar is-warn' : 'usage-day-bar',
       segments: [{ value: bucket.measuredKWh, className: 'day-view-bar__segment--measured' }],
-      marker: bucket.budgetKWh !== null
-        ? {
-          value: bucket.budgetKWh,
-          className: 'day-view-marker--budget',
-        }
-        : undefined,
+      marker,
     };
-  })
-);
+  });
+};
 
 export const renderUsageDayView = (entries: UsageDayEntry[]) => {
   latestEntries = entries;

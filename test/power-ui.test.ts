@@ -28,13 +28,17 @@ const buildPowerDom = () => {
   `;
 };
 
-const installHomeyClient = (tracker: unknown, timeZone = 'UTC') => {
+const installHomeyClient = (tracker: unknown, timeZone = 'UTC', combinedPrices: unknown = null) => {
   const { setHomeyClient } = require('../settings/src/ui/homey') as typeof import('../settings/src/ui/homey');
   setHomeyClient({
     ready: async () => { },
     get: (key, cb) => {
       if (key === 'power_tracker_state') {
         cb(null, tracker);
+        return;
+      }
+      if (key === 'combined_prices') {
+        cb(null, combinedPrices);
         return;
       }
       cb(null, null);
@@ -143,6 +147,31 @@ describe('power page stats (buckets-only)', () => {
     expect(entries[0].uncontrolledKWh).toBeCloseTo(1.4, 6);
   });
 
+  it('maps hourly price data onto usage entries when combined prices are available', async () => {
+    const iso = '2025-01-06T00:00:00.000Z';
+    installHomeyClient(
+      { buckets: { [iso]: 2.5 } },
+      'UTC',
+      {
+        prices: [{ startsAt: iso, total: 123.4, isCheap: true }],
+        avgPrice: 123.4,
+        lowThreshold: 100,
+        highThreshold: 140,
+        priceScheme: 'norway',
+        priceUnit: 'ore/kWh',
+      },
+    );
+
+    const { getPowerUsage } = require('../settings/src/ui/power') as typeof import('../settings/src/ui/power');
+    const entries = await getPowerUsage();
+
+    expect(entries.length).toBe(1);
+    expect(entries[0].priceTotal).toBeCloseTo(123.4, 6);
+    expect(entries[0].priceIsCheap).toBe(true);
+    expect(entries[0].priceIsExpensive).toBe(false);
+    expect(entries[0].priceUnit).toBe('ore/kWh');
+  });
+
   it('includes split usage in day-view tooltip when available', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
@@ -154,14 +183,20 @@ describe('power page stats (buckets-only)', () => {
       kWh: 2.5,
       controlledKWh: 1.1,
       uncontrolledKWh: 1.4,
+      priceTotal: 123.4,
+      priceIsCheap: true,
+      priceUnit: 'ore/kWh',
       budgetKWh: 3,
     }]);
 
     const bar = document.querySelector('.day-view-bar') as HTMLElement | null;
     expect(bar).not.toBeNull();
+    const marker = bar?.querySelector('.day-view-marker--price');
+    expect(marker).not.toBeNull();
     const tooltip = bar?.dataset.tooltip ?? '';
     expect(tooltip).toContain('Controlled 1.10 kWh');
     expect(tooltip).toContain('Uncontrolled 1.40 kWh');
+    expect(tooltip).toContain('Price 123.4 ore/kWh (Cheap)');
     jest.useRealTimers();
   });
 
