@@ -332,7 +332,7 @@ export class DeviceManager extends EventEmitter {
         });
         const { targetCaps } = capsStatus;
         const targets = this.buildTargets(targetCaps, capabilityObj);
-        const currentOn = this.getCurrentOn(capabilityObj, powerRaw, capabilities);
+        const currentOn = this.getCurrentOn(capabilityObj);
         const canSetOnOff = this.getCanSetOnOff(capabilityObj);
         const zone = resolveZoneLabel(device);
         const deviceType: TargetDeviceSnapshot['deviceType'] = targetCaps.length > 0 ? 'temperature' : 'onoff';
@@ -432,15 +432,9 @@ export class DeviceManager extends EventEmitter {
     }
     private getCurrentOn(
         capabilityObj: Record<string, CapabilityValue>,
-        powerRaw: unknown,
-        capabilities: string[],
     ): boolean | undefined {
         if (typeof capabilityObj.onoff?.value === 'boolean') {
             return capabilityObj.onoff.value;
-        }
-        const hasOnOff = capabilities.includes('onoff');
-        if (hasOnOff && typeof powerRaw === 'number' && powerRaw > 50) {
-            return true;
         }
         return undefined;
     }
