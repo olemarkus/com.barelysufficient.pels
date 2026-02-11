@@ -25,7 +25,14 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
 } from './timezone';
-import { formatChipPrice, formatPriceWithUnit, resolvePriceScheme, resolvePriceUnit, type PriceScheme } from './priceRenderUtils';
+import {
+  formatChipPrice,
+  formatPriceWithUnit,
+  resolvePriceScheme,
+  resolvePriceUnit,
+  sortEntriesByStart,
+  type PriceScheme,
+} from './priceRenderUtils';
 
 type PriceDayView = 'today' | 'tomorrow';
 
@@ -51,18 +58,6 @@ let latestData: CombinedPriceData | null = null;
 let handlersReady = false;
 
 const isCurrentHourEntry = (timestamp: number, nowMs: number) => nowMs >= timestamp && nowMs < timestamp + HOUR_MS;
-
-const sortValidEntries = (prices: PriceEntry[]): TimedPriceEntry[] => {
-  const entries: TimedPriceEntry[] = [];
-  prices.forEach((entry) => {
-    if (typeof entry.startsAt !== 'string') return;
-    const timestamp = new Date(entry.startsAt).getTime();
-    if (!Number.isFinite(timestamp)) return;
-    entries.push({ entry, timestamp });
-  });
-  entries.sort((a, b) => a.timestamp - b.timestamp);
-  return entries;
-};
 
 const setToggleState = () => {
   const options = [
@@ -131,8 +126,13 @@ const selectDayEntries = (params: {
     selectedEntries = byDate.get(todayKey) ?? [];
   }
   if (!selectedEntries.length && dayKeys.length) {
-    selectedKey = dayKeys[0];
-    selectedEntries = byDate.get(selectedKey) ?? [];
+    if (requestedView === 'today') {
+      selectedKey = requestedKey;
+      selectedEntries = [];
+    } else {
+      selectedKey = dayKeys[0];
+      selectedEntries = byDate.get(selectedKey) ?? [];
+    }
   }
 
   const isToday = selectedKey === todayKey;
@@ -227,7 +227,7 @@ const buildRenderInput = (data: CombinedPriceData): PriceDayRenderInput | null =
   const nowMs = now.getTime();
   const scheme = resolvePriceScheme(data);
   const unit = resolvePriceUnit(data, scheme);
-  const timedEntries = sortValidEntries(data.prices);
+  const timedEntries: TimedPriceEntry[] = sortEntriesByStart(data.prices);
   if (!timedEntries.length) return null;
   const selected = selectDayEntries({ entries: timedEntries, now, timeZone });
   if (!selected.entries.length) return null;
@@ -278,7 +278,6 @@ const applyNowSummary = (params: {
   const current = selected.entries.find((timed) => isCurrentHourEntry(timed.timestamp, nowMs));
   const cheapest = selected.entries.reduce(
     (min, timed) => (timed.entry.total < min.entry.total ? timed : min),
-    selected.entries[0],
   );
   let nowText = formatValue(cheapest.entry.total, scheme, unit);
   let isEmpty = false;

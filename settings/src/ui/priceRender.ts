@@ -19,6 +19,7 @@ import {
   resolvePriceUnit,
   resolveThresholds,
   selectDayEntries,
+  sortEntriesByStart,
   type PriceScheme,
 } from './priceRenderUtils';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator';
@@ -40,17 +41,9 @@ const isCurrentHourEntry = (entryTime: Date, now: Date) => {
   return nowMs >= start && nowMs < start + HOUR_MS;
 };
 
-const sortPricesByStart = (prices: PriceEntry[]) => {
-  const sortable: Array<{ entry: PriceEntry; timestamp: number }> = [];
-  prices.forEach((entry) => {
-    if (typeof entry.startsAt !== 'string') return;
-    const timestamp = new Date(entry.startsAt).getTime();
-    if (!Number.isFinite(timestamp)) return;
-    sortable.push({ entry, timestamp });
-  });
-  sortable.sort((a, b) => a.timestamp - b.timestamp);
-  return sortable.map(({ entry }) => entry);
-};
+const sortPricesByStart = (prices: PriceEntry[]) => (
+  sortEntriesByStart(prices).map(({ entry }) => entry)
+);
 
 const findCurrentEntry = (prices: PriceEntry[], now: Date) => (
   prices.find((price) => isCurrentHourEntry(new Date(price.startsAt), now))
