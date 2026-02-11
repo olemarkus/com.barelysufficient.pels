@@ -90,6 +90,7 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
     planEngine: app.planEngine,
     getPlanDevices: () => app.getLatestTargetSnapshot().map((device) => ({
       ...device,
+      hasOnOff: device.capabilities?.includes('onoff') === true,
       managed: app.resolveManagedState(device.id),
       controllable: app.isCapacityControlEnabled(device.id),
     })).filter((device) => device.managed !== false),

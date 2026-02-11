@@ -40,7 +40,7 @@ export function buildInitialPlanDevices(params: {
       deps,
     });
     const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
-    const currentState = resolveCurrentState(dev.currentOn);
+    const currentState = resolveCurrentState(dev.currentOn, dev.hasOnOff);
     const controllable = dev.controllable !== false;
     const shedBehavior: { action: ShedAction; temperature: number | null } = supportsTemperature
       ? deps.getShedBehavior(dev.id)
@@ -104,8 +104,9 @@ function applyPriceOptimizationDelta(
   return target;
 }
 
-function resolveCurrentState(currentOn?: boolean): string {
+function resolveCurrentState(currentOn?: boolean, hasOnOff?: boolean): string {
   if (typeof currentOn === 'boolean') return currentOn ? 'on' : 'off';
+  if (hasOnOff === false) return 'not_applicable';
   return 'unknown';
 }
 
@@ -229,7 +230,11 @@ function applyHourlyBudgetShed(params: {
   const { planDevice, hourlyBudgetExhausted } = params;
   if (!planDevice.controllable) return planDevice;
   if (!hourlyBudgetExhausted || planDevice.plannedState === 'shed') return planDevice;
-  if (planDevice.currentState !== 'on' && planDevice.currentState !== 'unknown') return planDevice;
+  if (
+    planDevice.currentState !== 'on'
+    && planDevice.currentState !== 'unknown'
+    && planDevice.currentState !== 'not_applicable'
+  ) return planDevice;
   return {
     ...planDevice,
     plannedState: 'shed',

@@ -17,6 +17,7 @@ export type TargetDeviceSnapshot = {
     controllable?: boolean;
     managed?: boolean;
     capabilities?: string[];
+    canSetOnOff?: boolean;
     lastUpdated?: number;
 };
 

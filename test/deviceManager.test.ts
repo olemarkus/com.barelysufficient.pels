@@ -159,6 +159,8 @@ describe('DeviceManager', () => {
             expect(snapshot[0].deviceClass).toBe('airtreatment');
             expect(snapshot[0].deviceType).toBe('temperature');
             expect(snapshot[0].powerCapable).toBe(true);
+            expect(snapshot[0].currentOn).toBeUndefined();
+            expect(snapshot[0].canSetOnOff).toBeUndefined();
         });
 
         it('includes measured power zero when load setting is present', async () => {

@@ -29,7 +29,7 @@ type HomeyApiClient = {
     energy?: HomeyEnergyApi;
 };
 
-type CapabilityValue = { value?: unknown; units?: string };
+type CapabilityValue = { value?: unknown; units?: string; setable?: boolean };
 type CapabilityInstance = { destroy?: () => void };
 type MakeCapabilityInstance = (capabilityId: string, listener: (value: number | null) => void) => CapabilityInstance | Promise<CapabilityInstance>;
 
@@ -332,7 +332,8 @@ export class DeviceManager extends EventEmitter {
         });
         const { targetCaps } = capsStatus;
         const targets = this.buildTargets(targetCaps, capabilityObj);
-        const currentOn = this.getCurrentOn(capabilityObj, powerRaw);
+        const currentOn = this.getCurrentOn(capabilityObj, powerRaw, capabilities);
+        const canSetOnOff = this.getCanSetOnOff(capabilityObj);
         const zone = resolveZoneLabel(device);
         const deviceType: TargetDeviceSnapshot['deviceType'] = targetCaps.length > 0 ? 'temperature' : 'onoff';
         const powerCapable = capsStatus.hasPower || typeof powerEstimate.loadKw === 'number';
@@ -356,6 +357,7 @@ export class DeviceManager extends EventEmitter {
             controllable: this.providers.getControllable ? this.providers.getControllable(deviceId) : undefined,
             managed: this.providers.getManaged ? this.providers.getManaged(deviceId) : undefined,
             capabilities,
+            canSetOnOff,
         };
     }
 
@@ -428,14 +430,26 @@ export class DeviceManager extends EventEmitter {
             unit: capabilityObj[capId]?.units || '°C',
         }));
     }
-    private getCurrentOn(capabilityObj: Record<string, CapabilityValue>, powerRaw: unknown): boolean | undefined {
+    private getCurrentOn(
+        capabilityObj: Record<string, CapabilityValue>,
+        powerRaw: unknown,
+        capabilities: string[],
+    ): boolean | undefined {
         if (typeof capabilityObj.onoff?.value === 'boolean') {
             return capabilityObj.onoff.value;
         }
-        if (typeof powerRaw === 'number' && powerRaw > 50) {
+        const hasOnOff = capabilities.includes('onoff');
+        if (hasOnOff && typeof powerRaw === 'number' && powerRaw > 50) {
             return true;
         }
         return undefined;
+    }
+    private getCanSetOnOff(capabilityObj: Record<string, CapabilityValue>): boolean | undefined {
+        if (!capabilityObj.onoff) return undefined;
+        if (typeof capabilityObj.onoff.setable === 'boolean') {
+            return capabilityObj.onoff.setable;
+        }
+        return true;
     }
     private updateLastKnownPower(deviceId: string, measuredKw: number, deviceLabel: string): void {
         const previousPeak = this.powerState.lastKnownPowerKw[deviceId] || 0;

@@ -25,6 +25,12 @@ const getStateText = () => {
   return stateLine?.querySelector('span:last-child')?.textContent?.trim();
 };
 
+const getPowerText = () => {
+  const lines = Array.from(document.querySelectorAll('.plan-meta-line'));
+  const powerLine = lines.find((line) => line.querySelector('.plan-label')?.textContent === 'Power');
+  return powerLine?.querySelector('span:last-child')?.textContent?.trim();
+};
+
 const getBadgeClassList = (deviceId: string): DOMTokenList | null => {
   const dot = document.querySelector(`[data-device-id="${deviceId}"] .plan-state-indicator`) as HTMLElement | null;
   if (!dot) return null;
@@ -210,6 +216,24 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-uncontrolled')?.contains('neutral')).toBe(true);
     expect(getBadgeClassList('dev-on-uncontrolled')?.contains('neutral')).toBe(true);
     expect(getBadgeClassList('dev-off-controllable')?.contains('neutral')).toBe(true);
+  });
+
+  it('renders temperature-managed state for devices without onoff power state', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-temp-only',
+          name: 'Temp-only device',
+          currentState: 'not_applicable',
+          plannedState: 'keep',
+          controllable: true,
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Active (temperature-managed)');
+    expect(getPowerText()).toBe('N/A');
+    expect(getBadgeClassList('dev-temp-only')?.contains('cheap')).toBe(true);
   });
 });
 
