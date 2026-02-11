@@ -134,9 +134,8 @@ const buildModeTargetInput = (device: TargetDeviceSnapshot, desired: number | nu
 };
 
 const buildPriorityRow = (device: TargetDeviceSnapshot) => {
-  const row = document.createElement('div');
+  const row = document.createElement('li');
   row.className = 'device-row draggable mode-row';
-  row.setAttribute('role', 'listitem');
   row.dataset.deviceId = device.id;
 
   const name = document.createElement('div');

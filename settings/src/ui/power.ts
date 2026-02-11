@@ -330,7 +330,7 @@ const renderHourlyPattern = (stats: PowerStatsSummary, timeZone: string) => {
 };
 
 const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: number, timeZone: string) => {
-  const row = document.createElement('div');
+  const row = document.createElement('li');
   row.className = 'usage-row usage-row--daily';
 
   const dateEl = document.createElement('div');
@@ -473,7 +473,7 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
   Array.from(grouped.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .forEach(([dateKey, dayEntries]) => {
-      const header = document.createElement('div');
+      const header = document.createElement('li');
       header.className = 'list__header power-day-header';
       const headerLabel = document.createElement('span');
       headerLabel.className = 'pill';
@@ -521,9 +521,8 @@ const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => (
 );
 
 const createPowerRow = (entry: PowerUsageEntry, timeZone: string): HTMLElement => {
-  const row = document.createElement('div');
+  const row = document.createElement('li');
   row.className = 'usage-row usage-row--detail';
-  row.setAttribute('role', 'listitem');
 
   const label = document.createElement('div');
   label.className = 'usage-row__label';

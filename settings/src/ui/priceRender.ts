@@ -179,6 +179,13 @@ const buildPriceNotice = (className: string, text: string) => {
   return notice;
 };
 
+const wrapPriceListItem = (content: HTMLElement, className = '') => {
+  const item = document.createElement('li');
+  item.className = ['price-list-item', className].filter(Boolean).join(' ');
+  item.appendChild(content);
+  return item;
+};
+
 type PriceRenderContext = {
   now: Date;
   allPrices: PriceEntry[];
@@ -279,46 +286,46 @@ const buildPriceRenderContext = (data: CombinedPriceData, timeZone: string): Pri
 };
 
 const renderPriceSections = (context: PriceRenderContext) => {
-  priceList.appendChild(buildPriceSummarySection(context));
+  priceList.appendChild(wrapPriceListItem(buildPriceSummarySection(context), 'price-list-item--summary'));
 
   if (context.cheapHours.length > 0) {
     priceList.appendChild(
-      buildPriceDetailsSection(
+      wrapPriceListItem(buildPriceDetailsSection(
         `🟢 Cheap hours (${context.cheapHours.length})`,
         context.cheapHours,
         'price-low',
         context,
-      ),
+      ), 'price-list-item--details'),
     );
   }
 
   if (context.expensiveHours.length > 0) {
     priceList.appendChild(
-      buildPriceDetailsSection(
+      wrapPriceListItem(buildPriceDetailsSection(
         `🔴 Expensive hours (${context.expensiveHours.length})`,
         context.expensiveHours,
         'price-high',
         context,
-      ),
+      ), 'price-list-item--details'),
     );
   }
 
-  priceList.appendChild(createDayPriceSection(
+  priceList.appendChild(wrapPriceListItem(createDayPriceSection(
     context.primaryLabel,
     '📊',
     context.primaryEntries,
     context.primaryAvg,
     context,
-  ));
+  ), 'price-list-item--details'));
 
   if (context.secondaryEntries.length > 0 && context.secondaryLabel) {
-    priceList.appendChild(createDayPriceSection(
+    priceList.appendChild(wrapPriceListItem(createDayPriceSection(
       context.secondaryLabel,
       '📅',
       context.secondaryEntries,
       context.secondaryAvg ?? context.avgPrice,
       context,
-    ));
+    ), 'price-list-item--details'));
   }
 };
 
@@ -332,17 +339,17 @@ const renderPriceNotices = (context: PriceRenderContext, data: CombinedPriceData
     const warningSuffix = context.priceScheme === 'norway'
       ? 'Tomorrow\'s prices typically publish around 13:00.'
       : 'Make sure your price source supplies tomorrow\'s prices.';
-    priceList.appendChild(buildPriceNotice(
+    priceList.appendChild(wrapPriceListItem(buildPriceNotice(
       'price-notice price-notice-warning',
       `⚠️ Price data available for ${hoursRemaining} more hour${hoursRemaining === 1 ? '' : 's'}. `
       + warningSuffix,
-    ));
+    )));
   }
 
   if (data.lastFetched) {
     const lastFetchedDate = new Date(data.lastFetched);
     const timeAgo = getTimeAgo(lastFetchedDate, context.now, context.timeZone);
-    priceList.appendChild(buildPriceNotice('price-last-fetched', `Last updated: ${timeAgo}`));
+    priceList.appendChild(wrapPriceListItem(buildPriceNotice('price-last-fetched', `Last updated: ${timeAgo}`)));
   }
 };
 
@@ -458,6 +465,7 @@ const createPriceRow = (
     className: 'price-row',
     controls,
     controlsClassName: 'device-row__target',
+    element: 'div',
   });
 
   if (isCurrentHour) row.classList.add('current-hour');

@@ -18,6 +18,8 @@ export type DeviceRowOptions = {
     nameClassName?: string;
     controls?: HTMLElement[];
     controlsClassName?: string;
+    element?: 'div' | 'li';
+    listItemRole?: boolean;
     onClick?: (e: Event) => void;
 };
 
@@ -76,12 +78,16 @@ export const createDeviceRow = (options: DeviceRowOptions): HTMLElement => {
         nameClassName = '',
         controls = [],
         controlsClassName = 'device-row__inputs',
+        element = 'li',
+        listItemRole = false,
         onClick,
     } = options;
 
-    const row = document.createElement('div');
+    const row = document.createElement(element);
     row.className = `device-row ${className}`.trim();
-    row.setAttribute('role', 'listitem');
+    if (listItemRole) {
+        row.setAttribute('role', 'listitem');
+    }
     if (id) {
         row.dataset.deviceId = id;
     }

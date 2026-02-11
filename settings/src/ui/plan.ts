@@ -283,9 +283,8 @@ const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
 };
 
 const buildPlanRow = (dev: PlanDeviceSnapshot) => {
-  const row = document.createElement('div');
+  const row = document.createElement('li');
   row.className = 'device-row plan-row';
-  row.setAttribute('role', 'listitem');
   row.dataset.deviceId = dev.id;
 
   const name = document.createElement('div');

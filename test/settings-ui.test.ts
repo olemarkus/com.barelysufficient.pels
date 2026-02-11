@@ -533,8 +533,16 @@ describe('Settings UI', () => {
     });
 
     test('lists have proper list roles', async () => {
-      const deviceList = await page.$eval('#device-list', (el) => el.getAttribute('role'));
-      expect(deviceList).toBe('list');
+      const deviceList = await page.$eval('#device-list', (el) => ({
+        role: el.getAttribute('role'),
+        tag: el.tagName.toLowerCase(),
+      }));
+
+      // Accept either explicit ARIA list role on a div or native list semantics.
+      expect(['ul', 'ol', 'div']).toContain(deviceList.tag);
+      const isAriaListDiv = deviceList.tag === 'div' && deviceList.role === 'list';
+      const isNativeList = ['ul', 'ol'].includes(deviceList.tag) && deviceList.role === null;
+      expect(isAriaListDiv || isNativeList).toBe(true);
     });
   });
 
