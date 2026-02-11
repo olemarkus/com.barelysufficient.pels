@@ -135,11 +135,6 @@ export const renderDailyBudgetChart = (params: {
   const plannedUncontrolled = payload.buckets.plannedUncontrolledKWh || [];
   const plannedControlled = payload.buckets.plannedControlledKWh || [];
   const labels = payload.buckets.startLocalLabels || [];
-  const maxPlanned = planned.reduce((max, value) => Math.max(max, value), 0);
-  const maxActual = actual.reduce((max, value) => (
-    Number.isFinite(value) ? Math.max(max, value) : max
-  ), 0);
-  const maxValue = Math.max(maxPlanned, maxActual);
   const currentBucketIndex = showActual ? payload.currentBucketIndex : -1;
 
   const bars: DayViewBar[] = planned.map((value, index) => {
@@ -165,7 +160,6 @@ export const renderDailyBudgetChart = (params: {
     bars,
     barsEl,
     labelsEl,
-    maxValue,
     barClassName: 'daily-budget-bar',
     stackClassName: 'daily-budget-bar__stack',
     labelClassName: 'daily-budget-label',

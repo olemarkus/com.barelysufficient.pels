@@ -150,8 +150,8 @@ export const renderDayViewChart = (params: RenderDayViewChartParams) => {
     formatShortLabel = formatHourAxisLabel,
   } = params;
 
-  barsEl.innerHTML = '';
-  labelsEl.innerHTML = '';
+  barsEl.replaceChildren();
+  labelsEl.replaceChildren();
   const resolvedMax = typeof maxValue === 'number' && Number.isFinite(maxValue)
     ? maxValue
     : getDayViewChartMaxValue(bars);
