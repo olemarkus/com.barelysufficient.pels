@@ -1698,11 +1698,6 @@ input[type="text"]:focus {
   height: 100%;
 }
 
-.day-view-bar.tooltip-active .day-view-bar__stack,
-.daily-budget-bar.tooltip-active .daily-budget-bar__stack {
-  box-shadow: 0 0 0 2px var(--color-state-info-border);
-}
-
 .day-view-bar__stack,
 .daily-budget-bar__stack {
   position: absolute;
@@ -1715,6 +1710,11 @@ input[type="text"]:focus {
   display: flex;
   flex-direction: column-reverse;
   transition: height var(--transition-fast);
+}
+
+.day-view-bar.tooltip-active .day-view-bar__stack,
+.daily-budget-bar.tooltip-active .daily-budget-bar__stack {
+  box-shadow: 0 0 0 2px var(--color-state-info-border);
 }
 
 .day-view-bar__segment,

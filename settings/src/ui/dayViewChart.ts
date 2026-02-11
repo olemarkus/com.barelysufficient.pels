@@ -63,7 +63,7 @@ const isFiniteNumber = (value: unknown): value is number => (
 
 export const getDayViewChartMaxValue = (bars: DayViewBar[]): number => (
   bars.reduce((max, bar) => {
-    const markerValue = isFiniteNumber(bar.marker?.value) ? (bar.marker as DayViewMarker).value : 0;
+    const markerValue = isFiniteNumber(bar.marker?.value) ? bar.marker.value : 0;
     return Math.max(max, bar.value, markerValue);
   }, 0)
 );
@@ -152,7 +152,9 @@ export const renderDayViewChart = (params: RenderDayViewChartParams) => {
 
   barsEl.innerHTML = '';
   labelsEl.innerHTML = '';
-  const resolvedMax = Number.isFinite(maxValue) ? (maxValue as number) : getDayViewChartMaxValue(bars);
+  const resolvedMax = typeof maxValue === 'number' && Number.isFinite(maxValue)
+    ? maxValue
+    : getDayViewChartMaxValue(bars);
 
   bars.forEach((bar, index) => {
     const barEl = document.createElement('div');
