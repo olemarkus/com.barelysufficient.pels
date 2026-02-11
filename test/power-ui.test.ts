@@ -13,6 +13,18 @@ const buildPowerDom = () => {
     <div id="usage-weekday-avg"></div>
     <div id="usage-weekend-avg"></div>
     <div id="hourly-pattern"></div>
+    <h4 id="usage-day-title"></h4>
+    <div id="usage-day-label"></div>
+    <div id="usage-day-status-pill"></div>
+    <button id="usage-day-toggle-yesterday"></button>
+    <button id="usage-day-toggle-today"></button>
+    <div id="usage-day-total"></div>
+    <div id="usage-day-peak"></div>
+    <div id="usage-day-over-cap"></div>
+    <div id="usage-day-chart"><div id="usage-day-bars"></div><div id="usage-day-labels"></div></div>
+    <div id="usage-day-legend"></div>
+    <div id="usage-day-empty"></div>
+    <div id="usage-day-meta"></div>
   `;
 };
 
@@ -113,6 +125,44 @@ describe('power page stats (buckets-only)', () => {
     const titled = document.querySelectorAll('.power-meter[data-tooltip*="cap"]');
     expect(titled.length).toBeGreaterThan(0);
     jest.restoreAllMocks();
+  });
+
+  it('maps controlled and uncontrolled split from tracker buckets', async () => {
+    const iso = '2025-01-06T00:00:00.000Z';
+    installHomeyClient({
+      buckets: { [iso]: 2.5 },
+      controlledBuckets: { [iso]: 1.1 },
+    });
+
+    const { getPowerUsage } = require('../settings/src/ui/power') as typeof import('../settings/src/ui/power');
+    const entries = await getPowerUsage();
+
+    expect(entries.length).toBe(1);
+    expect(entries[0].kWh).toBeCloseTo(2.5, 6);
+    expect(entries[0].controlledKWh).toBeCloseTo(1.1, 6);
+    expect(entries[0].uncontrolledKWh).toBeCloseTo(1.4, 6);
+  });
+
+  it('includes split usage in day-view tooltip when available', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
+    installHomeyClient({}, 'UTC');
+    const { renderUsageDayView } = require('../settings/src/ui/usageDayView') as typeof import('../settings/src/ui/usageDayView');
+
+    renderUsageDayView([{
+      hour: new Date('2025-01-06T00:00:00.000Z'),
+      kWh: 2.5,
+      controlledKWh: 1.1,
+      uncontrolledKWh: 1.4,
+      budgetKWh: 3,
+    }]);
+
+    const bar = document.querySelector('.day-view-bar') as HTMLElement | null;
+    expect(bar).not.toBeNull();
+    const tooltip = bar?.dataset.tooltip ?? '';
+    expect(tooltip).toContain('Controlled 1.10 kWh');
+    expect(tooltip).toContain('Uncontrolled 1.40 kWh');
+    jest.useRealTimers();
   });
 
   it('matches daily budget today usage with the power summary total', async () => {
