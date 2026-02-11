@@ -229,7 +229,7 @@ export class PlanExecutor {
   }
 
   private canTurnOnDevice(snapshot?: TargetDeviceSnapshot): boolean {
-    if (!snapshot) return true;
+    if (!snapshot) return false;
     const hasOnOff = snapshot.capabilities?.includes('onoff') === true;
     if (!hasOnOff) return false;
     if (snapshot.currentOn === undefined && snapshot.canSetOnOff === false) {
