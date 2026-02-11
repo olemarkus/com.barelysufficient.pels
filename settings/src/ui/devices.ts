@@ -262,7 +262,7 @@ export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
 
   // Show loading notice if initial load is still in progress
   if (!state.initialLoadComplete) {
-    const loadingNotice = document.createElement('div');
+    const loadingNotice = document.createElement('li');
     loadingNotice.className = 'device-loading-notice';
     loadingNotice.textContent = 'Loading device settings...';
     deviceList.appendChild(loadingNotice);
@@ -286,7 +286,7 @@ export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
 
   const fragment = document.createDocumentFragment();
   sortedGroups.forEach((group) => {
-    const header = document.createElement('div');
+    const header = document.createElement('li');
     header.className = 'device-group-header';
     header.textContent = group.label;
     fragment.appendChild(header);
