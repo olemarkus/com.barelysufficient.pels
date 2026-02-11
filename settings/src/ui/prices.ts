@@ -31,6 +31,7 @@ import { pushSettingWriteIfChanged } from './settingWrites';
 import { showToast } from './toast';
 import { gridCompanies } from './gridCompanies';
 import { renderPrices } from './priceRender';
+import { renderPriceDayView } from './priceDayView';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../lib/price/priceComponents';
@@ -402,7 +403,9 @@ export const refreshPrices = async (overrides?: PriceOverrideOptions) => {
     const hasOverrides = overrides && (
       Number.isFinite(overrides.thresholdPercent) || Number.isFinite(overrides.minDiffOre)
     );
-    renderPrices(prices && hasOverrides ? applyPriceOverrides(prices, overrides) : prices);
+    const displayPrices = prices && hasOverrides ? applyPriceOverrides(prices, overrides) : prices;
+    renderPrices(displayPrices);
+    renderPriceDayView(displayPrices);
     await refreshFlowStatus();
     await refreshHomeyStatus();
   } catch (error) {
@@ -411,6 +414,7 @@ export const refreshPrices = async (overrides?: PriceOverrideOptions) => {
       priceStatusBadge.textContent = 'Error';
       priceStatusBadge.classList.add('warn');
     }
+    renderPriceDayView(null);
   }
 };
 

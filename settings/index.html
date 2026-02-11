@@ -520,6 +520,64 @@
         <small class="field__hint">When disabled, device temperatures will not be adjusted based on electricity prices.</small>
       </div>
 
+      <div class="day-view-header">
+        <div>
+          <h3 id="price-day-title">Today prices</h3>
+          <p class="muted" id="price-day-label">--</p>
+        </div>
+        <div class="day-view-actions">
+          <div class="day-view-toggle" role="group" aria-label="Price day view">
+            <button type="button" class="day-view-toggle__button is-active" id="price-day-toggle-today" aria-pressed="true">Today</button>
+            <button type="button" class="day-view-toggle__button" id="price-day-toggle-tomorrow" aria-pressed="false">Tomorrow</button>
+          </div>
+          <div class="pill" id="price-day-status-pill">No data</div>
+        </div>
+      </div>
+
+      <div class="usage-summary price-day-summary">
+        <div class="summary-card">
+          <span class="summary-label" id="price-day-now-label">Now</span>
+          <span class="summary-value" id="price-day-now">--</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Average</span>
+          <span class="summary-value" id="price-day-avg">--</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Range</span>
+          <span class="summary-value" id="price-day-range">--</span>
+        </div>
+      </div>
+
+      <div id="price-day-chart" class="day-view-chart">
+        <div class="day-view-bars-wrap">
+          <div id="price-day-bars" class="day-view-bars"></div>
+        </div>
+        <div id="price-day-labels" class="day-view-labels"></div>
+      </div>
+
+      <div class="day-view-legend" id="price-day-legend">
+        <div class="day-view-legend__item">
+          <span class="day-view-legend__swatch day-view-legend__swatch--cheap" aria-hidden="true"></span>
+          <span class="muted">Cheap</span>
+        </div>
+        <div class="day-view-legend__item">
+          <span class="day-view-legend__swatch day-view-legend__swatch--normal" aria-hidden="true"></span>
+          <span class="muted">Normal</span>
+        </div>
+        <div class="day-view-legend__item">
+          <span class="day-view-legend__swatch day-view-legend__swatch--expensive" aria-hidden="true"></span>
+          <span class="muted">Expensive</span>
+        </div>
+        <div class="day-view-legend__item">
+          <span class="day-view-legend__swatch day-view-legend__swatch--actual" aria-hidden="true"></span>
+          <span class="muted">Current hour</span>
+        </div>
+      </div>
+
+      <p id="price-day-empty" class="muted" hidden>No price data for the selected day yet.</p>
+      <p id="price-day-meta" class="muted">Hourly prices in your local day.</p>
+
       <details class="settings-collapse">
         <summary>
           <h3 class="section-title">⚙️ Price settings</h3>

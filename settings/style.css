@@ -1680,6 +1680,19 @@ input[type="text"]:focus {
   margin-bottom: var(--spacing-4);
 }
 
+#price-panel {
+  --day-view-color-primary: var(--color-surface-5);
+  --day-view-color-cheap: var(--color-base-accent-default);
+  --day-view-color-normal: var(--color-surface-5);
+  --day-view-color-expensive: var(--color-base-danger-default);
+  --day-view-color-actual: var(--color-base-gray-50);
+  --day-view-color-now: var(--color-state-info-border);
+}
+
+.price-day-summary {
+  margin-bottom: var(--spacing-4);
+}
+
 .day-view-chart,
 .daily-budget-chart {
   display: grid;
