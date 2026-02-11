@@ -1390,6 +1390,33 @@ describe('Device plan snapshot', () => {
     }
   });
 
+  it('uses not_applicable currentState for controllable temperature devices without onoff', async () => {
+    const dev1 = new MockDevice('dev-1', 'Temp-only device', ['target_temperature', 'measure_temperature', 'measure_power']);
+    await dev1.setCapabilityValue('target_temperature', 21);
+    await dev1.setCapabilityValue('measure_temperature', 20);
+    await dev1.setCapabilityValue('measure_power', 250);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    setManagedControllableDevices({ 'dev-1': true });
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 21 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 5;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+    }
+
+    await (app as any).recordPowerSample(250);
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.currentState).toBe('not_applicable');
+    expect(devPlan?.reason).not.toContain('restore');
+  });
+
   it('does not repeatedly shed the same device across consecutive samples (flap guard)', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power', 'target_temperature']);
     await dev1.setCapabilityValue('measure_power', 2000); // 2 kW
@@ -3463,5 +3490,49 @@ describe('Dry run mode', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('does not attempt onoff restore when power state is unknown and onoff is not setable', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    (app as any).deviceManager.setSnapshotForTests([{
+      id: 'dev-1',
+      name: 'Read-only relay',
+      targets: [],
+      capabilities: ['onoff'],
+      canSetOnOff: false,
+      currentOn: undefined, // unknown power/on state
+      controllable: true,
+    }]);
+
+    const plan = {
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Read-only relay',
+          plannedState: 'keep',
+          currentState: 'off',
+          plannedTarget: null,
+          currentTarget: null,
+          controllable: true,
+          powerKw: 0.2,
+        },
+      ],
+    };
+
+    await (app as any).applyPlanActions(plan);
+
+    expect(mockSetCapability).not.toHaveBeenCalled();
   });
 });

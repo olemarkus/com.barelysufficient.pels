@@ -43,7 +43,8 @@ function isChange(device: DevicePlanDevice): boolean {
   return !(samePower && sameTarget);
 }
 
-function getDesiredPower(device: DevicePlanDevice): 'on' | 'off' {
+function getDesiredPower(device: DevicePlanDevice): string {
+  if (device.currentState === 'not_applicable') return 'not_applicable';
   if (device.plannedState !== 'shed') return 'on';
   return device.shedAction === 'set_temperature' ? 'on' : 'off';
 }
@@ -58,7 +59,7 @@ function normalizeTarget(value: unknown): number | string | null {
 function formatPlanChange(device: DevicePlanDevice, headroom: number | null): string {
   const temp = `${formatTarget(device.currentTarget)}° -> ${formatTarget(device.plannedTarget)}°`;
   const nextPower = getPlannedPowerLabel(device);
-  const power = `${device.currentState} -> ${nextPower}`;
+  const power = `${formatPowerState(device.currentState)} -> ${formatPowerState(nextPower)}`;
   const powerInfo = typeof device.powerKw === 'number'
     ? `, est ${device.powerKw.toFixed(2)}kW`
     : '';
@@ -77,6 +78,7 @@ function formatTarget(value: unknown): string {
 }
 
 function getPlannedPowerLabel(device: DevicePlanDevice): string {
+  if (device.currentState === 'not_applicable') return 'not_applicable';
   if (device.controllable === false) return device.currentState;
   if (device.plannedState !== 'shed') return 'on';
   if (device.shedAction === 'set_temperature') {
@@ -85,6 +87,12 @@ function getPlannedPowerLabel(device: DevicePlanDevice): string {
       : 'set temp';
   }
   return 'off';
+}
+
+function formatPowerState(value: string | undefined): string {
+  if (!value || value === 'unknown') return 'unknown';
+  if (value === 'not_applicable') return 'n/a';
+  return value;
 }
 
 function buildRestoreHint(device: DevicePlanDevice, nextPower: string, headroom: number | null): string {

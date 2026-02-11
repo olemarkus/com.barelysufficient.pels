@@ -240,6 +240,120 @@ describe('Airtreatment device integration', () => {
     expect(onoffCalls).toHaveLength(0);
   });
 
+  it('avoids repeated restore retries when reported target never leaves shed temperature', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('managed_devices', { 'flexit-1': true, 'flexit-2': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'flexit-1': true, 'flexit-2': true });
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'flexit-1': 1, 'flexit-2': 2 } });
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'flexit-1': 19, 'flexit-2': 19 } });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'flexit-1': { action: 'set_temperature', temperature: 16 },
+      'flexit-2': { action: 'set_temperature', temperature: 16 },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    const reportedTargets: Record<string, number> = { 'flexit-1': 19, 'flexit-2': 19 };
+    const samplePowerW = 2500;
+    const setCapSpy = jest.fn().mockImplementation(async ({ deviceId, capabilityId, value }: {
+      deviceId: string;
+      capabilityId: string;
+      value: unknown;
+    }) => {
+      // Simulate Flexit accepting shed-temp writes but not persisting restore writes.
+      if (capabilityId === 'target_temperature' && typeof value === 'number' && value <= 16) {
+        reportedTargets[deviceId] = value;
+      }
+    });
+
+    const homeyApiStub = {
+      devices: {
+        getDevices: async () => ({
+          'flexit-1': buildTemperatureApiDevice({
+            id: 'flexit-1',
+            name: 'Nordic S4 REL A',
+            targetTemperature: reportedTargets['flexit-1'],
+            measurePower: 1000,
+          }),
+          'flexit-2': buildTemperatureApiDevice({
+            id: 'flexit-2',
+            name: 'Nordic S4 REL B',
+            targetTemperature: reportedTargets['flexit-2'],
+            measurePower: 1000,
+          }),
+        }),
+        setCapabilityValue: setCapSpy,
+      },
+    };
+    (app as any).homeyApi = homeyApiStub;
+    (app as any).deviceManager.homeyApi = homeyApiStub;
+
+    const runCycle = async () => {
+      await (app as any).recordPowerSample(samplePowerW);
+      jest.advanceTimersByTime(100);
+      await flushPromises();
+      return mockHomeyInstance.settings.get('device_plan_snapshot') as {
+        devices: Array<{ id: string; reason?: string; plannedState: string }>;
+      };
+    };
+
+    await (app as any).refreshTargetDevicesSnapshot();
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+    await runCycle();
+    expect(reportedTargets['flexit-1']).toBe(16);
+    expect(reportedTargets['flexit-2']).toBe(16);
+
+    setCapSpy.mockClear();
+    (app as any).planEngine.state.lastSheddingMs = Date.now() - 180000;
+    (app as any).planEngine.state.lastOvershootMs = Date.now() - 180000;
+    (app as any).computeDynamicSoftLimit = () => 10;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 10);
+    }
+
+    await (app as any).refreshTargetDevicesSnapshot();
+    await runCycle();
+    const restoreCallsAfterFirstWindow = setCapSpy.mock.calls.filter(
+      (call: Array<{ capabilityId?: string; value?: unknown }>) => (
+        call[0]?.capabilityId === 'target_temperature' && call[0]?.value === 19
+      ),
+    );
+    expect(restoreCallsAfterFirstWindow).toHaveLength(1);
+
+    await (app as any).refreshTargetDevicesSnapshot();
+    await runCycle();
+    const restoreCallsAfterCooldownWindow = setCapSpy.mock.calls.filter(
+      (call: Array<{ capabilityId?: string; value?: unknown }>) => (
+        call[0]?.capabilityId === 'target_temperature' && call[0]?.value === 19
+      ),
+    );
+    expect(restoreCallsAfterCooldownWindow).toHaveLength(1);
+
+    (app as any).planEngine.state.lastRestoreMs = Date.now() - 180000;
+    (app as any).planEngine.state.lastSheddingMs = Date.now() - 180000;
+    (app as any).planEngine.state.lastOvershootMs = Date.now() - 180000;
+
+    await (app as any).refreshTargetDevicesSnapshot();
+    await runCycle();
+
+    const restoreCalls = setCapSpy.mock.calls.filter(
+      (call: Array<{ capabilityId?: string; value?: unknown }>) => (
+        call[0]?.capabilityId === 'target_temperature' && call[0]?.value === 19
+      ),
+    );
+
+    // After one unsuccessful restore attempt, avoid repeated restore writes until retry delay elapses.
+    expect(restoreCalls).toHaveLength(1);
+  });
+
   it('sheds airtreatment devices with onoff by turning them off', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);

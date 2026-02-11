@@ -154,6 +154,11 @@ export class PlanExecutor {
 
   private async applyRestorePower(dev: DevicePlan['devices'][number]): Promise<void> {
     if (dev.plannedState === 'shed' || dev.currentState !== 'off') return;
+    const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
+    if (!this.canTurnOnDevice(snapshot)) {
+      this.logDebug(`Capacity: skip restoring ${dev.name || dev.id}, cannot turn on from current snapshot`);
+      return;
+    }
     const name = dev.name || dev.id;
     // Check if this device is already being restored (in-flight)
     if (this.state.pendingRestores.has(dev.id)) {
@@ -193,8 +198,7 @@ export class PlanExecutor {
     const lastShed = this.state.lastDeviceShedMs[dev.id];
     if (!lastShed) return;
     const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
-    const hasOnOff = entry?.capabilities?.includes('onoff');
-    if (!hasOnOff) return;
+    if (!this.canTurnOnDevice(entry)) return;
     const name = dev.name || dev.id;
     try {
       await this.deviceManager.setCapability(dev.id, 'onoff', true);
@@ -222,6 +226,16 @@ export class PlanExecutor {
       && shedBehavior.temperature !== null && dev.currentTarget === shedBehavior.temperature;
     const isRestoring = wasAtShedTemp && dev.plannedTarget > (dev.currentTarget as number);
     return { targetCap, isRestoring };
+  }
+
+  private canTurnOnDevice(snapshot?: TargetDeviceSnapshot): boolean {
+    if (!snapshot) return true;
+    const hasOnOff = snapshot.capabilities?.includes('onoff') === true;
+    if (!hasOnOff) return false;
+    if (snapshot.currentOn === undefined && snapshot.canSetOnOff === false) {
+      return false;
+    }
+    return snapshot.canSetOnOff !== false;
   }
 
   private async applyTargetUpdatePlan(

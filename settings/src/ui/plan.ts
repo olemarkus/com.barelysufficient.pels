@@ -177,15 +177,19 @@ const buildPlanTemperatureLine = (dev: PlanDeviceSnapshot) => {
 };
 
 const buildPlanPowerLine = (dev: PlanDeviceSnapshot) => {
-  const currentPower = dev.currentState || 'unknown';
+  const currentPowerRaw = dev.currentState || 'unknown';
+  const currentPower = currentPowerRaw === 'not_applicable' ? 'N/A' : currentPowerRaw;
   const isMinTempActive = dev.shedAction === 'set_temperature'
     && typeof dev.shedTemperature === 'number'
     && dev.currentTarget === dev.shedTemperature;
-  let plannedPowerState = dev.plannedState || 'keep';
-  if (dev.plannedState === 'shed') {
-    plannedPowerState = dev.shedAction === 'set_temperature' ? 'on' : 'off';
-  } else if (dev.plannedState === 'keep') {
-    plannedPowerState = isMinTempActive ? 'on' : currentPower;
+  let plannedPowerState = currentPower;
+  if (currentPowerRaw !== 'not_applicable') {
+    plannedPowerState = dev.plannedState || 'keep';
+    if (dev.plannedState === 'shed') {
+      plannedPowerState = dev.shedAction === 'set_temperature' ? 'on' : 'off';
+    } else if (dev.plannedState === 'keep') {
+      plannedPowerState = isMinTempActive ? 'on' : currentPower;
+    }
   }
   const powerChanging = plannedPowerState !== currentPower;
   const powerText = powerChanging ? `${currentPower} → ${plannedPowerState}` : plannedPowerState;
@@ -203,7 +207,13 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
       ? 'Shed (lowered temperature)'
       : 'Shed (powered off)';
   } else if (dev.plannedState === 'keep') {
-    stateText = (dev.currentState === 'off' || dev.currentState === 'unknown') ? 'Restoring' : 'Active';
+    if (dev.currentState === 'off' || dev.currentState === 'unknown') {
+      stateText = 'Restoring';
+    } else if (dev.currentState === 'not_applicable') {
+      stateText = 'Active (temperature-managed)';
+    } else {
+      stateText = 'Active';
+    }
   }
   return createMetaLine('State', stateText);
 };
@@ -235,12 +245,13 @@ const buildPlanStatusLine = (dev: PlanDeviceSnapshot) => createMetaLine('Status'
 const isOnLikeState = (value: string | undefined): boolean => {
   const normalized = (value || '').trim().toLowerCase();
   if (!normalized) return false;
-  return normalized !== 'off' && normalized !== 'unknown';
+  return normalized !== 'off' && normalized !== 'unknown' && normalized !== 'not_applicable';
 };
 
 const resolvePlanBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'shed' | 'uncontrolled' | 'restoring' => {
   if (dev.controllable === false) return 'uncontrolled';
   if (dev.plannedState === 'shed') return 'shed';
+  if (dev.currentState === 'not_applicable') return 'active';
   if (isOnLikeState(dev.currentState)) return 'active';
   return 'restoring';
 };

@@ -145,10 +145,6 @@ export class PlanBuilder {
     const holdResult = this.applyHoldPlanWithTiming(planDevices, restoreResult, sheddingPlan);
     planDevices = holdResult.planDevices;
 
-    if (restoreResult.restoredThisCycle.size > 0) {
-      this.state.lastRestoreMs = Date.now();
-    }
-
     planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan);
     const finalized = this.finalizePlanWithTiming(planDevices);
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;

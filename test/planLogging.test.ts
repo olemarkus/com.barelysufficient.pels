@@ -148,4 +148,28 @@ describe('plan logging helpers', () => {
     const lines = buildPlanChangeLines(plan);
     expect(lines[0]).toContain('needs ~1.00kW');
   });
+
+  it('does not model non-onoff devices as power restore transitions', () => {
+    const plan = {
+      meta: { headroomKw: 0.8 },
+      devices: [
+        {
+          id: 'temp-only',
+          name: 'Temp Only',
+          plannedState: 'keep',
+          plannedTarget: 21,
+          currentState: 'not_applicable',
+          currentTarget: 16,
+          shedAction: 'set_temperature',
+          shedTemperature: 16,
+          reason: 'keep',
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    const lines = buildPlanChangeLines(plan);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('power n/a -> n/a');
+    expect(lines[0]).not.toContain('unknown -> on');
+  });
 });

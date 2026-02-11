@@ -2,6 +2,7 @@ import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
 import { sortByPriorityAsc } from './planSort';
+import { RESTORE_CONFIRM_RETRY_MS } from './planConstants';
 
 export type ShedHoldParams = {
   planDevices: DevicePlanDevice[];
@@ -41,6 +42,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   let headroom = availableHeadroom;
   let restoredOne = restoredOneThisCycle;
   let nextDevices: DevicePlanDevice[] = [];
+  const pendingRestoreDelaySec = getPendingRestoreDelaySeconds(planDevices, state, getShedBehavior);
 
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
@@ -57,6 +59,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       restoredThisCycle,
       shedCooldownRemainingSec,
       holdDuringRestoreCooldown,
+      pendingRestoreDelaySec,
     });
     headroom = result.availableHeadroom;
     restoredOne = result.restoredOneThisCycle;
@@ -197,6 +200,7 @@ function resolveHoldDecision(params: {
   restoredThisCycle: Set<string>;
   shedCooldownRemainingSec: number | null;
   holdDuringRestoreCooldown: boolean;
+  pendingRestoreDelaySec: number | null;
 }): HoldDecision {
   const {
     dev,
@@ -211,6 +215,7 @@ function resolveHoldDecision(params: {
     restoredThisCycle,
     shedCooldownRemainingSec,
     holdDuringRestoreCooldown,
+    pendingRestoreDelaySec,
   } = params;
 
   if (dev.controllable === false) {
@@ -231,11 +236,12 @@ function resolveHoldDecision(params: {
     && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan);
 
   if (!shouldHold && wasShedLastPlan) {
-    return resolveRestoreDecision({
+    return resolvePostHoldRestoreDecision({
       dev,
       availableHeadroom,
       restoredOneThisCycle,
       restoredThisCycle,
+      pendingRestoreDelaySec,
     });
   }
 
@@ -245,6 +251,31 @@ function resolveHoldDecision(params: {
 
   const baseReason = getBaseShedReason(dev, shedReasons, activeOvershoot, inCooldown, shedCooldownRemainingSec);
   return { type: 'hold', reason: baseReason };
+}
+
+function resolvePostHoldRestoreDecision(params: {
+  dev: DevicePlanDevice;
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+  restoredThisCycle: Set<string>;
+  pendingRestoreDelaySec: number | null;
+}): HoldDecision {
+  const {
+    dev,
+    availableHeadroom,
+    restoredOneThisCycle,
+    restoredThisCycle,
+    pendingRestoreDelaySec,
+  } = params;
+  if (pendingRestoreDelaySec !== null) {
+    return { type: 'hold', reason: `restore pending (${pendingRestoreDelaySec}s remaining)` };
+  }
+  return resolveRestoreDecision({
+    dev,
+    availableHeadroom,
+    restoredOneThisCycle,
+    restoredThisCycle,
+  });
 }
 
 function applyHoldToDevice(params: {
@@ -260,6 +291,7 @@ function applyHoldToDevice(params: {
   restoredThisCycle: Set<string>;
   shedCooldownRemainingSec: number | null;
   holdDuringRestoreCooldown: boolean;
+  pendingRestoreDelaySec: number | null;
 }): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
     dev,
@@ -274,6 +306,7 @@ function applyHoldToDevice(params: {
     restoredThisCycle,
     shedCooldownRemainingSec,
     holdDuringRestoreCooldown,
+    pendingRestoreDelaySec,
   } = params;
 
   const decision = resolveHoldDecision({
@@ -289,6 +322,7 @@ function applyHoldToDevice(params: {
     restoredThisCycle,
     shedCooldownRemainingSec,
     holdDuringRestoreCooldown,
+    pendingRestoreDelaySec,
   });
 
   if (decision.type === 'restore') {
@@ -302,6 +336,32 @@ function applyHoldToDevice(params: {
     return applyHoldUpdate(dev, behavior, decision.reason, availableHeadroom, restoredOneThisCycle);
   }
   return { device: dev, availableHeadroom, restoredOneThisCycle };
+}
+
+function getPendingRestoreDelaySeconds(
+  planDevices: DevicePlanDevice[],
+  state: PlanEngineState,
+  getShedBehavior: (deviceId: string) => { action: 'turn_off' | 'set_temperature'; temperature: number | null },
+): number | null {
+  let maxRemainingMs = 0;
+  const nowMs = Date.now();
+  for (const dev of planDevices) {
+    const behavior = getShedBehavior(dev.id);
+    if (behavior.action !== 'set_temperature' || behavior.temperature === null) continue;
+    if (typeof dev.currentTarget !== 'number' || dev.currentTarget !== behavior.temperature) continue;
+    if (typeof dev.plannedTarget !== 'number' || dev.plannedTarget <= behavior.temperature) continue;
+
+    const lastRestoreMs = state.lastDeviceRestoreMs[dev.id];
+    if (!lastRestoreMs) continue;
+
+    const elapsedMs = nowMs - lastRestoreMs;
+    const remainingMs = RESTORE_CONFIRM_RETRY_MS - elapsedMs;
+    if (remainingMs > maxRemainingMs) {
+      maxRemainingMs = remainingMs;
+    }
+  }
+  if (maxRemainingMs <= 0) return null;
+  return Math.ceil(maxRemainingMs / 1000);
 }
 
 function normalizeDeviceReason(params: {
