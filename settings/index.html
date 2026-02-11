@@ -142,16 +142,16 @@
             </label>
           </form>
 
-          <div class="daily-budget-header">
+          <div class="daily-budget-header day-view-header">
             <div>
               <h4 id="daily-budget-title">Today plan</h4>
               <p class="muted" id="daily-budget-day">--</p>
             </div>
-            <div class="daily-budget-actions">
-              <div class="daily-budget-toggle" role="group" aria-label="Daily budget view">
-                <button type="button" class="daily-budget-toggle__button" id="daily-budget-toggle-yesterday" aria-pressed="false">Yesterday</button>
-                <button type="button" class="daily-budget-toggle__button is-active" id="daily-budget-toggle-today" aria-pressed="true">Today</button>
-                <button type="button" class="daily-budget-toggle__button" id="daily-budget-toggle-tomorrow" aria-pressed="false">Tomorrow</button>
+            <div class="daily-budget-actions day-view-actions">
+              <div class="daily-budget-toggle day-view-toggle" role="group" aria-label="Daily budget view">
+                <button type="button" class="daily-budget-toggle__button day-view-toggle__button" id="daily-budget-toggle-yesterday" aria-pressed="false">Yesterday</button>
+                <button type="button" class="daily-budget-toggle__button day-view-toggle__button is-active" id="daily-budget-toggle-today" aria-pressed="true">Today</button>
+                <button type="button" class="daily-budget-toggle__button day-view-toggle__button" id="daily-budget-toggle-tomorrow" aria-pressed="false">Tomorrow</button>
               </div>
               <div class="pill" id="daily-budget-status-pill">No data</div>
             </div>
@@ -172,24 +172,24 @@
             </div>
           </div>
 
-          <div id="daily-budget-chart" class="daily-budget-chart">
-            <div class="daily-budget-bars-wrap">
-              <div id="daily-budget-bars" class="daily-budget-bars"></div>
+          <div id="daily-budget-chart" class="daily-budget-chart day-view-chart">
+            <div class="daily-budget-bars-wrap day-view-bars-wrap">
+              <div id="daily-budget-bars" class="daily-budget-bars day-view-bars"></div>
             </div>
-            <div id="daily-budget-labels" class="daily-budget-labels"></div>
+            <div id="daily-budget-labels" class="daily-budget-labels day-view-labels"></div>
           </div>
 
-          <div class="daily-budget-legend" id="daily-budget-legend">
-            <div class="daily-budget-legend__item">
-              <span id="daily-budget-legend-planned-swatch" class="daily-budget-legend__swatch daily-budget-legend__swatch--planned" aria-hidden="true"></span>
+          <div class="daily-budget-legend day-view-legend" id="daily-budget-legend">
+            <div class="daily-budget-legend__item day-view-legend__item">
+              <span id="daily-budget-legend-planned-swatch" class="daily-budget-legend__swatch day-view-legend__swatch daily-budget-legend__swatch--planned day-view-legend__swatch--planned" aria-hidden="true"></span>
               <span class="muted" id="daily-budget-legend-planned-label">Planned</span>
             </div>
-            <div class="daily-budget-legend__item" id="daily-budget-legend-controlled" hidden>
-              <span class="daily-budget-legend__swatch daily-budget-legend__swatch--controlled" aria-hidden="true"></span>
+            <div class="daily-budget-legend__item day-view-legend__item" id="daily-budget-legend-controlled" hidden>
+              <span class="daily-budget-legend__swatch day-view-legend__swatch daily-budget-legend__swatch--controlled day-view-legend__swatch--controlled" aria-hidden="true"></span>
               <span class="muted">Controlled</span>
             </div>
-            <div class="daily-budget-legend__item" id="daily-budget-legend-actual">
-              <span class="daily-budget-legend__swatch daily-budget-legend__swatch--actual" aria-hidden="true"></span>
+            <div class="daily-budget-legend__item day-view-legend__item" id="daily-budget-legend-actual">
+              <span class="daily-budget-legend__swatch day-view-legend__swatch daily-budget-legend__swatch--actual day-view-legend__swatch--actual" aria-hidden="true"></span>
               <span class="muted">Actual</span>
             </div>
           </div>
