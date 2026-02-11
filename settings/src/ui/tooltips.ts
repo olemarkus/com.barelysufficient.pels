@@ -11,7 +11,11 @@ const getTooltipContent = (reference: Element): string => {
 
 const isBarTooltipTarget = (reference: Element): reference is HTMLElement => (
   reference instanceof HTMLElement
-  && (reference.classList.contains('usage-bar') || reference.classList.contains('daily-budget-bar'))
+  && (
+    reference.classList.contains('usage-bar')
+    || reference.classList.contains('daily-budget-bar')
+    || reference.classList.contains('day-view-bar')
+  )
 );
 
 const setBarTooltipActive = (reference: Element, active: boolean): void => {
