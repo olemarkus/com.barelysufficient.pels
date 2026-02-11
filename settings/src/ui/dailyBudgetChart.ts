@@ -98,8 +98,6 @@ const buildDailyBudgetBar = (params: {
     label,
     value,
     state,
-    className: 'daily-budget-bar',
-    stackClassName: 'daily-budget-bar__stack',
     segments,
     marker,
     title: buildDailyBudgetBarTitle({
