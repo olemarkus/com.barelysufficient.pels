@@ -31,6 +31,8 @@ export type UsageDayEntry = {
   hour: Date;
   kWh: number;
   budgetKWh?: number;
+  controlledKWh?: number;
+  uncontrolledKWh?: number;
   unreliable?: boolean;
 };
 
@@ -39,6 +41,8 @@ type UsageDayBucket = {
   label: string;
   measuredKWh: number;
   budgetKWh: number | null;
+  controlledKWh: number | null;
+  uncontrolledKWh: number | null;
   unreliable: boolean;
   hasMeasurement: boolean;
 };
@@ -103,12 +107,20 @@ const buildUsageDayBuckets = (
     const entry = entriesByStart.get(startMs);
     const measuredKWh = entry?.kWh ?? 0;
     const budgetKWh = typeof entry?.budgetKWh === 'number' && entry.budgetKWh > 0 ? entry.budgetKWh : null;
+    const controlledKWh = typeof entry?.controlledKWh === 'number' && Number.isFinite(entry.controlledKWh)
+      ? entry.controlledKWh
+      : null;
+    const uncontrolledKWh = typeof entry?.uncontrolledKWh === 'number' && Number.isFinite(entry.uncontrolledKWh)
+      ? entry.uncontrolledKWh
+      : null;
     const unreliable = entry?.unreliable === true;
     return {
       startMs,
       label: bucketStartLocalLabels[index] ?? '',
       measuredKWh,
       budgetKWh,
+      controlledKWh,
+      uncontrolledKWh,
       unreliable,
       hasMeasurement: Boolean(entry),
     };
@@ -131,6 +143,10 @@ const getCurrentUsageDayBucketIndex = (buckets: UsageDayBucket[], nextDayStartUt
 
 const buildUsageDayBarTitle = (bucket: UsageDayBucket) => {
   const lines = [`${bucket.label}`, `Measured ${bucket.measuredKWh.toFixed(2)} kWh`];
+  if (bucket.controlledKWh !== null && bucket.uncontrolledKWh !== null) {
+    lines.push(`Controlled ${bucket.controlledKWh.toFixed(2)} kWh`);
+    lines.push(`Uncontrolled ${bucket.uncontrolledKWh.toFixed(2)} kWh`);
+  }
   if (bucket.budgetKWh !== null) {
     lines.push(`Budget ${bucket.budgetKWh.toFixed(2)} kWh`);
     if (bucket.measuredKWh > bucket.budgetKWh + 0.001) {

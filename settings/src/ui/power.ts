@@ -16,10 +16,11 @@ import {
 } from './dom';
 import { getHomeyTimezone, getSetting } from './homey';
 import { createUsageBar } from './components';
-import { setTooltip } from './tooltips';
 import type { PowerTrackerState } from '../../../lib/core/powerTracker';
 import { buildDayContext } from '../../../lib/dailyBudget/dailyBudgetState';
 import { initUsageDayViewHandlers, renderUsageDayView, type UsageDayEntry } from './usageDayView';
+import { createPowerRow } from './powerUsageRows';
+import { resolveUsageSplit } from './powerUsageSplit';
 import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
@@ -420,10 +421,17 @@ export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
       const start = date.getTime();
       const end = start + 3600000;
       const isUnreliable = unreliablePeriods.some((p) => p.start < end && p.end > start);
+      const kWh = Number(value) || 0;
+      const split = resolveUsageSplit({
+        totalKWh: kWh,
+        rawControlled: tracker.controlledBuckets?.[iso],
+        rawUncontrolled: tracker.uncontrolledBuckets?.[iso],
+      });
       return {
         hour: date,
-        kWh: Number(value) || 0,
+        kWh,
         budgetKWh: tracker.hourlyBudgets?.[iso],
+        ...split,
         unreliable: isUnreliable,
       };
     })
@@ -489,56 +497,4 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
         });
     });
   powerList.appendChild(fragment);
-};
-
-const createTimeLabel = (date: Date, timeZone: string): string => {
-  const start = date;
-  const end = new Date(start.getTime() + 60 * 60 * 1000);
-  const startText = formatTimeInTimeZone(start, { hour: '2-digit', minute: '2-digit' }, timeZone);
-  const endText = formatTimeInTimeZone(end, { hour: '2-digit', minute: '2-digit' }, timeZone);
-  return `${startText}–${endText}`;
-};
-
-const createPowerMeter = (kWh: number, budget: number | null): HTMLElement => (
-  createUsageBar({
-    value: kWh,
-    max: budget ?? kWh,
-    minFillPct: 4,
-    className: 'power-meter usage-bar--lg',
-    fillClassName: budget && kWh > budget
-      ? 'usage-bar__fill--accent power-meter__fill--alert'
-      : 'usage-bar__fill--accent',
-    labelClassName: 'power-meter__label',
-    labelText: budget !== null
-      ? `${kWh.toFixed(2)} / ${budget.toFixed(2)} kWh`
-      : `${kWh.toFixed(2)} kWh`,
-    title: budget !== null
-      ? `${kWh > budget ? 'Over' : 'Under'} cap: ${kWh.toFixed(2)} / ${budget.toFixed(2)} kWh`
-      : `Energy ${kWh.toFixed(2)} kWh`,
-  })
-);
-
-const createPowerRow = (entry: PowerUsageEntry, timeZone: string): HTMLElement => {
-  const row = document.createElement('li');
-  row.className = 'usage-row usage-row--detail';
-
-  const label = document.createElement('div');
-  label.className = 'usage-row__label';
-  label.textContent = createTimeLabel(entry.hour, timeZone);
-
-  const budget = typeof entry.budgetKWh === 'number' && entry.budgetKWh > 0 ? entry.budgetKWh : null;
-  const meter = createPowerMeter(entry.kWh, budget);
-  meter.classList.add('usage-row__bar');
-
-  const value = document.createElement('div');
-  value.className = 'usage-row__value';
-  value.textContent = `${entry.kWh.toFixed(2)} kWh`;
-
-  if (entry.unreliable) {
-    row.classList.add('usage-row--warn');
-    setTooltip(row, 'Unreliable data');
-  }
-
-  row.append(label, meter, value);
-  return row;
 };
