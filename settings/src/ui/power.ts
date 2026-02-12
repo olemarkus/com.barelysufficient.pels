@@ -21,7 +21,17 @@ import { buildDayContext } from '../../../lib/dailyBudget/dailyBudgetState';
 import { initUsageDayViewHandlers, renderUsageDayView, type UsageDayEntry } from './usageDayView';
 import { createPowerRow } from './powerUsageRows';
 import { resolveUsageSplit } from './powerUsageSplit';
-import type { CombinedPriceData, PriceEntry } from './priceTypes';
+import type { CombinedPriceData } from './priceTypes';
+import { buildPriceByHour } from './powerPrice';
+import {
+  buildDailyHistory,
+  buildHourlyPattern,
+  deriveDailyTotalsFromBuckets,
+  deriveHourlyAveragesFromBuckets,
+  getHourlyPatternMeta,
+  getWeekdayWeekendAverages,
+  mergeDailyTotals,
+} from './powerStats';
 import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
@@ -30,7 +40,6 @@ import {
   getMonthStartInTimeZone,
   getStartOfDayInTimeZone,
   getWeekStartInTimeZone,
-  getZonedParts,
 } from './timezone';
 
 export type PowerTracker = PowerTrackerState;
@@ -60,46 +69,6 @@ const getEmptyPowerStats = (): PowerStatsSummary => ({
   dailyHistory: [],
   hasPatternData: false,
 });
-
-const getDerivedDailyTotals = (buckets: Record<string, number> | undefined, timeZone: string) => {
-  const totals: Record<string, number> = {};
-  if (!buckets) return totals;
-  for (const [iso, kWh] of Object.entries(buckets)) {
-    const dateKey = getDateKeyInTimeZone(new Date(iso), timeZone);
-    totals[dateKey] = (totals[dateKey] || 0) + kWh;
-  }
-  return totals;
-};
-
-const getDerivedHourlyAverages = (buckets: Record<string, number> | undefined, timeZone: string) => {
-  const averages: Record<string, { sum: number; count: number }> = {};
-  if (!buckets) return averages;
-  for (const [iso, kWh] of Object.entries(buckets)) {
-    const date = new Date(iso);
-    const { year, month, day, hour } = getZonedParts(date, timeZone);
-    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-    const key = `${weekday}_${hour}`;
-    const existing = averages[key] || { sum: 0, count: 0 };
-    averages[key] = { sum: existing.sum + kWh, count: existing.count + 1 };
-  }
-  return averages;
-};
-
-const getHourlyPatternMeta = (buckets: Record<string, number> | undefined, timeZone: string) => {
-  if (!buckets || Object.keys(buckets).length === 0) {
-    return 'Average kWh per hour based on historical data.';
-  }
-  const times = Object.keys(buckets)
-    .map((iso) => new Date(iso).getTime())
-    .filter((ts) => Number.isFinite(ts));
-  if (!times.length) return 'Average kWh per hour based on historical data.';
-  const minTs = Math.min(...times);
-  const maxTs = Math.max(...times);
-  const days = Math.max(1, Math.round((maxTs - minTs) / (24 * 60 * 60 * 1000)) + 1);
-  const start = getDateKeyInTimeZone(new Date(minTs), timeZone);
-  const end = getDateKeyInTimeZone(new Date(maxTs), timeZone);
-  return `Average kWh per hour based on ${days} days (${start}–${end} ${timeZone}).`;
-};
 
 const getPowerTimeContext = (now: Date, timeZone: string) => {
   const todayStart = getStartOfDayInTimeZone(now, timeZone);
@@ -159,98 +128,6 @@ const getWeekMonthTotals = (
   };
 };
 
-const getWeekdayWeekendAverages = (dailyTotals: Record<string, number>, timeZone: string) => {
-  let weekdaySum = 0;
-  let weekdayCount = 0;
-  let weekendSum = 0;
-  let weekendCount = 0;
-
-  for (const [dateKey, kWh] of Object.entries(dailyTotals)) {
-    const ts = getDateKeyStartMs(dateKey, timeZone);
-    const day = new Date(ts).getUTCDay();
-    if (day === 0 || day === 6) {
-      weekendSum += kWh;
-      weekendCount += 1;
-    } else {
-      weekdaySum += kWh;
-      weekdayCount += 1;
-    }
-  }
-
-  const weekdayAvg = weekdayCount > 0 ? weekdaySum / weekdayCount : 0;
-  const weekendAvg = weekendCount > 0 ? weekendSum / weekendCount : 0;
-  const hasPatternData = (weekdayCount + weekendCount) > 0;
-
-  return { weekdayAvg, weekendAvg, hasPatternData };
-};
-
-const buildHourlyPattern = (hourlyAverages: Record<string, { sum: number; count: number }>): { hour: number; avg: number }[] => {
-  const entries: { hour: number; avg: number }[] = [];
-  if (!hourlyAverages) return entries;
-  const totals = new Map<number, { sum: number; count: number }>();
-  for (const [patternKey, data] of Object.entries(hourlyAverages)) {
-    const [, hourStr] = patternKey.split('_');
-    const hour = Number(hourStr);
-    if (!Number.isFinite(hour) || hour < 0 || hour > 23) continue;
-    const existing = totals.get(hour) || { sum: 0, count: 0 };
-    totals.set(hour, { sum: existing.sum + data.sum, count: existing.count + data.count });
-  }
-  for (const [hour, data] of totals.entries()) {
-    const avg = data.count > 0 ? data.sum / data.count : 0;
-    entries.push({ hour, avg });
-  }
-  return entries.sort((a, b) => a.hour - b.hour);
-};
-
-const buildDailyHistory = (dailyTotals: Record<string, number>, todayKey: string): { date: string; kWh: number }[] => {
-  const entries: { date: string; kWh: number }[] = [];
-  if (!dailyTotals) return entries;
-  for (const [dateKey, kWh] of Object.entries(dailyTotals)) {
-    if (dateKey === todayKey) continue;
-    entries.push({ date: dateKey, kWh });
-  }
-  return entries.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 14);
-};
-
-type PriceAtHour = {
-  total: number;
-  isCheap: boolean;
-  isExpensive: boolean;
-};
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
-
-const getPriceUnit = (data: CombinedPriceData): string | undefined => {
-  if (typeof data.priceUnit === 'string' && data.priceUnit.trim()) {
-    return data.priceUnit;
-  }
-  return data.priceScheme === 'norway' || typeof data.priceScheme !== 'string'
-    ? 'ore/kWh'
-    : undefined;
-};
-
-const buildPriceByHour = (data: CombinedPriceData | null): {
-  byHour: Map<number, PriceAtHour>;
-  unit: string | undefined;
-} => {
-  const byHour = new Map<number, PriceAtHour>();
-  if (!data || !Array.isArray(data.prices)) {
-    return { byHour, unit: undefined };
-  }
-  data.prices.forEach((entry: PriceEntry) => {
-    if (typeof entry.startsAt !== 'string' || !isFiniteNumber(entry.total)) return;
-    const timestamp = new Date(entry.startsAt).getTime();
-    if (!Number.isFinite(timestamp)) return;
-    byHour.set(timestamp, {
-      total: entry.total,
-      isCheap: entry.isCheap === true,
-      isExpensive: entry.isExpensive === true,
-    });
-  });
-  return { byHour, unit: getPriceUnit(data) };
-};
 
 let powerUsageWeekOffset = 0;
 let powerUsageEntries: PowerUsageEntry[] = [];
@@ -422,17 +299,16 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
     powerTracker: tracker,
   });
   const today = dayContext.usedNowKWh;
-  const derivedDailyTotals = Object.keys(tracker.dailyTotals || {}).length
-    ? tracker.dailyTotals as Record<string, number>
-    : getDerivedDailyTotals(tracker.buckets, timeZone);
+  const derivedBucketDailyTotals = deriveDailyTotalsFromBuckets(tracker.buckets, timeZone);
+  const derivedDailyTotals = mergeDailyTotals(tracker.dailyTotals, derivedBucketDailyTotals);
   const derivedHourlyAverages = Object.keys(tracker.hourlyAverages || {}).length
     ? tracker.hourlyAverages as Record<string, { sum: number; count: number }>
-    : getDerivedHourlyAverages(tracker.buckets, timeZone);
+    : deriveHourlyAveragesFromBuckets(tracker.buckets, timeZone);
   const totals = getWeekMonthTotals({ ...tracker, dailyTotals: derivedDailyTotals }, timeContext, today, timeZone);
   const averages = getWeekdayWeekendAverages(derivedDailyTotals, timeZone);
   const hourlyPattern = buildHourlyPattern(derivedHourlyAverages);
   const hourlyPatternMeta = getHourlyPatternMeta(tracker.buckets, timeZone);
-  const dailyHistory = buildDailyHistory(derivedDailyTotals, timeContext.todayKey);
+  const dailyHistory = buildDailyHistory(derivedDailyTotals, timeContext.todayKey, timeZone);
 
   return {
     stats: {

@@ -30,6 +30,7 @@ export const usageDayChart = qs('#usage-day-chart');
 export const usageDayBars = qs('#usage-day-bars');
 export const usageDayLabels = qs('#usage-day-labels');
 export const usageDayLegend = qs('#usage-day-legend');
+export const usageDayLegendPrice = qs('#usage-day-legend-price');
 export const usageDayEmpty = qs('#usage-day-empty');
 export const usageDayMeta = qs('#usage-day-meta');
 export const tabs = Array.from(document.querySelectorAll<HTMLElement>('.tab'));

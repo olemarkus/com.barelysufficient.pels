@@ -104,4 +104,31 @@ describe('refreshPrices', () => {
       'refreshHomeyStatus',
     );
   });
+
+  it('renders empty price views without errors when price feature data is unavailable', async () => {
+    const { homey, render, dayView, logging } = getMocks();
+
+    homey.getSetting.mockImplementation(async (key: string) => {
+      switch (key) {
+        case 'price_scheme':
+          return 'homey';
+        case 'homey_prices_currency':
+          return null;
+        case 'combined_prices':
+          return null;
+        case 'homey_prices_today':
+        case 'homey_prices_tomorrow':
+          return null;
+        default:
+          return null;
+      }
+    });
+
+    const { refreshPrices } = require('../settings/src/ui/prices') as typeof import('../settings/src/ui/prices');
+    await refreshPrices();
+
+    expect(render.renderPrices).toHaveBeenCalledWith(null);
+    expect(dayView.renderPriceDayView).toHaveBeenCalledWith(null);
+    expect(logging.logSettingsError).not.toHaveBeenCalled();
+  });
 });

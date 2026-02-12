@@ -11,6 +11,7 @@ import {
   usageDayBars,
   usageDayLabels,
   usageDayLegend,
+  usageDayLegendPrice,
   usageDayEmpty,
   usageDayMeta,
 } from './dom';
@@ -204,7 +205,20 @@ const buildUsageDayBarTitle = (bucket: UsageDayBucket) => {
   return lines.join(' · ');
 };
 
-const renderUsageDayHeader = (dateKey: string, timeZone: string) => {
+const getUsageDayMetaText = (view: UsageDayView, hasPriceOverlay: boolean): string => {
+  if (hasPriceOverlay) {
+    if (view === 'today') {
+      return 'Hourly kWh with relative price overlay in your local day (updates live).';
+    }
+    return 'Hourly kWh with relative price overlay for the previous local day.';
+  }
+  if (view === 'today') {
+    return 'Hourly kWh within your local day (updates live).';
+  }
+  return 'Hourly kWh for the previous local day.';
+};
+
+const renderUsageDayHeader = (dateKey: string, timeZone: string, hasPriceOverlay: boolean) => {
   if (!usageDayTitle || !usageDayLabel) return;
   usageDayTitle.textContent = formatUsageDayTitle(usageDayView);
   const dayStart = new Date(getDateKeyStartMs(dateKey, timeZone));
@@ -214,11 +228,7 @@ const renderUsageDayHeader = (dateKey: string, timeZone: string) => {
     day: 'numeric',
   }, timeZone)} · ${timeZone}`;
   if (usageDayMeta) {
-    if (usageDayView === 'today') {
-      usageDayMeta.textContent = 'Hourly kWh with relative price overlay in your local day (updates live).';
-    } else {
-      usageDayMeta.textContent = 'Hourly kWh with relative price overlay for the previous local day.';
-    }
+    usageDayMeta.textContent = getUsageDayMetaText(usageDayView, hasPriceOverlay);
   }
 };
 
@@ -341,7 +351,11 @@ export const renderUsageDayView = (entries: UsageDayEntry[]) => {
   const dateKey = getUsageDayDateKey(usageDayView, now, timeZone);
   const { buckets, nextDayStartUtcMs } = buildUsageDayBuckets(entries, dateKey, timeZone);
   const currentBucketIndex = getCurrentUsageDayBucketIndex(buckets, nextDayStartUtcMs);
-  renderUsageDayHeader(dateKey, timeZone);
+  const hasPriceOverlay = buckets.some((bucket) => bucket.priceTotal !== null);
+  renderUsageDayHeader(dateKey, timeZone, hasPriceOverlay);
+  if (usageDayLegendPrice) {
+    usageDayLegendPrice.hidden = !hasPriceOverlay;
+  }
 
   const hasData = buckets.some((bucket) => bucket.hasMeasurement);
   if (!hasData) {
