@@ -22,19 +22,25 @@ const buildPowerDom = () => {
     <div id="usage-day-peak"></div>
     <div id="usage-day-over-cap"></div>
     <div id="usage-day-chart"><div id="usage-day-bars"></div><div id="usage-day-labels"></div></div>
-    <div id="usage-day-legend"></div>
+    <div id="usage-day-legend">
+      <div id="usage-day-legend-price"></div>
+    </div>
     <div id="usage-day-empty"></div>
     <div id="usage-day-meta"></div>
   `;
 };
 
-const installHomeyClient = (tracker: unknown, timeZone = 'UTC') => {
+const installHomeyClient = (tracker: unknown, timeZone = 'UTC', combinedPrices: unknown = null) => {
   const { setHomeyClient } = require('../settings/src/ui/homey') as typeof import('../settings/src/ui/homey');
   setHomeyClient({
     ready: async () => { },
     get: (key, cb) => {
       if (key === 'power_tracker_state') {
         cb(null, tracker);
+        return;
+      }
+      if (key === 'combined_prices') {
+        cb(null, combinedPrices);
         return;
       }
       cb(null, null);
@@ -98,6 +104,28 @@ describe('power page stats (buckets-only)', () => {
     expect(rows.length).toBeGreaterThan(0);
   });
 
+  it('includes recent bucket days in daily history when archived daily totals exist', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 1, 17, 12, 0, 0));
+    const recentBuckets = buildBuckets('2025-02-15T00:00:00.000Z', 2 * 24, 0.7);
+    const dailyTotals: Record<string, number> = {};
+    for (let day = 1; day <= 15; day += 1) {
+      const key = `2025-01-${day.toString().padStart(2, '0')}`;
+      dailyTotals[key] = 10 + day;
+    }
+    installHomeyClient({
+      buckets: recentBuckets,
+      dailyTotals,
+    });
+
+    const { getPowerStats } = require('../settings/src/ui/power') as typeof import('../settings/src/ui/power');
+    const { stats } = await getPowerStats();
+    const dailyHistoryDates = stats.dailyHistory.map((entry) => entry.date);
+
+    expect(dailyHistoryDates[0]).toBe('2025-02-16');
+    expect(dailyHistoryDates).toContain('2025-02-15');
+    jest.restoreAllMocks();
+  });
+
   it('limits hourly detail to the current UTC week by default', async () => {
     const buckets = buildBuckets('2025-01-01T00:00:00.000Z', 14 * 24, 0.4);
     jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 10, 12, 0, 0));
@@ -143,6 +171,31 @@ describe('power page stats (buckets-only)', () => {
     expect(entries[0].uncontrolledKWh).toBeCloseTo(1.4, 6);
   });
 
+  it('maps hourly price data onto usage entries when combined prices are available', async () => {
+    const iso = '2025-01-06T00:00:00.000Z';
+    installHomeyClient(
+      { buckets: { [iso]: 2.5 } },
+      'UTC',
+      {
+        prices: [{ startsAt: iso, total: 123.4, isCheap: true }],
+        avgPrice: 123.4,
+        lowThreshold: 100,
+        highThreshold: 140,
+        priceScheme: 'norway',
+        priceUnit: 'ore/kWh',
+      },
+    );
+
+    const { getPowerUsage } = require('../settings/src/ui/power') as typeof import('../settings/src/ui/power');
+    const entries = await getPowerUsage();
+
+    expect(entries.length).toBe(1);
+    expect(entries[0].priceTotal).toBeCloseTo(123.4, 6);
+    expect(entries[0].priceIsCheap).toBe(true);
+    expect(entries[0].priceIsExpensive).toBe(false);
+    expect(entries[0].priceUnit).toBe('ore/kWh');
+  });
+
   it('includes split usage in day-view tooltip when available', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
@@ -154,14 +207,44 @@ describe('power page stats (buckets-only)', () => {
       kWh: 2.5,
       controlledKWh: 1.1,
       uncontrolledKWh: 1.4,
+      priceTotal: 123.4,
+      priceIsCheap: true,
+      priceUnit: 'ore/kWh',
       budgetKWh: 3,
     }]);
 
     const bar = document.querySelector('.day-view-bar') as HTMLElement | null;
     expect(bar).not.toBeNull();
+    const marker = bar?.querySelector('.day-view-marker--price');
+    expect(marker).not.toBeNull();
     const tooltip = bar?.dataset.tooltip ?? '';
     expect(tooltip).toContain('Controlled 1.10 kWh');
     expect(tooltip).toContain('Uncontrolled 1.40 kWh');
+    expect(tooltip).toContain('Price 123.4 ore/kWh (Cheap)');
+    jest.useRealTimers();
+  });
+
+  it('hides price overlay legend and marker when price data is unavailable', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
+    installHomeyClient({}, 'UTC');
+    const { renderUsageDayView } = require('../settings/src/ui/usageDayView') as typeof import('../settings/src/ui/usageDayView');
+
+    renderUsageDayView([{
+      hour: new Date('2025-01-06T00:00:00.000Z'),
+      kWh: 2.5,
+      budgetKWh: 3,
+    }]);
+
+    const marker = document.querySelector('.day-view-marker--price');
+    expect(marker).toBeNull();
+
+    const legendPrice = document.querySelector('#usage-day-legend-price') as HTMLElement | null;
+    expect(legendPrice).not.toBeNull();
+    expect(legendPrice?.hidden).toBe(true);
+
+    const meta = (document.querySelector('#usage-day-meta') as HTMLElement | null)?.textContent ?? '';
+    expect(meta).toContain('Hourly kWh within your local day');
     jest.useRealTimers();
   });
 

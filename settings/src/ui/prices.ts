@@ -31,6 +31,7 @@ import { pushSettingWriteIfChanged } from './settingWrites';
 import { showToast } from './toast';
 import { gridCompanies } from './gridCompanies';
 import { renderPrices } from './priceRender';
+import { renderPriceDayView } from './priceDayView';
 import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../lib/price/priceComponents';
@@ -402,15 +403,29 @@ export const refreshPrices = async (overrides?: PriceOverrideOptions) => {
     const hasOverrides = overrides && (
       Number.isFinite(overrides.thresholdPercent) || Number.isFinite(overrides.minDiffOre)
     );
-    renderPrices(prices && hasOverrides ? applyPriceOverrides(prices, overrides) : prices);
-    await refreshFlowStatus();
-    await refreshHomeyStatus();
+    const displayPrices = prices && hasOverrides ? applyPriceOverrides(prices, overrides) : prices;
+    renderPrices(displayPrices);
+    renderPriceDayView(displayPrices);
   } catch (error) {
     await logSettingsError('Failed to load prices', error, 'refreshPrices');
     if (priceStatusBadge) {
       priceStatusBadge.textContent = 'Error';
       priceStatusBadge.classList.add('warn');
     }
+    renderPriceDayView(null);
+    return;
+  }
+
+  try {
+    await refreshFlowStatus();
+  } catch (error) {
+    await logSettingsError('Failed to refresh Flow price status', error, 'refreshFlowStatus');
+  }
+
+  try {
+    await refreshHomeyStatus();
+  } catch (error) {
+    await logSettingsError('Failed to refresh Homey price status', error, 'refreshHomeyStatus');
   }
 };
 

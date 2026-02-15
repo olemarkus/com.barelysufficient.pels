@@ -49,6 +49,24 @@ export const getAverageTotal = (prices: PriceEntry[], fallback: number): number 
   return count > 0 ? sum / count : fallback;
 };
 
+export type TimedStartEntry<T extends { startsAt?: string }> = {
+  entry: T;
+  timestamp: number;
+};
+
+export const sortEntriesByStart = <T extends { startsAt?: string }>(
+  entries: T[],
+): TimedStartEntry<T>[] => (
+  entries
+    .flatMap((entry) => {
+      if (typeof entry.startsAt !== 'string') return [];
+      const timestamp = new Date(entry.startsAt).getTime();
+      if (!Number.isFinite(timestamp)) return [];
+      return [{ entry, timestamp }];
+    })
+    .sort((a, b) => a.timestamp - b.timestamp)
+);
+
 const buildDayLabel = (dateKey: string, todayKey: string, timeZone: string): string => {
   if (dateKey === todayKey) return 'Today';
   const dayStart = new Date(getDateKeyStartMs(dateKey, timeZone));
