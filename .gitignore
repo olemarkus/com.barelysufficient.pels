@@ -4,5 +4,17 @@
 /coverage/
 /settings/script.js
 /test/screenshots/*.png
+/output/
 # Legacy eslint config (we use eslint.config.mjs flat config)
 .eslintrc.json
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+/.playwright/
+/.playwright-cli/
+/teste/

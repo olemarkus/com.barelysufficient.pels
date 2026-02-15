@@ -12,10 +12,42 @@ export default tseslint.config(
     ignores: [
       'node_modules/**',
       '.homeybuild/**',
+      'coverage/**',
+      'output/**',
+      'playwright-report/**',
+      'test-results/**',
+      'blob-report/**',
+      '.playwright/**',
+      '.playwright-cli/**',
       '*.js',
       'settings/*.js',
       'test/screenshots/**',
     ],
+  },
+  // ESM scripts (Node.js)
+  {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  // Playwright/browser fixtures (run in the browser, but are plain JS files)
+  {
+    files: ['tests/e2e/fixtures/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
   },
   // CommonJS config files
   {
