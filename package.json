@@ -19,6 +19,7 @@
     "test:unit:tz": "node scripts/run-timezone-tests.mjs",
     "ci": "npm run build && npm run lint:css && npm run lint:html && npm run test:unit:ci && npm run test:unit:tz && npm run test:ui && npm run lint",
     "test": "npm run ci",
+    "test:e2e": "playwright test",
     "test:ui": "npm run build:tokens && jest --config jest.config.ui.cjs",
     "test:all": "npm run ci",
     "validate": "npm run build:settings && homey app validate",
@@ -47,6 +48,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@playwright/test": "^1.58.2",
     "@tsconfig/node22": "^22.0.5",
     "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
     "@types/jest": "^30.0.0",

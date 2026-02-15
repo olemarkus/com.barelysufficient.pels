@@ -1,6 +1,15 @@
 settings/src/
 test/
+tests/
 coverage/
+output/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+.playwright-cli/
+playwright.config.ts
+scripts/playwright-static-server.mjs
 jest.config.cjs
 tsconfig.json
 .eslintrc.json
