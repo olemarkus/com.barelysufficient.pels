@@ -6,6 +6,7 @@ const buildPlan = (
   currentTarget: number,
   reason: string,
   metaOverrides: Partial<DevicePlan['meta']> = {},
+  deviceOverrides: Partial<DevicePlan['devices'][number]> = {},
 ): DevicePlan => ({
   meta: {
     totalKw: 1,
@@ -23,6 +24,7 @@ const buildPlan = (
       plannedTarget: 20,
       reason,
       controllable: true,
+      ...deviceOverrides,
     },
   ],
 });
@@ -80,6 +82,54 @@ describe('PlanService', () => {
     expect(snapshotWrites).toHaveLength(2);
     expect(snapshotWrites[0].devices[0].currentTarget).toBe(19);
     expect(snapshotWrites[1].devices[0].currentTarget).toBe(21);
+
+    const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
+    expect(planUpdatedCalls).toHaveLength(2);
+  });
+
+  it('writes a fresh snapshot when priority changes without action changes', async () => {
+    const settingsSet = jest.fn();
+    const realtime = jest.fn().mockResolvedValue(undefined);
+    const planEngine = {
+      buildDevicePlanSnapshot: jest
+        .fn()
+        .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { priority: 10 }))
+        .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { priority: 1 })),
+      computeDynamicSoftLimit: jest.fn(() => 0),
+      computeShortfallThreshold: jest.fn(() => 0),
+      handleShortfall: jest.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+      applyPlanActions: jest.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache();
+
+    const snapshotWrites = settingsSet.mock.calls
+      .filter((call: unknown[]) => call[0] === 'device_plan_snapshot')
+      .map((call: unknown[]) => call[1] as DevicePlan);
+    expect(snapshotWrites).toHaveLength(2);
+    expect(snapshotWrites[0].devices[0].priority).toBe(10);
+    expect(snapshotWrites[1].devices[0].priority).toBe(1);
 
     const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(planUpdatedCalls).toHaveLength(2);
