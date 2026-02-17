@@ -244,6 +244,130 @@ describe('settings script', () => {
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(false);
   });
 
+  it('allows toggling managed and capacity control for a socket device', async () => {
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'target_devices_snapshot') {
+        return cb(null, [
+          {
+            id: 'socket-1',
+            name: 'Kitchen Socket',
+            deviceClass: 'socket',
+            deviceType: 'onoff',
+            targets: [],
+            powerCapable: true,
+            powerKw: 0.125,
+          },
+        ]);
+      }
+      if (key === 'operating_mode') return cb(null, 'Home');
+      if (key === 'capacity_priorities') return cb(null, {});
+      if (key === 'mode_device_targets') return cb(null, {});
+      if (key === 'controllable_devices') return cb(null, {});
+      if (key === 'managed_devices') return cb(null, {});
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+
+    await loadSettingsScript();
+
+    const getToggles = () => {
+      const checkboxes = Array.from(
+        document.querySelectorAll('[data-device-id="socket-1"] input[type="checkbox"]'),
+      ) as HTMLInputElement[];
+      return {
+        managed: checkboxes[0],
+        controllable: checkboxes[1],
+      };
+    };
+
+    await waitFor(() => Boolean(getToggles().managed && getToggles().controllable));
+    expect(getToggles().managed.disabled).toBe(false);
+    expect(getToggles().controllable.disabled).toBe(true);
+
+    getToggles().managed.click();
+    await waitFor(() => {
+      const calls = setSpy.mock.calls.filter((call) => call[0] === 'managed_devices');
+      return calls.length > 0;
+    }, 1500);
+    const managedCalls = setSpy.mock.calls.filter((call) => call[0] === 'managed_devices');
+    expect(managedCalls[managedCalls.length - 1]?.[1]).toEqual(expect.objectContaining({ 'socket-1': true }));
+
+    await waitFor(() => getToggles().controllable.disabled === false);
+    getToggles().controllable.click();
+    await waitFor(() => {
+      const calls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
+      return calls.length > 0;
+    }, 1500);
+    const controllableCalls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
+    expect(controllableCalls[controllableCalls.length - 1]?.[1]).toEqual(expect.objectContaining({ 'socket-1': true }));
+  });
+
+  it('allows toggling managed and capacity control for an off socket with Homey energy metadata', async () => {
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-expect-error mutate mock
+    global.Homey.set = setSpy;
+    // @ts-expect-error mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'target_devices_snapshot') {
+        return cb(null, [
+          {
+            id: 'socket-2',
+            name: 'Hall Socket',
+            deviceClass: 'socket',
+            deviceType: 'onoff',
+            targets: [],
+            currentOn: false,
+            powerCapable: true,
+            expectedPowerSource: 'default',
+            powerKw: 1,
+          },
+        ]);
+      }
+      if (key === 'operating_mode') return cb(null, 'Home');
+      if (key === 'capacity_priorities') return cb(null, {});
+      if (key === 'mode_device_targets') return cb(null, {});
+      if (key === 'controllable_devices') return cb(null, {});
+      if (key === 'managed_devices') return cb(null, {});
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+
+    await loadSettingsScript();
+
+    const getToggles = () => {
+      const checkboxes = Array.from(
+        document.querySelectorAll('[data-device-id="socket-2"] input[type="checkbox"]'),
+      ) as HTMLInputElement[];
+      return {
+        managed: checkboxes[0],
+        controllable: checkboxes[1],
+      };
+    };
+
+    await waitFor(() => Boolean(getToggles().managed && getToggles().controllable));
+    expect(getToggles().managed.disabled).toBe(false);
+    expect(getToggles().controllable.disabled).toBe(true);
+
+    getToggles().managed.click();
+    await waitFor(() => {
+      const calls = setSpy.mock.calls.filter((call) => call[0] === 'managed_devices');
+      return calls.length > 0;
+    }, 1500);
+    await waitFor(() => getToggles().controllable.disabled === false);
+
+    getToggles().controllable.click();
+    await waitFor(() => {
+      const calls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
+      return calls.length > 0;
+    }, 1500);
+    const controllableCalls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
+    expect(controllableCalls[controllableCalls.length - 1]?.[1]).toEqual(expect.objectContaining({ 'socket-2': true }));
+  });
+
   it('renames a mode and updates settings', async () => {
     const setSpy = jest.fn((key, val, cb) => cb && cb(null));
     // @ts-expect-error mutate mock

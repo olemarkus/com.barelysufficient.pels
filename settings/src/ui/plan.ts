@@ -226,11 +226,7 @@ const buildPlanUsageLine = (dev: PlanDeviceSnapshot) => {
 
   let usageText = 'Unknown';
   if (hasExpected && hasMeasured) {
-    const measuredText = measuredKw.toFixed(2);
-    const expectedText = expectedKw.toFixed(2);
-    usageText = measuredText === expectedText
-      ? `expected ${expectedText} kW`
-      : `current usage: ${measuredText} kW / expected ${expectedText} kW`;
+    usageText = `current usage: ${measuredKw.toFixed(2)} kW / expected ${expectedKw.toFixed(2)} kW`;
   } else if (hasExpected) {
     usageText = `expected ${expectedKw.toFixed(2)} kW`;
   } else if (hasMeasured) {

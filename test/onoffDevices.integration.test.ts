@@ -38,6 +38,9 @@ const buildOnOffApiDevice = (overrides?: Partial<{
   class: string;
   virtualClass: string;
   capabilities: string[];
+  settings: Record<string, unknown>;
+  energyObj: Record<string, unknown> | null;
+  energy: Record<string, unknown> | null;
 }>) => ({
   id: overrides?.id ?? 'device-a',
   name: overrides?.name ?? 'On/Off Socket',
@@ -48,7 +51,9 @@ const buildOnOffApiDevice = (overrides?: Partial<{
     onoff: { id: 'onoff', value: overrides?.onoff ?? true },
     measure_power: { id: 'measure_power', value: overrides?.measurePower ?? 0 },
   },
-  settings: {},
+  settings: overrides?.settings ?? {},
+  energyObj: overrides?.energyObj,
+  energy: overrides?.energy,
 });
 
 describe('On/off device integration', () => {
@@ -148,6 +153,414 @@ describe('On/off device integration', () => {
     const entry = snapshot.find((device) => device.id === 'device-a');
     expect(entry).toBeDefined();
     expect(entry?.powerCapable).toBe(false);
+  });
+
+  it('supports on/off devices with Homey energy approximation delta', async () => {
+    setMockDrivers({});
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': buildOnOffApiDevice({
+            capabilities: ['onoff'],
+            energyObj: {
+              approximation: {
+                usageOn: 110,
+                usageOff: 10,
+              },
+            },
+          }),
+        }),
+      },
+    };
+
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      powerCapable?: boolean;
+      powerKw?: number;
+      expectedPowerKw?: number;
+      expectedPowerSource?: string;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry).toMatchObject({
+      powerCapable: true,
+      expectedPowerSource: 'homey-energy',
+    });
+    expect(entry?.expectedPowerKw).toBeCloseTo(0.1, 6);
+    expect(entry?.powerKw).toBeCloseTo(0.1, 6);
+  });
+
+  it('uses canonical settings energy values for on/off devices when present', async () => {
+    setMockDrivers({});
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': buildOnOffApiDevice({
+            capabilities: ['onoff'],
+            onoff: false,
+            settings: {
+              energy_value_on: 12.5,
+              energy_value_off: 0,
+            },
+            energyObj: {
+              W: 0,
+              approximation: null,
+            },
+          }),
+        }),
+      },
+    };
+
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      powerCapable?: boolean;
+      powerKw?: number;
+      expectedPowerKw?: number;
+      expectedPowerSource?: string;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry).toEqual(expect.objectContaining({
+      powerCapable: true,
+      expectedPowerSource: 'homey-energy',
+    }));
+    expect(entry?.expectedPowerKw).toBeCloseTo(0.0125, 6);
+    expect(entry?.powerKw).toBeCloseTo(0.0125, 6);
+  });
+
+  it('supports on/off devices using Homey live report when power capabilities are absent', async () => {
+    setMockDrivers({});
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': buildOnOffApiDevice({
+            capabilities: ['onoff'],
+          }),
+        }),
+      },
+      energy: {
+        getLiveReport: async () => ({
+          items: [
+            {
+              type: 'device',
+              id: 'device-a',
+              values: { W: 125 },
+            },
+          ],
+        }),
+      },
+    };
+
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      powerCapable?: boolean;
+      powerKw?: number;
+      measuredPowerKw?: number;
+      expectedPowerKw?: number;
+      expectedPowerSource?: string;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry?.powerCapable).toBe(true);
+    expect(entry?.expectedPowerSource).toBe('measured-peak');
+    expect(entry?.measuredPowerKw).toBeCloseTo(0.125, 6);
+    expect(entry?.expectedPowerKw).toBeCloseTo(0.125, 6);
+    expect(entry?.powerKw).toBeCloseTo(0.125, 6);
+  });
+
+  it('supports on/off devices with Homey energy W fallback when approximation is missing', async () => {
+    setMockDrivers({});
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': buildOnOffApiDevice({
+            capabilities: ['onoff'],
+            onoff: true,
+            energyObj: {
+              W: 0.125,
+              approximation: null,
+            },
+          }),
+        }),
+      },
+    };
+
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      powerCapable?: boolean;
+      powerKw?: number;
+      expectedPowerKw?: number;
+      expectedPowerSource?: string;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry).toEqual(expect.objectContaining({
+      powerCapable: true,
+      expectedPowerSource: 'homey-energy',
+    }));
+    expect(entry?.expectedPowerKw).toBeCloseTo(0.000125, 9);
+    expect(entry?.powerKw).toBeCloseTo(0.000125, 9);
+  });
+
+  it('does not use Homey energy W fallback for explicitly off on/off devices but keeps them power-capable', async () => {
+    setMockDrivers({});
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': buildOnOffApiDevice({
+            capabilities: ['onoff'],
+            onoff: false,
+            energyObj: {
+              W: 0.125,
+              approximation: null,
+            },
+          }),
+        }),
+      },
+    };
+
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      powerCapable?: boolean;
+      powerKw?: number;
+      expectedPowerSource?: string;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry?.powerCapable).toBe(true);
+    expect(entry?.expectedPowerSource).toBe('default');
+    expect(entry?.powerKw).toBe(1);
+  });
+
+  it('does not treat usageConstant-only approximation as power-capable', async () => {
+    setMockDrivers({});
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': buildOnOffApiDevice({
+            capabilities: ['onoff'],
+            onoff: true,
+            energyObj: {
+              approximation: {
+                usageConstant: 350,
+              },
+            },
+          }),
+        }),
+      },
+    };
+
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      powerCapable?: boolean;
+      powerKw?: number;
+      expectedPowerSource?: string;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry?.powerCapable).toBe(false);
+    expect(entry?.expectedPowerSource).toBe('default');
+    expect(entry?.powerKw).toBe(1);
+  });
+
+  it('keeps off sockets manageable when Homey energy W metadata is present (including 0W)', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('managed_devices', { 'device-a': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'device-a': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': buildOnOffApiDevice({
+            capabilities: ['onoff'],
+            onoff: false,
+            energyObj: {
+              W: 0,
+              approximation: null,
+            },
+          }),
+        }),
+      },
+    };
+
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      powerCapable?: boolean;
+      expectedPowerSource?: string;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry?.powerCapable).toBe(true);
+    expect(entry?.expectedPowerSource).toBe('default');
+
+    const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
+    const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
+    expect(managed['device-a']).toBe(true);
+    expect(controllable['device-a']).toBe(true);
+  });
+
+  it('bug: should recover power-capable support after off->on transition when W metadata appears', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('managed_devices', { 'device-a': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'device-a': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': buildOnOffApiDevice({
+            capabilities: ['onoff'],
+            onoff: false,
+            energyObj: {
+              W: 0,
+              approximation: null,
+            },
+          }),
+        }),
+      },
+    };
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': buildOnOffApiDevice({
+            capabilities: ['onoff'],
+            onoff: true,
+            energyObj: {
+              W: 0.125,
+              approximation: null,
+            },
+          }),
+        }),
+      },
+    };
+    await (app as any).refreshTargetDevicesSnapshot();
+    await flushPromises();
+    await flushPromises();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      powerCapable?: boolean;
+      expectedPowerSource?: string;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry).toEqual(expect.objectContaining({
+      powerCapable: true,
+      expectedPowerSource: 'homey-energy',
+    }));
+
+    const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
+    const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
+    expect(managed['device-a']).toBe(true);
+    expect(controllable['device-a']).toBe(true);
+  });
+
+  it('bug: off virtual socket/light should remain user-manageable even when W=0 and live report has no device entry', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('managed_devices', { 'device-a': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'device-a': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        getDevices: async () => ({
+          'device-a': {
+            ...buildOnOffApiDevice({
+              class: 'socket',
+              virtualClass: 'light',
+              capabilities: ['onoff', 'dim', 'light_temperature', 'light_hue', 'light_saturation', 'light_mode'],
+              onoff: false,
+            }),
+            capabilitiesObj: {
+              onoff: { id: 'onoff', value: false },
+              dim: { id: 'dim', value: 0.01 },
+              light_temperature: { id: 'light_temperature', value: 1 },
+              light_hue: { id: 'light_hue', value: 0.14 },
+              light_saturation: { id: 'light_saturation', value: 0.68 },
+              light_mode: { id: 'light_mode', value: 'temperature' },
+            },
+            energy: null,
+            energyObj: {
+              W: 0,
+              approximation: null,
+            },
+          },
+        }),
+      },
+      energy: {
+        getLiveReport: async () => ({
+          zoneId: 'zone-1',
+          items: [
+            { type: 'zone', id: 'z1', values: { W: 10 } },
+            { type: 'device', id: 'some-other-device', values: { W: 0 } },
+          ],
+        }),
+      },
+    };
+
+    await (app as any).refreshTargetDevicesSnapshot();
+    await flushPromises();
+    await flushPromises();
+
+    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+      id: string;
+      powerCapable?: boolean;
+      expectedPowerSource?: string;
+      powerKw?: number;
+    }>;
+    const entry = snapshot.find((device) => device.id === 'device-a');
+    expect(entry).toBeDefined();
+    expect(entry).toEqual(expect.objectContaining({
+      powerCapable: true,
+      expectedPowerSource: 'default',
+      powerKw: 1,
+    }));
+
+    const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
+    const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
+    expect(managed['device-a']).toBe(true);
+    expect(controllable['device-a']).toBe(true);
   });
 
   it('excludes devices missing onoff capability when no temperature targets exist', async () => {

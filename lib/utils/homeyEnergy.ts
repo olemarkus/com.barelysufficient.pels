@@ -38,6 +38,9 @@ export type HomeyEnergyCurrencyResponse = string | {
 export type HomeyEnergyApi = {
   fetchDynamicElectricityPrices: (opts: { date: string }) => Promise<HomeyEnergyPricesResponse>;
   getCurrency?: () => Promise<HomeyEnergyCurrencyResponse>;
+  // ManagerEnergy API (HomeyAPIV3Local.ManagerEnergy.getLiveReport).
+  // Optional because it may not be exposed/available in every runtime path (SDK vs HomeyAPI).
+  getLiveReport?: (opts: { zone?: string }) => Promise<unknown>;
 };
 
 type RecordLike = Record<string, unknown>;

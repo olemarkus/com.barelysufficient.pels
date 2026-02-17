@@ -6,7 +6,7 @@ export type TargetDeviceSnapshot = {
     deviceType?: 'temperature' | 'onoff';
     powerKw?: number;
     expectedPowerKw?: number;
-    expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'default';
+    expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
     loadKw?: number;
     priority?: number;
     currentOn?: boolean;
@@ -78,7 +78,13 @@ export type HomeyDeviceLike = {
         onoff?: CapabilityValue<boolean>;
         target_temperature?: CapabilityValue<number>;
     };
-    settings?: { load?: number };
+    settings?: Record<string, unknown> & {
+        load?: number;
+        energy_value_on?: number | null;
+        energy_value_off?: number | null;
+    };
+    energy?: Record<string, unknown> | null;
+    energyObj?: Record<string, unknown> | null;
     zone?: { name?: string } | string;
     zoneName?: string;
 };
