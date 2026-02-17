@@ -363,6 +363,7 @@ export class DeviceManager extends EventEmitter {
         const targets = this.buildTargets(targetCaps, capabilityObj);
         const currentOn = this.getCurrentOn(capabilityObj);
         const canSetOnOff = this.getCanSetOnOff(capabilityObj);
+        const available = this.getIsAvailable(device);
         const zone = resolveZoneLabel(device);
         const deviceType: TargetDeviceSnapshot['deviceType'] = targetCaps.length > 0 ? 'temperature' : 'onoff';
         const powerCapable = capsStatus.hasPower
@@ -391,6 +392,7 @@ export class DeviceManager extends EventEmitter {
             managed: this.providers.getManaged ? this.providers.getManaged(deviceId) : undefined,
             capabilities,
             canSetOnOff,
+            available,
         };
     }
 
@@ -479,6 +481,10 @@ export class DeviceManager extends EventEmitter {
         if (typeof capabilityObj.onoff.setable === 'boolean') {
             return capabilityObj.onoff.setable;
         }
+        return true;
+    }
+    private getIsAvailable(device: HomeyDeviceLike): boolean {
+        if (typeof device.available === 'boolean') return device.available;
         return true;
     }
     private updateLastKnownPower(deviceId: string, measuredKw: number, deviceLabel: string): void {

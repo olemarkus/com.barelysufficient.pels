@@ -230,12 +230,19 @@ export class PlanExecutor {
 
   private canTurnOnDevice(snapshot?: TargetDeviceSnapshot): boolean {
     if (!snapshot) return false;
+    if (snapshot.available === false) return false;
     const hasOnOff = snapshot.capabilities?.includes('onoff') === true;
     if (!hasOnOff) return false;
     if (snapshot.currentOn === undefined && snapshot.canSetOnOff === false) {
       return false;
     }
     return snapshot.canSetOnOff !== false;
+  }
+
+  private shouldSkipUnavailable(snapshot: TargetDeviceSnapshot | undefined, name: string, operation: string): boolean {
+    if (snapshot?.available !== false) return false;
+    this.logDebug(`Capacity: skip ${operation} for ${name}, device unavailable`);
+    return true;
   }
 
   private async applyTargetUpdatePlan(
@@ -292,6 +299,10 @@ export class PlanExecutor {
     deviceName: string | undefined,
     snapshotState: TargetDeviceSnapshot | undefined,
   ): boolean {
+    if (snapshotState?.available === false) {
+      this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, device unavailable`);
+      return true;
+    }
     const now = Date.now();
     const lastForDevice = this.state.lastDeviceShedMs[deviceId];
     const throttleMs = 5000;
@@ -407,15 +418,25 @@ export class PlanExecutor {
     const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
     for (const dev of plan.devices) {
       const snapshot = snapshotMap.get(dev.id);
-      if (dev.controllable === false) {
-        await this.applyUncontrolledRestore(dev, snapshot);
+      try {
+        if (this.shouldSkipUnavailable(snapshot, dev.name || dev.id, 'actuation')) {
+          continue;
+        }
+        if (dev.controllable === false) {
+          await this.applyUncontrolledRestore(dev, snapshot);
+          await this.applyTargetUpdate(dev, snapshot);
+          continue;
+        }
+        const handledShed = await this.applyShedAction(dev);
+        if (handledShed) continue;
+        await this.applyRestorePower(dev);
         await this.applyTargetUpdate(dev, snapshot);
-        continue;
+      } catch (error) {
+        this.error(
+          `Failed to apply action for ${dev.name || dev.id}; continuing with remaining devices`,
+          error,
+        );
       }
-      const handledShed = await this.applyShedAction(dev);
-      if (handledShed) continue;
-      await this.applyRestorePower(dev);
-      await this.applyTargetUpdate(dev, snapshot);
     }
   }
 }

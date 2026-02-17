@@ -3537,4 +3537,203 @@ describe('Dry run mode', () => {
 
     expect(mockSetCapability).not.toHaveBeenCalled();
   });
+
+  it('skips target updates for unavailable devices and continues with available devices', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    (app as any).deviceManager.setSnapshotForTests([{
+      id: 'dev-unavailable',
+      name: 'Unavailable Heater',
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      capabilities: ['target_temperature', 'onoff'],
+      currentOn: true,
+      controllable: true,
+      available: false,
+    }, {
+      id: 'dev-available',
+      name: 'Available Heater',
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      capabilities: ['target_temperature', 'onoff'],
+      currentOn: true,
+      controllable: true,
+      available: true,
+    }] as any);
+
+    const plan = {
+      devices: [
+        {
+          id: 'dev-unavailable',
+          name: 'Unavailable Heater',
+          plannedState: 'keep',
+          currentState: 'keep',
+          plannedTarget: 20,
+          currentTarget: 18,
+          controllable: true,
+        },
+        {
+          id: 'dev-available',
+          name: 'Available Heater',
+          plannedState: 'keep',
+          currentState: 'keep',
+          plannedTarget: 20,
+          currentTarget: 18,
+          controllable: true,
+        },
+      ],
+    };
+
+    await (app as any).applyPlanActions(plan);
+
+    expect(mockSetCapability).toHaveBeenCalledTimes(1);
+    expect(mockSetCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-available',
+      capabilityId: 'target_temperature',
+      value: 20,
+    });
+  });
+
+  it('skips shed-temperature actions for unavailable devices and continues with available devices', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
+    (app as any).deviceManager.homeyApi = {
+      devices: {
+        setCapabilityValue: mockSetCapability,
+      },
+    };
+
+    (app as any).deviceManager.setSnapshotForTests([{
+      id: 'dev-unavailable',
+      name: 'Unavailable Heater',
+      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+      capabilities: ['target_temperature', 'onoff'],
+      currentOn: true,
+      controllable: true,
+      available: false,
+    }, {
+      id: 'dev-available',
+      name: 'Available Heater',
+      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+      capabilities: ['target_temperature', 'onoff'],
+      currentOn: true,
+      controllable: true,
+      available: true,
+    }] as any);
+
+    const plan = {
+      devices: [
+        {
+          id: 'dev-unavailable',
+          name: 'Unavailable Heater',
+          plannedState: 'shed',
+          currentState: 'keep',
+          plannedTarget: 12,
+          currentTarget: 20,
+          shedAction: 'set_temperature',
+          controllable: true,
+        },
+        {
+          id: 'dev-available',
+          name: 'Available Heater',
+          plannedState: 'shed',
+          currentState: 'keep',
+          plannedTarget: 12,
+          currentTarget: 20,
+          shedAction: 'set_temperature',
+          controllable: true,
+        },
+      ],
+    };
+
+    await (app as any).applyPlanActions(plan);
+
+    expect(mockSetCapability).toHaveBeenCalledTimes(1);
+    expect(mockSetCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-available',
+      capabilityId: 'target_temperature',
+      value: 12,
+    });
+  });
+
+  it('continues applying actions after a shed callback throws a 500 error', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).deviceManager.setSnapshotForTests([{
+      id: 'dev-1',
+      name: 'Failing device',
+      targets: [],
+      capabilities: ['onoff'],
+      currentOn: true,
+      controllable: true,
+      available: true,
+    }, {
+      id: 'dev-2',
+      name: 'Healthy device',
+      targets: [],
+      capabilities: ['onoff'],
+      currentOn: true,
+      controllable: true,
+      available: true,
+    }] as any);
+
+    const callback = jest.fn().mockImplementation(async (deviceId: string) => {
+      if (deviceId === 'dev-1') {
+        const err = new Error('This device is currently unavailable.') as Error & { statusCode?: number };
+        err.statusCode = 500;
+        throw err;
+      }
+      return undefined;
+    });
+
+    (app as any).planEngine.executor.applySheddingToDeviceCallback = callback;
+
+    const plan = {
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Failing device',
+          plannedState: 'shed',
+          currentState: 'keep',
+          plannedTarget: null,
+          currentTarget: null,
+          shedAction: 'turn_off',
+          controllable: true,
+        },
+        {
+          id: 'dev-2',
+          name: 'Healthy device',
+          plannedState: 'shed',
+          currentState: 'keep',
+          plannedTarget: null,
+          currentTarget: null,
+          shedAction: 'turn_off',
+          controllable: true,
+        },
+      ],
+    };
+
+    await expect((app as any).applyPlanActions(plan)).resolves.toBeUndefined();
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(callback).toHaveBeenNthCalledWith(1, 'dev-1', 'Failing device', undefined);
+    expect(callback).toHaveBeenNthCalledWith(2, 'dev-2', 'Healthy device', undefined);
+  });
 });

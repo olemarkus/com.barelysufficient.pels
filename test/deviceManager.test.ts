@@ -168,6 +168,30 @@ describe('DeviceManager', () => {
             expect(snapshot[0].canSetOnOff).toBeUndefined();
         });
 
+        it('propagates Homey availability state into snapshot entries', async () => {
+            await deviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Unavailable Nordic',
+                    class: 'airtreatment',
+                    available: false,
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
+                    capabilitiesObj: {
+                        measure_power: { value: 250, id: 'measure_power' },
+                        measure_temperature: { value: 18, id: 'measure_temperature', units: '°C' },
+                        target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            const snapshot = deviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            expect(snapshot[0].available).toBe(false);
+        });
+
         it('includes measured power zero when load setting is present', async () => {
             await deviceManager.init();
             mockGetDevices.mockResolvedValue({

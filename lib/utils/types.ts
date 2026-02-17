@@ -18,6 +18,7 @@ export type TargetDeviceSnapshot = {
     managed?: boolean;
     capabilities?: string[];
     canSetOnOff?: boolean;
+    available?: boolean;
     lastUpdated?: number;
 };
 
@@ -85,6 +86,9 @@ export type HomeyDeviceLike = {
     };
     energy?: Record<string, unknown> | null;
     energyObj?: Record<string, unknown> | null;
+    available?: boolean;
+    ready?: boolean;
+    unavailableMessage?: string | null;
     zone?: { name?: string } | string;
     zoneName?: string;
 };
