@@ -48,7 +48,7 @@ const getPlanMetaText = () => {
 };
 
 describe('plan usage line', () => {
-  it('shows expected only when measured matches expected', () => {
+  it('shows current usage and expected when measured matches expected', () => {
     renderPlanSnapshot({
       devices: [
         {
@@ -62,7 +62,7 @@ describe('plan usage line', () => {
       ],
     });
 
-    expect(getUsageText()).toBe('expected 1.23 kW');
+    expect(getUsageText()).toBe('current usage: 1.23 kW / expected 1.23 kW');
   });
 
   it('shows current usage and expected when values differ', () => {

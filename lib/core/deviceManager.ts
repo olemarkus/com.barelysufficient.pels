@@ -6,6 +6,12 @@ import { resolveDeviceLabel, resolveZoneLabel } from './deviceManagerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
 import type { PowerMeasurementUpdates } from './powerMeasurement';
+import {
+    extractLivePowerWattsByDeviceId,
+    hasPotentialHomeyEnergyEstimate,
+    resolvePreferredPowerRaw,
+    type LiveDevicePowerWatts,
+} from './deviceManagerEnergy';
 
 type HomeyApiConstructor = {
     createAppAPI: (opts: { homey: Homey.App['homey']; debug?: ((...args: unknown[]) => void) | null }) => Promise<HomeyApiClient>;
@@ -22,6 +28,7 @@ type HomeyApiDevicesClient = {
     getDevices?: () => Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]>;
     setCapabilityValue?: (args: { deviceId: string; capabilityId: string; value: unknown }) => Promise<void>;
     getDevice?: (args: { id: string }) => Promise<unknown>;
+    getDeviceSettingsObj?: (args: { id: string }) => Promise<unknown>;
 };
 
 type HomeyApiClient = {
@@ -122,7 +129,8 @@ export class DeviceManager extends EventEmitter {
         const start = Date.now();
         try {
             const list = await this.fetchDevices();
-            const snapshot = this.parseDeviceList(list);
+            const livePowerWByDeviceId = await this.fetchLivePowerWattsByDeviceId();
+            const snapshot = this.parseDeviceList(list, livePowerWByDeviceId);
             this.latestSnapshot = snapshot;
             this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
         } finally {
@@ -239,6 +247,18 @@ export class DeviceManager extends EventEmitter {
         }
     }
 
+    private async fetchLivePowerWattsByDeviceId(): Promise<LiveDevicePowerWatts> {
+        const getLiveReport = this.homeyApi?.energy?.getLiveReport;
+        if (typeof getLiveReport !== 'function') return {};
+        try {
+            const liveReport = await getLiveReport({});
+            return extractLivePowerWattsByDeviceId(liveReport);
+        } catch (error) {
+            this.logger.debug('Homey energy live report unavailable for device snapshot', error as Error);
+            return {};
+        }
+    }
+
     private async initRealtimeListeners(devicesObj: Record<string, HomeyDeviceLike> | HomeyDeviceLike[]): Promise<void> {
         const devices = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj);
         for (const device of devices) {
@@ -294,14 +314,21 @@ export class DeviceManager extends EventEmitter {
         this.removeAllListeners();
     }
 
-    private parseDeviceList(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
+    private parseDeviceList(
+        list: HomeyDeviceLike[],
+        livePowerWByDeviceId: LiveDevicePowerWatts = {},
+    ): TargetDeviceSnapshot[] {
         const now = Date.now();
         return list
-            .map((device) => this.parseDevice(device, now))
+            .map((device) => this.parseDevice(device, now, livePowerWByDeviceId))
             .filter(Boolean) as TargetDeviceSnapshot[];
     }
 
-    private parseDevice(device: HomeyDeviceLike, now: number): TargetDeviceSnapshot | null {
+    private parseDevice(
+        device: HomeyDeviceLike,
+        now: number,
+        livePowerWByDeviceId: LiveDevicePowerWatts,
+    ): TargetDeviceSnapshot | null {
         const deviceId = this.getDeviceId(device);
         if (!deviceId) {
             this.logger.error('Device missing ID, skipping:', device.name || 'unknown');
@@ -317,11 +344,13 @@ export class DeviceManager extends EventEmitter {
         const currentTemperature = this.getCurrentTemperature(capabilityObj);
         const powerRaw = this.getCapabilityValueByPrefix(capabilities, capabilityObj, 'measure_power');
         const meterPowerRaw = this.getCapabilityValueByPrefix(capabilities, capabilityObj, 'meter_power');
+        const livePowerRaw = livePowerWByDeviceId[deviceId];
+        const preferredPowerRaw = resolvePreferredPowerRaw({ powerRaw, meterPowerRaw, livePowerRaw });
         const powerEstimate = estimatePower({
             device,
             deviceId,
             deviceLabel,
-            powerRaw,
+            powerRaw: preferredPowerRaw,
             meterPowerRaw,
             now,
             state: this.powerState,
@@ -336,7 +365,11 @@ export class DeviceManager extends EventEmitter {
         const canSetOnOff = this.getCanSetOnOff(capabilityObj);
         const zone = resolveZoneLabel(device);
         const deviceType: TargetDeviceSnapshot['deviceType'] = targetCaps.length > 0 ? 'temperature' : 'onoff';
-        const powerCapable = capsStatus.hasPower || typeof powerEstimate.loadKw === 'number';
+        const powerCapable = capsStatus.hasPower
+            || typeof powerEstimate.loadKw === 'number'
+            || typeof powerEstimate.measuredPowerKw === 'number'
+            || hasPotentialHomeyEnergyEstimate(device)
+            || powerEstimate.hasEnergyEstimate === true;
 
         return {
             id: deviceId,
@@ -411,11 +444,14 @@ export class DeviceManager extends EventEmitter {
         capabilityObj: Record<string, CapabilityValue>,
         prefix: (typeof POWER_CAPABILITY_PREFIXES)[number],
     ): unknown {
-        const direct = capabilityObj[prefix]?.value;
-        if (direct !== undefined) return direct;
+        if (capabilities.includes(prefix)) {
+            const direct = capabilityObj[prefix]?.value;
+            if (direct !== undefined) return direct;
+        }
         const capId = capabilities.find((cap) => cap === prefix || cap.startsWith(`${prefix}.`));
         return capId ? capabilityObj[capId]?.value : undefined;
     }
+
     private getCurrentTemperature(capabilityObj: Record<string, CapabilityValue>): number | undefined {
         const temp = capabilityObj.measure_temperature?.value;
         return typeof temp === 'number' ? temp : undefined;

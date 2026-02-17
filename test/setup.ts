@@ -65,6 +65,24 @@ const installHttpsGetSpy = () => {
 };
 
 beforeAll(() => {
+  // JSDOM does not implement matchMedia; settings UI uses it for responsive behavior.
+  const matchMediaStub = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(), // deprecated
+    removeListener: jest.fn(), // deprecated
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  });
+  if (typeof window !== 'undefined' && typeof (window as unknown as { matchMedia?: unknown }).matchMedia !== 'function') {
+    (window as unknown as { matchMedia: typeof matchMediaStub }).matchMedia = matchMediaStub;
+  }
+  if (typeof (globalThis as unknown as { matchMedia?: unknown }).matchMedia !== 'function') {
+    (globalThis as unknown as { matchMedia: typeof matchMediaStub }).matchMedia = matchMediaStub;
+  }
+
   // Use deterministic network stubs in tests to avoid real outbound calls.
   const fetchStub = jest.fn().mockResolvedValue({
     ok: true,

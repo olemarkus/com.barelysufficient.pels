@@ -152,8 +152,12 @@ PELS needs to estimate how much power a device will draw when turned on:
 
 1. **settings.load capability**: If configured on the device, use it as the expected power (manual override can supersede it)
 2. **Manual override**: From the "Set expected power for device" Flow action; it remains in effect until a *higher* measured reading arrives
-3. **Measured peak**: The last known peak derived from live `measure_power` or `meter_power` deltas
-4. **Fallback**: Assume 1 kW if no better estimate available
+3. **Measured peak**: The last known peak derived from live `measure_power` / `meter_power` (and Homey Energy live report `values.W` when direct power capabilities are absent)
+4. **Homey Energy metadata**: Use device `energyObj`/`energy` hints when available
+   - Approximation delta: `approximation.usageOn - approximation.usageOff` (clamped to >= 0)
+   - Approximation on-state: `approximation.usageOn`
+   - Fallback to `W` when the device is not explicitly off
+5. **Fallback**: Assume 1 kW if no better estimate available
 
 This estimation is inherently imperfect, which is why PELS:
 - Restores only one device at a time
@@ -190,19 +194,21 @@ Aggregation happens automatically when power data is saved—you don't need to m
 PELS only manages devices that expose the capabilities it needs:
 
 - **All devices**: `measure_power` or `meter_power` (or a configured `settings.load`)
+- **Also supported as estimated-power devices**: Devices exposing Homey Energy metadata (`energyObj`/`energy`) with usable approximation values or `W`
+- **Also supported as measured-power devices**: Devices without direct power capabilities when Homey Energy live report provides a per-device `values.W`
 - **Temperature devices**: `target_temperature` + `measure_temperature` + power capability
 - **On/off devices**: `onoff` + power capability
 
 Devices are **disabled by default**. You must explicitly enable management and control in the Devices tab.
 
-Devices without power capability are listed for visibility, but are forced unmanaged and cannot enable capacity or price features until power capability is available.
+Devices without any usable power estimate (`measure_power`/`meter_power`, `settings.load`, or Homey Energy metadata) are listed for visibility, but are forced unmanaged and cannot enable capacity or price features until a usable estimate is available.
 
 ### Headroom check for capacity-controlled loads
 
 The **"Is there headroom for device?"** Flow condition is intended for capacity-controlled devices such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
 
 - Current headroom (soft limit minus current load)
-- Device's expected usage (estimator order: `settings.load` → flow override → measured-peak from `measure_power`/`meter_power` → fallback **1 kW**). Devices with `settings.load > 0` use that configured value (unless a manual override is set) for this card.
+- Device's expected usage (estimator order: `settings.load` → flow override → measured-peak from `measure_power`/`meter_power`/Homey live `values.W` → Homey Energy metadata (`usageOn-usageOff`, `usageOn`, `W`) → fallback **1 kW**). Devices with `settings.load > 0` use that configured value (unless a manual override is set) for this card.
 - A conservative fallback of **1 kW** when no estimate exists, to avoid over-promising capacity
 
 Using 0 kW as a fallback would risk reporting that capacity exists when the actual load is unknown, so PELS never reports headroom based on a zero/unknown estimate.

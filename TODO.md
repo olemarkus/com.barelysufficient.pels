@@ -1,5 +1,12 @@
 # TODO
 
+## Backlog
+
+- [ ] Use Homey Energy live reporting (`ManagerEnergy.getLiveReport`) as source for whole-home metering instead of relying on Flow-reported total power.
+- [ ] Investigate apparent priority mismatch in plan view where a higher-priority shed device remains off while a lower-priority device is active (`keep`), and document whether this is cooldown/swap behavior or a planner bug.
+- [ ] Fix plan UI responsiveness when changing capacity priorities/order: ensure reordering triggers a plan rebuild and the overview updates immediately.
+- [ ] Handle unavailable-device actuation errors (`This device is currently unavailable`) without stalling effective planning: explicitly mark/skip unavailable devices for a cooldown window and surface this in plan status/UI.
+
 ## Deferred: restore-pending follow-up tests
 
 - [ ] Per-device scoping: one temperature device is stuck at shed temperature, another is healthy; verify the healthy device can still restore while the stuck one stays pending.

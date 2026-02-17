@@ -5,6 +5,7 @@ import Homey from 'homey';
 // Mock homey-api
 const mockSetCapabilityValue = jest.fn();
 const mockGetDevices = jest.fn();
+const mockGetLiveReport = jest.fn();
 
 jest.mock('homey-api', () => ({
     HomeyAPI: {
@@ -12,6 +13,9 @@ jest.mock('homey-api', () => ({
             devices: {
                 getDevices: mockGetDevices,
                 setCapabilityValue: mockSetCapabilityValue,
+            },
+            energy: {
+                getLiveReport: mockGetLiveReport,
             },
         })),
     },
@@ -60,6 +64,7 @@ describe('DeviceManager', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        mockGetLiveReport.mockResolvedValue({ items: [] });
         homeyMock = mockHomeyInstance as unknown as Homey.App;
 
         // Mock Homey API/Cloud/Platform properties required for init checks
@@ -213,6 +218,97 @@ describe('DeviceManager', () => {
             expect(snapshot[0].expectedPowerSource).toBe('default');
             expect(snapshot[0].powerKw).toBe(1);
             expect(snapshot[0].powerCapable).toBe(false);
+        });
+
+        it('marks no-power onoff devices as power-capable when Homey energy estimate exists', async () => {
+            await deviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Virtual Light',
+                    class: 'socket',
+                    capabilities: ['onoff'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                    energyObj: {
+                        approximation: {
+                            usageOn: 110,
+                            usageOff: 10,
+                        },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            const snapshot = deviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            expect(snapshot[0].expectedPowerSource).toBe('homey-energy');
+            expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.1, 6);
+            expect(snapshot[0].powerKw).toBeCloseTo(0.1, 6);
+            expect(snapshot[0].powerCapable).toBe(true);
+        });
+
+        it('uses Homey energy live report as measured fallback when direct power capabilities are absent', async () => {
+            await deviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Virtual Light',
+                    class: 'socket',
+                    capabilities: ['onoff'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+            mockGetLiveReport.mockResolvedValue({
+                items: [
+                    {
+                        type: 'device',
+                        id: 'dev1',
+                        values: { W: 125 },
+                    },
+                ],
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            const snapshot = deviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            expect(snapshot[0].measuredPowerKw).toBeCloseTo(0.125, 6);
+            expect(snapshot[0].expectedPowerSource).toBe('measured-peak');
+            expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.125, 6);
+            expect(snapshot[0].powerKw).toBeCloseTo(0.125, 6);
+            expect(snapshot[0].powerCapable).toBe(true);
+            expect(mockGetLiveReport).toHaveBeenCalledWith({});
+        });
+
+        it('keeps off on/off devices power-capable when Homey energy W metadata exists', async () => {
+            await deviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Virtual Light',
+                    class: 'socket',
+                    capabilities: ['onoff'],
+                    capabilitiesObj: {
+                        onoff: { value: false, id: 'onoff' },
+                    },
+                    energyObj: {
+                        W: 125,
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            const snapshot = deviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            expect(snapshot[0].powerCapable).toBe(true);
+            expect(snapshot[0].expectedPowerSource).toBe('default');
+            expect(snapshot[0].powerKw).toBe(1);
         });
 
         it('uses providers to populate priority and controllable fields', async () => {

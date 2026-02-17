@@ -14,6 +14,7 @@ export type PowerEstimateResult = {
   expectedPowerSource?: TargetDeviceSnapshot['expectedPowerSource'];
   measuredPowerKw?: number;
   loadKw?: number;
+  hasEnergyEstimate?: boolean;
 };
 
 export function estimatePower(params: {
@@ -45,6 +46,7 @@ export function estimatePower(params: {
 
   const loadW = getLoadSettingWatts(device);
   const expectedOverride = state.expectedPowerKwOverrides[deviceId];
+  const energyEstimateW = getHomeyEnergyEstimateWatts(device);
   const resolveMeasuredPower = () => {
     const measured = getMeasuredPowerKw({
       deviceId,
@@ -81,10 +83,84 @@ export function estimatePower(params: {
     deviceId,
     deviceLabel,
     expectedOverride,
+    energyEstimateW,
     state,
     logger,
     resolveMeasuredPower,
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function resolveCurrentOnState(device: HomeyDeviceLike): boolean | null {
+  const raw = device.capabilitiesObj?.onoff?.value;
+  return typeof raw === 'boolean' ? raw : null;
+}
+
+function resolveEnergyContainer(device: HomeyDeviceLike): Record<string, unknown> | null {
+  if (isRecord(device.energyObj)) return device.energyObj;
+  if (isRecord(device.energy)) return device.energy;
+  return null;
+}
+
+function resolveSettingsEnergyWatts(device: HomeyDeviceLike): number | null {
+  const settings = isRecord(device.settings) ? device.settings : null;
+  if (!settings) return null;
+
+  const usageOnW = toFiniteNumber(settings.energy_value_on);
+  const usageOffW = toFiniteNumber(settings.energy_value_off);
+
+  if (usageOnW !== null && usageOffW !== null) {
+    const controllableDeltaW = Math.max(0, usageOnW - usageOffW);
+    if (controllableDeltaW > 0) return controllableDeltaW;
+  }
+
+  if (usageOnW !== null && usageOnW > 0) return usageOnW;
+  return null;
+}
+
+function resolveApproximationWatts(energy: Record<string, unknown>): number | null {
+  const approx = isRecord(energy.approximation) ? energy.approximation : null;
+  if (!approx) return null;
+
+  const usageOnW = toFiniteNumber(approx.usageOn);
+  const usageOffW = toFiniteNumber(approx.usageOff);
+
+  if (usageOnW !== null && usageOffW !== null) {
+    const controllableDeltaW = Math.max(0, usageOnW - usageOffW);
+    if (controllableDeltaW > 0) return controllableDeltaW;
+  }
+
+  if (usageOnW !== null && usageOnW > 0) return usageOnW;
+  return null;
+}
+
+function resolveEnergyWattFallback(
+  energy: Record<string, unknown>,
+  currentOn: boolean | null,
+): number | null {
+  const energyW = toFiniteNumber(energy.W);
+  if (energyW === null || energyW <= 0 || currentOn === false) return null;
+  return energyW;
+}
+
+function getHomeyEnergyEstimateWatts(device: HomeyDeviceLike): number | null {
+  const settingsEnergyW = resolveSettingsEnergyWatts(device);
+  if (settingsEnergyW !== null) return settingsEnergyW;
+
+  const energy = resolveEnergyContainer(device);
+  if (!energy) return null;
+
+  const approximationW = resolveApproximationWatts(energy);
+  if (approximationW !== null) return approximationW;
+
+  return resolveEnergyWattFallback(energy, resolveCurrentOnState(device));
 }
 
 function getLoadSettingWatts(device: HomeyDeviceLike): number | null {
@@ -126,6 +202,7 @@ function getPowerFromMeasurement(params: {
   deviceId: string;
   deviceLabel: string;
   expectedOverride?: { kw: number; ts: number };
+  energyEstimateW: number | null;
   state: Required<PowerEstimateState>;
   logger: Logger;
   resolveMeasuredPower: () => { measuredKw?: number; measuredPowerKw?: number };
@@ -134,6 +211,7 @@ function getPowerFromMeasurement(params: {
     deviceId,
     deviceLabel,
     expectedOverride,
+    energyEstimateW,
     state,
     logger,
     resolveMeasuredPower,
@@ -156,6 +234,17 @@ function getPowerFromMeasurement(params: {
       expectedPowerKw: peak,
       expectedPowerSource: 'measured-peak',
       measuredPowerKw: measured.measuredPowerKw,
+    };
+  }
+  if (energyEstimateW !== null) {
+    const energyEstimateKw = energyEstimateW / 1000;
+    logger.debug(`Power estimate: using Homey energy for ${deviceLabel}: ${energyEstimateKw.toFixed(3)} kW`);
+    return {
+      powerKw: energyEstimateKw,
+      expectedPowerKw: energyEstimateKw,
+      expectedPowerSource: 'homey-energy',
+      measuredPowerKw: measured.measuredPowerKw,
+      hasEnergyEstimate: true,
     };
   }
   logger.debug(`Power estimate: fallback 1 kW for ${deviceLabel} (no measured/override/load)`);

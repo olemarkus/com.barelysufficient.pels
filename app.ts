@@ -16,11 +16,7 @@ import { type DebugLoggingTopic } from './lib/utils/debugLogging';
 import { getAllModes as getAllModesHelper, getShedBehavior as getShedBehaviorHelper, resolveModeName as resolveModeNameHelper } from './lib/utils/capacityHelpers';
 import { CONTROLLABLE_DEVICES, MANAGED_DEVICES, OPERATING_MODE_SETTING, PRICE_OPTIMIZATION_SETTINGS } from './lib/utils/settingsKeys';
 import { isBooleanMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
-import {
-  resolveHomeyEnergyApiFromHomeyApi,
-  resolveHomeyEnergyApiFromSdk,
-  type HomeyEnergyApi,
-} from './lib/utils/homeyEnergy';
+import { resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi } from './lib/utils/homeyEnergy';
 import {
   persistPowerTrackerStateForApp,
   prunePowerTrackerHistoryForApp,
@@ -74,6 +70,7 @@ class PelsApp extends Homey.App {
   private defaultComputeDynamicSoftLimit?: () => number;
   private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
   private isSnapshotRefreshing = false;
+  private snapshotRefreshPending = false;
   private lastKnownPowerKw: Record<string, number> = {};
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
   private overheadToken?: Homey.FlowToken;
@@ -594,20 +591,30 @@ class PelsApp extends Homey.App {
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.deviceManager.setSnapshotForTests(snapshot); }
   parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] { return this.deviceManager.parseDeviceListForTests(list); }
   private async refreshTargetDevicesSnapshot(): Promise<void> {
-    if (this.isSnapshotRefreshing) { this.logDebug('devices', 'Snapshot refresh already in progress, skipping'); return; }
+    if (this.isSnapshotRefreshing) {
+      this.snapshotRefreshPending = true;
+      this.logDebug('devices', 'Snapshot refresh already in progress, queued another refresh');
+      return;
+    }
     this.isSnapshotRefreshing = true;
-    this.logDebug('devices', 'Refreshing target devices snapshot');
     try {
-      await this.deviceManager.refreshSnapshot();
-      const snapshot = this.deviceManager.getSnapshot();
-      const existingSnapshot = this.homey.settings.get('target_devices_snapshot') as unknown;
-      if (toStableFingerprint(existingSnapshot) !== toStableFingerprint(snapshot)) {
-        this.homey.settings.set('target_devices_snapshot', snapshot);
-      } else {
-        this.logDebug('devices', 'Target devices snapshot unchanged, skipping settings write');
-      }
-      disableUnsupportedDevicesHelper({ snapshot, settings: this.homey.settings, logDebug: (...args: unknown[]) => this.logDebug('devices', ...args) });
-    } finally { this.isSnapshotRefreshing = false; }
+      do {
+        this.snapshotRefreshPending = false;
+        this.logDebug('devices', 'Refreshing target devices snapshot');
+        await this.deviceManager.refreshSnapshot();
+        const snapshot = this.deviceManager.getSnapshot();
+        const existingSnapshot = this.homey.settings.get('target_devices_snapshot') as unknown;
+        if (toStableFingerprint(existingSnapshot) !== toStableFingerprint(snapshot)) {
+          this.homey.settings.set('target_devices_snapshot', snapshot);
+        } else {
+          this.logDebug('devices', 'Target devices snapshot unchanged, skipping settings write');
+        }
+        disableUnsupportedDevicesHelper({ snapshot, settings: this.homey.settings, logDebug: (...args: unknown[]) => this.logDebug('devices', ...args) });
+      } while (this.snapshotRefreshPending);
+    } finally {
+      this.isSnapshotRefreshing = false;
+      this.snapshotRefreshPending = false;
+    }
   }
   private getCombinedHourlyPrices = (): unknown => this.priceCoordinator.getCombinedHourlyPrices();
   private findCheapestHours = (count: number): string[] => this.priceCoordinator.findCheapestHours(count);
