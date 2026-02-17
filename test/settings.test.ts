@@ -1460,6 +1460,57 @@ describe('Plan sorting', () => {
     expect(usageLines[0]).toBe('current usage: 0.00 kW / expected 0.12 kW');
   });
 
+  it('refreshes plan when capacity priorities change via settings event', async () => {
+    const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+    const getSpy = jest.fn((key, cb) => {
+      if (key === 'device_plan_snapshot') {
+        return cb(null, {
+          meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+          devices: [],
+        });
+      }
+      if (key === 'target_devices_snapshot') return cb(null, []);
+      if (key === 'capacity_priorities') return cb(null, { Home: {} });
+      if (key === 'mode_device_targets') return cb(null, { Home: {} });
+      if (key === 'controllable_devices') return cb(null, {});
+      if (key === 'managed_devices') return cb(null, {});
+      if (key === 'price_optimization_settings') return cb(null, {});
+      if (key === 'operating_mode') return cb(null, 'Home');
+      return cb(null, null);
+    });
+
+    // @ts-expect-error override mock Homey
+    global.Homey = {
+      ready: jest.fn().mockResolvedValue(undefined),
+      set: jest.fn((key, val, cb) => cb && cb(null)),
+      get: getSpy,
+      on: jest.fn((event, cb) => {
+        if (!listeners[event]) listeners[event] = [];
+        listeners[event].push(cb);
+      }),
+      clock: {
+        getTimezone: () => 'UTC',
+      },
+      i18n: {
+        getTimezone: () => 'UTC',
+      },
+    };
+
+    await loadSettingsScript();
+
+    const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
+    overviewTab?.click();
+    await flushPromises();
+
+    const before = getSpy.mock.calls.filter((call) => call[0] === 'device_plan_snapshot').length;
+    const settingsCallbacks = listeners['settings.set'] || [];
+    settingsCallbacks.forEach((cb) => cb('capacity_priorities'));
+    await flushPromises();
+
+    const after = getSpy.mock.calls.filter((call) => call[0] === 'device_plan_snapshot').length;
+    expect(after).toBeGreaterThan(before);
+  });
+
   it('savePriorities assigns priority 1 to top device', () => {
     // Verify savePriorities logic: top item = priority 1 (most important, shed last)
     const rows = ['dev-1', 'dev-2', 'dev-3']; // DOM order: top to bottom

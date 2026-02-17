@@ -16,6 +16,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
   return JSON.stringify(
     plan.devices.map((d) => ({
       id: d.id,
+      priority: d.priority,
       plannedState: d.plannedState,
       plannedTarget: d.plannedTarget,
       currentState: d.currentState,

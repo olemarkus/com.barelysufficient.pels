@@ -64,6 +64,13 @@ homey app validate   # Allowed Homey CLI command (updates app.json on compose ch
 
 Note: Do not run `homey` CLI commands that deploy to hardware. `homey app validate` is allowed.
 
+## Git Workflow
+
+- Before pushing a branch, squash history into a clean set of commits (prefer one commit per logical change) unless explicitly asked not to.
+- Commit messages should read like concise PR descriptions:
+  - Title/subject in imperative mood, max 72 characters
+  - Body should cover: problem/context, what changed, and how it was validated (tests/commands)
+
 ## Writing Tests
 
 - Tests use `test/mocks/homey.ts` - if you use a new Homey API, add it to the mock

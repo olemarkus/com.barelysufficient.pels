@@ -254,9 +254,25 @@ function getOnDevices(
   getShedBehavior: (deviceId: string) => { action: 'turn_off' | 'set_temperature'; temperature: number | null },
 ): DevicePlanDevice[] {
   const filtered = planDevices
-    .filter((d) => d.controllable !== false && d.currentState === 'on' && d.plannedState !== 'shed')
-    .filter((d) => getShedBehavior(d.id).action !== 'set_temperature');
+    .filter((d) => d.controllable !== false && d.plannedState !== 'shed')
+    .filter((d) => d.currentState === 'on' || d.currentState === 'not_applicable')
+    .filter((d) => canSwapOutDevice(d, getShedBehavior(d.id)));
   return sortByPriorityDesc(filtered);
+}
+
+function canSwapOutDevice(
+  dev: DevicePlanDevice,
+  behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null },
+): boolean {
+  if (behavior.action !== 'set_temperature' || behavior.temperature === null) return true;
+  let currentTarget: number | null = null;
+  if (typeof dev.currentTarget === 'number') {
+    currentTarget = dev.currentTarget;
+  } else if (typeof dev.plannedTarget === 'number') {
+    currentTarget = dev.plannedTarget;
+  }
+  if (currentTarget === null) return true;
+  return currentTarget > behavior.temperature;
 }
 
 function planRestoreForDevice(params: {

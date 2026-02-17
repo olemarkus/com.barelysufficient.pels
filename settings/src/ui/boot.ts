@@ -185,6 +185,7 @@ const initRealtimeListeners = () => {
   const capacitySettingsKeys = new Set([CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]);
   const priceRefreshKeys = new Set([COMBINED_PRICES, 'electricity_prices']);
   const deviceControlKeys = new Set(['managed_devices', 'controllable_devices']);
+  const planRefreshKeys = new Set(['capacity_priorities', 'mode_device_targets', OPERATING_MODE_SETTING]);
   const dailyBudgetTuningKeys = new Set([
     DAILY_BUDGET_CONTROLLED_WEIGHT,
     DAILY_BUDGET_PRICE_FLEX_SHARE,
@@ -237,6 +238,10 @@ const initRealtimeListeners = () => {
       refreshActiveMode().catch((error) => {
         void logSettingsError('Failed to refresh active mode', error, 'settings.set');
       });
+    }
+
+    if (planRefreshKeys.has(key) || deviceControlKeys.has(key)) {
+      refreshPlanIfVisible();
     }
 
     if (key === OVERSHOOT_BEHAVIORS) {

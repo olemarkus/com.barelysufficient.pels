@@ -822,7 +822,7 @@ describe('Device plan snapshot', () => {
     const minTempDev = new MockDevice('dev-min', 'Low Pri', ['target_temperature', 'measure_power', 'onoff']);
     await minTempDev.setCapabilityValue('measure_power', 1000); // 1 kW on
     await minTempDev.setCapabilityValue('onoff', true);
-    await minTempDev.setCapabilityValue('target_temperature', 20);
+    await minTempDev.setCapabilityValue('target_temperature', 16); // already at configured shed minimum
 
     const highPriDev = new MockDevice('dev-high', 'High Pri', ['target_temperature', 'onoff']);
     await highPriDev.setCapabilityValue('onoff', false);
@@ -3735,5 +3735,148 @@ describe('Dry run mode', () => {
     expect(callback).toHaveBeenCalledTimes(2);
     expect(callback).toHaveBeenNthCalledWith(1, 'dev-1', 'Failing device', undefined);
     expect(callback).toHaveBeenNthCalledWith(2, 'dev-2', 'Healthy device', undefined);
+  });
+
+  it('restores a higher-priority onoff device by swapping out a lower-priority set-temperature device', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('capacity_priorities', {
+      Home: {
+        spotter: 10,
+        'low-temp': 50,
+      },
+    });
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: {
+        'low-temp': 20,
+      },
+    });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      spotter: { action: 'turn_off' },
+      'low-temp': { action: 'set_temperature', temperature: 16 },
+    });
+    setManagedControllableDevices({
+      spotter: true,
+      'low-temp': true,
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 0.3; // 0.3kW limit
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.3);
+    }
+
+    (app as any).planEngine.state.lastSheddingMs = null;
+    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'spotter',
+        name: 'Spotter kjøkkenbenk',
+        targets: [],
+        capabilities: ['onoff'],
+        currentOn: false, // currently shed/off
+        controllable: true,
+        powerKw: 0.05,
+        expectedPowerKw: 0.05,
+      },
+      {
+        id: 'low-temp',
+        name: 'Lower-priority thermostat',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        capabilities: ['target_temperature', 'onoff'],
+        currentOn: true,
+        controllable: true,
+        powerKw: 0.3,
+        expectedPowerKw: 0.3,
+      },
+    ]);
+
+    // Headroom = 0.3 - 0.2 = 0.1kW.
+    // Spotter restore needs ~0.25kW (0.05 + min restore buffer 0.2),
+    // so restore requires swapping out the lower-priority thermostat.
+    await (app as any).recordPowerSample(200);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
+    const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp');
+
+    expect(spotterPlan?.plannedState).toBe('keep');
+    expect(lowTempPlan?.plannedState).toBe('shed');
+    expect(lowTempPlan?.reason).toContain('swapped out for');
+  });
+
+  it('restores a higher-priority onoff device by swapping out a lower-priority temperature-only active device', async () => {
+    setMockDrivers({});
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('capacity_priorities', {
+      Home: {
+        spotter: 10,
+        'low-temp-no-onoff': 50,
+      },
+    });
+    mockHomeyInstance.settings.set('mode_device_targets', {
+      Home: {
+        'low-temp-no-onoff': 20,
+      },
+    });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      spotter: { action: 'turn_off' },
+      'low-temp-no-onoff': { action: 'set_temperature', temperature: 16 },
+    });
+    setManagedControllableDevices({
+      spotter: true,
+      'low-temp-no-onoff': true,
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 0.3;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.3);
+    }
+
+    (app as any).planEngine.state.lastSheddingMs = null;
+    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'spotter',
+        name: 'Spotter kjøkkenbenk',
+        targets: [],
+        capabilities: ['onoff'],
+        currentOn: false,
+        controllable: true,
+        powerKw: 0.05,
+        expectedPowerKw: 0.05,
+      },
+      {
+        id: 'low-temp-no-onoff',
+        name: 'Lower-priority thermostat without onoff',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        capabilities: ['target_temperature'],
+        currentOn: undefined,
+        controllable: true,
+        powerKw: 0.3,
+        expectedPowerKw: 0.3,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(200);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
+    const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp-no-onoff');
+
+    expect(spotterPlan?.plannedState).toBe('keep');
+    expect(lowTempPlan?.plannedState).toBe('shed');
+    expect(lowTempPlan?.reason).toContain('swapped out for');
   });
 });
