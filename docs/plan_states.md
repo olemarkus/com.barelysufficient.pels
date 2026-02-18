@@ -36,6 +36,7 @@ Only managed devices are included in the plan snapshot; unmanaged devices are hi
   - If in shortfall:
     - plannedState = "shed"
     - reason = "shortfall (need XkW, headroom YkW)"
+    - Note: this headroom is operational plan headroom (effective soft limit context), while shortfall entry itself is based on projected hourly hard-cap budget breach.
 - Cooldown / stabilization:
   - After shedding or restoring, restoration is throttled.
   - plannedState = "shed"

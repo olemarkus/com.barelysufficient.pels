@@ -72,6 +72,7 @@ describe('buildSheddingPlan', () => {
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -132,6 +133,7 @@ describe('buildSheddingPlan', () => {
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4.5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -184,6 +186,7 @@ describe('buildSheddingPlan', () => {
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(

@@ -1516,7 +1516,7 @@ describe('Device plan snapshot', () => {
   it('triggers capacity_shortfall when deficit remains after shedding all controllables', async () => {
     // Shortfall triggers when power exceeds the shortfall threshold AND no devices left to shed.
     // The shortfall threshold is based on remaining hourly budget / remaining time.
-    // At any point in the hour with no usage, threshold = (limit - margin) / remainingHours.
+    // At any point in the hour with no usage, threshold = hard_cap / remainingHours.
     // To ensure shortfall triggers regardless of when the test runs, use a low limit.
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
     setMockDrivers({

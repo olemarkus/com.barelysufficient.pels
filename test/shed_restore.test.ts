@@ -26,6 +26,7 @@ type InternalApp = {
         setSheddingActive: (active: boolean) => void;
         checkShortfall: () => void;
         getSoftLimit: () => number;
+        getShortfallThreshold: () => number;
         getLastTotalPower: () => number;
         isInShortfall: () => boolean;
         getRestoreMargin: () => number;
@@ -75,6 +76,7 @@ describe('Shed vs Restore Logic', () => {
         const mockGuard = {
             getHeadroom: () => -2.0, // Need 2kW
             getSoftLimit: () => 10,
+            getShortfallThreshold: () => 10,
             getLastTotalPower: () => 12,
             isSheddingActive: () => false,
             setSheddingActive: jest.fn(),
@@ -119,6 +121,7 @@ describe('Shed vs Restore Logic', () => {
         const mockGuard = {
             getHeadroom: () => -0.4, // Need 0.4kW
             getSoftLimit: () => 10,
+            getShortfallThreshold: () => 10,
             getLastTotalPower: () => 10.4,
             isSheddingActive: () => false,
             setSheddingActive: jest.fn(),
@@ -158,6 +161,7 @@ describe('Shed vs Restore Logic', () => {
         const mockGuard = {
             getHeadroom: () => 2.0,
             getSoftLimit: () => 10,
+            getShortfallThreshold: () => 10,
             getLastTotalPower: () => 8,
             isSheddingActive: () => false,
             setSheddingActive: jest.fn(),

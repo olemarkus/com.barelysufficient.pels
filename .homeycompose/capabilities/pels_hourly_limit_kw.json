@@ -1,10 +1,10 @@
 {
   "type": "number",
   "title": {
-    "en": "Hourly limit"
+    "en": "Hourly soft limit"
   },
   "desc": {
-    "en": "Current effective hourly limit (capacity or daily budget)"
+    "en": "Current effective hourly soft limit used for shedding (capacity and/or daily budget)"
   },
   "units": {
     "en": "kW"

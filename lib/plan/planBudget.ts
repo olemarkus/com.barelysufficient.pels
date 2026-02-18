@@ -79,27 +79,24 @@ export function computeDailyUsageSoftLimit(params: {
 }
 
 /**
- * Compute the shortfall threshold - the "real" soft limit without EOH capping.
- * Shortfall should only trigger when power exceeds this threshold AND no devices left to shed.
- * During end-of-hour, the soft limit for shedding is artificially lowered to prepare
- * for the next hour, but we shouldn't alert shortfall just because of that constraint.
+ * Compute the shortfall threshold for panic mode.
+ * Shortfall should only trigger when projected hourly usage would breach the hard cap
+ * (limitKw) and no devices are left to shed.
  */
 export function computeShortfallThreshold(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   powerTracker: PowerTrackerState;
 }): number {
   const { capacitySettings, powerTracker } = params;
-  const budgetKw = capacitySettings.limitKw;
-  const { marginKw } = capacitySettings;
-  const netBudgetKWh = Math.max(0, budgetKw - marginKw);
-  if (netBudgetKWh <= 0) return 0;
+  const hardCapBudgetKWh = Math.max(0, capacitySettings.limitKw);
+  if (hardCapBudgetKWh <= 0) return 0;
 
   const now = Date.now();
   const hourContext = getCurrentHourContext(powerTracker, now);
   const remainingHours = Math.max(hourContext.remainingHours, 0.01);
   const usedKWh = hourContext.usedKWh;
-  const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
+  const remainingKWh = Math.max(0, hardCapBudgetKWh - usedKWh);
 
-  // Return the uncapped burst rate - this is the actual limit before we'd exceed hourly budget
+  // Return the uncapped burst rate before the hard-cap hourly budget would be exceeded.
   return remainingKWh / remainingHours;
 }

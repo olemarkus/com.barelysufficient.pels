@@ -70,11 +70,11 @@
           "en": "Capacity guard: manual action needed"
         },
         "titleFormatted": {
-          "en": "Capacity guard cannot reduce load to the limit; manual action required"
+          "en": "Capacity guard predicts hourly hard-cap budget breach; manual action required"
         },
         "args": [],
         "hint": {
-          "en": "Triggers when PELS cannot shed enough devices to stay within your hourly power capacity limit (hard cap). This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly capacity limit violations, never for daily budget constraints (which are soft limits)."
+          "en": "Triggers when PELS projects that the hourly hard-cap budget will be breached at the current run rate and there are no controllable devices left to shed. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard-cap budget breaches, never for daily budget soft-limit violations."
         },
         "id": "capacity_shortfall"
       },
@@ -604,6 +604,12 @@
       "desc": {
         "en": "Whether the daily budget plan has been exceeded"
       },
+      "insightsTitleTrue": {
+        "en": "Daily budget exceeded"
+      },
+      "insightsTitleFalse": {
+        "en": "Daily budget back within plan"
+      },
       "getable": true,
       "setable": false,
       "uiComponent": "sensor",
@@ -705,10 +711,10 @@
     "pels_hourly_limit_kw": {
       "type": "number",
       "title": {
-        "en": "Hourly limit"
+        "en": "Hourly soft limit"
       },
       "desc": {
-        "en": "Current effective hourly limit (capacity or daily budget)"
+        "en": "Current effective hourly soft limit used for shedding (capacity and/or daily budget)"
       },
       "units": {
         "en": "kW"
@@ -815,12 +821,18 @@
         "en": "Capacity shortfall"
       },
       "desc": {
-        "en": "Whether PELS cannot shed enough load to stay within capacity limits"
+        "en": "Whether PELS projects an hourly hard-cap budget breach and has no controllable devices left to shed"
+      },
+      "insightsTitleTrue": {
+        "en": "Capacity shortfall: projected hard-cap budget breach"
+      },
+      "insightsTitleFalse": {
+        "en": "Capacity shortfall resolved: back within hard-cap budget"
       },
       "getable": true,
       "setable": false,
       "uiComponent": "sensor",
-      "insights": false
+      "insights": true
     },
     "pels_uncontrolled_power": {
       "type": "number",
