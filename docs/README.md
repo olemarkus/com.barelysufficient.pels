@@ -111,11 +111,12 @@ After installation:
 - Create a Flow condition using **Is there headroom for device?**
   - Device: pick the capacity-controlled device (e.g., charger)
   - Required kW: how much extra you want to draw
-- The card checks current headroom plus the device’s **expected** draw (settings.load first, then latest reading or override) with a conservative **1 kW fallback** when unknown. This avoids over-promising capacity.
+- The card checks current headroom plus the device’s **expected** draw. Estimator order is: flow override → `settings.load` → measured peak from `measure_power`/`meter_power` (and Homey live `values.W`) → device Energy settings/metadata → conservative **1 kW fallback**.
+- If `settings.load` is configured, the Flow action rejects manual overrides and `settings.load` is used directly.
 
 ### 3) Temporarily override expected power for a device
 - Use the **Set expected power for device** action to set a temporary expected draw (W).  
-- This is useful when a device under-reports for a short period. It expires when the device reports a new meter reading and fails if `settings.load` is set.
+- This is useful when a device under-reports for a short period. It remains active until a higher measured reading is seen (lower readings do not clear it), and fails if `settings.load` is set.
 
 ### 4) Switch modes automatically
 - Use **Set operating mode** in Flows triggered by time/presence.  
@@ -134,16 +135,18 @@ After installation:
 
 ### Devices Tab
 
-The Devices tab shows temperature and on/off devices that PELS can detect. Devices without power capability (no `measure_power`, no `meter_power`, and no configured load) are listed for visibility but are locked and unmanaged.
+The Devices tab shows temperature and on/off devices that PELS can detect. Devices without a usable power estimate cannot be capacity-controlled; temperature devices can still be managed for mode/price behavior (price-only), while non-temperature devices are locked unmanaged.
 
 | Setting | Description |
 |---------|-------------|
-| **Managed by PELS** | Toggle whether PELS should include the device in modes and price optimization. Unmanaged devices are treated as uncontrolled load and hidden from the Overview plan. Requires power capability. |
+| **Managed by PELS** | Toggle whether PELS should include the device in modes and price optimization. Unmanaged devices are treated as uncontrolled load and hidden from the Overview plan. Temperature devices can be managed even when capacity control is unavailable. |
 | **Capacity-based control** | Toggle whether PELS can shed/restore this device for capacity. You can keep this off while still using price optimization. Requires power capability. |
-| **Price Optimization** | Enable temperature adjustments based on electricity prices (managed devices only). Requires power capability. |
+| **Price Optimization** | Enable temperature adjustments based on electricity prices (managed temperature devices only). Power capability is not required. |
 | **When shedding** | Choose what happens during capacity shedding: turn off (default) or drop to a minimum temperature. |
 
 > **Note:** Only managed devices appear in the Modes tab and Price optimization list.
+>
+> If expected usage looks wrong for a device, check Homey **Device → Advanced Settings → Energy** and verify “Power usage when on/off”.
 
 ### Modes Tab
 
@@ -178,7 +181,7 @@ Only managed devices are listed; unmanaged load still contributes to the totals.
 | **Temperature** | Current temperature and target (if available) |
 | **Power** | Current → planned power state (on/off) |
 | **State** | Active, Restoring, Shed, or Capacity control off |
-| **Usage** | Current measured power vs. expected power (fallback 1 kW if unknown) |
+| **Usage** | Current measured power and expected power. Expected power estimator order: flow override → `settings.load` → measured peak → device Energy settings/metadata → 1 kW fallback. |
 | **Status** | The reason for the current plan (or "Waiting for headroom") |
 
 Click **Refresh plan** to recalculate.
@@ -203,7 +206,7 @@ The Daily Budget is a **soft constraint** – a kWh/day guide that creates a dai
 
 **Unlike the hourly capacity limit**, violating the daily budget will never trigger emergency alarms or "manual action needed" flows. PELS will shed devices to try to stay within the daily budget, but if that's not possible, it simply continues operating without panic.
 
-For details on how the plan is built, how DST is handled, and what each value means, see `docs/daily_budget.md`.
+For details on how the plan is built, how DST is handled, and what each value means, see [Daily Energy Budget](daily_budget.md).
 
 ### Usage Tab
 
@@ -313,11 +316,18 @@ For each device with price optimization enabled:
 
 ### Advanced Tab
 
-Diagnostics and debug toggles.
+Diagnostics and expert tuning controls.
 
 | Setting | Description |
 |---------|-------------|
 | **Debug logging topics** | Select which areas emit debug logs. Selections persist across restarts. |
+| **Controlled usage weight** | How much controlled load should influence daily-budget learning (0 = ignore controlled, 1 = full influence). Default: 0.30. |
+| **Price flex share** | How strongly controlled load should be shifted toward cheaper hours when price shaping is enabled (0 = none, 1 = fully price-shaped). Default: 0.35. |
+| **Show daily budget breakdown in chart** | Splits charted plan into controlled vs. uncontrolled portions. |
+
+> **Warning:** Changing **Controlled usage weight** or **Price flex share** can materially change daily-budget behavior and shed/restore timing. Defaults are recommended unless you are actively tuning. Change one value at a time and observe for at least a day.
+
+For detailed formulas, confidence behavior, and tuning examples, see [Daily Budget Weighting Math (Advanced)](daily_budget_weights.md).
 
 ---
 
