@@ -60,6 +60,17 @@ The daily budget controls live in the **Budget** tab.
 - **Price-shape today plan**: when price optimization is enabled, the plan is weighted toward cheaper remaining hours.
 - **Reset learning**: clears the learned usage profile for future plans.
 
+### Advanced tab tuning (expert)
+
+The **Advanced** tab includes two daily-budget tuning controls:
+
+- **Controlled usage weight** (default `0.30`): scales how much controlled load contributes to learned daily profile weights.
+- **Price flex share** (default `0.35`): scales how much controlled load is shifted toward cheaper remaining hours when price shaping is active.
+
+**Warning:** these controls can significantly change pacing behavior, shed order timing, and restore timing. Keep defaults unless you are deliberately tuning behavior. If you change them, adjust one parameter at a time and observe at least a full day.
+
+For exact formulas and worked examples, see [Daily Budget Weighting Math (Advanced)](daily_budget_weights.md).
+
 ## Today Plan View
 
 The Budget tab shows a "Today plan" chart and live stats:
