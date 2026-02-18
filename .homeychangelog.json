@@ -160,5 +160,8 @@
   },
   "1.15.0": {
     "en": "PELS now reads expected device usage from Homey’s Energy settings on the device (Advanced Settings → Energy), instead of relying only on inferred defaults. This is the “Power usage when on/off” configuration in Homey. Using that source makes expected usage in PELS match the values users have actually configured per device.\n\nOther fixes in this update are mainly around reliability and UI consistency: priority/order changes now trigger plan refresh more consistently, priority-only plan changes are reflected in the overview, and a single unavailable device no longer stops actions for other devices in the same loop. Debug logging around Homey device/energy data was also expanded for troubleshooting."
+  },
+  "1.15.1": {
+    "en": "Aligned capacity shortfall behavior with hourly hard-cap budget semantics: shortfall now only triggers when PELS projects that the hourly hard cap will be breached and no controllable devices are left to shed. Updated related Flow/capability wording and Insights messages to match, removed timeline shortfall notifications, and included documentation plus dependency/security maintenance updates."
   }
 }
