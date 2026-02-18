@@ -239,12 +239,12 @@ async function handleShortfallCheck(
   remainingCandidates: number,
   deficitKw: number,
 ): Promise<void> {
-  // Shortfall (panic mode) should only trigger when exceeding the hard capacity limit.
-  // The soft limit (with margin) is for shedding decisions, but panic is only
-  // when we actually exceed the contracted grid capacity limit.
+  // Shortfall (panic mode) should only trigger when projected hourly hard-cap
+  // budget breach is detected. The soft limit (with margin) is for shedding
+  // decisions and should not, by itself, trigger panic.
   //
   // softLimitSource tells us why we're shedding:
-  // - 'capacity': Exceeding hourly hard cap (should check shortfall)
+  // - 'capacity': Hourly hard-cap budget pressure (should check shortfall)
   // - 'daily': Exceeding daily budget soft limit (should NOT panic)
   if (softLimitSource === 'capacity') {
     await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
@@ -266,8 +266,8 @@ async function updateGuardState(params: {
   const { headroom, capacitySoftLimit, softLimitSource, total, devices, shedSet, capacityGuard } = params;
   if (shouldActivateShedding(headroom, shedSet)) {
     const remainingCandidates = countRemainingCandidates(devices, shedSet, headroom);
-    const capacityHeadroom = total === null ? null : capacitySoftLimit - total;
-    const deficitKw = capacityHeadroom !== null ? Math.max(0, -capacityHeadroom) : 0;
+    const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
+    const deficitKw = computeShortfallDeficitKw(total, shortfallThreshold);
     await capacityGuard?.setSheddingActive(true);
     await handleShortfallCheck(capacityGuard, softLimitSource, remainingCandidates, deficitKw);
     return { sheddingActive: true };
@@ -281,6 +281,11 @@ async function updateGuardState(params: {
   }
   await capacityGuard?.checkShortfall(true, 0);
   return { sheddingActive: canDisable ? false : current };
+}
+
+function computeShortfallDeficitKw(total: number | null, shortfallThreshold: number): number {
+  if (total === null) return 0;
+  return Math.max(0, total - shortfallThreshold);
 }
 
 function resolveShedReason(limitSource: PlanContext['softLimitSource']): string {

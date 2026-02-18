@@ -35,28 +35,28 @@ PELS uses an **hourly energy budget** model based on the Norwegian grid tariff s
 
 ### Hard Cap vs Soft Limit
 
-- **Hard cap**: Your contracted grid capacity limit (limitKw). Exceeding this for a full hour triggers penalties.
-- **Soft limit**: Hard cap minus your safety margin (limitKw - marginKw). PELS starts shedding when power exceeds this, giving time to react.
-- **Shortfall**: Only triggers when load exceeds the hard cap AND no more devices can be shed. This is the emergency "panic" state.
+- **Hard cap**: Your contracted grid capacity limit (limitKw). This equals the hourly hard-cap energy budget of `limitKw` kWh per hour. Exceeding this for a full hour triggers penalties.
+- **Soft limit**: A dynamic run-rate limit derived from the hourly soft budget `(limitKw - marginKw)` and time remaining. PELS starts shedding when power exceeds this, giving time to react.
+- **Shortfall**: Triggers when PELS projects an hourly hard-cap budget breach at current run rate AND no more devices can be shed. This is the emergency "panic" state.
 
 ### Dynamic Soft Limit
 
 Rather than simply comparing instantaneous power against your limit, PELS calculates a "soft limit" that adapts throughout each hour:
 
-1. **Budget**: Your limit minus margin (e.g., 10 kW - 0.2 kW = 9.8 kWh budget per hour)
+1. **Soft budget**: Your limit minus margin (e.g., 10 kW - 0.2 kW = 9.8 kWh soft budget per hour)
 2. **Used**: Energy already consumed this hour (tracked via power samples)
 3. **Remaining**: Budget minus used energy
 4. **Time left**: Minutes remaining until the hour ends
 5. **Burst rate**: Remaining kWh ÷ time left = maximum instantaneous power allowed
 
-**Example**: If you've used 5 kWh with 30 minutes left in the hour and have a 10 kWh budget:
+**Example**: If you've used 5 kWh with 30 minutes left in the hour and have a 10 kWh hard-cap budget:
 - Remaining: 10 - 5 = 5 kWh
 - Time left: 0.5 hours
 - Burst rate: 5 ÷ 0.5 = 10 kW allowed
 
 ### Sustainable Rate Cap (Hourly Capacity Only)
 
-To prevent "end of hour bursting" where devices ramp up to use remaining budget then overshoot the next hour, the hourly soft limit is capped at the sustainable rate (your budget in kW) during the last ~10 minutes. This means even if you have headroom at 11:55, you won't turn on 5 kW of heaters that would overshoot noon.
+To prevent "end of hour bursting" where devices ramp up to use remaining budget then overshoot the next hour, the hourly soft limit is capped at the sustainable rate (your hourly soft budget in kW) during the last ~10 minutes. This means even if you have headroom at 11:55, you won't turn on 5 kW of heaters that would overshoot noon.
 
 **Note:** This end-of-hour capping only applies to the hourly capacity soft limit, not the daily budget soft limit. Daily budget violations are not time-critical in the same way – there's no grid penalty for exceeding a daily budget at any particular minute.
 

@@ -2,14 +2,14 @@
 
 The Daily Energy Budget is a **soft constraint** – a kWh/day guide that helps pace your energy use. It does not override the hourly capacity system. Instead, it produces a **daily soft limit** for the current hour, and the planner uses the smaller of that and the **hourly capacity soft limit**.
 
-**Key distinction:** Unlike the hourly capacity limit (hard cap), the daily budget will never trigger emergency alarms or "shortfall" flows. If PELS cannot shed enough devices to meet the daily budget, it simply continues operating without panic. Only violations of the hourly hard cap trigger emergency intervention.
+**Key distinction:** Unlike the hourly capacity limit (hard cap), the daily budget will never trigger emergency alarms or "shortfall" flows. If PELS cannot shed enough devices to meet the daily budget, it simply continues operating without panic. Only projected breaches of the hourly hard-cap budget trigger emergency intervention.
 
 This feature always uses the whole-home meter data that PELS already collects (the same stats used for hourly and daily usage).
 
 ## Terminology
 
-- **Hourly hard cap**: Your contracted grid capacity limit (e.g., 5/10/15 kW). Exceeding this triggers grid penalties (effekttariff). This is the only "panic" limit.
-- **Hourly soft limit**: The hard cap minus your safety margin. PELS starts shedding when power exceeds this, giving time to react before hitting the hard cap.
+- **Hourly hard cap**: Your contracted grid capacity limit (e.g., 5/10/15 kW). This equals the hourly hard-cap energy budget of `limitKw` kWh/h and is the only "panic" limit.
+- **Hourly soft limit**: A dynamic run-rate limit derived from the hourly soft budget `(limitKw - marginKw)` and time remaining. PELS starts shedding when power exceeds this.
 - **Daily soft limit**: A soft limit derived from the daily plan (history + price shaping). Never triggers panic/shortfall.
 - **Effective soft limit**: The smaller of the hourly soft limit and daily soft limit – this is what the planner uses for shedding decisions.
 
@@ -89,7 +89,7 @@ The plan is a cumulative curve. The current bucket's planned kWh is turned into 
 
 ## Interaction With Other Features
 
-- **Hourly capacity limit (hard cap)**: Always enforced. Daily budget never bypasses it. Only violations of this limit trigger emergency shortfall alarms.
+- **Hourly capacity limit (hard cap)**: Always enforced. Daily budget never bypasses it. Only projected breaches of this hourly hard-cap budget trigger emergency shortfall alarms.
 - **Daily soft limit**: Combined with the hourly soft limit by taking the smaller limit. Never triggers emergency alarms.
 - **Price optimization**: Can reshape the daily plan if price shaping is enabled.
 
@@ -97,7 +97,7 @@ The plan is a cumulative curve. The current bucket's planned kWh is turned into 
 
 These are exposed on the PELS Insights device:
 
-- `pels_hourly_limit_kw` (effective hourly limit in kW)
-- `daily_budget_remaining_kwh`
-- `daily_budget_exceeded`
+- `pels_hourly_limit_kw` (effective hourly soft limit in kW)
+- `pels_daily_budget_remaining_kwh`
+- `pels_daily_budget_exceeded`
 - `pels_limit_reason` (indicates whether limits are due to hourly or daily budget)

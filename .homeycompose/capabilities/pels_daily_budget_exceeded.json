@@ -6,6 +6,12 @@
   "desc": {
     "en": "Whether the daily budget plan has been exceeded"
   },
+  "insightsTitleTrue": {
+    "en": "Daily budget exceeded"
+  },
+  "insightsTitleFalse": {
+    "en": "Daily budget back within plan"
+  },
   "getable": true,
   "setable": false,
   "uiComponent": "sensor",

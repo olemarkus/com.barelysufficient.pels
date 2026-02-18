@@ -146,7 +146,7 @@ export default class CapacityGuard {
   /**
    * Called by Plan after shedding decisions to check/update shortfall state.
    * @param hasCandidates - Whether there are still devices that could be shed
-   * @param deficitKw - Current power deficit (negative headroom)
+   * @param deficitKw - Current kW above the shortfall threshold
    */
   async checkShortfall(hasCandidates: boolean, deficitKw: number): Promise<void> {
     const shortfallThreshold = this.getShortfallThreshold();

@@ -3,10 +3,10 @@
     "en": "Capacity guard: manual action needed"
   },
   "titleFormatted": {
-    "en": "Capacity guard cannot reduce load to the limit; manual action required"
+    "en": "Capacity guard predicts hourly hard-cap budget breach; manual action required"
   },
   "args": [],
   "hint": {
-    "en": "Triggers when PELS cannot shed enough devices to stay within your hourly power capacity limit (hard cap). This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly capacity limit violations, never for daily budget constraints (which are soft limits)."
+    "en": "Triggers when PELS projects that the hourly hard-cap budget will be breached at the current run rate and there are no controllable devices left to shed. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard-cap budget breaches, never for daily budget soft-limit violations."
   }
 }

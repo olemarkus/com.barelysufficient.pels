@@ -113,10 +113,9 @@ export class PlanBuilder {
   }
 
   /**
-   * Compute the shortfall threshold - the "real" soft limit without EOH capping.
-   * Shortfall should only trigger when power exceeds this threshold AND no devices left to shed.
-   * During end-of-hour, the soft limit for shedding is artificially lowered to prepare
-   * for the next hour, but we shouldn't alert shortfall just because of that constraint.
+   * Compute the shortfall threshold for panic mode.
+   * Shortfall should only trigger when projected hourly usage would breach the hard cap
+   * and no devices are left to shed.
    */
   public computeShortfallThreshold(): number {
     return computeShortfallThreshold({

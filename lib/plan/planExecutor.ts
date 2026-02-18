@@ -376,20 +376,16 @@ export class PlanExecutor {
   public async handleShortfall(deficitKw: number): Promise<void> {
     if (this.state.inShortfall) return; // Already in shortfall state
 
+    const shortfallThreshold = this.capacityGuard ? this.capacityGuard.getShortfallThreshold() : this.capacitySettings.limitKw;
     const softLimit = this.capacityGuard ? this.capacityGuard.getSoftLimit() : this.capacitySettings.limitKw;
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
 
-    this.log(`Capacity shortfall: cannot reach soft limit, deficit ~${deficitKw.toFixed(2)}kW (total ${total === null ? 'unknown' : total.toFixed(2)
-      }kW, soft ${softLimit.toFixed(2)}kW)`);
+    this.log(`Capacity shortfall: projected hard-cap budget breach, over by ~${deficitKw.toFixed(2)}kW (total ${total === null ? 'unknown' : total.toFixed(2)
+      }kW, threshold ${shortfallThreshold.toFixed(2)}kW, soft ${softLimit.toFixed(2)}kW)`);
 
     this.state.inShortfall = true;
     this.deps.homey.settings.set('capacity_in_shortfall', true);
     incPerfCounter('settings_set.capacity_in_shortfall');
-
-    // Create timeline notification
-    this.deps.homey.notifications.createNotification({
-      excerpt: `Capacity shortfall: **${deficitKw.toFixed(2)} kW** over limit. Manual action may be needed.`,
-    }).catch((err: Error) => this.error('Failed to create shortfall notification', err));
 
     // Trigger flow card
     const card = this.deps.homey.flow?.getTriggerCard?.('capacity_shortfall');
@@ -405,11 +401,6 @@ export class PlanExecutor {
     this.state.inShortfall = false;
     this.deps.homey.settings.set('capacity_in_shortfall', false);
     incPerfCounter('settings_set.capacity_in_shortfall');
-
-    // Create timeline notification
-    this.deps.homey.notifications.createNotification({
-      excerpt: 'Capacity shortfall **resolved**. Load is back within limits.',
-    }).catch((err: Error) => this.error('Failed to create shortfall cleared notification', err));
   }
 
   public async applyPlanActions(plan: DevicePlan): Promise<void> {

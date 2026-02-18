@@ -4,10 +4,16 @@
     "en": "Capacity shortfall"
   },
   "desc": {
-    "en": "Whether PELS cannot shed enough load to stay within capacity limits"
+    "en": "Whether PELS projects an hourly hard-cap budget breach and has no controllable devices left to shed"
+  },
+  "insightsTitleTrue": {
+    "en": "Capacity shortfall: projected hard-cap budget breach"
+  },
+  "insightsTitleFalse": {
+    "en": "Capacity shortfall resolved: back within hard-cap budget"
   },
   "getable": true,
   "setable": false,
   "uiComponent": "sensor",
-  "insights": false
+  "insights": true
 }
