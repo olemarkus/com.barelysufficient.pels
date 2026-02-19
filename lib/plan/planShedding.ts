@@ -52,7 +52,6 @@ export async function buildSheddingPlan(
   const guardResult = await updateGuardState({
     headroom: context.headroom,
     capacitySoftLimit: context.capacitySoftLimit,
-    softLimitSource: context.softLimitSource,
     total: context.total,
     devices: context.devices,
     shedSet,
@@ -235,41 +234,35 @@ function selectShedDevices(
 
 async function handleShortfallCheck(
   capacityGuard: CapacityGuard | undefined,
-  softLimitSource: PlanContext['softLimitSource'],
   remainingCandidates: number,
   deficitKw: number,
 ): Promise<void> {
   // Shortfall (panic mode) should only trigger when projected hourly hard-cap
-  // budget breach is detected. The soft limit (with margin) is for shedding
-  // decisions and should not, by itself, trigger panic.
-  //
-  // softLimitSource tells us why we're shedding:
-  // - 'capacity': Hourly hard-cap budget pressure (should check shortfall)
-  // - 'daily': Exceeding daily budget soft limit (should NOT panic)
-  if (softLimitSource === 'capacity') {
+  // budget breach is detected (deficitKw > 0). This keeps daily-budget-only
+  // pressure from triggering panic while still allowing shortfall during daily
+  // hours if the hard-cap threshold is actually exceeded.
+  if (deficitKw > 0) {
     await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
-  } else if (softLimitSource === 'daily') {
-    // Daily budget violation only - clear shortfall if it was set
-    await capacityGuard?.checkShortfall(true, 0);
+    return;
   }
+  await capacityGuard?.checkShortfall(true, 0);
 }
 
 async function updateGuardState(params: {
   headroom: number | null;
   capacitySoftLimit: number;
-  softLimitSource: PlanContext['softLimitSource'];
   total: number | null;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   capacityGuard: CapacityGuard | undefined;
 }): Promise<{ sheddingActive: boolean }> {
-  const { headroom, capacitySoftLimit, softLimitSource, total, devices, shedSet, capacityGuard } = params;
+  const { headroom, capacitySoftLimit, total, devices, shedSet, capacityGuard } = params;
   if (shouldActivateShedding(headroom, shedSet)) {
     const remainingCandidates = countRemainingCandidates(devices, shedSet, headroom);
     const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
     const deficitKw = computeShortfallDeficitKw(total, shortfallThreshold);
     await capacityGuard?.setSheddingActive(true);
-    await handleShortfallCheck(capacityGuard, softLimitSource, remainingCandidates, deficitKw);
+    await handleShortfallCheck(capacityGuard, remainingCandidates, deficitKw);
     return { sheddingActive: true };
   }
 
