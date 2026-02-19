@@ -61,5 +61,12 @@
   "author": {
     "name": "Ole Markus With",
     "email": "olemarkus@gmail.com"
+  },
+  "contributing": {
+    "donate": {
+      "githubSponsors": {
+        "username": "olemarkus"
+      }
+    }
   }
 }
