@@ -105,7 +105,10 @@ describe('buildSheddingPlan', () => {
     expect(result.shedReasons.get('dev-nonrecent')).toBe('shed due to daily budget');
     expect(result.shedSet.has('dev-recent')).toBe(false);
     expect(result.shedSet.has('dev-at-temp')).toBe(false);
-    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 0);
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
+    const [hasCandidates, deficitKw] = (capacityGuard.checkShortfall as unknown as jest.Mock).mock.calls[0];
+    expect(hasCandidates).toBe(true);
+    expect(deficitKw).toBeCloseTo(0.4, 6);
   });
 
   it('allows shedding recently restored devices when they are lower priority', async () => {
@@ -213,5 +216,40 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('dev-restore')).toBe(true);
     expect(result.shedReasons.get('dev-restore')).toBe('shed due to capacity');
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 2);
+  });
+
+  it('checks shortfall in daily mode when hard-cap deficit exists and no candidates remain', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    await buildSheddingPlan(
+      buildContext({
+        devices: [],
+        total: 7,
+        softLimit: 5,
+        capacitySoftLimit: 8,
+        headroomRaw: -2,
+        headroom: -2,
+        softLimitSource: 'daily',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // Daily soft-limit hours should still evaluate hourly shortfall risk.
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 1);
   });
 });

@@ -69,7 +69,8 @@ Note: Do not run `homey` CLI commands that deploy to hardware. `homey app valida
 - Before pushing a branch, squash history into a clean set of commits (prefer one commit per logical change) unless explicitly asked not to.
 - Commit messages should read like concise PR descriptions:
   - Title/subject in imperative mood, max 72 characters
-  - Body should cover: problem/context, what changed, and how it was validated (tests/commands)
+  - Body should cover: problem/context and what changed
+  - Do not include validation/test steps unless explicitly requested by the user
 
 ## Writing Tests
 
