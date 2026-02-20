@@ -25,7 +25,7 @@ Only managed devices are included in the plan snapshot; unmanaged devices are hi
   - plannedState = "shed", reason reflects the active cap:
     - "shed due to capacity"
     - "shed due to daily budget"
-    - "shed due to daily budget + capacity"
+  - When both constraints are effectively aligned, reason is still reported as "shed due to capacity".
 - Hourly budget exhausted:
   - plannedState = "shed"
   - reason = "shed due to hourly budget"
@@ -69,7 +69,6 @@ Parentheses indicate dynamic values.
 - restore (need XkW, headroom YkW)
 - shed due to capacity
 - shed due to daily budget
-- shed due to daily budget + capacity
 - shed due to hourly budget
 - shortfall (need XkW, headroom YkW)
 - cooldown (shedding, Ss remaining)

@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Is there enough capacity?"
+    "en": "Is there enough headroom?"
   },
   "titleFormatted": {
-    "en": "Is there enough capacity for [[required_kw]] kW?"
+    "en": "Is there enough headroom for [[required_kw]] kW?"
   },
   "args": [
     {
@@ -17,6 +17,6 @@
     }
   ],
   "hint": {
-    "en": "Use this to check if you can safely turn on more devices without exceeding your capacity limit."
+    "en": "Use this to check if current headroom is enough to add the requested load."
   }
 }
