@@ -79,8 +79,8 @@ type ValidatedMeta = {
 const buildNowLines = (meta: ValidatedMeta): string[] => {
   const { totalKw, softLimitKw, headroomKw, controlledKw, uncontrolledKw } = meta;
   const headroomAbs = Math.abs(headroomKw).toFixed(1);
-  const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over limit`;
-  const powerText = `Now ${totalKw.toFixed(1)}kW (limit ${softLimitKw.toFixed(1)}kW)`;
+  const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over soft limit`;
+  const powerText = `Now ${totalKw.toFixed(1)}kW (soft limit ${softLimitKw.toFixed(1)}kW)`;
   const lines = [powerText, headroomText];
   if (typeof controlledKw === 'number' && typeof uncontrolledKw === 'number') {
     lines.push(`Capacity-controlled ${controlledKw.toFixed(2)}kW / Other load ${uncontrolledKw.toFixed(2)}kW`);

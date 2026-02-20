@@ -150,7 +150,7 @@ const buildUsageDayBarTitle = (bucket: UsageDayBucket) => {
   if (bucket.budgetKWh !== null) {
     lines.push(`Budget ${bucket.budgetKWh.toFixed(2)} kWh`);
     if (bucket.measuredKWh > bucket.budgetKWh + 0.001) {
-      lines.push(`Over cap by ${(bucket.measuredKWh - bucket.budgetKWh).toFixed(2)} kWh`);
+      lines.push(`Over budget by ${(bucket.measuredKWh - bucket.budgetKWh).toFixed(2)} kWh`);
     }
   }
   if (bucket.unreliable) lines.push('Unreliable data');

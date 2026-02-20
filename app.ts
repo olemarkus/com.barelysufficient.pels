@@ -431,7 +431,7 @@ class PelsApp extends Homey.App {
       if (!this.overheadToken) {
         this.overheadToken = await this.homey.flow.createToken('capacity_overhead', {
           type: 'number',
-          title: 'Capacity overhead (kW)',
+          title: 'Soft margin (kW)',
           value: overhead ?? 0,
         });
       }

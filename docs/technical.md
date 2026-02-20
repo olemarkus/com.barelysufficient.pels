@@ -6,6 +6,7 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 
 - [Permissions](#permissions)
 - [Capacity Budget Model](#capacity-budget-model)
+- [Terminology and Units](#terminology-and-units)
 - [Hour Transitions](#hour-transitions)
 - [Cooldown Logic](#cooldown-logic)
 - [Priority Swapping](#priority-swapping)
@@ -34,9 +35,17 @@ Without this permission, PELS would not be able to see or control any devices. T
 
 PELS uses an **hourly energy budget** model based on the Norwegian grid tariff system ("effektbasert nettleie"). Your capacity limit (e.g., 10 kW) represents the maximum average power you want to consume over any single hour. This is the **hard cap** – exceeding it triggers grid penalties.
 
+### Terminology and Units
+
+Canonical terminology and unit definitions are maintained in the user guide:
+
+- [User Guide: Terminology and Units](README.md#terminology-and-units)
+
+This technical document uses those same definitions.
+
 ### Hard Cap vs Soft Limit
 
-- **Hard cap**: Your contracted grid capacity limit (limitKw). This equals the hourly hard-cap energy budget of `limitKw` kWh per hour. Exceeding this for a full hour triggers penalties.
+- **Hard cap**: Your contracted grid capacity limit (`limitKw`). This corresponds to an hourly hard-cap energy budget of `limitKw` kWh for each hour. Exceeding this for a full hour triggers penalties.
 - **Soft limit**: A dynamic run-rate limit derived from the hourly soft budget `(limitKw - marginKw)` and time remaining. PELS starts shedding when power exceeds this, giving time to react.
 - **Shortfall**: Triggers when PELS projects an hourly hard-cap budget breach at current run rate AND no more devices can be shed. This is the emergency "panic" state.
 

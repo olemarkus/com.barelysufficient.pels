@@ -11,6 +11,7 @@ Inspired by the Sparegris (Piggy Bank) Homey app.
 - [Features](#features)
 - [Installation](#installation)
 - [Getting Started](#getting-started)
+- [Terminology and Units](#terminology-and-units)
 - [How to Use (Scenarios)](#how-to-use-scenarios)
 - [Configuration](#configuration)
   - [Devices Tab](#devices-tab)
@@ -98,6 +99,28 @@ After installation:
 3. **Set priorities and temperatures** for each mode in the Modes tab (managed devices only)
 4. **Configure price settings** (optional) in the Price tab
 5. **Create a Flow** to report power usage to PELS
+
+---
+
+## Terminology and Units
+
+Use this as the reference for capacity and budget wording:
+
+- **Power** is instantaneous load and uses **W/kW**.
+- **Energy** is usage over time and uses **kWh**.
+- **Capacity limit (hard cap)** is a **kW** limit.
+- **Soft margin** is a **kW** buffer from the hard cap.
+- **Hourly hard-cap budget** is the hourly energy equivalent of the hard cap (**kWh** for the current hour).
+- **Hourly soft budget** is the hourly energy equivalent of `(limit - margin)` (**kWh** for the current hour).
+- **Hourly soft limit** is a dynamic run-rate limit in **kW**.
+- **Headroom** is `soft_limit_kW - current_load_kW` and is in **kW**.
+- **Hourly budget remaining** is `hourly_budget_kWh - used_this_hour_kWh` and is in **kWh**.
+- **Daily budget** and **daily remaining** are in **kWh**.
+
+Backward compatibility note:
+
+- The Flow token id `capacity_overhead` is kept for compatibility.
+- Its current value represents configured soft margin in **kW**.
 
 ---
 
@@ -345,7 +368,7 @@ For detailed formulas, confidence behavior, and tuning examples, see [Daily Budg
 
 | Card | Description |
 |------|-------------|
-| **Is there enough capacity?** | Check if there's capacity for a specified kW load |
+| **Is there enough headroom?** | Check if current headroom can accommodate a specified kW load |
 | **Is there headroom for device?** | Check if the current headroom plus the device's estimated draw can accommodate an extra kW amount (useful for EV chargers, water heaters, etc.) |
 | **Operating mode is...** | Check which mode is currently active |
 | **Price level is...** | Check the current price level (Cheap/Normal/Expensive/Unknown) |
