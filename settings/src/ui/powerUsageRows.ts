@@ -16,7 +16,7 @@ const createTimeLabel = (date: Date, timeZone: string): string => {
 const buildPowerMeterTitle = (entry: PowerUsageEntry, budget: number | null): string => {
   const lines = [];
   if (budget !== null) {
-    lines.push(`${entry.kWh > budget ? 'Over' : 'Under'} cap: ${entry.kWh.toFixed(2)} / ${budget.toFixed(2)} kWh`);
+    lines.push(`${entry.kWh > budget ? 'Over' : 'Under'} budget: ${entry.kWh.toFixed(2)} / ${budget.toFixed(2)} kWh`);
   } else {
     lines.push(`Energy ${entry.kWh.toFixed(2)} kWh`);
   }

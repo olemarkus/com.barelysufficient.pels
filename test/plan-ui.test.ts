@@ -145,7 +145,7 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === 'Now 3.5kW (limit 5.0kW)')).toBe(true);
+    expect(metaLines.some((line) => line === 'Now 3.5kW (soft limit 5.0kW)')).toBe(true);
     expect(metaLines.some((line) => line === '1.5kW available')).toBe(true);
 
     const empty = document.querySelector('#plan-empty') as HTMLElement | null;

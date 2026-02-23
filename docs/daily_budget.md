@@ -8,10 +8,16 @@ This feature always uses the whole-home meter data that PELS already collects (t
 
 ## Terminology
 
-- **Hourly hard cap**: Your contracted grid capacity limit (e.g., 5/10/15 kW). This equals the hourly hard-cap energy budget of `limitKw` kWh/h and is the only "panic" limit.
-- **Hourly soft limit**: A dynamic run-rate limit derived from the hourly soft budget `(limitKw - marginKw)` and time remaining. PELS starts shedding when power exceeds this.
+Shared capacity terminology and units are defined in:
+
+- [User Guide: Terminology and Units](README.md#terminology-and-units)
+
+Daily-budget-specific terms:
+
 - **Daily soft limit**: A soft limit derived from the daily plan (history + price shaping). Never triggers panic/shortfall.
 - **Effective soft limit**: The smaller of the hourly soft limit and daily soft limit – this is what the planner uses for shedding decisions.
+- **Allowed by now**: Planned cumulative kWh at the current local-hour bucket.
+- **Remaining**: `daily_budget_kWh - used_today_kWh` (kWh, can be negative).
 
 ## What It Does
 
@@ -83,7 +89,7 @@ The Budget tab shows a "Today plan" chart and live stats:
 - **Price shaping**: shows whether price shaping is active.
 - **Plan frozen**: appears while you're over plan; it clears once you are back under plan.
 
-The chart shows planned kWh/hour as bars, with actual kWh/hour as dots for completed hours.
+The chart shows planned kWh per hour as bars, with actual kWh per hour as dots for completed hours.
 
 ### Buckets and DST
 

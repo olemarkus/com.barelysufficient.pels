@@ -109,7 +109,7 @@ describe('power page stats (buckets-only)', () => {
     jest.restoreAllMocks();
   });
 
-  it('shows cap detail on the usage bar when hourly budget is present', async () => {
+  it('shows budget detail on the usage bar when hourly budget is present', async () => {
     const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 2, 1.2);
     const hourlyBudgets = Object.fromEntries(Object.keys(buckets).map((iso) => [iso, 1.0]));
     jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 6, 12, 0, 0));
@@ -122,7 +122,7 @@ describe('power page stats (buckets-only)', () => {
     renderPowerUsage(entries);
     const labels = document.querySelectorAll('.power-meter .usage-bar__label');
     expect(labels.length).toBeGreaterThan(0);
-    const titled = document.querySelectorAll('.power-meter[data-tooltip*="cap"]');
+    const titled = document.querySelectorAll('.power-meter[data-tooltip*="budget"]');
     expect(titled.length).toBeGreaterThan(0);
     jest.restoreAllMocks();
   });
