@@ -1,10 +1,10 @@
 {
   "type": "number",
   "title": {
-    "en": "Hourly soft limit"
+    "en": "Current soft limit"
   },
   "desc": {
-    "en": "Current effective hourly soft limit used for shedding (capacity and/or daily budget)"
+    "en": "Current effective soft limit used for shedding (minimum of hourly soft limit and daily soft limit when enabled)"
   },
   "units": {
     "en": "kW"
@@ -13,5 +13,6 @@
   "setable": false,
   "uiComponent": "sensor",
   "insights": true,
-  "decimals": 2
+  "decimals": 2,
+  "icon": "/assets/capabilities/pels_hourly_limit_kw.svg"
 }

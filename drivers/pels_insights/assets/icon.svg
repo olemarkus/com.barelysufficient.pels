@@ -1,28 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 960">
-  <!-- Lightning bolt with radiating insight rays - right-side 3D perspective per Homey guidelines -->
-  <g fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round">
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
 
-    <!-- Radiating insight rays - evenly spaced around center -->
-    <!-- Top -->
-    <path stroke-width="24" d="M480 140 L480 40"/>
-    <!-- Top-right -->
-    <path stroke-width="24" d="M680 200 L760 120"/>
-    <!-- Right -->
-    <path stroke-width="24" d="M820 480 L920 480"/>
-    <!-- Bottom-right -->
-    <path stroke-width="24" d="M680 760 L760 840"/>
-    <!-- Bottom -->
-    <path stroke-width="24" d="M480 820 L480 920"/>
-    <!-- Bottom-left -->
-    <path stroke-width="24" d="M280 760 L200 840"/>
-    <!-- Left -->
-    <path stroke-width="24" d="M140 480 L40 480"/>
-    <!-- Top-left -->
-    <path stroke-width="24" d="M280 200 L200 120"/>
+    <path stroke-width="40" d="M 20,860
+                               L 200,940
+                               L 940,880
+                               L 940,400
+                               L 620,100
+                               L 440,20
+                               L 20,360 Z" />
 
-    <!-- Central lightning bolt (on top of rays) -->
-    <path stroke-width="32" stroke-linejoin="round" fill="#000000"
-          d="M540 120 L320 460 L440 460 L300 840 L680 420 L520 420 Z"/>
+    <path stroke-width="20" d="M 200,940 L 200,440 L 620,100
+                               M 200,440 L 20,360" />
+
+    <g transform="rotate(-4.6 620 480)">
+
+      <circle cx="620" cy="480" r="190" stroke-width="15" />
+
+      <circle cx="620" cy="480" r="160" stroke-width="10" />
+
+      <path stroke-width="15" d="M 440,570 L 530,660" />
+      <path stroke-width="15" d="M 460,600
+                                 L 260,800
+                                 A 28 28 0 0 0 300,840
+                                 L 500,640" />
+
+      <path stroke-width="10" d="M 420,640 L 460,680
+                                 M 380,680 L 420,720
+                                 M 340,720 L 380,760
+                                 M 300,760 L 340,800" />
+
+      <path fill="currentColor" stroke="none"
+            d="M 640,340 L 520,490 L 600,490 L 550,620 L 700,460 L 620,460 Z" />
+
+    </g>
 
   </g>
 </svg>

@@ -567,7 +567,8 @@
       },
       "type": "string",
       "getable": true,
-      "setable": false
+      "setable": false,
+      "icon": "/assets/capabilities/mode_indicator.svg"
     },
     "pels_controlled_power": {
       "type": "number",
@@ -584,7 +585,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": true,
-      "decimals": 2
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_controlled_power.svg"
     },
     "pels_daily_budget_allowed_kwh_now": {
       "type": "number",
@@ -601,7 +603,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": false,
-      "decimals": 2
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_daily_budget_allowed_kwh_now.svg"
     },
     "pels_daily_budget_exceeded": {
       "type": "boolean",
@@ -620,7 +623,8 @@
       "getable": true,
       "setable": false,
       "uiComponent": "sensor",
-      "insights": true
+      "insights": true,
+      "icon": "/assets/capabilities/pels_daily_budget_exceeded.svg"
     },
     "pels_daily_budget_pressure": {
       "type": "number",
@@ -634,7 +638,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": false,
-      "decimals": 2
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_daily_budget_pressure.svg"
     },
     "pels_daily_budget_remaining_kwh": {
       "type": "number",
@@ -651,7 +656,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": true,
-      "decimals": 2
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_daily_budget_remaining_kwh.svg"
     },
     "pels_daily_budget_used_kwh": {
       "type": "number",
@@ -668,7 +674,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": false,
-      "decimals": 2
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_daily_budget_used_kwh.svg"
     },
     "pels_devices_off": {
       "type": "number",
@@ -682,7 +689,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": true,
-      "decimals": 0
+      "decimals": 0,
+      "icon": "/assets/capabilities/pels_devices_off.svg"
     },
     "pels_devices_on": {
       "type": "number",
@@ -696,7 +704,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": true,
-      "decimals": 0
+      "decimals": 0,
+      "icon": "/assets/capabilities/pels_devices_on.svg"
     },
     "pels_headroom": {
       "type": "number",
@@ -713,15 +722,16 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": true,
-      "decimals": 2
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_headroom.svg"
     },
     "pels_hourly_limit_kw": {
       "type": "number",
       "title": {
-        "en": "Hourly soft limit"
+        "en": "Current soft limit"
       },
       "desc": {
-        "en": "Current effective hourly soft limit used for shedding (capacity and/or daily budget)"
+        "en": "Current effective soft limit used for shedding (minimum of hourly soft limit and daily soft limit when enabled)"
       },
       "units": {
         "en": "kW"
@@ -730,7 +740,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": true,
-      "decimals": 2
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_hourly_limit_kw.svg"
     },
     "pels_hourly_usage": {
       "type": "number",
@@ -747,7 +758,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": true,
-      "decimals": 2
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_hourly_usage.svg"
     },
     "pels_insights": {
       "title": {
@@ -758,7 +770,8 @@
       },
       "type": "string",
       "getable": true,
-      "setable": false
+      "setable": false,
+      "icon": "/assets/capabilities/pels_insights.svg"
     },
     "pels_limit_reason": {
       "type": "string",
@@ -769,7 +782,8 @@
         "en": "Why PELS is currently limiting device restores or shedding"
       },
       "getable": true,
-      "setable": false
+      "setable": false,
+      "icon": "/assets/capabilities/pels_limit_reason.svg"
     },
     "pels_price_level": {
       "type": "enum",
@@ -807,7 +821,8 @@
             "en": "Unknown"
           }
         }
-      ]
+      ],
+      "icon": "/assets/capabilities/pels_price_level.svg"
     },
     "pels_shedding": {
       "type": "boolean",
@@ -820,7 +835,8 @@
       "getable": true,
       "setable": false,
       "uiComponent": "sensor",
-      "insights": false
+      "insights": false,
+      "icon": "/assets/capabilities/pels_shedding.svg"
     },
     "pels_shortfall": {
       "type": "boolean",
@@ -839,7 +855,8 @@
       "getable": true,
       "setable": false,
       "uiComponent": "sensor",
-      "insights": true
+      "insights": true,
+      "icon": "/assets/capabilities/pels_shortfall.svg"
     },
     "pels_uncontrolled_power": {
       "type": "number",
@@ -856,7 +873,8 @@
       "setable": false,
       "uiComponent": "sensor",
       "insights": true,
-      "decimals": 2
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_uncontrolled_power.svg"
     }
   }
 }

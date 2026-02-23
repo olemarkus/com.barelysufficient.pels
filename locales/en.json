@@ -13,7 +13,7 @@
       "title": "Used this hour"
     },
     "pels_hourly_limit_kw": {
-      "title": "Hourly soft limit"
+      "title": "Current soft limit"
     },
     "pels_shortfall": {
       "title": "Capacity shortfall"
