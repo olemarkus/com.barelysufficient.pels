@@ -114,7 +114,7 @@ The plan is a cumulative curve. The current bucket's planned kWh is turned into 
 
 These are exposed on the PELS Insights device:
 
-- `pels_hourly_limit_kw` (effective hourly soft limit in kW)
+- `pels_hourly_limit_kw` (effective soft limit in kW; the lower of hourly and daily soft limits)
 - `pels_daily_budget_remaining_kwh`
 - `pels_daily_budget_exceeded`
 - `pels_limit_reason` (indicates whether limits are due to hourly or daily budget)

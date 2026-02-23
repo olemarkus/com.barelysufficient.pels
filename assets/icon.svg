@@ -1,27 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 960">
-  <!-- Transparent background (no background element) -->
-  
-  <g fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="70 80 860 860">
+  <defs>
+    <mask id="leaf-mask">
+      <rect x="0" y="0" width="1000" height="1000" fill="white" />
 
-    <!-- House with angled view from right (40px outline) -->
-    <!-- Front wall -->
-    <path stroke-width="40"
-          d="M100 440 L400 180 L700 440 L700 840 L100 840 Z"/>
-    <!-- Roof -->
-    <path stroke-width="40"
-          d="M40 480 L400 140 L760 480"/>
-    <!-- Right side wall (perspective) -->
-    <path stroke-width="40"
-          d="M700 440 L880 340 L880 740 L700 840"/>
-    <!-- Right side roof -->
-    <path stroke-width="40"
-          d="M760 480 L920 380"/>
-    <path stroke-width="40"
-          d="M400 140 L560 40 L920 380"/>
+      <g fill="none" stroke="black" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M 373.8,594.2
+                 C 340,550 390,440 460.4,381.8
+                 C 530,330 600,315 645.0,310.0
+                 C 670,360 650,450 630.0,530.0
+                 C 610,610 550,690 456.7,678.9" />
 
-    <!-- Lightning bolt - power symbol (20px detail) -->
-    <path stroke-width="20" stroke-linejoin="round" fill="#000000"
-          d="M460 320 L320 520 L400 520 L300 740 L520 480 L420 480 Z"/>
+        <path d="M 552.4,444.4
+                 C 480,510 410,590 405.0,670.0
+                 C 400,750 440,780 478.8,784.4" />
+      </g>
+    </mask>
+  </defs>
 
-  </g>
+  <path fill="currentColor" stroke="currentColor" stroke-width="120" stroke-linejoin="round" mask="url(#leaf-mask)"
+        d="M 130,880
+           L 130,350
+           L 580,140
+           L 870,350
+           L 870,880 Z" />
 </svg>

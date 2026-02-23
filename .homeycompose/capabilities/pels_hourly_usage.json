@@ -13,5 +13,6 @@
   "setable": false,
   "uiComponent": "sensor",
   "insights": true,
-  "decimals": 2
+  "decimals": 2,
+  "icon": "/assets/capabilities/pels_hourly_usage.svg"
 }

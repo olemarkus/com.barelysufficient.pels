@@ -7,5 +7,6 @@
     "en": "Why PELS is currently limiting device restores or shedding"
   },
   "getable": true,
-  "setable": false
+  "setable": false,
+  "icon": "/assets/capabilities/pels_limit_reason.svg"
 }
