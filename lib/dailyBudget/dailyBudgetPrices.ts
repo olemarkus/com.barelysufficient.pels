@@ -17,12 +17,18 @@ export function buildPriceDebugData(params: {
   combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
   priceShapingEnabled: boolean;
-}): { prices?: Array<number | null>; priceFactors?: Array<number | null>; priceShapingActive: boolean } {
+}): {
+  prices?: Array<number | null>;
+  priceFactors?: Array<number | null>;
+  priceShapingActive: boolean;
+  priceSpreadFactor?: number;
+} {
   const priceShape = buildPriceFactors(params);
   return {
     prices: priceShape.prices,
     priceFactors: priceShape.priceFactors,
     priceShapingActive: priceShape.priceShapingActive,
+    priceSpreadFactor: priceShape.priceSpreadFactor,
   };
 }
 
@@ -55,7 +61,12 @@ export function buildPriceFactors(params: {
   combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
   priceShapingEnabled: boolean;
-}): { prices?: Array<number | null>; priceFactors?: Array<number | null>; priceShapingActive: boolean } {
+}): {
+  prices?: Array<number | null>;
+  priceFactors?: Array<number | null>;
+  priceShapingActive: boolean;
+  priceSpreadFactor?: number;
+} {
   const {
     bucketStartUtcMs,
     currentBucketIndex,
@@ -81,10 +92,14 @@ export function buildPriceFactors(params: {
   const median = percentile(priceList, 0.5);
   const p10 = percentile(priceList, 0.1);
   const p90 = percentile(priceList, 0.9);
-  const spread = Math.max(1, p90 - p10);
+  const spread = Math.max(0, p90 - p10);
+  const priceSpreadFactor = resolvePriceSpreadFactor({ spread, median });
+  const normalizedSpread = Math.max(1, p90 - p10);
   const minFactor = 0.7;
   const maxFactor = 1.3;
-  const remainingFactors = numericPrices.map((price) => clamp(1 + (median - price) / spread, minFactor, maxFactor));
+  const remainingFactors = numericPrices.map((price) => (
+    clamp(1 + (median - price) / normalizedSpread, minFactor, maxFactor)
+  ));
   const priceFactorsAll = [
     ...Array.from({ length: safeCurrentBucketIndex }, () => null),
     ...remainingFactors,
@@ -94,6 +109,7 @@ export function buildPriceFactors(params: {
     prices: pricesAll,
     priceFactors: priceFactorsAll,
     priceShapingActive: true,
+    priceSpreadFactor,
   };
 }
 
@@ -103,4 +119,14 @@ function percentile(values: number[], ratio: number): number {
   const normalized = Math.max(0, Math.min(1, ratio));
   const index = Math.floor(normalized * (values.length - 1));
   return values[index] ?? 0;
+}
+
+function resolvePriceSpreadFactor(params: {
+  spread: number;
+  median: number;
+}): number {
+  const { spread, median } = params;
+  if (!Number.isFinite(spread) || spread <= 0) return 0;
+  const reference = Math.max(1, Math.abs(median));
+  return clamp(spread / reference, 0, 1);
 }

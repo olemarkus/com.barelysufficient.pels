@@ -46,6 +46,8 @@ export type PriceData = {
   prices?: Array<number | null>;
   priceFactors?: Array<number | null>;
   priceShapingActive: boolean;
+  priceSpreadFactor?: number;
+  effectivePriceShapingFlexShare?: number;
 };
 
 export const buildDayContext = (params: {

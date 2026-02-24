@@ -11,6 +11,8 @@ type LearnedProfileParts = {
   sampleCount: number;
 };
 
+const EMPTY_HOURLY_MAX = Array.from({ length: 24 }, () => 0);
+
 const clampShare = (value: number): number => clamp(value, 0, 1);
 
 const normalizeWithFallback = (weights: number[], fallback: number[]): number[] => {
@@ -83,6 +85,24 @@ const resolveSplitSampleCount = (state: DailyBudgetState): number => (
   typeof state.profileSplitSampleCount === 'number' ? state.profileSplitSampleCount : 0
 );
 
+const isValidObservedHourlyMax = (values?: number[]): values is number[] => (
+  Array.isArray(values)
+  && values.length === 24
+  && values.every((value) => typeof value === 'number' && Number.isFinite(value))
+);
+
+const resolveObservedMaxUncontrolled = (state: DailyBudgetState): number[] => (
+  isValidObservedHourlyMax(state.profileObservedMaxUncontrolledKWh)
+    ? state.profileObservedMaxUncontrolledKWh
+    : [...EMPTY_HOURLY_MAX]
+);
+
+const resolveObservedMaxControlled = (state: DailyBudgetState): number[] => (
+  isValidObservedHourlyMax(state.profileObservedMaxControlledKWh)
+    ? state.profileObservedMaxControlledKWh
+    : [...EMPTY_HOURLY_MAX]
+);
+
 const hasProfileChanges = (
   state: DailyBudgetState,
   next: {
@@ -91,6 +111,8 @@ const hasProfileChanges = (
     controlledShare: number;
     sampleCount: number;
     splitSampleCount: number;
+    observedMaxUncontrolled: number[];
+    observedMaxControlled: number[];
   },
 ): boolean => (
   next.profileUncontrolled !== state.profileUncontrolled
@@ -98,6 +120,8 @@ const hasProfileChanges = (
   || next.controlledShare !== state.profileControlledShare
   || next.sampleCount !== state.profileSampleCount
   || next.splitSampleCount !== state.profileSplitSampleCount
+  || next.observedMaxUncontrolled !== state.profileObservedMaxUncontrolledKWh
+  || next.observedMaxControlled !== state.profileObservedMaxControlledKWh
 );
 
 export const ensureDailyBudgetProfile = (
@@ -115,6 +139,8 @@ export const ensureDailyBudgetProfile = (
     controlledShare: resolveControlledShare(state),
     sampleCount: resolveSampleCount(state),
     splitSampleCount: resolveSplitSampleCount(state),
+    observedMaxUncontrolled: resolveObservedMaxUncontrolled(state),
+    observedMaxControlled: resolveObservedMaxControlled(state),
   };
 
   if (!hasProfileChanges(state, next)) return { state, changed: false };
@@ -126,6 +152,8 @@ export const ensureDailyBudgetProfile = (
       profileControlledShare: next.controlledShare,
       profileSampleCount: next.sampleCount,
       profileSplitSampleCount: next.splitSampleCount,
+      profileObservedMaxUncontrolledKWh: next.observedMaxUncontrolled,
+      profileObservedMaxControlledKWh: next.observedMaxControlled,
     },
     changed: true,
   };

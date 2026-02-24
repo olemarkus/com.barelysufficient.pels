@@ -419,6 +419,178 @@ describe('daily budget price shaping', () => {
   });
 });
 
+describe('daily budget advanced weighting integration', () => {
+  const buildSplitState = () => ({
+    profileUncontrolled: {
+      weights: normalizeWeights([1, 0, ...Array.from({ length: 22 }, () => 0)]),
+      sampleCount: 14,
+    },
+    profileControlled: {
+      weights: normalizeWeights([0, 1, ...Array.from({ length: 22 }, () => 0)]),
+      sampleCount: 14,
+    },
+    profileControlledShare: 0.5,
+    profileSampleCount: 14,
+    profileSplitSampleCount: 14,
+    // Seed explicit observed hour maxima for split caps.
+    profileObservedMaxUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
+    profileObservedMaxControlledKWh: [0, 2, ...Array.from({ length: 22 }, () => 0)],
+  });
+
+  const buildHourlyPrices = (dayStartUtcMs: number, values: number[]) => (
+    values.map((total, hour) => ({
+      startsAt: new Date(dayStartUtcMs + hour * 60 * 60 * 1000).toISOString(),
+      total,
+    }))
+  );
+
+  it('caps budgeted uncontrolled load by observed peak when controlled weight is 0', () => {
+    const manager = buildManager();
+    const settings = buildSettings({
+      dailyBudgetKWh: 10,
+      controlledUsageWeight: 0,
+    });
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const now = dayStart + 5 * 60 * 1000;
+    const currentBucketKey = new Date(dayStart).toISOString();
+    manager.loadState(buildSplitState());
+
+    const update = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [currentBucketKey]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const plannedUncontrolled = update.snapshot.buckets.plannedUncontrolledKWh ?? [];
+    expect(Math.max(...plannedUncontrolled)).toBeLessThanOrEqual(1.2 + 1e-6);
+  });
+
+  it('caps budgeted controlled load by observed peak when controlled weight is 1', () => {
+    const manager = buildManager();
+    const settings = buildSettings({
+      dailyBudgetKWh: 10,
+      controlledUsageWeight: 1,
+    });
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const now = dayStart + 5 * 60 * 1000;
+    const currentBucketKey = new Date(dayStart).toISOString();
+    manager.loadState(buildSplitState());
+
+    const update = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [currentBucketKey]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const plannedControlled = update.snapshot.buckets.plannedControlledKWh ?? [];
+    expect(Math.max(...plannedControlled)).toBeLessThanOrEqual(2.4 + 1e-6);
+  });
+
+  it('increases price-shift intensity when price spread is larger', () => {
+    const manager = buildManager();
+    const settings = buildSettings({
+      dailyBudgetKWh: 24,
+      controlledUsageWeight: 1,
+      priceShapingEnabled: true,
+      priceShapingFlexShare: 1,
+    });
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const now = dayStart + 5 * 60 * 1000;
+    const currentBucketKey = new Date(dayStart).toISOString();
+
+    manager.loadState({
+      profileUncontrolled: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 0)),
+        sampleCount: 14,
+      },
+      profileControlled: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 1)),
+        sampleCount: 14,
+      },
+      profileControlledShare: 1,
+      profileSampleCount: 14,
+      profileSplitSampleCount: 14,
+    });
+
+    const lowSpreadPrices = Array.from({ length: 24 }, (_, hour) => 100 + hour * 0.5);
+    const highSpreadPrices = Array.from({ length: 24 }, (_, hour) => 20 + hour * 10);
+
+    const lowSpreadUpdate = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [currentBucketKey]: 0 } },
+      combinedPrices: { prices: buildHourlyPrices(dayStart, lowSpreadPrices) },
+      priceOptimizationEnabled: true,
+      forcePlanRebuild: true,
+    });
+    const lowSpreadPlanned = lowSpreadUpdate.snapshot.buckets.plannedKWh;
+    const lowSpreadDelta = lowSpreadPlanned[0] - lowSpreadPlanned[23];
+
+    const highSpreadUpdate = manager.update({
+      nowMs: now + 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [currentBucketKey]: 0 } },
+      combinedPrices: { prices: buildHourlyPrices(dayStart, highSpreadPrices) },
+      priceOptimizationEnabled: true,
+      forcePlanRebuild: true,
+    });
+    const highSpreadPlanned = highSpreadUpdate.snapshot.buckets.plannedKWh;
+    const highSpreadDelta = highSpreadPlanned[0] - highSpreadPlanned[23];
+
+    expect(highSpreadDelta).toBeGreaterThan(lowSpreadDelta + 0.05);
+  });
+});
+
+describe('daily budget migration and defaults', () => {
+  it('does not apply observed-peak caps when legacy state has no observed max arrays', () => {
+    const manager = buildManager();
+    const settings = buildSettings({
+      dailyBudgetKWh: 8,
+      controlledUsageWeight: 1,
+    });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 5 * 60 * 1000;
+    const bucketKey = new Date(dayStart).toISOString();
+
+    // Intentionally omit profileObservedMax* to simulate migrated legacy state.
+    manager.loadState({
+      profileUncontrolled: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 0)),
+        sampleCount: 14,
+      },
+      profileControlled: {
+        weights: normalizeWeights([0, 1, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+      profileControlledShare: 1,
+      profileSampleCount: 14,
+      profileSplitSampleCount: 14,
+    });
+
+    const update = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+
+    const plannedControlled = update.snapshot.buckets.plannedControlledKWh ?? [];
+    expect(plannedControlled[1]).toBeGreaterThan(7.9);
+
+    const exported = manager.exportState();
+    expect(exported.profileObservedMaxUncontrolledKWh).toHaveLength(24);
+    expect(exported.profileObservedMaxControlledKWh).toHaveLength(24);
+  });
+});
+
 describe('daily budget preview', () => {
   it('builds a tomorrow preview without a current bucket', () => {
     const manager = buildManager();

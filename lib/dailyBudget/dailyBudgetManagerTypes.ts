@@ -14,8 +14,16 @@ export type ExistingPlanState = {
 
 export type PlanResult = {
   plannedKWh: number[];
+  plannedUncontrolledKWh?: number[];
+  plannedControlledKWh?: number[];
   priceData: PriceData;
   shouldLog: boolean;
+  planDebug?: {
+    lockCurrentBucket: boolean;
+    shouldLockCurrent: boolean;
+    remainingStartIndex: number;
+    hasPreviousPlan: boolean;
+  };
 };
 
 const isValidProfile = (profile?: DailyBudgetState['profile']): boolean => {
@@ -29,6 +37,13 @@ const isNumberOrUndefined = (value: unknown): boolean => (
   value === undefined || typeof value === 'number'
 );
 
+const isHourlyArrayOrUndefined = (value: unknown): boolean => (
+  value === undefined
+  || (Array.isArray(value)
+    && value.length === 24
+    && value.every((entry) => typeof entry === 'number' && Number.isFinite(entry)))
+);
+
 export const isDailyBudgetState = (value: unknown): value is DailyBudgetState => {
   if (!value || typeof value !== 'object') return false;
   const state = value as DailyBudgetState;
@@ -39,6 +54,10 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     && isNumberOrUndefined(state.profileControlledShare)
     && isNumberOrUndefined(state.profileSampleCount)
     && isNumberOrUndefined(state.profileSplitSampleCount)
+    && isHourlyArrayOrUndefined(state.profileObservedMaxUncontrolledKWh)
+    && isHourlyArrayOrUndefined(state.profileObservedMaxControlledKWh)
+    && isHourlyArrayOrUndefined(state.profileObservedMinUncontrolledKWh)
+    && isHourlyArrayOrUndefined(state.profileObservedMinControlledKWh)
     && (!state.plannedKWh || Array.isArray(state.plannedKWh))
   );
 };
