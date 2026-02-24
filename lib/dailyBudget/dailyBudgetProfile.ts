@@ -12,6 +12,7 @@ type LearnedProfileParts = {
 };
 
 const EMPTY_HOURLY_MAX = Array.from({ length: 24 }, () => 0);
+const EMPTY_HOURLY_MIN = Array.from({ length: 24 }, () => 0);
 
 const clampShare = (value: number): number => clamp(value, 0, 1);
 
@@ -85,22 +86,30 @@ const resolveSplitSampleCount = (state: DailyBudgetState): number => (
   typeof state.profileSplitSampleCount === 'number' ? state.profileSplitSampleCount : 0
 );
 
-const isValidObservedHourlyMax = (values?: number[]): values is number[] => (
+const isValidObservedHourlySeries = (values?: number[]): values is number[] => (
   Array.isArray(values)
   && values.length === 24
   && values.every((value) => typeof value === 'number' && Number.isFinite(value))
 );
 
+const resolveObservedSeries = (values: number[] | undefined, fallback: number[]): number[] => (
+  isValidObservedHourlySeries(values) ? values : [...fallback]
+);
+
 const resolveObservedMaxUncontrolled = (state: DailyBudgetState): number[] => (
-  isValidObservedHourlyMax(state.profileObservedMaxUncontrolledKWh)
-    ? state.profileObservedMaxUncontrolledKWh
-    : [...EMPTY_HOURLY_MAX]
+  resolveObservedSeries(state.profileObservedMaxUncontrolledKWh, EMPTY_HOURLY_MAX)
 );
 
 const resolveObservedMaxControlled = (state: DailyBudgetState): number[] => (
-  isValidObservedHourlyMax(state.profileObservedMaxControlledKWh)
-    ? state.profileObservedMaxControlledKWh
-    : [...EMPTY_HOURLY_MAX]
+  resolveObservedSeries(state.profileObservedMaxControlledKWh, EMPTY_HOURLY_MAX)
+);
+
+const resolveObservedMinUncontrolled = (state: DailyBudgetState): number[] => (
+  resolveObservedSeries(state.profileObservedMinUncontrolledKWh, EMPTY_HOURLY_MIN)
+);
+
+const resolveObservedMinControlled = (state: DailyBudgetState): number[] => (
+  resolveObservedSeries(state.profileObservedMinControlledKWh, EMPTY_HOURLY_MIN)
 );
 
 const hasProfileChanges = (
@@ -113,6 +122,8 @@ const hasProfileChanges = (
     splitSampleCount: number;
     observedMaxUncontrolled: number[];
     observedMaxControlled: number[];
+    observedMinUncontrolled: number[];
+    observedMinControlled: number[];
   },
 ): boolean => (
   next.profileUncontrolled !== state.profileUncontrolled
@@ -122,6 +133,8 @@ const hasProfileChanges = (
   || next.splitSampleCount !== state.profileSplitSampleCount
   || next.observedMaxUncontrolled !== state.profileObservedMaxUncontrolledKWh
   || next.observedMaxControlled !== state.profileObservedMaxControlledKWh
+  || next.observedMinUncontrolled !== state.profileObservedMinUncontrolledKWh
+  || next.observedMinControlled !== state.profileObservedMinControlledKWh
 );
 
 export const ensureDailyBudgetProfile = (
@@ -141,6 +154,8 @@ export const ensureDailyBudgetProfile = (
     splitSampleCount: resolveSplitSampleCount(state),
     observedMaxUncontrolled: resolveObservedMaxUncontrolled(state),
     observedMaxControlled: resolveObservedMaxControlled(state),
+    observedMinUncontrolled: resolveObservedMinUncontrolled(state),
+    observedMinControlled: resolveObservedMinControlled(state),
   };
 
   if (!hasProfileChanges(state, next)) return { state, changed: false };
@@ -154,6 +169,8 @@ export const ensureDailyBudgetProfile = (
       profileSplitSampleCount: next.splitSampleCount,
       profileObservedMaxUncontrolledKWh: next.observedMaxUncontrolled,
       profileObservedMaxControlledKWh: next.observedMaxControlled,
+      profileObservedMinUncontrolledKWh: next.observedMinUncontrolled,
+      profileObservedMinControlledKWh: next.observedMinControlled,
     },
     changed: true,
   };

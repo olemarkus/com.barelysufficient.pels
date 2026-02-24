@@ -236,12 +236,6 @@ Price shaping applies only when:
 - daily price shaping is enabled
 - complete remaining price data is available
 
-Price shaping applies only when:
-
-- price optimization is enabled
-- daily price shaping is enabled
-- complete remaining price data is available
-
 Price spread is computed from remaining buckets:
 
 ```text

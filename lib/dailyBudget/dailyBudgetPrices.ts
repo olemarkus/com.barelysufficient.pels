@@ -94,7 +94,8 @@ export function buildPriceFactors(params: {
   const p90 = percentile(priceList, 0.9);
   const spread = Math.max(0, p90 - p10);
   const priceSpreadFactor = resolvePriceSpreadFactor({ spread, median });
-  const normalizedSpread = Math.max(1, p90 - p10);
+  // Avoid divide-by-zero and keep shaping stable when prices are flat.
+  const normalizedSpread = Math.max(1, spread);
   const minFactor = 0.7;
   const maxFactor = 1.3;
   const remainingFactors = numericPrices.map((price) => (
