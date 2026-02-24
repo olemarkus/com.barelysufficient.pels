@@ -4,6 +4,8 @@ import {
   getNextLocalDayStartUtcMs,
   getZonedParts,
 } from '../utils/dateUtils';
+import { OBSERVED_HOURLY_PEAK_WINDOW_DAYS } from './dailyBudgetConstants';
+import { buildObservedHourlyStatsFromWindow } from './dailyBudgetObservedStats';
 import { normalizeWeights, sumArray } from './dailyBudgetMath';
 import type { DailyBudgetState } from './dailyBudgetTypes';
 
@@ -73,6 +75,7 @@ type LearningSkipResult = { nextState: DailyBudgetState; shouldMarkDirty: boolea
 
 type LearningWindow = {
   bucketStartUtcMs: number[];
+  windowEndUtcMs: number;
 };
 
 type LearningTotals = {
@@ -117,7 +120,10 @@ const resolveLearningWindow = (params: {
     nextDayStartUtcMs: previousNextDayStartUtcMs,
     timeZone,
   });
-  return { bucketStartUtcMs };
+  return {
+    bucketStartUtcMs,
+    windowEndUtcMs: previousNextDayStartUtcMs,
+  };
 };
 
 const resolveLearningTotals = (params: {
@@ -236,6 +242,7 @@ const resolveNextProfile = (params: {
   });
 };
 
+
 const buildNextLearningState = (params: {
   state: DailyBudgetState;
   defaultProfile: number[];
@@ -244,6 +251,10 @@ const buildNextLearningState = (params: {
   bucketUsage: ReturnType<typeof buildBucketUsageSplit>;
   dayUncontrolledWeights: number[] | null;
   dayControlledWeights: number[] | null;
+  observedMaxUncontrolled: number[];
+  observedMaxControlled: number[];
+  observedMinUncontrolled: number[];
+  observedMinControlled: number[];
 }): DailyBudgetState => {
   const {
     state,
@@ -253,6 +264,10 @@ const buildNextLearningState = (params: {
     bucketUsage,
     dayUncontrolledWeights,
     dayControlledWeights,
+    observedMaxUncontrolled,
+    observedMaxControlled,
+    observedMinUncontrolled,
+    observedMinControlled,
   } = params;
   const previousSampleCount = resolveProfileSampleCount(state);
   const previousSplitSampleCount = resolveProfileSplitSampleCount(state);
@@ -286,8 +301,13 @@ const buildNextLearningState = (params: {
     profileControlledShare: nextControlledShare,
     profileSampleCount: nextSampleCount,
     profileSplitSampleCount: nextSplitSampleCount,
+    profileObservedMaxUncontrolledKWh: observedMaxUncontrolled,
+    profileObservedMaxControlledKWh: observedMaxControlled,
+    profileObservedMinUncontrolledKWh: observedMinUncontrolled,
+    profileObservedMinControlledKWh: observedMinControlled,
   });
 };
+
 
 export function finalizePreviousDayLearning(params: {
   state: DailyBudgetState;
@@ -296,6 +316,7 @@ export function finalizePreviousDayLearning(params: {
   previousDateKey: string;
   previousDayStartUtcMs: number | null;
   defaultProfile: number[];
+  nowMs?: number;
 }): { nextState: DailyBudgetState; shouldMarkDirty: boolean; logMessage?: string } {
   const {
     state,
@@ -304,6 +325,7 @@ export function finalizePreviousDayLearning(params: {
     previousDateKey,
     previousDayStartUtcMs,
     defaultProfile,
+    nowMs,
   } = params;
   const windowResult = resolveLearningWindow({
     state,
@@ -336,6 +358,22 @@ export function finalizePreviousDayLearning(params: {
     totalUncontrolledKWh,
     totalControlledKWh,
   });
+  const observedWindowEndMs = typeof nowMs === 'number' && Number.isFinite(nowMs)
+    ? nowMs
+    : windowResult.windowEndUtcMs;
+  const observedWindowStartMs = observedWindowEndMs - OBSERVED_HOURLY_PEAK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const {
+    observedMaxUncontrolled,
+    observedMaxControlled,
+    observedMinUncontrolled,
+    observedMinControlled,
+    windowBucketCount,
+  } = buildObservedHourlyStatsFromWindow({
+    powerTracker,
+    timeZone,
+    windowStartUtcMs: observedWindowStartMs,
+    windowEndUtcMs: observedWindowEndMs,
+  });
   const nextState = buildNextLearningState({
     state,
     defaultProfile,
@@ -344,15 +382,20 @@ export function finalizePreviousDayLearning(params: {
     bucketUsage,
     dayUncontrolledWeights,
     dayControlledWeights,
+    observedMaxUncontrolled,
+    observedMaxControlled,
+    observedMinUncontrolled,
+    observedMinControlled,
   });
 
   const sourceLabel = bucketUsage.usedControlledData ? 'split' : 'total';
   return {
     nextState,
     shouldMarkDirty: true,
-    logMessage: `Daily budget: finalized ${previousDateKey} (${totalKWh.toFixed(2)} kWh ${sourceLabel})`,
+    logMessage: `Daily budget: finalized ${previousDateKey} (${totalKWh.toFixed(2)} kWh ${sourceLabel}, window buckets ${windowBucketCount})`,
   };
 }
+
 
 function buildProfileFallback(defaultProfile: number[]) {
   return {

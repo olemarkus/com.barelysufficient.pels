@@ -29,6 +29,45 @@ type BuildDailyBudgetPreviewParams = {
   profileSampleCount: number;
   profileSplitSampleCount?: number;
   profileBreakdown?: { uncontrolled: number[]; controlled: number[] };
+  profileObservedMaxUncontrolledKWh?: number[];
+  profileObservedMaxControlledKWh?: number[];
+  profileObservedMinUncontrolledKWh?: number[];
+  profileObservedMinControlledKWh?: number[];
+};
+
+const resolvePlannedBreakdown = (params: {
+  enabled: boolean;
+  buildResult: ReturnType<typeof buildPlan> | null;
+  plannedKWh: number[];
+  bucketStartUtcMs: number[];
+  timeZone: string;
+  profileBreakdown?: { uncontrolled: number[]; controlled: number[] };
+}): ReturnType<typeof buildPlanBreakdown> | null => {
+  const {
+    enabled,
+    buildResult,
+    plannedKWh,
+    bucketStartUtcMs,
+    timeZone,
+    profileBreakdown,
+  } = params;
+  if (!enabled) return null;
+  const hasPlannedBreakdown = Array.isArray(buildResult?.plannedUncontrolledKWh)
+    && Array.isArray(buildResult?.plannedControlledKWh)
+    && buildResult.plannedUncontrolledKWh.length === plannedKWh.length
+    && buildResult.plannedControlledKWh.length === plannedKWh.length;
+  if (hasPlannedBreakdown) {
+    return {
+      plannedUncontrolledKWh: buildResult.plannedUncontrolledKWh,
+      plannedControlledKWh: buildResult.plannedControlledKWh,
+    };
+  }
+  return buildPlanBreakdown({
+    bucketStartUtcMs,
+    timeZone,
+    plannedKWh,
+    breakdown: profileBreakdown,
+  });
 };
 
 export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): DailyBudgetDayPayload => {
@@ -45,6 +84,10 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     profileSampleCount,
     profileSplitSampleCount,
     profileBreakdown,
+    profileObservedMaxUncontrolledKWh,
+    profileObservedMaxControlledKWh,
+    profileObservedMinUncontrolledKWh,
+    profileObservedMinControlledKWh,
   } = params;
 
   const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
@@ -74,8 +117,9 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     currentBucketUsage: 0,
   };
 
-  const plannedKWh = enabled
-    ? buildPlan({
+  let buildResult: ReturnType<typeof buildPlan> | null = null;
+  if (enabled) {
+    buildResult = buildPlan({
       bucketStartUtcMs,
       bucketUsage,
       currentBucketIndex,
@@ -90,16 +134,22 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
       priceShapingEnabled,
       priceShapingFlexShare: settings.priceShapingFlexShare,
       capacityBudgetKWh,
-    }).plannedKWh
-    : bucketStartUtcMs.map(() => 0);
-  const breakdown = enabled
-    ? buildPlanBreakdown({
-      bucketStartUtcMs,
-      timeZone,
-      plannedKWh,
-      breakdown: profileBreakdown,
-    })
-    : null;
+      controlledUsageWeight: settings.controlledUsageWeight,
+      profileObservedMaxUncontrolledKWh,
+      profileObservedMaxControlledKWh,
+      profileObservedMinUncontrolledKWh,
+      profileObservedMinControlledKWh,
+    });
+  }
+  const plannedKWh = buildResult?.plannedKWh ?? bucketStartUtcMs.map(() => 0);
+  const breakdown = resolvePlannedBreakdown({
+    enabled,
+    buildResult,
+    plannedKWh,
+    bucketStartUtcMs,
+    timeZone,
+    profileBreakdown,
+  });
 
   const budget = computeBudgetState({
     context,

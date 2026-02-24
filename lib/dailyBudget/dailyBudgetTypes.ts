@@ -25,6 +25,10 @@ export type DailyBudgetState = {
   profileControlledShare?: number;
   profileSampleCount?: number;
   profileSplitSampleCount?: number;
+  profileObservedMaxUncontrolledKWh?: number[];
+  profileObservedMaxControlledKWh?: number[];
+  profileObservedMinUncontrolledKWh?: number[];
+  profileObservedMinControlledKWh?: number[];
 };
 
 export type DailyBudgetDayPayload = {
