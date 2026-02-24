@@ -10,5 +10,6 @@
   "setable": false,
   "uiComponent": "sensor",
   "insights": true,
-  "decimals": 0
+  "decimals": 0,
+  "icon": "/assets/capabilities/pels_devices_on.svg"
 }

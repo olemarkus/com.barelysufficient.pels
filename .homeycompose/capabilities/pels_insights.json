@@ -7,5 +7,6 @@
   },
   "type": "string",
   "getable": true,
-  "setable": false
+  "setable": false,
+  "icon": "/assets/capabilities/pels_insights.svg"
 }

@@ -10,5 +10,6 @@
   "setable": false,
   "uiComponent": "sensor",
   "insights": false,
-  "decimals": 2
+  "decimals": 2,
+  "icon": "/assets/capabilities/pels_daily_budget_pressure.svg"
 }

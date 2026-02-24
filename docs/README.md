@@ -113,6 +113,7 @@ Use this as the reference for capacity and budget wording:
 - **Hourly hard-cap budget** is the hourly energy equivalent of the hard cap (**kWh** for the current hour).
 - **Hourly soft budget** is the hourly energy equivalent of `(limit - margin)` (**kWh** for the current hour).
 - **Hourly soft limit** is a dynamic run-rate limit in **kW**.
+- **Current soft limit** (`pels_hourly_limit_kw`) is the effective limit currently used for shedding; it is the lower of hourly soft limit and daily soft limit (when daily budget is enabled).
 - **Headroom** is `soft_limit_kW - current_load_kW` and is in **kW**.
 - **Hourly budget remaining** is `hourly_budget_kWh - used_this_hour_kWh` and is in **kWh**.
 - **Daily budget** and **daily remaining** are in **kWh**.
