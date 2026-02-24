@@ -42,8 +42,9 @@ export function allocateBudgetWithCaps(params: {
     .map((_, index) => index)
     .filter((index) => (caps[index] ?? 0) > CAP_ALLOCATION_EPSILON);
   let guard = 0;
+  const maxIterations = count + MAX_CAP_REDISTRIBUTION_EXTRA_ITERATIONS;
 
-  while (remaining > CAP_ALLOCATION_EPSILON && active.length > 0 && guard < count + MAX_CAP_REDISTRIBUTION_EXTRA_ITERATIONS) {
+  while (remaining > CAP_ALLOCATION_EPSILON && active.length > 0 && guard < maxIterations) {
     const weightSum = active.reduce((sum, index) => sum + (weights[index] ?? 0), 0);
     if (weightSum <= CAP_ALLOCATION_EPSILON) {
       const evenShare = remaining / active.length;

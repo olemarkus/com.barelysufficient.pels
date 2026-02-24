@@ -345,7 +345,7 @@ Diagnostics and expert tuning controls.
 | Setting | Description |
 |---------|-------------|
 | **Debug logging topics** | Select which areas emit debug logs. Selections persist across restarts. |
-| **Controlled usage weight** | How strongly controlled load influences daily-budget shaping. It affects both learned profile blending and split-budget observed-peak caps (0 = uncontrolled-dominant, 1 = controlled-dominant). Observed split peaks and minimum floors use a rolling 30-day window. Default: 0.30. |
+| **Controlled usage weight** | Balances uncontrolled vs controlled influence in the daily plan (0 = uncontrolled, 1 = controlled). Also used for observed caps/floors. Default: 0.30. |
 | **Price flex share** | Maximum strength for price shaping of controlled load. Effective shaping also depends on the current day’s price spread (low spread = softer effect). Default: 0.35. |
 | **Show daily budget breakdown in chart** | Splits charted plan into controlled vs. uncontrolled portions. |
 

@@ -1,5 +1,7 @@
 import { clamp } from '../utils/mathUtils';
 import {
+  NEW_PLAN_BLEND_WEIGHT,
+  PREVIOUS_PLAN_BLEND_WEIGHT,
   PRICE_SHAPING_FLEX_SHARE,
 } from './dailyBudgetConstants';
 import {
@@ -14,9 +16,6 @@ import {
 import { buildPlanWeights, resolveSplitShares } from './dailyBudgetPlanWeights';
 import type { CombinedPriceData } from './dailyBudgetPrices';
 import { buildPriceFactors } from './dailyBudgetPrices';
-
-const PREVIOUS_PLAN_BLEND_WEIGHT = 0.7;
-const NEW_PLAN_BLEND_WEIGHT = 1 - PREVIOUS_PLAN_BLEND_WEIGHT;
 
 type SplitShares = ReturnType<typeof resolveSplitShares>;
 
@@ -140,12 +139,11 @@ const resolvePlanSetup = (params: BuildPlanParams): PlanSetup => {
   const configuredFlexShare = typeof priceShapingFlexShare === 'number'
     ? priceShapingFlexShare
     : PRICE_SHAPING_FLEX_SHARE;
+  const priceSpreadFactor = typeof priceShape.priceSpreadFactor === 'number'
+    ? priceShape.priceSpreadFactor
+    : 0;
   const effectivePriceShapingFlexShare = priceShape.priceShapingActive
-    ? clamp(
-      configuredFlexShare * (typeof priceShape.priceSpreadFactor === 'number' ? priceShape.priceSpreadFactor : 0),
-      0,
-      1,
-    )
+    ? clamp(configuredFlexShare * priceSpreadFactor, 0, 1)
     : 0;
   const planWeights = buildPlanWeights({
     bucketStartUtcMs,
@@ -297,7 +295,7 @@ const buildPlannedSplit = (params: {
   controlledMinFloors?: number[];
 }): Array<{ plannedUncontrolled: number; plannedControlled: number }> => {
   const { plannedKWh, splitShares, controlledMinFloors } = params;
-  return splitShares.uncontrolled.map((share, index) => {
+  return splitShares.uncontrolled.map((_share, index) => {
     const planned = plannedKWh[index] ?? 0;
     const shareControlled = splitShares.controlled[index] ?? 0;
     let plannedControlled = planned * shareControlled;

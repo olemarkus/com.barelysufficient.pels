@@ -8,10 +8,11 @@ const updateHourMax = (values: number[], hour: number, candidate: number): numbe
 );
 
 const updateHourMin = (values: number[], hour: number, candidate: number): number[] => {
-  const nextCandidate = candidate > 0 ? candidate : Number.POSITIVE_INFINITY;
+  if (candidate <= 0) return values;
   return values.map((value, index) => {
     if (index !== hour) return value;
-    return Math.min(value, nextCandidate);
+    if (value <= 0) return candidate;
+    return Math.min(value, candidate);
   });
 };
 
@@ -68,21 +69,67 @@ export const buildObservedHourlyStatsFromWindow = (params: {
   }, {
     observedMaxUncontrolled: Array.from({ length: 24 }, () => 0),
     observedMaxControlled: Array.from({ length: 24 }, () => 0),
-    observedMinUncontrolled: Array.from({ length: 24 }, () => Number.POSITIVE_INFINITY),
-    observedMinControlled: Array.from({ length: 24 }, () => Number.POSITIVE_INFINITY),
+    observedMinUncontrolled: Array.from({ length: 24 }, () => 0),
+    observedMinControlled: Array.from({ length: 24 }, () => 0),
     windowBucketCount: 0,
   });
 
-  return {
-    ...stats,
-    observedMinUncontrolled: stats.observedMinUncontrolled.map((value) => (Number.isFinite(value) ? value : 0)),
-    observedMinControlled: stats.observedMinControlled.map((value) => (Number.isFinite(value) ? value : 0)),
-  };
+  return { ...stats };
 };
 
 const hasAnyPositive = (values?: number[]): boolean => (
   Array.isArray(values) && values.some((value) => typeof value === 'number' && value > 0)
 );
+
+const areEqualNumberArrays = (left?: number[], right?: number[]): boolean => {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+};
+
+const applyObservedUpdate = (params: {
+  state: DailyBudgetState;
+  needsMax: boolean;
+  needsMin: boolean;
+  observedMaxUncontrolled: number[];
+  observedMaxControlled: number[];
+  observedMinUncontrolled: number[];
+  observedMinControlled: number[];
+}): { nextState: DailyBudgetState; changed: boolean } => {
+  const {
+    state,
+    needsMax,
+    needsMin,
+    observedMaxUncontrolled,
+    observedMaxControlled,
+    observedMinUncontrolled,
+    observedMinControlled,
+  } = params;
+  const nextState: DailyBudgetState = {
+    ...state,
+    profileObservedMaxUncontrolledKWh: needsMax
+      ? observedMaxUncontrolled
+      : state.profileObservedMaxUncontrolledKWh,
+    profileObservedMaxControlledKWh: needsMax
+      ? observedMaxControlled
+      : state.profileObservedMaxControlledKWh,
+    profileObservedMinUncontrolledKWh: needsMin
+      ? observedMinUncontrolled
+      : state.profileObservedMinUncontrolledKWh,
+    profileObservedMinControlledKWh: needsMin
+      ? observedMinControlled
+      : state.profileObservedMinControlledKWh,
+  };
+  const maxChanged = needsMax && (
+    !areEqualNumberArrays(state.profileObservedMaxUncontrolledKWh, nextState.profileObservedMaxUncontrolledKWh)
+    || !areEqualNumberArrays(state.profileObservedMaxControlledKWh, nextState.profileObservedMaxControlledKWh)
+  );
+  const minChanged = needsMin && (
+    !areEqualNumberArrays(state.profileObservedMinUncontrolledKWh, nextState.profileObservedMinUncontrolledKWh)
+    || !areEqualNumberArrays(state.profileObservedMinControlledKWh, nextState.profileObservedMinControlledKWh)
+  );
+  return { nextState, changed: maxChanged || minChanged };
+};
 
 export function ensureObservedHourlyStats(params: {
   state: DailyBudgetState;
@@ -122,23 +169,22 @@ export function ensureObservedHourlyStats(params: {
     windowEndUtcMs,
   });
 
+  const update = applyObservedUpdate({
+    state,
+    needsMax,
+    needsMin,
+    observedMaxUncontrolled,
+    observedMaxControlled,
+    observedMinUncontrolled,
+    observedMinControlled,
+  });
+  if (!update.changed) return { nextState: state, changed: false };
+
   return {
-    nextState: {
-      ...state,
-      profileObservedMaxUncontrolledKWh: needsMax
-        ? observedMaxUncontrolled
-        : state.profileObservedMaxUncontrolledKWh,
-      profileObservedMaxControlledKWh: needsMax
-        ? observedMaxControlled
-        : state.profileObservedMaxControlledKWh,
-      profileObservedMinUncontrolledKWh: needsMin
-        ? observedMinUncontrolled
-        : state.profileObservedMinUncontrolledKWh,
-      profileObservedMinControlledKWh: needsMin
-        ? observedMinControlled
-        : state.profileObservedMinControlledKWh,
-    },
-    changed: true,
-    logMessage: `Daily budget: backfilled observed stats (window buckets ${windowBucketCount})`,
+    nextState: update.nextState,
+    changed: update.changed,
+    logMessage: update.changed
+      ? `Daily budget: backfilled observed stats (window buckets ${windowBucketCount})`
+      : undefined,
   };
 }

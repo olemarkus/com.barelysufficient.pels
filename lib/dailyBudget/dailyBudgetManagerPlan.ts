@@ -4,6 +4,9 @@ import { getConfidence } from './dailyBudgetMath';
 import {
   OBSERVED_HOURLY_PEAK_MARGIN_RATIO,
   OBSERVED_HOURLY_PEAK_WINDOW_DAYS,
+  PLAN_REBUILD_INTERVAL_MS,
+  PLAN_REBUILD_USAGE_DELTA_KWH,
+  PLAN_REBUILD_USAGE_MIN_INTERVAL_MS,
 } from './dailyBudgetConstants';
 import { getProfileDebugSummary } from './dailyBudgetProfile';
 import type {
@@ -11,10 +14,6 @@ import type {
   DailyBudgetSettings,
   DailyBudgetState,
 } from './dailyBudgetTypes';
-
-const PLAN_REBUILD_INTERVAL_MS = 60 * 60 * 1000;
-const PLAN_REBUILD_USAGE_DELTA_KWH = 0.05;
-const PLAN_REBUILD_USAGE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 
 export function resolveExistingPlanState(params: {
   state: DailyBudgetState;
@@ -56,6 +55,35 @@ export function resolveExistingPlanState(params: {
       deviationExisting,
     },
     resetPlanState: planStateMismatch,
+  };
+}
+
+export function resolvePlanLockState(params: {
+  context: DayContext;
+  existingPlan: number[] | null;
+  lastPlanBucketStartUtcMs?: number | null;
+}): {
+  lockCurrentBucket: boolean;
+  hasPreviousPlan: boolean;
+  shouldLockCurrent: boolean;
+  remainingStartIndex: number;
+  currentBucketStartUtcMs: number;
+} {
+  const { context, existingPlan, lastPlanBucketStartUtcMs } = params;
+  const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
+  const lockCurrentBucket = lastPlanBucketStartUtcMs === currentBucketStartUtcMs;
+  const hasPreviousPlan = Array.isArray(existingPlan)
+    && existingPlan.length === context.bucketStartUtcMs.length;
+  const shouldLockCurrent = Boolean(lockCurrentBucket) && hasPreviousPlan;
+  const remainingStartIndex = shouldLockCurrent
+    ? Math.min(context.currentBucketIndex + 1, context.bucketStartUtcMs.length)
+    : context.currentBucketIndex;
+  return {
+    lockCurrentBucket,
+    hasPreviousPlan,
+    shouldLockCurrent,
+    remainingStartIndex,
+    currentBucketStartUtcMs,
   };
 }
 

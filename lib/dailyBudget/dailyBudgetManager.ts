@@ -8,6 +8,7 @@ import type { CombinedPriceData } from './dailyBudgetMath';
 import { buildSnapshot, logBudgetSummaryIfNeeded, logPlanDebugIfNeeded } from './dailyBudgetManagerSnapshot';
 import {
   resolveExistingPlanState,
+  resolvePlanLockState,
   shouldRebuildDailyBudgetPlan,
 } from './dailyBudgetManagerPlan';
 import { logNextDayPlanDebug } from './dailyBudgetNextDayDebug';
@@ -34,10 +35,10 @@ import {
   getProfileSplitSampleCount,
 } from './dailyBudgetProfile';
 
-const STATE_PERSIST_INTERVAL_MS = 60 * 1000;
 const DEFAULT_PROFILE = buildDefaultProfile();
 
 export class DailyBudgetManager {
+  private static readonly STATE_PERSIST_INTERVAL_MS = 60 * 1000;
   private state: DailyBudgetState = {};
   private snapshot: DailyBudgetDayPayload | null = null;
   private dirty = false;
@@ -325,14 +326,11 @@ export class DailyBudgetManager {
       priceOptimizationEnabled,
       capacityBudgetKWh,
     } = params;
-    const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
-    const lockCurrentBucket = this.state.lastPlanBucketStartUtcMs === currentBucketStartUtcMs;
-    const hasPreviousPlan = Array.isArray(existingPlan)
-      && existingPlan.length === context.bucketStartUtcMs.length;
-    const shouldLockCurrent = Boolean(lockCurrentBucket) && hasPreviousPlan;
-    const remainingStartIndex = shouldLockCurrent
-      ? Math.min(context.currentBucketIndex + 1, context.bucketStartUtcMs.length)
-      : context.currentBucketIndex;
+    const lockState = resolvePlanLockState({
+      context,
+      existingPlan,
+      lastPlanBucketStartUtcMs: this.state.lastPlanBucketStartUtcMs,
+    });
     const profileData = getEffectiveProfileData(this.state, settings, DEFAULT_PROFILE);
     const buildResult = buildPlan({
         bucketStartUtcMs: context.bucketStartUtcMs,
@@ -350,7 +348,7 @@ export class DailyBudgetManager {
         priceShapingFlexShare: settings.priceShapingFlexShare,
         previousPlannedKWh: existingPlan ?? undefined,
         capacityBudgetKWh,
-        lockCurrentBucket,
+        lockCurrentBucket: lockState.lockCurrentBucket,
         controlledUsageWeight: settings.controlledUsageWeight,
         profileObservedMaxUncontrolledKWh: this.state.profileObservedMaxUncontrolledKWh,
         profileObservedMaxControlledKWh: this.state.profileObservedMaxControlledKWh,
@@ -358,7 +356,7 @@ export class DailyBudgetManager {
         profileObservedMinControlledKWh: this.state.profileObservedMinControlledKWh,
       });
     this.state.plannedKWh = buildResult.plannedKWh;
-    this.state.lastPlanBucketStartUtcMs = currentBucketStartUtcMs;
+    this.state.lastPlanBucketStartUtcMs = lockState.currentBucketStartUtcMs;
     this.state.dayStartUtcMs = context.dayStartUtcMs;
     this.lastPlanRebuildMs = context.nowMs;
     this.markDirty();
@@ -374,10 +372,10 @@ export class DailyBudgetManager {
         effectivePriceShapingFlexShare: buildResult.effectivePriceShapingFlexShare,
       },
       planDebug: {
-        lockCurrentBucket,
-        shouldLockCurrent,
-        remainingStartIndex,
-        hasPreviousPlan,
+        lockCurrentBucket: lockState.lockCurrentBucket,
+        shouldLockCurrent: lockState.shouldLockCurrent,
+        remainingStartIndex: lockState.remainingStartIndex,
+        hasPreviousPlan: lockState.hasPreviousPlan,
       },
     };
   }
@@ -415,7 +413,8 @@ export class DailyBudgetManager {
   }
 
   private shouldPersist(nowMs: number): boolean {
-    const shouldPersist = this.dirty && (nowMs - this.lastPersistMs >= STATE_PERSIST_INTERVAL_MS);
+    const shouldPersist = this.dirty
+      && (nowMs - this.lastPersistMs >= DailyBudgetManager.STATE_PERSIST_INTERVAL_MS);
     if (shouldPersist) {
       this.lastPersistMs = nowMs;
       this.dirty = false;
