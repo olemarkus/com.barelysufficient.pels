@@ -3,6 +3,7 @@ import tseslint from 'typescript-eslint';
 import nodePlugin from 'eslint-plugin-n';
 import functional from 'eslint-plugin-functional';
 import sonarjs from 'eslint-plugin-sonarjs';
+import unicorn from 'eslint-plugin-unicorn';
 import globals from 'globals';
 
 export default tseslint.config(
@@ -68,6 +69,7 @@ export default tseslint.config(
       functional,
       n: nodePlugin,
       sonarjs,
+      unicorn,
     },
     languageOptions: {
       ecmaVersion: 2022,
@@ -140,6 +142,28 @@ export default tseslint.config(
         ignores: ['fetch'],
       }],
       'n/no-unsupported-features/es-syntax': ['error', { version: '>=18.0.0', ignores: ['modules'] }],
+    },
+  },
+  // Runtime hot paths - stricter perf-oriented iteration rules
+  {
+    files: ['lib/core/**/*.ts', 'lib/plan/**/*.ts', 'lib/dailyBudget/**/*.ts'],
+    rules: {
+      // Perf-focused loop refactors may use local mutation; immutability is still enforced elsewhere.
+      'functional/immutable-data': 'off',
+      'unicorn/no-array-for-each': 'error',
+      // TODO(perf): tighten to { allowSimpleOperations: false } after remaining reducers are migrated.
+      'unicorn/no-array-reduce': ['error', { allowSimpleOperations: true }],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: ':matches(ForStatement,ForInStatement,ForOfStatement,WhileStatement,DoWhileStatement) CallExpression[callee.object.name="Array"][callee.property.name="from"]',
+          message: 'Avoid Array.from allocations inside loops.',
+        },
+        {
+          selector: ':matches(ForStatement,ForInStatement,ForOfStatement,WhileStatement,DoWhileStatement) SpreadElement',
+          message: 'Avoid spread allocations inside loops.',
+        },
+      ],
     },
   },
   // Test files - relaxed rules

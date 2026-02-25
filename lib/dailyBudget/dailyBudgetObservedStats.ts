@@ -21,14 +21,6 @@ const createHourlyBuckets = (): number[][] => (
   Array.from({ length: 24 }, () => [])
 );
 
-const appendHourlyValue = (
-  hourlyValues: number[][],
-  hour: number,
-  value: number,
-): number[][] => (
-  hourlyValues.map((entries, index) => (index === hour ? [...entries, value] : entries))
-);
-
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
 const percentileLinear = (values: number[], quantile: number): number => {
@@ -48,7 +40,11 @@ const percentileLinear = (values: number[], quantile: number): number => {
 const resolveObservedMax = (values: number[]): number => {
   if (values.length === 0) return 0;
   if (values.length < OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES) {
-    return values.reduce((max, value) => Math.max(max, value), 0);
+    let maxValue = 0;
+    for (const value of values) {
+      maxValue = Math.max(maxValue, value);
+    }
+    return maxValue;
   }
   return percentileLinear(values, OBSERVED_HOURLY_MAX_QUANTILE);
 };
@@ -57,7 +53,11 @@ const resolveObservedMin = (values: number[]): number => {
   const positiveValues = values.filter((value) => value > 0);
   if (positiveValues.length === 0) return 0;
   if (positiveValues.length < OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES) {
-    return positiveValues.reduce((min, value) => Math.min(min, value), positiveValues[0] ?? 0);
+    let minValue = positiveValues[0] ?? 0;
+    for (const value of positiveValues) {
+      minValue = Math.min(minValue, value);
+    }
+    return minValue;
   }
   return percentileLinear(positiveValues, OBSERVED_HOURLY_MIN_QUANTILE);
 };
@@ -70,6 +70,47 @@ const clampMinByMax = (mins: number[], maxes: number[]): number[] => (
     return minValue;
   })
 );
+
+const resolveWindowBucketUsage = (params: {
+  key: string;
+  totalRaw: unknown;
+  controlledBuckets: Record<string, number>;
+  uncontrolledBuckets: Record<string, number>;
+  timeZone: string;
+  windowStartUtcMs: number;
+  windowEndUtcMs: number;
+}): { hour: number; controlled: number; uncontrolled: number } | null => {
+  const {
+    key,
+    totalRaw,
+    controlledBuckets,
+    uncontrolledBuckets,
+    timeZone,
+    windowStartUtcMs,
+    windowEndUtcMs,
+  } = params;
+  const ts = new Date(key).getTime();
+  if (!Number.isFinite(ts) || ts < windowStartUtcMs || ts >= windowEndUtcMs) return null;
+  if (typeof totalRaw !== 'number' || !Number.isFinite(totalRaw)) return null;
+  const total = Math.max(0, totalRaw);
+  if (total <= 0) return null;
+
+  const controlledRaw = controlledBuckets[key];
+  const uncontrolledRaw = uncontrolledBuckets[key];
+  let controlled = 0;
+  let uncontrolled = total;
+
+  if (typeof controlledRaw === 'number' && Number.isFinite(controlledRaw)) {
+    controlled = Math.max(0, Math.min(controlledRaw, total));
+    uncontrolled = Math.max(0, total - controlled);
+  } else if (typeof uncontrolledRaw === 'number' && Number.isFinite(uncontrolledRaw)) {
+    uncontrolled = Math.max(0, Math.min(uncontrolledRaw, total));
+    controlled = Math.max(0, total - uncontrolled);
+  }
+
+  const hour = getZonedParts(new Date(ts), timeZone).hour;
+  return { hour, controlled, uncontrolled };
+};
 
 export const buildObservedHourlyStatsFromWindow = (params: {
   powerTracker: PowerTrackerState;
@@ -92,47 +133,33 @@ export const buildObservedHourlyStatsFromWindow = (params: {
   const totalBuckets = powerTracker.buckets || {};
   const controlledBuckets = powerTracker.controlledBuckets || {};
   const uncontrolledBuckets = powerTracker.uncontrolledBuckets || {};
+  const hourlyUncontrolled = createHourlyBuckets();
+  const hourlyControlled = createHourlyBuckets();
+  let windowBucketCount = 0;
+  for (const [key, totalRaw] of Object.entries(totalBuckets)) {
+    const usage = resolveWindowBucketUsage({
+      key,
+      totalRaw,
+      controlledBuckets,
+      uncontrolledBuckets,
+      timeZone,
+      windowStartUtcMs,
+      windowEndUtcMs,
+    });
+    if (!usage) continue;
+    hourlyUncontrolled[usage.hour].push(usage.uncontrolled);
+    hourlyControlled[usage.hour].push(usage.controlled);
+    windowBucketCount += 1;
+  }
 
-  const stats = Object.entries(totalBuckets).reduce((acc, [key, totalRaw]) => {
-    const ts = new Date(key).getTime();
-    if (!Number.isFinite(ts) || ts < windowStartUtcMs || ts >= windowEndUtcMs) return acc;
-    if (typeof totalRaw !== 'number' || !Number.isFinite(totalRaw)) return acc;
-    const total = Math.max(0, totalRaw);
-    if (total <= 0) return acc;
-
-    const controlledRaw = controlledBuckets[key];
-    const uncontrolledRaw = uncontrolledBuckets[key];
-    let controlled = 0;
-    let uncontrolled = total;
-
-    if (typeof controlledRaw === 'number' && Number.isFinite(controlledRaw)) {
-      controlled = Math.max(0, Math.min(controlledRaw, total));
-      uncontrolled = Math.max(0, total - controlled);
-    } else if (typeof uncontrolledRaw === 'number' && Number.isFinite(uncontrolledRaw)) {
-      uncontrolled = Math.max(0, Math.min(uncontrolledRaw, total));
-      controlled = Math.max(0, total - uncontrolled);
-    }
-
-    const hour = getZonedParts(new Date(ts), timeZone).hour;
-    return {
-      hourlyUncontrolled: appendHourlyValue(acc.hourlyUncontrolled, hour, uncontrolled),
-      hourlyControlled: appendHourlyValue(acc.hourlyControlled, hour, controlled),
-      windowBucketCount: acc.windowBucketCount + 1,
-    };
-  }, {
-    hourlyUncontrolled: createHourlyBuckets(),
-    hourlyControlled: createHourlyBuckets(),
-    windowBucketCount: 0,
-  });
-
-  const observedMaxUncontrolled = stats.hourlyUncontrolled.map((values) => resolveObservedMax(values));
-  const observedMaxControlled = stats.hourlyControlled.map((values) => resolveObservedMax(values));
+  const observedMaxUncontrolled = hourlyUncontrolled.map((values) => resolveObservedMax(values));
+  const observedMaxControlled = hourlyControlled.map((values) => resolveObservedMax(values));
   const observedMinUncontrolled = clampMinByMax(
-    stats.hourlyUncontrolled.map((values) => resolveObservedMin(values)),
+    hourlyUncontrolled.map((values) => resolveObservedMin(values)),
     observedMaxUncontrolled,
   );
   const observedMinControlled = clampMinByMax(
-    stats.hourlyControlled.map((values) => resolveObservedMin(values)),
+    hourlyControlled.map((values) => resolveObservedMin(values)),
     observedMaxControlled,
   );
 
@@ -141,7 +168,7 @@ export const buildObservedHourlyStatsFromWindow = (params: {
     observedMaxControlled,
     observedMinUncontrolled,
     observedMinControlled,
-    windowBucketCount: stats.windowBucketCount,
+    windowBucketCount,
   };
 };
 

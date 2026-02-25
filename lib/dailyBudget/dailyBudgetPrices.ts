@@ -58,10 +58,10 @@ export function buildPriceSeries(params: {
     return undefined;
   }
   const priceByStart = new Map<number, number>();
-  entries.forEach((entry) => {
+  for (const entry of entries) {
     const ts = new Date(entry.startsAt).getTime();
     if (Number.isFinite(ts)) priceByStart.set(ts, entry.total);
-  });
+  }
   return bucketStartUtcMs.map((ts) => {
     const value = priceByStart.get(ts);
     return typeof value === 'number' ? value : null;

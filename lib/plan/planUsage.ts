@@ -8,8 +8,8 @@ export const sumControlledUsageKw = (devices: UsageDevice[]): number | null => {
   let totalKw = 0;
   let hasUsage = false;
   let hasControllable = false;
-  devices.forEach((dev) => {
-    if (dev.controllable === false) return;
+  for (const dev of devices) {
+    if (dev.controllable === false) continue;
     hasControllable = true;
     const measured = typeof dev.measuredPowerKw === 'number' && Number.isFinite(dev.measuredPowerKw)
       ? dev.measuredPowerKw
@@ -18,10 +18,10 @@ export const sumControlledUsageKw = (devices: UsageDevice[]): number | null => {
       ? dev.expectedPowerKw
       : null;
     const usage = measured ?? expected;
-    if (usage === null) return;
+    if (usage === null) continue;
     totalKw += usage;
     hasUsage = true;
-  });
+  }
   if (!hasControllable) return 0;
   return hasUsage ? totalKw : null;
 };

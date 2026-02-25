@@ -26,14 +26,14 @@ export function buildSwapCandidates(params: {
     restoredThisCycle,
   } = params;
   let potentialHeadroom = availableHeadroom;
-  let toShed: DevicePlanDevice[] = [];
+  const toShed: DevicePlanDevice[] = [];
   for (const onDev of onDevices) {
     if ((onDev.priority ?? 100) <= (dev.priority ?? 100)) break;
     if (onDev.plannedState === 'shed') continue;
     if (state.swappedOutFor[onDev.id]) continue;
     if (restoredThisCycle.has(onDev.id)) continue;
     const onDevPower = onDev.powerKw && onDev.powerKw > 0 ? onDev.powerKw : 1;
-    toShed = [...toShed, onDev];
+    toShed.push(onDev);
     potentialHeadroom += onDevPower;
     if (potentialHeadroom >= needed) break;
   }

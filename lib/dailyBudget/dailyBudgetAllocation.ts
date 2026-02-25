@@ -36,7 +36,7 @@ export function allocateBudgetWithCaps(params: {
   const { weights, totalKWh, caps } = params;
   const count = weights.length;
   let effectiveWeights = weights.slice();
-  let allocations = Array.from({ length: count }, () => 0);
+  const allocations = Array.from({ length: count }, () => 0);
   if (count === 0 || totalKWh <= 0) return allocations;
   let remaining = totalKWh;
   let active = weights
@@ -56,45 +56,56 @@ export function allocateBudgetWithCaps(params: {
       continue;
     }
 
-    const result = active.reduce((acc, index) => {
-      const share = remaining * ((effectiveWeights[index] ?? 0) / weightSum);
-      const capRemaining = Math.max(0, (caps[index] ?? 0) - acc.allocations[index]);
-      if (capRemaining <= CAP_ALLOCATION_EPSILON) {
-        return {
-          ...acc,
-          overflow: acc.overflow + share,
-        };
-      }
-      if (share >= capRemaining - CAP_ALLOCATION_EPSILON) {
-        const nextAllocations = acc.allocations.map((value, idx) => (
-          idx === index ? value + capRemaining : value
-        ));
-        return {
-          allocations: nextAllocations,
-          overflow: acc.overflow + share - capRemaining,
-          nextActive: acc.nextActive,
-        };
-      }
-      const nextAllocations = acc.allocations.map((value, idx) => (
-        idx === index ? value + share : value
-      ));
-      return {
-        allocations: nextAllocations,
-        overflow: acc.overflow,
-        nextActive: acc.nextActive.concat(index),
-      };
-    }, {
+    const distribution = distributeActiveAllocations({
+      active,
+      remaining,
+      weightSum,
+      effectiveWeights,
+      caps,
       allocations,
-      overflow: 0,
-      nextActive: [] as number[],
     });
-    allocations = result.allocations;
-    remaining = result.overflow;
-    active = result.nextActive;
+    remaining = distribution.overflow;
+    active = distribution.nextActive;
     guard += 1;
   }
 
   return allocations;
+}
+
+function distributeActiveAllocations(params: {
+  active: number[];
+  remaining: number;
+  weightSum: number;
+  effectiveWeights: number[];
+  caps: number[];
+  allocations: number[];
+}): { overflow: number; nextActive: number[] } {
+  const {
+    active,
+    remaining,
+    weightSum,
+    effectiveWeights,
+    caps,
+    allocations,
+  } = params;
+  let overflow = 0;
+  const nextActive: number[] = [];
+  for (const index of active) {
+    const share = remaining * ((effectiveWeights[index] ?? 0) / weightSum);
+    const capRemaining = Math.max(0, (caps[index] ?? 0) - allocations[index]);
+    if (capRemaining <= CAP_ALLOCATION_EPSILON) {
+      overflow += share;
+      continue;
+    }
+    if (share >= capRemaining - CAP_ALLOCATION_EPSILON) {
+      allocations[index] += capRemaining;
+      overflow += share - capRemaining;
+      continue;
+    }
+    allocations[index] += share;
+    nextActive.push(index);
+  }
+  return { overflow, nextActive };
 }
 
 export function allocateBudgetWithCapsAndFloors(params: {

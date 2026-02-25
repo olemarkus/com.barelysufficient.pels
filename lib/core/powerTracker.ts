@@ -38,6 +38,7 @@ export type RecordPowerSampleParams = {
 
 const MIN_VALID_TIMESTAMP_MS = 100000000000;
 const MAX_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
+const ZERO_HOURS = Array.from({ length: 24 }, () => 0);
 
 type ControlledSample = {
   controlledPowerW?: number;
@@ -223,9 +224,9 @@ export function aggregateAndPruneHistory(
           const date = new Date(isoKey);
           const dateKey = formatDateUtc(date);
           const hourOfDay = getUtcHour(date);
-          const hours = dayHourBuckets.get(dateKey) || Array.from({ length: 24 }, () => 0);
-          const nextHours = hours.map((hourValue, index) => (index === hourOfDay ? hourValue + kWh : hourValue));
-          dayHourBuckets.set(dateKey, nextHours);
+          const hours = dayHourBuckets.get(dateKey) ?? ZERO_HOURS.slice();
+          hours[hourOfDay] = (hours[hourOfDay] ?? 0) + kWh;
+          dayHourBuckets.set(dateKey, hours);
           nextDailyTotals.set(dateKey, (nextDailyTotals.get(dateKey) || 0) + kWh);
         } else {
           nextBuckets.set(isoKey, kWh);
