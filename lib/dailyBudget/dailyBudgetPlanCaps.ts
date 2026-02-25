@@ -54,9 +54,15 @@ export function resolveRemainingCaps(params: {
       });
       const shareUncontrolled = splitSharesUncontrolled[bucketIndex] ?? 1;
       const shareControlled = splitSharesControlled[bucketIndex] ?? 0;
-      const weightedShare = (1 - weight) * shareUncontrolled + weight * shareControlled;
-      const totalCapFromBlend = Number.isFinite(blendedCap) && weightedShare > PLAN_CAP_EPSILON
-        ? blendedCap / weightedShare
+      const blendedShare = blendSplitShare({
+        shareUncontrolled,
+        shareControlled,
+        controlledUsageWeight: weight,
+        includeUncontrolled: Number.isFinite(uncontrolledCap),
+        includeControlled: Number.isFinite(controlledCap),
+      });
+      const totalCapFromBlend = Number.isFinite(blendedCap) && blendedShare > PLAN_CAP_EPSILON
+        ? blendedCap / blendedShare
         : Number.POSITIVE_INFINITY;
       const effectiveTotalCap = Math.min(capacityCap, totalCapFromBlend);
       if (bucketIndex === currentBucketIndex) {
@@ -111,9 +117,15 @@ export function resolveRemainingFloors(params: {
       });
       const shareUncontrolled = splitSharesUncontrolled[bucketIndex] ?? 1;
       const shareControlled = splitSharesControlled[bucketIndex] ?? 0;
-      const weightedShare = (1 - weight) * shareUncontrolled + weight * shareControlled;
-      const totalFloorFromBlend = weightedShare > PLAN_CAP_EPSILON
-        ? blendedMin / weightedShare
+      const blendedShare = blendSplitShare({
+        shareUncontrolled,
+        shareControlled,
+        controlledUsageWeight: weight,
+        includeUncontrolled: uncontrolledMin > 0,
+        includeControlled: controlledMin > 0,
+      });
+      const totalFloorFromBlend = blendedShare > PLAN_CAP_EPSILON
+        ? blendedMin / blendedShare
         : 0;
       if (bucketIndex === currentBucketIndex) {
         return Math.max(0, totalFloorFromBlend - usedInCurrent);
@@ -210,4 +222,29 @@ function blendObservedMins(params: {
   }
   if (totalWeight <= PLAN_CAP_EPSILON) return 0;
   return weightedMin / totalWeight;
+}
+
+function blendSplitShare(params: {
+  shareUncontrolled: number;
+  shareControlled: number;
+  controlledUsageWeight: number;
+  includeUncontrolled: boolean;
+  includeControlled: boolean;
+}): number {
+  const {
+    shareUncontrolled,
+    shareControlled,
+    controlledUsageWeight,
+    includeUncontrolled,
+    includeControlled,
+  } = params;
+  const weight = clamp(controlledUsageWeight, 0, 1);
+  const uncontrolledWeight = includeUncontrolled ? (1 - weight) : 0;
+  const controlledWeight = includeControlled ? weight : 0;
+  const totalWeight = uncontrolledWeight + controlledWeight;
+  if (totalWeight <= PLAN_CAP_EPSILON) return 0;
+  return (
+    uncontrolledWeight * shareUncontrolled
+    + controlledWeight * shareControlled
+  ) / totalWeight;
 }
