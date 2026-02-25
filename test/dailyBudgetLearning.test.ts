@@ -425,12 +425,13 @@ describe('daily budget learning utilities', () => {
     expect(result.nextState.profileObservedMinControlledKWh?.[6]).toBeCloseTo(1, 6);
   });
 
-  it('includes current day buckets in observed max window when nowMs is provided', () => {
+  it('excludes in-progress hour when nowMs is provided for observed stats window', () => {
     const timeZone = 'UTC';
     const previousDateKey = '2024-04-14';
     const previousDayStartUtcMs = getDateKeyStartMs(previousDateKey, timeZone);
     const nextDayStartUtcMs = getNextLocalDayStartUtcMs(previousDayStartUtcMs, timeZone);
-    const currentDayTs = nextDayStartUtcMs + 2 * 60 * 60 * 1000;
+    const completedHourTs = nextDayStartUtcMs + 1 * 60 * 60 * 1000;
+    const inProgressHourTs = nextDayStartUtcMs + 2 * 60 * 60 * 1000;
 
     const result = finalizePreviousDayLearning({
       state: {
@@ -450,16 +451,19 @@ describe('daily budget learning utilities', () => {
       powerTracker: {
         buckets: {
           [new Date(previousDayStartUtcMs).toISOString()]: 1,
-          [new Date(currentDayTs).toISOString()]: 6,
+          [new Date(completedHourTs).toISOString()]: 4,
+          [new Date(inProgressHourTs).toISOString()]: 6,
         },
       },
       previousDateKey,
       previousDayStartUtcMs,
       defaultProfile: buildDefaultProfile(),
-      nowMs: currentDayTs + 1,
+      nowMs: inProgressHourTs + 1,
     });
 
-    expect(result.nextState.profileObservedMaxUncontrolledKWh?.[2]).toBeCloseTo(6, 6);
-    expect(result.nextState.profileObservedMinUncontrolledKWh?.[2]).toBeCloseTo(6, 6);
+    expect(result.nextState.profileObservedMaxUncontrolledKWh?.[1]).toBeCloseTo(4, 6);
+    expect(result.nextState.profileObservedMinUncontrolledKWh?.[1]).toBeCloseTo(4, 6);
+    expect(result.nextState.profileObservedMaxUncontrolledKWh?.[2]).toBeCloseTo(0, 6);
+    expect(result.nextState.profileObservedMinUncontrolledKWh?.[2]).toBeCloseTo(0, 6);
   });
 });
