@@ -41,6 +41,8 @@ export class DailyBudgetManager {
   private static readonly STATE_PERSIST_INTERVAL_MS = 60 * 1000;
   private state: DailyBudgetState = {};
   private snapshot: DailyBudgetDayPayload | null = null;
+  private lastPlannedUncontrolledKWh: number[] | null = null;
+  private lastPlannedControlledKWh: number[] | null = null;
   private dirty = false;
   private lastPersistMs = 0;
   private lastPlanRebuildMs = 0;
@@ -222,7 +224,16 @@ export class DailyBudgetManager {
   }
 
   private isEnabled(settings: DailyBudgetSettings): boolean { return settings.enabled && settings.dailyBudgetKWh > 0; }
-  private syncEnabledState(enabled: boolean): void { if (!enabled && this.state.frozen) { this.state.frozen = false; this.markDirty(); } }
+  private syncEnabledState(enabled: boolean): void {
+    if (!enabled && this.state.frozen) {
+      this.state.frozen = false;
+      this.markDirty();
+    }
+    if (!enabled) {
+      this.lastPlannedUncontrolledKWh = null;
+      this.lastPlannedControlledKWh = null;
+    }
+  }
 
   private preparePlanState(params: {
     context: DayContext;
@@ -239,6 +250,8 @@ export class DailyBudgetManager {
     if (planStateResult.resetPlanState) {
       this.state.frozen = false;
       this.state.lastPlanBucketStartUtcMs = null;
+      this.lastPlannedUncontrolledKWh = null;
+      this.lastPlannedControlledKWh = null;
     }
     const planState = planStateResult.planState;
     if (enabled && planState.existingPlan && !this.state.frozen && planState.deviationExisting > 0) {
@@ -289,10 +302,21 @@ export class DailyBudgetManager {
     const plannedKWh = enabled && this.state.plannedKWh
       ? this.state.plannedKWh
       : context.bucketUsage.map(() => 0);
+    const hasStoredSplit = enabled
+      && Array.isArray(this.lastPlannedUncontrolledKWh)
+      && Array.isArray(this.lastPlannedControlledKWh)
+      && this.lastPlannedUncontrolledKWh.length === plannedKWh.length
+      && this.lastPlannedControlledKWh.length === plannedKWh.length;
+    const plannedUncontrolledKWh = hasStoredSplit
+      ? this.lastPlannedUncontrolledKWh ?? undefined
+      : undefined;
+    const plannedControlledKWh = hasStoredSplit
+      ? this.lastPlannedControlledKWh ?? undefined
+      : undefined;
     return {
       plannedKWh,
-      plannedUncontrolledKWh: undefined,
-      plannedControlledKWh: undefined,
+      plannedUncontrolledKWh,
+      plannedControlledKWh,
       priceData,
       shouldLog,
       planDebug: undefined,
@@ -356,6 +380,8 @@ export class DailyBudgetManager {
         profileObservedMinControlledKWh: this.state.profileObservedMinControlledKWh,
       });
     this.state.plannedKWh = buildResult.plannedKWh;
+    this.lastPlannedUncontrolledKWh = buildResult.plannedUncontrolledKWh.slice();
+    this.lastPlannedControlledKWh = buildResult.plannedControlledKWh.slice();
     this.state.lastPlanBucketStartUtcMs = lockState.currentBucketStartUtcMs;
     this.state.dayStartUtcMs = context.dayStartUtcMs;
     this.lastPlanRebuildMs = context.nowMs;

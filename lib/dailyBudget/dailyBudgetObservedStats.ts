@@ -154,7 +154,8 @@ export function ensureObservedHourlyStats(params: {
   const needsMax = !hasMax;
   const needsMin = !hasMin;
 
-  const windowEndUtcMs = nowMs;
+  const hourMs = 60 * 60 * 1000;
+  const windowEndUtcMs = Math.floor(nowMs / hourMs) * hourMs;
   const windowStartUtcMs = windowEndUtcMs - OBSERVED_HOURLY_PEAK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const {
     observedMaxUncontrolled,

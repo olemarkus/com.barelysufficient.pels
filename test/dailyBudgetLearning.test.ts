@@ -330,6 +330,30 @@ describe('daily budget learning utilities', () => {
     expect(result.nextState.profileObservedMinControlledKWh?.[22]).toBeCloseTo(2, 6);
   });
 
+  it('backfill excludes the in-progress current hour bucket', () => {
+    const timeZone = 'UTC';
+    const nowMs = Date.UTC(2024, 0, 20, 10, 30, 0);
+    const completedHourKey = new Date(Date.UTC(2024, 0, 20, 9, 0, 0)).toISOString();
+    const currentHourKey = new Date(Date.UTC(2024, 0, 20, 10, 0, 0)).toISOString();
+    const result = ensureObservedHourlyStats({
+      state: {},
+      powerTracker: {
+        buckets: {
+          [completedHourKey]: 3,
+          [currentHourKey]: 1,
+        },
+      },
+      timeZone,
+      nowMs,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.nextState.profileObservedMaxUncontrolledKWh?.[9]).toBeCloseTo(3, 6);
+    expect(result.nextState.profileObservedMinUncontrolledKWh?.[9]).toBeCloseTo(3, 6);
+    expect(result.nextState.profileObservedMaxUncontrolledKWh?.[10]).toBeCloseTo(0, 6);
+    expect(result.nextState.profileObservedMinUncontrolledKWh?.[10]).toBeCloseTo(0, 6);
+  });
+
   it('recomputes observed peaks from a rolling window and drops stale season peaks', () => {
     const timeZone = 'UTC';
     const previousDateKey = '2024-02-14';

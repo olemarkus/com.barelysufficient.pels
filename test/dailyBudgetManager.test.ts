@@ -591,6 +591,96 @@ describe('daily budget migration and defaults', () => {
   });
 });
 
+describe('daily budget stale-plan and split persistence', () => {
+  it('does not freeze from a stale plan when last plan bucket is outside current day', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 100 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 30 * 60 * 1000;
+    const bucketKey = new Date(dayStart).toISOString();
+
+    manager.loadState({
+      dateKey,
+      dayStartUtcMs: dayStart,
+      plannedKWh: Array.from({ length: 24 }, () => 0.1),
+      lastPlanBucketStartUtcMs: dayStart - 60 * 60 * 1000,
+      profileUncontrolled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 14,
+      },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 14,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 14,
+      profileSplitSampleCount: 14,
+    });
+
+    const update = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 1 } },
+      priceOptimizationEnabled: false,
+    });
+
+    expect(update.snapshot.state.frozen).toBe(false);
+    expect(update.snapshot.buckets.plannedKWh[0]).toBeGreaterThan(0.1);
+  });
+
+  it('keeps planned controlled/uncontrolled split stable when plan is not rebuilt', () => {
+    const manager = buildManager();
+    const settings = buildSettings({
+      dailyBudgetKWh: 10,
+      controlledUsageWeight: 0,
+    });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 10)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 10 * 60 * 1000;
+    const bucketKey = new Date(dayStart).toISOString();
+
+    manager.loadState({
+      profileUncontrolled: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 1)),
+        sampleCount: 14,
+      },
+      profileControlled: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 0)),
+        sampleCount: 14,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 14,
+      profileSplitSampleCount: 14,
+      profileObservedMinControlledKWh: [2, ...Array.from({ length: 23 }, () => 0)],
+    });
+
+    const first = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+    const firstControlled = first.snapshot.buckets.plannedControlledKWh ?? [];
+    const firstUncontrolled = first.snapshot.buckets.plannedUncontrolledKWh ?? [];
+
+    const second = manager.update({
+      nowMs: now + 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+    const secondControlled = second.snapshot.buckets.plannedControlledKWh ?? [];
+    const secondUncontrolled = second.snapshot.buckets.plannedUncontrolledKWh ?? [];
+
+    expect(secondControlled[0]).toBeCloseTo(firstControlled[0], 6);
+    expect(secondUncontrolled[0]).toBeCloseTo(firstUncontrolled[0], 6);
+  });
+});
+
 describe('daily budget preview', () => {
   it('builds a tomorrow preview without a current bucket', () => {
     const manager = buildManager();
