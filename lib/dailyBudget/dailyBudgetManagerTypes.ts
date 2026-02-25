@@ -82,6 +82,7 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     , isHourlyArrayOrUndefined(state.profileObservedMaxControlledKWh)
     , isHourlyArrayOrUndefined(state.profileObservedMinUncontrolledKWh)
     , isHourlyArrayOrUndefined(state.profileObservedMinControlledKWh)
+    , isNullableStringOrUndefined(state.profileObservedStatsConfigKey)
     , (state.plannedKWh === undefined || (
       Array.isArray(state.plannedKWh)
       && state.plannedKWh.every((entry) => typeof entry === 'number' && Number.isFinite(entry))

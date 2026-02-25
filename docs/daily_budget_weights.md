@@ -26,7 +26,7 @@ For each local hour `h` (0-23), PELS works with:
 - `m`: observed-peak margin ratio (current implementation: `0.20`)
 - `W`: observed-peak rolling window in days (current implementation: `30`)
 - `qMax`: upper quantile for observed caps (current implementation: `0.90`)
-- `qMin`: lower quantile for observed minimums (current implementation: `0.10`)
+- `qMin`: lower quantile for observed minimums (current implementation: `0.25`)
 - `Nq`: minimum samples per hour before quantiles are used (current implementation: `5`)
 - `f[b]`: price factor per plan bucket (typically `0.7..1.3`), where:
   - `f > 1` means cheaper-than-median bucket

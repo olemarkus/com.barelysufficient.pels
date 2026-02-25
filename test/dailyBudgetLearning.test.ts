@@ -3,7 +3,7 @@ import {
   finalizePreviousDayLearning,
   hasUnreliableOverlap,
 } from '../lib/dailyBudget/dailyBudgetLearning';
-import { ensureObservedHourlyStats } from '../lib/dailyBudget/dailyBudgetObservedStats';
+import { ensureObservedHourlyStats, getObservedStatsConfigKey } from '../lib/dailyBudget/dailyBudgetObservedStats';
 import { buildDefaultProfile } from '../lib/dailyBudget/dailyBudgetManager';
 import {
   buildLocalDayBuckets,
@@ -393,9 +393,80 @@ describe('daily budget learning utilities', () => {
 
     // Single-point tails should not directly become bounds when sample count is sufficient.
     expect(observedMin).toBeGreaterThan(0.1);
-    expect(observedMin).toBeLessThan(1);
+    expect(observedMin).toBeCloseTo(1, 6);
     expect(observedMax).toBeGreaterThan(1);
     expect(observedMax).toBeLessThan(10);
+  });
+
+  it('keeps lower bound near the inlier cluster when one tiny sample exists', () => {
+    const timeZone = 'UTC';
+    const nowMs = Date.UTC(2024, 0, 20, 12, 0, 0);
+    const targetHour = 8;
+    const buckets: Record<string, number> = {};
+    const controlledBuckets: Record<string, number> = {};
+    const controlledSeries = [0.1, 4, 5, 6, 7];
+
+    controlledSeries.forEach((controlled, index) => {
+      const ts = Date.UTC(2024, 0, 19 - index, targetHour, 0, 0);
+      const key = new Date(ts).toISOString();
+      buckets[key] = controlled + 1;
+      controlledBuckets[key] = controlled;
+    });
+
+    const result = ensureObservedHourlyStats({
+      state: {},
+      powerTracker: {
+        buckets,
+        controlledBuckets,
+      },
+      timeZone,
+      nowMs,
+    });
+
+    const observedMin = result.nextState.profileObservedMinControlledKWh?.[targetHour] ?? 0;
+
+    expect(controlledSeries.length).toBeGreaterThanOrEqual(OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES);
+    expect(OBSERVED_HOURLY_MIN_QUANTILE).toBeCloseTo(0.25, 6);
+    expect(observedMin).toBeCloseTo(4, 6);
+  });
+
+  it('refreshes existing observed stats when quantile config key changes', () => {
+    const timeZone = 'UTC';
+    const nowMs = Date.UTC(2024, 0, 20, 12, 0, 0);
+    const targetHour = 8;
+    const buckets: Record<string, number> = {};
+    const controlledBuckets: Record<string, number> = {};
+    const controlledSeries = [0.1, 4, 5, 6, 7];
+
+    controlledSeries.forEach((controlled, index) => {
+      const ts = Date.UTC(2024, 0, 19 - index, targetHour, 0, 0);
+      const key = new Date(ts).toISOString();
+      buckets[key] = controlled + 1;
+      controlledBuckets[key] = controlled;
+    });
+
+    const stateWithLegacyObserved = {
+      profileObservedMaxUncontrolledKWh: Array.from({ length: 24 }, () => 1),
+      profileObservedMaxControlledKWh: Array.from({ length: 24 }, () => 1),
+      profileObservedMinUncontrolledKWh: Array.from({ length: 24 }, () => 0.1),
+      profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0.1),
+      profileObservedStatsConfigKey: 'legacy-config',
+    };
+
+    const result = ensureObservedHourlyStats({
+      state: stateWithLegacyObserved,
+      powerTracker: {
+        buckets,
+        controlledBuckets,
+      },
+      timeZone,
+      nowMs,
+    });
+
+    const observedMin = result.nextState.profileObservedMinControlledKWh?.[targetHour] ?? 0;
+    expect(result.changed).toBe(true);
+    expect(result.nextState.profileObservedStatsConfigKey).toBe(getObservedStatsConfigKey());
+    expect(observedMin).toBeCloseTo(4, 6);
   });
 
   it('recomputes observed peaks from a rolling window and drops stale season peaks', () => {
