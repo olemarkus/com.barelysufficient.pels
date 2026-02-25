@@ -30,16 +30,3 @@ export const PRICE_LEVEL_OPTIONS: PriceLevelOption[] = [
     name: 'Unknown',
   },
 ];
-
-// Helper function to get display title from internal value
-export function getPriceLevelTitle(priceLevel: PriceLevel): string {
-  const option = PRICE_LEVEL_OPTIONS.find((opt) => opt.id === priceLevel);
-  return option?.name ?? 'Unknown';
-}
-
-// Helper function to get internal value from title
-export function getPriceLevelFromTitle(title: string): PriceLevel {
-  const normalized = (title || '').toLowerCase();
-  const option = PRICE_LEVEL_OPTIONS.find((opt) => opt.name.toLowerCase() === normalized);
-  return option?.id ?? PriceLevel.UNKNOWN;
-}

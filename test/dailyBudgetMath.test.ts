@@ -1,18 +1,16 @@
 import {
   allocateBudgetWithCaps,
   allocateBudgetWithCapsAndFloors,
-  blendProfiles,
   buildAllowedCumKWh,
   buildCompositeWeights,
   buildDefaultProfile,
   buildPlan,
-  buildPriceFactors,
-  buildPriceSeries,
   buildWeightsFromPlan,
   getConfidence,
   normalizeWeights,
   resolveCurrentBucketIndex,
 } from '../lib/dailyBudget/dailyBudgetMath';
+import { buildPriceFactors as buildPriceFactorsFromPrices, buildPriceSeries } from '../lib/dailyBudget/dailyBudgetPrices';
 import { buildPlanBreakdown } from '../lib/dailyBudget/dailyBudgetBreakdown';
 
 describe('allocateBudgetWithCaps', () => {
@@ -120,10 +118,6 @@ describe('daily budget math helpers', () => {
 
     expect(normalizeWeights([0, 0])).toEqual([0, 0]);
     expect(normalizeWeights([1, 1])).toEqual([0.5, 0.5]);
-
-    const blended = blendProfiles([1, 1, 1], [2], 2);
-    const blendedTotal = blended.reduce((sum, value) => sum + value, 0);
-    expect(blendedTotal).toBeCloseTo(1, 6);
   });
 
   it('builds a default profile with normalized weights', () => {
@@ -158,7 +152,7 @@ describe('daily budget math helpers', () => {
       })),
     };
 
-    const disabled = buildPriceFactors({
+    const disabled = buildPriceFactorsFromPrices({
       bucketStartUtcMs,
       currentBucketIndex: 0,
       combinedPrices,
@@ -169,7 +163,7 @@ describe('daily budget math helpers', () => {
     expect(disabled.prices).toHaveLength(4);
     expect(disabled.priceFactors).toBeUndefined();
 
-    const missing = buildPriceFactors({
+    const missing = buildPriceFactorsFromPrices({
       bucketStartUtcMs,
       currentBucketIndex: 1,
       combinedPrices: {
@@ -181,7 +175,7 @@ describe('daily budget math helpers', () => {
     expect(missing.priceShapingActive).toBe(false);
     expect(missing.prices).toHaveLength(4);
 
-    const enabled = buildPriceFactors({
+    const enabled = buildPriceFactorsFromPrices({
       bucketStartUtcMs,
       currentBucketIndex: 1,
       combinedPrices,
@@ -350,7 +344,7 @@ describe('daily budget math helpers', () => {
     uncontrolledProfile[0] = 1;
     uncontrolledProfile[1] = 3;
 
-    const priceShape = buildPriceFactors({
+    const priceShape = buildPriceFactorsFromPrices({
       bucketStartUtcMs: shortBucketStartUtcMs,
       currentBucketIndex: 0,
       combinedPrices,
@@ -402,7 +396,7 @@ describe('daily budget math helpers', () => {
     baseProfile[0] = 2;
     baseProfile[1] = 4;
 
-    const priceShape = buildPriceFactors({
+    const priceShape = buildPriceFactorsFromPrices({
       bucketStartUtcMs: shortBucketStartUtcMs,
       currentBucketIndex: 0,
       combinedPrices,
@@ -452,7 +446,7 @@ describe('daily budget math helpers', () => {
     controlledProfile[0] = 9;
     controlledProfile[1] = 1;
 
-    const priceShape = buildPriceFactors({
+    const priceShape = buildPriceFactorsFromPrices({
       bucketStartUtcMs: shortBucketStartUtcMs,
       currentBucketIndex: 0,
       combinedPrices,
@@ -584,7 +578,7 @@ describe('daily budget math helpers', () => {
         total: 100,
       })),
     };
-    const flatFactors = buildPriceFactors({
+    const flatFactors = buildPriceFactorsFromPrices({
       bucketStartUtcMs,
       currentBucketIndex: 0,
       combinedPrices: flatPrices,
@@ -625,7 +619,7 @@ describe('daily budget math helpers', () => {
         total: index * 1000 + 1,
       })),
     };
-    const highSpreadFactors = buildPriceFactors({
+    const highSpreadFactors = buildPriceFactorsFromPrices({
       bucketStartUtcMs,
       currentBucketIndex: 0,
       combinedPrices: highSpreadPrices,

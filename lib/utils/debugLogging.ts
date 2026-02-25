@@ -8,7 +8,6 @@ export const DEBUG_LOGGING_TOPICS = [
 ] as const;
 
 export type DebugLoggingTopic = typeof DEBUG_LOGGING_TOPICS[number]['id'];
-export type DebugLoggingSettings = Partial<Record<DebugLoggingTopic, boolean>>;
 
 export const ALL_DEBUG_LOGGING_TOPICS: DebugLoggingTopic[] = DEBUG_LOGGING_TOPICS.map((topic) => topic.id);
 

@@ -500,17 +500,8 @@ export class DailyBudgetManager {
 }
 
 export {
-  blendProfiles,
-  buildAllowedCumKWh,
-  buildCompositeWeights,
   buildDefaultProfile,
   buildPlan,
   buildPriceDebugData,
-  buildPriceFactors,
-  buildWeightsFromPlan,
-  getConfidence,
-  normalizeWeights,
-  resolveCurrentBucketIndex,
-  sumArray,
 } from './dailyBudgetMath';
 export type { CombinedPriceData } from './dailyBudgetMath';

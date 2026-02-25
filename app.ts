@@ -75,9 +75,7 @@ class PelsApp extends Homey.App {
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
   private overheadToken?: Homey.FlowToken;
   private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
-  private settingsHandler?: (key: string) => Promise<void>;
   private lastNotifiedOperatingMode = 'Home';
-  private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private heartbeatInterval?: ReturnType<typeof setInterval>;
   private stopPerfLogging?: () => void;
@@ -240,7 +238,7 @@ class PelsApp extends Homey.App {
     this.capacityGuard.setShortfallThresholdProvider(() => this.computeShortfallThreshold());
   }
   private initSettingsHandler(): void {
-    this.settingsHandler = initSettingsHandlerForApp({
+    initSettingsHandlerForApp({
       homey: this.homey,
       getOperatingMode: () => this.operatingMode,
       notifyOperatingModeChanged: (mode) => this.notifyOperatingModeChanged(mode),
@@ -616,11 +614,11 @@ class PelsApp extends Homey.App {
       this.snapshotRefreshPending = false;
     }
   }
-  private getCombinedHourlyPrices = (): unknown => this.priceCoordinator.getCombinedHourlyPrices();
-  private findCheapestHours = (count: number): string[] => this.priceCoordinator.findCheapestHours(count);
+  public getCombinedHourlyPrices = (): unknown => this.priceCoordinator.getCombinedHourlyPrices();
+  public findCheapestHours = (count: number): string[] => this.priceCoordinator.findCheapestHours(count);
   private isCurrentHourCheap = (): boolean => this.priceCoordinator.isCurrentHourCheap();
   private isCurrentHourExpensive = (): boolean => this.priceCoordinator.isCurrentHourExpensive();
-  private getCurrentHourPriceInfo = (): string => this.priceCoordinator.getCurrentHourPriceInfo();
+  public getCurrentHourPriceInfo = (): string => this.priceCoordinator.getCurrentHourPriceInfo();
   storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {
     dateKey: string;
     storedCount: number;
@@ -628,7 +626,7 @@ class PelsApp extends Homey.App {
   } {
     return this.priceCoordinator.storeFlowPriceData(kind, raw);
   }
-  private async applyPriceOptimization() {
+  public async applyPriceOptimization() {
     return this.priceCoordinator.applyPriceOptimization();
   }
   private async getDeviceLoadSetting(deviceId: string): Promise<number | null> {
@@ -650,7 +648,7 @@ class PelsApp extends Homey.App {
   private computeShortfallThreshold = () => this.planService.computeShortfallThreshold();
   private handleShortfall = (deficitKw: number) => this.planService.handleShortfall(deficitKw);
   private handleShortfallCleared = () => this.planService.handleShortfallCleared();
-  private applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
+  public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
   private applySheddingToDevice = (deviceId: string, deviceName?: string, reason?: string) => this.planService.applySheddingToDevice(deviceId, deviceName, reason);
 }
 export = PelsApp;

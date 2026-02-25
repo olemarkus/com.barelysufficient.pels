@@ -1,11 +1,12 @@
 import {
   DailyBudgetManager,
   buildDefaultProfile,
-  buildPriceFactors,
-  blendProfiles,
+} from '../lib/dailyBudget/dailyBudgetManager';
+import {
   getConfidence,
   normalizeWeights,
-} from '../lib/dailyBudget/dailyBudgetManager';
+} from '../lib/dailyBudget/dailyBudgetMath';
+import { buildPriceFactors } from '../lib/dailyBudget/dailyBudgetPrices';
 import { PRICE_SHAPING_FLEX_SHARE } from '../lib/dailyBudget/dailyBudgetConstants';
 import {
   buildLocalDayBuckets,
@@ -78,14 +79,6 @@ describe('daily budget profile blending', () => {
     expect(getConfidence(14)).toBe(1);
   });
 
-  it('blends default and learned profiles based on confidence', () => {
-    const defaultWeights = buildDefaultProfile();
-    const learnedWeights = normalizeWeights(defaultWeights.map((value, index) => (index === 0 ? value + 2 : value)));
-    const blendedZero = blendProfiles(defaultWeights, learnedWeights, 0);
-    const blendedFull = blendProfiles(defaultWeights, learnedWeights, 1);
-    expect(blendedZero[0]).toBeCloseTo(defaultWeights[0], 6);
-    expect(blendedFull[0]).toBeCloseTo(learnedWeights[0], 6);
-  });
 });
 
 describe('daily budget planning', () => {

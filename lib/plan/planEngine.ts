@@ -38,7 +38,7 @@ export class PlanEngine {
   private builder: PlanBuilder;
   private executor: PlanExecutor;
 
-  constructor(private deps: PlanEngineDeps) {
+  constructor(deps: PlanEngineDeps) {
     this.state = createPlanEngineState();
 
     const builderDeps: PlanBuilderDeps = {

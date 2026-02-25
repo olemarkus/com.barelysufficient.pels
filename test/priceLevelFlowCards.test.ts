@@ -1,4 +1,4 @@
-import { PriceLevel, PRICE_LEVEL_OPTIONS, getPriceLevelFromTitle, getPriceLevelTitle } from '../lib/price/priceLevels';
+import { PriceLevel, PRICE_LEVEL_OPTIONS } from '../lib/price/priceLevels';
 import { PlanService } from '../lib/plan/planService';
 import { mockHomeyInstance } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
@@ -18,12 +18,6 @@ describe('Price level helpers', () => {
     ]);
   });
 
-  it('maps between ids and names case-insensitively', () => {
-    expect(getPriceLevelTitle(PriceLevel.EXPENSIVE)).toBe('Expensive');
-    expect(getPriceLevelFromTitle('cheap')).toBe(PriceLevel.CHEAP);
-    expect(getPriceLevelFromTitle('NORMAL')).toBe(PriceLevel.NORMAL);
-    expect(getPriceLevelFromTitle('invalid')).toBe(PriceLevel.UNKNOWN);
-  });
 });
 
 describe('Price level flow cards', () => {
