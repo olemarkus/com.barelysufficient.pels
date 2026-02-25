@@ -60,6 +60,7 @@ export function logNextDayPlanDebug(params: {
     combinedPrices,
     priceOptimizationEnabled,
     priceShapingEnabled: settings.priceShapingEnabled,
+    priceShapingFlexShare: settings.priceShapingFlexShare,
   });
   logDailyBudgetPlanDebug({
     logDebug,

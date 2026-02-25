@@ -182,20 +182,17 @@ function blendObservedCaps(params: {
     controlledCap,
     controlledUsageWeight,
   } = params;
-  const weight = clamp(controlledUsageWeight, 0, 1);
-  const uncontrolledWeight = 1 - weight;
-  let weightedCap = 0;
-  let totalWeight = 0;
-  if (Number.isFinite(uncontrolledCap) && uncontrolledWeight > 0) {
-    weightedCap += uncontrolledWeight * uncontrolledCap;
-    totalWeight += uncontrolledWeight;
-  }
-  if (Number.isFinite(controlledCap) && weight > 0) {
-    weightedCap += weight * controlledCap;
-    totalWeight += weight;
-  }
-  if (totalWeight <= PLAN_CAP_EPSILON) return Number.POSITIVE_INFINITY;
-  return weightedCap / totalWeight;
+  const blendWeights = resolveNormalizedBlendWeights({
+    controlledUsageWeight,
+    includeUncontrolled: Number.isFinite(uncontrolledCap),
+    includeControlled: Number.isFinite(controlledCap),
+  });
+  if (!blendWeights) return Number.POSITIVE_INFINITY;
+  const { uncontrolledWeight, controlledWeight } = blendWeights;
+  let blendedCap = 0;
+  if (uncontrolledWeight > 0) blendedCap += uncontrolledWeight * uncontrolledCap;
+  if (controlledWeight > 0) blendedCap += controlledWeight * controlledCap;
+  return blendedCap;
 }
 
 function blendObservedMins(params: {
@@ -208,20 +205,17 @@ function blendObservedMins(params: {
     controlledMin,
     controlledUsageWeight,
   } = params;
-  const weight = clamp(controlledUsageWeight, 0, 1);
-  const uncontrolledWeight = 1 - weight;
-  let weightedMin = 0;
-  let totalWeight = 0;
-  if (Number.isFinite(uncontrolledMin) && uncontrolledMin > 0 && uncontrolledWeight > 0) {
-    weightedMin += uncontrolledWeight * uncontrolledMin;
-    totalWeight += uncontrolledWeight;
-  }
-  if (Number.isFinite(controlledMin) && controlledMin > 0 && weight > 0) {
-    weightedMin += weight * controlledMin;
-    totalWeight += weight;
-  }
-  if (totalWeight <= PLAN_CAP_EPSILON) return 0;
-  return weightedMin / totalWeight;
+  const blendWeights = resolveNormalizedBlendWeights({
+    controlledUsageWeight,
+    includeUncontrolled: Number.isFinite(uncontrolledMin) && uncontrolledMin > 0,
+    includeControlled: Number.isFinite(controlledMin) && controlledMin > 0,
+  });
+  if (!blendWeights) return 0;
+  const { uncontrolledWeight, controlledWeight } = blendWeights;
+  let blendedMin = 0;
+  if (uncontrolledWeight > 0) blendedMin += uncontrolledWeight * uncontrolledMin;
+  if (controlledWeight > 0) blendedMin += controlledWeight * controlledMin;
+  return blendedMin;
 }
 
 function blendSplitShare(params: {
@@ -238,13 +232,43 @@ function blendSplitShare(params: {
     includeUncontrolled,
     includeControlled,
   } = params;
-  const weight = clamp(controlledUsageWeight, 0, 1);
-  const uncontrolledWeight = includeUncontrolled ? (1 - weight) : 0;
-  const controlledWeight = includeControlled ? weight : 0;
-  const totalWeight = uncontrolledWeight + controlledWeight;
-  if (totalWeight <= PLAN_CAP_EPSILON) return 0;
+  const blendWeights = resolveNormalizedBlendWeights({
+    controlledUsageWeight,
+    includeUncontrolled,
+    includeControlled,
+  });
+  if (!blendWeights) return 0;
+  const { uncontrolledWeight, controlledWeight } = blendWeights;
   return (
     uncontrolledWeight * shareUncontrolled
     + controlledWeight * shareControlled
-  ) / totalWeight;
+  );
+}
+
+function resolveNormalizedBlendWeights(params: {
+  controlledUsageWeight: number;
+  includeUncontrolled: boolean;
+  includeControlled: boolean;
+}): { uncontrolledWeight: number; controlledWeight: number } | null {
+  const { controlledUsageWeight, includeUncontrolled, includeControlled } = params;
+  if (!includeUncontrolled && !includeControlled) return null;
+
+  const weight = clamp(controlledUsageWeight, 0, 1);
+  let uncontrolledWeight = includeUncontrolled ? (1 - weight) : 0;
+  let controlledWeight = includeControlled ? weight : 0;
+  let totalWeight = uncontrolledWeight + controlledWeight;
+
+  // If the configured weight points entirely to a side without observed data,
+  // fall back to the available side(s) instead of dropping bounds.
+  if (totalWeight <= PLAN_CAP_EPSILON) {
+    uncontrolledWeight = includeUncontrolled ? 1 : 0;
+    controlledWeight = includeControlled ? 1 : 0;
+    totalWeight = uncontrolledWeight + controlledWeight;
+  }
+  if (totalWeight <= PLAN_CAP_EPSILON) return null;
+
+  return {
+    uncontrolledWeight: uncontrolledWeight / totalWeight,
+    controlledWeight: controlledWeight / totalWeight,
+  };
 }

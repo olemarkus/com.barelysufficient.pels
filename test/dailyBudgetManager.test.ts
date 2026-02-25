@@ -13,6 +13,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
 } from '../lib/utils/dateUtils';
+import { buildDayContext } from '../lib/dailyBudget/dailyBudgetState';
 
 const TZ = 'Europe/Oslo';
 
@@ -416,6 +417,52 @@ describe('daily budget price shaping', () => {
     expect(result.priceFactors?.[0]).toBeGreaterThan(result.priceFactors?.[1] ?? 0);
     expect(result.priceFactors?.[0]).toBeLessThanOrEqual(1.3);
     expect(result.priceFactors?.[0]).toBeGreaterThanOrEqual(0.7);
+  });
+
+  it('retains effective price shaping flex share in non-rebuild price data', () => {
+    const manager = buildManager();
+    const settings = buildSettings({
+      dailyBudgetKWh: 10,
+      priceShapingEnabled: true,
+      priceShapingFlexShare: 0.5,
+    });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 30 * 60 * 1000;
+    const bucketKey0 = new Date(dayStart).toISOString();
+    const combinedPrices = {
+      prices: Array.from({ length: 24 }, (_, index) => ({
+        startsAt: new Date(dayStart + index * 60 * 60 * 1000).toISOString(),
+        total: 100 + index * 10,
+      })),
+    };
+
+    manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey0]: 0 } },
+      combinedPrices,
+      priceOptimizationEnabled: true,
+    });
+
+    const context = buildDayContext({
+      nowMs: now + 2 * 60 * 1000,
+      timeZone: TZ,
+      powerTracker: { buckets: { [bucketKey0]: 0 } },
+    });
+    const priceData = (manager as any).resolvePriceData({
+      context,
+      settings,
+      enabled: true,
+      combinedPrices,
+      priceOptimizationEnabled: true,
+    });
+    expect(typeof priceData.effectivePriceShapingFlexShare).toBe('number');
+    expect(priceData.effectivePriceShapingFlexShare).toBeCloseTo(
+      settings.priceShapingFlexShare * (priceData.priceSpreadFactor ?? 0),
+      6,
+    );
   });
 });
 

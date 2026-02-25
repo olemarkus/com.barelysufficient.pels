@@ -421,6 +421,7 @@ export class DailyBudgetManager {
       combinedPrices,
       priceOptimizationEnabled,
       priceShapingEnabled: settings.priceShapingEnabled,
+      priceShapingFlexShare: settings.priceShapingFlexShare,
     });
   }
 
