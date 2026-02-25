@@ -1,20 +1,66 @@
 import type { PowerTrackerState } from '../core/powerTracker';
 import { getZonedParts } from '../utils/dateUtils';
-import { OBSERVED_HOURLY_PEAK_WINDOW_DAYS } from './dailyBudgetConstants';
+import {
+  OBSERVED_HOURLY_MAX_QUANTILE,
+  OBSERVED_HOURLY_MIN_QUANTILE,
+  OBSERVED_HOURLY_PEAK_WINDOW_DAYS,
+  OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES,
+} from './dailyBudgetConstants';
 import type { DailyBudgetState } from './dailyBudgetTypes';
 
-const updateHourMax = (values: number[], hour: number, candidate: number): number[] => (
-  values.map((value, index) => (index === hour ? Math.max(value, candidate) : value))
+const createHourlyBuckets = (): number[][] => (
+  Array.from({ length: 24 }, () => [])
 );
 
-const updateHourMin = (values: number[], hour: number, candidate: number): number[] => {
-  if (candidate <= 0) return values;
-  return values.map((value, index) => {
-    if (index !== hour) return value;
-    if (value <= 0) return candidate;
-    return Math.min(value, candidate);
-  });
+const appendHourlyValue = (
+  hourlyValues: number[][],
+  hour: number,
+  value: number,
+): number[][] => (
+  hourlyValues.map((entries, index) => (index === hour ? [...entries, value] : entries))
+);
+
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+const percentileLinear = (values: number[], quantile: number): number => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const q = clamp01(quantile);
+  const index = (sorted.length - 1) * q;
+  const lowerIndex = Math.floor(index);
+  const upperIndex = Math.ceil(index);
+  const lower = sorted[lowerIndex] ?? 0;
+  const upper = sorted[upperIndex] ?? lower;
+  if (lowerIndex === upperIndex) return lower;
+  const ratio = index - lowerIndex;
+  return lower + (upper - lower) * ratio;
 };
+
+const resolveObservedMax = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  if (values.length < OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES) {
+    return values.reduce((max, value) => Math.max(max, value), 0);
+  }
+  return percentileLinear(values, OBSERVED_HOURLY_MAX_QUANTILE);
+};
+
+const resolveObservedMin = (values: number[]): number => {
+  const positiveValues = values.filter((value) => value > 0);
+  if (positiveValues.length === 0) return 0;
+  if (positiveValues.length < OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES) {
+    return positiveValues.reduce((min, value) => Math.min(min, value), positiveValues[0] ?? 0);
+  }
+  return percentileLinear(positiveValues, OBSERVED_HOURLY_MIN_QUANTILE);
+};
+
+const clampMinByMax = (mins: number[], maxes: number[]): number[] => (
+  mins.map((minValue, hour) => {
+    if (minValue <= 0) return 0;
+    const maxValue = maxes[hour] ?? 0;
+    if (maxValue > 0 && minValue > maxValue) return maxValue;
+    return minValue;
+  })
+);
 
 export const buildObservedHourlyStatsFromWindow = (params: {
   powerTracker: PowerTrackerState;
@@ -60,21 +106,34 @@ export const buildObservedHourlyStatsFromWindow = (params: {
 
     const hour = getZonedParts(new Date(ts), timeZone).hour;
     return {
-      observedMaxUncontrolled: updateHourMax(acc.observedMaxUncontrolled, hour, uncontrolled),
-      observedMaxControlled: updateHourMax(acc.observedMaxControlled, hour, controlled),
-      observedMinUncontrolled: updateHourMin(acc.observedMinUncontrolled, hour, uncontrolled),
-      observedMinControlled: updateHourMin(acc.observedMinControlled, hour, controlled),
+      hourlyUncontrolled: appendHourlyValue(acc.hourlyUncontrolled, hour, uncontrolled),
+      hourlyControlled: appendHourlyValue(acc.hourlyControlled, hour, controlled),
       windowBucketCount: acc.windowBucketCount + 1,
     };
   }, {
-    observedMaxUncontrolled: Array.from({ length: 24 }, () => 0),
-    observedMaxControlled: Array.from({ length: 24 }, () => 0),
-    observedMinUncontrolled: Array.from({ length: 24 }, () => 0),
-    observedMinControlled: Array.from({ length: 24 }, () => 0),
+    hourlyUncontrolled: createHourlyBuckets(),
+    hourlyControlled: createHourlyBuckets(),
     windowBucketCount: 0,
   });
 
-  return { ...stats };
+  const observedMaxUncontrolled = stats.hourlyUncontrolled.map((values) => resolveObservedMax(values));
+  const observedMaxControlled = stats.hourlyControlled.map((values) => resolveObservedMax(values));
+  const observedMinUncontrolled = clampMinByMax(
+    stats.hourlyUncontrolled.map((values) => resolveObservedMin(values)),
+    observedMaxUncontrolled,
+  );
+  const observedMinControlled = clampMinByMax(
+    stats.hourlyControlled.map((values) => resolveObservedMin(values)),
+    observedMaxControlled,
+  );
+
+  return {
+    observedMaxUncontrolled,
+    observedMaxControlled,
+    observedMinUncontrolled,
+    observedMinControlled,
+    windowBucketCount: stats.windowBucketCount,
+  };
 };
 
 const hasAnyPositive = (values?: number[]): boolean => (

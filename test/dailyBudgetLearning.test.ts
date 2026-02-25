@@ -11,7 +11,12 @@ import {
   getNextLocalDayStartUtcMs,
   getZonedParts,
 } from '../lib/utils/dateUtils';
-import { OBSERVED_HOURLY_PEAK_WINDOW_DAYS } from '../lib/dailyBudget/dailyBudgetConstants';
+import {
+  OBSERVED_HOURLY_MAX_QUANTILE,
+  OBSERVED_HOURLY_MIN_QUANTILE,
+  OBSERVED_HOURLY_PEAK_WINDOW_DAYS,
+  OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES,
+} from '../lib/dailyBudget/dailyBudgetConstants';
 
 describe('daily budget learning DST handling', () => {
   it('aggregates repeated fall-back hour buckets into the same local hour', () => {
@@ -352,6 +357,45 @@ describe('daily budget learning utilities', () => {
     expect(result.nextState.profileObservedMinUncontrolledKWh?.[9]).toBeCloseTo(3, 6);
     expect(result.nextState.profileObservedMaxUncontrolledKWh?.[10]).toBeCloseTo(0, 6);
     expect(result.nextState.profileObservedMinUncontrolledKWh?.[10]).toBeCloseTo(0, 6);
+  });
+
+  it('uses robust observed quantiles to dampen single-point outliers', () => {
+    const timeZone = 'UTC';
+    const nowMs = Date.UTC(2024, 0, 20, 12, 0, 0);
+    const targetHour = 6;
+    const buckets: Record<string, number> = {};
+    const controlledBuckets: Record<string, number> = {};
+    const controlledSeries = [0.1, 1, 1, 1, 1, 10];
+
+    controlledSeries.forEach((controlled, index) => {
+      const ts = Date.UTC(2024, 0, 19 - index, targetHour, 0, 0);
+      const key = new Date(ts).toISOString();
+      buckets[key] = controlled + 1;
+      controlledBuckets[key] = controlled;
+    });
+
+    const result = ensureObservedHourlyStats({
+      state: {},
+      powerTracker: {
+        buckets,
+        controlledBuckets,
+      },
+      timeZone,
+      nowMs,
+    });
+
+    const observedMin = result.nextState.profileObservedMinControlledKWh?.[targetHour] ?? 0;
+    const observedMax = result.nextState.profileObservedMaxControlledKWh?.[targetHour] ?? 0;
+
+    expect(controlledSeries.length).toBeGreaterThanOrEqual(OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES);
+    expect(OBSERVED_HOURLY_MIN_QUANTILE).toBeGreaterThan(0);
+    expect(OBSERVED_HOURLY_MAX_QUANTILE).toBeLessThan(1);
+
+    // Single-point tails should not directly become bounds when sample count is sufficient.
+    expect(observedMin).toBeGreaterThan(0.1);
+    expect(observedMin).toBeLessThan(1);
+    expect(observedMax).toBeGreaterThan(1);
+    expect(observedMax).toBeLessThan(10);
   });
 
   it('recomputes observed peaks from a rolling window and drops stale season peaks', () => {

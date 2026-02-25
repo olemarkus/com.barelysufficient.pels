@@ -19,12 +19,15 @@ For each local hour `h` (0-23), PELS works with:
 - `s`: learned controlled share of total energy (`0..1`)
 - `w`: **Controlled usage weight** setting (`0..1`, default `0.30`)
 - `p`: **Price flex share** setting (`0..1`, default `0.35`)
-- `Umax[h]`: highest observed uncontrolled kWh for local hour `h`
-- `Cmax[h]`: highest observed controlled kWh for local hour `h`
-- `Umin[h]`: lowest positive observed uncontrolled kWh for local hour `h` (`0` means no minimum data)
-- `Cmin[h]`: lowest positive observed controlled kWh for local hour `h` (`0` means no minimum data)
+- `Umax[h]`: robust upper observed uncontrolled kWh envelope for local hour `h` (hourly quantile)
+- `Cmax[h]`: robust upper observed controlled kWh envelope for local hour `h` (hourly quantile)
+- `Umin[h]`: robust lower positive observed uncontrolled kWh envelope for local hour `h` (`0` means no minimum data)
+- `Cmin[h]`: robust lower positive observed controlled kWh envelope for local hour `h` (`0` means no minimum data)
 - `m`: observed-peak margin ratio (current implementation: `0.20`)
 - `W`: observed-peak rolling window in days (current implementation: `30`)
+- `qMax`: upper quantile for observed caps (current implementation: `0.90`)
+- `qMin`: lower quantile for observed minimums (current implementation: `0.10`)
+- `Nq`: minimum samples per hour before quantiles are used (current implementation: `5`)
 - `f[b]`: price factor per plan bucket (typically `0.7..1.3`), where:
   - `f > 1` means cheaper-than-median bucket
   - `f < 1` means more expensive-than-median bucket
@@ -52,15 +55,24 @@ nextShare = (prevShare * sampleCount + dayShare) / (sampleCount + 1)
 Observed hourly peaks are updated at rollover too:
 
 ```text
-nextUmax[h] = max(hourlyUncontrolled[h]) over buckets in last W days
-nextCmax[h] = max(hourlyControlled[h]) over buckets in last W days
+nextUmax[h] = quantile(hourlyUncontrolled[h], qMax) over buckets in last W days
+nextCmax[h] = quantile(hourlyControlled[h], qMax) over buckets in last W days
 ```
 
 Observed hourly minimums are updated from the same rolling window:
 
 ```text
-nextUmin[h] = min(hourlyUncontrolled[h] where hourlyUncontrolled[h] > 0) over buckets in last W days
-nextCmin[h] = min(hourlyControlled[h] where hourlyControlled[h] > 0) over buckets in last W days
+nextUmin[h] = quantile(hourlyUncontrolled[h] where > 0, qMin) over buckets in last W days
+nextCmin[h] = quantile(hourlyControlled[h] where > 0, qMin) over buckets in last W days
+```
+
+For low sample counts (`count < Nq`), PELS falls back to raw extrema for that hour:
+
+```text
+nextUmax[h] = max(...)
+nextCmax[h] = max(...)
+nextUmin[h] = min(... where > 0)
+nextCmin[h] = min(... where > 0)
 ```
 
 ## 3) Controlled usage weight (`w`) math
@@ -157,8 +169,8 @@ If split data only exists for 4 days but total data exists for 12 days:
 
 ## 5) Observed hourly peak caps (split-budget safety)
 
-This adds an hour-aware cap based on the largest observed split usage for each local hour, plus margin.
-Observed maxima are recomputed from a rolling window, so old seasonal peaks eventually age out.
+This adds an hour-aware cap based on a robust upper observed split envelope for each local hour, plus margin.
+Observed bounds are recomputed from a rolling window, so old seasonal peaks eventually age out.
 
 Per local hour:
 
@@ -206,7 +218,8 @@ This gives endpoint behavior:
 ## 5b) Observed hourly minimum floors (split-budget safety)
 
 Observed minima create an hour-aware floor that prevents planning below typical
-historical usage for each side. Floors use the same margin ratio `m`, but apply
+historical usage for each side. Floors use robust lower positive envelopes and
+the same margin ratio `m`, but apply
 in the opposite direction:
 
 ```text
