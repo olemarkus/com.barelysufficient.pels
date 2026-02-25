@@ -143,11 +143,6 @@ export function getHourStartInTimeZone(date: Date, timeZone: string): number {
     return utcHour - offsetMinutes * 60 * 1000;
 }
 
-export function getLocalDayStartUtcMs(nowMs: number, timeZone: string): number {
-    const dateKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
-    return getDateKeyStartMs(dateKey, timeZone);
-}
-
 export function getNextLocalDayStartUtcMs(dayStartUtcMs: number, timeZone: string): number {
     const nextCandidate = new Date(dayStartUtcMs + 26 * 60 * 60 * 1000);
     const nextKey = getDateKeyInTimeZone(nextCandidate, timeZone);

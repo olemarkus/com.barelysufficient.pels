@@ -12,15 +12,6 @@ export function getConfidence(sampleCount: number): number {
   return clamp(sampleCount / 14, 0, 1);
 }
 
-
-export function blendProfiles(defaultWeights: number[], learnedWeights: number[], confidence: number): number[] {
-  const safeConfidence = clamp(confidence, 0, 1);
-  const blended = defaultWeights.map((value, index) => (
-    value * (1 - safeConfidence) + (learnedWeights[index] ?? value) * safeConfidence
-  ));
-  return normalizeWeights(blended);
-}
-
 export function buildDefaultProfile(): number[] {
   const bumps: Record<number, number> = {
     6: 0.3,
@@ -71,5 +62,5 @@ export {
   buildPlan,
   normalizeWeights,
 };
-export { buildPriceDebugData, buildPriceFactors, buildPriceSeries } from './dailyBudgetPrices';
-export type { CombinedPriceData, CombinedPriceEntry } from './dailyBudgetPrices';
+export { buildPriceDebugData } from './dailyBudgetPrices';
+export type { CombinedPriceData } from './dailyBudgetPrices';

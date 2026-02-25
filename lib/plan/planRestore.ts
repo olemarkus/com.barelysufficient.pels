@@ -501,14 +501,13 @@ function markOffDevicesStayOff(
     .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed');
   for (const dev of offDevices) {
     const defaultReason = dev.reason || 'shed due to capacity';
-    const nextReason = reasonOverride ? reasonOverride(dev) : resolveOffDeviceReason(dev, timing, defaultReason);
+    const nextReason = reasonOverride ? reasonOverride(dev) : resolveOffDeviceReason(timing, defaultReason);
     setDevice(deviceMap, dev.id, { plannedState: 'shed', reason: nextReason });
     logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) - ${nextReason}`);
   }
 }
 
 function resolveOffDeviceReason(
-  dev: DevicePlanDevice,
   timing: { activeOvershoot: boolean; inCooldown: boolean; restoreCooldownSeconds: number; shedCooldownRemainingSec: number | null },
   defaultReason: string,
 ): string {

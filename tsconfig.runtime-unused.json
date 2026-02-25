@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": [
+    "app.ts",
+    "api.ts",
+    "drivers/**/*.ts",
+    "flowCards/**/*.ts",
+    "lib/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".homeybuild",
+    "test/**",
+    "tests/**",
+    "settings/**"
+  ]
+}
