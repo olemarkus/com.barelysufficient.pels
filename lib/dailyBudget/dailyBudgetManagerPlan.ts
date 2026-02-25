@@ -246,7 +246,11 @@ function buildPlanDebugPayload(params: {
 function hasPlanStateMismatch(state: DailyBudgetState, context: DayContext): boolean {
   if (!state.plannedKWh) return true;
   if (state.plannedKWh.length !== context.bucketStartUtcMs.length) return true;
-  return state.dayStartUtcMs !== context.dayStartUtcMs;
+  if (state.dayStartUtcMs !== context.dayStartUtcMs) return true;
+  if (typeof state.lastPlanBucketStartUtcMs === 'number' && Number.isFinite(state.lastPlanBucketStartUtcMs)) {
+    return !context.bucketStartUtcMs.includes(state.lastPlanBucketStartUtcMs);
+  }
+  return false;
 }
 
 function getExistingPlan(

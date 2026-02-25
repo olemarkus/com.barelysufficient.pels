@@ -21,8 +21,8 @@ For each local hour `h` (0-23), PELS works with:
 - `p`: **Price flex share** setting (`0..1`, default `0.35`)
 - `Umax[h]`: highest observed uncontrolled kWh for local hour `h`
 - `Cmax[h]`: highest observed controlled kWh for local hour `h`
-- `Umin[h]`: lowest observed uncontrolled kWh for local hour `h`
-- `Cmin[h]`: lowest observed controlled kWh for local hour `h`
+- `Umin[h]`: lowest positive observed uncontrolled kWh for local hour `h` (`0` means no minimum data)
+- `Cmin[h]`: lowest positive observed controlled kWh for local hour `h` (`0` means no minimum data)
 - `m`: observed-peak margin ratio (current implementation: `0.20`)
 - `W`: observed-peak rolling window in days (current implementation: `30`)
 - `f[b]`: price factor per plan bucket (typically `0.7..1.3`), where:
@@ -59,8 +59,8 @@ nextCmax[h] = max(hourlyControlled[h]) over buckets in last W days
 Observed hourly minimums are updated from the same rolling window:
 
 ```text
-nextUmin[h] = min(hourlyUncontrolled[h]) over buckets in last W days
-nextCmin[h] = min(hourlyControlled[h]) over buckets in last W days
+nextUmin[h] = min(hourlyUncontrolled[h] where hourlyUncontrolled[h] > 0) over buckets in last W days
+nextCmin[h] = min(hourlyControlled[h] where hourlyControlled[h] > 0) over buckets in last W days
 ```
 
 ## 3) Controlled usage weight (`w`) math

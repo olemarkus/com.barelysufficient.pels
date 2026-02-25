@@ -70,7 +70,7 @@ The daily budget controls live in the **Budget** tab.
 
 The **Advanced** tab includes two daily-budget tuning controls:
 
-- **Controlled usage weight** (default `0.30`): balances uncontrolled vs controlled influence in learned profile blending and split caps/floors (0 = uncontrolled, 1 = controlled). Uses a rolling 30-day window.
+- **Controlled usage weight** (default `0.30`): balances uncontrolled vs controlled influence in learned profile blending and how split caps/floors are allocated (0 = uncontrolled, 1 = controlled). Historical caps and floors are computed over a rolling 30-day window.
 - **Price flex share** (default `0.35`): max price-shaping strength for controlled load; automatically reduced on low-spread price days.
 
 **Warning:** these controls can significantly change pacing behavior, shed order timing, and restore timing. Keep defaults unless you are deliberately tuning behavior. If you change them, adjust one parameter at a time and observe at least a full day.
