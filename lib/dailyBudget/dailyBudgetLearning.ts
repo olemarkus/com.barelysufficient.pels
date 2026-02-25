@@ -174,26 +174,16 @@ const buildHourlyTotals = (params: {
   bucketUsage: ReturnType<typeof buildBucketUsageSplit>;
 }): { hourlyUncontrolled: number[]; hourlyControlled: number[] } => {
   const { bucketStartUtcMs, timeZone, bucketUsage } = params;
-  const totals = bucketStartUtcMs.reduce((acc, ts, index) => {
+  const hourlyUncontrolled = Array.from({ length: 24 }, () => 0);
+  const hourlyControlled = Array.from({ length: 24 }, () => 0);
+  for (const [index, ts] of bucketStartUtcMs.entries()) {
     const bucketHour = getZonedParts(new Date(ts), timeZone).hour;
     const uncontrolledIncrement = bucketUsage.bucketUsageUncontrolled[index] ?? 0;
     const controlledIncrement = bucketUsage.bucketUsageControlled[index] ?? 0;
-    return {
-      uncontrolled: {
-        ...acc.uncontrolled,
-        [bucketHour]: (acc.uncontrolled[bucketHour] ?? 0) + uncontrolledIncrement,
-      },
-      controlled: {
-        ...acc.controlled,
-        [bucketHour]: (acc.controlled[bucketHour] ?? 0) + controlledIncrement,
-      },
-    };
-  }, { uncontrolled: {} as Record<number, number>, controlled: {} as Record<number, number> });
-
-  return {
-    hourlyUncontrolled: Array.from({ length: 24 }, (_, hour) => totals.uncontrolled[hour] ?? 0),
-    hourlyControlled: Array.from({ length: 24 }, (_, hour) => totals.controlled[hour] ?? 0),
-  };
+    hourlyUncontrolled[bucketHour] += uncontrolledIncrement;
+    hourlyControlled[bucketHour] += controlledIncrement;
+  }
+  return { hourlyUncontrolled, hourlyControlled };
 };
 
 const buildDayWeights = (params: {

@@ -113,8 +113,12 @@ function planShedding(
     deps,
   });
   const result = selectShedDevices(candidates, needed, shedReason);
-  result.shedSet.forEach((id) => shedSet.add(id));
-  result.shedReasons.forEach((reason, id) => shedReasons.set(id, reason));
+  for (const id of result.shedSet) {
+    shedSet.add(id);
+  }
+  for (const [id, reason] of result.shedReasons) {
+    shedReasons.set(id, reason);
+  }
 
   if (shedSet.size === 0) {
     return { shedSet, shedReasons, updates: {}, overshootStats: null };

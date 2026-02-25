@@ -32,7 +32,8 @@ export function buildPlanChangeLines(plan: DevicePlan): string[] {
   const headroom = typeof plan.meta.headroomKw === 'number' ? plan.meta.headroomKw : null;
   const changes = plan.devices
     .filter((d) => isChange(d))
-    .reduce((sorted, device) => insertSorted(sorted, device, compareDevices), [] as DevicePlanDevice[]);
+    .slice()
+    .sort(compareDevices);
   return changes.map((device) => formatPlanChange(device, headroom));
 }
 
@@ -101,16 +102,6 @@ function buildRestoreHint(device: DevicePlanDevice, nextPower: string, headroom:
   const needed = typeof device.powerKw === 'number' ? device.powerKw : 1;
   const headroomInfo = typeof headroom === 'number' ? ` vs headroom ${headroom.toFixed(2)}kW` : '';
   return ` (restoring, needs ~${needed.toFixed(2)}kW${headroomInfo})`;
-}
-
-function insertSorted(
-  list: DevicePlanDevice[],
-  item: DevicePlanDevice,
-  compare: (a: DevicePlanDevice, b: DevicePlanDevice) => number,
-): DevicePlanDevice[] {
-  const idx = list.findIndex((existing) => compare(item, existing) < 0);
-  if (idx === -1) return [...list, item];
-  return [...list.slice(0, idx), item, ...list.slice(idx)];
 }
 
 function compareDevices(a: DevicePlanDevice, b: DevicePlanDevice): number {

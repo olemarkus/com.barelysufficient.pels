@@ -12,17 +12,7 @@ function stableSort(
   devices: DevicePlanDevice[],
   compare: (a: DevicePlanDevice, b: DevicePlanDevice) => number,
 ): DevicePlanDevice[] {
-  return devices.reduce((sorted, device) => insertSorted(sorted, device, compare), [] as DevicePlanDevice[]);
-}
-
-function insertSorted(
-  list: DevicePlanDevice[],
-  item: DevicePlanDevice,
-  compare: (a: DevicePlanDevice, b: DevicePlanDevice) => number,
-): DevicePlanDevice[] {
-  const idx = list.findIndex((existing) => compare(item, existing) < 0);
-  if (idx === -1) return [...list, item];
-  return [...list.slice(0, idx), item, ...list.slice(idx)];
+  return devices.slice().sort(compare);
 }
 
 function compareByPriorityAsc(a: DevicePlanDevice, b: DevicePlanDevice): number {

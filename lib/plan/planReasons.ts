@@ -41,7 +41,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
 
   let headroom = availableHeadroom;
   let restoredOne = restoredOneThisCycle;
-  let nextDevices: DevicePlanDevice[] = [];
+  const nextDevices: DevicePlanDevice[] = [];
   const pendingRestoreDelaySec = getPendingRestoreDelaySeconds(planDevices, state, getShedBehavior);
 
   for (const dev of planDevices) {
@@ -63,7 +63,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     });
     headroom = result.availableHeadroom;
     restoredOne = result.restoredOneThisCycle;
-    nextDevices = [...nextDevices, result.device];
+    nextDevices.push(result.device);
   }
 
   return {
