@@ -2,8 +2,11 @@ import { computePlanDeviation, type DayContext, type PriceData } from './dailyBu
 import type { ExistingPlanState } from './dailyBudgetManagerTypes';
 import { getConfidence } from './dailyBudgetMath';
 import {
+  OBSERVED_HOURLY_MAX_QUANTILE,
+  OBSERVED_HOURLY_MIN_QUANTILE,
   OBSERVED_HOURLY_PEAK_MARGIN_RATIO,
   OBSERVED_HOURLY_PEAK_WINDOW_DAYS,
+  OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES,
   PLAN_REBUILD_INTERVAL_MS,
   PLAN_REBUILD_USAGE_DELTA_KWH,
   PLAN_REBUILD_USAGE_MIN_INTERVAL_MS,
@@ -232,6 +235,9 @@ function buildPlanDebugPayload(params: {
       profileControlledShare: profileMeta.controlledShare,
       observedPeakWindowDays: OBSERVED_HOURLY_PEAK_WINDOW_DAYS,
       observedPeakMarginRatio: OBSERVED_HOURLY_PEAK_MARGIN_RATIO,
+      observedPeakMaxQuantile: OBSERVED_HOURLY_MAX_QUANTILE,
+      observedPeakMinQuantile: OBSERVED_HOURLY_MIN_QUANTILE,
+      observedPeakQuantileMinSamples: OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES,
       profileObservedMaxUncontrolledKWh: state.profileObservedMaxUncontrolledKWh ?? null,
       profileObservedMaxControlledKWh: state.profileObservedMaxControlledKWh ?? null,
       profileObservedMinUncontrolledKWh: state.profileObservedMinUncontrolledKWh ?? null,
