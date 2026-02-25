@@ -17,7 +17,6 @@ export type DailyBudgetState = {
   plannedKWh?: number[];
   frozen?: boolean;
   lastPlanBucketStartUtcMs?: number | null;
-  lastPlanUpdateMs?: number | null;
   lastUsedNowKWh?: number;
   profile?: DailyBudgetProfile;
   profileUncontrolled?: DailyBudgetProfile;

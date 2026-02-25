@@ -1,4 +1,5 @@
 import { clamp } from '../utils/mathUtils';
+import { PRICE_SHAPING_FLEX_SHARE } from './dailyBudgetConstants';
 
 export type CombinedPriceEntry = {
   startsAt: string;
@@ -17,18 +18,30 @@ export function buildPriceDebugData(params: {
   combinedPrices?: CombinedPriceData | null;
   priceOptimizationEnabled: boolean;
   priceShapingEnabled: boolean;
+  priceShapingFlexShare?: number;
 }): {
   prices?: Array<number | null>;
   priceFactors?: Array<number | null>;
   priceShapingActive: boolean;
   priceSpreadFactor?: number;
+  effectivePriceShapingFlexShare?: number;
 } {
   const priceShape = buildPriceFactors(params);
+  const configuredFlexShare = typeof params.priceShapingFlexShare === 'number'
+    ? params.priceShapingFlexShare
+    : PRICE_SHAPING_FLEX_SHARE;
+  const priceSpreadFactor = typeof priceShape.priceSpreadFactor === 'number'
+    ? priceShape.priceSpreadFactor
+    : 0;
+  const effectivePriceShapingFlexShare = priceShape.priceShapingActive
+    ? clamp(configuredFlexShare * priceSpreadFactor, 0, 1)
+    : 0;
   return {
     prices: priceShape.prices,
     priceFactors: priceShape.priceFactors,
     priceShapingActive: priceShape.priceShapingActive,
-    priceSpreadFactor: priceShape.priceSpreadFactor,
+    priceSpreadFactor,
+    effectivePriceShapingFlexShare,
   };
 }
 

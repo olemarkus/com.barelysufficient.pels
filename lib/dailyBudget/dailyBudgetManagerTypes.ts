@@ -89,7 +89,6 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     , isNullableStringOrUndefined(state.dateKey)
     , isNullableFiniteNumberOrUndefined(state.dayStartUtcMs)
     , isNullableFiniteNumberOrUndefined(state.lastPlanBucketStartUtcMs)
-    , isNullableFiniteNumberOrUndefined(state.lastPlanUpdateMs)
     , isBooleanOrUndefined(state.frozen)
     , isNumberOrUndefined(state.lastUsedNowKWh),
   ];

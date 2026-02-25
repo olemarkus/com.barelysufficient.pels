@@ -5,7 +5,6 @@ import {
 } from '../utils/dateUtils';
 import {
   buildPlan,
-  buildPriceDebugData,
 } from './dailyBudgetMath';
 import { buildPlanBreakdown } from './dailyBudgetBreakdown';
 import type { CombinedPriceData } from './dailyBudgetMath';
@@ -160,14 +159,14 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     profileSplitSampleCount,
   });
 
-  const priceData = enabled
-    ? buildPriceDebugData({
-      bucketStartUtcMs,
-      currentBucketIndex,
-      combinedPrices,
-      priceOptimizationEnabled,
-      priceShapingEnabled,
-    })
+  const priceData = enabled && buildResult
+    ? {
+      prices: buildResult.price,
+      priceFactors: buildResult.priceFactor,
+      priceShapingActive: buildResult.priceShapingActive,
+      priceSpreadFactor: buildResult.priceSpreadFactor,
+      effectivePriceShapingFlexShare: buildResult.effectivePriceShapingFlexShare,
+    }
     : { priceShapingActive: false };
 
   return buildDailyBudgetSnapshot({
