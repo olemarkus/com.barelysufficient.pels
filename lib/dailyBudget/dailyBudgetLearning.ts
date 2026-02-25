@@ -358,9 +358,7 @@ export function finalizePreviousDayLearning(params: {
     totalUncontrolledKWh,
     totalControlledKWh,
   });
-  const observedWindowEndMs = typeof nowMs === 'number' && Number.isFinite(nowMs)
-    ? nowMs
-    : windowResult.windowEndUtcMs;
+  const observedWindowEndMs = resolveObservedWindowEndMs(nowMs, windowResult.windowEndUtcMs);
   const observedWindowStartMs = observedWindowEndMs - OBSERVED_HOURLY_PEAK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const {
     observedMaxUncontrolled,
@@ -394,6 +392,12 @@ export function finalizePreviousDayLearning(params: {
     shouldMarkDirty: true,
     logMessage: `Daily budget: finalized ${previousDateKey} (${totalKWh.toFixed(2)} kWh ${sourceLabel}, window buckets ${windowBucketCount})`,
   };
+}
+
+function resolveObservedWindowEndMs(nowMs: number | undefined, fallbackEndMs: number): number {
+  if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) return fallbackEndMs;
+  const hourMs = 60 * 60 * 1000;
+  return Math.floor(nowMs / hourMs) * hourMs;
 }
 
 

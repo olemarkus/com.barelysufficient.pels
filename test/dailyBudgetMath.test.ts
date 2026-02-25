@@ -46,6 +46,20 @@ describe('allocateBudgetWithCaps', () => {
     });
   });
 
+  it('redistributes zero-weight overflow when one bucket caps early', () => {
+    const allocations = allocateBudgetWithCaps({
+      weights: [0, 0, 0],
+      totalKWh: 6,
+      caps: [1, 10, 10],
+    });
+
+    expect(allocations[0]).toBeCloseTo(1, 6);
+    expect(allocations[1]).toBeCloseTo(2.5, 6);
+    expect(allocations[2]).toBeCloseTo(2.5, 6);
+    const total = allocations.reduce((sum, value) => sum + value, 0);
+    expect(total).toBeCloseTo(6, 6);
+  });
+
   it('redistributes overflow when caps are uneven', () => {
     const allocations = allocateBudgetWithCaps({
       weights: [0.7, 0.3],
