@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { CombinedPriceData } from '../dailyBudget/dailyBudgetMath';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { buildPlanPriceSvgWithEcharts } from './planPriceImageEcharts';
+import { PLAN_PRICE_VIEWPORT } from './planPriceImageTheme';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 
 type PlanPriceImageParams = {
@@ -14,8 +15,8 @@ type PlanPriceImageParams = {
   height?: number;
 };
 
-const DEFAULT_WIDTH = 480;
-const DEFAULT_HEIGHT = 480;
+const DEFAULT_WIDTH = PLAN_PRICE_VIEWPORT.width;
+const DEFAULT_HEIGHT = PLAN_PRICE_VIEWPORT.height;
 
 const FONT_FILES = resolveFontFiles();
 const DEFAULT_FONT_FAMILY = FONT_FILES.length > 0 ? 'IBM Plex Sans' : 'sans-serif';

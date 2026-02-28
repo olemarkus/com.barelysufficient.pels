@@ -78,11 +78,11 @@ export const buildLegendOption = (params: {
   showActual: boolean;
 }): NonNullable<EChartsOption['legend']> => ({
   left: PADDING,
-  bottom: PADDING + 8,
+  bottom: PADDING + 2,
   selectedMode: false,
-  itemWidth: 18,
-  itemHeight: 12,
-  itemGap: 18,
+  itemWidth: 16,
+  itemHeight: 10,
+  itemGap: 14,
   textStyle: { color: COLORS.muted, fontSize: FONT_SIZES.legend },
   data: params.showActual
     ? [params.legendTexts.plan, ACTUAL_LEGEND_TEXT, params.legendTexts.price]
