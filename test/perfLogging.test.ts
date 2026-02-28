@@ -1,9 +1,19 @@
 import { incPerfCounter } from '../lib/utils/perfCounters';
 import { startPerfLogger } from '../lib/app/perfLogging';
 
+const startCpuSpikeMonitorMock = jest.fn((params: unknown) => {
+  void params;
+  return jest.fn();
+});
+
+jest.mock('../lib/utils/cpuSpikeMonitor', () => ({
+  startCpuSpikeMonitor: (params: unknown) => startCpuSpikeMonitorMock(params),
+}));
+
 describe('startPerfLogger', () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date('2026-01-26T12:00:00Z'));
+    startCpuSpikeMonitorMock.mockClear();
   });
 
   afterEach(() => {
@@ -94,6 +104,71 @@ describe('startPerfLogger', () => {
 
     jest.advanceTimersByTime(3000);
     expect(log).not.toHaveBeenCalled();
+
+    stop();
+  });
+
+  it('starts and stops cpu spike monitor when configured', () => {
+    const log = jest.fn();
+    const logCpuSpike = jest.fn();
+    const stopCpuMonitor = jest.fn();
+    startCpuSpikeMonitorMock.mockReturnValueOnce(stopCpuMonitor);
+
+    const stop = startPerfLogger({
+      isEnabled: () => true,
+      log,
+      logCpuSpike,
+      intervalMs: 1000,
+    });
+
+    expect(startCpuSpikeMonitorMock).toHaveBeenCalledTimes(1);
+    expect(startCpuSpikeMonitorMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      log: logCpuSpike,
+      isEnabled: expect.any(Function),
+    }));
+
+    stop();
+
+    expect(stopCpuMonitor).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start cpu spike monitor when not configured', () => {
+    const log = jest.fn();
+
+    const stop = startPerfLogger({
+      isEnabled: () => true,
+      log,
+      intervalMs: 1000,
+    });
+
+    expect(startCpuSpikeMonitorMock).not.toHaveBeenCalled();
+
+    stop();
+  });
+
+  it('starts cpu spike monitor only after perf logging becomes enabled', () => {
+    const log = jest.fn();
+    const logCpuSpike = jest.fn();
+    const stopCpuMonitor = jest.fn();
+    let enabled = false;
+    startCpuSpikeMonitorMock.mockReturnValueOnce(stopCpuMonitor);
+
+    const stop = startPerfLogger({
+      isEnabled: () => enabled,
+      log,
+      logCpuSpike,
+      intervalMs: 1000,
+    });
+
+    expect(startCpuSpikeMonitorMock).not.toHaveBeenCalled();
+
+    enabled = true;
+    jest.advanceTimersByTime(1000);
+    expect(startCpuSpikeMonitorMock).toHaveBeenCalledTimes(1);
+
+    enabled = false;
+    jest.advanceTimersByTime(1000);
+    expect(stopCpuMonitor).toHaveBeenCalledTimes(1);
 
     stop();
   });

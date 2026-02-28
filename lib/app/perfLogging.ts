@@ -1,4 +1,5 @@
 import { getPerfSnapshotAndResetWindow, type PerfSnapshot } from '../utils/perfCounters';
+import { startCpuSpikeMonitor } from '../utils/cpuSpikeMonitor';
 
 type PerfDurationEntry = {
   totalMs: number;
@@ -30,6 +31,7 @@ type PerfSummary = {
 const VALUE_COUNT_KEY_PATTERNS: RegExp[] = [
   /^plan_rebuild_requested_total$/,
   /^plan_rebuild_total$/,
+  /^plan_rebuild_failed_total$/,
   /^plan_rebuild_skipped_total$/,
   /^plan_rebuild_no_change_total$/,
   /^plan_rebuild_action_signature_changed_total$/,
@@ -49,6 +51,13 @@ const VALUE_COUNT_KEY_PATTERNS: RegExp[] = [
 const VALUE_DURATION_KEYS = new Set([
   'plan_rebuild_ms',
   'plan_rebuild_queue_wait_ms',
+  'plan_rebuild_build_ms',
+  'plan_rebuild_change_ms',
+  'plan_rebuild_snapshot_ms',
+  'plan_rebuild_snapshot_write_ms',
+  'plan_rebuild_status_ms',
+  'plan_rebuild_status_write_ms',
+  'plan_rebuild_apply_ms',
   'plan_build_ms',
   'power_sample_ms',
   'daily_budget_update_ms',
@@ -162,11 +171,30 @@ const buildPerfSummary = (delta: PerfDelta): PerfSummary => {
 export const startPerfLogger = (params: {
   isEnabled: () => boolean;
   log: (...args: unknown[]) => void;
+  logCpuSpike?: (...args: unknown[]) => void;
   intervalMs?: number;
 }): (() => void) => {
   const intervalMs = typeof params.intervalMs === 'number' ? params.intervalMs : 30 * 1000;
   let lastSnapshot: PerfSnapshot | null = null;
+  let stopCpuMonitor: (() => void) | undefined;
+  const syncCpuMonitor = (): void => {
+    if (typeof params.logCpuSpike !== 'function') return;
+    if (params.isEnabled()) {
+      if (!stopCpuMonitor) {
+        stopCpuMonitor = startCpuSpikeMonitor({
+          log: params.logCpuSpike,
+          isEnabled: params.isEnabled,
+        });
+      }
+      return;
+    }
+    if (stopCpuMonitor) {
+      stopCpuMonitor();
+      stopCpuMonitor = undefined;
+    }
+  };
   const logCounters = () => {
+    syncCpuMonitor();
     if (!params.isEnabled()) return;
     const snapshot = getPerfSnapshotAndResetWindow();
     const delta = buildPerfDelta(snapshot, lastSnapshot);
@@ -186,5 +214,8 @@ export const startPerfLogger = (params: {
   };
   logCounters();
   const timer = setInterval(logCounters, intervalMs);
-  return () => clearInterval(timer);
+  return () => {
+    clearInterval(timer);
+    stopCpuMonitor?.();
+  };
 };

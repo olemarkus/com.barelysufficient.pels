@@ -101,6 +101,7 @@ export class MockDriver {
 }
 
 let autoEnableMockDevices = false;
+const mockHomeyEmitter = new EventEmitter();
 
 export const setAutoEnableMockDevices = (enabled: boolean): void => {
   autoEnableMockDevices = enabled;
@@ -130,6 +131,25 @@ const findMockDeviceById = (deviceId: string): MockDevice | null => {
 };
 
 export const mockHomeyInstance = {
+  on(event: string, listener: (...args: any[]) => void) {
+    mockHomeyEmitter.on(event, listener);
+    return mockHomeyInstance;
+  },
+  off(event: string, listener: (...args: any[]) => void) {
+    mockHomeyEmitter.off(event, listener);
+    return mockHomeyInstance;
+  },
+  removeListener(event: string, listener: (...args: any[]) => void) {
+    mockHomeyEmitter.removeListener(event, listener);
+    return mockHomeyInstance;
+  },
+  emit(event: string, ...args: any[]) {
+    return mockHomeyEmitter.emit(event, ...args);
+  },
+  removeAllListeners(event?: string) {
+    mockHomeyEmitter.removeAllListeners(event);
+    return mockHomeyInstance;
+  },
   settings: new MockSettings(),
   platform: 'local',
   platformVersion: 2,

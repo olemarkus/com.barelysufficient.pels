@@ -38,7 +38,7 @@ export type PriceServiceLike = {
 export type SettingsHandlerDeps = {
   homey: Homey.App['homey'];
   loadCapacitySettings: () => void;
-  rebuildPlanFromCache: () => Promise<void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
   loadPowerTracker: () => void;
   getCapacityGuard: () => CapacityGuard | undefined;
@@ -323,7 +323,7 @@ function recordSettingsRebuildRequest(source: string): void {
 
 async function rebuildPlanFromSettings(deps: SettingsHandlerDeps, source: string): Promise<void> {
   recordSettingsRebuildRequest(source);
-  await deps.rebuildPlanFromCache();
+  await deps.rebuildPlanFromCache(`settings:${source}`);
 }
 
 async function refreshSnapshotWithLog(deps: SettingsHandlerDeps, message: string): Promise<void> {

@@ -1,15 +1,27 @@
 import type Homey from 'homey';
-import type { PlanEngine } from './planEngine';
-import type { DevicePlan, PlanInputDevice } from './planTypes';
+import { PriceLevel } from '../price/priceLevels';
+import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { startRuntimeSpan } from '../utils/runtimeTrace';
+import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
   buildPlanChangeLines,
   buildPlanDetailSignature,
   buildPlanSignature,
 } from './planLogging';
-import { buildPelsStatus } from '../core/pelsStatus';
-import { PriceLevel } from '../price/priceLevels';
-import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS, VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
+import {
+  createPlanRebuildOutcome,
+  hasShedding,
+  type PlanChangeSet,
+  type PlanRebuildOutcome,
+  type PlanSnapshotWriteReason,
+  type StatusPlanChanges,
+} from './planServiceInternals';
+import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
+import { normalizePlanMeta } from './planStatusHelpers';
+import { PlanStatusWriter } from './planStatusWriter';
+import type { PlanEngine } from './planEngine';
+import type { DevicePlan, PlanInputDevice } from './planTypes';
+
 export type PlanServiceDeps = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;
@@ -24,20 +36,6 @@ export type PlanServiceDeps = {
   error: (...args: unknown[]) => void;
 };
 
-const PLAN_META_KW_STEP = 0.1;
-const PLAN_META_KWH_STEP = 0.01;
-const STATUS_POWER_BUCKET_MS = 30 * 1000;
-
-type PlanChangeSet = {
-  actionSignature: string;
-  actionChanged: boolean;
-  detailChanged: boolean;
-  metaChanged: boolean;
-};
-
-type PlanSnapshotWriteReason = 'action_changed' | 'detail_changed' | 'meta_only';
-type PelsStatusWriteReason = 'initial' | 'action_changed' | 'throttle';
-
 export class PlanService {
   private lastActionPlanSignature = '';
   private lastDetailPlanSignature = '';
@@ -47,15 +45,20 @@ export class PlanService {
   private pendingNonActionSnapshotReason: Exclude<PlanSnapshotWriteReason, 'action_changed'> = 'meta_only';
   private pendingNonActionSnapshotPlan: DevicePlan | null = null;
   private pendingNonActionSnapshotTimer?: ReturnType<typeof setTimeout>;
-  private lastPelsStatusJson = '';
-  private lastPelsStatusWrittenJson = '';
-  // 0 means "not yet written" for the first throttled write.
-  private lastPelsStatusWriteMs = 0;
   private rebuildPlanQueue: Promise<void> = Promise.resolve();
   private queuedRebuilds = 0;
-  private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
+  private planStatusWriter: PlanStatusWriter;
 
-  constructor(private deps: PlanServiceDeps) {}
+  constructor(private deps: PlanServiceDeps) {
+    this.planStatusWriter = new PlanStatusWriter({
+      homey: deps.homey,
+      getCombinedPrices: deps.getCombinedPrices,
+      isCurrentHourCheap: deps.isCurrentHourCheap,
+      isCurrentHourExpensive: deps.isCurrentHourExpensive,
+      getLastPowerUpdate: deps.getLastPowerUpdate,
+      error: deps.error,
+    });
+  }
 
   buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     return this.deps.planEngine.buildDevicePlanSnapshot(devices);
@@ -78,7 +81,7 @@ export class PlanService {
   }
 
   getLastNotifiedPriceLevel(): PriceLevel {
-    return this.lastNotifiedPriceLevel;
+    return this.planStatusWriter.getLastNotifiedPriceLevel();
   }
 
   applyPlanActions(plan: DevicePlan): Promise<void> {
@@ -89,9 +92,10 @@ export class PlanService {
     return this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
   }
 
-  async rebuildPlanFromCache(): Promise<void> {
+  async rebuildPlanFromCache(reason = 'unspecified'): Promise<void> {
     const enqueuedAt = Date.now();
     this.queuedRebuilds += 1;
+    const queueDepth = this.queuedRebuilds;
     incPerfCounter('plan_rebuild_enqueued_total');
     if (this.queuedRebuilds >= 2) {
       incPerfCounter('plan_rebuild_queue_depth_ge_2_total');
@@ -99,6 +103,7 @@ export class PlanService {
     if (this.queuedRebuilds >= 4) {
       incPerfCounter('plan_rebuild_queue_depth_ge_4_total');
     }
+
     this.rebuildPlanQueue = this.rebuildPlanQueue
       .then(async () => {
         const waitMs = Date.now() - enqueuedAt;
@@ -106,7 +111,7 @@ export class PlanService {
         if (waitMs > 0) {
           incPerfCounter('plan_rebuild_queue_waited_total');
         }
-        await this.performPlanRebuild();
+        await this.performPlanRebuild({ reason, queueWaitMs: waitMs, queueDepth });
       })
       .catch((error) => {
         this.deps.error('Failed to rebuild plan', error as Error);
@@ -114,6 +119,7 @@ export class PlanService {
       .finally(() => {
         this.queuedRebuilds = Math.max(0, this.queuedRebuilds - 1);
       });
+
     await this.rebuildPlanQueue;
   }
 
@@ -149,38 +155,49 @@ export class PlanService {
     this.lastActionPlanSignature = actionSignature;
     this.lastDetailPlanSignature = detailSignature;
     this.lastPlanMetaSignature = metaSignature;
+
     return {
       actionSignature,
+      detailSignature,
+      metaSignature,
       actionChanged,
       detailChanged,
       metaChanged,
     };
   }
 
-  private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): void {
+  private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): number {
     const now = Date.now();
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
     if (!changed) {
-      this.flushPendingNonActionSnapshot(now);
-      return;
+      return this.flushPendingNonActionSnapshot(now);
     }
 
     if (changes.actionChanged) {
-      this.writePlanSnapshot(plan, 'action_changed', now);
+      const writeMs = this.writePlanSnapshot(plan, 'action_changed', now);
       this.clearPendingNonActionSnapshot();
-    } else if (changes.detailChanged) {
-      this.writePlanSnapshot(plan, 'detail_changed', now);
-      this.clearPendingNonActionSnapshot();
-    } else {
-      if (this.canWriteNonActionSnapshot(now)) {
-        this.writePlanSnapshot(plan, 'meta_only', now);
-        this.clearPendingNonActionSnapshot();
-      } else {
-        this.schedulePendingNonActionSnapshot(plan, 'meta_only', now);
-        incPerfCounter('settings_set.device_plan_snapshot_meta_write_throttled_total');
-      }
+      this.emitPlanUpdated(plan);
+      return writeMs;
     }
+
+    if (changes.detailChanged) {
+      const writeMs = this.writePlanSnapshot(plan, 'detail_changed', now);
+      this.clearPendingNonActionSnapshot();
+      this.emitPlanUpdated(plan);
+      return writeMs;
+    }
+
+    if (this.canWriteNonActionSnapshot(now)) {
+      const writeMs = this.writePlanSnapshot(plan, 'meta_only', now);
+      this.clearPendingNonActionSnapshot();
+      this.emitPlanUpdated(plan);
+      return writeMs;
+    }
+
+    this.schedulePendingNonActionSnapshot(plan, 'meta_only', now);
+    incPerfCounter('settings_set.device_plan_snapshot_meta_write_throttled_total');
     this.emitPlanUpdated(plan);
+    return 0;
   }
 
   private canWriteNonActionSnapshot(nowMs: number): boolean {
@@ -211,19 +228,25 @@ export class PlanService {
     }, waitMs);
   }
 
-  private flushPendingNonActionSnapshot(nowMs: number): void {
-    if (!this.hasPendingNonActionSnapshot || !this.pendingNonActionSnapshotPlan) return;
+  private flushPendingNonActionSnapshot(nowMs: number): number {
+    if (!this.hasPendingNonActionSnapshot || !this.pendingNonActionSnapshotPlan) return 0;
     if (!this.canWriteNonActionSnapshot(nowMs)) {
       this.schedulePendingNonActionSnapshot(
         this.pendingNonActionSnapshotPlan,
         this.pendingNonActionSnapshotReason,
         nowMs,
       );
-      return;
+      return 0;
     }
-    this.writePlanSnapshot(this.pendingNonActionSnapshotPlan, this.pendingNonActionSnapshotReason, nowMs);
+
+    const writeMs = this.writePlanSnapshot(
+      this.pendingNonActionSnapshotPlan,
+      this.pendingNonActionSnapshotReason,
+      nowMs,
+    );
     this.clearPendingNonActionSnapshot();
     incPerfCounter('settings_set.device_plan_snapshot_meta_write_flushed_total');
+    return writeMs;
   }
 
   private clearPendingNonActionSnapshot(): void {
@@ -236,13 +259,15 @@ export class PlanService {
     this.pendingNonActionSnapshotReason = 'meta_only';
   }
 
-  private writePlanSnapshot(plan: DevicePlan, reason: PlanSnapshotWriteReason, nowMs: number): void {
+  private writePlanSnapshot(plan: DevicePlan, reason: PlanSnapshotWriteReason, nowMs: number): number {
     const writeStart = Date.now();
     this.deps.homey.settings.set('device_plan_snapshot', plan);
     this.lastPlanSnapshotWriteMs = nowMs;
-    addPerfDuration('settings_write_ms', Date.now() - writeStart);
+    const writeMs = Date.now() - writeStart;
+    addPerfDuration('settings_write_ms', writeMs);
     incPerfCounter('settings_set.device_plan_snapshot');
     incPerfCounter(`settings_set.device_plan_snapshot_reason.${reason}_total`);
+    return writeMs;
   }
 
   private emitPlanUpdated(plan: DevicePlan): void {
@@ -254,136 +279,179 @@ export class PlanService {
     }
   }
 
-  private async performPlanRebuild(): Promise<void> {
+  private async performPlanRebuild(params: {
+    reason: string;
+    queueWaitMs: number;
+    queueDepth: number;
+  }): Promise<void> {
+    const { reason, queueWaitMs, queueDepth } = params;
+    const isDryRun = this.deps.getCapacityDryRun();
     const rebuildStart = Date.now();
+    const stopSpan = startRuntimeSpan(`plan_rebuild(${reason})`);
+    const outcome = createPlanRebuildOutcome(isDryRun);
+
     try {
-      const plan = await this.buildDevicePlanSnapshot(this.deps.getPlanDevices() ?? []);
-      const metaSignature = JSON.stringify(normalizePlanMeta(plan.meta));
-      const changes = this.trackPlanChanges(plan, metaSignature);
-      this.updatePlanSnapshot(plan, changes);
-      this.updatePelsStatus(plan, changes.actionChanged);
-      const hasShedding = plan.devices.some((d) => d.plannedState === 'shed');
-      if (this.deps.getCapacityDryRun() && hasShedding) {
-        this.deps.log('Dry run: shedding planned but not executed');
-      }
-      if (!this.deps.getCapacityDryRun()) {
-        try {
-          await this.applyPlanActions(plan);
-        } catch (error) {
-          this.deps.error('Failed to apply plan actions', error as Error);
-        }
-      }
+      await this.executePlanRebuild(isDryRun, outcome);
+    } catch (error) {
+      outcome.failed = true;
+      incPerfCounter('plan_rebuild_failed_total');
+      throw error;
     } finally {
-      addPerfDuration('plan_rebuild_ms', Date.now() - rebuildStart);
-      incPerfCounter('plan_rebuild_total');
+      this.recordPlanRebuildMetrics(reason, queueWaitMs, queueDepth, rebuildStart, outcome);
+      stopSpan();
     }
   }
 
-  updatePelsStatus(plan: DevicePlan, actionSignatureChanged?: boolean): void {
-    const now = Date.now();
-    const result = buildPelsStatus({
-      plan,
-      isCheap: this.deps.isCurrentHourCheap(),
-      isExpensive: this.deps.isCurrentHourExpensive(),
-      combinedPrices: this.deps.getCombinedPrices(),
-      lastPowerUpdate: this.deps.getLastPowerUpdate(),
+  private async executePlanRebuild(
+    isDryRun: boolean,
+    outcome: PlanRebuildOutcome,
+  ): Promise<void> {
+    const { plan, buildMs } = await this.buildPlanForRebuild();
+    const { changes, changeMs } = this.measurePlanChanges(plan);
+    const { snapshotMs, snapshotWriteMs } = this.measureSnapshotUpdate(plan, changes);
+    const { statusMs, statusWriteMs } = this.measureStatusUpdate(plan, changes);
+    const hadShedding = hasShedding(plan);
+
+    if (isDryRun && hadShedding) {
+      this.deps.log('Dry run: shedding planned but not executed');
+    }
+
+    const { applyMs, appliedActions } = await this.maybeApplyPlanChanges(plan, changes, isDryRun);
+    Object.assign(outcome, {
+      buildMs,
+      changeMs,
+      snapshotMs,
+      snapshotWriteMs,
+      statusMs,
+      statusWriteMs,
+      applyMs,
+      actionChanged: changes.actionChanged,
+      detailChanged: changes.detailChanged,
+      metaChanged: changes.metaChanged,
+      appliedActions,
+      hadShedding,
     });
-    const statusJson = JSON.stringify(normalizePelsStatus(result.status, STATUS_POWER_BUCKET_MS));
-    if (statusJson !== this.lastPelsStatusJson) {
-      this.lastPelsStatusJson = statusJson;
+  }
+
+  private async buildPlanForRebuild(): Promise<{ plan: DevicePlan; buildMs: number }> {
+    const buildStart = Date.now();
+    const plan = await this.buildDevicePlanSnapshot(this.deps.getPlanDevices() ?? []);
+    return {
+      plan,
+      buildMs: Date.now() - buildStart,
+    };
+  }
+
+  private measurePlanChanges(plan: DevicePlan): {
+    changes: PlanChangeSet;
+    changeMs: number;
+  } {
+    const metaSignature = JSON.stringify(normalizePlanMeta(plan.meta));
+    const changeStart = Date.now();
+    const changes = this.trackPlanChanges(plan, metaSignature);
+    return {
+      changes,
+      changeMs: Date.now() - changeStart,
+    };
+  }
+
+  private measureSnapshotUpdate(
+    plan: DevicePlan,
+    changes: PlanChangeSet,
+  ): {
+    snapshotMs: number;
+    snapshotWriteMs: number;
+  } {
+    const snapshotStart = Date.now();
+    const snapshotWriteMs = this.updatePlanSnapshot(plan, changes);
+    return {
+      snapshotMs: Date.now() - snapshotStart,
+      snapshotWriteMs,
+    };
+  }
+
+  private measureStatusUpdate(
+    plan: DevicePlan,
+    changes: PlanChangeSet,
+  ): {
+    statusMs: number;
+    statusWriteMs: number;
+  } {
+    const statusStart = Date.now();
+    const statusWriteMs = this.updatePelsStatus(plan, changes);
+    return {
+      statusMs: Date.now() - statusStart,
+      statusWriteMs,
+    };
+  }
+
+  private async maybeApplyPlanChanges(
+    plan: DevicePlan,
+    _changes: PlanChangeSet,
+    isDryRun: boolean,
+  ): Promise<{ applyMs: number; appliedActions: boolean }> {
+    if (isDryRun) {
+      return { applyMs: 0, appliedActions: false };
     }
-    if (statusJson !== this.lastPelsStatusWrittenJson) {
-      const actionChanged = actionSignatureChanged === true;
-      const isFirstWrite = this.lastPelsStatusWriteMs === 0;
-      const throttleElapsed = now - this.lastPelsStatusWriteMs > VOLATILE_WRITE_THROTTLE_MS;
-      if (isFirstWrite || actionChanged || throttleElapsed) {
-        let reason: PelsStatusWriteReason = 'throttle';
-        if (isFirstWrite) {
-          reason = 'initial';
-        } else if (actionChanged) {
-          reason = 'action_changed';
-        }
-        const writeStart = Date.now();
-        this.deps.homey.settings.set('pels_status', result.status);
-        this.lastPelsStatusWrittenJson = statusJson;
-        this.lastPelsStatusWriteMs = now;
-        addPerfDuration('settings_write_ms', Date.now() - writeStart);
-        incPerfCounter('settings_set.pels_status');
-        incPerfCounter(`settings_set.pels_status_reason.${reason}_total`);
-      } else {
-        incPerfCounter('settings_set.pels_status_skipped_throttle_total');
-      }
+
+    const applyStart = Date.now();
+    let appliedActions = false;
+    try {
+      await this.applyPlanActions(plan);
+      appliedActions = true;
+    } catch (error) {
+      this.deps.error('Failed to apply plan actions', error as Error);
     }
-    if (result.priceLevel !== this.lastNotifiedPriceLevel) {
-      const card = this.deps.homey.flow?.getTriggerCard?.('price_level_changed');
-      if (card) {
-        card
-          .trigger({ level: result.priceLevel }, { priceLevel: result.priceLevel })
-          .catch((err: Error) => this.deps.error('Failed to trigger price_level_changed', err));
-      }
-    }
-    this.lastNotifiedPriceLevel = result.priceLevel;
+    return {
+      applyMs: Date.now() - applyStart,
+      appliedActions,
+    };
+  }
+
+  private recordPlanRebuildMetrics(
+    reason: string,
+    queueWaitMs: number,
+    queueDepth: number,
+    rebuildStart: number,
+    outcome: PlanRebuildOutcome,
+  ): void {
+    const totalMs = Date.now() - rebuildStart;
+    addPerfDuration('plan_rebuild_ms', totalMs);
+    addPerfDuration('plan_rebuild_build_ms', outcome.buildMs);
+    addPerfDuration('plan_rebuild_change_ms', outcome.changeMs);
+    addPerfDuration('plan_rebuild_snapshot_ms', outcome.snapshotMs);
+    addPerfDuration('plan_rebuild_snapshot_write_ms', outcome.snapshotWriteMs);
+    addPerfDuration('plan_rebuild_status_ms', outcome.statusMs);
+    addPerfDuration('plan_rebuild_status_write_ms', outcome.statusWriteMs);
+    addPerfDuration('plan_rebuild_apply_ms', outcome.applyMs);
+    incPerfCounter('plan_rebuild_total');
+    recordPlanRebuildTrace({
+      reason,
+      queueDepth,
+      queueWaitMs,
+      buildMs: outcome.buildMs,
+      changeMs: outcome.changeMs,
+      snapshotMs: outcome.snapshotMs,
+      snapshotWriteMs: outcome.snapshotWriteMs,
+      statusMs: outcome.statusMs,
+      statusWriteMs: outcome.statusWriteMs,
+      applyMs: outcome.applyMs,
+      totalMs,
+      actionChanged: outcome.actionChanged,
+      detailChanged: outcome.detailChanged,
+      metaChanged: outcome.metaChanged,
+      isDryRun: outcome.isDryRun,
+      appliedActions: outcome.appliedActions,
+      hadShedding: outcome.hadShedding,
+      failed: outcome.failed,
+    });
+  }
+
+  updatePelsStatus(plan: DevicePlan, changes?: StatusPlanChanges): number {
+    return this.planStatusWriter.update(plan, changes);
   }
 
   destroy(): void {
     this.clearPendingNonActionSnapshot();
   }
 }
-
-const roundNullable = (value: number | null, step: number): number | null => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
-  return Math.round(value / step) * step;
-};
-
-const roundOptional = (value: number | undefined, step: number): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
-  return Math.round(value / step) * step;
-};
-
-const roundOptionalNullable = (value: number | null | undefined, step: number): number | null | undefined => {
-  if (value === null || value === undefined) return value;
-  return roundNullable(value, step);
-};
-
-const normalizeMinutesRemaining = (value: number | undefined): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
-  return Math.max(0, Math.round(value));
-};
-
-const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] => ({
-  ...meta,
-  totalKw: roundNullable(meta.totalKw, PLAN_META_KW_STEP),
-  softLimitKw: roundOptional(meta.softLimitKw, PLAN_META_KW_STEP) ?? meta.softLimitKw,
-  capacitySoftLimitKw: roundOptional(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
-  dailySoftLimitKw: roundOptionalNullable(meta.dailySoftLimitKw, PLAN_META_KW_STEP),
-  headroomKw: roundNullable(meta.headroomKw, PLAN_META_KW_STEP),
-  usedKWh: roundOptional(meta.usedKWh, PLAN_META_KWH_STEP),
-  budgetKWh: roundOptional(meta.budgetKWh, PLAN_META_KWH_STEP),
-  minutesRemaining: normalizeMinutesRemaining(meta.minutesRemaining),
-  controlledKw: roundOptional(meta.controlledKw, PLAN_META_KW_STEP),
-  uncontrolledKw: roundOptional(meta.uncontrolledKw, PLAN_META_KW_STEP),
-  hourControlledKWh: roundOptional(meta.hourControlledKWh, PLAN_META_KWH_STEP),
-  hourUncontrolledKWh: roundOptional(meta.hourUncontrolledKWh, PLAN_META_KWH_STEP),
-  dailyBudgetRemainingKWh: roundOptional(meta.dailyBudgetRemainingKWh, PLAN_META_KWH_STEP),
-  dailyBudgetHourKWh: roundOptional(meta.dailyBudgetHourKWh, PLAN_META_KWH_STEP),
-});
-
-const normalizePelsStatus = (
-  status: ReturnType<typeof buildPelsStatus>['status'],
-  powerBucketMs: number,
-): ReturnType<typeof buildPelsStatus>['status'] => {
-  const safeBucketMs = Math.max(1, powerBucketMs);
-  const lastPowerUpdate = typeof status.lastPowerUpdate === 'number' && Number.isFinite(status.lastPowerUpdate)
-    ? Math.floor(status.lastPowerUpdate / safeBucketMs) * safeBucketMs
-    : status.lastPowerUpdate;
-  return {
-    ...status,
-    headroomKw: roundNullable(status.headroomKw, PLAN_META_KW_STEP),
-    hourlyLimitKw: roundOptional(status.hourlyLimitKw, PLAN_META_KW_STEP),
-    hourlyUsageKwh: roundOptional(status.hourlyUsageKwh, PLAN_META_KWH_STEP) ?? status.hourlyUsageKwh,
-    dailyBudgetRemainingKwh: roundOptional(status.dailyBudgetRemainingKwh, PLAN_META_KWH_STEP),
-    controlledKw: roundOptional(status.controlledKw, PLAN_META_KW_STEP),
-    uncontrolledKw: roundOptional(status.uncontrolledKw, PLAN_META_KW_STEP),
-    lastPowerUpdate,
-  };
-};
