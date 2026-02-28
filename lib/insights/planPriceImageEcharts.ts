@@ -15,7 +15,12 @@ import {
   resolveLabelEvery,
   resolvePriceSeries,
 } from './planPriceImageUtils';
-import { PLAN_PRICE_COLORS as COLORS, PLAN_PRICE_FONT_SIZES as FONT_SIZES, PLAN_PRICE_LAYOUT } from './planPriceImageTheme';
+import {
+  PLAN_PRICE_COLORS as COLORS,
+  PLAN_PRICE_FONT_SIZES as FONT_SIZES,
+  PLAN_PRICE_LAYOUT,
+  PLAN_PRICE_VIEWPORT,
+} from './planPriceImageTheme';
 import { buildActualSeries, buildLegendOption } from './planPriceImageEchartsSeries';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 
@@ -411,7 +416,7 @@ const buildChartOption = (params: {
   const legendTexts = buildLegendTexts();
   const chartWidth = Math.max(1, width - PADDING * 2);
   const chartTop = PADDING + HEADER_HEIGHT;
-  const chartBottom = LEGEND_HEIGHT + PADDING + 8;
+  const chartBottom = LEGEND_HEIGHT + PADDING;
   const chartHeight = Math.max(1, height - chartTop - chartBottom);
   const barWidth = Math.floor((chartWidth / Math.max(1, context.bucketCount)) * 0.78);
   const priceBounds = resolvePriceAxisBounds(context);
@@ -456,15 +461,17 @@ export async function buildPlanPriceSvgWithEcharts(params: PlanPriceEchartsParam
       snapshot,
       dayKey,
       combinedPrices,
-      width,
-      height,
+      width: requestedWidth,
+      height: requestedHeight,
       fontFamily,
     } = params;
+    const width = PLAN_PRICE_VIEWPORT.width;
+    const height = PLAN_PRICE_VIEWPORT.height;
     const day = resolvePlanSnapshotDay(snapshot, dayKey);
     const plannedRaw = day?.buckets?.plannedKWh ?? [];
     const plannedKWh = plannedRaw.map((value) => (Number.isFinite(value) ? Math.max(0, value) : 0));
     const bucketCount = plannedKWh.length;
-    if (!bucketCount || width <= 0 || height <= 0) {
+    if (!bucketCount || requestedWidth <= 0 || requestedHeight <= 0) {
       const subtitle = day?.budget?.enabled === false
         ? 'Daily budget disabled'
         : 'No plan data available';

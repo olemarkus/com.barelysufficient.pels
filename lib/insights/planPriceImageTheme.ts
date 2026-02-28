@@ -1,8 +1,13 @@
+export const PLAN_PRICE_VIEWPORT = {
+  width: 480,
+  height: 480,
+} as const;
+
 export const PLAN_PRICE_LAYOUT = {
-  padding: 20,
-  headerHeight: 12,
+  padding: 12,
+  headerHeight: 0,
   axisLabelHeight: 24,
-  legendHeight: 60,
+  legendHeight: 40,
   gridLines: 4,
   barRadius: 3,
   dotRadius: 4,
@@ -11,12 +16,12 @@ export const PLAN_PRICE_LAYOUT = {
 } as const;
 
 export const PLAN_PRICE_FONT_SIZES = {
-  title: 24,
-  meta: 16,
-  now: 16,
-  axis: 17,
-  legend: 16,
-  label: 16,
+  title: 20,
+  meta: 14,
+  now: 14,
+  axis: 15,
+  legend: 14,
+  label: 14,
 } as const;
 
 export const PLAN_PRICE_COLORS = {

@@ -122,6 +122,25 @@ describe('plan price image', () => {
     expect(svg).toContain('Plan');
   });
 
+  test('uses the fixed square camera viewport for consistent scaling', async () => {
+    const day = buildDay(8);
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+    const svg = await buildPlanPriceSvgWithEcharts({
+      snapshot,
+      dayKey: day.dateKey,
+      width: 900,
+      height: 900,
+      fontFamily: 'sans-serif',
+    });
+
+    expect(svg).toContain('width="480"');
+    expect(svg).toContain('height="480"');
+    expect(svg).toContain('viewBox="0 0 480 480"');
+  });
+
   test('uses simplified legend labels', async () => {
     const day = buildDay(8);
     const snapshot: DailyBudgetUiPayload = {
