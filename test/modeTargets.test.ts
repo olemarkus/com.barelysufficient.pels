@@ -7,6 +7,7 @@ import {
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
 jest.mock('../lib/app/appLifecycleHelpers', () => ({
+  runStartupStep: async (_label: string, work: () => unknown | Promise<unknown>) => work(),
   startAppServices: async (params: any) => {
     params.loadPowerTracker();
     params.loadPriceOptimizationSettings();

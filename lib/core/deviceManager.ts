@@ -125,11 +125,13 @@ export class DeviceManager extends EventEmitter {
         }
     }
 
-    async refreshSnapshot(): Promise<void> {
+    async refreshSnapshot(options: { includeLivePower?: boolean } = {}): Promise<void> {
         const start = Date.now();
         try {
             const list = await this.fetchDevices();
-            const livePowerWByDeviceId = await this.fetchLivePowerWattsByDeviceId();
+            const livePowerWByDeviceId = options.includeLivePower === false
+                ? {}
+                : await this.fetchLivePowerWattsByDeviceId();
             const snapshot = this.parseDeviceList(list, livePowerWByDeviceId);
             this.latestSnapshot = snapshot;
             this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);

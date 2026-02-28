@@ -147,7 +147,7 @@ export function registerAppFlowCards(app: FlowCardInitApp): void {
     getDeviceLoadSetting: (deviceId) => app.getDeviceLoadSetting(deviceId),
     setExpectedOverride: (deviceId, kw) => app.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => app.storeFlowPriceData(kind, raw),
-    rebuildPlan: () => app.planService.rebuildPlanFromCache(),
+    rebuildPlan: () => app.planService.rebuildPlanFromCache('flow_card'),
     loadDailyBudgetSettings: () => app.loadDailyBudgetSettings(),
     updateDailyBudgetState: (options) => app.updateDailyBudgetState(options),
     log: (...args: unknown[]) => app.log(...args),
@@ -159,7 +159,7 @@ export type PriceCoordinatorInitApp = {
   homey: Homey.App['homey'];
   getHomeyEnergyApi: () => HomeyEnergyApi | null;
   getCurrentPriceLevel: () => PriceLevel;
-  rebuildPlanFromCache: () => Promise<void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<void>;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -170,7 +170,7 @@ export function createPriceCoordinator(app: PriceCoordinatorInitApp): PriceCoord
     homey: app.homey,
     getHomeyEnergyApi: () => app.getHomeyEnergyApi(),
     getCurrentPriceLevel: () => app.getCurrentPriceLevel(),
-    rebuildPlanFromCache: () => app.rebuildPlanFromCache(),
+    rebuildPlanFromCache: (reason) => app.rebuildPlanFromCache(reason),
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug(...args),
     error: (...args: unknown[]) => app.error(...args),

@@ -76,9 +76,11 @@ export class PriceOptimizer {
     await this.deps.rebuildPlan(`price optimization (${hourLabel} hour)`);
   }
 
-  async start(): Promise<void> {
+  async start(applyImmediately = true): Promise<void> {
     this.stop();
-    await this.applyOnce();
+    if (applyImmediately) {
+      await this.applyOnce();
+    }
     this.scheduleHourly();
   }
 

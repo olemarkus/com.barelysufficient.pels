@@ -86,8 +86,8 @@ export class PriceCoordinator {
     await this.priceOptimizer?.applyOnce();
   }
 
-  async startPriceOptimization(): Promise<void> {
-    await this.priceOptimizer?.start();
+  async startPriceOptimization(applyImmediately = true): Promise<void> {
+    await this.priceOptimizer?.start(applyImmediately);
   }
 
   stop(): void {

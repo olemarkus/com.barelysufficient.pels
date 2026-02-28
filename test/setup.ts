@@ -1,6 +1,7 @@
 // Global test setup and teardown
 import https from 'https';
 import { EventEmitter } from 'events';
+import { clearPlanRebuildTracesForTests } from '../lib/utils/planRebuildTrace';
 
 // Mock the homey-api module globally to route device actions to the in-memory mock.
 jest.mock('homey-api', () => ({
@@ -117,6 +118,7 @@ beforeEach(() => {
   if (getFn._isMockFunction !== true) {
     installHttpsGetSpy();
   }
+  clearPlanRebuildTracesForTests();
 });
 
 afterAll(() => {

@@ -32,7 +32,7 @@ export type RecordPowerSampleParams = {
   homey: Homey.App['homey'];
   capacityGuard?: CapacityGuard;
   hourBudgetKWh?: number;
-  rebuildPlanFromCache: () => Promise<void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
 };
 
@@ -99,7 +99,7 @@ async function persistPowerSample(params: {
   currentPowerW: number;
   capacityGuard?: CapacityGuard;
   saveState: (state: PowerTrackerState) => void;
-  rebuildPlanFromCache: () => Promise<void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<void>;
 }): Promise<void> {
   const {
     nextState,
@@ -110,7 +110,7 @@ async function persistPowerSample(params: {
   } = params;
   if (capacityGuard) capacityGuard.reportTotalPower(currentPowerW / 1000);
   saveState(nextState);
-  await rebuildPlanFromCache();
+  await rebuildPlanFromCache('power_tracker_persist');
 }
 
 function resolveControlledSample(params: {

@@ -47,6 +47,7 @@ const allowedUnusedExportPatterns = [
   /^lib\/utils\/dateUtils\.ts:\d+ - formatDateInTimeZone$/,
   /^lib\/utils\/dateUtils\.ts:\d+ - formatTimeInTimeZone$/,
   /^lib\/utils\/settingsKeys\.ts:\d+ - DAILY_BUDGET_BREAKDOWN_ENABLED$/,
+  /^lib\/utils\/planRebuildTrace\.ts:\d+ - clearPlanRebuildTracesForTests$/,
 ];
 
 const orphanResult = run('madge --extensions ts --orphans app.ts flowCards drivers lib settings/src');

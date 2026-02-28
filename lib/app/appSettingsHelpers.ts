@@ -90,7 +90,7 @@ export function initSettingsHandlerForApp(params: {
   getOperatingMode: () => string;
   notifyOperatingModeChanged: (mode: string) => void;
   loadCapacitySettings: () => void;
-  rebuildPlanFromCache: () => Promise<void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
   loadPowerTracker: () => void;
   getCapacityGuard: () => CapacityGuard | undefined;

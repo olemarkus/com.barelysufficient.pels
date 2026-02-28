@@ -21,6 +21,7 @@
     "test:unit": "jest --config jest.config.fast.cjs",
     "test:unit:ci": "jest --config jest.config.cjs",
     "test:unit:tz": "node scripts/run-timezone-tests.mjs",
+    "test:perf": "jest --config jest.config.perf.cjs",
     "ci": "npm run build && npm run lint:css && npm run lint:html && npm run lint:runtime && npm run arch:check && npm run deadcode:check && npm run typecheck:unused && npm run test:unit:ci && npm run test:unit:tz && npm run test:ui && npm run lint",
     "test": "npm run ci",
     "test:e2e": "playwright test",

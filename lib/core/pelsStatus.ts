@@ -26,8 +26,8 @@ export function buildPelsStatus(params: {
 } {
   const { plan, isCheap, isExpensive, combinedPrices, lastPowerUpdate } = params;
   const priceLevel = resolvePriceLevel({ isCheap, isExpensive, combinedPrices });
-  const { devicesOn, devicesOff } = countDevices(plan);
-  const limitReason = resolveLimitReason(plan);
+  const summary = summarizePlanForStatus(plan);
+  const limitReason = resolveLimitReason(plan, summary);
 
   return {
     status: {
@@ -40,8 +40,8 @@ export function buildPelsStatus(params: {
       controlledKw: plan.meta.controlledKw,
       uncontrolledKw: plan.meta.uncontrolledKw,
       priceLevel,
-      devicesOn,
-      devicesOff,
+      devicesOn: summary.devicesOn,
+      devicesOff: summary.devicesOff,
       lastPowerUpdate,
     },
     priceLevel,
@@ -60,12 +60,6 @@ function resolvePriceLevel(params: {
   return PriceLevel.NORMAL;
 }
 
-function countDevices(plan: DevicePlan): { devicesOn: number; devicesOff: number } {
-  const controllable = plan.devices.filter((d) => d.controllable !== false);
-  const devicesShed = controllable.filter((d) => d.plannedState === 'shed').length;
-  return { devicesOn: controllable.length - devicesShed, devicesOff: devicesShed };
-}
-
 function hasPrices(value: unknown): value is { prices: Array<{ total: number }> } {
   if (!value || typeof value !== 'object') return false;
   const record = value as { prices?: unknown };
@@ -76,6 +70,7 @@ type LimitSource = DevicePlan['meta']['softLimitSource'];
 
 type SharedLimitParams = {
   plan: DevicePlan;
+  summary: PlanStatusSummary;
   hasLimitDrivenShedDevices: boolean;
   headroomNegative: boolean;
 };
@@ -89,9 +84,13 @@ type DailyLimitParams = SharedLimitParams & {
   dailySourceActive: boolean;
 };
 
-function hasShedReason(plan: DevicePlan, reasonFragment: string): boolean {
-  return plan.devices.some((d) => d.plannedState === 'shed' && d.reason?.includes(reasonFragment));
-}
+type PlanStatusSummary = {
+  devicesOn: number;
+  devicesOff: number;
+  hasLimitDrivenShedDevices: boolean;
+  hasHourlyReason: boolean;
+  hasDailyReason: boolean;
+};
 
 function isDailySourceActive(limitSource: LimitSource): boolean {
   return limitSource === 'daily' || limitSource === 'both';
@@ -113,19 +112,61 @@ function isLimitDrivenShedDevice(device: DevicePlanDevice): boolean {
   return !isRestoreHoldShedReason(device.reason);
 }
 
-function hasLimitDrivenShedDevices(plan: DevicePlan): boolean {
-  return plan.devices.some((d) => isLimitDrivenShedDevice(d));
+function resolveReasonFlags(reason: string | undefined): {
+  hasHourlyReason: boolean;
+  hasDailyReason: boolean;
+} {
+  if (typeof reason !== 'string') {
+    return {
+      hasHourlyReason: false,
+      hasDailyReason: false,
+    };
+  }
+  return {
+    hasHourlyReason: reason.includes('hourly budget') || reason.includes('capacity'),
+    hasDailyReason: reason.includes('daily budget'),
+  };
+}
+
+function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
+  const summary: PlanStatusSummary = {
+    devicesOn: 0,
+    devicesOff: 0,
+    hasLimitDrivenShedDevices: false,
+    hasHourlyReason: false,
+    hasDailyReason: false,
+  };
+
+  for (const device of plan.devices) {
+    if (device.controllable !== false) {
+      if (device.plannedState === 'shed') {
+        summary.devicesOff += 1;
+      } else {
+        summary.devicesOn += 1;
+      }
+    }
+
+    if (device.plannedState !== 'shed') continue;
+
+    const reasonFlags = resolveReasonFlags(device.reason);
+    summary.hasHourlyReason = summary.hasHourlyReason || reasonFlags.hasHourlyReason;
+    summary.hasDailyReason = summary.hasDailyReason || reasonFlags.hasDailyReason;
+    summary.hasLimitDrivenShedDevices = summary.hasLimitDrivenShedDevices || isLimitDrivenShedDevice(device);
+  }
+
+  return summary;
 }
 
 function resolveHourlyLimited(params: HourlyLimitParams): boolean {
   const {
     plan,
+    summary,
     hasLimitDrivenShedDevices,
     headroomNegative,
     limitSource,
     capacitySourceActive,
   } = params;
-  const hourlyLimitedByReason = hasShedReason(plan, 'hourly budget') || hasShedReason(plan, 'capacity');
+  const hourlyLimitedByReason = summary.hasHourlyReason;
   const hourlyLimitedByShedState = hasLimitDrivenShedDevices && capacitySourceActive;
   const hourlyLimitedByNegativeHeadroom = headroomNegative && (limitSource ? capacitySourceActive : true);
   return Boolean(plan.meta.hourlyBudgetExhausted)
@@ -135,21 +176,22 @@ function resolveHourlyLimited(params: HourlyLimitParams): boolean {
 }
 
 function resolveDailyLimited(params: DailyLimitParams): boolean {
-  const { plan, hasLimitDrivenShedDevices, headroomNegative, dailySourceActive } = params;
-  const dailyLimitedByReason = hasShedReason(plan, 'daily budget');
+  const { summary, hasLimitDrivenShedDevices, headroomNegative, dailySourceActive } = params;
+  const dailyLimitedByReason = summary.hasDailyReason;
   const dailyLimitedByShedState = hasLimitDrivenShedDevices && dailySourceActive;
   const dailyLimitedByNegativeHeadroom = headroomNegative && dailySourceActive;
   return dailyLimitedByReason || dailyLimitedByShedState || dailyLimitedByNegativeHeadroom;
 }
 
-function resolveLimitReason(plan: DevicePlan): 'none' | 'hourly' | 'daily' | 'both' {
-  const hasShedDevices = hasLimitDrivenShedDevices(plan);
+function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none' | 'hourly' | 'daily' | 'both' {
+  const hasShedDevices = summary.hasLimitDrivenShedDevices;
   const headroomNegative = plan.meta.headroomKw !== null && plan.meta.headroomKw < 0;
   const limitSource = plan.meta.softLimitSource;
   const dailySourceActive = isDailySourceActive(limitSource);
   const capacitySourceActive = isCapacitySourceActive(limitSource);
   const hourlyLimited = resolveHourlyLimited({
     plan,
+    summary,
     hasLimitDrivenShedDevices: hasShedDevices,
     headroomNegative,
     limitSource,
@@ -157,6 +199,7 @@ function resolveLimitReason(plan: DevicePlan): 'none' | 'hourly' | 'daily' | 'bo
   });
   const dailyLimitedResolved = resolveDailyLimited({
     plan,
+    summary,
     hasLimitDrivenShedDevices: hasShedDevices,
     headroomNegative,
     dailySourceActive,

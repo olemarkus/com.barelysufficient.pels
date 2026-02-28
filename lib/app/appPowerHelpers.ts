@@ -242,7 +242,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
   setState: (state: PowerSampleRebuildState) => void;
   minIntervalMs: number;
   maxIntervalMs: number;
-  rebuildPlanFromCache: () => Promise<void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<void>;
   logError: (error: Error) => void;
   currentPowerW?: number;
   powerDeltaW?: number;
@@ -302,7 +302,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
     const nextPowerW = resolvePendingPowerW(snapshot, currentPowerW);
     const nextSoftLimitKw = resolvePendingSoftLimitKw(snapshot, softLimitKw);
     setState(buildPostRebuildState(snapshot, nextPowerW, nextSoftLimitKw));
-    return rebuildPlanFromCache();
+    return rebuildPlanFromCache(reason);
   };
 
   if (elapsedMs >= minIntervalMs) {
@@ -365,7 +365,7 @@ export function schedulePlanRebuildFromSignal(params: {
   minIntervalMs: number;
   stableMinIntervalMs?: number;
   maxIntervalMs: number;
-  rebuildPlanFromCache: () => Promise<void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<void>;
   logError: (error: Error) => void;
   currentPowerW?: number;
   powerDeltaW?: number;
