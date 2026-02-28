@@ -10,12 +10,12 @@ import {
   usageDayChart,
   usageDayBars,
   usageDayLabels,
-  usageDayLegend,
   usageDayEmpty,
   usageDayMeta,
 } from './dom';
 import { getHomeyTimezone } from './homey';
-import { renderDayViewChart, type DayViewBar } from './dayViewChart';
+import type { DayViewBar } from './dayViewChart';
+import { renderUsageDayChartEcharts } from './usageDayChartEcharts';
 import {
   buildLocalDayBuckets,
   formatDateInTimeZone,
@@ -84,7 +84,7 @@ const getUsageDayDateKey = (view: UsageDayView, now: Date, timeZone: string) => 
   return getDateKeyInTimeZone(new Date(todayStart - 60 * 1000), timeZone);
 };
 
-const formatUsageDayTitle = (view: UsageDayView) => (view === 'today' ? 'Today usage' : 'Yesterday usage');
+const formatUsageDayTitle = (view: UsageDayView) => (view === 'today' ? 'Hourly usage (today)' : 'Hourly usage (yesterday)');
 
 const buildUsageDayBuckets = (
   entries: UsageDayEntry[],
@@ -148,9 +148,11 @@ const buildUsageDayBarTitle = (bucket: UsageDayBucket) => {
     lines.push(`Uncontrolled ${bucket.uncontrolledKWh.toFixed(2)} kWh`);
   }
   if (bucket.budgetKWh !== null) {
-    lines.push(`Budget ${bucket.budgetKWh.toFixed(2)} kWh`);
-    if (bucket.measuredKWh > bucket.budgetKWh + 0.001) {
-      lines.push(`Over budget by ${(bucket.measuredKWh - bucket.budgetKWh).toFixed(2)} kWh`);
+    const exceededKWh = bucket.measuredKWh - bucket.budgetKWh;
+    if (exceededKWh > 0.001) {
+      lines.push(`Budget ${bucket.budgetKWh.toFixed(2)} kWh (exceeded by ${exceededKWh.toFixed(2)} kWh)`);
+    } else {
+      lines.push(`Budget ${bucket.budgetKWh.toFixed(2)} kWh`);
     }
   }
   if (bucket.unreliable) lines.push('Unreliable data');
@@ -168,8 +170,8 @@ const renderUsageDayHeader = (dateKey: string, timeZone: string) => {
   }, timeZone)} · ${timeZone}`;
   if (usageDayMeta) {
     usageDayMeta.textContent = usageDayView === 'today'
-      ? 'Hourly kWh within your local day (updates live).'
-      : 'Hourly kWh for the previous local day.';
+      ? 'Hourly kWh within your local day (updates live). Typical usage below is per-hour average; daily history is one bar per day.'
+      : 'Hourly kWh for the previous local day. Typical usage below is per-hour average; daily history is one bar per day.';
   }
 };
 
@@ -177,7 +179,6 @@ const renderUsageDayNoData = () => {
   if (!usageDayEmpty || !usageDayChart) return;
   usageDayEmpty.hidden = false;
   usageDayChart.hidden = true;
-  if (usageDayLegend) usageDayLegend.hidden = true;
   setUsageDayStatus('No data');
   setUsageDaySummaryValue(usageDayTotal, '-- kWh', true);
   setUsageDaySummaryValue(usageDayPeak, '-- kWh', true);
@@ -188,25 +189,21 @@ const renderUsageDayHasData = (buckets: UsageDayBucket[]) => {
   if (!usageDayEmpty || !usageDayChart) return;
   usageDayEmpty.hidden = true;
   usageDayChart.hidden = false;
-  if (usageDayLegend) usageDayLegend.hidden = false;
 
   const totalKWh = buckets.reduce((sum, bucket) => sum + bucket.measuredKWh, 0);
   const peakBucket = buckets.reduce((max, bucket) => (
     bucket.measuredKWh > max.measuredKWh ? bucket : max
   ), buckets[0]);
-  const overCapHours = buckets.filter((bucket) => (
-    bucket.budgetKWh !== null && bucket.measuredKWh > bucket.budgetKWh + 0.001
-  )).length;
   const warnHours = buckets.filter((bucket) => (
     bucket.unreliable || (bucket.budgetKWh !== null && bucket.measuredKWh > bucket.budgetKWh + 0.001)
   )).length;
 
   setUsageDaySummaryValue(usageDayTotal, `${totalKWh.toFixed(1)} kWh`);
   setUsageDaySummaryValue(usageDayPeak, `${peakBucket.label} · ${peakBucket.measuredKWh.toFixed(2)} kWh`);
-  setUsageDaySummaryValue(usageDayOverCap, overCapHours.toString());
+  setUsageDaySummaryValue(usageDayOverCap, warnHours.toString());
 
   if (warnHours > 0) {
-    setUsageDayStatus(`Attention (${warnHours}h)`, 'warn');
+    setUsageDayStatus(`Warnings (${warnHours}h)`, 'warn');
   } else if (usageDayView === 'today') {
     setUsageDayStatus('Live', 'ok');
   } else {
@@ -260,11 +257,21 @@ export const renderUsageDayView = (entries: UsageDayEntry[]) => {
 
   renderUsageDayHasData(buckets);
 
-  renderDayViewChart({
-    bars: getUsageDayBars(buckets, currentBucketIndex),
+  const bars = getUsageDayBars(buckets, currentBucketIndex);
+  const labels = buckets.map((bucket) => bucket.label);
+  const renderedWithEcharts = renderUsageDayChartEcharts({
+    bars,
+    labels,
+    currentBucketIndex,
+    enabled: true,
     barsEl: usageDayBars,
     labelsEl: usageDayLabels,
   });
+  if (!renderedWithEcharts) {
+    usageDayBars.replaceChildren();
+    usageDayLabels.replaceChildren();
+    usageDayLabels.hidden = true;
+  }
   setUsageDayToggleState();
 };
 

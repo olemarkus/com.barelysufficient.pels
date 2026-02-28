@@ -17,20 +17,6 @@ const setupDailyBudgetDom = () => {
     <button id="daily-budget-toggle-tomorrow"></button>
     <button id="daily-budget-toggle-yesterday"></button>
     <input id="daily-budget-breakdown" type="checkbox">
-    <div id="daily-budget-legend">
-      <div class="daily-budget-legend__item">
-        <span id="daily-budget-legend-planned-swatch" class="daily-budget-legend__swatch"></span>
-        <span class="muted" id="daily-budget-legend-planned-label">Planned</span>
-      </div>
-      <div class="daily-budget-legend__item" id="daily-budget-legend-controlled" hidden>
-        <span class="daily-budget-legend__swatch"></span>
-        <span class="muted">Controlled</span>
-      </div>
-      <div class="daily-budget-legend__item" id="daily-budget-legend-actual">
-        <span class="daily-budget-legend__swatch"></span>
-        <span class="muted">Actual</span>
-      </div>
-    </div>
   `;
 };
 
@@ -97,20 +83,13 @@ const buildDailyBudgetPayload = () => ({
   },
 });
 
-const getVisibleLegendLabels = () => {
-  const items = Array.from(document.querySelectorAll('.daily-budget-legend__item')) as HTMLElement[];
-  return items
-    .map((item) => item.querySelector('.muted')?.textContent?.trim() || '')
-    .filter(Boolean);
-};
-
-describe('daily budget legend', () => {
+describe('daily budget chart render', () => {
   beforeEach(() => {
     jest.resetModules();
     setupDailyBudgetDom();
   });
 
-  it('shows only planned and actual labels when stacking is off', async () => {
+  it('renders daily budget chart without the legacy html legend', async () => {
     const breakdownInput = document.querySelector('#daily-budget-breakdown') as HTMLInputElement | null;
     if (breakdownInput) breakdownInput.checked = false;
 
@@ -119,10 +98,51 @@ describe('daily budget legend', () => {
     const { refreshDailyBudgetPlan } = require('../settings/src/ui/dailyBudget') as typeof import('../settings/src/ui/dailyBudget');
     await refreshDailyBudgetPlan();
 
-    const labels = getVisibleLegendLabels();
-    expect(labels).toEqual(['Planned', 'Actual']);
+    const chart = document.querySelector('#daily-budget-chart') as HTMLElement | null;
+    const empty = document.querySelector('#daily-budget-empty') as HTMLElement | null;
+    const legend = document.querySelector('#daily-budget-legend');
+    expect(chart?.hidden).toBe(false);
+    expect(empty?.hidden).toBe(true);
+    expect(legend).toBeNull();
+  });
 
-    const controlledItem = document.querySelector('#daily-budget-legend-controlled') as HTMLElement | null;
-    expect(controlledItem).toBeNull();
+  it('uses fallback chart width when container width is initially zero', () => {
+    const setOption = jest.fn();
+    const initEcharts = jest.fn(() => ({
+      setOption,
+      resize: jest.fn(),
+      dispose: jest.fn(),
+    }));
+    jest.doMock('../settings/src/ui/echartsRegistry', () => ({
+      initEcharts,
+      encodeHtml: (value: string) => value,
+    }));
+
+    const { renderDailyBudgetChartEcharts } = require('../settings/src/ui/dailyBudgetChartEcharts') as typeof import('../settings/src/ui/dailyBudgetChartEcharts');
+    const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
+
+    const rendered = renderDailyBudgetChartEcharts({
+      bars: [{ label: '00:00', value: 1, title: '00:00 · Planned 1.00 kWh' }],
+      planned: [1],
+      actual: [0.8],
+      plannedUncontrolled: [0.6],
+      plannedControlled: [0.4],
+      labels: ['00:00'],
+      currentBucketIndex: 0,
+      showActual: true,
+      showBreakdown: true,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
+
+    expect(rendered).toBe(true);
+    expect(initEcharts).toHaveBeenCalledWith(
+      barsEl,
+      undefined,
+      expect.objectContaining({ renderer: 'svg', width: 480, height: 176 }),
+    );
+    expect(setOption).toHaveBeenCalledTimes(1);
   });
 });

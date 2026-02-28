@@ -25,6 +25,7 @@ import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
 import type { DailyBudgetDayPayload, DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
 import { incPerfCounter, addPerfDuration } from '../utils/perfCounters';
+import { startRuntimeSpan } from '../utils/runtimeTrace';
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
@@ -93,9 +94,16 @@ export class DailyBudgetService {
     return 'Europe/Oslo';
   }
 
-  updateState(params: { nowMs?: number; forcePlanRebuild?: boolean } = {}): void {
+  updateState(params: {
+    nowMs?: number;
+    forcePlanRebuild?: boolean;
+    includeAdjacentDays?: boolean;
+    refreshObservedStats?: boolean;
+  } = {}): void {
+    const stopSpan = startRuntimeSpan('daily_budget_update');
     const start = Date.now();
     const nowMs = params.nowMs ?? Date.now();
+    const includeAdjacentDays = params.includeAdjacentDays === true;
     const timeZone = this.resolveTimeZone();
     const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
     const capacity = this.deps.getCapacitySettings();
@@ -110,14 +118,16 @@ export class DailyBudgetService {
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         forcePlanRebuild: params.forcePlanRebuild,
         capacityBudgetKWh,
+        refreshObservedStats: params.refreshObservedStats,
       });
-      this.setDaySnapshot(update.snapshot, nowMs);
+      this.setDaySnapshot(update.snapshot, nowMs, includeAdjacentDays);
       if (update.shouldPersist) {
         this.persistState();
       }
     } catch (error) {
       this.deps.log('Daily budget: failed to update state', error);
     } finally {
+      stopSpan();
       incPerfCounter('daily_budget_update_total');
       addPerfDuration('daily_budget_update_ms', Date.now() - start);
     }
@@ -228,24 +238,25 @@ export class DailyBudgetService {
 
   getUiPayload(): DailyBudgetUiPayload | null {
     const nowMs = Date.now();
-    this.updateState({ nowMs, forcePlanRebuild: false });
+    this.updateState({ nowMs, forcePlanRebuild: false, includeAdjacentDays: true });
     if (!this.snapshot) return null;
     return this.snapshot;
   }
 
-  private setDaySnapshot(snapshot: DailyBudgetDayPayload, nowMs: number): void {
+  private setDaySnapshot(snapshot: DailyBudgetDayPayload, nowMs: number, includeAdjacentDays = false): void {
     const todayKey = snapshot.dateKey;
-    const tomorrowSnapshot = this.buildTomorrowPreview(nowMs);
-    const tomorrowKey = tomorrowSnapshot?.dateKey ?? null;
+    const tomorrowSnapshot = includeAdjacentDays ? this.buildTomorrowPreview(nowMs) : null;
+    const tomorrowKey = includeAdjacentDays ? tomorrowSnapshot?.dateKey ?? null : null;
+    const yesterdaySnapshot = includeAdjacentDays ? this.buildYesterdayHistory(nowMs) : null;
+    const yesterdayKey = includeAdjacentDays ? yesterdaySnapshot?.dateKey ?? null : null;
 
-    const yesterdaySnapshot = this.buildYesterdayHistory(nowMs);
-    const yesterdayKey = yesterdaySnapshot?.dateKey ?? null;
-
-    this.daySnapshots = {
-      [todayKey]: snapshot,
-      ...(tomorrowSnapshot ? { [tomorrowSnapshot.dateKey]: tomorrowSnapshot } : {}),
-      ...(yesterdaySnapshot ? { [yesterdaySnapshot.dateKey]: yesterdaySnapshot } : {}),
-    };
+    this.daySnapshots = includeAdjacentDays
+      ? {
+        [todayKey]: snapshot,
+        ...(tomorrowSnapshot ? { [tomorrowSnapshot.dateKey]: tomorrowSnapshot } : {}),
+        ...(yesterdaySnapshot ? { [yesterdaySnapshot.dateKey]: yesterdaySnapshot } : {}),
+      }
+      : { [todayKey]: snapshot };
     this.snapshot = {
       days: { ...this.daySnapshots },
       todayKey,

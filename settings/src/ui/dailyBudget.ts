@@ -14,11 +14,6 @@ import {
   dailyBudgetChart,
   dailyBudgetBars,
   dailyBudgetLabels,
-  dailyBudgetLegend,
-  dailyBudgetLegendActual,
-  dailyBudgetLegendControlled,
-  dailyBudgetLegendPlannedLabel,
-  dailyBudgetLegendPlannedSwatch,
   dailyBudgetEmpty,
   dailyBudgetConfidence,
   dailyBudgetToggleToday,
@@ -196,13 +191,6 @@ const renderDailyBudgetEmptyState = (message = 'Daily budget data not available 
   dailyBudgetEmpty.hidden = false;
   dailyBudgetEmpty.textContent = message;
   dailyBudgetChart.hidden = true;
-  setHidden(dailyBudgetLegend, true);
-  setHidden(dailyBudgetLegendActual, true);
-  setHidden(dailyBudgetLegendControlled, true);
-  if (dailyBudgetLegendPlannedLabel) dailyBudgetLegendPlannedLabel.textContent = 'Planned';
-  if (dailyBudgetLegendPlannedSwatch) {
-    dailyBudgetLegendPlannedSwatch.classList.remove('daily-budget-legend__swatch--uncontrolled');
-  }
   setPillState(false, false);
   const isTomorrow = currentDailyBudgetView === 'tomorrow';
   setDeviationVisibility(!isTomorrow);
@@ -265,44 +253,6 @@ const hasPlanBreakdownData = (payload: DailyBudgetDayPayload) => (
   && payload.buckets.plannedControlledKWh.length === payload.buckets.plannedKWh.length
 );
 
-const ensureLegendItem = (item: HTMLElement | null, shouldShow: boolean) => {
-  if (!dailyBudgetLegend || !item) return;
-  if (shouldShow) {
-    item.removeAttribute('hidden');
-    if (!item.parentElement) {
-      dailyBudgetLegend.appendChild(item);
-    }
-    return;
-  }
-  item.setAttribute('hidden', '');
-  if (item.parentElement === dailyBudgetLegend) {
-    dailyBudgetLegend.removeChild(item);
-  }
-};
-
-const applyDailyBudgetLegend = (params: {
-  breakdownEnabled: boolean;
-  showBreakdown: boolean;
-  showActual: boolean;
-}) => {
-  const { breakdownEnabled, showBreakdown, showActual } = params;
-  if (!dailyBudgetLegend) return;
-  const plannedItem = (dailyBudgetLegendPlannedSwatch?.closest('.daily-budget-legend__item') as HTMLElement | null) ?? null;
-  if (dailyBudgetLegendPlannedLabel) {
-    dailyBudgetLegendPlannedLabel.textContent = breakdownEnabled ? 'Uncontrolled' : 'Planned';
-  }
-  if (dailyBudgetLegendPlannedSwatch) {
-    dailyBudgetLegendPlannedSwatch.classList.toggle('daily-budget-legend__swatch--uncontrolled', breakdownEnabled);
-  }
-
-  ensureLegendItem(dailyBudgetLegendControlled, showBreakdown);
-  ensureLegendItem(dailyBudgetLegendActual, showActual);
-
-  if (plannedItem) plannedItem.style.order = showBreakdown ? '2' : '1';
-  if (dailyBudgetLegendControlled) dailyBudgetLegendControlled.style.order = showBreakdown ? '1' : '3';
-  if (dailyBudgetLegendActual) dailyBudgetLegendActual.style.order = showBreakdown ? '3' : '2';
-};
-
 const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   if (!dailyBudgetChart || !dailyBudgetEmpty) return;
   latestDailyBudgetPayload = payload;
@@ -325,13 +275,11 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
 
   dailyBudgetEmpty.hidden = true;
   dailyBudgetChart.hidden = false;
-  if (dailyBudgetLegend) dailyBudgetLegend.hidden = false;
   dailyBudgetChart.classList.toggle('is-disabled', !viewPayload.budget.enabled);
 
   renderDailyBudgetHeader(viewPayload, currentDailyBudgetView);
   renderDailyBudgetStats(viewPayload, currentDailyBudgetView);
   renderDailyBudgetChips(viewPayload);
-  applyDailyBudgetLegend({ breakdownEnabled, showBreakdown, showActual });
   if (dailyBudgetBars && dailyBudgetLabels) {
     renderDailyBudgetChart({
       payload: viewPayload,

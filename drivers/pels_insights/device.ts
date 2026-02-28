@@ -2,6 +2,7 @@ import Homey from 'homey';
 import type { CombinedPriceData } from '../../lib/dailyBudget/dailyBudgetMath';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { buildPlanPricePng } from '../../lib/insights/planPriceImage';
+import { startRuntimeSpan } from '../../lib/utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../../lib/utils/debugLogging';
 import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
 import {
@@ -54,6 +55,8 @@ type PlanImageState = {
   buffer: ImageBuffer;
   generation?: Promise<ImageBuffer>;
   lastKey?: string;
+  lastRenderedAtMs?: number;
+  lastStreamedAtMs?: number;
 };
 
 type CapabilityEntry = {
@@ -86,6 +89,8 @@ const PLAN_IMAGE_SETTINGS_KEYS = new Set([
 ]);
 
 const HOUR_MS = 60 * 60 * 1000;
+const PLAN_IMAGE_STREAM_REFRESH_MIN_MS = 2 * 60 * 1000;
+const PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS = 30 * 60 * 1000;
 const EMPTY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=',
   'base64',
@@ -122,7 +127,7 @@ class PelsInsightsDevice extends Homey.Device {
   ];
   private planImageTimer?: ReturnType<typeof setTimeout>;
   private planImageInterval?: ReturnType<typeof setInterval>;
-  private planImageWarmupTimer?: ReturnType<typeof setTimeout>;
+  private planImageRenderCounter = 0;
 
   private updatePlanImageSlot(index: number, patch: Partial<PlanImageState>): PlanImageState {
     const current = this.planImages[index];
@@ -193,7 +198,8 @@ class PelsInsightsDevice extends Homey.Device {
         await this.updateFromStatus();
       }
       if (PLAN_IMAGE_SETTINGS_KEYS.has(key)) {
-        void this.refreshPlanImages();
+        if (this.hasActivePlanImageDemand()) void this.refreshPlanImages();
+        else this.invalidatePlanImageCache();
       }
     });
   }
@@ -251,8 +257,6 @@ class PelsInsightsDevice extends Homey.Device {
       }
     }
     if (!this.planImages.some((slot) => slot.image)) return;
-    await this.refreshPlanImages({ force: true });
-    this.schedulePlanImageWarmup();
     this.schedulePlanImageRefresh();
   }
 
@@ -265,9 +269,9 @@ class PelsInsightsDevice extends Homey.Device {
     const delay = Math.max(1000, next.getTime() - now.getTime());
     this.planImageTimer = setTimeout(() => {
       this.planImageTimer = undefined;
-      void this.refreshPlanImages({ force: true });
+      if (this.hasActivePlanImageDemand()) void this.refreshPlanImages();
       this.planImageInterval = setInterval(() => {
-        void this.refreshPlanImages({ force: true });
+        if (this.hasActivePlanImageDemand()) void this.refreshPlanImages();
       }, HOUR_MS);
     }, delay);
   }
@@ -295,27 +299,38 @@ class PelsInsightsDevice extends Homey.Device {
       return;
     }
     const renderPromise = (async (): Promise<ImageBuffer> => {
+      const stopSpan = startRuntimeSpan(`camera_chart_render(${slot.cameraId})`);
       const nowMs = Date.now();
-      const snapshot = this.getDailyBudgetSnapshot();
-      const dayKey = slot.resolveDayKey(snapshot);
-      const combinedPrices = this.getCombinedPrices();
-      const key = this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices);
-      const current = this.planImages[index];
-      if (!options.force && current?.lastKey === key) {
-        this.logPlanImageDebug(`${slot.cameraId}: Refresh skipped: cached key ${key}`);
-        return current?.buffer ?? slot.buffer;
+      try {
+        const snapshot = this.getDailyBudgetSnapshot();
+        const dayKey = slot.resolveDayKey(snapshot);
+        const combinedPrices = this.getCombinedPrices();
+        const key = this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices);
+        const current = this.planImages[index];
+        if (!options.force && current?.lastKey === key) {
+          this.logPlanImageDebug(`${slot.cameraId}: Refresh skipped: cached key ${key}`);
+          return current?.buffer ?? slot.buffer;
+        }
+        const renderId = ++this.planImageRenderCounter;
+        this.log(`[plan-image] ${slot.cameraId}: render start id=${renderId} force=${options.force === true} key=${key}`);
+        this.logPlanImageDebug(`${slot.cameraId}: Refreshing image (force=${options.force === true}) key=${key}`);
+        const renderStartedAtMs = Date.now();
+        const payload = await this.generatePlanImagePayload(snapshot, dayKey, combinedPrices, slot.filename);
+        const renderDurationMs = Date.now() - renderStartedAtMs;
+        this.updatePlanImageSlot(index, {
+          buffer: payload.buffer,
+          contentType: payload.contentType,
+          filename: payload.filename,
+          lastKey: key,
+          lastRenderedAtMs: nowMs,
+        });
+        await image.update();
+        this.log(`[plan-image] ${slot.cameraId}: render done id=${renderId} ms=${renderDurationMs} bytes=${payload.buffer.length}`);
+        this.logPlanImageDebug(`${slot.cameraId}: Image updated (${payload.buffer.length} bytes, ${renderDurationMs}ms)`);
+        return payload.buffer;
+      } finally {
+        stopSpan();
       }
-      this.logPlanImageDebug(`${slot.cameraId}: Refreshing image (force=${options.force === true}) key=${key}`);
-      const payload = await this.generatePlanImagePayload(snapshot, dayKey, combinedPrices, slot.filename);
-      this.updatePlanImageSlot(index, {
-        buffer: payload.buffer,
-        contentType: payload.contentType,
-        filename: payload.filename,
-        lastKey: key,
-      });
-      await image.update();
-      this.logPlanImageDebug(`${slot.cameraId}: Image updated (${payload.buffer.length} bytes)`);
-      return payload.buffer;
     })();
     this.updatePlanImageSlot(index, { generation: renderPromise });
     try {
@@ -343,7 +358,9 @@ class PelsInsightsDevice extends Homey.Device {
     const dateKey = day?.dateKey
       ?? resolvedDayKey
       ?? this.resolveFallbackDateKey(nowMs, dayOffset, timeZone);
-    const currentIndex = this.resolveFallbackIndex(day?.currentBucketIndex, nowMs, timeZone);
+    const currentIndex = dayOffset === 0
+      ? this.resolveFallbackIndex(day?.currentBucketIndex, nowMs, timeZone)
+      : 'na';
     const budgetKey = this.buildBudgetKey(day);
     const priceKey = this.buildPriceKey(combinedPrices);
     return `${dateKey}-${currentIndex}-${budgetKey}-${priceKey}`;
@@ -370,7 +387,11 @@ class PelsInsightsDevice extends Homey.Device {
   }
 
   private buildPriceKey(combinedPrices?: CombinedPriceData | null): string {
-    const priceKey = combinedPrices?.lastFetched ?? `prices-${combinedPrices?.prices?.length ?? 0}`;
+    const prices = combinedPrices?.prices ?? [];
+    const firstStartsAt = prices[0]?.startsAt ?? '';
+    const lastStartsAt = prices[prices.length - 1]?.startsAt ?? '';
+    const totalChecksum = prices.reduce((sum, entry) => sum + (Number.isFinite(entry.total) ? Math.round(entry.total * 100) : 0), 0);
+    const priceKey = `${prices.length}-${firstStartsAt}-${lastStartsAt}-${totalChecksum}`;
     const unitKey = combinedPrices?.priceUnit ?? '';
     return `${priceKey}-${unitKey}`;
   }
@@ -383,10 +404,6 @@ class PelsInsightsDevice extends Homey.Device {
     if (this.planImageInterval) {
       clearInterval(this.planImageInterval);
       this.planImageInterval = undefined;
-    }
-    if (this.planImageWarmupTimer) {
-      clearTimeout(this.planImageWarmupTimer);
-      this.planImageWarmupTimer = undefined;
     }
   }
 
@@ -411,40 +428,51 @@ class PelsInsightsDevice extends Homey.Device {
     return null;
   }
 
+  private hasActivePlanImageDemand(nowMs: number = Date.now()): boolean {
+    return this.planImages.some((slot) => typeof slot.lastStreamedAtMs === 'number' && (nowMs - slot.lastStreamedAtMs) <= PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS);
+  }
+
+  private invalidatePlanImageCache(): void {
+    for (const [index] of this.planImages.entries()) {
+      this.updatePlanImageSlot(index, { lastKey: undefined });
+    }
+  }
+
+  private shouldRefreshPlanImageForStream(params: {
+    slot: PlanImageState;
+    nowMs: number;
+    key: string;
+  }): boolean {
+    const { slot, nowMs, key } = params;
+    const hasCachedImage = slot.buffer.length > EMPTY_PNG.length;
+    if (!hasCachedImage) return true;
+    if (slot.lastKey === key) return false;
+    const isCoolingDown = typeof slot.lastRenderedAtMs === 'number'
+      && (nowMs - slot.lastRenderedAtMs) < PLAN_IMAGE_STREAM_REFRESH_MIN_MS;
+    return !isCoolingDown;
+  }
+
   private async getPlanImageForStream(index: number): Promise<ImageBuffer> {
     const slot = this.planImages[index];
     if (!slot) return EMPTY_PNG;
-    if (slot.generation) return slot.generation;
-    const generation = (async () => {
-      const nowMs = Date.now();
-      const snapshot = this.getDailyBudgetSnapshot();
-      const dayKey = slot.resolveDayKey(snapshot);
-      const combinedPrices = this.getCombinedPrices();
-      try {
-        this.logPlanImageDebug(`${slot.cameraId}: Generating image for stream`);
-        const payload = await this.generatePlanImagePayload(snapshot, dayKey, combinedPrices, slot.filename);
-        const updated = this.updatePlanImageSlot(index, {
-          buffer: payload.buffer,
-          contentType: payload.contentType,
-          filename: payload.filename,
-          lastKey: this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices),
-        });
-        this.logPlanImageDebug(`${slot.cameraId}: Generated image for stream (${payload.buffer.length} bytes)`);
-        return updated.buffer;
-      } catch (error) {
-        this.error(`Failed to generate plan image for stream ${slot.cameraId}`, error);
-        return slot.buffer ?? EMPTY_PNG;
-      }
-    })();
-    this.updatePlanImageSlot(index, { generation });
-    try {
-      return await generation;
-    } finally {
-      const current = this.planImages[index];
-      if (current?.generation === generation) {
-        this.updatePlanImageSlot(index, { generation: undefined });
-      }
+    const nowMs = Date.now();
+    const snapshot = this.getDailyBudgetSnapshot();
+    const dayKey = slot.resolveDayKey(snapshot);
+    const combinedPrices = this.getCombinedPrices();
+    const key = this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices);
+    const current = this.planImages[index];
+
+    // Reuse in-flight render work to avoid concurrent stream stampedes for the same slot.
+    if (current?.generation) {
+      await current.generation;
+      return this.planImages[index]?.buffer ?? current.buffer ?? slot.buffer ?? EMPTY_PNG;
     }
+
+    if (this.shouldRefreshPlanImageForStream({ slot, nowMs, key })) {
+      await this.refreshPlanImage(index);
+    }
+
+    return this.planImages[index]?.buffer ?? slot.buffer ?? EMPTY_PNG;
   }
 
   private async generatePlanImagePayload(
@@ -490,6 +518,7 @@ class PelsInsightsDevice extends Homey.Device {
         filename: slot.filename,
         contentLength: png.length,
       };
+      this.updatePlanImageSlot(index, { lastStreamedAtMs: Date.now() });
       imageStream.contentType = meta.contentType;
       imageStream.filename = meta.filename;
       imageStream.contentLength = meta.contentLength;
@@ -503,6 +532,7 @@ class PelsInsightsDevice extends Homey.Device {
         filename: slot.filename,
         contentLength: fallback.length,
       };
+      this.updatePlanImageSlot(index, { lastStreamedAtMs: Date.now() });
       imageStream.contentType = meta.contentType;
       imageStream.filename = meta.filename;
       imageStream.contentLength = meta.contentLength;
@@ -510,20 +540,6 @@ class PelsInsightsDevice extends Homey.Device {
       this.logPlanImageDebug(`${slot.cameraId}: Stream fallback: using cached image`);
       return meta;
     }
-  }
-
-  private schedulePlanImageWarmup(): void {
-    if (this.planImageWarmupTimer) return;
-    this.planImageWarmupTimer = setTimeout(() => {
-      this.planImageWarmupTimer = undefined;
-      const needsWarmup = this.planImages.some((slot) => (
-        slot.image && slot.buffer.length <= EMPTY_PNG.length
-      ));
-      if (needsWarmup) {
-        this.logPlanImageDebug('Warmup refresh: placeholder image detected');
-        void this.refreshPlanImages({ force: true });
-      }
-    }, 8000);
   }
 
   private logPlanImageDebug(message: string): void {

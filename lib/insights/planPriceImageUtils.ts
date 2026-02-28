@@ -1,6 +1,26 @@
 import type { CombinedPriceData } from '../dailyBudget/dailyBudgetMath';
-import type { DailyBudgetDayPayload } from '../dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { clamp } from '../utils/mathUtils';
+
+export function resolvePlanSnapshotDay(
+  snapshot: DailyBudgetUiPayload | null,
+  dayKey?: string | null,
+): DailyBudgetDayPayload | null {
+  if (!snapshot) return null;
+  const resolvedKey = dayKey ?? snapshot.todayKey;
+  if (!resolvedKey) return null;
+  return snapshot.days[resolvedKey] ?? null;
+}
+
+export function resolvePlanIsToday(
+  snapshot: DailyBudgetUiPayload | null,
+  dayKey?: string | null,
+): boolean {
+  if (!snapshot) return true;
+  const resolvedKey = dayKey ?? snapshot.todayKey;
+  if (!resolvedKey) return true;
+  return resolvedKey === snapshot.todayKey;
+}
 
 export function buildPriceStats(priceSeries: Array<number | null>): {
   priceValues: number[];
@@ -99,37 +119,26 @@ export function buildMetaLines(params: {
   return { metaLine, nowLine };
 }
 
-export function buildPricePath(params: {
-  priceSeries: Array<number | null>;
-  chartLeft: number;
-  chartTop: number;
-  chartHeight: number;
-  slotWidth: number;
-  priceMin: number;
-  priceSpan: number;
-}): string {
-  const {
-    priceSeries,
-    chartLeft,
-    chartTop,
-    chartHeight,
-    slotWidth,
-    priceMin,
-    priceSpan,
-  } = params;
-  let path = '';
-  let started = false;
-  priceSeries.forEach((value, index) => {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      started = false;
-      return;
-    }
-    const x = chartLeft + (index + 0.5) * slotWidth;
-    const y = chartTop + chartHeight - ((value - priceMin) / priceSpan) * chartHeight;
-    path += `${started ? ' L' : ' M'}${x} ${y}`;
-    started = true;
-  });
-  return path.trim();
+export function buildLegendTexts(): { plan: string; price: string } {
+  return { plan: 'Plan', price: 'Price' };
+}
+
+export function resolveActualSeries(params: {
+  day: DailyBudgetDayPayload | null;
+  bucketCount: number;
+  isToday: boolean;
+}): { actualKWh: Array<number | null>; showActual: boolean } {
+  const { day, bucketCount, isToday } = params;
+  const actualKWh = normalizeSeriesLength(
+    (day?.buckets?.actualKWh ?? []).map((value) => (
+      Number.isFinite(value) ? Math.max(0, value) : null
+    )),
+    bucketCount,
+  );
+  return {
+    actualKWh,
+    showActual: isToday && actualKWh.some((value) => typeof value === 'number' && Number.isFinite(value)),
+  };
 }
 
 export function resolvePriceSeries(params: {

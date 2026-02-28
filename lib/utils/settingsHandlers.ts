@@ -103,6 +103,70 @@ const DEDUPED_WRITE_KEYS = new Set<string>([
   ...DEDUPED_DAILY_BUDGET_KEYS,
   ...DEDUPED_LOGGING_KEYS,
 ]);
+const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
+
+const createDailyBudgetPriceSyncScheduler = (deps: SettingsHandlerDeps): (() => Promise<void>) => {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let running = false;
+  let rerunRequested = false;
+  let pendingRun: Promise<void> | null = null;
+  let resolvePendingRun: (() => void) | null = null;
+
+  const ensurePendingRun = (): Promise<void> => {
+    if (!pendingRun) {
+      pendingRun = new Promise((resolve) => {
+        resolvePendingRun = resolve;
+      });
+    }
+    return pendingRun;
+  };
+
+  const finishPendingRun = (): void => {
+    const resolve = resolvePendingRun;
+    resolvePendingRun = null;
+    pendingRun = null;
+    resolve?.();
+  };
+
+  const scheduleRun = (): void => {
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      running = true;
+      void Promise.resolve()
+        .then(() => {
+          deps.updateDailyBudgetState({ forcePlanRebuild: true });
+        })
+        .then(() => rebuildPlanFromSettings(deps, 'daily_budget_price'))
+        .catch((error) => deps.errorLog('Failed to sync daily budget state after combined price update', error))
+        .finally(() => {
+          running = false;
+          if (rerunRequested) {
+            rerunRequested = false;
+            scheduleRun();
+            return;
+          }
+          finishPendingRun();
+        });
+    }, DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS);
+  };
+
+  return (): Promise<void> => {
+    const promise = ensurePendingRun();
+    if (timer) return promise;
+    if (running) {
+      rerunRequested = true;
+      return promise;
+    }
+    scheduleRun();
+    return promise;
+  };
+};
+
+const refreshPriceDerivedState = async (deps: SettingsHandlerDeps): Promise<void> => {
+  deps.priceService.updateCombinedPrices();
+  await handleDailyBudgetPriceChange(deps);
+};
 
 type NoopWriteSkipper = {
   shouldSkipNoopWrite: (key: string) => boolean;
@@ -134,10 +198,7 @@ const createNoopWriteSkipper = (deps: SettingsHandlerDeps): NoopWriteSkipper => 
 };
 
 export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) => Promise<void> {
-  const refreshPriceDerivedState = async () => {
-    deps.priceService.updateCombinedPrices();
-    await handleDailyBudgetPriceChange(deps);
-  };
+  const scheduleDailyBudgetPriceSync = createDailyBudgetPriceSyncScheduler(deps);
   const handlers: Record<string, () => Promise<void>> = {
     mode_device_targets: async () => handleModeTargetsChange(deps),
     [OPERATING_MODE_SETTING]: async () => handleModeTargetsChange(deps),
@@ -181,32 +242,32 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       }
     },
     [PRICE_SCHEME]: async () => {
-      await refreshPriceDerivedState();
+      await refreshPriceDerivedState(deps);
     },
     [FLOW_PRICES_TODAY]: async () => {
-      await refreshPriceDerivedState();
+      await refreshPriceDerivedState(deps);
     },
     [FLOW_PRICES_TOMORROW]: async () => {
-      await refreshPriceDerivedState();
+      await refreshPriceDerivedState(deps);
     },
     [HOMEY_PRICES_TODAY]: async () => {
-      await refreshPriceDerivedState();
+      await refreshPriceDerivedState(deps);
     },
     [HOMEY_PRICES_TOMORROW]: async () => {
-      await refreshPriceDerivedState();
+      await refreshPriceDerivedState(deps);
     },
     [HOMEY_PRICES_CURRENCY]: async () => {
-      await refreshPriceDerivedState();
+      await refreshPriceDerivedState(deps);
     },
     [NORWAY_PRICE_MODEL]: async () => {
-      await refreshPriceDerivedState();
+      await refreshPriceDerivedState(deps);
     },
-    provider_surcharge: async () => { await refreshPriceDerivedState(); },
+    provider_surcharge: async () => { await refreshPriceDerivedState(deps); },
     price_threshold_percent: async () => {
-      await refreshPriceDerivedState();
+      await refreshPriceDerivedState(deps);
     },
     price_min_diff_ore: async () => {
-      await refreshPriceDerivedState();
+      await refreshPriceDerivedState(deps);
     },
     [PRICE_OPTIMIZATION_SETTINGS]: async () => {
       deps.loadPriceOptimizationSettings();
@@ -215,7 +276,9 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     [DAILY_BUDGET_ENABLED]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_KWH]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_PRICE_SHAPING_ENABLED]: async () => handleDailyBudgetChange(deps),
-    [COMBINED_PRICES]: async () => handleDailyBudgetPriceChange(deps),
+    [COMBINED_PRICES]: async () => {
+      void scheduleDailyBudgetPriceSync();
+    },
     [DAILY_BUDGET_CONTROLLED_WEIGHT]: async () => handleDailyBudgetChange(deps),
     [DAILY_BUDGET_PRICE_FLEX_SHARE]: async () => handleDailyBudgetChange(deps),
     [OVERSHOOT_BEHAVIORS]: async () => {

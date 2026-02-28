@@ -80,6 +80,12 @@ Note: Do not run `homey` CLI commands that deploy to hardware. `homey app valida
 - Access internal state via `(app as any).propertyName` when needed
 - Mock time with `jest.useFakeTimers()` for time-dependent tests
 
+## Settings UI Viewport Contract
+
+- Homey settings UI should be treated as mobile-first with max effective width of `480px`.
+- Playwright E2E defaults should use `480px` width (do not optimize or validate for wider layouts unless explicitly requested).
+- Keep narrow compatibility down to `320px` and cover this with at least one targeted layout test.
+
 ## Code Conventions
 
 - `app.ts` currently contains most logic - consider extracting modules for testability (like `capacityGuard.ts`)

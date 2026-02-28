@@ -3,6 +3,7 @@ import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
 import { PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
+import { startRuntimeSpan } from '../utils/runtimeTrace';
 
 export type PriceCoordinatorDeps = {
   homey: Homey.App['homey'];
@@ -116,11 +117,21 @@ export class PriceCoordinator {
   }
 
   async refreshSpotPrices(forceRefresh = false): Promise<void> {
-    await this.priceService.refreshSpotPrices(forceRefresh);
+    const stopSpan = startRuntimeSpan('price_refresh_spot');
+    try {
+      await this.priceService.refreshSpotPrices(forceRefresh);
+    } finally {
+      stopSpan();
+    }
   }
 
   async refreshGridTariffData(forceRefresh = false): Promise<void> {
-    await this.priceService.refreshGridTariffData(forceRefresh);
+    const stopSpan = startRuntimeSpan('price_refresh_tariff');
+    try {
+      await this.priceService.refreshGridTariffData(forceRefresh);
+    } finally {
+      stopSpan();
+    }
   }
 
   updateCombinedPrices(): void {

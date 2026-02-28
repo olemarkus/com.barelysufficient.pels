@@ -5,6 +5,7 @@ import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import { resolveDeviceLabel, resolveZoneLabel } from './deviceManagerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
+import { startRuntimeSpan } from '../utils/runtimeTrace';
 import type { PowerMeasurementUpdates } from './powerMeasurement';
 import {
     extractLivePowerWattsByDeviceId,
@@ -77,6 +78,10 @@ export class DeviceManager extends EventEmitter {
 
     // Test helper: allow direct snapshot injection
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
+        this.setSnapshot(snapshot);
+    }
+
+    setSnapshot(snapshot: TargetDeviceSnapshot[]): void {
         this.latestSnapshot = snapshot;
     }
 
@@ -126,6 +131,7 @@ export class DeviceManager extends EventEmitter {
     }
 
     async refreshSnapshot(options: { includeLivePower?: boolean } = {}): Promise<void> {
+        const stopSpan = startRuntimeSpan('device_snapshot_refresh');
         const start = Date.now();
         try {
             const list = await this.fetchDevices();
@@ -136,6 +142,7 @@ export class DeviceManager extends EventEmitter {
             this.latestSnapshot = snapshot;
             this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
         } finally {
+            stopSpan();
             addPerfDuration('device_refresh_ms', Date.now() - start);
         }
     }

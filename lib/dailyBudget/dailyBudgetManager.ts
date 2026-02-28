@@ -89,6 +89,7 @@ export class DailyBudgetManager {
     priceOptimizationEnabled: boolean;
     forcePlanRebuild?: boolean;
     capacityBudgetKWh?: number;
+    refreshObservedStats?: boolean;
   }): DailyBudgetUpdate {
     const {
       nowMs = Date.now(),
@@ -99,22 +100,25 @@ export class DailyBudgetManager {
       priceOptimizationEnabled,
       forcePlanRebuild,
       capacityBudgetKWh,
+      refreshObservedStats = true,
     } = params;
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker });
     const profileResult = ensureDailyBudgetProfile(this.state, DEFAULT_PROFILE);
     if (profileResult.changed) this.markDirty();
     this.state = profileResult.state;
-    const observedResult = ensureObservedHourlyStats({
-      state: this.state,
-      powerTracker,
-      timeZone,
-      nowMs: context.nowMs,
-    });
-    if (observedResult.changed) {
-      this.state = observedResult.nextState;
-      this.markDirty(true);
-      if (observedResult.logMessage) this.deps.logDebug(observedResult.logMessage);
+    if (refreshObservedStats) {
+      const observedResult = ensureObservedHourlyStats({
+        state: this.state,
+        powerTracker,
+        timeZone,
+        nowMs: context.nowMs,
+      });
+      if (observedResult.changed) {
+        this.state = observedResult.nextState;
+        this.markDirty(true);
+        if (observedResult.logMessage) this.deps.logDebug(observedResult.logMessage);
+      }
     }
     this.handleRollover({ context, settings, powerTracker });
 

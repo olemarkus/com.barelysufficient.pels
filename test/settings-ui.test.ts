@@ -248,6 +248,15 @@ describe('Settings UI', () => {
       });
       expect(cardBox.right).toBeLessThanOrEqual(480);
     });
+
+    test('section hints remain visible at 480px', async () => {
+      await page.click('[data-tab="budget"]');
+      await sleep(50);
+      const hintDisplay = await page.$eval('#budget-panel .section-hint', (el) => (
+        getComputedStyle(el).display
+      ));
+      expect(hintDisplay).not.toBe('none');
+    });
   });
 
   describe('Layout at 320px (narrow viewport)', () => {
@@ -276,6 +285,15 @@ describe('Settings UI', () => {
         return tops.size;
       });
       expect(rowCount).toBeGreaterThanOrEqual(2);
+    });
+
+    test('section hints remain visible at 320px', async () => {
+      await page.click('[data-tab="budget"]');
+      await sleep(50);
+      const hintDisplay = await page.$eval('#budget-panel .section-hint', (el) => (
+        getComputedStyle(el).display
+      ));
+      expect(hintDisplay).not.toBe('none');
     });
   });
 
