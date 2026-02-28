@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
 
 const PORT = Number(process.env.PELS_E2E_PORT ?? 4173);
 const BASE_URL = process.env.PELS_E2E_BASE_URL ?? `http://127.0.0.1:${PORT}`;
@@ -25,18 +25,19 @@ export default defineConfig({
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
+    viewport: { width: 480, height: 900 },
   },
 
   /* Configure projects for major browsers */
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      name: 'chromium-mobile-width',
+      use: { browserName: 'chromium' },
     },
 
     {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
+      name: 'firefox-mobile-width',
+      use: { browserName: 'firefox' },
     },
 
     /* Test against branded browsers. */

@@ -5,6 +5,10 @@ module.exports = {
   moduleFileExtensions: ['ts', 'js', 'json'],
   moduleNameMapper: {
     '^homey$': '<rootDir>/test/mocks/homey.ts',
+    '^echarts/core(\\.js)?$': '<rootDir>/test/mocks/echarts-subpath-shim.ts',
+    '^echarts/charts(\\.js)?$': '<rootDir>/test/mocks/echarts-subpath-shim.ts',
+    '^echarts/components(\\.js)?$': '<rootDir>/test/mocks/echarts-subpath-shim.ts',
+    '^echarts/renderers(\\.js)?$': '<rootDir>/test/mocks/echarts-subpath-shim.ts',
   },
   roots: ['<rootDir>/test'],
   testPathIgnorePatterns: ['<rootDir>/test/settings-ui.test.ts'],

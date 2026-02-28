@@ -45,6 +45,7 @@ import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { toStableFingerprint } from './lib/utils/stableFingerprint';
 import { startResourceWarningListeners as startResourceWarningListenersHelper } from './lib/app/appResourceWarningHelpers';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
+import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
@@ -117,6 +118,15 @@ class PelsApp extends Homey.App {
     await runStartupStep('loadCapacitySettings', () => this.loadCapacitySettings());
     await runStartupStep('initDailyBudgetService', () => this.initDailyBudgetService());
     await runStartupStep('initDeviceManager', () => this.initDeviceManager());
+    const hasCachedTargetSnapshot = restoreCachedTargetSnapshotForApp({
+      homey: this.homey,
+      deviceManager: this.deviceManager,
+      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
+    });
+    let snapshotPlanBootstrapDelayMs = 0;
+    if (deferStartupBootstrap) {
+      snapshotPlanBootstrapDelayMs = hasCachedTargetSnapshot ? 300 : 1200;
+    }
     await runStartupStep('initCapacityGuard', () => this.initCapacityGuard());
     await runStartupStep('initPlanEngine', () => this.initPlanEngine());
     await runStartupStep('initPlanService', () => this.initPlanService());
@@ -128,7 +138,7 @@ class PelsApp extends Homey.App {
       initOptimizer: () => this.priceCoordinator.initOptimizer(),
       startHeartbeat: () => this.startHeartbeat(),
       updateOverheadToken: () => this.updateOverheadToken(),
-      refreshDailyBudgetState: () => this.dailyBudgetService.updateState(),
+      refreshDailyBudgetState: () => this.dailyBudgetService.updateState({ refreshObservedStats: false }),
       refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot({ fast: true }),
       rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache('startup_snapshot_bootstrap'),
       setLastNotifiedOperatingMode: (mode) => { this.lastNotifiedOperatingMode = mode; },
@@ -140,7 +150,7 @@ class PelsApp extends Homey.App {
       startPriceRefresh: () => this.priceCoordinator.startPriceRefresh(),
       startPriceOptimization: (applyImmediately) => this.priceCoordinator.startPriceOptimization(applyImmediately),
       logError: (label, error) => this.error(`Startup background task failed (${label})`, error),
-      snapshotPlanBootstrapDelayMs: deferStartupBootstrap ? 1200 : 0,
+      snapshotPlanBootstrapDelayMs,
       runSnapshotPlanBootstrapInBackground: deferStartupBootstrap,
       runPriceBootstrapInBackground: deferStartupBootstrap,
       applyPriceOptimizationImmediatelyOnStart: !deferStartupBootstrap,
@@ -368,7 +378,7 @@ class PelsApp extends Homey.App {
       this.powerTracker = stored;
     }
     if (options.skipDailyBudgetUpdate !== true) {
-      this.dailyBudgetService.updateState();
+      this.dailyBudgetService.updateState({ refreshObservedStats: false });
     }
   }
   private migrateManagedDevices(): void {

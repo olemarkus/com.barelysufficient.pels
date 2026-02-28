@@ -1,6 +1,7 @@
 import { createSettingsHandler, type SettingsHandlerDeps } from '../lib/utils/settingsHandlers';
 import {
   CAPACITY_LIMIT_KW,
+  COMBINED_PRICES,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
   MANAGED_DEVICES,
@@ -42,6 +43,10 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
 };
 
 describe('createSettingsHandler', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('ignores unknown keys', async () => {
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);
@@ -243,6 +248,73 @@ describe('createSettingsHandler', () => {
     await handler('price_threshold_percent');
 
     expect(deps.priceService.updateCombinedPrices).toHaveBeenCalledTimes(2);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+  });
+
+  it('debounces combined price updates into one daily budget sync', async () => {
+    jest.useFakeTimers();
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler(COMBINED_PRICES);
+    await handler(COMBINED_PRICES);
+
+    expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(1000);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces combined price updates while a sync is still running', async () => {
+    jest.useFakeTimers();
+    let resolveFirstRebuild: (() => void) | null = null;
+    const firstRebuildPromise = new Promise<void>((resolve) => {
+      resolveFirstRebuild = resolve;
+    });
+    const deps = buildDeps({
+      rebuildPlanFromCache: jest.fn()
+        .mockImplementationOnce(() => firstRebuildPromise)
+        .mockResolvedValue(undefined),
+    });
+    const handler = createSettingsHandler(deps);
+
+    const first = handler(COMBINED_PRICES);
+    await jest.advanceTimersByTimeAsync(1000);
+    await Promise.resolve();
+
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    const second = handler(COMBINED_PRICES);
+    const third = handler(COMBINED_PRICES);
+
+    await jest.advanceTimersByTimeAsync(1000);
+    await Promise.resolve();
+
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    resolveFirstRebuild?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(999);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(1);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.all([first, second, third]);
+
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
   });

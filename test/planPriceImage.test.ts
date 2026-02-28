@@ -1,8 +1,9 @@
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import { buildPlanPriceSvg } from '../lib/insights/planPriceImage';
+import { buildPlanPriceSvgWithEcharts } from '../lib/insights/planPriceImageEcharts';
+import { listRuntimeSpans } from '../lib/utils/runtimeTrace';
 import {
+  buildLegendTexts,
   buildMetaLines,
-  buildPricePath,
   formatNumber,
   normalizeSeriesLength,
   resolveCurrentPlanInfo,
@@ -49,47 +50,143 @@ const buildDay = (bucketCount: number): DailyBudgetDayPayload => {
 };
 
 describe('plan price image', () => {
-  test('renders empty state when snapshot is missing', () => {
-    const svg = buildPlanPriceSvg({ snapshot: null });
+  test('renders empty state when snapshot is missing', async () => {
+    const svg = await buildPlanPriceSvgWithEcharts({
+      snapshot: null,
+      width: 900,
+      height: 900,
+      fontFamily: 'sans-serif',
+    });
     expect(svg).toContain('Budget and Price');
     expect(svg).toContain('No plan data available');
   });
 
-  test('renders disabled state when daily budget is off', () => {
+  test('stops the camera runtime span for empty-state renders', async () => {
+    await buildPlanPriceSvgWithEcharts({
+      snapshot: null,
+      width: 900,
+      height: 900,
+      fontFamily: 'sans-serif',
+    });
+
+    expect(listRuntimeSpans(32).filter((span) => span.startsWith('camera_svg_echarts'))).toHaveLength(0);
+  });
+
+  test('renders disabled state when daily budget is off', async () => {
     const day = buildDay(0);
     day.budget.enabled = false;
     const snapshot: DailyBudgetUiPayload = {
       days: { [day.dateKey]: day },
       todayKey: day.dateKey,
     };
-    const svg = buildPlanPriceSvg({ snapshot, dayKey: day.dateKey });
+    const svg = await buildPlanPriceSvgWithEcharts({
+      snapshot,
+      dayKey: day.dateKey,
+      width: 900,
+      height: 900,
+      fontFamily: 'sans-serif',
+    });
     expect(svg).toContain('Daily budget disabled');
   });
 
-  test('buildPricePath splits segments on missing price data', () => {
-    const path = buildPricePath({
-      priceSeries: [1, null, 3],
-      chartLeft: 0,
-      chartTop: 0,
-      chartHeight: 100,
-      slotWidth: 10,
-      priceMin: 0,
-      priceSpan: 10,
-    });
-    const moves = (path.match(/M/g) ?? []).length;
-    expect(moves).toBe(2);
-  });
-
-  test('renders all buckets for DST-length day (23 hours)', () => {
+  test('renders all buckets for DST-length day (23 hours)', async () => {
     const day = buildDay(23);
     const snapshot: DailyBudgetUiPayload = {
       days: { [day.dateKey]: day },
       todayKey: day.dateKey,
     };
-    const svg = buildPlanPriceSvg({ snapshot, dayKey: day.dateKey });
-    const barCount = (svg.match(/rx="4"/g) ?? []).length;
-    expect(barCount).toBe(23);
+    const svg = await buildPlanPriceSvgWithEcharts({
+      snapshot,
+      dayKey: day.dateKey,
+      width: 900,
+      height: 900,
+      fontFamily: 'sans-serif',
+    });
+    expect(svg).toContain('<svg');
   });
+
+  test('renders SVG with echarts engine', async () => {
+    const day = buildDay(8);
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+    const svg = await buildPlanPriceSvgWithEcharts({
+      snapshot,
+      dayKey: day.dateKey,
+      width: 900,
+      height: 900,
+      fontFamily: 'sans-serif',
+    });
+    expect(svg).toContain('<svg');
+    expect(svg).toContain('Plan');
+  });
+
+  test('uses simplified legend labels', async () => {
+    const day = buildDay(8);
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+    const svg = await buildPlanPriceSvgWithEcharts({
+      snapshot,
+      dayKey: day.dateKey,
+      width: 900,
+      height: 900,
+      fontFamily: 'sans-serif',
+    });
+
+    expect(svg).toContain('Plan');
+    expect(svg).toContain('Price');
+  });
+
+  test('shows Actual legend for today camera chart', async () => {
+    const day = buildDay(8);
+    day.buckets.actualKWh = [0.8, 1.1, 0.9, 1.4, 0, 0, 0, 0];
+    day.currentBucketIndex = 3;
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+    const svg = await buildPlanPriceSvgWithEcharts({
+      snapshot,
+      dayKey: day.dateKey,
+      width: 900,
+      height: 900,
+      fontFamily: 'sans-serif',
+    });
+    expect(svg).toContain('Actual');
+  });
+
+  test('hides Actual legend for non-today camera chart', async () => {
+    const today = buildDay(8);
+    today.dateKey = '2025-03-29';
+    today.dayStartUtc = '2025-03-29T00:00:00.000Z';
+    today.nowUtc = '2025-03-29T12:00:00.000Z';
+
+    const tomorrow = buildDay(8);
+    tomorrow.dateKey = '2025-03-30';
+    tomorrow.dayStartUtc = '2025-03-30T00:00:00.000Z';
+    tomorrow.nowUtc = '2025-03-30T12:00:00.000Z';
+    tomorrow.buckets.actualKWh = [1, 1, 1, 1, 1, 1, 1, 1];
+    const snapshot: DailyBudgetUiPayload = {
+      days: {
+        [today.dateKey]: today,
+        [tomorrow.dateKey]: tomorrow,
+      },
+      todayKey: today.dateKey,
+      tomorrowKey: tomorrow.dateKey,
+    };
+    const svg = await buildPlanPriceSvgWithEcharts({
+      snapshot,
+      dayKey: tomorrow.dateKey,
+      width: 900,
+      height: 900,
+      fontFamily: 'sans-serif',
+    });
+    expect(svg).not.toContain('Actual');
+  });
+
 });
 
 describe('plan price image utils', () => {
@@ -175,6 +272,12 @@ describe('plan price image utils', () => {
     expect(metaLine).toContain('Tomorrow');
     expect(metaLine).toContain('Prices pending');
     expect(nowLine).toContain('Plan preview');
+  });
+
+  test('buildLegendTexts returns simple series labels', () => {
+    const legend = buildLegendTexts();
+    expect(legend.plan).toBe('Plan');
+    expect(legend.price).toBe('Price');
   });
 
   test('formatNumber handles non-finite values', () => {

@@ -23,6 +23,9 @@ export default tseslint.config(
       '*.js',
       'settings/*.js',
       'test/screenshots/**',
+      'lib/insights/echartsRuntimeBundle.cjs',
+      'echarts-modules.d.ts',
+      'playwright.config.ts',
     ],
   },
   // ESM scripts (Node.js)
@@ -173,9 +176,45 @@ export default tseslint.config(
       globals: {
         ...globals.jest,
       },
+      parserOptions: {
+        project: false,
+      },
     },
     linterOptions: {
       reportUnusedDisableDirectives: 'warn',
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/ban-ts-comment': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-unsafe-function-type': 'off',
+      'n/no-missing-import': 'off',
+      'n/no-unpublished-import': 'off',
+      'n/no-unsupported-features/es-syntax': 'off',
+      'complexity': 'off',
+      'max-lines': 'off',
+      'max-lines-per-function': 'off',
+      'max-statements': 'off',
+      'functional/immutable-data': 'off',
+      'sonarjs/cognitive-complexity': 'off',
+      'sonarjs/no-identical-functions': 'off',
+      'sonarjs/no-duplicated-branches': 'off',
+      'max-len': 'off',
+    },
+  },
+  {
+    files: ['tests/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+      parserOptions: {
+        project: false,
+      },
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
@@ -254,6 +293,12 @@ export default tseslint.config(
   },
   {
     files: ['app.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 650, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: ['settings/src/ui/power.ts'],
     rules: {
       'max-lines': ['warn', { max: 650, skipBlankLines: true, skipComments: true }],
     },

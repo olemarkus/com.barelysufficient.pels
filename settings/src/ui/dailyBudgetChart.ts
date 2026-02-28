@@ -1,6 +1,7 @@
 import type { DailyBudgetDayPayload } from '../../../lib/dailyBudget/dailyBudgetTypes';
 import { formatKWh } from './dailyBudgetFormat';
-import { renderDayViewChart, type DayViewBar } from './dayViewChart';
+import type { DayViewBar } from './dayViewChart';
+import { renderDailyBudgetChartEcharts } from './dailyBudgetChartEcharts';
 
 const buildDailyBudgetBarTitle = (params: {
   label: string;
@@ -156,12 +157,23 @@ export const renderDailyBudgetChart = (params: {
     });
   });
 
-  renderDayViewChart({
+  const renderedWithEcharts = renderDailyBudgetChartEcharts({
     bars,
+    planned,
+    actual,
+    plannedUncontrolled,
+    plannedControlled,
+    labels,
+    currentBucketIndex,
+    showActual,
+    showBreakdown,
+    enabled: payload.budget.enabled !== false,
     barsEl,
     labelsEl,
-    barClassName: 'daily-budget-bar',
-    stackClassName: 'daily-budget-bar__stack',
-    labelClassName: 'daily-budget-label',
   });
+
+  if (renderedWithEcharts) return;
+  barsEl.replaceChildren();
+  labelsEl.replaceChildren();
+  labelsEl.hidden = true;
 };

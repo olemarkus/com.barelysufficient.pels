@@ -9,6 +9,7 @@ import {
 } from '../lib/utils/settingsKeys';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { incPerfCounters } from '../lib/utils/perfCounters';
+import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 
 type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
 
@@ -40,64 +41,68 @@ export type FlowCardDeps = {
 };
 
 export function registerFlowCards(deps: FlowCardDeps): void {
+  const stopSpan = startRuntimeSpan('flow_cards_register');
   const { homey } = deps;
+  try {
+    registerExpectedPowerCard(homey, {
+      getSnapshot: () => deps.getSnapshot(),
+      getDeviceLoadSetting: (deviceId) => deps.getDeviceLoadSetting(deviceId),
+      setExpectedOverride: (deviceId, kw) => deps.setExpectedOverride(deviceId, kw),
+      refreshSnapshot: () => deps.refreshSnapshot(),
+      rebuildPlan: () => requestPlanRebuildFromFlow(deps, 'expected_power'),
+      log: (...args: unknown[]) => deps.log(...args),
+    });
 
-  registerExpectedPowerCard(homey, {
-    getSnapshot: () => deps.getSnapshot(),
-    getDeviceLoadSetting: (deviceId) => deps.getDeviceLoadSetting(deviceId),
-    setExpectedOverride: (deviceId, kw) => deps.setExpectedOverride(deviceId, kw),
-    refreshSnapshot: () => deps.refreshSnapshot(),
-    rebuildPlan: () => requestPlanRebuildFromFlow(deps, 'expected_power'),
-    log: (...args: unknown[]) => deps.log(...args),
-  });
+    const operatingModeChangedTrigger = homey.flow.getTriggerCard('operating_mode_changed');
+    operatingModeChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
+      const payload = args as { mode?: string | { id?: string; name?: string } } | null;
+      const statePayload = state as { mode?: string } | null;
+      const argModeValue = typeof payload?.mode === 'object' && payload?.mode !== null ? payload.mode.id : payload?.mode;
+      const chosenModeRaw = (argModeValue || '').trim();
+      const chosenMode = deps.resolveModeName(chosenModeRaw);
+      const stateMode = deps.resolveModeName((statePayload?.mode || '').trim());
+      if (!chosenMode || !stateMode) return false;
+      return chosenMode.toLowerCase() === stateMode.toLowerCase();
+    });
+    operatingModeChangedTrigger.registerArgumentAutocompleteListener('mode', async (query: string) => (
+      getModeOptions(deps, query)
+    ));
 
-  const operatingModeChangedTrigger = homey.flow.getTriggerCard('operating_mode_changed');
-  operatingModeChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
-    const payload = args as { mode?: string | { id?: string; name?: string } } | null;
-    const statePayload = state as { mode?: string } | null;
-    const argModeValue = typeof payload?.mode === 'object' && payload?.mode !== null ? payload.mode.id : payload?.mode;
-    const chosenModeRaw = (argModeValue || '').trim();
-    const chosenMode = deps.resolveModeName(chosenModeRaw);
-    const stateMode = deps.resolveModeName((statePayload?.mode || '').trim());
-    if (!chosenMode || !stateMode) return false;
-    return chosenMode.toLowerCase() === stateMode.toLowerCase();
-  });
-  operatingModeChangedTrigger.registerArgumentAutocompleteListener('mode', async (query: string) => (
-    getModeOptions(deps, query)
-  ));
+    const priceLevelChangedTrigger = homey.flow.getTriggerCard('price_level_changed');
+    priceLevelChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
+      const payload = args as { level?: string | { id?: string; name?: string } } | null;
+      const statePayload = state as { priceLevel?: PriceLevel } | null;
+      const argLevelValue = typeof payload?.level === 'object' && payload?.level !== null ? payload.level.id : payload?.level;
+      const chosenLevelRaw = (argLevelValue || '').trim().toLowerCase();
+      const chosenLevel = (chosenLevelRaw || PriceLevel.UNKNOWN) as PriceLevel;
+      const stateLevel = (statePayload?.priceLevel || PriceLevel.UNKNOWN) as PriceLevel;
+      return chosenLevel === stateLevel;
+    });
+    priceLevelChangedTrigger.registerArgumentAutocompleteListener('level', async (query: string) => (
+      getPriceLevelOptions(query)
+    ));
 
-  const priceLevelChangedTrigger = homey.flow.getTriggerCard('price_level_changed');
-  priceLevelChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
-    const payload = args as { level?: string | { id?: string; name?: string } } | null;
-    const statePayload = state as { priceLevel?: PriceLevel } | null;
-    const argLevelValue = typeof payload?.level === 'object' && payload?.level !== null ? payload.level.id : payload?.level;
-    const chosenLevelRaw = (argLevelValue || '').trim().toLowerCase();
-    const chosenLevel = (chosenLevelRaw || PriceLevel.UNKNOWN) as PriceLevel;
-    const stateLevel = (statePayload?.priceLevel || PriceLevel.UNKNOWN) as PriceLevel;
-    return chosenLevel === stateLevel;
-  });
-  priceLevelChangedTrigger.registerArgumentAutocompleteListener('level', async (query: string) => (
-    getPriceLevelOptions(query)
-  ));
+    const priceLevelIsCond = homey.flow.getConditionCard('price_level_is');
+    priceLevelIsCond.registerRunListener(async (args: unknown) => {
+      const payload = args as { level?: string | { id?: string; name?: string } } | null;
+      const argLevelValue = typeof payload?.level === 'object' && payload?.level !== null ? payload.level.id : payload?.level;
+      const chosenLevel = ((argLevelValue || '').trim().toLowerCase() || PriceLevel.UNKNOWN) as PriceLevel;
+      const currentLevel = deps.getCurrentPriceLevel();
+      return chosenLevel === currentLevel;
+    });
+    priceLevelIsCond.registerArgumentAutocompleteListener('level', async (query: string) => (
+      getPriceLevelOptions(query)
+    ));
 
-  const priceLevelIsCond = homey.flow.getConditionCard('price_level_is');
-  priceLevelIsCond.registerRunListener(async (args: unknown) => {
-    const payload = args as { level?: string | { id?: string; name?: string } } | null;
-    const argLevelValue = typeof payload?.level === 'object' && payload?.level !== null ? payload.level.id : payload?.level;
-    const chosenLevel = ((argLevelValue || '').trim().toLowerCase() || PriceLevel.UNKNOWN) as PriceLevel;
-    const currentLevel = deps.getCurrentPriceLevel();
-    return chosenLevel === currentLevel;
-  });
-  priceLevelIsCond.registerArgumentAutocompleteListener('level', async (query: string) => (
-    getPriceLevelOptions(query)
-  ));
-
-  registerHeadroomForDeviceCard(deps);
-  registerCapacityAndModeCards(deps);
-  registerDeviceCapacityControlCards(deps);
-  registerManagedDeviceCondition(deps);
-  registerCapacityControlCondition(deps);
-  registerFlowPriceCards(deps);
+    registerHeadroomForDeviceCard(deps);
+    registerCapacityAndModeCards(deps);
+    registerDeviceCapacityControlCards(deps);
+    registerManagedDeviceCondition(deps);
+    registerCapacityControlCondition(deps);
+    registerFlowPriceCards(deps);
+  } finally {
+    stopSpan();
+  }
 }
 
 function registerFlowPriceCards(deps: FlowCardDeps): void {

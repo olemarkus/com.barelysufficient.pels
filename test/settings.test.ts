@@ -85,20 +85,6 @@ const buildDom = () => {
       <div id="daily-budget-chart"></div>
       <div id="daily-budget-bars"></div>
       <div id="daily-budget-labels"></div>
-      <div id="daily-budget-legend">
-        <div class="daily-budget-legend__item">
-          <span id="daily-budget-legend-planned-swatch"></span>
-          <span id="daily-budget-legend-planned-label" class="muted">Planned</span>
-        </div>
-        <div class="daily-budget-legend__item" id="daily-budget-legend-controlled" hidden>
-          <span class="daily-budget-legend__swatch daily-budget-legend__swatch--controlled"></span>
-          <span class="muted">Controlled</span>
-        </div>
-        <div class="daily-budget-legend__item" id="daily-budget-legend-actual">
-          <span class="daily-budget-legend__swatch daily-budget-legend__swatch--actual"></span>
-          <span class="muted">Actual</span>
-        </div>
-      </div>
       <div id="daily-budget-empty"></div>
       <div id="daily-budget-status-pill"></div>
       <div id="daily-budget-title"></div>
@@ -1155,7 +1141,7 @@ describe('settings script', () => {
     expect(costText).toBe('300.00');
   });
 
-  it('toggles daily budget legend when breakdown is enabled', async () => {
+  it('renders budget chart without legacy html legend when breakdown is enabled', async () => {
     const dailyBudgetPayload = {
       days: {
         '2024-01-01': {
@@ -1223,13 +1209,7 @@ describe('settings script', () => {
 
     await loadSettingsScript();
 
-    const plannedLabel = document.querySelector('#daily-budget-legend-planned-label') as HTMLElement;
-    const plannedSwatch = document.querySelector('#daily-budget-legend-planned-swatch') as HTMLElement;
-    const controlledLegend = document.querySelector('#daily-budget-legend-controlled') as HTMLElement | null;
-
-    expect(plannedLabel.textContent).toBe('Planned');
-    expect(controlledLegend).toBeNull();
-    expect(plannedSwatch.classList.contains('daily-budget-legend__swatch--uncontrolled')).toBe(false);
+    expect(document.querySelector('#daily-budget-legend')).toBeNull();
 
     const { dailyBudgetBreakdownInput } = require('../settings/src/ui/dom');
     dailyBudgetBreakdownInput.checked = true;
@@ -1238,11 +1218,8 @@ describe('settings script', () => {
     rerenderDailyBudget();
     await flushPromises();
 
-    expect(plannedLabel.textContent).toBe('Uncontrolled');
-    const controlledLegendAfter = document.querySelector('#daily-budget-legend-controlled') as HTMLElement | null;
-    expect(controlledLegendAfter).not.toBeNull();
-    expect(controlledLegendAfter?.hasAttribute('hidden')).toBe(false);
-    expect(plannedSwatch.classList.contains('daily-budget-legend__swatch--uncontrolled')).toBe(true);
+    expect(document.querySelector('#daily-budget-legend')).toBeNull();
+    expect(document.querySelector('#daily-budget-chart')?.hasAttribute('hidden')).toBe(false);
   });
 });
 

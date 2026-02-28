@@ -13,17 +13,24 @@ import {
   usageWeekendAvg,
   hourlyPattern,
   hourlyPatternMeta,
+  hourlyPatternToggleAll,
+  hourlyPatternToggleWeekday,
+  hourlyPatternToggleWeekend,
+  dailyHistoryRange7,
+  dailyHistoryRange14,
 } from './dom';
 import { getHomeyTimezone, getSetting } from './homey';
-import { createUsageBar } from './components';
 import type { PowerTrackerState } from '../../../lib/core/powerTracker';
 import { buildDayContext } from '../../../lib/dailyBudget/dailyBudgetState';
 import { initUsageDayViewHandlers, renderUsageDayView, type UsageDayEntry } from './usageDayView';
 import { createPowerRow } from './powerUsageRows';
 import { resolveUsageSplit } from './powerUsageSplit';
 import {
+  renderDailyHistoryChartEcharts,
+  renderHourlyPatternChartEcharts,
+} from './usageStatsChartsEcharts';
+import {
   formatDateInTimeZone,
-  formatTimeInTimeZone,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getMonthStartInTimeZone,
@@ -35,6 +42,15 @@ import {
 export type PowerTracker = PowerTrackerState;
 
 type PowerUsageEntry = UsageDayEntry;
+type HourlyPatternPoint = { hour: number; avg: number };
+type DailyHistoryPoint = { date: string; kWh: number };
+type HourlyPatternView = 'all' | 'weekday' | 'weekend';
+type DailyHistoryRange = '7d' | '14d';
+const DAILY_HISTORY_RANGE_DAYS: Record<DailyHistoryRange, number> = {
+  '7d': 7,
+  '14d': 14,
+};
+const MAX_DAILY_HISTORY_ENTRIES = Math.max(...Object.values(DAILY_HISTORY_RANGE_DAYS));
 
 type PowerStatsSummary = {
   today: number;
@@ -42,9 +58,11 @@ type PowerStatsSummary = {
   month: number;
   weekdayAvg: number;
   weekendAvg: number;
-  hourlyPattern: { hour: number; avg: number }[];
+  hourlyPatternAll: HourlyPatternPoint[];
+  hourlyPatternWeekday: HourlyPatternPoint[];
+  hourlyPatternWeekend: HourlyPatternPoint[];
   hourlyPatternMeta: string;
-  dailyHistory: { date: string; kWh: number }[];
+  dailyHistory: DailyHistoryPoint[];
   hasPatternData: boolean;
 };
 
@@ -54,7 +72,9 @@ const getEmptyPowerStats = (): PowerStatsSummary => ({
   month: 0,
   weekdayAvg: 0,
   weekendAvg: 0,
-  hourlyPattern: [],
+  hourlyPatternAll: [],
+  hourlyPatternWeekday: [],
+  hourlyPatternWeekend: [],
   hourlyPatternMeta: 'Average kWh per hour based on historical data.',
   dailyHistory: [],
   hasPatternData: false,
@@ -183,13 +203,18 @@ const getWeekdayWeekendAverages = (dailyTotals: Record<string, number>, timeZone
   return { weekdayAvg, weekendAvg, hasPatternData };
 };
 
-const buildHourlyPattern = (hourlyAverages: Record<string, { sum: number; count: number }>): { hour: number; avg: number }[] => {
-  const entries: { hour: number; avg: number }[] = [];
+const buildHourlyPattern = (
+  hourlyAverages: Record<string, { sum: number; count: number }>,
+  includeWeekday?: (weekday: number) => boolean,
+): HourlyPatternPoint[] => {
+  const entries: HourlyPatternPoint[] = [];
   if (!hourlyAverages) return entries;
   const totals = new Map<number, { sum: number; count: number }>();
   for (const [patternKey, data] of Object.entries(hourlyAverages)) {
-    const [, hourStr] = patternKey.split('_');
+    const [weekdayStr, hourStr] = patternKey.split('_');
+    const weekday = Number(weekdayStr);
     const hour = Number(hourStr);
+    if (includeWeekday && (!Number.isFinite(weekday) || !includeWeekday(weekday))) continue;
     if (!Number.isFinite(hour) || hour < 0 || hour > 23) continue;
     const existing = totals.get(hour) || { sum: 0, count: 0 };
     totals.set(hour, { sum: existing.sum + data.sum, count: existing.count + data.count });
@@ -201,19 +226,24 @@ const buildHourlyPattern = (hourlyAverages: Record<string, { sum: number; count:
   return entries.sort((a, b) => a.hour - b.hour);
 };
 
-const buildDailyHistory = (dailyTotals: Record<string, number>, todayKey: string): { date: string; kWh: number }[] => {
-  const entries: { date: string; kWh: number }[] = [];
+const buildDailyHistory = (dailyTotals: Record<string, number>, todayKey: string): DailyHistoryPoint[] => {
+  const entries: DailyHistoryPoint[] = [];
   if (!dailyTotals) return entries;
   for (const [dateKey, kWh] of Object.entries(dailyTotals)) {
     if (dateKey === todayKey) continue;
     entries.push({ date: dateKey, kWh });
   }
-  return entries.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 14);
+  return entries.sort((a, b) => b.date.localeCompare(a.date)).slice(0, MAX_DAILY_HISTORY_ENTRIES);
 };
 
 let powerUsageWeekOffset = 0;
 let powerUsageEntries: PowerUsageEntry[] = [];
 let powerUsageNavReady = false;
+let powerStatsNavReady = false;
+let latestPowerStats: PowerStatsSummary = getEmptyPowerStats();
+let latestPowerStatsTimeZone = getHomeyTimezone();
+let hourlyPatternView: HourlyPatternView = 'all';
+let dailyHistoryRange: DailyHistoryRange = '14d';
 
 const getTimeZoneWeekRange = (now: Date, weekOffset: number, timeZone: string) => {
   const weekStart = getWeekStartInTimeZone(now, timeZone);
@@ -242,6 +272,34 @@ const ensurePowerUsageNav = () => {
     powerUsageWeekOffset += 1;
     renderPowerUsage(powerUsageEntries);
   });
+};
+
+const setToggleState = (button: HTMLButtonElement | null, active: boolean) => {
+  if (!button) return;
+  button.classList.toggle('is-active', active);
+  button.setAttribute('aria-pressed', String(active));
+};
+
+const applyHourlyPatternViewState = () => {
+  setToggleState(hourlyPatternToggleAll, hourlyPatternView === 'all');
+  setToggleState(hourlyPatternToggleWeekday, hourlyPatternView === 'weekday');
+  setToggleState(hourlyPatternToggleWeekend, hourlyPatternView === 'weekend');
+};
+
+const applyDailyHistoryRangeState = () => {
+  setToggleState(dailyHistoryRange7, dailyHistoryRange === '7d');
+  setToggleState(dailyHistoryRange14, dailyHistoryRange === '14d');
+};
+
+const getHourlyPatternPoints = (stats: PowerStatsSummary): HourlyPatternPoint[] => {
+  if (hourlyPatternView === 'weekday') return stats.hourlyPatternWeekday;
+  if (hourlyPatternView === 'weekend') return stats.hourlyPatternWeekend;
+  return stats.hourlyPatternAll;
+};
+
+const getDailyHistoryPoints = (stats: PowerStatsSummary): DailyHistoryPoint[] => {
+  const maxEntries = DAILY_HISTORY_RANGE_DAYS[dailyHistoryRange];
+  return stats.dailyHistory.slice(0, maxEntries);
 };
 
 const updateSummaryLabel = (valueEl: HTMLElement | null, labelText: string) => {
@@ -285,85 +343,91 @@ const renderPowerAverages = (stats: PowerStatsSummary) => {
   }
 };
 
-const renderHourlyPattern = (stats: PowerStatsSummary, timeZone: string) => {
+const renderHourlyPattern = (stats: PowerStatsSummary) => {
   if (!hourlyPattern) return;
-  hourlyPattern.innerHTML = '';
-  if (hourlyPatternMeta) hourlyPatternMeta.textContent = stats.hourlyPatternMeta;
-  if (!stats.hasPatternData) {
+  const points = getHourlyPatternPoints(stats);
+  if (hourlyPatternMeta) {
+    let modeText = '';
+    if (hourlyPatternView === 'weekday') modeText = ' Weekdays only.';
+    if (hourlyPatternView === 'weekend') modeText = ' Weekend only.';
+    hourlyPatternMeta.textContent = `${stats.hourlyPatternMeta}${modeText}`;
+  }
+  if (!points.length || !stats.hasPatternData) {
+    renderHourlyPatternChartEcharts({
+      container: hourlyPattern,
+      points: [],
+    });
     const message = document.createElement('div');
     message.className = 'hourly-pattern__empty';
-    message.textContent = 'Usage patterns will appear after collecting more data';
+    message.textContent = hourlyPatternView === 'all'
+      ? 'Usage patterns will appear after collecting more data'
+      : `No ${hourlyPatternView} pattern data available yet`;
     hourlyPattern.appendChild(message);
     return;
   }
-
-  const maxAvg = Math.max(...stats.hourlyPattern.map(p => p.avg), 0.1);
-  stats.hourlyPattern.forEach(({ hour, avg }) => {
-    const row = document.createElement('div');
-    row.className = 'usage-row usage-row--pattern';
-
-    const start = new Date(Date.UTC(2000, 0, 1, hour, 0, 0));
-    const end = new Date(start.getTime() + 60 * 60 * 1000);
-    const label = document.createElement('div');
-    label.className = 'usage-row__label';
-    label.textContent = `${formatTimeInTimeZone(start, { hour: '2-digit', minute: '2-digit' }, timeZone)}–${formatTimeInTimeZone(end, { hour: '2-digit', minute: '2-digit' }, timeZone)}`;
-
-    const bar = createUsageBar({
-      value: avg,
-      max: maxAvg,
-      minFillPct: 4,
-      className: 'usage-row__bar usage-bar--lg',
-      fillClassName: 'usage-bar__fill--accent',
-      labelText: `${avg.toFixed(2)} kWh`,
-      title: `${hour}:00 - ${avg.toFixed(2)} kWh`,
-    });
-
-    const value = document.createElement('div');
-    value.className = 'usage-row__value';
-    value.textContent = `${avg.toFixed(2)} kWh`;
-    row.append(label, bar, value);
-    hourlyPattern.appendChild(row);
+  const rendered = renderHourlyPatternChartEcharts({
+    container: hourlyPattern,
+    points,
   });
-};
-
-const buildDailyHistoryRow = (entry: { date: string; kWh: number }, maxKWh: number, timeZone: string) => {
-  const row = document.createElement('li');
-  row.className = 'usage-row usage-row--daily';
-
-  const dateEl = document.createElement('div');
-  dateEl.className = 'usage-row__label';
-  const date = new Date(getDateKeyStartMs(entry.date, timeZone));
-  dateEl.textContent = formatDateInTimeZone(date, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
-
-  const bar = createUsageBar({
-    value: entry.kWh,
-    max: maxKWh,
-    minFillPct: 4,
-    className: 'usage-row__bar usage-bar--lg',
-    fillClassName: 'usage-bar__fill--accent',
-    labelText: `${entry.kWh.toFixed(1)} kWh`,
-  });
-
-  const val = document.createElement('div');
-  val.className = 'usage-row__value';
-  val.textContent = `${entry.kWh.toFixed(1)} kWh`;
-
-  row.append(dateEl, bar, val);
-  return row;
+  if (rendered) return;
+  const message = document.createElement('div');
+  message.className = 'hourly-pattern__empty';
+  message.textContent = 'Usage pattern chart unavailable';
+  hourlyPattern.appendChild(message);
 };
 
 const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
   if (!dailyList || !dailyEmpty) return;
-  dailyList.innerHTML = '';
-  if (!stats.dailyHistory.length) {
+  const points = getDailyHistoryPoints(stats);
+  if (!points.length) {
+    renderDailyHistoryChartEcharts({
+      container: dailyList,
+      points: [],
+      timeZone,
+    });
+    dailyEmpty.textContent = 'No daily totals yet.';
     dailyEmpty.hidden = false;
     return;
   }
-  dailyEmpty.hidden = true;
-  const maxKWh = Math.max(...stats.dailyHistory.map((entry) => entry.kWh), 0.1);
-  stats.dailyHistory.forEach((entry) => {
-    dailyList.appendChild(buildDailyHistoryRow(entry, maxKWh, timeZone));
+  const rendered = renderDailyHistoryChartEcharts({
+    container: dailyList,
+    points,
+    timeZone,
   });
+  dailyEmpty.hidden = rendered;
+  if (rendered) return;
+  dailyEmpty.textContent = 'Daily history chart unavailable';
+};
+
+const renderUsageHistorySections = () => {
+  renderHourlyPattern(latestPowerStats);
+  renderDailyHistory(latestPowerStats, latestPowerStatsTimeZone);
+};
+
+const setHourlyPatternView = (view: HourlyPatternView) => {
+  if (hourlyPatternView === view) return;
+  hourlyPatternView = view;
+  applyHourlyPatternViewState();
+  renderHourlyPattern(latestPowerStats);
+};
+
+const setDailyHistoryRange = (range: DailyHistoryRange) => {
+  if (dailyHistoryRange === range) return;
+  dailyHistoryRange = range;
+  applyDailyHistoryRangeState();
+  renderDailyHistory(latestPowerStats, latestPowerStatsTimeZone);
+};
+
+const ensurePowerStatsNav = () => {
+  if (powerStatsNavReady) return;
+  powerStatsNavReady = true;
+  hourlyPatternToggleAll?.addEventListener('click', () => setHourlyPatternView('all'));
+  hourlyPatternToggleWeekday?.addEventListener('click', () => setHourlyPatternView('weekday'));
+  hourlyPatternToggleWeekend?.addEventListener('click', () => setHourlyPatternView('weekend'));
+  dailyHistoryRange7?.addEventListener('click', () => setDailyHistoryRange('7d'));
+  dailyHistoryRange14?.addEventListener('click', () => setDailyHistoryRange('14d'));
+  applyHourlyPatternViewState();
+  applyDailyHistoryRangeState();
 };
 
 export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZone: string }> => {
@@ -389,7 +453,9 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
     : getDerivedHourlyAverages(tracker.buckets, timeZone);
   const totals = getWeekMonthTotals({ ...tracker, dailyTotals: derivedDailyTotals }, timeContext, today, timeZone);
   const averages = getWeekdayWeekendAverages(derivedDailyTotals, timeZone);
-  const hourlyPattern = buildHourlyPattern(derivedHourlyAverages);
+  const hourlyPatternAll = buildHourlyPattern(derivedHourlyAverages);
+  const hourlyPatternWeekday = buildHourlyPattern(derivedHourlyAverages, (weekday) => weekday >= 1 && weekday <= 5);
+  const hourlyPatternWeekend = buildHourlyPattern(derivedHourlyAverages, (weekday) => weekday === 0 || weekday === 6);
   const hourlyPatternMeta = getHourlyPatternMeta(tracker.buckets, timeZone);
   const dailyHistory = buildDailyHistory(derivedDailyTotals, timeContext.todayKey);
 
@@ -400,7 +466,9 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
       month: totals.month,
       weekdayAvg: averages.weekdayAvg,
       weekendAvg: averages.weekendAvg,
-      hourlyPattern,
+      hourlyPatternAll,
+      hourlyPatternWeekday,
+      hourlyPatternWeekend,
       hourlyPatternMeta,
       dailyHistory,
       hasPatternData: averages.hasPatternData,
@@ -440,10 +508,12 @@ export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
 
 export const renderPowerStats = async () => {
   const { stats, timeZone } = await getPowerStats();
+  latestPowerStats = stats;
+  latestPowerStatsTimeZone = timeZone;
+  ensurePowerStatsNav();
   renderPowerSummary(stats, timeZone);
   renderPowerAverages(stats);
-  renderHourlyPattern(stats, timeZone);
-  renderDailyHistory(stats, timeZone);
+  renderUsageHistorySections();
 };
 
 export const renderPowerUsage = (entries: PowerUsageEntry[]) => {

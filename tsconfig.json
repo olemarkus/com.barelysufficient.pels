@@ -6,11 +6,19 @@
     "isolatedModules": true
   },
   "include": [
-    "**/*.ts"
+    "app.ts",
+    "api.ts",
+    "capacityGuard.ts",
+    "drivers/**/*.ts",
+    "flowCards/**/*.ts",
+    "lib/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     ".homeybuild",
-    "settings/**"
+    "settings/**",
+    "test/**",
+    "tests/**",
+    "scripts/**"
   ]
 }

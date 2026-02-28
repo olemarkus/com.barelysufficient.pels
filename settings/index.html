@@ -102,7 +102,7 @@
       </div>
       <details class="settings-collapse" open>
         <summary>
-          <h3 class="section-title">⚡ Capacity</h3>
+          <h3 class="section-title">Capacity</h3>
           <span class="section-hint">Hourly kW cap</span>
         </summary>
         <div class="collapse-content">
@@ -122,7 +122,7 @@
 
       <details class="settings-collapse" open>
         <summary>
-          <h3 class="section-title">📆 Daily budget</h3>
+          <h3 class="section-title">Daily budget</h3>
           <span class="section-hint">Soft kWh/day guide</span>
         </summary>
         <div class="collapse-content">
@@ -179,21 +179,6 @@
             <div id="daily-budget-labels" class="daily-budget-labels day-view-labels"></div>
           </div>
 
-          <div class="daily-budget-legend day-view-legend" id="daily-budget-legend">
-            <div class="daily-budget-legend__item day-view-legend__item">
-              <span id="daily-budget-legend-planned-swatch" class="daily-budget-legend__swatch day-view-legend__swatch daily-budget-legend__swatch--planned" aria-hidden="true"></span>
-              <span class="muted" id="daily-budget-legend-planned-label">Planned</span>
-            </div>
-            <div class="daily-budget-legend__item day-view-legend__item" id="daily-budget-legend-controlled" hidden>
-              <span class="daily-budget-legend__swatch day-view-legend__swatch daily-budget-legend__swatch--controlled" aria-hidden="true"></span>
-              <span class="muted">Controlled</span>
-            </div>
-            <div class="daily-budget-legend__item day-view-legend__item" id="daily-budget-legend-actual">
-              <span class="daily-budget-legend__swatch day-view-legend__swatch daily-budget-legend__swatch--actual day-view-legend__swatch--actual" aria-hidden="true"></span>
-              <span class="muted">Actual</span>
-            </div>
-          </div>
-
           <p id="daily-budget-empty" class="muted" hidden>Daily budget data not available yet.</p>
 
           <div id="daily-budget-meta" class="daily-budget-meta">
@@ -215,7 +200,7 @@
 
       <details class="settings-collapse" open>
         <summary>
-          <h3 class="section-title">📊 Usage summary</h3>
+          <h3 class="section-title">Usage summary</h3>
           <span class="section-hint">Daily totals and patterns</span>
         </summary>
         <div class="collapse-content">
@@ -236,7 +221,7 @@
 
           <div class="day-view-header">
             <div>
-              <h4 id="usage-day-title">Today usage</h4>
+              <h4 id="usage-day-title">Hourly usage (today)</h4>
               <p class="muted" id="usage-day-label">--</p>
             </div>
             <div class="day-view-actions">
@@ -258,7 +243,7 @@
               <span class="summary-value" id="usage-day-peak">-- kWh</span>
             </div>
             <div class="summary-card">
-              <span class="summary-label">Over budget hours</span>
+              <span class="summary-label">Warning hours</span>
               <span class="summary-value" id="usage-day-over-cap">--</span>
             </div>
           </div>
@@ -270,23 +255,8 @@
             <div id="usage-day-labels" class="day-view-labels"></div>
           </div>
 
-          <div class="day-view-legend" id="usage-day-legend">
-            <div class="day-view-legend__item">
-              <span class="day-view-legend__swatch day-view-legend__swatch--measured" aria-hidden="true"></span>
-              <span class="muted">Measured</span>
-            </div>
-            <div class="day-view-legend__item">
-              <span class="day-view-legend__swatch day-view-legend__swatch--budget" aria-hidden="true"></span>
-              <span class="muted">Budget</span>
-            </div>
-            <div class="day-view-legend__item">
-              <span class="day-view-legend__swatch day-view-legend__swatch--warn" aria-hidden="true"></span>
-              <span class="muted">Warning (over budget or unreliable)</span>
-            </div>
-          </div>
-
           <p id="usage-day-empty" class="muted" hidden>No hourly usage for the selected day yet.</p>
-          <p class="muted" id="usage-day-meta">Hourly kWh within your local day.</p>
+          <p class="muted" id="usage-day-meta">Hourly kWh for the selected local day. Typical usage below is per-hour average; daily history is one bar per day.</p>
 
           <h4>Weekday vs weekend average</h4>
           <div id="weekday-weekend-stats" class="usage-summary">
@@ -300,33 +270,50 @@
             </div>
           </div>
 
-          <h4>Typical usage by time of day</h4>
-          <div id="hourly-pattern" class="hourly-pattern usage-list"></div>
+          <div class="day-view-header usage-section-header">
+            <h4>Typical usage by time of day</h4>
+            <div class="day-view-actions">
+              <div class="day-view-toggle" role="group" aria-label="Typical usage view">
+                <button type="button" class="day-view-toggle__button is-active" id="hourly-pattern-toggle-all" aria-pressed="true">All days</button>
+                <button type="button" class="day-view-toggle__button" id="hourly-pattern-toggle-weekday" aria-pressed="false">Weekdays</button>
+                <button type="button" class="day-view-toggle__button" id="hourly-pattern-toggle-weekend" aria-pressed="false">Weekend</button>
+              </div>
+            </div>
+          </div>
+          <div id="hourly-pattern" class="hourly-pattern usage-chart"></div>
           <p class="muted" id="hourly-pattern-meta">Average kWh per hour based on historical data.</p>
         </div>
       </details>
 
       <details class="settings-collapse">
         <summary>
-          <h3 class="section-title">📅 Daily history</h3>
+          <h3 class="section-title">Daily history</h3>
           <span class="section-hint">Last 14 days</span>
         </summary>
         <div class="collapse-content">
-          <ul id="daily-list" class="device-list usage-list"></ul>
+          <div class="day-view-actions usage-history-actions">
+            <div class="day-view-toggle" role="group" aria-label="Daily history range">
+              <button type="button" class="day-view-toggle__button" id="daily-history-range-7" aria-pressed="false">7 days</button>
+              <button type="button" class="day-view-toggle__button is-active" id="daily-history-range-14" aria-pressed="true">14 days</button>
+            </div>
+          </div>
+          <div id="daily-list" class="usage-history-chart usage-chart"></div>
           <p id="daily-empty" class="muted" hidden>No daily totals yet.</p>
         </div>
       </details>
 
       <details class="settings-collapse">
         <summary>
-          <h3 class="section-title">⏱️ Hourly detail</h3>
+          <h3 class="section-title">Hourly detail</h3>
           <span class="section-hint">Week view</span>
         </summary>
         <div class="collapse-content">
-          <div class="hourly-nav">
-            <button type="button" class="btn ghost" id="power-week-prev">Prev week</button>
-            <div id="power-week-label" class="muted">This week</div>
-            <button type="button" class="btn ghost" id="power-week-next">Next week</button>
+          <div class="hourly-nav day-view-header">
+            <p id="power-week-label" class="muted">This week</p>
+            <div class="day-view-toggle" role="group" aria-label="Hourly detail week">
+              <button type="button" class="day-view-toggle__button" id="power-week-prev">Prev week</button>
+              <button type="button" class="day-view-toggle__button" id="power-week-next">Next week</button>
+            </div>
           </div>
           <div class="usage-legend" id="power-legend">
             <div class="usage-legend__item">
@@ -335,7 +322,7 @@
             </div>
             <div class="usage-legend__item">
               <span class="usage-legend__swatch usage-legend__swatch--warn" aria-hidden="true"></span>
-              <span class="muted">Warning (over budget or unreliable)</span>
+              <span class="muted">Warning (high usage or unreliable)</span>
             </div>
           </div>
           <ul id="power-list" class="device-list usage-list"></ul>
@@ -522,7 +509,7 @@
 
       <details class="settings-collapse">
         <summary>
-          <h3 class="section-title">⚙️ Price settings</h3>
+          <h3 class="section-title">Price settings</h3>
           <span class="section-hint">Price source, grid tariff &amp; spot price configuration</span>
         </summary>
         <div class="collapse-content">

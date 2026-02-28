@@ -1,15 +1,6 @@
 import { setSetting } from './homey';
 
 /**
- * Escape HTML special characters to prevent XSS attacks.
- */
-export const escapeHtml = (str: string): string => {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-};
-
-/**
  * Get a human-readable "time ago" string.
  */
 export const getTimeAgo = (date: Date, now: Date, timeZone: string): string => {
