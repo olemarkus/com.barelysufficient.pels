@@ -46,7 +46,10 @@
     ]
   },
   "overrides": {
-    "parseuri": "3.0.2"
+    "parseuri": "3.0.2",
+    "eslint-plugin-sonarjs": {
+      "minimatch": "10.2.4"
+    }
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
@@ -67,7 +70,7 @@
     "eslint": "^9.39.2",
     "eslint-plugin-functional": "^9.0.2",
     "eslint-plugin-n": "^17.23.2",
-    "eslint-plugin-sonarjs": "^3.0.5",
+    "eslint-plugin-sonarjs": "^4.0.0",
     "eslint-plugin-unicorn": "^63.0.0",
     "globals": "^17.0.0",
     "html-validate": "^10.7.0",
