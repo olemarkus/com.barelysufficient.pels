@@ -17,6 +17,7 @@
     ".homeybuild",
     "test/**",
     "tests/**",
-    "settings/**"
+    "settings/**",
+    "packages/**"
   ]
 }

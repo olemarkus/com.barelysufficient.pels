@@ -34,7 +34,7 @@ function parseTsPrune(output) {
 
 const allowedOrphans = new Set([
   'app.ts',
-  'settings/src/script.ts',
+  'packages/settings-ui/src/script.ts',
   'drivers/pels_insights/device.ts',
   'drivers/pels_insights/driver.ts',
 ]);
@@ -50,7 +50,10 @@ const allowedUnusedExportPatterns = [
   /^lib\/utils\/planRebuildTrace\.ts:\d+ - clearPlanRebuildTracesForTests$/,
 ];
 
-const orphanResult = run('madge --extensions ts --orphans app.ts flowCards drivers lib settings/src');
+const orphanResult = run(
+  'madge --extensions ts --orphans app.ts flowCards drivers lib '
+  + 'packages/settings-ui/src packages/contracts/src packages/shared-domain/src',
+);
 if (orphanResult.code !== 0) {
   console.error('deadcode: failed to run madge');
   if (orphanResult.stderr) console.error(orphanResult.stderr);

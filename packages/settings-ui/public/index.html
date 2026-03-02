@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PELS Control Panel</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="screen">
+    <header class="hero">
+      <p class="eyebrow">PELS · App control</p>
+      <h1>Control center</h1>
+      <p class="lede">Manage devices, modes, budgets, and usage.</p>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
+        <button type="button" class="tab" data-tab="devices" role="tab" aria-selected="false">Devices</button>
+        <button type="button" class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</button>
+        <button type="button" class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</button>
+        <button type="button" class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</button>
+        <button type="button" class="tab" data-tab="price" role="tab" aria-selected="false">Price</button>
+        <button type="button" class="tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</button>
+      </div>
+    </header>
+
+    <div id="dry-run-banner" class="banner banner--warning" hidden>
+      <span class="banner__icon">⚠️</span>
+      <span class="banner__text">Dry-run mode is enabled. Devices will not be switched automatically.</span>
+    </div>
+
+    <div id="stale-data-banner" class="banner banner--warning" hidden>
+      <span class="banner__icon">⚠️</span>
+      <span id="stale-data-text" class="banner__text">No power data received recently. Check your Flow that reports power usage.</span>
+    </div>
+
+    <section class="card panel hidden" id="devices-panel" data-panel="devices">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Devices</p>
+          <h2>Device control</h2>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <label class="toggle-label">
+          <input id="capacity-dry-run" name="capacity_dry_run" type="checkbox" checked>
+          <span>Disable device control (dry run)</span>
+        </label>
+        <small class="field__hint">PELS will only monitor devices while this is enabled.</small>
+      </div>
+      <div class="device-table-header">
+        <span>Device</span>
+        <span data-tooltip="Managed by PELS">Managed</span>
+        <span data-tooltip="Capacity-based control">Cap</span>
+        <span data-tooltip="Price-based control">Price</span>
+      </div>
+      <ul id="device-list" class="device-list"></ul>
+      <p id="empty-state" class="muted" hidden>No compatible devices found. PELS requires devices with power measurement and either temperature control or on/off capability.</p>
+      <div class="list__footer">
+        <button type="button" class="btn secondary" id="refresh-button">Refresh</button>
+        <p class="muted">Managed devices participate in modes and optimization. Temperature &amp; priority live in the Modes tab.</p>
+      </div>
+    </section>
+
+    <section class="card panel hidden" id="modes-panel" data-panel="modes">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Modes</p>
+          <h2>Per-mode priorities &amp; temperatures</h2>
+        </div>
+      </div>
+      <div class="form-grid form-inline">
+        <label class="field">
+          <span class="field__label">Active mode</span>
+          <select id="active-mode-select" name="active_mode"></select>
+          <small class="field__hint">Changes apply immediately.</small>
+        </label>
+      </div>
+      <form id="priority-form" class="form-grid">
+        <div class="field">
+          <label class="field__label" for="mode-select">Edit mode</label>
+          <select id="mode-select" name="mode"></select>
+          <div class="inline-actions">
+            <input id="mode-new" type="text" placeholder="New mode name">
+            <button type="button" class="btn secondary" id="add-mode-button">Add</button>
+            <button type="button" class="btn ghost" id="delete-mode-button">Delete</button>
+            <button type="button" class="btn ghost" id="rename-mode-button">Rename</button>
+          </div>
+          <small class="field__hint">Drag to reorder priorities (top = keep on longest). Set desired temps per mode.</small>
+        </div>
+        <ul id="priority-list" class="device-list tight-list"></ul>
+        <p id="priority-empty" class="muted" hidden>No controllable devices found. Refresh devices first.</p>
+      </form>
+      <p class="muted">Tip: Drag to reorder priorities (auto-saves). Temperatures save automatically when changed.</p>
+    </section>
+
+    <section class="card panel hidden" id="budget-panel" data-panel="budget">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Budget</p>
+          <h2>Capacity &amp; daily budget</h2>
+        </div>
+      </div>
+      <details class="settings-collapse" open>
+        <summary>
+          <h3 class="section-title">Capacity</h3>
+          <span class="section-hint">Hourly kW cap</span>
+        </summary>
+        <div class="collapse-content">
+          <form id="capacity-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">Capacity limit (kW)</span>
+              <input id="capacity-limit" name="capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required>
+            </label>
+            <label class="field">
+              <span class="field__label">Soft margin (kW)</span>
+              <input id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required>
+              <small class="field__hint">Soft limit = limit - margin.</small>
+            </label>
+          </form>
+        </div>
+      </details>
+
+      <details class="settings-collapse" open>
+        <summary>
+          <h3 class="section-title">Daily budget</h3>
+          <span class="section-hint">Soft kWh/day guide</span>
+        </summary>
+        <div class="collapse-content">
+          <form id="daily-budget-form" class="form-grid">
+            <label class="field checkbox-field">
+              <input id="daily-budget-enabled" name="daily_budget_enabled" type="checkbox">
+              <span class="field__label">Enable daily energy budget</span>
+            </label>
+            <label class="field">
+              <span class="field__label">Daily budget (kWh)</span>
+              <input id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" inputmode="decimal" autocomplete="off">
+              <small class="field__hint">Daily energy target used to build the plan.</small>
+            </label>
+            <label class="field checkbox-field">
+              <input id="daily-budget-price-shaping" name="daily_budget_price_shaping_enabled" type="checkbox" checked>
+              <span class="field__label">Price-shape today plan</span>
+            </label>
+          </form>
+
+          <div class="daily-budget-header day-view-header">
+            <div>
+              <h4 id="daily-budget-title">Today plan</h4>
+              <p class="muted" id="daily-budget-day">--</p>
+            </div>
+            <div class="daily-budget-actions day-view-actions">
+              <div class="daily-budget-toggle day-view-toggle" role="group" aria-label="Daily budget view">
+                <button type="button" class="daily-budget-toggle__button day-view-toggle__button" id="daily-budget-toggle-yesterday" aria-pressed="false">Yesterday</button>
+                <button type="button" class="daily-budget-toggle__button day-view-toggle__button is-active" id="daily-budget-toggle-today" aria-pressed="true">Today</button>
+                <button type="button" class="daily-budget-toggle__button day-view-toggle__button" id="daily-budget-toggle-tomorrow" aria-pressed="false">Tomorrow</button>
+              </div>
+              <div class="pill" id="daily-budget-status-pill">No data</div>
+            </div>
+          </div>
+
+          <div class="usage-summary daily-budget-summary">
+            <div class="summary-card">
+              <span class="summary-label">Remaining</span>
+              <span class="summary-value" id="daily-budget-remaining">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Deviation</span>
+              <span class="summary-value" id="daily-budget-deviation">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label" id="daily-budget-cost-label">Estimated cost</span>
+              <span class="summary-value" id="daily-budget-cost">-- kr</span>
+            </div>
+          </div>
+
+          <div id="daily-budget-chart" class="daily-budget-chart day-view-chart">
+            <div class="daily-budget-bars-wrap day-view-bars-wrap">
+              <div id="daily-budget-bars" class="daily-budget-bars day-view-bars"></div>
+            </div>
+            <div id="daily-budget-labels" class="daily-budget-labels day-view-labels"></div>
+          </div>
+
+          <p id="daily-budget-empty" class="muted" hidden>Daily budget data not available yet.</p>
+
+          <div id="daily-budget-meta" class="daily-budget-meta">
+            <div id="daily-budget-confidence" class="chip">Confidence --</div>
+          </div>
+
+          <p class="muted">Refreshes every 60s. Uses local day boundaries.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="card panel hidden" id="usage-panel" data-panel="usage">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Usage</p>
+          <h2>History &amp; patterns</h2>
+        </div>
+      </div>
+
+      <details class="settings-collapse" open>
+        <summary>
+          <h3 class="section-title">Usage summary</h3>
+          <span class="section-hint">Daily totals and patterns</span>
+        </summary>
+        <div class="collapse-content">
+          <div id="usage-summary" class="usage-summary">
+            <div class="summary-card">
+              <span class="summary-label">Today</span>
+              <span class="summary-value" id="usage-today">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">This week</span>
+              <span class="summary-value" id="usage-week">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">This month</span>
+              <span class="summary-value" id="usage-month">-- kWh</span>
+            </div>
+          </div>
+
+          <div class="day-view-header">
+            <div>
+              <h4 id="usage-day-title">Hourly usage (today)</h4>
+              <p class="muted" id="usage-day-label">--</p>
+            </div>
+            <div class="day-view-actions">
+              <div class="day-view-toggle" role="group" aria-label="Usage day view">
+                <button type="button" class="day-view-toggle__button" id="usage-day-toggle-yesterday" aria-pressed="false">Yesterday</button>
+                <button type="button" class="day-view-toggle__button is-active" id="usage-day-toggle-today" aria-pressed="true">Today</button>
+              </div>
+              <div class="pill" id="usage-day-status-pill">No data</div>
+            </div>
+          </div>
+
+          <div class="usage-summary usage-day-summary">
+            <div class="summary-card">
+              <span class="summary-label">Day total</span>
+              <span class="summary-value" id="usage-day-total">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Peak hour</span>
+              <span class="summary-value" id="usage-day-peak">-- kWh</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Warning hours</span>
+              <span class="summary-value" id="usage-day-over-cap">--</span>
+            </div>
+          </div>
+
+          <div id="usage-day-chart" class="day-view-chart">
+            <div class="day-view-bars-wrap">
+              <div id="usage-day-bars" class="day-view-bars"></div>
+            </div>
+            <div id="usage-day-labels" class="day-view-labels"></div>
+          </div>
+
+          <p id="usage-day-empty" class="muted" hidden>No hourly usage for the selected day yet.</p>
+          <p class="muted" id="usage-day-meta">Hourly kWh for the selected local day. Typical usage below is per-hour average; daily history is one bar per day.</p>
+
+          <h4>Weekday vs weekend average</h4>
+          <div id="weekday-weekend-stats" class="usage-summary">
+            <div class="summary-card">
+              <span class="summary-label">Weekday avg</span>
+              <span class="summary-value" id="usage-weekday-avg">-- kWh/day</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Weekend avg</span>
+              <span class="summary-value" id="usage-weekend-avg">-- kWh/day</span>
+            </div>
+          </div>
+
+          <div class="day-view-header usage-section-header">
+            <h4>Typical usage by time of day</h4>
+            <div class="day-view-actions">
+              <div class="day-view-toggle" role="group" aria-label="Typical usage view">
+                <button type="button" class="day-view-toggle__button is-active" id="hourly-pattern-toggle-all" aria-pressed="true">All days</button>
+                <button type="button" class="day-view-toggle__button" id="hourly-pattern-toggle-weekday" aria-pressed="false">Weekdays</button>
+                <button type="button" class="day-view-toggle__button" id="hourly-pattern-toggle-weekend" aria-pressed="false">Weekend</button>
+              </div>
+            </div>
+          </div>
+          <div id="hourly-pattern" class="hourly-pattern usage-chart"></div>
+          <p class="muted" id="hourly-pattern-meta">Average kWh per hour based on historical data.</p>
+        </div>
+      </details>
+
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">Daily history</h3>
+          <span class="section-hint">Last 14 days</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="day-view-actions usage-history-actions">
+            <div class="day-view-toggle" role="group" aria-label="Daily history range">
+              <button type="button" class="day-view-toggle__button" id="daily-history-range-7" aria-pressed="false">7 days</button>
+              <button type="button" class="day-view-toggle__button is-active" id="daily-history-range-14" aria-pressed="true">14 days</button>
+            </div>
+          </div>
+          <div id="daily-list" class="usage-history-chart usage-chart"></div>
+          <p id="daily-empty" class="muted" hidden>No daily totals yet.</p>
+        </div>
+      </details>
+
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">Hourly detail</h3>
+          <span class="section-hint">Week view</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="hourly-nav day-view-header">
+            <p id="power-week-label" class="muted">This week</p>
+            <div class="day-view-toggle" role="group" aria-label="Hourly detail week">
+              <button type="button" class="day-view-toggle__button" id="power-week-prev">Prev week</button>
+              <button type="button" class="day-view-toggle__button" id="power-week-next">Next week</button>
+            </div>
+          </div>
+          <div class="usage-legend" id="power-legend">
+            <div class="usage-legend__item">
+              <span class="usage-legend__swatch" aria-hidden="true"></span>
+              <span class="muted">Measured</span>
+            </div>
+            <div class="usage-legend__item">
+              <span class="usage-legend__swatch usage-legend__swatch--warn" aria-hidden="true"></span>
+              <span class="muted">Warning (high usage or unreliable)</span>
+            </div>
+          </div>
+          <ul id="power-list" class="device-list usage-list"></ul>
+          <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the "Report power usage" Flow action.</p>
+        </div>
+      </details>
+
+      <div class="list__footer">
+        <button type="button" class="btn ghost" id="reset-stats-button">Reset all stats</button>
+        <p class="muted">Hourly data kept for 30 days, daily totals for 1 year.</p>
+      </div>
+    </section>
+
+    <section class="card panel" id="overview-panel" data-panel="overview">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Overview</p>
+          <h2>Planned device states</h2>
+        </div>
+      </div>
+      <div class="overview-stats">
+        <div class="section-header">
+          <h3 class="section-title">Quick stats</h3>
+        </div>
+        <div class="pill" id="plan-meta">Awaiting data…</div>
+      </div>
+      <ul id="plan-list" class="device-list"></ul>
+      <p id="plan-empty" class="muted" hidden>No plan available yet. Send power data or refresh devices.</p>
+      <div class="list__footer">
+        <button type="button" class="btn secondary" id="plan-refresh-button">Refresh plan</button>
+        <p class="muted">Plan is recalculated when power usage updates or when you refresh devices.</p>
+      </div>
+    </section>
+
+    <section class="card panel hidden" id="advanced-panel" data-panel="advanced">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Advanced</p>
+          <h2>Diagnostics</h2>
+        </div>
+      </div>
+      <details class="settings-collapse" open>
+        <summary>
+          <h3 class="section-title">Debug logging</h3>
+          <span class="section-hint">Targeted diagnostics</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="form-grid">
+            <label class="field checkbox-field">
+              <input id="debug-topic-plan" data-debug-topic="plan" type="checkbox">
+              <span class="checkbox-field__content">
+                <span class="field__label">Plan engine</span>
+                <small class="field__hint">Shedding, restore, and soft-limit decisions.</small>
+              </span>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-price" data-debug-topic="price" type="checkbox">
+              <span class="checkbox-field__content">
+                <span class="field__label">Price optimization</span>
+                <small class="field__hint">Spot prices, tariffs, and price shaping.</small>
+              </span>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
+              <span class="checkbox-field__content">
+                <span class="field__label">Daily budget</span>
+                <small class="field__hint">Daily plan and rollover.</small>
+              </span>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">
+              <span class="checkbox-field__content">
+                <span class="field__label">Devices</span>
+                <small class="field__hint">Device snapshots and Homey API interactions.</small>
+              </span>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-settings" data-debug-topic="settings" type="checkbox">
+              <span class="checkbox-field__content">
+                <span class="field__label">Settings</span>
+                <small class="field__hint">Settings changes and housekeeping.</small>
+              </span>
+            </label>
+            <label class="field checkbox-field">
+              <input id="debug-topic-perf" data-debug-topic="perf" type="checkbox">
+              <span class="checkbox-field__content">
+                <span class="field__label">Performance</span>
+                <small class="field__hint">Hotpath counters and timings.</small>
+              </span>
+            </label>
+            <p class="muted">Select only what you need. Debug logging stays enabled across restarts.</p>
+          </div>
+        </div>
+      </details>
+      <details class="settings-collapse" open>
+        <summary>
+          <h3 class="section-title">Daily budget tuning</h3>
+          <span class="section-hint">Behavior shaping</span>
+        </summary>
+        <div class="collapse-content">
+          <form id="daily-budget-advanced-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">Controlled usage weight</span>
+              <input id="daily-budget-controlled-weight" type="number" min="0" max="1" step="0.05">
+              <small class="field__hint">Scale controlled usage when learning the budget (0 = ignore, 1 = full).</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Price flex share</span>
+              <input id="daily-budget-price-flex-share" type="number" min="0" max="1" step="0.05">
+              <small class="field__hint">Share of the plan shaped by price (0 = none, 1 = fully price-shaped).</small>
+            </label>
+            <label class="field checkbox-field">
+              <input id="daily-budget-breakdown" type="checkbox">
+              <span class="checkbox-field__content">
+                <span class="field__label">Show daily budget breakdown in the chart</span>
+                <small class="field__hint">Stack uncontrolled vs. controlled contributions.</small>
+              </span>
+            </label>
+            <p class="muted">These apply when the plan rebuilds. Defaults are best unless you are tuning behavior.</p>
+          </form>
+        </div>
+      </details>
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">Device cleanup</h3>
+          <span class="section-hint">Remove stored metadata</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="form-grid">
+            <label class="field">
+              <span class="field__label">Device</span>
+              <select id="advanced-device-select"></select>
+              <small class="field__hint">Removes PELS settings for this device only.</small>
+            </label>
+            <div class="inline-actions">
+              <button type="button" class="btn ghost" id="advanced-device-clear">Clear device data</button>
+            </div>
+            <p class="muted">Clears modes, priorities, control flags, overshoot behavior, and price optimization for the selected device.</p>
+          </div>
+        </div>
+      </details>
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">Device log</h3>
+          <span class="section-hint">Homey API payload</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="form-grid">
+            <label class="field">
+              <span class="field__label">Homey device</span>
+              <select id="advanced-api-device-select"></select>
+              <small class="field__hint">Loads the raw device from the Homey API.</small>
+            </label>
+            <div class="inline-actions">
+              <button type="button" class="btn ghost" id="advanced-api-device-refresh">Refresh list</button>
+              <button type="button" class="btn ghost" id="advanced-api-device-log">Log device</button>
+            </div>
+            <p class="muted">Writes the selected device payload to the app logs for inspection.</p>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="card panel hidden" id="price-panel" data-panel="price">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Price</p>
+          <h2>Electricity pricing</h2>
+        </div>
+        <div class="pill" id="price-status-badge">No data</div>
+      </div>
+      <div class="price-info">
+        <p class="muted">Price-based optimization uses hourly prices to shift energy-intensive tasks to cheaper hours.</p>
+        <p class="muted">Norway source adds grid tariff, provider surcharge, taxes, and electricity support. Flow and Homey sources use values as provided (currency/tax may differ).</p>
+      </div>
+
+      <div class="toggle-row">
+        <label class="toggle-label">
+          <input type="checkbox" id="price-optimization-enabled" checked>
+          <span>Enable price-based optimization</span>
+        </label>
+        <small class="field__hint">When disabled, device temperatures will not be adjusted based on electricity prices.</small>
+      </div>
+
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">Price settings</h3>
+          <span class="section-hint">Price source, grid tariff &amp; spot price configuration</span>
+        </summary>
+        <div class="collapse-content">
+          <h4>Price source</h4>
+          <form id="price-source-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">Price source</span>
+              <select id="price-scheme" name="price_scheme">
+                <option value="norway">Norway (spot + grid tariff)</option>
+                <option value="flow">Flow (Power by the Hour)</option>
+                <option value="homey" selected>Homey Energy (dynamic prices)</option>
+              </select>
+              <small class="field__hint">Select where PELS should fetch price data.</small>
+            </label>
+          </form>
+          <p id="price-scheme-note" class="price-notice price-notice-info" hidden></p>
+          <div id="price-flow-status" class="price-notice price-notice-info" hidden>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Power by the Hour</span>
+              <span class="flow-status-value" id="price-flow-enabled">Not enabled</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Today</span>
+              <span class="flow-status-value" id="price-flow-today">No data yet</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Tomorrow</span>
+              <span class="flow-status-value" id="price-flow-tomorrow">No data yet</span>
+            </div>
+          </div>
+          <div id="price-homey-status" class="price-notice price-notice-info" hidden>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Homey Energy</span>
+              <span class="flow-status-value" id="price-homey-enabled">Not enabled</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Currency</span>
+              <span class="flow-status-value" id="price-homey-currency">Unknown</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Today</span>
+              <span class="flow-status-value" id="price-homey-today">No data yet</span>
+            </div>
+            <div class="flow-status-row">
+              <span class="flow-status-label">Tomorrow</span>
+              <span class="flow-status-value" id="price-homey-tomorrow">No data yet</span>
+            </div>
+          </div>
+          <div id="price-norway-settings">
+          <h4>Grid tariff</h4>
+          <form id="nettleie-settings-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">County</span>
+              <select id="nettleie-fylke" name="nettleie_fylke">
+                <option value="03">Oslo</option>
+                <option value="11">Rogaland</option>
+                <option value="15">Møre og Romsdal</option>
+                <option value="18">Nordland</option>
+                <option value="31">Østfold</option>
+                <option value="32">Akershus</option>
+                <option value="33">Buskerud</option>
+                <option value="34">Innlandet</option>
+                <option value="39">Vestfold</option>
+                <option value="40">Telemark</option>
+                <option value="42">Agder</option>
+                <option value="46">Vestland</option>
+                <option value="50">Trøndelag</option>
+                <option value="55">Troms</option>
+                <option value="56">Finnmark</option>
+              </select>
+              <small class="field__hint">Your county for grid tariff lookup.</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Grid company</span>
+              <select id="nettleie-company" name="nettleie_company">
+                <option value="">-- Select grid company --</option>
+              </select>
+              <input id="nettleie-orgnr" name="nettleie_orgnr" type="hidden">
+              <small class="field__hint">Select your grid company. List filtered by county.</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Tariff group</span>
+              <select id="nettleie-tariffgruppe" name="nettleie_tariffgruppe">
+                <option value="Husholdning">Household</option>
+                <option value="Hytter og fritidshus">Cabin and holiday home</option>
+              </select>
+            </label>
+            <div class="form__actions">
+              <button type="button" class="btn ghost" id="nettleie-refresh-button">Refresh tariffs</button>
+            </div>
+          </form>
+
+          <h4>Spot price (Norway)</h4>
+          <form id="price-norway-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">Norway pricing model</span>
+              <select id="norway-price-model" name="norway_price_model">
+                <option value="stromstotte" selected>Electricity Subsidy Scheme (Strømstøtte)</option>
+                <option value="norgespris">Norway Price (Norgespris)</option>
+              </select>
+              <small class="field__hint">Choose whether Norway prices use the Electricity Subsidy Scheme (Strømstøtte) or Norway Price (Norgespris).</small>
+            </label>
+            <label class="field">
+              <span class="field__label">Price area</span>
+              <select id="price-area" name="price_area">
+                <option value="NO1">NO1 - Oslo / East Norway</option>
+                <option value="NO2">NO2 - Kristiansand / South Norway</option>
+                <option value="NO3">NO3 - Trondheim / Central Norway</option>
+                <option value="NO4">NO4 - Tromsø / North Norway (no VAT)</option>
+                <option value="NO5">NO5 - Bergen / West Norway</option>
+              </select>
+              <small class="field__hint">Your electricity price area. Prices from <a href="https://www.hvakosterstrommen.no" target="_blank" rel="noopener">hvakosterstrommen.no</a></small>
+            </label>
+            <label class="field">
+              <span class="field__label">Provider surcharge (øre/kWh, incl. VAT)</span>
+              <input type="number" id="provider-surcharge" name="provider_surcharge" step="0.1" min="-100" max="100" value="0">
+              <small class="field__hint">Your electricity provider's surcharge on top of the spot price, including VAT. Can be negative if you have a discount (check your contract).</small>
+            </label>
+            <div class="field" id="norgespris-rules-row" hidden>
+              <span class="field__label">Norway Price (Norgespris) rules</span>
+              <small class="field__hint">
+                Official rules are applied automatically: fixed spot target 50 øre/kWh incl. VAT (40 øre/kWh ex. VAT).
+                Monthly eligibility cap is based on tariff group: household 5000 kWh, cabin/holiday home 1000 kWh.
+              </small>
+            </div>
+          </form>
+          </div>
+          <h4>Price signal</h4>
+          <form id="price-settings-form" class="form-grid">
+            <label class="field">
+              <span class="field__label">Price threshold (%)</span>
+              <input type="number" id="price-threshold-percent" name="price_threshold_percent" step="1" min="5" max="50" value="25">
+              <small class="field__hint">Hours below/above this % from average are considered cheap/expensive.</small>
+            </label>
+            <label class="field">
+              <span class="field__label" id="price-min-diff-label">Minimum price difference (øre/kWh)</span>
+              <input type="number" id="price-min-diff-ore" name="price_min_diff_ore" step="any" min="0" max="1000" inputmode="decimal" value="0">
+              <small class="field__hint">Skip optimization if savings are less than this. Avoids sacrificing comfort for minimal savings.</small>
+            </label>
+          </form>
+        </div>
+      </details>
+      <ul id="price-list" class="device-list"></ul>
+      <p id="price-empty" class="muted">No price data available. Configure a price source above or feed flow prices to see hourly rates.</p>
+      <div class="list__footer">
+        <button type="button" class="btn secondary" id="price-refresh-button">Refresh prices</button>
+      </div>
+
+      <div id="price-optimization-section">
+        <div class="section-header">
+          <h3 class="section-title">Price optimization</h3>
+        </div>
+        <div class="price-info">
+          <p class="muted">Adjust temperature based on electricity price. Deltas are applied to the current mode's target temperature.</p>
+        </div>
+        <div class="price-optimization-header">
+          <p class="muted">Device</p>
+          <div class="muted header-delta">🟢 Cheap Δ</div>
+          <div class="muted header-delta">🔴 Expensive Δ</div>
+        </div>
+        <ul id="price-optimization-list" class="device-list"></ul>
+        <div class="list__footer">
+          <p class="muted">e.g., +5 during cheap hours boosts temp, -5 during expensive hours reduces it.</p>
+        </div>
+      </div>
+      <p id="price-optimization-empty" class="muted" hidden>No devices with price optimization enabled. Enable it on the Devices tab.</p>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Device Detail Panel (slide-over) -->
+  <div id="device-detail-overlay" class="overlay" hidden>
+    <div id="device-detail-panel" class="slide-panel">
+      <div class="slide-panel__header">
+        <h2 id="device-detail-title">Device</h2>
+        <button type="button" class="btn icon-btn" id="device-detail-close" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="slide-panel__content">
+        <section class="detail-section">
+          <h3>Controls</h3>
+          <div class="detail-controls">
+            <label class="checkbox-field">
+              <input type="checkbox" id="device-detail-managed">
+              <span>Managed by PELS</span>
+            </label>
+            <p class="muted">Include this device in modes and optimization plans.</p>
+
+            <label class="checkbox-field">
+              <input type="checkbox" id="device-detail-controllable">
+              <span>Capacity-based control</span>
+            </label>
+            <p class="muted">Allow PELS to adjust this device based on power capacity limits.</p>
+
+            <label class="checkbox-field">
+              <input type="checkbox" id="device-detail-price-opt">
+              <span>Price-based control</span>
+            </label>
+            <p class="muted">Adjust temperature based on electricity price fluctuations.</p>
+
+            <label class="field">
+              <span class="field__label">When shedding</span>
+              <select id="device-detail-overshoot">
+                <option value="turn_off">Turn off</option>
+                <option value="set_temperature">Set to temperature</option>
+              </select>
+              <small class="field__hint">Choose how PELS reacts when capacity is exceeded.</small>
+            </label>
+            <label class="field" id="device-detail-overshoot-temp-row" hidden>
+              <span class="field__label">Minimum temperature (°C)</span>
+              <input type="number" id="device-detail-overshoot-temp" step="0.5" min="-20" max="40">
+              <small class="field__hint">Set this instead of turning off when shedding.</small>
+            </label>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <h3>Temperature per mode</h3>
+          <p class="muted">Set the target temperature for each mode. PELS will set this when the mode is active.</p>
+          <div id="device-detail-modes" class="detail-mode-list"></div>
+        </section>
+
+        <section class="detail-section" id="device-detail-delta-section">
+          <h3>Price optimization deltas</h3>
+          <p class="muted">Temperature adjustments applied during cheap/expensive electricity hours.</p>
+          <div class="detail-deltas">
+            <label class="field">
+              <span class="field__label">🟢 Cheap hours delta (°C)</span>
+              <input type="number" id="device-detail-cheap-delta" step="0.5" value="5">
+              <small class="field__hint">Added to target during cheap hours (e.g. +5)</small>
+            </label>
+            <label class="field">
+              <span class="field__label">🔴 Expensive hours delta (°C)</span>
+              <input type="number" id="device-detail-expensive-delta" step="0.5" value="-5">
+              <small class="field__hint">Added to target during expensive hours (e.g. -5)</small>
+            </label>
+          </div>
+        </section>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/homey.js" data-origin="settings"></script>
+  <script src="./script.js"></script>
+</body>
+</html>

@@ -8,7 +8,7 @@ The boundaries are enforced by `dependency-cruiser` (`npm run arch:check`).
 1. Entry points
 - `app.ts`
 - `drivers/**`
-- `settings/src/script.ts`
+- `packages/settings-ui/src/script.ts`
 
 2. App wiring and adapters
 - `lib/app/**`
@@ -22,26 +22,30 @@ The boundaries are enforced by `dependency-cruiser` (`npm run arch:check`).
 
 4. Shared utilities
 - `lib/utils/**`
+- `packages/contracts/src/**`
+- `packages/shared-domain/src/**`
 
 5. Test code
 - `test/**`
-- `tests/**`
+- `packages/settings-ui/test/**`
+- `packages/settings-ui/tests/**`
 
 ## Dependency Rules (Current)
 
 - No circular dependencies.
-- Runtime code (`app.ts`, `lib/**`, `flowCards/**`, `drivers/**`, `settings/src/**`) must not import test code.
+- Runtime code (`app.ts`, `lib/**`, `flowCards/**`, `drivers/**`, `packages/**/src/**`) must not import test code.
 - Runtime backend code (`app.ts`, `lib/**`, `flowCards/**`, `drivers/**`) must not import settings UI code.
+- Settings UI code must not import runtime backend code directly; it must consume shared contracts and shared-domain modules instead.
 - Non-entry modules must not import `app.ts`.
 - Domain modules must not import `lib/app/**`.
-- `flowCards/**` must not import `settings/**` or `drivers/**`.
-- `drivers/**` must not import `settings/**` or test code.
+- `flowCards/**` must not import `packages/settings-ui/**` or `drivers/**`.
+- `drivers/**` must not import `packages/settings-ui/**` or test code.
 
 ## Transitional Allowances
 
 These are intentionally allowed for now, and tracked as tightening TODOs:
 
-- `settings/src/**` can import selected modules from `lib/core`, `lib/dailyBudget`, and `lib/price`.
 - `lib/utils/**` still has a few imports from `lib/core` and `lib/plan`.
 
-Both are flagged as warnings in architecture checks, with follow-up TODOs in `TODO.md`.
+Shared packages are now the only allowed bridge between the settings UI and runtime code.
+The remaining `lib/utils/**` layering issue is still tracked in `TODO.md`.
