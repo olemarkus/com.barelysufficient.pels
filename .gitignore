@@ -2,9 +2,15 @@
 /node_modules/
 /.homeybuild/
 /coverage/
+/packages/settings-ui/dist/
+/packages/settings-ui/playwright-report/
+/packages/settings-ui/test-results/
+/packages/settings-ui/blob-report/
 /settings/script.js
 /test/screenshots/*.png
+/packages/settings-ui/test/screenshots/*.png
 /output/
+/tmp/
 # Legacy eslint config (we use eslint.config.mjs flat config)
 .eslintrc.json
 

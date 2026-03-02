@@ -1,0 +1,17 @@
+{
+  "name": "@pels/settings-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && npm run build:script && npm run build:tokens && npm run copy:public",
+    "build:script": "esbuild src/script.ts --bundle --outfile=dist/script.js --format=iife --target=es2020 --minify",
+    "build:tokens": "style-dictionary build --config style-dictionary.config.mjs",
+    "copy:public": "node scripts/copy-public.mjs",
+    "lint": "eslint src test tests ../contracts/src ../shared-domain/src --max-warnings=0",
+    "test": "npm run build && npm run test:unit && npm run test:layout",
+    "test:unit": "jest --config jest.config.cjs",
+    "test:layout": "jest --config jest.config.layout.cjs",
+    "test:e2e": "playwright test --config playwright.config.ts"
+  }
+}

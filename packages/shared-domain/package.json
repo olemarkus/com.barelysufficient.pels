@@ -1,0 +1,5 @@
+{
+  "name": "@pels/shared-domain",
+  "private": true,
+  "type": "module"
+}

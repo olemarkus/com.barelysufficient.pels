@@ -1,22 +1,26 @@
 {
   "name": "com.barelysufficient.pels",
   "version": "1.1.1",
+  "packageManager": "npm@10.9.4",
+  "workspaces": [
+    "packages/*"
+  ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "npm": "^10.9.4"
   },
   "scripts": {
-    "build": "npm run ensure:resvg-arm64 && npm run build:echarts-runtime && tsc && npm run build:tokens && npm run build:settings",
+    "build": "npm run ensure:resvg-arm64 && npm run build:echarts-runtime && tsc && npm run build:settings",
     "build:echarts-runtime": "node scripts/build-echarts-runtime-bundle.mjs",
-    "build:tokens": "style-dictionary build --config style-dictionary.config.mjs",
-    "build:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --minify",
-    "watch:settings": "esbuild settings/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
+    "build:settings": "npm --workspace @pels/settings-ui run build && node scripts/sync-settings-ui.mjs",
+    "watch:settings": "npm run build:settings && esbuild packages/settings-ui/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
     "start": "npm run build:echarts-runtime && npm run build:settings && homey app run",
     "install-app": "npm run ensure:resvg-arm64 && npm run build:echarts-runtime && npm run build:settings && homey app install",
     "lint": "eslint .",
     "lint:runtime": "eslint \"app.ts\" \"api.ts\" \"flowCards/**/*.ts\" \"drivers/**/*.ts\" \"lib/**/*.ts\" --max-warnings=0",
-    "lint:css": "stylelint \"**/*.css\" --max-warnings=0",
-    "lint:html": "html-validate \"settings/**/*.html\" --max-warnings=0",
-    "arch:check": "dependency-cruiser --config .dependency-cruiser.cjs app.ts flowCards drivers lib settings/src",
+    "lint:css": "stylelint \"packages/settings-ui/public/**/*.css\" --max-warnings=0",
+    "lint:html": "html-validate \"packages/settings-ui/public/**/*.html\" --max-warnings=0",
+    "arch:check": "dependency-cruiser --config .dependency-cruiser.cjs app.ts flowCards drivers lib packages/settings-ui/src packages/contracts/src packages/shared-domain/src",
     "deadcode:check": "node scripts/check-dead-code.mjs",
     "typecheck:unused": "tsc -p tsconfig.runtime-unused.json",
     "test:unit": "jest --config jest.config.fast.cjs",
@@ -25,8 +29,8 @@
     "test:perf": "jest --config jest.config.perf.cjs",
     "ci": "npm run build && npm run lint:css && npm run lint:html && npm run lint:runtime && npm run arch:check && npm run deadcode:check && npm run typecheck:unused && npm run test:unit:ci && npm run test:unit:tz && npm run test:ui && npm run lint",
     "test": "npm run ci",
-    "test:e2e": "playwright test",
-    "test:ui": "npm run build:tokens && jest --config jest.config.ui.cjs",
+    "test:e2e": "npm --workspace @pels/settings-ui run test:e2e",
+    "test:ui": "npm --workspace @pels/settings-ui run test",
     "test:all": "npm run ci",
     "validate": "npm run build:echarts-runtime && npm run build:settings && homey app validate",
     "check": "npm run ci",
@@ -36,7 +40,7 @@
   "lint-staged": {
     "**/*.ts": [
       "eslint --max-warnings=0 --no-warn-ignored",
-      "bash -c 'tsc --noEmit'"
+      "bash -c 'tsc --noEmit && tsc -p packages/settings-ui/tsconfig.json --noEmit'"
     ],
     "**/*.css": [
       "stylelint --max-warnings=0"

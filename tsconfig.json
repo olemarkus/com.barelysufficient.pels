@@ -17,6 +17,7 @@
     "node_modules",
     ".homeybuild",
     "settings/**",
+    "packages/**",
     "test/**",
     "tests/**",
     "scripts/**"

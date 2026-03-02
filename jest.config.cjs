@@ -18,6 +18,7 @@ module.exports = {
     '<rootDir>/**/*.ts',
     '!<rootDir>/test/**',
     '!<rootDir>/settings/**',
+    '!<rootDir>/packages/**',
     '!<rootDir>/node_modules/**',
   ],
   coverageThreshold: {

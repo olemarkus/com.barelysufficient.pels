@@ -20,9 +20,11 @@ export default tseslint.config(
       'blob-report/**',
       '.playwright/**',
       '.playwright-cli/**',
+      'packages/settings-ui/dist/**',
       '*.js',
       'settings/*.js',
       'test/screenshots/**',
+      'packages/settings-ui/test/screenshots/**',
       'lib/insights/echartsRuntimeBundle.cjs',
       'echarts-modules.d.ts',
       'playwright.config.ts',
@@ -53,6 +55,19 @@ export default tseslint.config(
       'no-console': 'off',
     },
   },
+  {
+    files: ['packages/settings-ui/tests/e2e/fixtures/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
   // CommonJS config files
   {
     files: ['**/*.cjs'],
@@ -68,6 +83,7 @@ export default tseslint.config(
   },
   {
     files: ['**/*.ts'],
+    ignores: ['packages/**/*.ts'],
     plugins: {
       functional,
       n: nodePlugin,
@@ -186,6 +202,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/ban-ts-comment': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
@@ -219,6 +236,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/ban-ts-comment': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
@@ -241,15 +259,18 @@ export default tseslint.config(
   },
   // Settings UI files - browser environment
   {
-    files: ['settings/**/*.ts'],
+    files: ['packages/settings-ui/src/**/*.ts', 'packages/contracts/src/**/*.ts', 'packages/shared-domain/src/**/*.ts'],
+    plugins: {
+      functional,
+      n: nodePlugin,
+      sonarjs,
+      unicorn,
+    },
     languageOptions: {
       ecmaVersion: 2020,
       sourceType: 'module',
-      globals: {
-        ...globals.browser,
-      },
       parserOptions: {
-        project: './settings/tsconfig.json',
+        project: './packages/settings-ui/tsconfig.json',
       },
     },
     rules: {
@@ -292,13 +313,62 @@ export default tseslint.config(
     },
   },
   {
+    files: ['packages/settings-ui/src/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
+  {
+    files: ['packages/settings-ui/test/**/*.ts', 'packages/settings-ui/tests/**/*.ts'],
+    plugins: {
+      functional,
+      n: nodePlugin,
+      sonarjs,
+      unicorn,
+    },
+    languageOptions: {
+      globals: {
+        ...globals.jest,
+        ...globals.node,
+      },
+      parserOptions: {
+        project: false,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/ban-ts-comment': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-unsafe-function-type': 'off',
+      'n/no-missing-import': 'off',
+      'n/no-unpublished-import': 'off',
+      'n/no-unsupported-features/es-syntax': 'off',
+      'complexity': 'off',
+      'max-lines': 'off',
+      'max-lines-per-function': 'off',
+      'max-statements': 'off',
+      'functional/immutable-data': 'off',
+      'sonarjs/cognitive-complexity': 'off',
+      'sonarjs/no-identical-functions': 'off',
+      'sonarjs/no-duplicated-branches': 'off',
+      'max-len': 'off',
+    },
+  },
+  {
     files: ['app.ts'],
     rules: {
       'max-lines': ['warn', { max: 650, skipBlankLines: true, skipComments: true }],
     },
   },
   {
-    files: ['settings/src/ui/power.ts'],
+    files: ['packages/settings-ui/src/ui/power.ts'],
     rules: {
       'max-lines': ['warn', { max: 650, skipBlankLines: true, skipComments: true }],
     },
