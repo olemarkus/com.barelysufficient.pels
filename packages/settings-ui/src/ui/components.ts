@@ -276,6 +276,109 @@ export const createSelectInput = (options: SelectInputOptions): HTMLSelectElemen
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Toggle Group
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ToggleOption<T extends string> = {
+    value: T;
+    label: string;
+};
+
+export type ToggleGroupResult<T extends string> = {
+    element: HTMLElement;
+    setActive: (value: T | null) => void;
+};
+
+/**
+ * Creates a button-group toggle (day-view style). Returns the container element
+ * and a setActive helper so callers never touch classes directly.
+ */
+export const createToggleGroup = <T extends string>(
+    options: ToggleOption<T>[],
+    ariaLabel: string,
+    onSelect: (value: T) => void,
+): ToggleGroupResult<T> => {
+    const container = document.createElement('div');
+    container.className = 'day-view-toggle';
+    container.setAttribute('role', 'group');
+    container.setAttribute('aria-label', ariaLabel);
+
+    const buttons = new Map<T, HTMLButtonElement>();
+    options.forEach(({ value, label }) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'day-view-toggle__button';
+        btn.textContent = label;
+        btn.setAttribute('aria-pressed', 'false');
+        btn.addEventListener('click', () => onSelect(value));
+        container.appendChild(btn);
+        buttons.set(value, btn);
+    });
+
+    const setActive = (active: T | null) => {
+        buttons.forEach((btn, value) => {
+            const isActive = value === active;
+            btn.classList.toggle('is-active', isActive);
+            btn.setAttribute('aria-pressed', String(isActive));
+        });
+    };
+
+    return { element: container, setActive };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Checkbox Field
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CheckboxFieldOptions = {
+    id: string;
+    label: string;
+    hint?: string;
+    checked?: boolean;
+};
+
+export type CheckboxFieldResult = {
+    element: HTMLElement;
+    input: HTMLInputElement;
+};
+
+/**
+ * Creates a labeled checkbox with optional hint text (.field.checkbox-field pattern).
+ * Returns the wrapper element and the input so callers can read/set .checked directly.
+ */
+export const createCheckboxField = (options: CheckboxFieldOptions): CheckboxFieldResult => {
+    const { id, label, hint, checked = false } = options;
+
+    const wrapper = document.createElement('label');
+    wrapper.className = 'field checkbox-field';
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = id;
+    input.checked = checked;
+
+    const content = document.createElement('span');
+    content.className = 'checkbox-field__content';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'field__label';
+    labelSpan.textContent = label;
+    content.appendChild(labelSpan);
+
+    if (hint) {
+        const hintEl = document.createElement('small');
+        hintEl.className = 'field__hint';
+        hintEl.textContent = hint;
+        content.appendChild(hintEl);
+    }
+
+    wrapper.appendChild(input);
+    wrapper.appendChild(content);
+
+    return { element: wrapper, input };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Drag Handle
 // ─────────────────────────────────────────────────────────────────────────────
 

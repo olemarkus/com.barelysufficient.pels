@@ -5,7 +5,6 @@ import {
   dryRunBanner,
   staleDataBanner,
   staleDataBannerText,
-  debugLoggingTopicInputs,
 } from './dom';
 import { getSetting } from './homey';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEBUG_LOGGING_TOPICS } from '../../../contracts/src/settingsKeys';
@@ -118,7 +117,7 @@ export const loadAdvancedSettings = async () => {
   if (enabledTopics.length === 0 && legacyEnabled === true) {
     enabledTopics = [...ALL_DEBUG_LOGGING_TOPICS];
   }
-  debugLoggingTopicInputs.forEach((input) => {
+  document.querySelectorAll<HTMLInputElement>('[data-debug-topic]').forEach((input) => {
     const el = input;
     const topic = el.dataset.debugTopic;
     el.checked = typeof topic === 'string' && isDebugLoggingTopic(topic) && enabledTopics.includes(topic);

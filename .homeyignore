@@ -41,3 +41,5 @@ jest.config.fast.cjs
 jest.config.ui.cjs
 tsconfig.json
 tsconfig.runtime-unused.json
+
+tmp/

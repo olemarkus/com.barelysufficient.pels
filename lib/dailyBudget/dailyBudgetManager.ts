@@ -26,11 +26,13 @@ import type {
   DailyBudgetUpdate,
 } from './dailyBudgetTypes';
 import { isDailyBudgetState, type DailyBudgetManagerDeps, type ExistingPlanState, type PlanResult } from './dailyBudgetManagerTypes';
+import { CONTROLLED_USAGE_WEIGHT } from './dailyBudgetConstants';
 import { finalizePreviousDayLearning } from './dailyBudgetLearning';
 import { ensureObservedHourlyStats } from './dailyBudgetObservedStats';
 import {
   ensureDailyBudgetProfile,
   getEffectiveProfileData,
+  getProfileBreakdown,
   getProfileSampleCount,
   getProfileSplitSampleCount,
 } from './dailyBudgetProfile';
@@ -464,10 +466,17 @@ export class DailyBudgetManager {
     combinedPrices?: CombinedPriceData | null;
     priceOptimizationEnabled: boolean;
     priceShapingEnabled: boolean;
+    controlledUsageWeight?: number;
   }): DailyBudgetDayPayload | null {
+    const profileBreakdown = getProfileBreakdown(
+      this.state,
+      params.controlledUsageWeight ?? CONTROLLED_USAGE_WEIGHT,
+      DEFAULT_PROFILE,
+    );
     return buildDailyBudgetHistory({
       ...params,
       profileSampleCount: this.state.profile?.sampleCount ?? 0,
+      profileBreakdown,
     });
   }
 

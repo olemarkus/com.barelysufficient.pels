@@ -16,16 +16,14 @@ import {
   dailyBudgetLabels,
   dailyBudgetEmpty,
   dailyBudgetConfidence,
-  dailyBudgetToggleToday,
-  dailyBudgetToggleTomorrow,
-  dailyBudgetToggleYesterday,
   dailyBudgetBreakdownInput,
 } from './dom';
+import { createToggleGroup } from './components';
 import { callApi, getSetting } from './homey';
 import { showToast, showToastError } from './toast';
 import { pushSettingWriteIfChanged } from './settingWrites';
 import { logSettingsError } from './logging';
-import { formatKWh, formatPercent, formatSignedKWh } from './dailyBudgetFormat';
+import { formatKWh, formatSignedKWh } from './dailyBudgetFormat';
 import { renderDailyBudgetChart } from './dailyBudgetChart';
 import {
   COMBINED_PRICES,
@@ -54,6 +52,7 @@ type DailyBudgetView = 'today' | 'tomorrow' | 'yesterday';
 let currentDailyBudgetView: DailyBudgetView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
 let costDisplay: CostDisplay = { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
+let setDailyBudgetToggleActive: (view: DailyBudgetView | null) => void = () => {};
 
 const viewLabels: Record<DailyBudgetView, { title: string; costLabel: string }> = {
   today: { title: 'Today plan', costLabel: 'Estimated cost today' },
@@ -72,18 +71,13 @@ const applyDailyBudgetBounds = () => {
 
 const setPillState = (enabled: boolean, exceeded: boolean) => {
   if (!dailyBudgetStatusPill) return;
-  dailyBudgetStatusPill.classList.remove('ok', 'warn');
-  if (!enabled) {
-    dailyBudgetStatusPill.textContent = 'Disabled';
-    return;
-  }
-  if (exceeded) {
+  if (enabled && exceeded) {
     dailyBudgetStatusPill.textContent = 'Exceeded';
     dailyBudgetStatusPill.classList.add('warn');
-    return;
+    dailyBudgetStatusPill.hidden = false;
+  } else {
+    dailyBudgetStatusPill.hidden = true;
   }
-  dailyBudgetStatusPill.textContent = 'On track';
-  dailyBudgetStatusPill.classList.add('ok');
 };
 
 const setText = (element: HTMLElement | null, text: string) => {
@@ -94,19 +88,6 @@ const setText = (element: HTMLElement | null, text: string) => {
 const setHidden = (element: HTMLElement | null, hidden: boolean) => {
   const target = element;
   if (target) target.hidden = hidden;
-};
-
-const setChipState = (element: HTMLElement, label: string, active?: boolean, alert?: boolean) => {
-  const el = element;
-  el.textContent = label;
-  el.classList.remove('chip--ok', 'chip--alert');
-  if (active) el.classList.add('chip--ok');
-  if (alert) el.classList.add('chip--alert');
-};
-
-const setChipStateIfPresent = (element: HTMLElement | null, label: string, active?: boolean, alert?: boolean) => {
-  if (!element) return;
-  setChipState(element, label, active, alert);
 };
 
 const setDeviationVisibility = (visible: boolean) => {
@@ -128,20 +109,6 @@ const resolveViewPayload = (
   return payload.days[key] ?? null;
 };
 
-const applyDailyBudgetViewState = () => {
-  const views = [
-    { view: 'today', element: dailyBudgetToggleToday },
-    { view: 'tomorrow', element: dailyBudgetToggleTomorrow },
-    { view: 'yesterday', element: dailyBudgetToggleYesterday },
-  ] as const;
-
-  views.forEach(({ view, element }) => {
-    if (!element) return;
-    const isActive = currentDailyBudgetView === view;
-    element.classList.toggle('is-active', isActive);
-    element.setAttribute('aria-pressed', String(isActive));
-  });
-};
 
 const resolveCostDisplay = (combinedPrices: unknown | null): CostDisplay => {
   if (!combinedPrices || typeof combinedPrices !== 'object') {
@@ -186,11 +153,22 @@ const computeEstimatedCost = (params: {
   return totalCost;
 };
 
+const setConfidence = (value: number | null) => {
+  if (!dailyBudgetConfidence) return;
+  if (value === null || !Number.isFinite(value)) {
+    dailyBudgetConfidence.hidden = true;
+    return;
+  }
+  dailyBudgetConfidence.textContent = `Confidence ${Math.round(value * 100)}%`;
+  dailyBudgetConfidence.hidden = false;
+};
+
 const renderDailyBudgetEmptyState = (message = 'Daily budget data not available yet.') => {
   if (!dailyBudgetChart || !dailyBudgetEmpty) return;
   dailyBudgetEmpty.hidden = false;
   dailyBudgetEmpty.textContent = message;
   dailyBudgetChart.hidden = true;
+  setConfidence(null);
   setPillState(false, false);
   const isTomorrow = currentDailyBudgetView === 'tomorrow';
   setDeviationVisibility(!isTomorrow);
@@ -202,7 +180,6 @@ const renderDailyBudgetEmptyState = (message = 'Daily budget data not available 
 
   setText(dailyBudgetCostLabel, resolveDailyBudgetCostLabel(currentDailyBudgetView));
   setText(dailyBudgetCost, formatCost(null, costDisplay));
-  setChipStateIfPresent(dailyBudgetConfidence, 'Confidence --');
 };
 
 const renderDailyBudgetHeader = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
@@ -218,6 +195,7 @@ const renderDailyBudgetHeader = (payload: DailyBudgetDayPayload, view: DailyBudg
 const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
   const isTomorrow = view === 'tomorrow';
   if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = formatKWh(payload.state.remainingKWh);
+  setConfidence(view === 'today' ? payload.state.confidence : null);
   setDeviationVisibility(!isTomorrow);
   if (dailyBudgetDeviation && !isTomorrow) {
     dailyBudgetDeviation.textContent = formatSignedKWh(payload.state.deviationKWh);
@@ -239,13 +217,6 @@ const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudge
   if (dailyBudgetCost) dailyBudgetCost.textContent = formatCost(estimatedCost, costDisplay);
 };
 
-const renderDailyBudgetChips = (payload: DailyBudgetDayPayload) => {
-  if (dailyBudgetConfidence) {
-    const confidenceLabel = `Confidence ${formatPercent(payload.state.confidence)}`;
-    setChipState(dailyBudgetConfidence, confidenceLabel, payload.state.confidence >= 0.5);
-  }
-};
-
 const hasPlanBreakdownData = (payload: DailyBudgetDayPayload) => (
   Array.isArray(payload.buckets.plannedUncontrolledKWh)
   && Array.isArray(payload.buckets.plannedControlledKWh)
@@ -256,7 +227,7 @@ const hasPlanBreakdownData = (payload: DailyBudgetDayPayload) => (
 const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   if (!dailyBudgetChart || !dailyBudgetEmpty) return;
   latestDailyBudgetPayload = payload;
-  applyDailyBudgetViewState();
+  setDailyBudgetToggleActive(currentDailyBudgetView);
   if (!payload) {
     renderDailyBudgetEmptyState();
     return;
@@ -279,7 +250,6 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
 
   renderDailyBudgetHeader(viewPayload, currentDailyBudgetView);
   renderDailyBudgetStats(viewPayload, currentDailyBudgetView);
-  renderDailyBudgetChips(viewPayload);
   if (dailyBudgetBars && dailyBudgetLabels) {
     renderDailyBudgetChart({
       payload: viewPayload,
@@ -383,7 +353,19 @@ export const initDailyBudgetHandlers = () => {
   dailyBudgetKwhInput?.addEventListener('change', autoSave);
   dailyBudgetPriceShapingInput?.addEventListener('change', autoSave);
   dailyBudgetForm?.addEventListener('submit', (event) => event.preventDefault());
-  dailyBudgetToggleToday?.addEventListener('click', () => setDailyBudgetView('today'));
-  dailyBudgetToggleTomorrow?.addEventListener('click', () => setDailyBudgetView('tomorrow'));
-  dailyBudgetToggleYesterday?.addEventListener('click', () => setDailyBudgetView('yesterday'));
+  const toggleMount = document.getElementById('daily-budget-toggle-mount');
+  if (toggleMount) {
+    const { element, setActive } = createToggleGroup(
+      [
+        { value: 'yesterday' as const, label: 'Yesterday' },
+        { value: 'today' as const, label: 'Today' },
+        { value: 'tomorrow' as const, label: 'Tomorrow' },
+      ],
+      'Daily budget view',
+      setDailyBudgetView,
+    );
+    toggleMount.replaceWith(element);
+    setDailyBudgetToggleActive = setActive;
+    setDailyBudgetToggleActive(currentDailyBudgetView);
+  }
 };

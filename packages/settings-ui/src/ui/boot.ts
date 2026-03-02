@@ -23,7 +23,6 @@ import {
   capacityMarginInput,
   capacityDryRunInput,
   priorityForm,
-  debugLoggingTopicInputs,
 } from './dom';
 import { getHomeyClient, setSetting, waitForHomey } from './homey';
 import { showToast, showToastError } from './toast';
@@ -85,6 +84,7 @@ import { flushSettingsLogs, logSettingsError, logSettingsWarn } from './logging'
 import { initTooltips } from './tooltips';
 import { initDebouncedSaveFlush } from './utils';
 import { handleResetStats } from './resetStats';
+import { createCheckboxField } from './components';
 
 const showTab = (tabId: string) => {
   tabs.forEach((tab) => {
@@ -391,10 +391,30 @@ const initGridTariffHandlers = () => {
   });
 };
 
+const DEBUG_TOPICS: Array<{ topic: string; label: string; hint: string }> = [
+  { topic: 'plan', label: 'Plan engine', hint: 'Shedding, restore, and soft-limit decisions.' },
+  { topic: 'price', label: 'Price optimization', hint: 'Spot prices, tariffs, and price shaping.' },
+  { topic: 'daily_budget', label: 'Daily budget', hint: 'Daily plan and rollover.' },
+  { topic: 'devices', label: 'Devices', hint: 'Device snapshots and Homey API interactions.' },
+  { topic: 'settings', label: 'Settings', hint: 'Settings changes and housekeeping.' },
+  { topic: 'perf', label: 'Performance', hint: 'Hotpath counters and timings.' },
+];
+
+const initDebugLoggingCheckboxes = () => {
+  const mount = document.getElementById('debug-logging-checkboxes');
+  if (!mount) return;
+  DEBUG_TOPICS.forEach(({ topic, label, hint }) => {
+    const { element, input } = createCheckboxField({ id: `debug-topic-${topic}`, label, hint });
+    input.dataset.debugTopic = topic;
+    mount.appendChild(element);
+  });
+};
+
 const initAdvancedHandlers = () => {
   const saveDebugTopics = async () => {
     try {
-      const selected = debugLoggingTopicInputs
+      const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-debug-topic]'));
+      const selected = inputs
         .filter((input) => input.checked && typeof input.dataset.debugTopic === 'string')
         .map((input) => input.dataset.debugTopic as string);
       await setSetting(DEBUG_LOGGING_TOPICS, selected);
@@ -409,7 +429,7 @@ const initAdvancedHandlers = () => {
     }
   };
 
-  debugLoggingTopicInputs.forEach((input) => {
+  document.querySelectorAll<HTMLInputElement>('[data-debug-topic]').forEach((input) => {
     input.addEventListener('change', () => {
       void saveDebugTopics();
     });
@@ -493,6 +513,7 @@ export const boot = async () => {
     initDailyBudgetHandlers();
     initPriceHandlers();
     initGridTariffHandlers();
+    initDebugLoggingCheckboxes();
     initAdvancedHandlers();
 
     await loadInitialData();

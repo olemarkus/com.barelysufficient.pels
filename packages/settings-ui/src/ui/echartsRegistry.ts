@@ -1,5 +1,5 @@
-import { BarChart, ScatterChart } from 'echarts/charts';
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
+import { BarChart, HeatmapChart } from 'echarts/charts';
+import { GridComponent, LegendComponent, TooltipComponent, VisualMapComponent } from 'echarts/components';
 import { format, init, use } from 'echarts/core';
 import { SVGRenderer } from 'echarts/renderers';
 
@@ -18,10 +18,11 @@ const ensureRegistry = () => {
   if (isRegistered) return;
   use([
     BarChart,
-    ScatterChart,
+    HeatmapChart,
     GridComponent,
     LegendComponent,
     TooltipComponent,
+    VisualMapComponent,
     SVGRenderer,
   ]);
   isRegistered = true;

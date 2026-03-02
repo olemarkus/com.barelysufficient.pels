@@ -28,6 +28,7 @@ export default tseslint.config(
       'lib/insights/echartsRuntimeBundle.cjs',
       'echarts-modules.d.ts',
       'playwright.config.ts',
+      'tmp/**',
     ],
   },
   // ESM scripts (Node.js)

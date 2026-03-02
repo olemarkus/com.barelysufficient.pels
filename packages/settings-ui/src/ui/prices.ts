@@ -410,6 +410,7 @@ export const refreshPrices = async (overrides?: PriceOverrideOptions) => {
     if (priceStatusBadge) {
       priceStatusBadge.textContent = 'Error';
       priceStatusBadge.classList.add('warn');
+      priceStatusBadge.hidden = false;
     }
   }
 };

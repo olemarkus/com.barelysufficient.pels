@@ -2,8 +2,6 @@ import {
   usageDayTitle,
   usageDayLabel,
   usageDayStatusPill,
-  usageDayToggleYesterday,
-  usageDayToggleToday,
   usageDayTotal,
   usageDayPeak,
   usageDayOverCap,
@@ -14,6 +12,7 @@ import {
   usageDayMeta,
 } from './dom';
 import { getHomeyTimezone } from './homey';
+import { createToggleGroup } from './components';
 import type { DayViewBar } from './dayViewChart';
 import { renderUsageDayChartEcharts } from './usageDayChartEcharts';
 import {
@@ -50,25 +49,18 @@ type UsageDayBucket = {
 let usageDayView: UsageDayView = 'today';
 let usageDayViewHandlersReady = false;
 let latestEntries: UsageDayEntry[] = [];
-
-const setUsageDayToggleState = () => {
-  const options = [
-    { view: 'today', element: usageDayToggleToday },
-    { view: 'yesterday', element: usageDayToggleYesterday },
-  ] as const;
-  options.forEach(({ view, element }) => {
-    if (!element) return;
-    const active = usageDayView === view;
-    element.classList.toggle('is-active', active);
-    element.setAttribute('aria-pressed', String(active));
-  });
-};
+let setUsageDayToggleActive: (view: UsageDayView | null) => void = () => {};
 
 const setUsageDayStatus = (text: string, tone?: 'ok' | 'warn') => {
   if (!usageDayStatusPill) return;
-  usageDayStatusPill.textContent = text;
-  usageDayStatusPill.classList.remove('ok', 'warn');
-  if (tone) usageDayStatusPill.classList.add(tone);
+  if (tone === 'warn') {
+    usageDayStatusPill.textContent = text;
+    usageDayStatusPill.classList.remove('ok');
+    usageDayStatusPill.classList.add('warn');
+    usageDayStatusPill.hidden = false;
+  } else {
+    usageDayStatusPill.hidden = true;
+  }
 };
 
 const setUsageDaySummaryValue = (element: HTMLElement | null, text: string, empty = false) => {
@@ -147,14 +139,6 @@ const buildUsageDayBarTitle = (bucket: UsageDayBucket) => {
     lines.push(`Controlled ${bucket.controlledKWh.toFixed(2)} kWh`);
     lines.push(`Uncontrolled ${bucket.uncontrolledKWh.toFixed(2)} kWh`);
   }
-  if (bucket.budgetKWh !== null) {
-    const exceededKWh = bucket.measuredKWh - bucket.budgetKWh;
-    if (exceededKWh > 0.001) {
-      lines.push(`Budget ${bucket.budgetKWh.toFixed(2)} kWh (exceeded by ${exceededKWh.toFixed(2)} kWh)`);
-    } else {
-      lines.push(`Budget ${bucket.budgetKWh.toFixed(2)} kWh`);
-    }
-  }
   if (bucket.unreliable) lines.push('Unreliable data');
   return lines.join(' · ');
 };
@@ -194,9 +178,7 @@ const renderUsageDayHasData = (buckets: UsageDayBucket[]) => {
   const peakBucket = buckets.reduce((max, bucket) => (
     bucket.measuredKWh > max.measuredKWh ? bucket : max
   ), buckets[0]);
-  const warnHours = buckets.filter((bucket) => (
-    bucket.unreliable || (bucket.budgetKWh !== null && bucket.measuredKWh > bucket.budgetKWh + 0.001)
-  )).length;
+  const warnHours = buckets.filter((bucket) => bucket.unreliable).length;
 
   setUsageDaySummaryValue(usageDayTotal, `${totalKWh.toFixed(1)} kWh`);
   setUsageDaySummaryValue(usageDayPeak, `${peakBucket.label} · ${peakBucket.measuredKWh.toFixed(2)} kWh`);
@@ -213,8 +195,7 @@ const renderUsageDayHasData = (buckets: UsageDayBucket[]) => {
 
 const getUsageDayBars = (buckets: UsageDayBucket[], currentBucketIndex: number): DayViewBar[] => (
   buckets.map((bucket, index) => {
-    const isOverCap = bucket.budgetKWh !== null && bucket.measuredKWh > bucket.budgetKWh + 0.001;
-    const warn = bucket.unreliable || isOverCap;
+    const warn = bucket.unreliable;
     let state: 'past' | 'current' | undefined;
     if (currentBucketIndex >= 0) {
       if (index < currentBucketIndex) state = 'past';
@@ -227,12 +208,6 @@ const getUsageDayBars = (buckets: UsageDayBucket[], currentBucketIndex: number):
       state,
       className: warn ? 'usage-day-bar is-warn' : 'usage-day-bar',
       segments: [{ value: bucket.measuredKWh, className: 'day-view-bar__segment--measured' }],
-      marker: bucket.budgetKWh !== null
-        ? {
-          value: bucket.budgetKWh,
-          className: 'day-view-marker--budget',
-        }
-        : undefined,
     };
   })
 );
@@ -251,7 +226,7 @@ export const renderUsageDayView = (entries: UsageDayEntry[]) => {
   const hasData = buckets.some((bucket) => bucket.hasMeasurement);
   if (!hasData) {
     renderUsageDayNoData();
-    setUsageDayToggleState();
+    setUsageDayToggleActive(usageDayView);
     return;
   }
 
@@ -272,7 +247,7 @@ export const renderUsageDayView = (entries: UsageDayEntry[]) => {
     usageDayLabels.replaceChildren();
     usageDayLabels.hidden = true;
   }
-  setUsageDayToggleState();
+  setUsageDayToggleActive(usageDayView);
 };
 
 const setUsageDayView = (view: UsageDayView) => {
@@ -284,7 +259,18 @@ const setUsageDayView = (view: UsageDayView) => {
 export const initUsageDayViewHandlers = () => {
   if (usageDayViewHandlersReady) return;
   usageDayViewHandlersReady = true;
-  usageDayToggleToday?.addEventListener('click', () => setUsageDayView('today'));
-  usageDayToggleYesterday?.addEventListener('click', () => setUsageDayView('yesterday'));
-  setUsageDayToggleState();
+  const toggleMount = document.getElementById('usage-day-toggle-mount');
+  if (toggleMount) {
+    const { element, setActive } = createToggleGroup(
+      [
+        { value: 'yesterday' as const, label: 'Yesterday' },
+        { value: 'today' as const, label: 'Today' },
+      ],
+      'Usage day view',
+      setUsageDayView,
+    );
+    toggleMount.replaceWith(element);
+    setUsageDayToggleActive = setActive;
+  }
+  setUsageDayToggleActive(usageDayView);
 };
