@@ -179,6 +179,7 @@ export class DailyBudgetService {
         combinedPrices,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         priceShapingEnabled: this.settings.priceShapingEnabled,
+        controlledUsageWeight: this.settings.controlledUsageWeight,
       });
     } catch (error) {
       this.deps.log('Daily budget: failed to build yesterday history', error);

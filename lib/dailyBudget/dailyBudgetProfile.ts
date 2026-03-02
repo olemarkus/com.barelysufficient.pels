@@ -219,6 +219,25 @@ const getLearnedProfileParts = (
   };
 };
 
+/**
+ * Retrieve the profile breakdown using only the controlled-usage weight,
+ * without requiring a full DailyBudgetSettings object.
+ */
+export const getProfileBreakdown = (
+  state: DailyBudgetState,
+  controlledUsageWeight: number,
+  defaultProfile: number[],
+): { uncontrolled: number[]; controlled: number[] } => {
+  const settings: DailyBudgetSettings = {
+    enabled: true,
+    dailyBudgetKWh: 0,
+    priceShapingEnabled: false,
+    controlledUsageWeight,
+    priceShapingFlexShare: 0,
+  };
+  return getEffectiveProfileData(state, settings, defaultProfile).breakdown;
+};
+
 export const getEffectiveProfileData = (
   state: DailyBudgetState,
   settings: DailyBudgetSettings,

@@ -17,8 +17,6 @@ type UsageDayChartEchartsParams = {
 type UsageDayPalette = {
   measured: string;
   warn: string;
-  budgetMarker: string;
-  markerBorder: string;
   disabled: string;
   muted: string;
   grid: string;
@@ -102,8 +100,6 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
 const resolvePalette = (barsEl: HTMLElement): UsageDayPalette => ({
   measured: resolveCssColor(barsEl, '--day-view-color-primary', '#64B5F6'),
   warn: resolveCssColor(barsEl, '--day-view-color-warn', '#F26B6B'),
-  budgetMarker: resolveCssColor(barsEl, '--day-view-color-budget', '#5CCB6B'),
-  markerBorder: resolveCssColor(barsEl, '--color-surface-1', '#151F1B'),
   disabled: resolveCssColor(barsEl, '--color-surface-4', '#4D5652'),
   muted: resolveCssColor(barsEl, '--muted', '#9FB2A7'),
   grid: resolveCssColor(barsEl, '--color-border-strong', '#34423B'),
@@ -113,11 +109,7 @@ const resolvePalette = (barsEl: HTMLElement): UsageDayPalette => ({
   tooltipBorder: resolveCssColor(barsEl, '--color-border-medium', 'rgba(255, 255, 255, 0.15)'),
 });
 
-const resolveBarOpacity = (enabled: boolean, state?: string): number => {
-  if (!enabled) return 0.6;
-  if (state === 'past') return 0.45;
-  return 1;
-};
+const resolveBarOpacity = (enabled: boolean): number => (enabled ? 1 : 0.6);
 
 const isWarnBar = (bar: DayViewBar) => (
   bar.state === 'warn'
@@ -143,20 +135,13 @@ const buildMeasuredData = (params: {
         if (!enabled) return palette.disabled;
         return isWarnBar(bar) ? palette.warn : palette.measured;
       })(),
-      opacity: resolveBarOpacity(enabled, bar.state),
+      opacity: resolveBarOpacity(enabled),
       borderWidth: currentBucketIndex >= 0 && index === currentBucketIndex ? 1 : 0,
       borderColor: palette.currentBorder,
       borderRadius: [4, 4, 0, 0],
     },
   }));
 };
-
-const buildBudgetMarkerData = (bars: DayViewBar[]): Array<number | null> => (
-  bars.map((bar) => {
-    const markerValue = bar.marker?.value;
-    return typeof markerValue === 'number' && Number.isFinite(markerValue) ? markerValue : null;
-  })
-);
 
 const resolveTooltipIndex = (rawParams: unknown): number => {
   const first: unknown = Array.isArray(rawParams) ? rawParams[0] : rawParams;
@@ -172,16 +157,9 @@ const buildTooltipFormatter = (bars: DayViewBar[]) => (rawParams: unknown): stri
   return encodeHtml(text).replace(/ · /g, '<br/>');
 };
 
-const getDataMax = (bars: DayViewBar[]): number => {
-  const maxBar = bars.reduce((max, bar) => Math.max(max, bar.value), 0);
-  const maxMarker = bars.reduce((max, bar) => {
-    const markerValue = bar.marker?.value;
-    return (typeof markerValue === 'number' && Number.isFinite(markerValue))
-      ? Math.max(max, markerValue)
-      : max;
-  }, 0);
-  return Math.max(1, maxBar, maxMarker);
-};
+const getDataMax = (bars: DayViewBar[]): number => (
+  Math.max(1, ...bars.map((bar) => bar.value))
+);
 
 const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
   const {
@@ -194,6 +172,7 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
   const palette = resolvePalette(barsEl);
   const axisLabels = labels.map((label) => formatHourAxisLabel(label));
   const labelEvery = resolveLabelEvery(bars.length);
+  const hasWarnBars = bars.some((bar) => isWarnBar(bar));
 
   return {
     animation: false,
@@ -213,7 +192,9 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
       itemWidth: 12,
       itemHeight: 8,
       itemGap: 16,
-      data: ['Measured', 'Budget', 'Warning'],
+      data: hasWarnBars
+        ? ['Measured', { name: 'Warning', itemStyle: { color: palette.warn } }]
+        : ['Measured'],
       textStyle: {
         color: palette.muted,
         fontSize: 11,
@@ -269,32 +250,6 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
         data: buildMeasuredData({ bars, currentBucketIndex, enabled, palette }),
         barMaxWidth: 18,
         barMinHeight: 2,
-        emphasis: { disabled: true },
-        blur: { disabled: true },
-        select: { disabled: true },
-      },
-      {
-        name: 'Budget',
-        type: 'scatter',
-        data: buildBudgetMarkerData(bars),
-        symbol: 'circle',
-        symbolSize: 8,
-        itemStyle: {
-          color: palette.budgetMarker,
-          borderColor: palette.markerBorder,
-          borderWidth: 2,
-          opacity: enabled ? 1 : 0.6,
-        },
-        emphasis: { disabled: true },
-        blur: { disabled: true },
-        select: { disabled: true },
-        z: 4,
-      },
-      {
-        name: 'Warning',
-        type: 'bar',
-        data: bars.map(() => null),
-        itemStyle: { color: palette.warn },
         emphasis: { disabled: true },
         blur: { disabled: true },
         select: { disabled: true },

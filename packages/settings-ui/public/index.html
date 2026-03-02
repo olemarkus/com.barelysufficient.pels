@@ -148,11 +148,7 @@
               <p class="muted" id="daily-budget-day">--</p>
             </div>
             <div class="daily-budget-actions day-view-actions">
-              <div class="daily-budget-toggle day-view-toggle" role="group" aria-label="Daily budget view">
-                <button type="button" class="daily-budget-toggle__button day-view-toggle__button" id="daily-budget-toggle-yesterday" aria-pressed="false">Yesterday</button>
-                <button type="button" class="daily-budget-toggle__button day-view-toggle__button is-active" id="daily-budget-toggle-today" aria-pressed="true">Today</button>
-                <button type="button" class="daily-budget-toggle__button day-view-toggle__button" id="daily-budget-toggle-tomorrow" aria-pressed="false">Tomorrow</button>
-              </div>
+              <div id="daily-budget-toggle-mount"></div>
               <div class="pill" id="daily-budget-status-pill">No data</div>
             </div>
           </div>
@@ -182,7 +178,7 @@
           <p id="daily-budget-empty" class="muted" hidden>Daily budget data not available yet.</p>
 
           <div id="daily-budget-meta" class="daily-budget-meta">
-            <div id="daily-budget-confidence" class="chip">Confidence --</div>
+            <div id="daily-budget-confidence" class="chip" hidden>Confidence --</div>
           </div>
 
           <p class="muted">Refreshes every 60s. Uses local day boundaries.</p>
@@ -225,10 +221,7 @@
               <p class="muted" id="usage-day-label">--</p>
             </div>
             <div class="day-view-actions">
-              <div class="day-view-toggle" role="group" aria-label="Usage day view">
-                <button type="button" class="day-view-toggle__button" id="usage-day-toggle-yesterday" aria-pressed="false">Yesterday</button>
-                <button type="button" class="day-view-toggle__button is-active" id="usage-day-toggle-today" aria-pressed="true">Today</button>
-              </div>
+              <div id="usage-day-toggle-mount"></div>
               <div class="pill" id="usage-day-status-pill">No data</div>
             </div>
           </div>
@@ -273,11 +266,7 @@
           <div class="day-view-header usage-section-header">
             <h4>Typical usage by time of day</h4>
             <div class="day-view-actions">
-              <div class="day-view-toggle" role="group" aria-label="Typical usage view">
-                <button type="button" class="day-view-toggle__button is-active" id="hourly-pattern-toggle-all" aria-pressed="true">All days</button>
-                <button type="button" class="day-view-toggle__button" id="hourly-pattern-toggle-weekday" aria-pressed="false">Weekdays</button>
-                <button type="button" class="day-view-toggle__button" id="hourly-pattern-toggle-weekend" aria-pressed="false">Weekend</button>
-              </div>
+              <div id="hourly-pattern-toggle-mount"></div>
             </div>
           </div>
           <div id="hourly-pattern" class="hourly-pattern usage-chart"></div>
@@ -285,28 +274,25 @@
         </div>
       </details>
 
-      <details class="settings-collapse">
-        <summary>
+      <div class="settings-collapse">
+        <div class="settings-collapse-header">
           <h3 class="section-title">Daily history</h3>
-          <span class="section-hint">Last 14 days</span>
-        </summary>
+          <span class="section-hint" id="daily-history-range-hint">Last 14 days</span>
+        </div>
         <div class="collapse-content">
           <div class="day-view-actions usage-history-actions">
-            <div class="day-view-toggle" role="group" aria-label="Daily history range">
-              <button type="button" class="day-view-toggle__button" id="daily-history-range-7" aria-pressed="false">7 days</button>
-              <button type="button" class="day-view-toggle__button is-active" id="daily-history-range-14" aria-pressed="true">14 days</button>
-            </div>
+            <div id="daily-history-range-mount"></div>
           </div>
           <div id="daily-list" class="usage-history-chart usage-chart"></div>
           <p id="daily-empty" class="muted" hidden>No daily totals yet.</p>
         </div>
-      </details>
+      </div>
 
-      <details class="settings-collapse">
-        <summary>
+      <div class="settings-collapse">
+        <div class="settings-collapse-header">
           <h3 class="section-title">Hourly detail</h3>
           <span class="section-hint">Week view</span>
-        </summary>
+        </div>
         <div class="collapse-content">
           <div class="hourly-nav day-view-header">
             <p id="power-week-label" class="muted">This week</p>
@@ -315,20 +301,16 @@
               <button type="button" class="day-view-toggle__button" id="power-week-next">Next week</button>
             </div>
           </div>
+          <ul id="power-list" class="device-list usage-list"></ul>
           <div class="usage-legend" id="power-legend">
             <div class="usage-legend__item">
-              <span class="usage-legend__swatch" aria-hidden="true"></span>
-              <span class="muted">Measured</span>
-            </div>
-            <div class="usage-legend__item">
-              <span class="usage-legend__swatch usage-legend__swatch--warn" aria-hidden="true"></span>
-              <span class="muted">Warning (high usage or unreliable)</span>
+              <span class="usage-legend__swatch usage-legend__swatch--unreliable" aria-hidden="true"></span>
+              <span class="muted">Unreliable data</span>
             </div>
           </div>
-          <ul id="power-list" class="device-list usage-list"></ul>
           <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the "Report power usage" Flow action.</p>
         </div>
-      </details>
+      </div>
 
       <div class="list__footer">
         <button type="button" class="btn ghost" id="reset-stats-button">Reset all stats</button>

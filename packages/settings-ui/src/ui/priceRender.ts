@@ -23,12 +23,16 @@ import {
 } from './priceRenderUtils';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator';
 
+
 const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {
   if (!priceStatusBadge) return;
-  priceStatusBadge.textContent = text;
-  priceStatusBadge.classList.remove('ok', 'warn');
-  if (statusClass) {
-    priceStatusBadge.classList.add(statusClass);
+  if (statusClass === 'warn') {
+    priceStatusBadge.textContent = text;
+    priceStatusBadge.classList.remove('ok');
+    priceStatusBadge.classList.add('warn');
+    priceStatusBadge.hidden = false;
+  } else {
+    priceStatusBadge.hidden = true;
   }
 };
 

@@ -699,7 +699,7 @@ input:focus-visible {
   flex-wrap: wrap;
   gap: var(--spacing-3);
   align-items: center;
-  margin: var(--spacing-2) 0 var(--spacing-4);
+  margin: var(--spacing-2) 0;
   font-size: var(--font-size-xs);
 }
 
@@ -720,6 +720,11 @@ input:focus-visible {
 .usage-legend__swatch--warn {
   background: var(--color-state-negative-bg);
   border-color: var(--color-state-negative-border);
+}
+
+.usage-legend__swatch--unreliable {
+  background: var(--color-surface-4);
+  border-color: var(--color-border-strong);
 }
 
 .usage-bar {
@@ -1347,6 +1352,14 @@ input[type="text"]:focus {
   cursor: pointer;
   padding: var(--spacing-4);
   list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.settings-collapse-header {
+  padding: var(--spacing-4);
   display: flex;
   align-items: center;
   justify-content: space-between;

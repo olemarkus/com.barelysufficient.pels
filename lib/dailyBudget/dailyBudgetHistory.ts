@@ -11,6 +11,7 @@ import {
   computeBudgetState,
   type DayContext,
 } from './dailyBudgetState';
+import { buildPlanBreakdown } from './dailyBudgetBreakdown';
 import type { DailyBudgetDayPayload } from './dailyBudgetTypes';
 import { CONTROLLED_USAGE_WEIGHT, PRICE_SHAPING_FLEX_SHARE } from './dailyBudgetConstants';
 
@@ -22,6 +23,7 @@ export const buildDailyBudgetHistory = (params: {
   priceOptimizationEnabled: boolean;
   priceShapingEnabled: boolean;
   profileSampleCount: number;
+  profileBreakdown?: { uncontrolled: number[]; controlled: number[] } | null;
 }): DailyBudgetDayPayload | null => {
   const {
     dayStartUtcMs,
@@ -31,6 +33,7 @@ export const buildDailyBudgetHistory = (params: {
     priceOptimizationEnabled,
     priceShapingEnabled,
     profileSampleCount,
+    profileBreakdown,
   } = params;
 
   const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
@@ -88,6 +91,13 @@ export const buildDailyBudgetHistory = (params: {
     priceShapingEnabled: priceShapingEnabled && canShapePrices,
   });
 
+  const planBreakdown = buildPlanBreakdown({
+    bucketStartUtcMs,
+    timeZone,
+    plannedKWh,
+    breakdown: profileBreakdown,
+  });
+
   return buildDailyBudgetSnapshot({
     context,
     settings: {
@@ -99,6 +109,8 @@ export const buildDailyBudgetHistory = (params: {
     },
     enabled,
     plannedKWh,
+    plannedUncontrolledKWh: planBreakdown?.plannedUncontrolledKWh,
+    plannedControlledKWh: planBreakdown?.plannedControlledKWh,
     priceData,
     budget,
     frozen: false,

@@ -24,8 +24,10 @@ const encodeHTML = echarts.format?.encodeHTML ?? fallbackEncodeHtml;
 export const format = { encodeHTML };
 
 export const BarChart = noopInstaller;
+export const HeatmapChart = noopInstaller;
 export const ScatterChart = noopInstaller;
 export const GridComponent = noopInstaller;
 export const LegendComponent = noopInstaller;
 export const TooltipComponent = noopInstaller;
+export const VisualMapComponent = noopInstaller;
 export const SVGRenderer = noopInstaller;

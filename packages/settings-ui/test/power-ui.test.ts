@@ -12,18 +12,12 @@ const buildPowerDom = () => {
     <div id="usage-month"></div>
     <div id="usage-weekday-avg"></div>
     <div id="usage-weekend-avg"></div>
-    <button id="hourly-pattern-toggle-all"></button>
-    <button id="hourly-pattern-toggle-weekday"></button>
-    <button id="hourly-pattern-toggle-weekend"></button>
     <div id="hourly-pattern"></div>
     <div id="hourly-pattern-meta"></div>
-    <button id="daily-history-range-7"></button>
-    <button id="daily-history-range-14"></button>
     <h4 id="usage-day-title"></h4>
     <div id="usage-day-label"></div>
-    <div id="usage-day-status-pill"></div>
-    <button id="usage-day-toggle-yesterday"></button>
-    <button id="usage-day-toggle-today"></button>
+    <div id="usage-day-status-pill" hidden></div>
+    <div id="usage-day-toggle-mount"></div>
     <div id="usage-day-total"></div>
     <div id="usage-day-peak"></div>
     <div id="usage-day-over-cap"></div>
@@ -107,64 +101,22 @@ describe('power page stats (buckets-only)', () => {
     expect(chartRoot?.querySelector('.usage-row--daily')).toBeNull();
   });
 
-  it('switches hourly pattern chart view with segmented toggles', async () => {
-    const buckets = buildBuckets('2025-01-01T00:00:00.000Z', 14 * 24, 0.6);
-    installHomeyClient({ buckets });
-
-    const { renderPowerStats } = require('../src/ui/power') as typeof import('../src/ui/power');
-    await renderPowerStats();
-
-    const allButton = document.querySelector('#hourly-pattern-toggle-all') as HTMLButtonElement;
-    const weekdayButton = document.querySelector('#hourly-pattern-toggle-weekday') as HTMLButtonElement;
-    const weekendButton = document.querySelector('#hourly-pattern-toggle-weekend') as HTMLButtonElement;
-    expect(allButton.classList.contains('is-active')).toBe(true);
-
-    weekdayButton.click();
-    expect(weekdayButton.classList.contains('is-active')).toBe(true);
-    expect(allButton.classList.contains('is-active')).toBe(false);
-
-    weekendButton.click();
-    expect(weekendButton.classList.contains('is-active')).toBe(true);
-    expect(weekdayButton.classList.contains('is-active')).toBe(false);
-
-    const chartRoot = document.querySelector('#hourly-pattern') as HTMLElement;
-    expect(chartRoot.querySelector('svg')).not.toBeNull();
-  });
-
-  it('switches daily history chart range with segmented toggles', async () => {
-    const buckets = buildBuckets('2025-01-01T00:00:00.000Z', 20 * 24, 0.6);
-    installHomeyClient({ buckets });
-
-    const { renderPowerStats } = require('../src/ui/power') as typeof import('../src/ui/power');
-    await renderPowerStats();
-
-    const sevenDaysButton = document.querySelector('#daily-history-range-7') as HTMLButtonElement;
-    const fourteenDaysButton = document.querySelector('#daily-history-range-14') as HTMLButtonElement;
-    expect(fourteenDaysButton.classList.contains('is-active')).toBe(true);
-
-    sevenDaysButton.click();
-    expect(sevenDaysButton.classList.contains('is-active')).toBe(true);
-    expect(fourteenDaysButton.classList.contains('is-active')).toBe(false);
-
-    const chartRoot = document.querySelector('#daily-list') as HTMLElement;
-    expect(chartRoot.querySelector('svg')).not.toBeNull();
-  });
-
   it('limits hourly detail to the current UTC week by default', async () => {
     const buckets = buildBuckets('2025-01-01T00:00:00.000Z', 14 * 24, 0.4);
     jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 10, 12, 0, 0));
     const { renderPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
     const entries = Object.entries(buckets).map(([iso, kWh]) => ({ hour: new Date(iso), kWh }));
     renderPowerUsage(entries);
-    const rows = document.querySelectorAll('.usage-row--detail');
-    expect(rows.length).toBe(7 * 24);
+    const powerList = document.querySelector('#power-list') as HTMLElement;
+    expect(powerList.querySelector('svg')).not.toBeNull();
     jest.restoreAllMocks();
   });
 
-  it('shows budget detail on the usage bar when hourly budget is present', async () => {
-    const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 2, 1.2);
+  it('renders heatmap chart when hourly budget is present', async () => {
+    const buckets = buildBuckets('2025-01-13T00:00:00.000Z', 2, 1.2);
     const hourlyBudgets = Object.fromEntries(Object.keys(buckets).map((iso) => [iso, 1.0]));
-    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 6, 12, 0, 0));
+    // Jan 15 (Wednesday) — current week (Jan 13–19) contains the Jan 13 bucket data
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 15, 12, 0, 0));
     const { renderPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
     const entries = Object.entries(buckets).map(([iso, kWh]) => ({
       hour: new Date(iso),
@@ -172,10 +124,8 @@ describe('power page stats (buckets-only)', () => {
       budgetKWh: hourlyBudgets[iso],
     }));
     renderPowerUsage(entries);
-    const labels = document.querySelectorAll('.power-meter .usage-bar__label');
-    expect(labels.length).toBeGreaterThan(0);
-    const titled = document.querySelectorAll('.power-meter[data-tooltip*="budget"]');
-    expect(titled.length).toBeGreaterThan(0);
+    const powerList = document.querySelector('#power-list') as HTMLElement;
+    expect(powerList.querySelector('svg')).not.toBeNull();
     jest.restoreAllMocks();
   });
 
@@ -217,7 +167,7 @@ describe('power page stats (buckets-only)', () => {
     jest.useRealTimers();
   });
 
-  it('renders hourly budget markers as a scatter series in usage day echarts', () => {
+  it('renders a single bar series in usage day echarts', () => {
     const setOption = jest.fn();
     const initEcharts = jest.fn(() => ({
       setOption,
@@ -234,15 +184,8 @@ describe('power page stats (buckets-only)', () => {
 
     const rendered = renderUsageDayChartEcharts({
       bars: [
-        {
-          label: '00:00',
-          value: 1.2,
-          marker: { value: 0.9, className: 'day-view-marker--budget' },
-        },
-        {
-          label: '01:00',
-          value: 0.4,
-        },
+        { label: '00:00', value: 1.2 },
+        { label: '01:00', value: 0.4 },
       ],
       labels: ['00:00', '01:00'],
       currentBucketIndex: 0,
@@ -258,10 +201,10 @@ describe('power page stats (buckets-only)', () => {
       expect.objectContaining({ renderer: 'svg', width: 480, height: 160 }),
     );
     expect(setOption).toHaveBeenCalledTimes(1);
-    const option = setOption.mock.calls[0][0] as { series?: Array<{ type?: string; data?: Array<number | null> }> };
-    const markerSeries = option.series?.find((series) => series.type === 'scatter');
-    expect(markerSeries).toBeDefined();
-    expect(markerSeries?.data).toEqual([0.9, null]);
+    const option = setOption.mock.calls[0][0] as { series?: Array<{ type?: string }> };
+    const barSeries = option.series?.find((series) => series.type === 'bar');
+    expect(barSeries).toBeDefined();
+    expect(option.series?.find((series) => series.type === 'scatter')).toBeUndefined();
   });
 
   it('clears stale usage day chart DOM when bars are empty', () => {
@@ -343,7 +286,7 @@ describe('power page stats (buckets-only)', () => {
     }
   });
 
-  it('includes budget and exceedance details in usage day tooltip text', () => {
+  it('includes measured value in usage day tooltip text', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
     installHomeyClient({}, 'UTC');
@@ -361,9 +304,8 @@ describe('power page stats (buckets-only)', () => {
       budgetKWh: 2.0,
     }]);
 
-    expect(capturedBars[0]?.title).toContain('Budget 2.00 kWh');
-    expect(capturedBars[0]?.title).toContain('exceeded by 0.50 kWh');
-    expect(capturedBars[0]?.marker?.value).toBeCloseTo(2.0, 6);
+    expect(capturedBars[0]?.title).toContain('Measured 2.50 kWh');
+    expect(capturedBars[0]?.marker).toBeUndefined();
     jest.useRealTimers();
   });
 

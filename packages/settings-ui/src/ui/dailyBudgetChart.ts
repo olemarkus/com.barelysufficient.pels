@@ -56,6 +56,7 @@ const buildDailyBudgetBar = (params: {
   showBreakdown: boolean;
   index: number;
   currentBucketIndex: number;
+  actualUpToIndex: number;
   label: string;
 }): DayViewBar => {
   const {
@@ -68,6 +69,7 @@ const buildDailyBudgetBar = (params: {
     showBreakdown,
     index,
     currentBucketIndex,
+    actualUpToIndex,
     label,
   } = params;
 
@@ -80,7 +82,7 @@ const buildDailyBudgetBar = (params: {
     ]
     : [{ value, className: 'day-view-bar__segment--planned' }];
 
-  const marker = Number.isFinite(actualValue) && currentBucketIndex >= 0 && index <= currentBucketIndex
+  const marker = Number.isFinite(actualValue) && actualUpToIndex >= 0 && index <= actualUpToIndex
     ? {
       value: actualValue as number,
       className: 'day-view-marker--actual',
@@ -93,6 +95,8 @@ const buildDailyBudgetBar = (params: {
   if (currentBucketIndex >= 0) {
     if (index < currentBucketIndex) state = 'past';
     if (index === currentBucketIndex) state = 'current';
+  } else if (actualUpToIndex >= 0 && index <= actualUpToIndex) {
+    state = 'past';
   }
 
   return {
@@ -136,7 +140,12 @@ export const renderDailyBudgetChart = (params: {
   const plannedUncontrolled = payload.buckets.plannedUncontrolledKWh || [];
   const plannedControlled = payload.buckets.plannedControlledKWh || [];
   const labels = payload.buckets.startLocalLabels || [];
-  const currentBucketIndex = showActual ? payload.currentBucketIndex : -1;
+  const rawBucketIndex = showActual ? payload.currentBucketIndex : -1;
+  // actualUpToIndex: highest index with actual data; for completed days (yesterday)
+  // rawBucketIndex is -1 but all hours have actuals, so use planned.length - 1.
+  const actualUpToIndex = showActual && rawBucketIndex === -1 ? planned.length - 1 : rawBucketIndex;
+  // currentBucketIndex: which hour gets the "in-progress" border; -1 for completed days.
+  const currentBucketIndex = rawBucketIndex;
 
   const bars: DayViewBar[] = planned.map((value, index) => {
     const label = labels[index] ?? '';
@@ -153,6 +162,7 @@ export const renderDailyBudgetChart = (params: {
       showBreakdown,
       index,
       currentBucketIndex,
+      actualUpToIndex,
       label,
     });
   });
@@ -161,10 +171,13 @@ export const renderDailyBudgetChart = (params: {
     bars,
     planned,
     actual,
+    actualUncontrolled,
+    actualControlled,
     plannedUncontrolled,
     plannedControlled,
     labels,
     currentBucketIndex,
+    actualUpToIndex,
     showActual,
     showBreakdown,
     enabled: payload.budget.enabled !== false,

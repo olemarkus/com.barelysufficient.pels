@@ -84,40 +84,17 @@ test.describe('Settings UI chart layout', () => {
     await expect(page.locator('#usage-panel')).toBeVisible();
     await expect(page.locator('#usage-day-chart')).toBeVisible();
     await expect(page.locator('#usage-day-bars svg').first()).toBeVisible();
-    await expect(page.locator('#hourly-pattern-toggle-all')).toBeVisible();
-    await expect(page.locator('#hourly-pattern-toggle-weekday')).toBeVisible();
-    await expect(page.locator('#hourly-pattern-toggle-weekend')).toBeVisible();
-    await expect(page.locator('#hourly-pattern svg').first()).toBeVisible();
-    await page.locator('#hourly-pattern-toggle-weekday').click();
-    await expect(page.locator('#hourly-pattern svg').first()).toBeVisible();
-    await page.locator('#hourly-pattern-toggle-weekend').click();
-    await expect(page.locator('#hourly-pattern svg').first()).toBeVisible();
-    await page.locator('#hourly-pattern-toggle-all').click();
     await expect(page.locator('#hourly-pattern svg').first()).toBeVisible();
 
-    const dailyHistoryDetail = page.locator('details:has(#daily-list)');
-    await dailyHistoryDetail.locator('summary').click();
-    await expect(dailyHistoryDetail).toHaveAttribute('open', '');
-    await expect(page.locator('#daily-history-range-7')).toBeVisible();
-    await expect(page.locator('#daily-history-range-14')).toBeVisible();
-    await page.locator('#daily-history-range-7').click();
     await expect(page.locator('#daily-list svg').first()).toBeVisible();
-    await page.locator('#daily-history-range-14').click();
-    await expect(page.locator('#daily-list svg').first()).toBeVisible();
-
-    const hourlyDetail = page.locator('details:has(#power-list)');
-    await hourlyDetail.locator('summary').click();
-    await expect(hourlyDetail).toHaveAttribute('open', '');
-    await expect(page.locator('#power-list .usage-row').first()).toBeVisible();
+    await expect(page.locator('#power-list svg').first()).toBeVisible();
 
     const usageIssues = await collectLayoutIssues(page, '#usage-panel', [
       '#usage-day-chart',
       '#usage-day-bars',
       '#usage-day-labels',
       '#hourly-pattern',
-      '#power-list .usage-row',
-      '#power-list .usage-row__bar',
-      '#power-list .usage-bar',
+      '#power-list svg',
     ]);
     expect(
       usageIssues,

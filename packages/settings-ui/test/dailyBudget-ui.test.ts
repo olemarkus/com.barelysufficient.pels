@@ -11,11 +11,9 @@ const setupDailyBudgetDom = () => {
     </div>
     <div id="daily-budget-labels"></div>
     <div id="daily-budget-empty"></div>
-    <div id="daily-budget-confidence"></div>
+    <div id="daily-budget-confidence" class="chip" hidden></div>
     <div id="daily-budget-status-pill"></div>
-    <button id="daily-budget-toggle-today"></button>
-    <button id="daily-budget-toggle-tomorrow"></button>
-    <button id="daily-budget-toggle-yesterday"></button>
+    <div id="daily-budget-toggle-mount"></div>
     <input id="daily-budget-breakdown" type="checkbox">
   `;
 };
@@ -77,6 +75,8 @@ const buildDailyBudgetPayload = () => ({
         plannedUncontrolledKWh: [0.6, 1, 1.2],
         plannedControlledKWh: [0.4, 0.5, 0.8],
         actualKWh: [0.8, 1.2, 1.9],
+        actualControlledKWh: [0.3, 0.5, 0.7],
+        actualUncontrolledKWh: [0.5, 0.7, 1.2],
         allowedCumKWh: [1, 2.5, 4.5],
       },
     },
@@ -126,10 +126,13 @@ describe('daily budget chart render', () => {
       bars: [{ label: '00:00', value: 1, title: '00:00 · Planned 1.00 kWh' }],
       planned: [1],
       actual: [0.8],
+      actualUncontrolled: [],
+      actualControlled: [],
       plannedUncontrolled: [0.6],
       plannedControlled: [0.4],
       labels: ['00:00'],
       currentBucketIndex: 0,
+      actualUpToIndex: 0,
       showActual: true,
       showBreakdown: true,
       enabled: true,
@@ -144,5 +147,77 @@ describe('daily budget chart render', () => {
       expect.objectContaining({ renderer: 'svg', width: 480, height: 176 }),
     );
     expect(setOption).toHaveBeenCalledTimes(1);
+  });
+
+  it('stack OFF: renders Actual and Budget as two grouped series per hour', () => {
+    const setOption = jest.fn();
+    const initEcharts = jest.fn(() => ({ setOption, resize: jest.fn(), dispose: jest.fn() }));
+    jest.doMock('../src/ui/echartsRegistry', () => ({
+      initEcharts,
+      encodeHtml: (value: string) => value,
+    }));
+
+    const { renderDailyBudgetChart } = require('../src/ui/dailyBudgetChart') as typeof import('../src/ui/dailyBudgetChart');
+    const payload = buildDailyBudgetPayload().days['2026-02-01'];
+    const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
+
+    renderDailyBudgetChart({ payload, showActual: true, showBreakdown: false, barsEl, labelsEl });
+
+    expect(setOption).toHaveBeenCalledTimes(1);
+    const option = setOption.mock.calls[0][0] as { series: Array<{ name: string }> };
+    const names = option.series.map((s) => s.name);
+    expect(names).toContain('Actual');
+    expect(names).toContain('Budget');
+  });
+
+  it('stack ON: renders four grouped stacked series (actual + plan breakdown)', () => {
+    const setOption = jest.fn();
+    const initEcharts = jest.fn(() => ({ setOption, resize: jest.fn(), dispose: jest.fn() }));
+    jest.doMock('../src/ui/echartsRegistry', () => ({
+      initEcharts,
+      encodeHtml: (value: string) => value,
+    }));
+
+    const { renderDailyBudgetChart } = require('../src/ui/dailyBudgetChart') as typeof import('../src/ui/dailyBudgetChart');
+    const payload = buildDailyBudgetPayload().days['2026-02-01'];
+    const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
+
+    renderDailyBudgetChart({ payload, showActual: true, showBreakdown: true, barsEl, labelsEl });
+
+    expect(setOption).toHaveBeenCalledTimes(1);
+    const option = setOption.mock.calls[0][0] as { series: Array<{ name: string; stack?: string }> };
+    const names = option.series.map((s) => s.name);
+    // Both actual and plan breakdown groups must be present
+    expect(names).toContain('Actual Uncontrolled');
+    expect(names).toContain('Actual Controlled');
+    expect(names).toContain('Plan Uncontrolled');
+    expect(names).toContain('Plan Controlled');
+    // Actual and plan must use different stack keys (they are grouped side by side)
+    const actualStack = option.series.find((s) => s.name === 'Actual Uncontrolled')?.stack;
+    const planStack = option.series.find((s) => s.name === 'Plan Uncontrolled')?.stack;
+    expect(actualStack).not.toBe(planStack);
+  });
+
+  it('tomorrow view: only Budget series is rendered (no Actual)', () => {
+    const setOption = jest.fn();
+    const initEcharts = jest.fn(() => ({ setOption, resize: jest.fn(), dispose: jest.fn() }));
+    jest.doMock('../src/ui/echartsRegistry', () => ({
+      initEcharts,
+      encodeHtml: (value: string) => value,
+    }));
+
+    const { renderDailyBudgetChart } = require('../src/ui/dailyBudgetChart') as typeof import('../src/ui/dailyBudgetChart');
+    const payload = buildDailyBudgetPayload().days['2026-02-01'];
+    const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
+
+    renderDailyBudgetChart({ payload, showActual: false, showBreakdown: false, barsEl, labelsEl });
+
+    const option = setOption.mock.calls[0][0] as { series: Array<{ name: string }> };
+    const names = option.series.map((s) => s.name);
+    expect(names).not.toContain('Actual');
+    expect(names).toContain('Budget');
   });
 });

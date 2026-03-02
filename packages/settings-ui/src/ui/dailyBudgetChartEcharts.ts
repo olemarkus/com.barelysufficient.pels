@@ -10,10 +10,15 @@ type DailyBudgetChartEchartsParams = {
   bars: DayViewBar[];
   planned: number[];
   actual: number[];
+  actualUncontrolled: Array<number | null>;
+  actualControlled: Array<number | null>;
   plannedUncontrolled: number[];
   plannedControlled: number[];
   labels: string[];
+  /** Index of the current (in-progress) hour; -1 if none (tomorrow, or completed day). */
   currentBucketIndex: number;
+  /** Highest hour index for which actual data should be displayed; -1 if no actuals. */
+  actualUpToIndex: number;
   showActual: boolean;
   showBreakdown: boolean;
   enabled: boolean;
@@ -26,6 +31,8 @@ type DailyBudgetPalette = {
   uncontrolled: string;
   controlled: string;
   actual: string;
+  actualUncontrolled: string;
+  actualControlled: string;
   over: string;
   disabled: string;
   disabledMarker: string;
@@ -109,6 +116,8 @@ const resolvePalette = (barsEl: HTMLElement): DailyBudgetPalette => ({
   uncontrolled: resolveCssColor(barsEl, '--day-view-color-uncontrolled', '#3AA9FF'),
   controlled: resolveCssColor(barsEl, '--day-view-color-controlled', '#F2A13E'),
   actual: resolveCssColor(barsEl, '--day-view-color-actual', '#E6EFE8'),
+  actualUncontrolled: resolveCssColor(barsEl, '--day-view-color-actual-uncontrolled', 'rgba(58,169,255,0.45)'),
+  actualControlled: resolveCssColor(barsEl, '--day-view-color-actual-controlled', 'rgba(242,161,62,0.45)'),
   over: resolveCssColor(barsEl, '--color-state-warning-border', '#F2A13E'),
   disabled: resolveCssColor(barsEl, '--color-surface-4', '#4D5652'),
   disabledMarker: resolveCssColor(barsEl, '--color-surface-5', '#7C8581'),
@@ -122,72 +131,85 @@ const resolvePalette = (barsEl: HTMLElement): DailyBudgetPalette => ({
   tooltipBorder: resolveCssColor(barsEl, '--color-border-medium', 'rgba(255, 255, 255, 0.15)'),
 });
 
-const resolveBarOpacity = (enabled: boolean, currentBucketIndex: number, index: number): number => {
-  if (!enabled) return 0.6;
-  if (currentBucketIndex < 0) return 1;
-  if (index < currentBucketIndex) return 0.45;
-  return 1;
-};
+const resolveBarOpacity = (enabled: boolean): number => (enabled ? 1 : 0.6);
 
-const buildBarData = (params: {
+const buildPlanBarData = (params: {
   values: number[];
   color: string;
-  topSeries: boolean;
+  isTopSeries: boolean;
   enabled: boolean;
   currentBucketIndex: number;
   palette: DailyBudgetPalette;
 }) => {
-  const {
-    values,
-    color,
-    topSeries,
-    enabled,
-    currentBucketIndex,
-    palette,
-  } = params;
-  return values.map((value, index) => ({
-    value,
-    itemStyle: {
-      color: enabled ? color : palette.disabled,
-      opacity: resolveBarOpacity(enabled, currentBucketIndex, index),
-      borderWidth: currentBucketIndex >= 0 && index === currentBucketIndex ? 1 : 0,
-      borderColor: palette.currentBorder,
-      borderRadius: topSeries ? [4, 4, 0, 0] : [0, 0, 0, 0],
-    },
-  }));
-};
-
-const buildActualData = (params: {
-  showActual: boolean;
-  planned: number[];
-  actual: number[];
-  enabled: boolean;
-  currentBucketIndex: number;
-  palette: DailyBudgetPalette;
-}) => {
-  const {
-    showActual,
-    planned,
-    actual,
-    enabled,
-    currentBucketIndex,
-    palette,
-  } = params;
-  return planned.map((plannedValue, index) => {
-    if (!showActual) return null;
-    if (currentBucketIndex < 0 || index > currentBucketIndex) return null;
-    const value = actual[index];
-    if (!Number.isFinite(value)) return null;
-    const over = (value as number) > plannedValue + 0.001;
-    let color = palette.disabledMarker;
-    if (enabled) {
-      color = over ? palette.over : palette.actual;
-    }
+  const { values, color, isTopSeries, enabled, currentBucketIndex, palette } = params;
+  return values.map((value, index) => {
+    const isCurrent = currentBucketIndex >= 0 && index === currentBucketIndex;
     return {
       value,
       itemStyle: {
-        color,
-        opacity: resolveBarOpacity(enabled, currentBucketIndex, index),
+        color: enabled ? color : palette.disabled,
+        opacity: resolveBarOpacity(enabled),
+        borderWidth: isCurrent ? 1 : 0,
+        borderColor: palette.currentBorder,
+        borderRadius: isTopSeries ? [4, 4, 0, 0] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
+      },
+    };
+  });
+};
+
+const buildActualBarData = (params: {
+  actual: number[];
+  planned: number[];
+  enabled: boolean;
+  currentBucketIndex: number;
+  actualUpToIndex: number;
+  palette: DailyBudgetPalette;
+}) => {
+  const { actual, planned, enabled, currentBucketIndex, actualUpToIndex, palette } = params;
+  return actual.map((actualValue, index) => {
+    if (actualUpToIndex < 0 || index > actualUpToIndex) return null;
+    if (!Number.isFinite(actualValue)) return null;
+    const plannedValue = planned[index] ?? 0;
+    const isOver = actualValue > plannedValue + 0.001;
+    const isCurrent = index === currentBucketIndex;
+    let actualColor = palette.actual;
+    if (!enabled) actualColor = palette.disabled;
+    else if (isOver) actualColor = palette.over;
+    return {
+      value: actualValue,
+      itemStyle: {
+        color: actualColor,
+        opacity: enabled ? 1 : 0.6,
+        borderWidth: isCurrent ? 1 : 0,
+        borderColor: palette.currentBorder,
+        borderRadius: [4, 4, 0, 0] as [number, number, number, number],
+      },
+    };
+  });
+};
+
+const buildActualBreakdownData = (params: {
+  values: Array<number | null>;
+  color: string;
+  isTopSeries: boolean;
+  enabled: boolean;
+  currentBucketIndex: number;
+  actualUpToIndex: number;
+  palette: DailyBudgetPalette;
+}) => {
+  const { values, color, isTopSeries, enabled, currentBucketIndex, actualUpToIndex, palette } = params;
+  return values.map((val, index) => {
+    if (actualUpToIndex < 0 || index > actualUpToIndex) return null;
+    if (!Number.isFinite(val)) return null;
+    const isCurrent = index === currentBucketIndex;
+    return {
+      value: val as number,
+      itemStyle: {
+        color: enabled ? color : palette.disabled,
+        opacity: resolveBarOpacity(enabled),
+        borderWidth: isCurrent ? 1 : 0,
+        borderColor: palette.currentBorder,
+        borderRadius: isTopSeries ? [4, 4, 0, 0] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
       },
     };
   });
@@ -207,122 +229,167 @@ const buildTooltipFormatter = (bars: DayViewBar[]) => (rawParams: unknown): stri
   return encodeHtml(text).replace(/ · /g, '<br/>');
 };
 
+const BAR_SERIES_BASE = {
+  type: 'bar' as const,
+  barMaxWidth: 10,
+  barMinHeight: 2,
+  emphasis: { disabled: true },
+  blur: { disabled: true },
+  select: { disabled: true },
+};
+
+type LegendItem = { name: string; icon?: string; itemStyle: { color: string } };
+
+type SeriesContext = {
+  planned: number[];
+  actual: number[];
+  actualUncontrolled: Array<number | null>;
+  actualControlled: Array<number | null>;
+  plannedUncontrolled: number[];
+  plannedControlled: number[];
+  enabled: boolean;
+  currentBucketIndex: number;
+  actualUpToIndex: number;
+  palette: DailyBudgetPalette;
+};
+
+const buildStackedPlanSeries = (ctx: SeriesContext): SeriesOption[] => {
+  const { palette, enabled, currentBucketIndex } = ctx;
+  return [
+    {
+      ...BAR_SERIES_BASE,
+      name: 'Plan Uncontrolled',
+      stack: 'plan',
+      data: buildPlanBarData({
+        values: ctx.plannedUncontrolled, color: palette.uncontrolled,
+        isTopSeries: false, enabled, currentBucketIndex, palette,
+      }),
+    },
+    {
+      ...BAR_SERIES_BASE,
+      name: 'Plan Controlled',
+      stack: 'plan',
+      data: buildPlanBarData({
+        values: ctx.plannedControlled, color: palette.controlled,
+        isTopSeries: true, enabled, currentBucketIndex, palette,
+      }),
+    },
+  ];
+};
+
+const buildActualBreakdownSeries = (ctx: SeriesContext): SeriesOption[] => {
+  const { palette, enabled, currentBucketIndex, actualUpToIndex } = ctx;
+  return [
+    {
+      ...BAR_SERIES_BASE,
+      name: 'Actual Uncontrolled',
+      stack: 'actual',
+      data: buildActualBreakdownData({
+        values: ctx.actualUncontrolled, color: palette.actualUncontrolled,
+        isTopSeries: false, enabled, currentBucketIndex, actualUpToIndex, palette,
+      }),
+    },
+    {
+      ...BAR_SERIES_BASE,
+      name: 'Actual Controlled',
+      stack: 'actual',
+      data: buildActualBreakdownData({
+        values: ctx.actualControlled, color: palette.actualControlled,
+        isTopSeries: true, enabled, currentBucketIndex, actualUpToIndex, palette,
+      }),
+    },
+  ];
+};
+
+const buildActualTotalSeries = (ctx: SeriesContext): SeriesOption => ({
+  ...BAR_SERIES_BASE,
+  name: 'Actual',
+  data: buildActualBarData({
+    actual: ctx.actual, planned: ctx.planned, enabled: ctx.enabled,
+    currentBucketIndex: ctx.currentBucketIndex, actualUpToIndex: ctx.actualUpToIndex, palette: ctx.palette,
+  }),
+});
+
+const buildBudgetTotalSeries = (ctx: SeriesContext): SeriesOption => ({
+  ...BAR_SERIES_BASE,
+  name: 'Budget',
+  data: buildPlanBarData({ values: ctx.planned, color: ctx.palette.planned, isTopSeries: true, enabled: ctx.enabled, currentBucketIndex: ctx.currentBucketIndex, palette: ctx.palette }),
+});
+
 const buildSeries = (params: {
   showBreakdown: boolean;
   showActual: boolean;
-  planned: number[];
-  plannedUncontrolled: number[];
-  plannedControlled: number[];
-  actualData: Array<{ value: number; itemStyle: { color: string; opacity: number } } | null>;
-  enabled: boolean;
-  currentBucketIndex: number;
-  palette: DailyBudgetPalette;
-}) => {
-  const {
-    showBreakdown,
-    showActual,
-    planned,
-    plannedUncontrolled,
-    plannedControlled,
-    actualData,
-    enabled,
-    currentBucketIndex,
-    palette,
-  } = params;
+  hasActualBreakdown: boolean;
+} & SeriesContext): SeriesOption[] => {
+  const { showBreakdown, showActual, hasActualBreakdown, ...ctx } = params;
+
   const canStack = showBreakdown
-    && plannedUncontrolled.length === planned.length
-    && plannedControlled.length === planned.length;
+    && ctx.plannedUncontrolled.length === ctx.planned.length
+    && ctx.plannedControlled.length === ctx.planned.length;
 
-  const baseSeries: SeriesOption[] = canStack
-    ? [
-      {
-        name: 'Uncontrolled',
-        type: 'bar',
-        stack: 'plan',
-        data: buildBarData({
-          values: plannedUncontrolled,
-          color: palette.uncontrolled,
-          topSeries: false,
-          enabled,
-          currentBucketIndex,
-          palette,
-        }),
-        barMaxWidth: 18,
-        barMinHeight: 2,
-        emphasis: { disabled: true },
-        blur: { disabled: true },
-        select: { disabled: true },
-      },
-      {
-        name: 'Controlled',
-        type: 'bar',
-        stack: 'plan',
-        data: buildBarData({
-          values: plannedControlled,
-          color: palette.controlled,
-          topSeries: true,
-          enabled,
-          currentBucketIndex,
-          palette,
-        }),
-        barMaxWidth: 18,
-        barMinHeight: 2,
-        emphasis: { disabled: true },
-        blur: { disabled: true },
-        select: { disabled: true },
-      },
-    ]
-    : [
-      {
-        name: 'Planned',
-        type: 'bar',
-        data: buildBarData({
-          values: planned,
-          color: palette.planned,
-          topSeries: true,
-          enabled,
-          currentBucketIndex,
-          palette,
-        }),
-        barMaxWidth: 18,
-        barMinHeight: 2,
-        emphasis: { disabled: true },
-        blur: { disabled: true },
-        select: { disabled: true },
-      },
-    ];
+  if (canStack) {
+    const planSeries = buildStackedPlanSeries(ctx);
+    if (!showActual) return planSeries;
+    if (hasActualBreakdown) return [...buildActualBreakdownSeries(ctx), ...planSeries];
+    return [buildActualTotalSeries(ctx), ...planSeries];
+  }
 
-  if (!showActual) return baseSeries;
-  return [
-    ...baseSeries,
-    {
-      name: 'Actual',
-      type: 'scatter',
-      data: actualData,
-      symbol: 'circle',
-      symbolSize: 8,
-      itemStyle: {
-        borderColor: palette.panel,
-        borderWidth: 2,
-      },
-      z: 20,
-      emphasis: { disabled: true },
-      blur: { disabled: true },
-      select: { disabled: true },
-    },
-  ];
+  const budgetSeries = buildBudgetTotalSeries(ctx);
+  if (!showActual) return [budgetSeries];
+
+  // Actual breakdown available but planned breakdown absent (e.g. yesterday: no stored plan split).
+  const canShowActualBreakdown = showBreakdown
+    && ctx.actualUncontrolled.length === ctx.planned.length
+    && ctx.actualControlled.length === ctx.planned.length;
+  if (canShowActualBreakdown) return [...buildActualBreakdownSeries(ctx), budgetSeries];
+
+  return [buildActualTotalSeries(ctx), budgetSeries];
 };
 
 const buildLegendData = (params: {
   showBreakdown: boolean;
   showActual: boolean;
-}): string[] => {
-  const { showBreakdown, showActual } = params;
-  const legendItems = showBreakdown
-    ? ['Uncontrolled', 'Controlled']
-    : ['Planned'];
-  if (showActual) legendItems.push('Actual');
-  return legendItems;
+  hasActualBreakdown: boolean;
+  /** Actual breakdown available but planned breakdown absent (e.g. yesterday view). */
+  canShowActualBreakdown: boolean;
+  palette: DailyBudgetPalette;
+}): LegendItem[] => {
+  const { showBreakdown, showActual, hasActualBreakdown, canShowActualBreakdown, palette } = params;
+
+  if (showBreakdown) {
+    if (showActual && hasActualBreakdown) {
+      return [
+        { name: 'Actual Uncontrolled', itemStyle: { color: palette.actualUncontrolled } },
+        { name: 'Actual Controlled', itemStyle: { color: palette.actualControlled } },
+        { name: 'Plan Uncontrolled', itemStyle: { color: palette.uncontrolled } },
+        { name: 'Plan Controlled', itemStyle: { color: palette.controlled } },
+      ];
+    }
+    if (showActual && canShowActualBreakdown) {
+      return [
+        { name: 'Actual Uncontrolled', itemStyle: { color: palette.actualUncontrolled } },
+        { name: 'Actual Controlled', itemStyle: { color: palette.actualControlled } },
+        { name: 'Budget', itemStyle: { color: palette.planned } },
+      ];
+    }
+    if (showActual) {
+      return [
+        { name: 'Actual', itemStyle: { color: palette.actual } },
+        { name: 'Plan Uncontrolled', itemStyle: { color: palette.uncontrolled } },
+        { name: 'Plan Controlled', itemStyle: { color: palette.controlled } },
+      ];
+    }
+    return [
+      { name: 'Plan Uncontrolled', itemStyle: { color: palette.uncontrolled } },
+      { name: 'Plan Controlled', itemStyle: { color: palette.controlled } },
+    ];
+  }
+
+  const items: LegendItem[] = [{ name: 'Budget', itemStyle: { color: palette.planned } }];
+  if (showActual) {
+    items.unshift({ name: 'Actual', itemStyle: { color: palette.actual } });
+  }
+  return items;
 };
 
 const buildOption = (params: DailyBudgetChartEchartsParams): EChartsOption => {
@@ -330,10 +397,13 @@ const buildOption = (params: DailyBudgetChartEchartsParams): EChartsOption => {
     bars,
     planned,
     actual,
+    actualUncontrolled,
+    actualControlled,
     plannedUncontrolled,
     plannedControlled,
     labels,
     currentBucketIndex,
+    actualUpToIndex,
     showActual,
     showBreakdown,
     enabled,
@@ -343,28 +413,26 @@ const buildOption = (params: DailyBudgetChartEchartsParams): EChartsOption => {
   const palette = resolvePalette(barsEl);
   const labelEvery = resolveLabelEvery(planned.length);
   const axisLabels = planned.map((_value, index) => labels[index] ?? '');
-  const actualData = buildActualData({
-    showActual,
-    planned,
-    actual,
-    enabled,
-    currentBucketIndex,
-    palette,
-  });
   const allActual = actual.filter((value): value is number => Number.isFinite(value));
   const dataMax = Math.max(1, ...planned, ...allActual);
-  const legendData = buildLegendData({ showBreakdown, showActual });
+  const canStack = showBreakdown
+    && plannedUncontrolled.length === planned.length
+    && plannedControlled.length === planned.length;
+  const hasActualSplit = actualUncontrolled.length === planned.length
+    && actualControlled.length === planned.length
+    && actualUncontrolled.some((v) => v !== null);
+  const hasActualBreakdown = canStack && hasActualSplit;
+  // Actual breakdown available but planned breakdown absent (e.g. yesterday: plan split not stored).
+  const canShowActualBreakdown = !canStack
+    && showBreakdown
+    && showActual
+    && hasActualSplit;
+  const legendData = buildLegendData({ showBreakdown, showActual, hasActualBreakdown, canShowActualBreakdown, palette });
 
   return {
     animation: false,
     stateAnimation: { duration: 0 },
-    grid: {
-      left: 6,
-      right: 10,
-      top: 6,
-      bottom: 46,
-      containLabel: true,
-    },
+    grid: { left: 6, right: 10, top: 6, bottom: 46, containLabel: true },
     legend: {
       show: true,
       left: 'center',
@@ -374,10 +442,7 @@ const buildOption = (params: DailyBudgetChartEchartsParams): EChartsOption => {
       itemHeight: 8,
       itemGap: 16,
       data: legendData,
-      textStyle: {
-        color: palette.muted,
-        fontSize: 11,
-      },
+      textStyle: { color: palette.muted, fontSize: 11 },
     },
     tooltip: {
       trigger: 'axis',
@@ -388,11 +453,7 @@ const buildOption = (params: DailyBudgetChartEchartsParams): EChartsOption => {
       borderWidth: 1,
       padding: [8, 10],
       extraCssText: 'opacity:1;backdrop-filter:none;box-shadow:var(--shadow-md);',
-      textStyle: {
-        color: palette.tooltipText,
-        fontSize: 12,
-        fontWeight: 500,
-      },
+      textStyle: { color: palette.tooltipText, fontSize: 12, fontWeight: 500 },
       formatter: buildTooltipFormatter(bars),
     },
     xAxis: {
@@ -416,27 +477,22 @@ const buildOption = (params: DailyBudgetChartEchartsParams): EChartsOption => {
       splitNumber: 4,
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (value: number) => formatKWh(value).replace(' kWh', ''),
-      },
-      splitLine: {
-        lineStyle: {
-          color: palette.grid,
-          width: 1,
-        },
-      },
+      axisLabel: { color: palette.muted, fontSize: 11, formatter: (value: number) => formatKWh(value).replace(' kWh', '') },
+      splitLine: { lineStyle: { color: palette.grid, width: 1 } },
     },
     series: buildSeries({
       showBreakdown,
       showActual,
       planned,
+      actual,
+      actualUncontrolled,
+      actualControlled,
       plannedUncontrolled,
       plannedControlled,
-      actualData,
+      hasActualBreakdown,
       enabled,
       currentBucketIndex,
+      actualUpToIndex,
       palette,
     }),
   };

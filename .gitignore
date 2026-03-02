@@ -23,4 +23,6 @@ node_modules/
 /playwright/.auth/
 /.playwright/
 /.playwright-cli/
+/.playwright-mcp/
 /teste/
+/tmp/

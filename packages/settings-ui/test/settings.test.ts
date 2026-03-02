@@ -86,7 +86,7 @@ const buildDom = () => {
       <div id="daily-budget-bars"></div>
       <div id="daily-budget-labels"></div>
       <div id="daily-budget-empty"></div>
-      <div id="daily-budget-status-pill"></div>
+      <div id="daily-budget-status-pill" hidden></div>
       <div id="daily-budget-title"></div>
       <div id="daily-budget-day"></div>
       <div id="daily-budget-remaining"></div>
@@ -94,8 +94,7 @@ const buildDom = () => {
       <div id="daily-budget-cost-label"></div>
       <div id="daily-budget-cost"></div>
       <div id="daily-budget-confidence"></div>
-      <button id="daily-budget-toggle-today"></button>
-      <button id="daily-budget-toggle-tomorrow"></button>
+      <div id="daily-budget-toggle-mount"></div>
     </section>
     <section class="panel hidden" data-panel="usage">
       <div id="power-list"></div>
@@ -115,7 +114,7 @@ const buildDom = () => {
       <div id="usage-weekend-avg"></div>
     </section>
     <section class="panel hidden" id="price-panel" data-panel="price">
-      <div id="price-status-badge">No data</div>
+      <div id="price-status-badge" hidden></div>
       <select id="price-scheme">
         <option value="norway">Norway</option>
         <option value="homey">Homey</option>
@@ -651,7 +650,7 @@ describe('settings script', () => {
     await flushPromises();
 
     const priceList = document.querySelector('#price-list');
-    const priceStatusBadge = document.querySelector('#price-status-badge');
+    const priceStatusBadge = document.querySelector('#price-status-badge') as HTMLElement | null;
 
     // Verify price list has content
     expect(priceList?.innerHTML).not.toBe('');
@@ -678,9 +677,8 @@ describe('settings script', () => {
     const priceRows = priceList?.querySelectorAll('.price-row');
     expect(priceRows?.length).toBeGreaterThan(0);
 
-    // Verify status badge shows current price
-    expect(priceStatusBadge?.textContent).toContain('Now:');
-    expect(priceStatusBadge?.textContent).toContain('øre/kWh');
+    // Status badge is only shown for warn states; ok/normal price is not badged
+    expect(priceStatusBadge?.hidden).toBe(true);
   });
 
   it('shows notice when all prices are within threshold', async () => {
@@ -994,13 +992,13 @@ describe('settings script', () => {
     await flushPromises();
 
     const priceList = document.querySelector('#price-list');
-    const priceStatusBadge = document.querySelector('#price-status-badge');
+    const priceStatusBadge = document.querySelector('#price-status-badge') as HTMLElement | null;
 
     // Verify price list has content (using fallback data)
     expect(priceList?.innerHTML).not.toBe('');
 
-    // Verify status badge shows current price
-    expect(priceStatusBadge?.textContent).toContain('Now:');
+    // Status badge is only shown for warn states; ok/normal price is not badged
+    expect(priceStatusBadge?.hidden).toBe(true);
   });
 
   it('uses NOK conversion for internal price scheme on daily budget cost', async () => {

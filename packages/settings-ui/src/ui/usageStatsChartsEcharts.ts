@@ -212,7 +212,6 @@ const buildHourlyPatternOption = (params: {
         itemStyle: {
           color: palette.bar,
           borderRadius: [4, 4, 0, 0],
-          opacity: 0.9,
         },
         emphasis: { disabled: true },
         blur: { disabled: true },
@@ -294,6 +293,7 @@ const buildDailyHistoryOption = (params: {
       axisLabel: {
         color: palette.muted,
         fontSize: 11,
+        formatter: (value: number) => String(Math.round(value)),
       },
       splitLine: {
         lineStyle: {
@@ -312,7 +312,6 @@ const buildDailyHistoryOption = (params: {
         itemStyle: {
           color: palette.bar,
           borderRadius: [4, 4, 0, 0],
-          opacity: 0.9,
         },
         emphasis: { disabled: true },
         blur: { disabled: true },
