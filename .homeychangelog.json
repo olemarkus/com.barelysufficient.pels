@@ -172,5 +172,8 @@
   },
   "1.16.1": {
     "en": "Fix packaging so that the built app has all runtime dependencies."
+  },
+  "1.16.2": {
+    "en": "Improved the Settings UI so live power data, stale-data status, and the Overview update more reliably without needing manual refresh.\n\nImproved the “Is there headroom for device?” flow condition with built-in cooldown/hysteresis after step-downs and recent PELS control changes, making headroom checks more stable and reducing rapid re-ramping."
   }
 }
