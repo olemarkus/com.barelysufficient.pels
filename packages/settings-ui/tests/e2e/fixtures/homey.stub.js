@@ -179,6 +179,9 @@
     const now = new Date();
     const nowMs = now.getTime();
     const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0)).getTime();
+    const dailyBudgetKWh = Number(settings.daily_budget_kwh ?? 0);
+    const dailyBudgetEnabled = settings.daily_budget_enabled !== false;
+    const dailyBudgetPriceShapingEnabled = settings.daily_budget_price_shaping_enabled !== false;
 
     const makeDay = (dayStartMs) => {
       const startUtc = [];
@@ -219,7 +222,6 @@
       const currentBucketIndex = Math.max(0, Math.min(23, Math.floor((nowMs - dayStartMs) / (3600 * 1000))));
       const usedNowKWh = actualKWh.slice(0, currentBucketIndex + 1).reduce((sum, v) => sum + v, 0);
       const allowedNowKWh = allowedCumKWh[currentBucketIndex] ?? 0;
-      const dailyBudgetKWh = 12;
       const remainingKWh = dailyBudgetKWh - usedNowKWh;
       const deviationKWh = usedNowKWh - allowedNowKWh;
 
@@ -230,9 +232,9 @@
         dayStartUtc: new Date(dayStartMs).toISOString(),
         currentBucketIndex,
         budget: {
-          enabled: true,
+          enabled: dailyBudgetEnabled,
           dailyBudgetKWh,
-          priceShapingEnabled: true,
+          priceShapingEnabled: dailyBudgetPriceShapingEnabled,
         },
         state: {
           usedNowKWh: Number(usedNowKWh.toFixed(3)),
@@ -273,7 +275,6 @@
   };
 
   const combinedPrices = buildSampleCombinedPrices();
-  const dailyBudgetPayload = buildSampleDailyBudgetPayload();
 
   const settings = {
     // Devices
@@ -455,7 +456,7 @@
   });
 
   const apiHandlers = {
-    'GET /daily_budget': () => dailyBudgetPayload,
+    'GET /daily_budget': () => buildSampleDailyBudgetPayload(),
     'GET /homey_devices': () => {
       // Used by advanced device logger/cleanup.
       return [
@@ -467,7 +468,7 @@
     },
     'GET /ui_bootstrap': () => ({
       settings: buildBootstrapSettings(),
-      dailyBudget: dailyBudgetPayload,
+      dailyBudget: buildSampleDailyBudgetPayload(),
       devices: settings.target_devices_snapshot,
       plan: settings.device_plan_snapshot,
       power: buildPowerPayload(),
