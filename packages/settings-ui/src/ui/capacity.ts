@@ -7,6 +7,7 @@ import {
   staleDataBannerText,
 } from './dom';
 import { getSetting } from './homey';
+import { getPowerReadModel } from './power';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEBUG_LOGGING_TOPICS } from '../../../contracts/src/settingsKeys';
 import {
   ALL_DEBUG_LOGGING_TOPICS,
@@ -55,12 +56,8 @@ const updateStaleDataBanner = (lastPowerUpdate: number | null, lastHeartbeat: nu
 };
 
 export const loadStaleDataStatus = async () => {
-  const [status, heartbeat] = await Promise.all([
-    getSetting('pels_status'),
-    getSetting('app_heartbeat'),
-  ]);
-  const typedStatus = status as { lastPowerUpdate?: number | null } | null;
-  updateStaleDataBanner(typedStatus?.lastPowerUpdate ?? null, typeof heartbeat === 'number' ? heartbeat : null);
+  const { status, heartbeat } = await getPowerReadModel();
+  updateStaleDataBanner(status?.lastPowerUpdate ?? null, heartbeat);
 };
 
 export const loadCapacitySettings = async () => {

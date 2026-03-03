@@ -1,5 +1,6 @@
 import type { SettingsUiLogEntry, SettingsUiLogLevel } from '../../../contracts/src/types';
-import { setSetting } from './homey';
+import { SETTINGS_UI_LOG_PATH } from '../../../contracts/src/settingsUiApi';
+import { callApi } from './homey';
 
 const pendingLogs: SettingsUiLogEntry[] = [];
 
@@ -33,7 +34,7 @@ const buildLogEntry = (
 });
 
 const sendLog = async (entry: SettingsUiLogEntry): Promise<void> => {
-  await setSetting('settings_ui_log', entry);
+  await callApi('POST', SETTINGS_UI_LOG_PATH, entry);
 };
 
 const queueLog = (entry: SettingsUiLogEntry) => {

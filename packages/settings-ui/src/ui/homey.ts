@@ -1,3 +1,11 @@
+import {
+  countApiCacheHit,
+  countHomeyApi,
+  countHomeyGet,
+  countHomeySet,
+  countSettingsCacheHit,
+} from './perf';
+
 export type HomeyCallback<T> = (err: Error | null, value?: T) => void;
 
 export type HomeySettingsClient = {
@@ -27,11 +35,44 @@ type WindowWithHomey = Window & {
 };
 
 let homeyClient: HomeySettingsClient | null = null;
+const settingsCache = new Map<string, unknown>();
+const apiCache = new Map<string, unknown>();
 
 export const getHomeyClient = () => homeyClient;
 
 export const setHomeyClient = (client: HomeySettingsClient | null) => {
+  if (homeyClient !== client) {
+    settingsCache.clear();
+    apiCache.clear();
+  }
   homeyClient = client;
+};
+
+export const applySettingsPatch = (settings: Record<string, unknown>) => {
+  Object.entries(settings).forEach(([key, value]) => {
+    settingsCache.set(key, value);
+  });
+};
+
+export const invalidateSettingCache = (key: string) => {
+  settingsCache.delete(key);
+};
+
+export const primeApiCache = <T>(uri: string, value: T) => {
+  apiCache.set(uri, value);
+};
+
+export const updateApiCache = <T extends Record<string, unknown>>(uri: string, patch: Partial<T>) => {
+  const current = apiCache.get(uri);
+  if (!current || typeof current !== 'object' || Array.isArray(current)) {
+    apiCache.set(uri, patch);
+    return;
+  }
+  apiCache.set(uri, { ...(current as T), ...patch });
+};
+
+export const invalidateApiCache = (uri: string) => {
+  apiCache.delete(uri);
 };
 
 export const getHomeyTimezone = () => {
@@ -62,12 +103,18 @@ export const pollSetting = async (key: string, attempts = 10, delay = 300) => {
 
 export const getSetting = (key: string): Promise<unknown> => {
   if (!homeyClient) return Promise.reject(new Error('Homey SDK not ready'));
+  if (settingsCache.has(key)) {
+    countSettingsCacheHit();
+    return Promise.resolve(settingsCache.get(key));
+  }
   return new Promise((resolve, reject) => {
+    countHomeyGet(key);
     homeyClient?.get(key, (err, value) => {
       if (err) {
         reject(err);
         return;
       }
+      settingsCache.set(key, value);
       resolve(value);
     });
   });
@@ -76,11 +123,13 @@ export const getSetting = (key: string): Promise<unknown> => {
 export const setSetting = (key: string, value: unknown): Promise<void> => {
   if (!homeyClient) return Promise.reject(new Error('Homey SDK not ready'));
   return new Promise((resolve, reject) => {
+    countHomeySet(key);
     homeyClient?.set(key, value, (err) => {
       if (err) {
         reject(err);
         return;
       }
+      settingsCache.set(key, value);
       resolve();
     });
   });
@@ -98,6 +147,7 @@ export const callApi = <T>(method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: strin
     return Promise.reject(new Error(`Homey api ${method} ${uri} not available`));
   }
   return new Promise((resolve, reject) => {
+    countHomeyApi(method, uri);
     const callback: HomeyCallback<unknown> = (err, value) => {
       if (err) {
         reject(buildApiError(method, uri, err));
@@ -127,6 +177,16 @@ export const callApi = <T>(method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: strin
   });
 };
 
+export const getApiReadModel = async <T>(uri: string): Promise<T> => {
+  if (apiCache.has(uri)) {
+    countApiCacheHit();
+    return apiCache.get(uri) as T;
+  }
+  const value = await callApi<T>('GET', uri);
+  apiCache.set(uri, value);
+  return value;
+};
+
 export const waitForHomey = async (attempts = 50, interval = 100) => {
   const resolveHomey = () => {
     if (typeof Homey !== 'undefined') return Homey;
@@ -140,7 +200,7 @@ export const waitForHomey = async (attempts = 50, interval = 100) => {
   for (let i = 0; i < attempts; i += 1) {
     const candidate = resolveHomey();
     if (candidate && typeof candidate.ready === 'function' && typeof candidate.get === 'function') {
-      homeyClient = candidate;
+      setHomeyClient(candidate);
       return candidate;
     }
     await sleep(interval);

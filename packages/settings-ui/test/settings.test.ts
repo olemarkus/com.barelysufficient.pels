@@ -185,6 +185,149 @@ const loadSettingsScript = async () => {
   });
 };
 
+const BOOTSTRAP_SETTING_KEYS = [
+  'capacity_limit_kw',
+  'capacity_margin_kw',
+  'capacity_dry_run',
+  'capacity_priorities',
+  'mode_device_targets',
+  'operating_mode',
+  'controllable_devices',
+  'managed_devices',
+  'mode_aliases',
+  'overshoot_behaviors',
+  'price_optimization_settings',
+  'price_optimization_enabled',
+  'price_scheme',
+  'norway_price_model',
+  'price_area',
+  'provider_surcharge',
+  'price_threshold_percent',
+  'price_min_diff_ore',
+  'nettleie_fylke',
+  'nettleie_orgnr',
+  'nettleie_tariffgruppe',
+  'daily_budget_enabled',
+  'daily_budget_kwh',
+  'daily_budget_price_shaping_enabled',
+  'daily_budget_controlled_weight',
+  'daily_budget_price_flex_share',
+  'daily_budget_breakdown_enabled',
+  'debug_logging_topics',
+  'debug_logging_enabled',
+];
+
+const getHomeySetting = (key) => new Promise((resolve) => {
+  global.Homey.get(key, (_err, value) => resolve(value));
+});
+
+const buildUiBootstrap = async () => ({
+  settings: Object.fromEntries(await Promise.all(BOOTSTRAP_SETTING_KEYS.map(async (key) => [key, await getHomeySetting(key)]))),
+  dailyBudget: null,
+  devices: await getHomeySetting('target_devices_snapshot') || [],
+  plan: await getHomeySetting('device_plan_snapshot') || null,
+  power: {
+    tracker: await getHomeySetting('power_tracker_state') || null,
+    status: await getHomeySetting('pels_status') || null,
+    heartbeat: await getHomeySetting('app_heartbeat') || null,
+  },
+  prices: {
+    combinedPrices: await getHomeySetting('combined_prices') || null,
+    electricityPrices: await getHomeySetting('electricity_prices') || null,
+    priceArea: await getHomeySetting('price_area') || null,
+    gridTariffData: await getHomeySetting('nettleie_data') || null,
+    flowToday: await getHomeySetting('flow_prices_today') || null,
+    flowTomorrow: await getHomeySetting('flow_prices_tomorrow') || null,
+    homeyCurrency: await getHomeySetting('homey_prices_currency') || null,
+    homeyToday: await getHomeySetting('homey_prices_today') || null,
+    homeyTomorrow: await getHomeySetting('homey_prices_tomorrow') || null,
+  },
+});
+
+const buildHomeyApiMock = () => jest.fn((method, uri, bodyOrCallback, cb) => {
+  const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
+  if (!callback) return;
+
+  void (async () => {
+    if (method === 'GET' && uri === '/ui_bootstrap') {
+      callback(null, await buildUiBootstrap());
+      return;
+    }
+    if (method === 'GET' && uri === '/ui_devices') {
+      callback(null, { devices: await getHomeySetting('target_devices_snapshot') || [] });
+      return;
+    }
+    if (method === 'GET' && uri === '/ui_plan') {
+      callback(null, { plan: await getHomeySetting('device_plan_snapshot') || null });
+      return;
+    }
+    if (method === 'GET' && uri === '/ui_power') {
+      callback(null, {
+        tracker: await getHomeySetting('power_tracker_state') || null,
+        status: await getHomeySetting('pels_status') || null,
+        heartbeat: await getHomeySetting('app_heartbeat') || null,
+      });
+      return;
+    }
+    if (method === 'GET' && uri === '/ui_prices') {
+      callback(null, {
+        combinedPrices: await getHomeySetting('combined_prices') || null,
+        electricityPrices: await getHomeySetting('electricity_prices') || null,
+        priceArea: await getHomeySetting('price_area') || null,
+        gridTariffData: await getHomeySetting('nettleie_data') || null,
+        flowToday: await getHomeySetting('flow_prices_today') || null,
+        flowTomorrow: await getHomeySetting('flow_prices_tomorrow') || null,
+        homeyCurrency: await getHomeySetting('homey_prices_currency') || null,
+        homeyToday: await getHomeySetting('homey_prices_today') || null,
+        homeyTomorrow: await getHomeySetting('homey_prices_tomorrow') || null,
+      });
+      return;
+    }
+    if (method === 'POST' && uri === '/ui_refresh_devices') {
+      callback(null, { devices: await getHomeySetting('target_devices_snapshot') || [] });
+      return;
+    }
+    if (method === 'POST' && (uri === '/ui_refresh_prices' || uri === '/ui_refresh_grid_tariff')) {
+      callback(null, {
+        combinedPrices: await getHomeySetting('combined_prices') || null,
+        electricityPrices: await getHomeySetting('electricity_prices') || null,
+        priceArea: await getHomeySetting('price_area') || null,
+        gridTariffData: await getHomeySetting('nettleie_data') || null,
+        flowToday: await getHomeySetting('flow_prices_today') || null,
+        flowTomorrow: await getHomeySetting('flow_prices_tomorrow') || null,
+        homeyCurrency: await getHomeySetting('homey_prices_currency') || null,
+        homeyToday: await getHomeySetting('homey_prices_today') || null,
+        homeyTomorrow: await getHomeySetting('homey_prices_tomorrow') || null,
+      });
+      return;
+    }
+    if (method === 'POST' && uri === '/ui_reset_power_stats') {
+      callback(null, {
+        power: {
+          tracker: await getHomeySetting('power_tracker_state') || null,
+          status: await getHomeySetting('pels_status') || null,
+          heartbeat: await getHomeySetting('app_heartbeat') || null,
+        },
+        dailyBudget: null,
+      });
+      return;
+    }
+    if (method === 'POST' && uri === '/settings_ui_log') {
+      callback(null, { ok: true });
+      return;
+    }
+    if (method === 'GET' && uri === '/daily_budget') {
+      callback(null, null);
+      return;
+    }
+    if (method === 'GET' && uri === '/homey_devices') {
+      callback(null, []);
+      return;
+    }
+    callback(null, null);
+  })();
+});
+
 describe('settings script', () => {
   beforeEach(() => {
     jest.resetModules();
@@ -193,19 +336,31 @@ describe('settings script', () => {
     global.Homey = {
       ready: jest.fn().mockResolvedValue(undefined),
       set: jest.fn((key, val, cb) => cb && cb(null)),
+      api: buildHomeyApiMock(),
       clock: {
         getTimezone: () => 'UTC',
       },
       i18n: {
         getTimezone: () => 'UTC',
       },
-      get: jest.fn((key, cb) => cb(null, [
-        {
-          id: 'dev-1',
-          name: 'Heater',
-          targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-        },
-      ])),
+      get: jest.fn((key, cb) => {
+        if (key === 'target_devices_snapshot') {
+          return cb(null, [
+            {
+              id: 'dev-1',
+              name: 'Heater',
+              targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+            },
+          ]);
+        }
+        if (key === 'operating_mode') return cb(null, 'Home');
+        if (key === 'capacity_priorities') return cb(null, {});
+        if (key === 'mode_device_targets') return cb(null, {});
+        if (key === 'controllable_devices') return cb(null, {});
+        if (key === 'managed_devices') return cb(null, {});
+        if (key === 'price_optimization_settings') return cb(null, {});
+        return cb(null, null);
+      }),
     };
   });
 
@@ -1057,6 +1212,20 @@ describe('settings script', () => {
         callback(null, dailyBudgetPayload);
         return;
       }
+      if (method === 'GET' && uri === '/ui_prices') {
+        callback(null, {
+          combinedPrices: { priceScheme: 'norway', priceUnit: 'øre/kWh' },
+          electricityPrices: null,
+          priceArea: null,
+          gridTariffData: null,
+          flowToday: null,
+          flowTomorrow: null,
+          homeyCurrency: null,
+          homeyToday: null,
+          homeyTomorrow: null,
+        });
+        return;
+      }
       if (method === 'GET' && uri === '/homey_devices') {
         callback(null, []);
         return;
@@ -1124,6 +1293,20 @@ describe('settings script', () => {
       if (!callback) return;
       if (method === 'GET' && uri === '/daily_budget') {
         callback(null, dailyBudgetPayload);
+        return;
+      }
+      if (method === 'GET' && uri === '/ui_prices') {
+        callback(null, {
+          combinedPrices: { priceScheme: 'flow', priceUnit: 'price units' },
+          electricityPrices: null,
+          priceArea: null,
+          gridTariffData: null,
+          flowToday: null,
+          flowTomorrow: null,
+          homeyCurrency: null,
+          homeyToday: null,
+          homeyTomorrow: null,
+        });
         return;
       }
       if (method === 'GET' && uri === '/homey_devices') {
@@ -1198,6 +1381,20 @@ describe('settings script', () => {
         callback(null, dailyBudgetPayload);
         return;
       }
+      if (method === 'GET' && uri === '/ui_prices') {
+        callback(null, {
+          combinedPrices: { priceScheme: 'flow', priceUnit: 'price units' },
+          electricityPrices: null,
+          priceArea: null,
+          gridTariffData: null,
+          flowToday: null,
+          flowTomorrow: null,
+          homeyCurrency: null,
+          homeyToday: null,
+          homeyTomorrow: null,
+        });
+        return;
+      }
       if (method === 'GET' && uri === '/homey_devices') {
         callback(null, []);
         return;
@@ -1232,11 +1429,24 @@ describe('Plan sorting', () => {
     global.Homey = {
       ready: jest.fn().mockResolvedValue(undefined),
       set: jest.fn((key, val, cb) => cb && cb(null)),
+      api: buildHomeyApiMock(),
       get: jest.fn((key, cb) => {
         if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
         if (key === 'target_devices_snapshot') return cb(null, []);
+        if (key === 'operating_mode') return cb(null, 'Home');
+        if (key === 'capacity_priorities') return cb(null, {});
+        if (key === 'mode_device_targets') return cb(null, {});
+        if (key === 'controllable_devices') return cb(null, {});
+        if (key === 'managed_devices') return cb(null, {});
+        if (key === 'price_optimization_settings') return cb(null, {});
         return cb(null, null);
       }),
+      clock: {
+        getTimezone: () => 'UTC',
+      },
+      i18n: {
+        getTimezone: () => 'UTC',
+      },
     };
   };
 
@@ -1415,11 +1625,24 @@ describe('Plan sorting', () => {
     global.Homey = {
       ready: jest.fn().mockResolvedValue(undefined),
       set: jest.fn((key, val, cb) => cb && cb(null)),
+      api: buildHomeyApiMock(),
       get: jest.fn((key, cb) => {
         if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
         if (key === 'target_devices_snapshot') return cb(null, []);
+        if (key === 'operating_mode') return cb(null, 'Home');
+        if (key === 'capacity_priorities') return cb(null, {});
+        if (key === 'mode_device_targets') return cb(null, {});
+        if (key === 'controllable_devices') return cb(null, {});
+        if (key === 'managed_devices') return cb(null, {});
+        if (key === 'price_optimization_settings') return cb(null, {});
         return cb(null, null);
       }),
+      clock: {
+        getTimezone: () => 'UTC',
+      },
+      i18n: {
+        getTimezone: () => 'UTC',
+      },
     };
 
     await loadSettingsScript();
@@ -1459,6 +1682,7 @@ describe('Plan sorting', () => {
       ready: jest.fn().mockResolvedValue(undefined),
       set: jest.fn((key, val, cb) => cb && cb(null)),
       get: getSpy,
+      api: buildHomeyApiMock(),
       on: jest.fn((event, cb) => {
         if (!listeners[event]) listeners[event] = [];
         listeners[event].push(cb);

@@ -1,0 +1,223 @@
+import {
+  buildSettingsUiBootstrap,
+  getSettingsUiDevicesPayload,
+  getSettingsUiPlanPayload,
+  getSettingsUiPowerPayload,
+  getSettingsUiPricesPayload,
+  logSettingsUiMessage,
+  refreshSettingsUiDevices,
+  refreshSettingsUiGridTariff,
+  refreshSettingsUiPrices,
+  resetSettingsUiPowerStats,
+} from '../lib/app/settingsUiApi';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
+
+describe('settingsUiApi', () => {
+  const createHomey = () => {
+    const store = new Map<string, unknown>([
+      ['target_devices_snapshot', [{ id: 'dev-1', name: 'Heater' }]],
+      ['device_plan_snapshot', { devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] }],
+      ['combined_prices', { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] }],
+      ['power_tracker_state', { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } }],
+      ['pels_status', { lastPowerUpdate: 123, priceLevel: 'cheap' }],
+      ['app_heartbeat', 456],
+      ['homey_prices_currency', 'NOK'],
+      ['homey_prices_today', { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' }],
+      ['homey_prices_tomorrow', { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' }],
+      ['flow_prices_today', { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' }],
+      ['flow_prices_tomorrow', { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' }],
+      ['nettleie_data', [{ dateKey: '2026-03-03', energyFeeIncVat: 0.5 }]],
+      ['price_area', 'NO1'],
+    ]);
+
+    const log = jest.fn();
+    const error = jest.fn();
+    let latestDevices = [{ id: 'dev-1', name: 'Heater' }];
+    let powerTracker: Record<string, unknown> = { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } };
+    const refreshTargetDevicesSnapshot = jest.fn().mockImplementation(async () => {
+      latestDevices = [{ id: 'dev-2', name: 'Pump' }];
+    });
+    const refreshSpotPrices = jest.fn().mockResolvedValue(undefined);
+    const refreshGridTariffData = jest.fn().mockResolvedValue(undefined);
+    const updateDailyBudgetAndRecordCap = jest.fn();
+    const persistPowerTrackerState = jest.fn();
+    const replacePowerTrackerForUi = jest.fn().mockImplementation((nextState: Record<string, unknown>) => {
+      powerTracker = nextState;
+      updateDailyBudgetAndRecordCap({
+        nowMs: Date.now(),
+        forcePlanRebuild: true,
+      });
+      persistPowerTrackerState();
+    });
+    const getDailyBudgetUiPayload = jest.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
+    const app = {
+      log,
+      error,
+      refreshTargetDevicesSnapshot,
+      priceCoordinator: {
+        refreshSpotPrices,
+        refreshGridTariffData,
+      },
+      replacePowerTrackerForUi,
+      getDailyBudgetUiPayload,
+      get latestTargetSnapshot() {
+        return latestDevices;
+      },
+      get powerTracker() {
+        return powerTracker;
+      },
+      set powerTracker(value: Record<string, unknown>) {
+        powerTracker = value;
+      },
+    };
+
+    return {
+      settings: {
+        get: (key: string) => store.get(key),
+      },
+      app,
+      log,
+      error,
+      refreshTargetDevicesSnapshot,
+      refreshSpotPrices,
+      refreshGridTariffData,
+      replacePowerTrackerForUi,
+      updateDailyBudgetAndRecordCap,
+      persistPowerTrackerState,
+      getDailyBudgetUiPayload,
+    };
+  };
+
+  it('builds bootstrap payload from current settings and daily budget data', () => {
+    const homey = createHomey();
+
+    const result = buildSettingsUiBootstrap({ homey: homey as never });
+
+    expect(Object.keys(result.settings)).toEqual([...SETTINGS_UI_BOOTSTRAP_KEYS]);
+    expect(result.settings.target_devices_snapshot).toBeUndefined();
+    expect(result.settings.combined_prices).toBeUndefined();
+    expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
+    expect(result.devices).toEqual([{ id: 'dev-1', name: 'Heater' }]);
+    expect(result.plan).toEqual({ devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] });
+    expect(result.power).toEqual({
+      tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
+      status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
+      heartbeat: 456,
+    });
+    expect(result.prices.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
+    expect(result.prices.homeyCurrency).toBe('NOK');
+  });
+
+  it('returns refreshed devices from the app wrapper', async () => {
+    const homey = createHomey();
+
+    const result = await refreshSettingsUiDevices({ homey: homey as never });
+
+    expect(homey.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
+    expect(result.devices).toEqual([{ id: 'dev-2', name: 'Pump' }]);
+  });
+
+  it('returns refreshed prices from the app wrapper', async () => {
+    const homey = createHomey();
+
+    const result = await refreshSettingsUiPrices({ homey: homey as never });
+
+    expect(homey.refreshSpotPrices).toHaveBeenCalledWith(true);
+    expect(result.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
+  });
+
+  it('returns refreshed grid tariff data from the app wrapper', async () => {
+    const homey = createHomey();
+
+    const result = await refreshSettingsUiGridTariff({ homey: homey as never });
+
+    expect(homey.refreshGridTariffData).toHaveBeenCalledWith(true);
+    expect(result.gridTariffData).toEqual([{ dateKey: '2026-03-03', energyFeeIncVat: 0.5 }]);
+  });
+
+  it('returns reset power state and refreshed daily budget payload', async () => {
+    const homey = createHomey();
+
+    const result = await resetSettingsUiPowerStats({ homey: homey as never });
+
+    expect(homey.updateDailyBudgetAndRecordCap).toHaveBeenCalledWith({
+      nowMs: expect.any(Number),
+      forcePlanRebuild: true,
+    });
+    expect(homey.persistPowerTrackerState).toHaveBeenCalledTimes(1);
+    expect(result.power.tracker).toEqual({
+      buckets: {},
+      controlledBuckets: {},
+      uncontrolledBuckets: {},
+      hourlyBudgets: {},
+      dailyBudgetCaps: {},
+      dailyTotals: {},
+      hourlyAverages: {},
+      unreliablePeriods: [],
+    });
+    expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
+  });
+
+  it('builds dedicated read payloads for the remaining volatile UI models', () => {
+    const homey = createHomey();
+
+    expect(getSettingsUiDevicesPayload({ homey: homey as never })).toEqual({
+      devices: [{ id: 'dev-1', name: 'Heater' }],
+    });
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
+      plan: { devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] },
+    });
+    expect(getSettingsUiPowerPayload({ homey: homey as never })).toEqual({
+      tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
+      status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
+      heartbeat: 456,
+    });
+    expect(getSettingsUiPricesPayload({ homey: homey as never })).toEqual({
+      combinedPrices: { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] },
+      electricityPrices: null,
+      priceArea: 'NO1',
+      gridTariffData: [{ dateKey: '2026-03-03', energyFeeIncVat: 0.5 }],
+      flowToday: { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' },
+      flowTomorrow: { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' },
+      homeyCurrency: 'NOK',
+      homeyToday: { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' },
+      homeyTomorrow: { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' },
+    });
+  });
+
+  it('throws when refresh or reset functionality is unavailable', async () => {
+    const homey = createHomey();
+    delete (homey.app as Partial<typeof homey.app>).refreshTargetDevicesSnapshot;
+    delete (homey.app as Partial<typeof homey.app>).priceCoordinator;
+    delete (homey.app as Partial<typeof homey.app>).replacePowerTrackerForUi;
+
+    await expect(refreshSettingsUiDevices({ homey: homey as never })).rejects.toThrow(
+      'Refresh devices functionality is not available in the app.',
+    );
+    await expect(refreshSettingsUiPrices({ homey: homey as never })).rejects.toThrow(
+      'Refresh prices functionality is not available in the app.',
+    );
+    await expect(refreshSettingsUiGridTariff({ homey: homey as never })).rejects.toThrow(
+      'Refresh grid tariff functionality is not available in the app.',
+    );
+    await expect(resetSettingsUiPowerStats({ homey: homey as never })).rejects.toThrow(
+      'Reset power stats functionality is not available in the app.',
+    );
+  });
+
+  it('routes UI log entries to the correct app logger', () => {
+    const homey = createHomey();
+
+    logSettingsUiMessage({
+      homey: homey as never,
+      body: { level: 'warn', message: 'Something odd', context: 'boot', timestamp: Date.now() },
+    });
+    logSettingsUiMessage({
+      homey: homey as never,
+      body: { level: 'error', message: 'Boom', detail: 'Stack', timestamp: Date.now() },
+    });
+
+    expect(homey.log).toHaveBeenCalledWith('Warning: Settings UI (boot): Something odd');
+    expect(homey.error).toHaveBeenCalledWith('Settings UI: Boom - Stack', expect.any(Error));
+  });
+});

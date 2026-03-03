@@ -25,8 +25,8 @@ import { pushSettingWriteIfChanged } from './settingWrites';
 import { logSettingsError } from './logging';
 import { formatKWh, formatSignedKWh } from './dailyBudgetFormat';
 import { renderDailyBudgetChart } from './dailyBudgetChart';
+import { getPricesReadModel } from './prices';
 import {
-  COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -319,11 +319,13 @@ export const saveDailyBudgetSettings = async () => {
   await showToast('Daily budget settings saved.', 'ok');
 };
 
-export const refreshDailyBudgetPlan = async () => {
+export const refreshDailyBudgetPlan = async (payloadOverride?: DailyBudgetUiPayload | null) => {
   try {
     const [payload, combinedPrices] = await Promise.all([
-      callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
-      getSetting(COMBINED_PRICES).catch(() => null),
+      payloadOverride !== undefined
+        ? Promise.resolve(payloadOverride)
+        : callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
+      getPricesReadModel().then((prices) => prices.combinedPrices).catch(() => null),
     ]);
     costDisplay = resolveCostDisplay(combinedPrices);
     renderDailyBudget(payload);

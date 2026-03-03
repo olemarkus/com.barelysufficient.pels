@@ -34,6 +34,7 @@ function parseTsPrune(output) {
 
 const allowedOrphans = new Set([
   'app.ts',
+  'api.ts',
   'packages/settings-ui/src/script.ts',
   'drivers/pels_insights/device.ts',
   'drivers/pels_insights/driver.ts',
@@ -48,10 +49,20 @@ const allowedUnusedExportPatterns = [
   /^lib\/utils\/dateUtils\.ts:\d+ - formatTimeInTimeZone$/,
   /^lib\/utils\/settingsKeys\.ts:\d+ - DAILY_BUDGET_BREAKDOWN_ENABLED$/,
   /^lib\/utils\/planRebuildTrace\.ts:\d+ - clearPlanRebuildTracesForTests$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_BOOTSTRAP_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_DEVICES_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_PLAN_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_POWER_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_PRICES_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_REFRESH_DEVICES_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_REFRESH_PRICES_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_REFRESH_GRID_TARIFF_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_LOG_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_RESET_POWER_STATS_PATH$/,
 ];
 
 const orphanResult = run(
-  'madge --extensions ts --orphans app.ts flowCards drivers lib '
+  'madge --extensions ts --orphans app.ts api.ts flowCards drivers lib '
   + 'packages/settings-ui/src packages/contracts/src packages/shared-domain/src',
 );
 if (orphanResult.code !== 0) {

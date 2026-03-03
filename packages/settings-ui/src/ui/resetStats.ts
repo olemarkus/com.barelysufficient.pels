@@ -1,34 +1,15 @@
-import type { PowerTracker } from './power';
-import { renderPowerStats, renderPowerUsage } from './power';
-import { getSetting, setSetting } from './homey';
+import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
+import {
+  SETTINGS_UI_POWER_PATH,
+  SETTINGS_UI_RESET_POWER_STATS_PATH,
+  type SettingsUiResetPowerStatsResponse,
+} from '../../../contracts/src/settingsUiApi';
+import { callApi, primeApiCache } from './homey';
 import { showToast, showToastError } from './toast';
 import { logSettingsError, logSettingsInfo } from './logging';
-import { getHourBucketKey } from '../../../shared-domain/src/utils/dateUtils';
+import { refreshDailyBudgetPlan } from './dailyBudget';
 
 let resetTimeout: ReturnType<typeof setTimeout> | null = null;
-
-const calculateResetState = (currentState: PowerTracker): PowerTracker => {
-  const currentHourKey = getHourBucketKey();
-
-  const newBuckets: Record<string, number> = {};
-  if (currentState.buckets && currentState.buckets[currentHourKey] !== undefined) {
-    newBuckets[currentHourKey] = currentState.buckets[currentHourKey];
-  }
-
-  const newBudgets: Record<string, number> = {};
-  if (currentState.hourlyBudgets && currentState.hourlyBudgets[currentHourKey] !== undefined) {
-    newBudgets[currentHourKey] = currentState.hourlyBudgets[currentHourKey];
-  }
-
-  return {
-    ...currentState,
-    buckets: newBuckets,
-    hourlyBudgets: newBudgets,
-    dailyTotals: {},
-    hourlyAverages: {},
-    unreliablePeriods: [],
-  };
-};
 
 export const handleResetStats = async (btn: HTMLButtonElement) => {
   if (!btn.classList.contains('confirming')) {
@@ -55,17 +36,15 @@ export const handleResetStats = async (btn: HTMLButtonElement) => {
   b.textContent = 'Resetting...';
 
   try {
-    const currentState = (await getSetting('power_tracker_state') as PowerTracker) || {};
-    const newState = calculateResetState(currentState);
+    const response = await callApi<SettingsUiResetPowerStatsResponse>('POST', SETTINGS_UI_RESET_POWER_STATS_PATH, {});
+    primeApiCache(SETTINGS_UI_POWER_PATH, response?.power ?? { tracker: null, status: null, heartbeat: null });
 
-    await setSetting('power_tracker_state', newState);
-
-    renderPowerUsage(Object.entries(newState.buckets || {}).map(([hour, kWh]) => ({
-      hour: new Date(hour),
-      kWh,
-      budgetKWh: (newState.hourlyBudgets || {})[hour],
-    })));
+    const usage = await getPowerUsage();
+    renderPowerUsage(usage);
     await renderPowerStats();
+    if (response?.dailyBudget !== undefined) {
+      await refreshDailyBudgetPlan(response.dailyBudget);
+    }
     await showToast('Power stats reset (current hour preserved).', 'ok');
     await logSettingsInfo('Reset stats completed', 'handleResetStats');
   } catch (error) {

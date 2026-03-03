@@ -1,6 +1,19 @@
 import type Homey from 'homey';
 import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
 import type { HomeyDeviceLike } from './lib/utils/types';
+import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebugFromApp } from './lib/app/appDebugHelpers';
+import {
+  buildSettingsUiBootstrap,
+  getSettingsUiDevicesPayload,
+  getSettingsUiPlanPayload,
+  getSettingsUiPowerPayload,
+  getSettingsUiPricesPayload,
+  logSettingsUiMessage,
+  refreshSettingsUiDevices,
+  refreshSettingsUiGridTariff,
+  refreshSettingsUiPrices,
+  resetSettingsUiPowerStats,
+} from './lib/app/settingsUiApi';
 
 type ApiContext = {
   homey: Homey.App['homey'];
@@ -8,8 +21,6 @@ type ApiContext = {
 
 type DailyBudgetApp = Homey.App & {
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
-  getHomeyDevicesForDebug?: () => Promise<HomeyDeviceLike[]>;
-  logHomeyDeviceForDebug?: (deviceId: string) => Promise<boolean>;
 };
 
 const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id: string } => (
@@ -22,6 +33,21 @@ const getApp = (homey: Homey.App['homey']): DailyBudgetApp | null => {
 };
 
 export = {
+  async ui_bootstrap({ homey }: ApiContext) {
+    return buildSettingsUiBootstrap({ homey });
+  },
+  async ui_devices({ homey }: ApiContext) {
+    return getSettingsUiDevicesPayload({ homey });
+  },
+  async ui_plan({ homey }: ApiContext) {
+    return getSettingsUiPlanPayload({ homey });
+  },
+  async ui_power({ homey }: ApiContext) {
+    return getSettingsUiPowerPayload({ homey });
+  },
+  async ui_prices({ homey }: ApiContext) {
+    return getSettingsUiPricesPayload({ homey });
+  },
   async get_daily_budget({ homey }: ApiContext): Promise<DailyBudgetUiPayload | null> {
     const app = getApp(homey);
     if (!app?.getDailyBudgetUiPayload) return null;
@@ -34,9 +60,9 @@ export = {
   },
   async homey_devices({ homey }: ApiContext): Promise<Array<{ id: string; name?: string; class?: string }>> {
     const app = getApp(homey);
-    if (!app?.getHomeyDevicesForDebug) return [];
+    if (!app) return [];
     try {
-      const devices = await app.getHomeyDevicesForDebug();
+      const devices = await getHomeyDevicesForDebugFromApp(app);
       return devices
         .filter(hasDeviceId)
         .map((device) => {
@@ -52,11 +78,26 @@ export = {
       return [];
     }
   },
+  async ui_refresh_devices({ homey }: ApiContext) {
+    return refreshSettingsUiDevices({ homey });
+  },
+  async ui_refresh_prices({ homey }: ApiContext) {
+    return refreshSettingsUiPrices({ homey });
+  },
+  async ui_refresh_grid_tariff({ homey }: ApiContext) {
+    return refreshSettingsUiGridTariff({ homey });
+  },
+  async settings_ui_log({ homey, body }: ApiContext & { body?: unknown }) {
+    return logSettingsUiMessage({ homey, body });
+  },
+  async ui_reset_power_stats({ homey }: ApiContext) {
+    return resetSettingsUiPowerStats({ homey });
+  },
   async log_homey_device(
     { homey, body }: ApiContext & { body?: { id?: string } },
   ): Promise<{ ok: boolean; error?: string }> {
     const app = getApp(homey);
-    if (!app?.logHomeyDeviceForDebug) {
+    if (!app) {
       return { ok: false, error: 'LOGGING_NOT_AVAILABLE' };
     }
     try {
@@ -65,7 +106,7 @@ export = {
         app?.error?.('Homey device log API called without valid device id');
         return { ok: false, error: 'INVALID_DEVICE_ID' };
       }
-      const ok = await app.logHomeyDeviceForDebug(deviceId);
+      const ok = await logHomeyDeviceForDebugFromApp({ app, deviceId });
       if (!ok) {
         return { ok: false, error: 'DEVICE_NOT_FOUND' };
       }

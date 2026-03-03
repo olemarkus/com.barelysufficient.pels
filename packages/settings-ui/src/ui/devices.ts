@@ -1,6 +1,12 @@
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types';
 import { deviceList, emptyState, refreshButton } from './dom';
-import { getSetting, pollSetting, setSetting } from './homey';
+import {
+  SETTINGS_UI_DEVICES_PATH,
+  SETTINGS_UI_PLAN_PATH,
+  SETTINGS_UI_REFRESH_DEVICES_PATH,
+  type SettingsUiDevicesPayload,
+} from '../../../contracts/src/settingsUiApi';
+import { callApi, getApiReadModel, invalidateApiCache, primeApiCache } from './homey';
 import { showToast, showToastError } from './toast';
 import { resolveManagedState, state } from './state';
 import { renderPriorities } from './modes';
@@ -15,12 +21,9 @@ import {
   supportsTemperatureDevice,
 } from './deviceUtils';
 
-const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
-  const snapshot = await getSetting('target_devices_snapshot');
-  if (!Array.isArray(snapshot)) {
-    return [];
-  }
-  return snapshot as TargetDeviceSnapshot[];
+export const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
+  const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
+  return Array.isArray(payload?.devices) ? payload.devices : [];
 };
 
 const DEVICE_CLASS_LABELS: Record<string, string> = {
@@ -303,10 +306,15 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
   setBusy(true);
   const shouldRender = options?.render ?? true;
   try {
-    await setSetting('refresh_target_devices_snapshot', Date.now());
-    await pollSetting('target_devices_snapshot', 10, 300);
+    const response = await callApi<SettingsUiDevicesPayload>('POST', SETTINGS_UI_REFRESH_DEVICES_PATH, {});
+    const hasDevices = Array.isArray(response?.devices);
+    if (hasDevices) {
+      primeApiCache(SETTINGS_UI_DEVICES_PATH, { devices: response.devices });
+    } else {
+      invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+    }
 
-    const devices = await getTargetDevices();
+    const devices = hasDevices ? response.devices : await getTargetDevices();
     state.latestDevices = devices;
     if (shouldRender) {
       renderDevices(devices);
@@ -315,6 +323,7 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
     }
     const devicesUpdated = new CustomEvent('devices-updated', { detail: { devices } });
     document.dispatchEvent(devicesUpdated);
+    invalidateApiCache(SETTINGS_UI_PLAN_PATH);
     await refreshPlan();
   } catch (error) {
     await logSettingsError('Failed to refresh devices', error, 'refreshDevices');

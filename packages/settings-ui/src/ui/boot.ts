@@ -24,9 +24,29 @@ import {
   capacityDryRunInput,
   priorityForm,
 } from './dom';
-import { getHomeyClient, setSetting, waitForHomey } from './homey';
+import {
+  SETTINGS_UI_BOOTSTRAP_PATH,
+  SETTINGS_UI_DEVICES_PATH,
+  SETTINGS_UI_PLAN_PATH,
+  SETTINGS_UI_POWER_PATH,
+  SETTINGS_UI_PRICES_PATH,
+  SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
+  SETTINGS_UI_REFRESH_PRICES_PATH,
+  type SettingsUiBootstrap,
+  type SettingsUiPricesPayload,
+} from '../../../contracts/src/settingsUiApi';
+import {
+  applySettingsPatch,
+  callApi,
+  getHomeyClient,
+  invalidateApiCache,
+  invalidateSettingCache,
+  primeApiCache,
+  setSetting,
+  waitForHomey,
+} from './homey';
 import { showToast, showToastError } from './toast';
-import { refreshDevices, renderDevices } from './devices';
+import { getTargetDevices, refreshDevices, renderDevices } from './devices';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
 import {
@@ -81,6 +101,12 @@ import {
 } from './advanced';
 import { state } from './state';
 import { flushSettingsLogs, logSettingsError, logSettingsWarn } from './logging';
+import {
+  markSettingsUi,
+  markSettingsUiReady,
+  measureSettingsUi,
+  resetSettingsUiPerf,
+} from './perf';
 import { initTooltips } from './tooltips';
 import { initDebouncedSaveFlush } from './utils';
 import { handleResetStats } from './resetStats';
@@ -118,14 +144,6 @@ const showTab = (tabId: string) => {
   }
 };
 
-const refreshPlanIfVisible = () => {
-  const overviewPanel = document.querySelector('#overview-panel');
-  if (!overviewPanel || overviewPanel.classList.contains('hidden')) return;
-  refreshPlan().catch((error) => {
-    void logSettingsError('Failed to refresh plan', error, 'settings.set');
-  });
-};
-
 const refreshPricesIfVisible = () => {
   const pricesPanel = document.querySelector('#price-panel');
   if (!pricesPanel || pricesPanel.classList.contains('hidden')) return;
@@ -147,6 +165,7 @@ const initRealtimeListeners = () => {
   if (!homey || typeof homey.on !== 'function') return;
 
   homey.on('plan_updated', (plan) => {
+    primeApiCache(SETTINGS_UI_PLAN_PATH, { plan });
     const overviewPanel = document.querySelector('#overview-panel');
     if (overviewPanel && !overviewPanel.classList.contains('hidden')) {
       renderPlan(plan as PlanSnapshot | null);
@@ -154,6 +173,7 @@ const initRealtimeListeners = () => {
   });
 
   homey.on('prices_updated', () => {
+    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
     const pricesPanel = document.querySelector('#price-panel');
     if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
       refreshPrices().catch((error) => {
@@ -183,7 +203,16 @@ const initRealtimeListeners = () => {
   ]);
 
   const capacitySettingsKeys = new Set([CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]);
-  const priceRefreshKeys = new Set([COMBINED_PRICES, 'electricity_prices']);
+  const priceRefreshKeys = new Set([
+    COMBINED_PRICES,
+    'electricity_prices',
+    'flow_prices_today',
+    'flow_prices_tomorrow',
+    'homey_prices_today',
+    'homey_prices_tomorrow',
+    'homey_prices_currency',
+    'nettleie_data',
+  ]);
   const deviceControlKeys = new Set(['managed_devices', 'controllable_devices']);
   const planRefreshKeys = new Set(['capacity_priorities', 'mode_device_targets', OPERATING_MODE_SETTING]);
   const dailyBudgetTuningKeys = new Set([
@@ -210,6 +239,8 @@ const initRealtimeListeners = () => {
   };
 
   const handleSettingsSet = (key: string) => {
+    invalidateSettingCache(key);
+
     if (capacitySettingsKeys.has(key)) {
       loadCapacitySettings().catch((error) => {
         void logSettingsError('Failed to load capacity settings', error, 'settings.set');
@@ -217,10 +248,29 @@ const initRealtimeListeners = () => {
     }
 
     if (key === 'device_plan_snapshot') {
-      refreshPlanIfVisible();
+      invalidateApiCache(SETTINGS_UI_PLAN_PATH);
+      refreshPlan().catch((error) => {
+        void logSettingsError('Failed to refresh plan', error, 'settings.set');
+      });
+    }
+
+    if (key === 'target_devices_snapshot') {
+      invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+      getTargetDevices()
+        .then((devices) => {
+          state.latestDevices = devices;
+          renderPriorities(devices);
+          renderDevices(devices);
+          renderPriceOptimization(devices);
+          document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
+        })
+        .catch((error) => {
+          void logSettingsError('Failed to refresh devices', error, 'settings.set');
+        });
     }
 
     if (priceRefreshKeys.has(key)) {
+      invalidateApiCache(SETTINGS_UI_PRICES_PATH);
       refreshPricesIfVisible();
     }
 
@@ -241,7 +291,10 @@ const initRealtimeListeners = () => {
     }
 
     if (planRefreshKeys.has(key) || deviceControlKeys.has(key)) {
-      refreshPlanIfVisible();
+      invalidateApiCache(SETTINGS_UI_PLAN_PATH);
+      refreshPlan().catch((error) => {
+        void logSettingsError('Failed to refresh plan', error, 'settings.set');
+      });
     }
 
     if (key === OVERSHOOT_BEHAVIORS) {
@@ -263,10 +316,18 @@ const initRealtimeListeners = () => {
     }
 
     if (key === 'power_tracker_state') {
+      invalidateApiCache(SETTINGS_UI_POWER_PATH);
       refreshPowerData().catch((error) => {
         void logSettingsError('Failed to refresh power data', error, 'settings.set');
       });
       refreshDailyBudgetIfVisible();
+    }
+
+    if (key === 'pels_status' || key === 'app_heartbeat') {
+      invalidateApiCache(SETTINGS_UI_POWER_PATH);
+      loadStaleDataStatus().catch((error) => {
+        void logSettingsError('Failed to refresh stale data status', error, 'settings.set');
+      });
     }
 
     handleDailyBudgetSettingsSet(key);
@@ -344,7 +405,8 @@ const initPriceHandlers = () => {
   priceSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
   priceRefreshButton?.addEventListener('click', async () => {
     try {
-      await setSetting('refresh_spot_prices', Date.now());
+      const response = await callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_PRICES_PATH, {});
+      primeApiCache(SETTINGS_UI_PRICES_PATH, response);
       await refreshPrices();
     } catch (error) {
       await logSettingsError('Failed to refresh spot prices', error, 'priceRefreshButton');
@@ -382,7 +444,8 @@ const initGridTariffHandlers = () => {
   });
   gridTariffRefreshButton?.addEventListener('click', async () => {
     try {
-      await setSetting('refresh_nettleie', Date.now());
+      const response = await callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH, {});
+      primeApiCache(SETTINGS_UI_PRICES_PATH, response);
       await refreshGridTariff();
     } catch (error) {
       await logSettingsError('Failed to refresh grid tariffs', error, 'gridTariffRefreshButton');
@@ -440,9 +503,28 @@ const initAdvancedHandlers = () => {
   initDailyBudgetTuningHandlers();
 };
 
-const loadInitialData = async () => {
-  // Phase 1: Refresh devices (needed for rendering)
-  await refreshDevices({ render: false });
+const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
+  try {
+    const bootstrap = await callApi<SettingsUiBootstrap>('GET', SETTINGS_UI_BOOTSTRAP_PATH);
+    if (!bootstrap || typeof bootstrap !== 'object') {
+      return null;
+    }
+    if (bootstrap?.settings && typeof bootstrap.settings === 'object') {
+      applySettingsPatch(bootstrap.settings);
+    }
+    primeApiCache(SETTINGS_UI_DEVICES_PATH, { devices: bootstrap.devices ?? [] });
+    primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: bootstrap.plan ?? null });
+    primeApiCache(SETTINGS_UI_POWER_PATH, bootstrap.power);
+    primeApiCache(SETTINGS_UI_PRICES_PATH, bootstrap.prices);
+    return bootstrap;
+  } catch {
+    return null;
+  }
+};
+
+const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
+  // Phase 1: Load the device read model without forcing a live refresh during boot.
+  state.latestDevices = await getTargetDevices();
 
   // Phase 2: Load mode/priorities FIRST to populate managedMap before any rendering
   // This prevents the race condition where users see empty checkboxes
@@ -473,7 +555,7 @@ const loadInitialData = async () => {
   await refreshAdvancedDeviceLogger();
   await refreshPrices();
   await refreshGridTariff();
-  await refreshDailyBudgetPlan();
+  await refreshDailyBudgetPlan(bootstrap?.dailyBudget);
 
   // Phase 5: Mark initial load complete - enables save operations
   state.initialLoadComplete = true;
@@ -489,6 +571,8 @@ const loadInitialData = async () => {
 };
 
 export const boot = async () => {
+  resetSettingsUiPerf();
+  markSettingsUi('boot:start');
   try {
     const found = await waitForHomey(200, 100);
     if (!found) {
@@ -500,6 +584,9 @@ export const boot = async () => {
 
     await found.ready();
     await flushSettingsLogs();
+    markSettingsUi('boot:homey-ready');
+    const bootstrap = await loadBootstrapData();
+    markSettingsUi('boot:bootstrap-loaded');
 
     initTooltips();
     initDebouncedSaveFlush();
@@ -515,8 +602,16 @@ export const boot = async () => {
     initGridTariffHandlers();
     initDebugLoggingCheckboxes();
     initAdvancedHandlers();
+    markSettingsUi('boot:handlers-ready');
 
-    await loadInitialData();
+    await loadInitialData(bootstrap);
+    markSettingsUi('boot:data-loaded');
+    measureSettingsUi('boot:homey-ready', 'boot:start', 'boot:homey-ready');
+    measureSettingsUi('boot:bootstrap', 'boot:homey-ready', 'boot:bootstrap-loaded');
+    measureSettingsUi('boot:handlers', 'boot:bootstrap-loaded', 'boot:handlers-ready');
+    measureSettingsUi('boot:data-load', 'boot:handlers-ready', 'boot:data-loaded');
+    measureSettingsUi('boot:total', 'boot:start', 'boot:data-loaded');
+    markSettingsUiReady();
 
     setInterval(() => {
       const budgetPanel = document.querySelector('#budget-panel');

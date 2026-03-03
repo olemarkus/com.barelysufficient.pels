@@ -273,6 +273,7 @@
   };
 
   const combinedPrices = buildSampleCombinedPrices();
+  const dailyBudgetPayload = buildSampleDailyBudgetPayload();
 
   const settings = {
     // Devices
@@ -403,8 +404,58 @@
     debug_logging_enabled: false,
   };
 
+  const buildPowerPayload = () => ({
+    tracker: settings.power_tracker_state ?? null,
+    status: settings.pels_status ?? null,
+    heartbeat: typeof settings.app_heartbeat === 'number' ? settings.app_heartbeat : null,
+  });
+
+  const buildPricesPayload = () => ({
+    combinedPrices: settings.combined_prices ?? null,
+    electricityPrices: settings.electricity_prices ?? null,
+    priceArea: typeof settings.price_area === 'string' ? settings.price_area : null,
+    gridTariffData: settings.nettleie_data ?? null,
+    flowToday: settings.flow_prices_today ?? null,
+    flowTomorrow: settings.flow_prices_tomorrow ?? null,
+    homeyCurrency: typeof settings.homey_prices_currency === 'string' ? settings.homey_prices_currency : null,
+    homeyToday: settings.homey_prices_today ?? null,
+    homeyTomorrow: settings.homey_prices_tomorrow ?? null,
+  });
+
+  const buildBootstrapSettings = () => ({
+    capacity_limit_kw: settings.capacity_limit_kw,
+    capacity_margin_kw: settings.capacity_margin_kw,
+    capacity_dry_run: settings.capacity_dry_run,
+    capacity_priorities: settings.capacity_priorities,
+    mode_device_targets: settings.mode_device_targets,
+    operating_mode: settings.operating_mode,
+    controllable_devices: settings.controllable_devices,
+    managed_devices: settings.managed_devices,
+    mode_aliases: settings.mode_aliases,
+    overshoot_behaviors: settings.overshoot_behaviors,
+    price_optimization_settings: settings.price_optimization_settings,
+    price_optimization_enabled: settings.price_optimization_enabled,
+    price_scheme: settings.price_scheme,
+    norway_price_model: settings.norway_price_model,
+    price_area: settings.price_area,
+    provider_surcharge: settings.provider_surcharge,
+    price_threshold_percent: settings.price_threshold_percent,
+    price_min_diff_ore: settings.price_min_diff_ore,
+    nettleie_fylke: settings.nettleie_fylke,
+    nettleie_orgnr: settings.nettleie_orgnr,
+    nettleie_tariffgruppe: settings.nettleie_tariffgruppe,
+    daily_budget_enabled: settings.daily_budget_enabled,
+    daily_budget_kwh: settings.daily_budget_kwh,
+    daily_budget_price_shaping_enabled: settings.daily_budget_price_shaping_enabled,
+    daily_budget_controlled_weight: settings.daily_budget_controlled_weight,
+    daily_budget_price_flex_share: settings.daily_budget_price_flex_share,
+    daily_budget_breakdown_enabled: settings.daily_budget_breakdown_enabled,
+    debug_logging_topics: settings.debug_logging_topics,
+    debug_logging_enabled: settings.debug_logging_enabled,
+  });
+
   const apiHandlers = {
-    'GET /daily_budget': () => buildSampleDailyBudgetPayload(),
+    'GET /daily_budget': () => dailyBudgetPayload,
     'GET /homey_devices': () => {
       // Used by advanced device logger/cleanup.
       return [
@@ -414,6 +465,23 @@
         { id: 'dev_evcharger', name: 'EV Charger' },
       ];
     },
+    'GET /ui_bootstrap': () => ({
+      settings: buildBootstrapSettings(),
+      dailyBudget: dailyBudgetPayload,
+      devices: settings.target_devices_snapshot,
+      plan: settings.device_plan_snapshot,
+      power: buildPowerPayload(),
+      prices: buildPricesPayload(),
+    }),
+    'GET /ui_devices': () => ({
+      devices: settings.target_devices_snapshot,
+    }),
+    'GET /ui_plan': () => ({
+      plan: settings.device_plan_snapshot,
+    }),
+    'GET /ui_power': () => buildPowerPayload(),
+    'GET /ui_prices': () => buildPricesPayload(),
+    'POST /settings_ui_log': () => ({ ok: true }),
     'POST /log_homey_device': () => ({ ok: true }),
   };
 

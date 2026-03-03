@@ -1,3 +1,4 @@
+import type Homey from 'homey';
 import type { DeviceManager } from '../core/deviceManager';
 import type { HomeyDeviceLike } from '../utils/types';
 import { safeJsonStringify, sanitizeLogValue } from '../utils/logUtils';
@@ -196,6 +197,15 @@ export async function getHomeyDevicesForDebug(params: {
   return deviceManager.getDevicesForDebug();
 }
 
+export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<HomeyDeviceLike[]> {
+  const runtimeApp = app as Homey.App & { deviceManager?: DeviceManager };
+  if (!runtimeApp.deviceManager) return [];
+  return getHomeyDevicesForDebug({ deviceManager: runtimeApp.deviceManager }).catch((err) => {
+    runtimeApp.log?.('Failed to get Homey devices for debug', err);
+    return [];
+  });
+}
+
 export async function logHomeyDeviceForDebug(params: {
   deviceId: string;
   deviceManager: DeviceManager;
@@ -275,4 +285,19 @@ export async function logHomeyDeviceForDebug(params: {
   }
 
   return true;
+}
+
+export async function logHomeyDeviceForDebugFromApp(params: {
+  app: Homey.App;
+  deviceId: string;
+}): Promise<boolean> {
+  const { app, deviceId } = params;
+  const runtimeApp = app as Homey.App & { deviceManager?: DeviceManager };
+  if (!runtimeApp.deviceManager) return false;
+  return logHomeyDeviceForDebug({
+    deviceId,
+    deviceManager: runtimeApp.deviceManager,
+    log: (msg, payload) => runtimeApp.log?.(msg, payload),
+    error: (msg, err) => runtimeApp.error?.(msg, err),
+  });
 }
