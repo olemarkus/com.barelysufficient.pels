@@ -9,6 +9,7 @@ import { createPlanEngineState, PlanEngineState } from './planState';
 import {
   evaluateHeadroomForDevice,
   syncHeadroomCardState,
+  syncHeadroomCardTrackedUsage,
   type HeadroomCardDeviceLike,
   type HeadroomForDeviceDecision,
 } from './planHeadroomDevice';
@@ -112,6 +113,7 @@ export class PlanEngine {
   public evaluateHeadroomForDevice(params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;
+    device?: HeadroomCardDeviceLike;
     headroom: number;
     requiredKw: number;
     cleanupMissingDevices?: boolean;
@@ -120,6 +122,7 @@ export class PlanEngine {
       state: this.state,
       devices: params.devices,
       deviceId: params.deviceId,
+      device: params.device,
       headroom: params.headroom,
       requiredKw: params.requiredKw,
       cleanupMissingDevices: params.cleanupMissingDevices,
@@ -134,6 +137,17 @@ export class PlanEngine {
       state: this.state,
       devices: params.devices,
       cleanupMissingDevices: params.cleanupMissingDevices,
+    });
+  }
+
+  public syncHeadroomCardTrackedUsage(params: {
+    deviceId: string;
+    trackedKw: number;
+  }): boolean {
+    return syncHeadroomCardTrackedUsage({
+      state: this.state,
+      deviceId: params.deviceId,
+      trackedKw: params.trackedKw,
     });
   }
 

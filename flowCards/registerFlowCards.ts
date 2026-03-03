@@ -38,6 +38,7 @@ export type FlowCardDeps = {
   evaluateHeadroomForDevice: (params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;
+    device?: HeadroomCardDeviceLike;
     headroom: number;
     requiredKw: number;
     cleanupMissingDevices?: boolean;
@@ -397,6 +398,7 @@ async function checkHeadroomForDevice(
   const decision = deps.evaluateHeadroomForDevice({
     devices: snapshot,
     deviceId,
+    device: deviceSnap,
     headroom,
     requiredKw,
     cleanupMissingDevices: true,

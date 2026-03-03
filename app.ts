@@ -15,7 +15,7 @@ import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
 import { type DebugLoggingTopic } from './lib/utils/debugLogging';
 import { getAllModes as getAllModesHelper, getShedBehavior as getShedBehaviorHelper, resolveModeName as resolveModeNameHelper } from './lib/utils/capacityHelpers';
 import { OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
-import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
+import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
 import { resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi } from './lib/utils/homeyEnergy';
 import {
@@ -81,18 +81,12 @@ class PelsApp extends Homey.App {
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private heartbeatInterval?: ReturnType<typeof setInterval>;
-  private stopPerfLogging?: () => void;
-  private stopResourceWarningListeners?: () => void;
-  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
-    this.deviceManager.updateLocalSnapshot(deviceId, updates);
+  private stopPerfLogging?: () => void; private stopResourceWarningListeners?: () => void;
+  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void { this.deviceManager.updateLocalSnapshot(deviceId, updates); }
+  private setExpectedOverride(deviceId: string, kw: number): void {
+    this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() }; this.planService?.syncHeadroomCardTrackedUsage({ deviceId, trackedKw: kw });
   }
-  private setExpectedOverride(deviceId: string, kw: number): void { this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() }; }
-  private getHomeyEnergyApi(): HomeyEnergyApi | null {
-    const sdkEnergy = resolveHomeyEnergyApiFromSdk(this.homey);
-    if (sdkEnergy) return sdkEnergy;
-    const homeyApi = this.deviceManager?.getHomeyApi?.();
-    return resolveHomeyEnergyApiFromHomeyApi(homeyApi);
-  }
+  private getHomeyEnergyApi(): HomeyEnergyApi | null { return resolveHomeyEnergyApiFromSdk(this.homey) ?? resolveHomeyEnergyApiFromHomeyApi(this.deviceManager?.getHomeyApi?.()); }
   async onInit() {
     const deferStartupBootstrap = process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1';
     this.log('PELS has been initialized');
@@ -647,15 +641,8 @@ class PelsApp extends Homey.App {
   private getShedBehavior = (deviceId: string) => getShedBehaviorHelper(deviceId, this.shedBehaviors);
   private computeDynamicSoftLimit = () => this.planService.computeDynamicSoftLimit();
   private computeShortfallThreshold = () => this.planService.computeShortfallThreshold();
-  private handleShortfall = (deficitKw: number) => this.planService.handleShortfall(deficitKw);
-  private handleShortfallCleared = () => this.planService.handleShortfallCleared();
-  private evaluateHeadroomForDevice = (params: {
-    devices: HeadroomCardDeviceLike[];
-    deviceId: string;
-    headroom: number;
-    requiredKw: number;
-    cleanupMissingDevices?: boolean;
-  }): HeadroomForDeviceDecision | null => this.planService.evaluateHeadroomForDevice(params);
+  private handleShortfall = (deficitKw: number) => this.planService.handleShortfall(deficitKw); private handleShortfallCleared = () => this.planService.handleShortfallCleared();
+  private evaluateHeadroomForDevice = (params: Parameters<PlanService['evaluateHeadroomForDevice']>[0]): HeadroomForDeviceDecision | null => this.planService.evaluateHeadroomForDevice(params);
   public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
   private applySheddingToDevice = (deviceId: string, deviceName?: string, reason?: string) => this.planService.applySheddingToDevice(deviceId, deviceName, reason);
 }

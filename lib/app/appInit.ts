@@ -128,6 +128,7 @@ export type FlowCardInitApp = {
   evaluateHeadroomForDevice: (params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;
+    device?: HeadroomCardDeviceLike;
     headroom: number;
     requiredKw: number;
     cleanupMissingDevices?: boolean;

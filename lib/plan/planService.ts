@@ -101,6 +101,7 @@ export class PlanService {
   evaluateHeadroomForDevice(params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;
+    device?: HeadroomCardDeviceLike;
     headroom: number;
     requiredKw: number;
     cleanupMissingDevices?: boolean;
@@ -113,6 +114,13 @@ export class PlanService {
     cleanupMissingDevices?: boolean;
   }): boolean {
     return this.deps.planEngine.syncHeadroomCardState(params);
+  }
+
+  syncHeadroomCardTrackedUsage(params: {
+    deviceId: string;
+    trackedKw: number;
+  }): boolean {
+    return this.deps.planEngine.syncHeadroomCardTrackedUsage(params);
   }
 
   async rebuildPlanFromCache(reason = 'unspecified'): Promise<void> {

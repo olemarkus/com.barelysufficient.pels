@@ -299,7 +299,7 @@ export class PlanBuilder {
         state: this.state,
         devices: planDevices,
         nowTs,
-        cleanupMissingDevices: true,
+        cleanupMissingDevices: false,
       });
 
       return planDevices.map((device) => {
