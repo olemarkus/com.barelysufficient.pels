@@ -34,7 +34,6 @@ type HeadroomCooldownCandidate = {
 type HeadroomCardStateMaps = {
   lastObservedKw: Record<string, number>;
   cooldownUntilMs: Record<string, number>;
-  cooldownSource: Record<string, 'step_down'>;
   cooldownFromKw: Record<string, number>;
   cooldownToKw: Record<string, number>;
 };
@@ -48,7 +47,6 @@ const isFiniteNumber = (value: unknown): value is number => (
 const getHeadroomCardStateMaps = (state: PlanEngineState): HeadroomCardStateMaps => ({
   lastObservedKw: state.headroomCardLastObservedKw,
   cooldownUntilMs: state.headroomCardCooldownUntilMs,
-  cooldownSource: state.headroomCardCooldownSource,
   cooldownFromKw: state.headroomCardCooldownFromKw,
   cooldownToKw: state.headroomCardCooldownToKw,
 });
@@ -56,12 +54,10 @@ const getHeadroomCardStateMaps = (state: PlanEngineState): HeadroomCardStateMaps
 const removeStepDownCooldown = (maps: HeadroomCardStateMaps, deviceId: string): void => {
   const {
     cooldownUntilMs,
-    cooldownSource,
     cooldownFromKw,
     cooldownToKw,
   } = maps;
   delete cooldownUntilMs[deviceId];
-  delete cooldownSource[deviceId];
   delete cooldownFromKw[deviceId];
   delete cooldownToKw[deviceId];
 };
@@ -99,7 +95,6 @@ const getStepDownCooldown = (
 const collectTrackedDeviceIds = (maps: HeadroomCardStateMaps): Set<string> => new Set([
   ...Object.keys(maps.lastObservedKw),
   ...Object.keys(maps.cooldownUntilMs),
-  ...Object.keys(maps.cooldownSource),
   ...Object.keys(maps.cooldownFromKw),
   ...Object.keys(maps.cooldownToKw),
 ]);
@@ -139,6 +134,37 @@ const updateHeadroomCardLastObserved = (
   lastObservedKw[deviceId] = trackedKw;
 };
 
+const syncHeadroomCardTrackedKw = (params: {
+  maps: HeadroomCardStateMaps;
+  deviceId: string;
+  trackedKw: number;
+  nowTs: number;
+}): boolean => {
+  const {
+    maps,
+    deviceId,
+    trackedKw,
+    nowTs,
+  } = params;
+  const previousTrackedKw = maps.lastObservedKw[deviceId];
+  const expiredChanged = clearExpiredStepDownCooldown(maps, deviceId, nowTs);
+
+  if (!isFiniteNumber(previousTrackedKw)) {
+    updateHeadroomCardLastObserved(maps, deviceId, trackedKw);
+    return expiredChanged;
+  }
+
+  const stepDownChanged = maybeStartStepDownCooldown({
+    maps,
+    deviceId,
+    previousTrackedKw,
+    trackedKw,
+    nowTs,
+  });
+  updateHeadroomCardLastObserved(maps, deviceId, trackedKw);
+  return expiredChanged || stepDownChanged;
+};
+
 const maybeStartStepDownCooldown = (params: {
   maps: HeadroomCardStateMaps;
   deviceId: string;
@@ -157,14 +183,12 @@ const maybeStartStepDownCooldown = (params: {
 
   const {
     cooldownUntilMs,
-    cooldownSource,
     cooldownFromKw,
     cooldownToKw,
   } = maps;
   const nextUntilMs = nowTs + SHED_COOLDOWN_MS;
   if (
     cooldownUntilMs[deviceId] === nextUntilMs
-    && cooldownSource[deviceId] === 'step_down'
     && cooldownFromKw[deviceId] === previousTrackedKw
     && cooldownToKw[deviceId] === trackedKw
   ) {
@@ -172,7 +196,6 @@ const maybeStartStepDownCooldown = (params: {
   }
 
   cooldownUntilMs[deviceId] = nextUntilMs;
-  cooldownSource[deviceId] = 'step_down';
   cooldownFromKw[deviceId] = previousTrackedKw;
   cooldownToKw[deviceId] = trackedKw;
   return true;
@@ -190,23 +213,12 @@ const syncHeadroomCardDevice = (params: {
   } = params;
   const deviceId = device.id;
   const trackedKw = resolveTrackedHeadroomDeviceKw(device);
-  const previousTrackedKw = maps.lastObservedKw[deviceId];
-  const expiredChanged = clearExpiredStepDownCooldown(maps, deviceId, nowTs);
-
-  if (!isFiniteNumber(previousTrackedKw)) {
-    updateHeadroomCardLastObserved(maps, deviceId, trackedKw);
-    return expiredChanged;
-  }
-
-  const stepDownChanged = maybeStartStepDownCooldown({
+  return syncHeadroomCardTrackedKw({
     maps,
     deviceId,
-    previousTrackedKw,
     trackedKw,
     nowTs,
   });
-  updateHeadroomCardLastObserved(maps, deviceId, trackedKw);
-  return expiredChanged || stepDownChanged;
 };
 
 const getPelsCooldown = (
@@ -296,6 +308,27 @@ export const syncHeadroomCardState = (params: {
   return stateChanged;
 };
 
+export const syncHeadroomCardTrackedUsage = (params: {
+  state: PlanEngineState;
+  deviceId: string;
+  trackedKw: number;
+  nowTs?: number;
+}): boolean => {
+  const {
+    state,
+    deviceId,
+    trackedKw,
+  } = params;
+  const nowTs = params.nowTs ?? Date.now();
+  const maps = getHeadroomCardStateMaps(state);
+  return syncHeadroomCardTrackedKw({
+    maps,
+    deviceId,
+    trackedKw,
+    nowTs,
+  });
+};
+
 export const resolveHeadroomCardCooldown = (params: {
   state: PlanEngineState;
   deviceId: string;
@@ -319,6 +352,7 @@ export const evaluateHeadroomForDevice = (params: {
   state: PlanEngineState;
   devices: HeadroomCardDeviceLike[];
   deviceId: string;
+  device?: HeadroomCardDeviceLike;
   headroom: number;
   requiredKw: number;
   nowTs?: number;
@@ -328,6 +362,7 @@ export const evaluateHeadroomForDevice = (params: {
     state,
     devices,
     deviceId,
+    device: providedDevice,
     headroom,
     requiredKw,
     cleanupMissingDevices = false,
@@ -339,7 +374,7 @@ export const evaluateHeadroomForDevice = (params: {
     nowTs,
     cleanupMissingDevices,
   });
-  const device = devices.find((entry) => entry.id === deviceId);
+  const device = providedDevice ?? devices.find((entry) => entry.id === deviceId);
   if (!device) return null;
 
   const observedKw = resolveObservedHeadroomDeviceKw(device);

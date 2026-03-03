@@ -18,8 +18,8 @@ describe('Headroom for device condition', () => {
 
   afterEach(async () => {
     await cleanupApps();
-    jest.useRealTimers();
     jest.clearAllTimers();
+    jest.useRealTimers();
   });
 
   it('returns true only when headroom plus device estimate meets the required kW', async () => {

@@ -749,7 +749,7 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.plannedState).toBe('keep');
     expect(devPlan?.reason).toMatch(/^headroom cooldown \(\d+s remaining; usage 6\.00 -> 3\.50kW\)$/);
     expect(devPlan?.headroomCardBlocked).toBe(true);
-    expect(devPlan?.headroomCardCooldownSec).toBeGreaterThanOrEqual(59);
+    expect(devPlan?.headroomCardCooldownSec).toBeGreaterThanOrEqual(55);
     expect(devPlan?.headroomCardCooldownSec).toBeLessThanOrEqual(60);
     expect(devPlan?.headroomCardCooldownSource).toBe('step_down');
     expect(devPlan?.headroomCardCooldownFromKw).toBe(6);

@@ -5,7 +5,6 @@ export type PlanEngineState = {
   lastDeviceRestoreMs: Record<string, number>;
   headroomCardLastObservedKw: Record<string, number>;
   headroomCardCooldownUntilMs: Record<string, number>;
-  headroomCardCooldownSource: Record<string, 'step_down'>;
   headroomCardCooldownFromKw: Record<string, number>;
   headroomCardCooldownToKw: Record<string, number>;
   pendingSheds: Set<string>;
@@ -33,7 +32,6 @@ export function createPlanEngineState(): PlanEngineState {
     lastDeviceRestoreMs: {},
     headroomCardLastObservedKw: {},
     headroomCardCooldownUntilMs: {},
-    headroomCardCooldownSource: {},
     headroomCardCooldownFromKw: {},
     headroomCardCooldownToKw: {},
     pendingSheds: new Set<string>(),
