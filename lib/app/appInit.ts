@@ -16,6 +16,7 @@ import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { COMBINED_PRICES } from '../utils/settingsKeys';
 import type { CapacitySettingsSnapshot } from './appSettingsHelpers';
 import { PriceCoordinator } from '../price/priceCoordinator';
+import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
 
 export type { CapacitySettingsSnapshot };
 
@@ -124,6 +125,13 @@ export type FlowCardInitApp = {
     missingHours: number[];
   };
   planService: PlanService;
+  evaluateHeadroomForDevice: (params: {
+    devices: HeadroomCardDeviceLike[];
+    deviceId: string;
+    headroom: number;
+    requiredKw: number;
+    cleanupMissingDevices?: boolean;
+  }) => HeadroomForDeviceDecision | null;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
   log: (...args: unknown[]) => void;
@@ -148,6 +156,7 @@ export function registerAppFlowCards(app: FlowCardInitApp): void {
     setExpectedOverride: (deviceId, kw) => app.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => app.storeFlowPriceData(kind, raw),
     rebuildPlan: () => app.planService.rebuildPlanFromCache('flow_card'),
+    evaluateHeadroomForDevice: (params) => app.evaluateHeadroomForDevice(params),
     loadDailyBudgetSettings: () => app.loadDailyBudgetSettings(),
     updateDailyBudgetState: (options) => app.updateDailyBudgetState(options),
     log: (...args: unknown[]) => app.log(...args),

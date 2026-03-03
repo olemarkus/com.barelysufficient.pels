@@ -6,6 +6,12 @@ import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
 import { PlanExecutor, PlanExecutorDeps } from './planExecutor';
 import { createPlanEngineState, PlanEngineState } from './planState';
+import {
+  evaluateHeadroomForDevice,
+  syncHeadroomCardState,
+  type HeadroomCardDeviceLike,
+  type HeadroomForDeviceDecision,
+} from './planHeadroomDevice';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 
 export type PlanEngineDeps = {
@@ -101,6 +107,34 @@ export class PlanEngine {
 
   public async applyPlanActions(plan: DevicePlan): Promise<void> {
     return this.executor.applyPlanActions(plan);
+  }
+
+  public evaluateHeadroomForDevice(params: {
+    devices: HeadroomCardDeviceLike[];
+    deviceId: string;
+    headroom: number;
+    requiredKw: number;
+    cleanupMissingDevices?: boolean;
+  }): HeadroomForDeviceDecision | null {
+    return evaluateHeadroomForDevice({
+      state: this.state,
+      devices: params.devices,
+      deviceId: params.deviceId,
+      headroom: params.headroom,
+      requiredKw: params.requiredKw,
+      cleanupMissingDevices: params.cleanupMissingDevices,
+    });
+  }
+
+  public syncHeadroomCardState(params: {
+    devices: HeadroomCardDeviceLike[];
+    cleanupMissingDevices?: boolean;
+  }): boolean {
+    return syncHeadroomCardState({
+      state: this.state,
+      devices: params.devices,
+      cleanupMissingDevices: params.cleanupMissingDevices,
+    });
   }
 
   public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {

@@ -31,6 +31,12 @@ const getPowerText = () => {
   return powerLine?.querySelector('span:last-child')?.textContent?.trim();
 };
 
+const getStatusText = () => {
+  const lines = Array.from(document.querySelectorAll('.plan-meta-line'));
+  const statusLine = lines.find((line) => line.querySelector('.plan-label')?.textContent === 'Status');
+  return statusLine?.querySelector('span:last-child')?.textContent?.trim();
+};
+
 const getBadgeClassList = (deviceId: string): DOMTokenList | null => {
   const dot = document.querySelector(`[data-device-id="${deviceId}"] .plan-state-indicator`) as HTMLElement | null;
   if (!dot) return null;
@@ -234,6 +240,25 @@ describe('plan device state', () => {
     expect(getStateText()).toBe('Active (temperature-managed)');
     expect(getPowerText()).toBe('N/A');
     expect(getBadgeClassList('dev-temp-only')?.contains('cheap')).toBe(true);
+  });
+
+  it('renders headroom cooldown status text without changing the active state UI', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'EV Charger',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Active');
+    expect(getStatusText()).toBe('headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)');
+    expect(getBadgeClassList('dev-1')?.contains('cheap')).toBe(true);
   });
 });
 

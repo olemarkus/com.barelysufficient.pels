@@ -21,6 +21,11 @@ type PlanDeviceSnapshot = {
   currentTemperature?: number;
   shedAction?: 'turn_off' | 'set_temperature';
   shedTemperature?: number | null;
+  headroomCardBlocked?: boolean;
+  headroomCardCooldownSec?: number | null;
+  headroomCardCooldownSource?: 'step_down' | 'pels_shed' | 'pels_restore';
+  headroomCardCooldownFromKw?: number | null;
+  headroomCardCooldownToKw?: number | null;
 };
 
 type PlanSnapshot = {

@@ -711,6 +711,51 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.reason).not.toContain('cooldown');
   });
 
+  it('shows headroom cooldown on active devices after a meaningful step-down', async () => {
+    const dev1 = new MockDevice('dev-1', 'EV Charger', ['measure_power', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 1190);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    setManagedControllableDevices({ 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 10;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 10);
+    }
+
+    await (app as any).recordPowerSample(2000);
+    await flushPromises();
+
+    const runSetExpected = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
+    expect(runSetExpected).toBeDefined();
+
+    await expect(runSetExpected({ device: { id: 'dev-1' }, power_w: 6000 })).resolves.toBe(true);
+    await flushPromises();
+    await expect(runSetExpected({ device: { id: 'dev-1' }, power_w: 3500 })).resolves.toBe(true);
+    await flushPromises();
+
+    await (app as any).planService.rebuildPlanFromCache('headroom_step_down_test');
+    await flushPromises();
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('keep');
+    expect(devPlan?.reason).toMatch(/^headroom cooldown \(\d+s remaining; usage 6\.00 -> 3\.50kW\)$/);
+    expect(devPlan?.headroomCardBlocked).toBe(true);
+    expect(devPlan?.headroomCardCooldownSec).toBeGreaterThanOrEqual(59);
+    expect(devPlan?.headroomCardCooldownSec).toBeLessThanOrEqual(60);
+    expect(devPlan?.headroomCardCooldownSource).toBe('step_down');
+    expect(devPlan?.headroomCardCooldownFromKw).toBe(6);
+    expect(devPlan?.headroomCardCooldownToKw).toBe(3.5);
+  });
+
   it('marks off devices as staying off during cooldown with a short reason', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('measure_power', 0);
@@ -730,6 +775,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
     (app as any).planEngine.state.lastSheddingMs = Date.now(); // force cooldown window
+    (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
 
     await (app as any).recordPowerSample(1000);
 
@@ -737,6 +783,8 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.reason).toContain('cooldown (shedding');
+    expect(devPlan?.headroomCardBlocked).toBe(true);
+    expect(devPlan?.headroomCardCooldownSource).toBe('pels_shed');
   });
 
   it('does not start shedding cooldown when no devices can be shed', async () => {

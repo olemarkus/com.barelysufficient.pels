@@ -15,6 +15,7 @@ import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
 import { type DebugLoggingTopic } from './lib/utils/debugLogging';
 import { getAllModes as getAllModesHelper, getShedBehavior as getShedBehaviorHelper, resolveModeName as resolveModeNameHelper } from './lib/utils/capacityHelpers';
 import { OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
+import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
 import { resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi } from './lib/utils/homeyEnergy';
 import {
@@ -521,6 +522,7 @@ class PelsApp extends Homey.App {
       setExpectedOverride: (deviceId, kw) => this.setExpectedOverride(deviceId, kw),
       storeFlowPriceData: (kind, raw) => this.storeFlowPriceData(kind, raw),
       planService: this.planService,
+      evaluateHeadroomForDevice: (params) => this.evaluateHeadroomForDevice(params),
       loadDailyBudgetSettings: () => this.dailyBudgetService.loadSettings(),
       updateDailyBudgetState: (options) => this.dailyBudgetService.updateState(options),
       log: (...args: unknown[]) => this.log(...args),
@@ -588,6 +590,10 @@ class PelsApp extends Homey.App {
         this.logDebug('devices', 'Refreshing target devices snapshot');
         await this.deviceManager.refreshSnapshot({ includeLivePower: options.fast !== true });
         const snapshot = this.deviceManager.getSnapshot();
+        this.planService?.syncHeadroomCardState({
+          devices: snapshot,
+          cleanupMissingDevices: true,
+        });
         const existingSnapshot = this.homey.settings.get('target_devices_snapshot') as unknown;
         if (toStableFingerprint(existingSnapshot) !== toStableFingerprint(snapshot)) {
           this.homey.settings.set('target_devices_snapshot', snapshot);
@@ -635,6 +641,13 @@ class PelsApp extends Homey.App {
   private computeShortfallThreshold = () => this.planService.computeShortfallThreshold();
   private handleShortfall = (deficitKw: number) => this.planService.handleShortfall(deficitKw);
   private handleShortfallCleared = () => this.planService.handleShortfallCleared();
+  private evaluateHeadroomForDevice = (params: {
+    devices: HeadroomCardDeviceLike[];
+    deviceId: string;
+    headroom: number;
+    requiredKw: number;
+    cleanupMissingDevices?: boolean;
+  }): HeadroomForDeviceDecision | null => this.planService.evaluateHeadroomForDevice(params);
   public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
   private applySheddingToDevice = (deviceId: string, deviceName?: string, reason?: string) => this.planService.applySheddingToDevice(deviceId, deviceName, reason);
 }

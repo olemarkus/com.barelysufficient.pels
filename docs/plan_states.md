@@ -73,6 +73,9 @@ Parentheses indicate dynamic values.
 - shortfall (need XkW, headroom YkW)
 - cooldown (shedding, Ss remaining)
 - cooldown (restore, Ss remaining)
+- headroom cooldown (Ss remaining; usage X -> YkW)
+- headroom cooldown (Ss remaining; recent PELS shed)
+- headroom cooldown (Ss remaining; recent PELS restore)
 - swap pending
 - swap pending (NAME)
 - swapped out for NAME

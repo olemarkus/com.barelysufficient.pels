@@ -21,6 +21,7 @@ import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
 import type { PlanEngine } from './planEngine';
 import type { DevicePlan, PlanInputDevice } from './planTypes';
+import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './planHeadroomDevice';
 
 export type PlanServiceDeps = {
   homey: Homey.App['homey'];
@@ -90,6 +91,23 @@ export class PlanService {
 
   applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
     return this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
+  }
+
+  evaluateHeadroomForDevice(params: {
+    devices: HeadroomCardDeviceLike[];
+    deviceId: string;
+    headroom: number;
+    requiredKw: number;
+    cleanupMissingDevices?: boolean;
+  }): HeadroomForDeviceDecision | null {
+    return this.deps.planEngine.evaluateHeadroomForDevice(params);
+  }
+
+  syncHeadroomCardState(params: {
+    devices: HeadroomCardDeviceLike[];
+    cleanupMissingDevices?: boolean;
+  }): boolean {
+    return this.deps.planEngine.syncHeadroomCardState(params);
   }
 
   async rebuildPlanFromCache(reason = 'unspecified'): Promise<void> {

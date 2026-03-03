@@ -10,6 +10,11 @@ import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
 import { sumControlledUsageKw } from './planUsage';
 import {
+  formatHeadroomCooldownReason,
+  resolveHeadroomCardCooldown,
+  syncHeadroomCardState,
+} from './planHeadroomDevice';
+import {
   applyShedTemperatureHold,
   finalizePlanDevices,
   normalizeShedReasons,
@@ -145,6 +150,7 @@ export class PlanBuilder {
     planDevices = holdResult.planDevices;
 
     planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan);
+    planDevices = this.applyHeadroomCooldownOverlayWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
 
@@ -284,6 +290,58 @@ export class PlanBuilder {
     lastPlannedShedIds: Set<string>;
   } {
     return this.trackDuration('plan_finalize_ms', () => finalizePlanDevices(planDevices));
+  }
+
+  private applyHeadroomCooldownOverlayWithTiming(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
+    return this.trackDuration('plan_headroom_cooldown_ms', () => {
+      const nowTs = Date.now();
+      syncHeadroomCardState({
+        state: this.state,
+        devices: planDevices,
+        nowTs,
+        cleanupMissingDevices: true,
+      });
+
+      return planDevices.map((device) => {
+        const cooldown = resolveHeadroomCardCooldown({
+          state: this.state,
+          deviceId: device.id,
+          nowTs,
+        });
+        if (!cooldown) return device;
+
+        const nextDevice: DevicePlanDevice = {
+          ...device,
+          headroomCardBlocked: true,
+          headroomCardCooldownSec: cooldown.remainingSec,
+          headroomCardCooldownSource: cooldown.source,
+          headroomCardCooldownFromKw: cooldown.dropFromKw,
+          headroomCardCooldownToKw: cooldown.dropToKw,
+        };
+
+        if (!this.shouldOverrideReasonWithHeadroomCooldown(device)) {
+          return nextDevice;
+        }
+
+        return {
+          ...nextDevice,
+          reason: formatHeadroomCooldownReason({
+            source: cooldown.source,
+            remainingSec: cooldown.remainingSec,
+            dropFromKw: cooldown.dropFromKw,
+            dropToKw: cooldown.dropToKw,
+          }),
+        };
+      });
+    });
+  }
+
+  private shouldOverrideReasonWithHeadroomCooldown(device: DevicePlanDevice): boolean {
+    if (device.controllable === false) return false;
+    if (device.plannedState !== 'keep') return false;
+    if (device.currentState === 'off' || device.currentState === 'unknown') return false;
+    if (!device.reason) return true;
+    return device.reason === 'keep' || device.reason.startsWith('keep (');
   }
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {

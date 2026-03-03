@@ -136,8 +136,10 @@ Backward compatibility note:
 - Create a Flow condition using **Is there headroom for device?**
   - Device: pick the capacity-controlled device (e.g., charger)
   - Required kW: how much extra you want to draw
-- The card checks current headroom plus the device’s **expected** draw. Estimator order is: flow override → `settings.load` → measured peak from `measure_power`/`meter_power` (and Homey live `values.W`) → device Energy settings/metadata → conservative **1 kW fallback**.
+- The card checks current headroom plus the device’s **expected** draw. It also includes built-in hysteresis: after a meaningful step-down or a recent PELS shed/restore on that same device, the condition stays `false` for about 60 seconds before allowing another increase.
+- Estimator order is: flow override → `settings.load` → measured peak from `measure_power`/`meter_power` (and Homey live `values.W`) → device Energy settings/metadata → conservative **1 kW fallback**.
 - If `settings.load` is configured, the Flow action rejects manual overrides and `settings.load` is used directly.
+- This means you usually do not need separate Flow ladders just to hold back re-ramping after a device has recently reduced its draw.
 
 ### 3) Temporarily override expected power for a device
 - Use the **Set expected power for device** action to set a temporary expected draw (W).  
@@ -207,7 +209,7 @@ Only managed devices are listed; unmanaged load still contributes to the totals.
 | **Power** | Current → planned power state (on/off) |
 | **State** | Active, Restoring, Shed, or Capacity control off |
 | **Usage** | Current measured power and expected power. Expected power estimator order: flow override → `settings.load` → measured peak → device Energy settings/metadata → 1 kW fallback. |
-| **Status** | The reason for the current plan (or "Waiting for headroom") |
+| **Status** | The reason for the current plan (or "Waiting for headroom"). This also shows headroom-card cooldowns such as recent step-down hysteresis. |
 
 Click **Refresh plan** to recalculate.
 

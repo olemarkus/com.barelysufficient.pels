@@ -2,6 +2,7 @@ import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/
 import CapacityGuard from '../lib/core/capacityGuard';
 import { FlowHomeyLike, TargetDeviceSnapshot } from '../lib/utils/types';
 import { registerExpectedPowerCard } from './expectedPower';
+import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import {
   CAPACITY_LIMIT_KW,
   DAILY_BUDGET_ENABLED,
@@ -34,6 +35,13 @@ export type FlowCardDeps = {
     missingHours: number[];
   };
   rebuildPlan: () => void;
+  evaluateHeadroomForDevice: (params: {
+    devices: HeadroomCardDeviceLike[];
+    deviceId: string;
+    headroom: number;
+    requiredKw: number;
+    cleanupMissingDevices?: boolean;
+  }) => HeadroomForDeviceDecision | null;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
   log: (...args: unknown[]) => void;
@@ -384,22 +392,29 @@ async function checkHeadroomForDevice(
 
   const snapshot = await deps.getSnapshot();
   const deviceSnap = snapshot.find((d) => d.id === deviceId);
-  const deviceKw = deviceSnap?.measuredPowerKw ?? deviceSnap?.powerKw ?? 0;
+  if (!deviceSnap) return false;
 
-  const calculatedHeadroomForDevice = headroom + deviceKw;
-  const hasHeadroom = calculatedHeadroomForDevice >= requiredKw;
+  const decision = deps.evaluateHeadroomForDevice({
+    devices: snapshot,
+    deviceId,
+    headroom,
+    requiredKw,
+    cleanupMissingDevices: true,
+  });
+  if (!decision) return false;
+  if (decision.stateChanged) {
+    requestPlanRebuildFromFlow(deps, 'flow_headroom_cooldown');
+  }
   logHeadroomCheck({
     deps,
     capacityGuard,
     deviceSnap,
     deviceId,
-    deviceKw,
-    headroom,
     requiredKw,
-    hasHeadroom,
+    decision,
   });
 
-  return hasHeadroom;
+  return decision.allowed;
 }
 
 function logHeadroomCheck(params: {
@@ -407,34 +422,33 @@ function logHeadroomCheck(params: {
   capacityGuard: CapacityGuard;
   deviceSnap: TargetDeviceSnapshot | undefined;
   deviceId: string;
-  deviceKw: number;
-  headroom: number;
   requiredKw: number;
-  hasHeadroom: boolean;
+  decision: HeadroomForDeviceDecision;
 }): void {
   const {
     deps,
     capacityGuard,
     deviceSnap,
     deviceId,
-    deviceKw,
-    headroom,
     requiredKw,
-    hasHeadroom,
+    decision,
   } = params;
   const softLimit = capacityGuard.getSoftLimit();
   const currentPower = capacityGuard.getLastTotalPower();
   const deviceName = deviceSnap?.name || deviceId;
   const expectedPowerKwStr = deviceSnap?.expectedPowerKw !== undefined ? deviceSnap.expectedPowerKw.toFixed(2) : 'unknown';
   const sourceStr = deviceSnap?.expectedPowerSource ? ` (${deviceSnap.expectedPowerSource})` : '';
+  const cooldownStr = decision.cooldownSource && typeof decision.cooldownRemainingSec === 'number'
+    ? `, cooldown=${decision.cooldownSource} (${decision.cooldownRemainingSec}s remaining)`
+    : '';
 
   deps.logDebug(
     `Headroom check for device "${deviceName}": `
     + `soft limit=${softLimit.toFixed(2)}kW, `
     + `current power=${currentPower?.toFixed(2) ?? 'unknown'}kW, `
-    + `device consumption=${deviceKw.toFixed(2)}kW, `
+    + `device consumption=${decision.observedKw.toFixed(2)}kW, `
     + `expected power=${expectedPowerKwStr}kW${sourceStr}, `
-    + `headroom for device=${(headroom + deviceKw).toFixed(2)}kW `
-    + `(required=${requiredKw.toFixed(2)}kW) → ${hasHeadroom ? 'PASS' : 'FAIL'}`,
+    + `headroom for device=${decision.calculatedHeadroomForDeviceKw.toFixed(2)}kW `
+    + `(required=${requiredKw.toFixed(2)}kW)${cooldownStr} → ${decision.allowed ? 'PASS' : 'FAIL'}`,
   );
 }

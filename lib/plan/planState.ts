@@ -3,6 +3,11 @@ import { RESTORE_COOLDOWN_MS } from './planConstants';
 export type PlanEngineState = {
   lastDeviceShedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
+  headroomCardLastObservedKw: Record<string, number>;
+  headroomCardCooldownUntilMs: Record<string, number>;
+  headroomCardCooldownSource: Record<string, 'step_down'>;
+  headroomCardCooldownFromKw: Record<string, number>;
+  headroomCardCooldownToKw: Record<string, number>;
   pendingSheds: Set<string>;
   pendingRestores: Set<string>;
   lastSheddingMs: number | null;
@@ -26,6 +31,11 @@ export function createPlanEngineState(): PlanEngineState {
   return {
     lastDeviceShedMs: {},
     lastDeviceRestoreMs: {},
+    headroomCardLastObservedKw: {},
+    headroomCardCooldownUntilMs: {},
+    headroomCardCooldownSource: {},
+    headroomCardCooldownFromKw: {},
+    headroomCardCooldownToKw: {},
     pendingSheds: new Set<string>(),
     pendingRestores: new Set<string>(),
     lastSheddingMs: null,

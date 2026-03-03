@@ -115,11 +115,19 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 - Also applies after detecting overshoot conditions
 - Prevents oscillation when power measurements fluctuate
 
-### RESTORE_COOLDOWN (30 seconds)
+### RESTORE_COOLDOWN (60 seconds)
 
-- After restoring a device, wait 30 seconds for power measurements to stabilize
+- After restoring a device, wait 60 seconds for power measurements to stabilize
 - Only one device is restored per planning cycle
 - Prevents "restore avalanche" where multiple devices turn on simultaneously
+
+### Headroom Card Step-Down Cooldown (60 seconds)
+
+- The **"Is there headroom for device?"** Flow condition tracks the same device's **expected/usable** power estimate (prefers `expectedPowerKw` over raw `measuredPowerKw` when available)
+- If that tracked/expected usable draw drops by at least 0.15 kW, the condition stays `false` for 60 seconds before allowing another increase
+- Pure measurement-only dips that do not change the tracked/expected usable draw do **not** start this cooldown
+- The same card also respects recent same-device PELS shed/restore cooldowns
+- This is intended to absorb charger and water-heater step changes without forcing users to build manual hysteresis ladders in Homey flows
 
 ### Why These Timers Matter
 
@@ -227,10 +235,13 @@ Devices without any usable power estimate are listed for visibility and forced n
 The **"Is there headroom for device?"** Flow condition is intended for capacity-controlled devices such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
 
 - Current headroom (soft limit minus current load)
+- Same-device cooldown state after recent step-downs or recent PELS shed/restore events
 - Device's expected usage (estimator order: flow override → `settings.load` → measured peak from `measure_power`/`meter_power`/Homey live `values.W` → device Energy settings (`energy_value_on`/`energy_value_off`) → Homey Energy metadata (`usageOn-usageOff`, `usageOn`, `W`) → fallback **1 kW**). If `settings.load` is configured for a device, the Flow action will not set an override and `settings.load` is used directly.
 - A conservative fallback of **1 kW** when no estimate exists, to avoid over-promising capacity
 
 Using 0 kW as a fallback would risk reporting that capacity exists when the actual load is unknown, so PELS never reports headroom based on a zero/unknown estimate.
+
+When the card is blocked by that cooldown, the Overview status line shows a matching `headroom cooldown (...)` reason so the user can see why capacity increases are temporarily being held back.
 
 ### Thermostats and Water Heaters
 
