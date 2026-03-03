@@ -14,6 +14,8 @@ blob-report/
 .playwright/
 .playwright-cli/
 .playwright-mcp/
+node_modules/.bin/
+node_modules/@pels/
 
 .github/
 .githooks/

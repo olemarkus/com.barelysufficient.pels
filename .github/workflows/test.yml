@@ -30,6 +30,9 @@ jobs:
       - name: Pin npm 10
         run: npm install --global npm@10.9.4
 
+      - name: Install Homey CLI
+        run: npm install --global homey@3.12.2
+
       - name: Install dependencies
         run: npm ci
 
