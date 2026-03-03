@@ -40,6 +40,7 @@ export class PlanService {
   private lastActionPlanSignature = '';
   private lastDetailPlanSignature = '';
   private lastPlanMetaSignature = '';
+  private latestPlanSnapshot: DevicePlan | null = null;
   private lastPlanSnapshotWriteMs = 0;
   private hasPendingNonActionSnapshot = false;
   private pendingNonActionSnapshotReason: Exclude<PlanSnapshotWriteReason, 'action_changed'> = 'meta_only';
@@ -82,6 +83,10 @@ export class PlanService {
 
   getLastNotifiedPriceLevel(): PriceLevel {
     return this.planStatusWriter.getLastNotifiedPriceLevel();
+  }
+
+  getLatestPlanSnapshot(): DevicePlan | null {
+    return this.latestPlanSnapshot;
   }
 
   applyPlanActions(plan: DevicePlan): Promise<void> {
@@ -307,6 +312,7 @@ export class PlanService {
     outcome: PlanRebuildOutcome,
   ): Promise<void> {
     const { plan, buildMs } = await this.buildPlanForRebuild();
+    this.latestPlanSnapshot = plan;
     const { changes, changeMs } = this.measurePlanChanges(plan);
     const { snapshotMs, snapshotWriteMs } = this.measureSnapshotUpdate(plan, changes);
     const { statusMs, statusWriteMs } = this.measureStatusUpdate(plan, changes);

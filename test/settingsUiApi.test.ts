@@ -13,7 +13,7 @@ import {
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
 
 describe('settingsUiApi', () => {
-  const createHomey = () => {
+  const createHomey = (options: { latestPlanSnapshot?: Record<string, unknown> | null } = {}) => {
     const store = new Map<string, unknown>([
       ['target_devices_snapshot', [{ id: 'dev-1', name: 'Heater' }]],
       ['device_plan_snapshot', { devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] }],
@@ -70,6 +70,11 @@ describe('settingsUiApi', () => {
         powerTracker = value;
       },
     };
+    if (Object.prototype.hasOwnProperty.call(options, 'latestPlanSnapshot')) {
+      (app as typeof app & { getLatestPlanSnapshotForUi?: () => Record<string, unknown> | null }).getLatestPlanSnapshotForUi = () => (
+        options.latestPlanSnapshot ?? null
+      );
+    }
 
     return {
       settings: {
@@ -182,6 +187,19 @@ describe('settingsUiApi', () => {
       homeyCurrency: 'NOK',
       homeyToday: { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' },
       homeyTomorrow: { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' },
+    });
+  });
+
+  it('prefers the live in-memory plan snapshot over the persisted settings snapshot', () => {
+    const homey = createHomey({
+      latestPlanSnapshot: { devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }] },
+    });
+
+    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toEqual({
+      devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }],
+    });
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
+      plan: { devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }] },
     });
   });
 

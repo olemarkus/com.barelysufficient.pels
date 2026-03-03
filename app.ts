@@ -47,7 +47,7 @@ import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/
 import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
-const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
+const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 10 * 1000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
@@ -399,11 +399,21 @@ class PelsApp extends Homey.App {
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.capacitySettings.marginKw);
   }
-  private loadPriceOptimizationSettings(): void {
-    this.priceCoordinator.loadPriceOptimizationSettings();
-  }
-  public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null {
-    return this.dailyBudgetService.getUiPayload();
+  private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
+  public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }
+  public getLatestPlanSnapshotForUi(): DevicePlan | null { return this.planService?.getLatestPlanSnapshot() ?? null; }
+  private emitSettingsUiPowerUpdated(): void {
+    const api = this.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
+    const realtime = api?.realtime;
+    if (typeof realtime !== 'function') return;
+    const status = this.homey.settings.get('pels_status') as { lastPowerUpdate?: number | null; priceLevel?: string | null } | null;
+    const heartbeat = this.homey.settings.get('app_heartbeat') as unknown;
+    realtime.call(api, 'power_updated', {
+      tracker: this.powerTracker,
+      status: status && typeof status === 'object' ? status : null,
+      heartbeat: typeof heartbeat === 'number' ? heartbeat : null,
+    })
+      .catch((error: unknown) => this.error('Failed to emit power_updated event', error as Error));
   }
   private async updateOverheadToken(value?: number): Promise<void> {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;
@@ -423,7 +433,6 @@ class PelsApp extends Homey.App {
   private powerTrackerSaveTimer?: NodeJS.Timeout;
   private powerTrackerPruneInterval?: NodeJS.Timeout;
   private powerTrackerPruneTimer?: NodeJS.Timeout;
-
   private persistPowerTrackerState(): void {
     if (this.powerTrackerSaveTimer) {
       clearTimeout(this.powerTrackerSaveTimer);
@@ -435,7 +444,6 @@ class PelsApp extends Homey.App {
       error: (msg, err) => this.error(msg, err),
     });
   }
-
   private prunePowerTrackerHistory(): void {
     this.powerTracker = prunePowerTrackerHistoryForApp({
       powerTracker: this.powerTracker,
@@ -444,7 +452,6 @@ class PelsApp extends Homey.App {
     });
     this.persistPowerTrackerState();
   }
-
   private startPowerTrackerPruning(): void {
     this.powerTrackerPruneTimer = setTimeout(() => this.prunePowerTrackerHistory(), POWER_TRACKER_PRUNE_INITIAL_DELAY_MS);
     this.powerTrackerPruneInterval = setInterval(() => this.prunePowerTrackerHistory(), POWER_TRACKER_PRUNE_INTERVAL_MS);
@@ -453,7 +460,7 @@ class PelsApp extends Homey.App {
   private savePowerTracker(nextState: PowerTrackerState = this.powerTracker): void {
     this.powerTracker = nextState;
     this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now() });
-
+    this.emitSettingsUiPowerUpdated();
     if (!this.powerTrackerSaveTimer) {
       this.powerTrackerSaveTimer = setTimeout(() => this.persistPowerTrackerState(), POWER_TRACKER_PERSIST_DELAY_MS);
     }
@@ -461,6 +468,7 @@ class PelsApp extends Homey.App {
   public replacePowerTrackerForUi(nextState: PowerTrackerState): void {
     this.powerTracker = nextState;
     this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now(), forcePlanRebuild: true });
+    this.emitSettingsUiPowerUpdated();
     this.persistPowerTrackerState();
   }
 
