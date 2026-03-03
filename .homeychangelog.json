@@ -166,5 +166,8 @@
   },
   "1.15.2": {
     "en": "Fix shortfall checks during daily-limit shedding."
+  },
+  "1.16.0": {
+    "en": "This release refreshes the app’s UI and terminology to make PELS easier to understand and use. The settings pages have been polished across the Budget, Usage, and chart views with better mobile layouts, improved usage toggles and heatmap rendering, and more consistent visuals. The app and PELS Insights device also get updated icons, and several labels now use clearer wording such as headroom and current soft limit to better match what PELS is actually measuring and enforcing.\n\nDaily Budget behavior has also been made more robust and predictable. PELS now uses observed hourly usage patterns to keep daily plans within more realistic bounds, improving pacing, restores, and price shaping while reducing edge-case errors around rollover, stale plans, and cap blending. Startup and chart rendering performance have also been tightened up, so the app feels more responsive while keeping the same core control model."
   }
 }
