@@ -14,6 +14,7 @@ import {
   normalizeDebugLoggingTopics,
   type DebugLoggingTopic,
 } from '../../../shared-domain/src/utils/debugLogging';
+import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi';
 import { showToast } from './toast';
 import { pushSettingWriteIfChanged } from './settingWrites';
 
@@ -55,9 +56,18 @@ const updateStaleDataBanner = (lastPowerUpdate: number | null, lastHeartbeat: nu
   }
 };
 
+const resolveLastPowerUpdate = (power: SettingsUiPowerPayload): number | null => {
+  const trackerTimestamp = power.tracker?.lastTimestamp;
+  if (typeof trackerTimestamp === 'number' && Number.isFinite(trackerTimestamp)) {
+    return trackerTimestamp;
+  }
+  const statusTimestamp = power.status?.lastPowerUpdate;
+  return typeof statusTimestamp === 'number' && Number.isFinite(statusTimestamp) ? statusTimestamp : null;
+};
+
 export const loadStaleDataStatus = async () => {
-  const { status, heartbeat } = await getPowerReadModel();
-  updateStaleDataBanner(status?.lastPowerUpdate ?? null, heartbeat);
+  const power = await getPowerReadModel();
+  updateStaleDataBanner(resolveLastPowerUpdate(power), power.heartbeat);
 };
 
 export const loadCapacitySettings = async () => {
