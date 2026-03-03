@@ -48,6 +48,6 @@ jobs:
         with:
           name: playwright-report
           path: |
-            playwright-report
-            test-results
+            packages/settings-ui/playwright-report
+            packages/settings-ui/test-results
           retention-days: 7

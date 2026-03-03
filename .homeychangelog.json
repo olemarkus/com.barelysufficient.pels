@@ -163,5 +163,8 @@
   },
   "1.15.1": {
     "en": "Aligned capacity shortfall behavior with hourly hard-cap budget semantics: shortfall now only triggers when PELS projects that the hourly hard cap will be breached and no controllable devices are left to shed. Updated related Flow/capability wording and Insights messages to match, removed timeline shortfall notifications, and included documentation plus dependency/security maintenance updates."
+  },
+  "1.15.2": {
+    "en": "Fix shortfall checks during daily-limit shedding."
   }
 }

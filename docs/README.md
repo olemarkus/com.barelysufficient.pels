@@ -53,7 +53,8 @@ PELS is not yet published to the Homey App Store, so you need to install it via 
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18 or later)
+- [Node.js](https://nodejs.org/) (v22 or later)
+- npm 10.x
 - [Homey CLI](https://apps.developer.homey.app/the-basics/getting-started/homey-cli) installed globally:
   ```bash
   npm install -g homey
@@ -70,14 +71,14 @@ cd com.barelysufficient.pels
 # Install dependencies
 npm install
 
-# Build the settings script
-npm run build:settings
-
 # Log in to your Homey (first time only)
 homey login
 
+# Validate the app bundle (recommended)
+npm run validate
+
 # Install the app on your Homey
-npm run install
+npm run install-app
 ```
 
 > **Note:** The app runs locally on your Homey Pro. After installation, you can access the settings through the Homey app under **Apps** → **PELS** → **Settings**.
