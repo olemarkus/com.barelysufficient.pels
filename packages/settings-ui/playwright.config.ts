@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 const PORT = Number(process.env.PELS_E2E_PORT ?? 4173);
 const BASE_URL = process.env.PELS_E2E_BASE_URL ?? `http://127.0.0.1:${PORT}`;
+const SHOULD_BUILD = process.env.PELS_E2E_BUILD !== '0';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -26,7 +27,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run build && node scripts/static-server.mjs --port ${PORT}`,
+    command: SHOULD_BUILD
+      ? `npm run build && node scripts/static-server.mjs --port ${PORT}`
+      : `node scripts/static-server.mjs --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
   },
