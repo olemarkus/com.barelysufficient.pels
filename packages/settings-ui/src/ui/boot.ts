@@ -1,7 +1,6 @@
 import {
   emptyState,
   tabs,
-  panels,
   refreshButton,
   planRefreshButton,
   priceSettingsForm,
@@ -38,9 +37,6 @@ import {
 import {
   applySettingsPatch,
   callApi,
-  getHomeyClient,
-  invalidateApiCache,
-  invalidateSettingCache,
   primeApiCache,
   setSetting,
   waitForHomey,
@@ -50,24 +46,12 @@ import { getTargetDevices, refreshDevices, renderDevices } from './devices';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
 import {
-  CAPACITY_DRY_RUN,
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
-  COMBINED_PRICES,
-  DAILY_BUDGET_BREAKDOWN_ENABLED,
-  DAILY_BUDGET_CONTROLLED_WEIGHT,
-  DAILY_BUDGET_PRICE_FLEX_SHARE,
   DEBUG_LOGGING_TOPICS,
-  NORWAY_PRICE_MODEL,
-  OPERATING_MODE_SETTING,
-  OVERSHOOT_BEHAVIORS,
   PRICE_OPTIMIZATION_ENABLED,
-  PRICE_SCHEME,
 } from '../../../contracts/src/settingsKeys';
 import {
   initModeHandlers,
   loadModeAndPriorities,
-  refreshActiveMode,
   renderModeOptions,
   renderPriorities,
 } from './modes';
@@ -91,7 +75,6 @@ import {
   initDailyBudgetTuningHandlers,
   loadDailyBudgetTuningSettings,
 } from './dailyBudgetTuning';
-import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
 import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail';
 import {
   initAdvancedDeviceCleanupHandlers,
@@ -111,236 +94,12 @@ import { initTooltips } from './tooltips';
 import { initDebouncedSaveFlush } from './utils';
 import { handleResetStats } from './resetStats';
 import { createCheckboxField } from './components';
-
-const showTab = (tabId: string) => {
-  tabs.forEach((tab) => {
-    const isActive = tab.dataset.tab === tabId;
-    tab.classList.toggle('active', isActive);
-    tab.setAttribute('aria-selected', String(isActive));
-  });
-  panels.forEach((panel) => {
-    panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
-  });
-  if (tabId === 'overview') {
-    refreshPlan().catch((error) => {
-      void logSettingsError('Failed to refresh plan', error, 'showTab');
-    });
-  }
-  if (tabId === 'price') {
-    refreshPrices().catch((error) => {
-      void logSettingsError('Failed to refresh prices', error, 'showTab');
-    });
-  }
-  if (tabId === 'usage') {
-    refreshPowerData().catch((error) => {
-      void logSettingsError('Failed to refresh power data', error, 'showTab');
-      void showToastError(error, 'Failed to refresh power data.');
-    });
-  }
-  if (tabId === 'budget') {
-    refreshDailyBudgetPlan().catch((error) => {
-      void logSettingsError('Failed to refresh daily budget', error, 'showTab');
-    });
-  }
-};
-
-const refreshPricesIfVisible = () => {
-  const pricesPanel = document.querySelector('#price-panel');
-  if (!pricesPanel || pricesPanel.classList.contains('hidden')) return;
-  refreshPrices().catch((error) => {
-    void logSettingsError('Failed to refresh prices', error, 'settings.set');
-  });
-};
-
-const refreshDailyBudgetIfVisible = () => {
-  const budgetPanel = document.querySelector('#budget-panel');
-  if (!budgetPanel || budgetPanel.classList.contains('hidden')) return;
-  refreshDailyBudgetPlan().catch((error) => {
-    void logSettingsError('Failed to refresh daily budget', error, 'settings.set');
-  });
-};
-
-const initRealtimeListeners = () => {
-  const homey = getHomeyClient();
-  if (!homey || typeof homey.on !== 'function') return;
-
-  homey.on('plan_updated', (plan) => {
-    primeApiCache(SETTINGS_UI_PLAN_PATH, { plan });
-    const overviewPanel = document.querySelector('#overview-panel');
-    if (overviewPanel && !overviewPanel.classList.contains('hidden')) {
-      renderPlan(plan as PlanSnapshot | null);
-    }
-  });
-
-  homey.on('prices_updated', () => {
-    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
-    const pricesPanel = document.querySelector('#price-panel');
-    if (pricesPanel && !pricesPanel.classList.contains('hidden')) {
-      refreshPrices().catch((error) => {
-        void logSettingsError('Failed to refresh prices', error, 'realtime prices_updated');
-      });
-    }
-  });
-
-  const dailyBudgetRefreshKeys = new Set([
-    'daily_budget_enabled',
-    'daily_budget_kwh',
-    'daily_budget_price_shaping_enabled',
-    'daily_budget_reset',
-    COMBINED_PRICES,
-    PRICE_OPTIMIZATION_ENABLED,
-    CAPACITY_LIMIT_KW,
-    CAPACITY_MARGIN_KW,
-    DAILY_BUDGET_CONTROLLED_WEIGHT,
-    DAILY_BUDGET_PRICE_FLEX_SHARE,
-    DAILY_BUDGET_BREAKDOWN_ENABLED,
-  ]);
-
-  const dailyBudgetSettingsKeys = new Set([
-    'daily_budget_enabled',
-    'daily_budget_kwh',
-    'daily_budget_price_shaping_enabled',
-  ]);
-
-  const capacitySettingsKeys = new Set([CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]);
-  const priceRefreshKeys = new Set([
-    COMBINED_PRICES,
-    'electricity_prices',
-    'flow_prices_today',
-    'flow_prices_tomorrow',
-    'homey_prices_today',
-    'homey_prices_tomorrow',
-    'homey_prices_currency',
-    'nettleie_data',
-  ]);
-  const deviceControlKeys = new Set(['managed_devices', 'controllable_devices']);
-  const planRefreshKeys = new Set(['capacity_priorities', 'mode_device_targets', OPERATING_MODE_SETTING]);
-  const dailyBudgetTuningKeys = new Set([
-    DAILY_BUDGET_CONTROLLED_WEIGHT,
-    DAILY_BUDGET_PRICE_FLEX_SHARE,
-    DAILY_BUDGET_BREAKDOWN_ENABLED,
-  ]);
-
-  const handleDailyBudgetSettingsSet = (key: string) => {
-    if (!dailyBudgetRefreshKeys.has(key)) return;
-    if (dailyBudgetSettingsKeys.has(key)) {
-      loadDailyBudgetSettings().catch((error) => {
-        void logSettingsError('Failed to load daily budget settings', error, 'settings.set');
-      });
-    }
-    if (dailyBudgetTuningKeys.has(key)) {
-      loadDailyBudgetTuningSettings().catch((error) => {
-        void logSettingsError('Failed to load daily budget tuning', error, 'settings.set');
-      });
-    }
-    refreshDailyBudgetPlan().catch((error) => {
-      void logSettingsError('Failed to refresh daily budget', error, 'settings.set');
-    });
-  };
-
-  const handleSettingsSet = (key: string) => {
-    invalidateSettingCache(key);
-
-    if (capacitySettingsKeys.has(key)) {
-      loadCapacitySettings().catch((error) => {
-        void logSettingsError('Failed to load capacity settings', error, 'settings.set');
-      });
-    }
-
-    if (key === 'device_plan_snapshot') {
-      invalidateApiCache(SETTINGS_UI_PLAN_PATH);
-      refreshPlan().catch((error) => {
-        void logSettingsError('Failed to refresh plan', error, 'settings.set');
-      });
-    }
-
-    if (key === 'target_devices_snapshot') {
-      invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
-      getTargetDevices()
-        .then((devices) => {
-          state.latestDevices = devices;
-          renderPriorities(devices);
-          renderDevices(devices);
-          renderPriceOptimization(devices);
-          document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
-        })
-        .catch((error) => {
-          void logSettingsError('Failed to refresh devices', error, 'settings.set');
-        });
-    }
-
-    if (priceRefreshKeys.has(key)) {
-      invalidateApiCache(SETTINGS_UI_PRICES_PATH);
-      refreshPricesIfVisible();
-    }
-
-    if (
-      key === PRICE_SCHEME
-      || key === NORWAY_PRICE_MODEL
-    ) {
-      loadPriceSettings().catch((error) => {
-        void logSettingsError('Failed to load price settings', error, 'settings.set');
-      });
-      refreshPricesIfVisible();
-    }
-
-    if (key === OPERATING_MODE_SETTING) {
-      refreshActiveMode().catch((error) => {
-        void logSettingsError('Failed to refresh active mode', error, 'settings.set');
-      });
-    }
-
-    if (planRefreshKeys.has(key) || deviceControlKeys.has(key)) {
-      invalidateApiCache(SETTINGS_UI_PLAN_PATH);
-      refreshPlan().catch((error) => {
-        void logSettingsError('Failed to refresh plan', error, 'settings.set');
-      });
-    }
-
-    if (key === OVERSHOOT_BEHAVIORS) {
-      loadShedBehaviors().catch((error) => {
-        void logSettingsError('Failed to load shed behaviors', error, 'settings.set');
-      });
-    }
-
-    if (deviceControlKeys.has(key)) {
-      loadModeAndPriorities()
-        .then(() => {
-          renderPriorities(state.latestDevices);
-          renderDevices(state.latestDevices);
-          renderPriceOptimization(state.latestDevices);
-        })
-        .catch((error) => {
-          void logSettingsError('Failed to load device control settings', error, 'settings.set');
-        });
-    }
-
-    if (key === 'power_tracker_state') {
-      invalidateApiCache(SETTINGS_UI_POWER_PATH);
-      refreshPowerData().catch((error) => {
-        void logSettingsError('Failed to refresh power data', error, 'settings.set');
-      });
-      refreshDailyBudgetIfVisible();
-    }
-
-    if (key === 'pels_status' || key === 'app_heartbeat') {
-      invalidateApiCache(SETTINGS_UI_POWER_PATH);
-      loadStaleDataStatus().catch((error) => {
-        void logSettingsError('Failed to refresh stale data status', error, 'settings.set');
-      });
-    }
-
-    handleDailyBudgetSettingsSet(key);
-  };
-
-  homey.on('settings.set', handleSettingsSet);
-};
-
-const refreshPowerData = async () => {
-  const usage = await getPowerUsage();
-  renderPowerUsage(usage);
-  await renderPowerStats();
-};
+import {
+  initRealtimeListeners,
+  refreshPlanForUi,
+  showTab,
+  startStaleDataRefreshInterval,
+} from './realtime';
 
 const initTabHandlers = () => {
   tabs.forEach((tab) => {
@@ -368,9 +127,7 @@ const initCapacityHandlers = () => {
     void refreshDevices();
   });
   planRefreshButton?.addEventListener('click', () => {
-    refreshPlan().catch((error) => {
-      void logSettingsError('Failed to refresh plan', error, 'planRefreshButton');
-    });
+    refreshPlanForUi('planRefreshButton');
   });
   /* 2-step confirmation logic */
   const resetStatsBtn = document.getElementById('reset-stats-button') as HTMLButtonElement;
@@ -561,66 +318,74 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   state.initialLoadComplete = true;
   // Re-render devices to enable checkboxes now that load is complete
   renderDevices(state.latestDevices);
+};
 
-  // Set up periodic stale data check
+const initializeBootHandlers = () => {
+  initTooltips();
+  initDebouncedSaveFlush();
+  initRealtimeListeners();
+  showTab('overview');
+  initTabHandlers();
+  initDeviceDetailHandlers();
+  initModeHandlers();
+  initCapacityHandlers();
+  initDailyBudgetHandlers();
+  initPriceHandlers();
+  initGridTariffHandlers();
+  initDebugLoggingCheckboxes();
+  initAdvancedHandlers();
+  markSettingsUi('boot:handlers-ready');
+};
+
+const markBootComplete = () => {
+  markSettingsUi('boot:data-loaded');
+  measureSettingsUi('boot:homey-ready', 'boot:start', 'boot:homey-ready');
+  measureSettingsUi('boot:bootstrap', 'boot:homey-ready', 'boot:bootstrap-loaded');
+  measureSettingsUi('boot:handlers', 'boot:bootstrap-loaded', 'boot:handlers-ready');
+  measureSettingsUi('boot:data-load', 'boot:handlers-ready', 'boot:data-loaded');
+  measureSettingsUi('boot:total', 'boot:start', 'boot:data-loaded');
+  markSettingsUiReady();
+};
+
+const startDailyBudgetRefreshInterval = () => {
   setInterval(() => {
-    void loadStaleDataStatus().catch((error) => {
-      void logSettingsError('Failed to refresh stale data status', error, 'staleDataInterval');
+    const budgetPanel = document.querySelector('#budget-panel');
+    if (!budgetPanel || budgetPanel.classList.contains('hidden')) return;
+    refreshDailyBudgetPlan().catch((error) => {
+      void logSettingsError('Failed to refresh daily budget', error, 'dailyBudgetInterval');
     });
-  }, 30 * 1000);
+  }, 60 * 1000);
+};
+
+const prepareHomeySdk = async () => {
+  const found = await waitForHomey(200, 100);
+  if (found) {
+    await found.ready();
+    await flushSettingsLogs();
+    markSettingsUi('boot:homey-ready');
+    return true;
+  }
+  emptyState.hidden = false;
+  emptyState.textContent = 'Homey SDK not available. Make sure you are logged in and opened the settings from Homey.';
+  await showToast('Homey SDK not available. Check your Homey session/connection.', 'warn');
+  return false;
 };
 
 export const boot = async () => {
   resetSettingsUiPerf();
   markSettingsUi('boot:start');
   try {
-    const found = await waitForHomey(200, 100);
-    if (!found) {
-      emptyState.hidden = false;
-      emptyState.textContent = 'Homey SDK not available. Make sure you are logged in and opened the settings from Homey.';
-      await showToast('Homey SDK not available. Check your Homey session/connection.', 'warn');
+    const hasHomey = await prepareHomeySdk();
+    if (!hasHomey) {
       return;
     }
-
-    await found.ready();
-    await flushSettingsLogs();
-    markSettingsUi('boot:homey-ready');
     const bootstrap = await loadBootstrapData();
     markSettingsUi('boot:bootstrap-loaded');
-
-    initTooltips();
-    initDebouncedSaveFlush();
-    initRealtimeListeners();
-    showTab('overview');
-
-    initTabHandlers();
-    initDeviceDetailHandlers();
-    initModeHandlers();
-    initCapacityHandlers();
-    initDailyBudgetHandlers();
-    initPriceHandlers();
-    initGridTariffHandlers();
-    initDebugLoggingCheckboxes();
-    initAdvancedHandlers();
-    markSettingsUi('boot:handlers-ready');
-
+    initializeBootHandlers();
     await loadInitialData(bootstrap);
-    markSettingsUi('boot:data-loaded');
-    measureSettingsUi('boot:homey-ready', 'boot:start', 'boot:homey-ready');
-    measureSettingsUi('boot:bootstrap', 'boot:homey-ready', 'boot:bootstrap-loaded');
-    measureSettingsUi('boot:handlers', 'boot:bootstrap-loaded', 'boot:handlers-ready');
-    measureSettingsUi('boot:data-load', 'boot:handlers-ready', 'boot:data-loaded');
-    measureSettingsUi('boot:total', 'boot:start', 'boot:data-loaded');
-    markSettingsUiReady();
-
-    setInterval(() => {
-      const budgetPanel = document.querySelector('#budget-panel');
-      if (budgetPanel && !budgetPanel.classList.contains('hidden')) {
-        refreshDailyBudgetPlan().catch((error) => {
-          void logSettingsError('Failed to refresh daily budget', error, 'dailyBudgetInterval');
-        });
-      }
-    }, 60 * 1000);
+    startStaleDataRefreshInterval();
+    markBootComplete();
+    startDailyBudgetRefreshInterval();
   } catch (error) {
     await logSettingsError('Settings UI failed to load', error, 'boot');
     await showToastError(error, 'Unable to load settings. Check Homey logs for details.');

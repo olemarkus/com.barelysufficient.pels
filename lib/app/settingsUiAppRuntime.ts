@@ -7,6 +7,7 @@ import { getHourBucketKey } from '../utils/dateUtils';
 type SettingsUiRuntimeApp = Homey.App & {
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   powerTracker?: PowerTrackerState;
+  getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
   priceCoordinator?: {
     refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
     refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
@@ -26,6 +27,10 @@ export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetD
 };
 
 export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): SettingsUiPlanSnapshot | null => {
+  const appPlan = getRuntimeApp(homey)?.getLatestPlanSnapshotForUi?.();
+  if (appPlan && typeof appPlan === 'object') {
+    return appPlan;
+  }
   const plan = homey.settings.get('device_plan_snapshot') as unknown;
   return plan && typeof plan === 'object' ? plan as SettingsUiPlanSnapshot : null;
 };

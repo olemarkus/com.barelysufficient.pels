@@ -41,6 +41,10 @@ const buildDom = () => {
   document.body.innerHTML = `
     <div id="toast"></div>
     <div id="status-badge"></div>
+    <div id="dry-run-banner" hidden></div>
+    <div id="stale-data-banner" hidden>
+      <span id="stale-data-text"></span>
+    </div>
     <div class="tabs">
       <button class="tab active" data-tab="overview"></button>
       <button class="tab" data-tab="devices"></button>
@@ -96,7 +100,7 @@ const buildDom = () => {
       <div id="daily-budget-confidence"></div>
       <div id="daily-budget-toggle-mount"></div>
     </section>
-    <section class="panel hidden" data-panel="usage">
+    <section class="panel hidden" id="usage-panel" data-panel="usage">
       <div id="power-list"></div>
       <p id="power-empty" hidden></p>
       <button id="power-week-prev"></button>
@@ -221,16 +225,34 @@ const getHomeySetting = (key) => new Promise((resolve) => {
   global.Homey.get(key, (_err, value) => resolve(value));
 });
 
+const getUiOverride = (key) => {
+  const uiState = global.Homey && typeof global.Homey === 'object' ? global.Homey.__uiState : null;
+  if (!uiState || !Object.prototype.hasOwnProperty.call(uiState, key)) return undefined;
+  return uiState[key];
+};
+
+const getUiPlan = async () => {
+  const override = getUiOverride('plan');
+  if (override !== undefined) return override;
+  return await getHomeySetting('device_plan_snapshot') || null;
+};
+
+const getUiPower = async () => {
+  const override = getUiOverride('power');
+  if (override !== undefined) return override;
+  return {
+    tracker: await getHomeySetting('power_tracker_state') || null,
+    status: await getHomeySetting('pels_status') || null,
+    heartbeat: await getHomeySetting('app_heartbeat') || null,
+  };
+};
+
 const buildUiBootstrap = async () => ({
   settings: Object.fromEntries(await Promise.all(BOOTSTRAP_SETTING_KEYS.map(async (key) => [key, await getHomeySetting(key)]))),
   dailyBudget: null,
   devices: await getHomeySetting('target_devices_snapshot') || [],
-  plan: await getHomeySetting('device_plan_snapshot') || null,
-  power: {
-    tracker: await getHomeySetting('power_tracker_state') || null,
-    status: await getHomeySetting('pels_status') || null,
-    heartbeat: await getHomeySetting('app_heartbeat') || null,
-  },
+  plan: await getUiPlan(),
+  power: await getUiPower(),
   prices: {
     combinedPrices: await getHomeySetting('combined_prices') || null,
     electricityPrices: await getHomeySetting('electricity_prices') || null,
@@ -258,15 +280,11 @@ const buildHomeyApiMock = () => jest.fn((method, uri, bodyOrCallback, cb) => {
       return;
     }
     if (method === 'GET' && uri === '/ui_plan') {
-      callback(null, { plan: await getHomeySetting('device_plan_snapshot') || null });
+      callback(null, { plan: await getUiPlan() });
       return;
     }
     if (method === 'GET' && uri === '/ui_power') {
-      callback(null, {
-        tracker: await getHomeySetting('power_tracker_state') || null,
-        status: await getHomeySetting('pels_status') || null,
-        heartbeat: await getHomeySetting('app_heartbeat') || null,
-      });
+      callback(null, await getUiPower());
       return;
     }
     if (method === 'GET' && uri === '/ui_prices') {
@@ -303,11 +321,7 @@ const buildHomeyApiMock = () => jest.fn((method, uri, bodyOrCallback, cb) => {
     }
     if (method === 'POST' && uri === '/ui_reset_power_stats') {
       callback(null, {
-        power: {
-          tracker: await getHomeySetting('power_tracker_state') || null,
-          status: await getHomeySetting('pels_status') || null,
-          heartbeat: await getHomeySetting('app_heartbeat') || null,
-        },
+        power: await getUiPower(),
         dailyBudget: null,
       });
       return;
@@ -337,6 +351,7 @@ describe('settings script', () => {
       ready: jest.fn().mockResolvedValue(undefined),
       set: jest.fn((key, val, cb) => cb && cb(null)),
       api: buildHomeyApiMock(),
+      __uiState: {},
       clock: {
         getTimezone: () => 'UTC',
       },
@@ -1422,6 +1437,30 @@ describe('Plan sorting', () => {
   beforeEach(() => {
     jest.resetModules();
     buildDom();
+    // @ts-ignore expose mock Homey
+    global.Homey = {
+      ready: jest.fn().mockResolvedValue(undefined),
+      set: jest.fn((key, val, cb) => cb && cb(null)),
+      api: buildHomeyApiMock(),
+      __uiState: {},
+      get: jest.fn((key, cb) => {
+        if (key === 'device_plan_snapshot') return cb(null, null);
+        if (key === 'target_devices_snapshot') return cb(null, []);
+        if (key === 'operating_mode') return cb(null, 'Home');
+        if (key === 'capacity_priorities') return cb(null, {});
+        if (key === 'mode_device_targets') return cb(null, {});
+        if (key === 'controllable_devices') return cb(null, {});
+        if (key === 'managed_devices') return cb(null, {});
+        if (key === 'price_optimization_settings') return cb(null, {});
+        return cb(null, null);
+      }),
+      clock: {
+        getTimezone: () => 'UTC',
+      },
+      i18n: {
+        getTimezone: () => 'UTC',
+      },
+    };
   });
 
   const setupPlanHomeyMock = (planSnapshot: any) => {
@@ -1430,6 +1469,7 @@ describe('Plan sorting', () => {
       ready: jest.fn().mockResolvedValue(undefined),
       set: jest.fn((key, val, cb) => cb && cb(null)),
       api: buildHomeyApiMock(),
+      __uiState: {},
       get: jest.fn((key, cb) => {
         if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
         if (key === 'target_devices_snapshot') return cb(null, []);
@@ -1708,6 +1748,138 @@ describe('Plan sorting', () => {
 
     const after = getSpy.mock.calls.filter((call) => call[0] === 'device_plan_snapshot').length;
     expect(after).toBeGreaterThan(before);
+  });
+
+  it('keeps the stale-data banner hidden when tracker data is fresh even if status is stale', async () => {
+    const now = Date.now();
+    global.Homey.__uiState.power = {
+      tracker: { lastTimestamp: now - 5_000 },
+      status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' },
+      heartbeat: now,
+    };
+
+    await loadSettingsScript();
+
+    const banner = document.querySelector('#stale-data-banner') as HTMLDivElement;
+    expect(banner.hidden).toBe(true);
+  });
+
+  it('shows the heartbeat warning even when tracker data is fresh', async () => {
+    const now = Date.now();
+    global.Homey.__uiState.power = {
+      tracker: { lastTimestamp: now - 5_000 },
+      status: { lastPowerUpdate: now - 5_000, priceLevel: 'cheap' },
+      heartbeat: now - 2 * 60_000,
+    };
+
+    await loadSettingsScript();
+
+    const banner = document.querySelector('#stale-data-banner') as HTMLDivElement;
+    const bannerText = document.querySelector('#stale-data-text') as HTMLSpanElement;
+    expect(banner.hidden).toBe(false);
+    expect(bannerText.textContent).toBe('App heartbeat missing. PELS may not be running.');
+  });
+
+  it('self-corrects the stale-data banner from power_updated without refetching /ui_power', async () => {
+    const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+    const stalePower = {
+      tracker: { lastTimestamp: Date.now() - 2 * 60_000 },
+      status: { lastPowerUpdate: Date.now() - 2 * 60_000, priceLevel: 'cheap' },
+      heartbeat: Date.now(),
+    };
+
+    // @ts-ignore override mock Homey
+    global.Homey = {
+      ...global.Homey,
+      api: buildHomeyApiMock(),
+      __uiState: { power: stalePower },
+      on: jest.fn((event, cb) => {
+        if (!listeners[event]) listeners[event] = [];
+        listeners[event].push(cb);
+      }),
+    };
+
+    await loadSettingsScript();
+
+    const banner = document.querySelector('#stale-data-banner') as HTMLDivElement;
+    expect(banner.hidden).toBe(false);
+
+    (global.Homey.api as jest.Mock).mockClear();
+    const freshPower = {
+      tracker: { lastTimestamp: Date.now() - 5_000 },
+      status: { lastPowerUpdate: Date.now() - 2 * 60_000, priceLevel: 'cheap' },
+      heartbeat: Date.now(),
+    };
+    const powerCallbacks = listeners.power_updated || [];
+    powerCallbacks.forEach((cb) => cb(freshPower));
+    await flushPromises();
+
+    expect(banner.hidden).toBe(true);
+    const powerGetCalls = (global.Homey.api as jest.Mock).mock.calls
+      .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
+    expect(powerGetCalls).toHaveLength(0);
+  });
+
+  it('invalidates /ui_power cache before periodic stale-data checks', async () => {
+    const intervalCallbacks = new Map<number, () => void>();
+    const setIntervalSpy = jest.spyOn(global, 'setInterval').mockImplementation(((callback, ms) => {
+      intervalCallbacks.set(ms as number, callback as () => void);
+      return 1 as unknown as ReturnType<typeof setInterval>;
+    }) as typeof setInterval);
+
+    try {
+      const now = Date.now();
+      global.Homey.__uiState.power = {
+        tracker: { lastTimestamp: now - 5_000 },
+        status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' },
+        heartbeat: now,
+      };
+
+      await loadSettingsScript();
+
+      const banner = document.querySelector('#stale-data-banner') as HTMLDivElement;
+      expect(banner.hidden).toBe(true);
+
+      global.Homey.__uiState.power = {
+        tracker: { lastTimestamp: now - 2 * 60_000 },
+        status: { lastPowerUpdate: now - 2 * 60_000, priceLevel: 'cheap' },
+        heartbeat: now,
+      };
+
+      (global.Homey.api as jest.Mock).mockClear();
+      const staleInterval = intervalCallbacks.get(30 * 1000);
+      expect(typeof staleInterval).toBe('function');
+      staleInterval?.();
+      await flushPromises();
+
+      expect(banner.hidden).toBe(false);
+      const powerGetCalls = (global.Homey.api as jest.Mock).mock.calls
+        .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
+      expect(powerGetCalls.length).toBeGreaterThan(0);
+    } finally {
+      setIntervalSpy.mockRestore();
+    }
+  });
+
+  it('invalidates /ui_plan cache when reopening overview and when using Refresh plan', async () => {
+    await loadSettingsScript();
+
+    (global.Homey.api as jest.Mock).mockClear();
+
+    const devicesTab = document.querySelector('[data-tab="devices"]') as HTMLButtonElement;
+    const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
+    const refreshPlanButton = document.querySelector('#plan-refresh-button') as HTMLButtonElement;
+
+    devicesTab.click();
+    await flushPromises();
+    overviewTab.click();
+    await flushPromises();
+    refreshPlanButton.click();
+    await flushPromises();
+
+    const planGetCalls = (global.Homey.api as jest.Mock).mock.calls
+      .filter((call) => call[0] === 'GET' && call[1] === '/ui_plan');
+    expect(planGetCalls).toHaveLength(2);
   });
 
   it('savePriorities assigns priority 1 to top device', () => {

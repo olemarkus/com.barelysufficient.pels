@@ -75,6 +75,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.settings.set('price_scheme', 'flow');
+    mockHomeyInstance.api.clearRealtimeEvents();
     mockHomeyInstance.flow._actionCardListeners = {};
     mockHomeyInstance.flow._conditionCardListeners = {};
     mockHomeyInstance.flow._triggerCardRunListeners = {};
@@ -393,6 +394,57 @@ describe('MyApp initialization', () => {
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     devPlanState = getPlanDeviceState(plan, 'dev-1');
     expect(devPlanState).toBe('keep');
+  });
+
+  it('emits power_updated when power samples arrive', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+    mockHomeyInstance.api.clearRealtimeEvents();
+
+    const now = new Date('2026-03-03T10:20:00.000Z').getTime();
+    await (app as any).recordPowerSample(2000, now);
+
+    const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
+    expect(powerEvents).toHaveLength(1);
+    expect(powerEvents[0].data).toMatchObject({
+      tracker: expect.objectContaining({
+        lastPowerW: 2000,
+        lastTimestamp: now,
+      }),
+    });
+  });
+
+  it('emits power_updated when the power tracker is replaced for the settings UI reset flow', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+    mockHomeyInstance.api.clearRealtimeEvents();
+
+    const now = new Date('2026-03-03T10:20:00.000Z').getTime();
+    const nextState = {
+      lastPowerW: 0,
+      lastTimestamp: now,
+      buckets: { [getHourBucketKey(now)]: 0 },
+    };
+    (app as any).replacePowerTrackerForUi(nextState);
+
+    const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
+    expect(powerEvents).toHaveLength(1);
+    expect(powerEvents[0].data).toMatchObject({
+      tracker: expect.objectContaining(nextState),
+    });
+    expect(mockHomeyInstance.settings.get('power_tracker_state')).toMatchObject(nextState);
   });
 
   it('set_capacity_mode flow card handles autocomplete object format', async () => {
