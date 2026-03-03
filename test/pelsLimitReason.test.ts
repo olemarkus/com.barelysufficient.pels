@@ -74,4 +74,37 @@ describe('pels status limit reason', () => {
 
     expect(status.limitReason).toBe('none');
   });
+
+  it('reports none for active devices showing headroom cooldown status', () => {
+    const plan: DevicePlan = {
+      meta: {
+        totalKw: 4.2,
+        softLimitKw: 6,
+        softLimitSource: 'capacity',
+        headroomKw: 1.8,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Living Room Heater',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+        },
+      ],
+    };
+
+    const { status } = buildPelsStatus({
+      plan,
+      isCheap: false,
+      isExpensive: false,
+      combinedPrices: { prices: [{ total: 1.2 }] },
+      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+    });
+
+    expect(status.limitReason).toBe('none');
+  });
 });

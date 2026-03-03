@@ -1,3 +1,5 @@
+import type { HeadroomCardCooldownSource } from './planHeadroomDevice';
+
 export type ShedAction = 'turn_off' | 'set_temperature';
 
 export type ShedBehavior = {
@@ -22,6 +24,11 @@ export type DevicePlanDevice = {
   currentTemperature?: number;
   shedAction?: ShedAction;
   shedTemperature?: number | null;
+  headroomCardBlocked?: boolean;
+  headroomCardCooldownSec?: number | null;
+  headroomCardCooldownSource?: HeadroomCardCooldownSource;
+  headroomCardCooldownFromKw?: number | null;
+  headroomCardCooldownToKw?: number | null;
 };
 
 export type DevicePlan = {
