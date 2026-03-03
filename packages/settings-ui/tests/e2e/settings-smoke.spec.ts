@@ -33,8 +33,53 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#advanced-panel')).toBeVisible();
   });
 
+  test('advanced EV toggle controls EV visibility in the device list', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
+
+    await page.getByRole('tab', { name: 'Devices' }).click();
+    await expect(page.locator('#device-list')).not.toContainText('EV Charger');
+
+    await page.getByRole('tab', { name: 'Advanced' }).click();
+    const evToggle = page.locator('#advanced-ev-support-enabled');
+    await expect(evToggle).not.toBeChecked();
+
+    await evToggle.check();
+    await expect(page.locator('#toast')).toContainText('EV charger support enabled.');
+
+    await page.getByRole('tab', { name: 'Devices' }).click();
+    await expect(page.locator('#device-list')).toContainText('EV Charger');
+
+    await page.getByRole('tab', { name: 'Advanced' }).click();
+    await evToggle.uncheck();
+    await expect(page.locator('#toast')).toContainText('Managed EV chargers were set to unmanaged.');
+
+    await page.getByRole('tab', { name: 'Devices' }).click();
+    await expect(page.locator('#device-list')).not.toContainText('EV Charger');
+
+    const managedMap = await page.evaluate(async () => {
+      const homey = (window as unknown as {
+        Homey: {
+          get: (key: string, callback: (error: Error | null, value?: unknown) => void) => void;
+        };
+      }).Homey;
+      return await new Promise<Record<string, boolean>>((resolve, reject) => {
+        homey.get('managed_devices', (error: Error | null, value?: unknown) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve((value ?? {}) as Record<string, boolean>);
+        });
+      });
+    });
+
+    expect(managedMap.dev_evcharger).toBe(false);
+  });
+
   test('keeps stubbed daily budget API payloads in sync with settings writes', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
 
     const payload = await page.evaluate(async () => {
       const homey = (window as unknown as {

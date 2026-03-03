@@ -6,11 +6,13 @@ export const restoreCachedTargetSnapshotForApp = (params: {
   homey: Homey.App['homey'];
   deviceManager: DeviceManager;
   logDebug: (...args: unknown[]) => void;
+  filterEntry?: (entry: TargetDeviceSnapshot) => boolean;
 }): boolean => {
   const {
     homey,
     deviceManager,
     logDebug,
+    filterEntry,
   } = params;
   const cached = homey.settings.get('target_devices_snapshot') as unknown;
   if (!Array.isArray(cached) || cached.length === 0) return false;
@@ -20,7 +22,11 @@ export const restoreCachedTargetSnapshotForApp = (params: {
     return typeof record.id === 'string' && Array.isArray(record.capabilities);
   });
   if (!isValidSnapshot) return false;
-  deviceManager.setSnapshot(cached as TargetDeviceSnapshot[]);
-  logDebug(`Loaded cached target snapshot (${cached.length} devices)`);
+  const filtered = (cached as TargetDeviceSnapshot[]).filter((entry) => (
+    typeof filterEntry === 'function' ? filterEntry(entry) : true
+  ));
+  if (filtered.length === 0) return false;
+  deviceManager.setSnapshot(filtered);
+  logDebug(`Loaded cached target snapshot (${filtered.length} devices)`);
   return true;
 };

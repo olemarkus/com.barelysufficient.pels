@@ -275,6 +275,30 @@
   };
 
   const combinedPrices = buildSampleCombinedPrices();
+  const evDeviceSnapshot = {
+    id: 'dev_evcharger',
+    name: 'EV Charger',
+    deviceClass: 'evcharger',
+    deviceType: 'onoff',
+    currentOn: false,
+    controlCapabilityId: 'evcharger_charging',
+    evChargingState: 'plugged_in_paused',
+    measuredPowerKw: 0,
+    expectedPowerKw: 7.2,
+    capabilities: ['evcharger_charging', 'evcharger_charging_state'],
+  };
+  const evPlanDevice = {
+    id: 'dev_evcharger',
+    name: 'EV Charger',
+    currentState: 'off',
+    plannedState: 'keep',
+    priority: 3,
+    controllable: true,
+    expectedPowerKw: 7.2,
+    measuredPowerKw: 0,
+    reason: 'Waiting for headroom',
+    shedAction: 'turn_off',
+  };
 
   const settings = {
     // Devices
@@ -305,13 +329,6 @@
         deviceClass: 'waterheater',
         measuredPowerKw: 2.1,
         expectedPowerKw: 2.0,
-      },
-      {
-        id: 'dev_evcharger',
-        name: 'EV Charger',
-        deviceClass: 'evcharger',
-        measuredPowerKw: 0,
-        expectedPowerKw: 7.2,
       },
     ],
 
@@ -359,6 +376,7 @@
     capacity_limit_kw: 8,
     capacity_margin_kw: 0.4,
     capacity_dry_run: true,
+    experimental_ev_support_enabled: false,
 
     // Status and heartbeat
     pels_status: { lastPowerUpdate: Date.now() - 12 * 1000 },
@@ -404,6 +422,37 @@
     debug_logging_topics: [],
     debug_logging_enabled: false,
   };
+
+  const syncExperimentalEvSupportState = () => {
+    const hasEvDevice = settings.target_devices_snapshot.some((device) => device.id === evDeviceSnapshot.id);
+    const hasEvPlanDevice = Array.isArray(settings.device_plan_snapshot?.devices)
+      && settings.device_plan_snapshot.devices.some((device) => device.id === evPlanDevice.id);
+
+    if (settings.experimental_ev_support_enabled === true) {
+      if (!hasEvDevice) {
+        settings.target_devices_snapshot = [...settings.target_devices_snapshot, { ...evDeviceSnapshot }];
+      }
+      if (!hasEvPlanDevice) {
+        settings.device_plan_snapshot = {
+          ...settings.device_plan_snapshot,
+          devices: [...(settings.device_plan_snapshot?.devices ?? []), { ...evPlanDevice }],
+        };
+      }
+      return;
+    }
+
+    settings.target_devices_snapshot = settings.target_devices_snapshot.filter((device) => device.id !== evDeviceSnapshot.id);
+    settings.device_plan_snapshot = {
+      ...settings.device_plan_snapshot,
+      devices: (settings.device_plan_snapshot?.devices ?? []).filter((device) => device.id !== evPlanDevice.id),
+    };
+    settings.managed_devices = {
+      ...settings.managed_devices,
+      [evDeviceSnapshot.id]: false,
+    };
+  };
+
+  syncExperimentalEvSupportState();
 
   const buildPowerPayload = () => ({
     tracker: settings.power_tracker_state ?? null,
@@ -453,6 +502,7 @@
     daily_budget_breakdown_enabled: settings.daily_budget_breakdown_enabled,
     debug_logging_topics: settings.debug_logging_topics,
     debug_logging_enabled: settings.debug_logging_enabled,
+    experimental_ev_support_enabled: settings.experimental_ev_support_enabled,
   });
 
   const apiHandlers = {
@@ -525,9 +575,15 @@
 
     set: (key, value, cb) => {
       settings[key] = value;
+      const followUpKeys = [];
+      if (key === 'experimental_ev_support_enabled') {
+        syncExperimentalEvSupportState();
+        followUpKeys.push('managed_devices', 'target_devices_snapshot', 'device_plan_snapshot');
+      }
       setTimeout(() => {
         cb(null);
         emit('settings.set', key);
+        followUpKeys.forEach((nextKey) => emit('settings.set', nextKey));
       }, 5);
     },
 

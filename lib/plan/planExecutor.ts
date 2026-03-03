@@ -5,6 +5,12 @@ import type { DevicePlan, ShedAction } from './planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type { PlanEngineState } from './planState';
 import { incPerfCounter } from '../utils/perfCounters';
+import {
+  formatEvSnapshot,
+  getBinaryControlPlan,
+  getEvRestoreBlockReason,
+  setBinaryControl,
+} from './planBinaryControl';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -155,8 +161,13 @@ export class PlanExecutor {
   private async applyRestorePower(dev: DevicePlan['devices'][number]): Promise<void> {
     if (dev.plannedState === 'shed' || dev.currentState !== 'off') return;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
+    if (snapshot?.deviceClass === 'evcharger') {
+      this.logDebug(`Capacity: evaluating EV restore for ${dev.name || dev.id} (${formatEvSnapshot(snapshot)})`);
+    }
     if (!this.canTurnOnDevice(snapshot)) {
-      this.logDebug(`Capacity: skip restoring ${dev.name || dev.id}, cannot turn on from current snapshot`);
+      const evReason = getEvRestoreBlockReason(snapshot);
+      const suffix = evReason ? ` (${evReason})` : '';
+      this.logDebug(`Capacity: skip restoring ${dev.name || dev.id}, cannot turn on from current snapshot${suffix}`);
       return;
     }
     const name = dev.name || dev.id;
@@ -166,11 +177,23 @@ export class PlanExecutor {
       return;
     }
     // Mark as pending before async operation
-    this.state.pendingRestores.add(dev.id);
+      this.state.pendingRestores.add(dev.id);
     try {
       try {
-        await this.deviceManager.setCapability(dev.id, 'onoff', true);
-        this.log(`Capacity: turning on ${name} (restored from shed/off state)`);
+        const applied = await setBinaryControl({
+          state: this.state,
+          deviceManager: this.deviceManager,
+          updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+          log: (...args: unknown[]) => this.log(...args),
+          logDebug: (...args: unknown[]) => this.logDebug(...args),
+          error: (...args: unknown[]) => this.error(...args),
+          deviceId: dev.id,
+          name,
+          desired: true,
+          snapshot,
+          logContext: 'capacity',
+        });
+        if (!applied) return;
         this.state.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
         this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
         // Clear this device from pending swap targets if it was one
@@ -198,12 +221,26 @@ export class PlanExecutor {
     const lastShed = this.state.lastDeviceShedMs[dev.id];
     if (!lastShed) return;
     const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
+    if (entry?.deviceClass === 'evcharger') {
+      this.logDebug(`Capacity control off: evaluating EV restore for ${dev.name || dev.id} (${formatEvSnapshot(entry)})`);
+    }
     if (!this.canTurnOnDevice(entry)) return;
     const name = dev.name || dev.id;
     try {
-      await this.deviceManager.setCapability(dev.id, 'onoff', true);
-      this.log(`Capacity control off: turning on ${name}`);
-      this.updateLocalSnapshot(dev.id, { on: true });
+      const applied = await setBinaryControl({
+        state: this.state,
+        deviceManager: this.deviceManager,
+        updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+        log: (...args: unknown[]) => this.log(...args),
+        logDebug: (...args: unknown[]) => this.logDebug(...args),
+        error: (...args: unknown[]) => this.error(...args),
+        deviceId: dev.id,
+        name,
+        desired: true,
+        snapshot: entry,
+        logContext: 'capacity_control_off',
+      });
+      if (!applied) return;
       delete this.state.lastDeviceShedMs[dev.id];
     } catch (error) {
       this.error(`Failed to restore ${name} via DeviceManager`, error);
@@ -231,12 +268,13 @@ export class PlanExecutor {
   private canTurnOnDevice(snapshot?: TargetDeviceSnapshot): boolean {
     if (!snapshot) return false;
     if (snapshot.available === false) return false;
-    const hasOnOff = snapshot.capabilities?.includes('onoff') === true;
-    if (!hasOnOff) return false;
-    if (snapshot.currentOn === undefined && snapshot.canSetOnOff === false) {
+    const controlPlan = getBinaryControlPlan(snapshot);
+    if (!controlPlan) return false;
+    if (!controlPlan.canSet) return false;
+    if (controlPlan.isEv && getEvRestoreBlockReason(snapshot) !== null) {
       return false;
     }
-    return snapshot.canSetOnOff !== false;
+    return true;
   }
 
   private shouldSkipUnavailable(snapshot: TargetDeviceSnapshot | undefined, name: string, operation: string): boolean {
@@ -299,6 +337,9 @@ export class PlanExecutor {
     deviceName: string | undefined,
     snapshotState: TargetDeviceSnapshot | undefined,
   ): boolean {
+    if (snapshotState?.deviceClass === 'evcharger') {
+      this.logDebug(`Actuator: evaluating EV shed for ${deviceName || deviceId} (${formatEvSnapshot(snapshotState)})`);
+    }
     if (snapshotState?.available === false) {
       this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, device unavailable`);
       return true;
@@ -349,8 +390,11 @@ export class PlanExecutor {
 
   private async turnOffDevice(deviceId: string, name: string, reason?: string): Promise<void> {
     const snapshotEntry = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
-    const hasOnOff = snapshotEntry?.capabilities?.includes('onoff') === true;
-    if (!hasOnOff) {
+    const controlPlan = getBinaryControlPlan(snapshotEntry);
+    if (snapshotEntry?.deviceClass === 'evcharger') {
+      this.logDebug(`Capacity: preparing EV shed for ${name} (${formatEvSnapshot(snapshotEntry)})`);
+    }
+    if (!controlPlan) {
       const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;
       const now = Date.now();
       this.state.lastDeviceShedMs[deviceId] = now;
@@ -363,9 +407,21 @@ export class PlanExecutor {
     }
     const now = Date.now();
     try {
-      await this.deviceManager.setCapability(deviceId, 'onoff', false);
-      this.log(`Capacity: turned off ${name} (${reason || 'shedding'})`);
-      this.updateLocalSnapshot(deviceId, { on: false });
+      const applied = await setBinaryControl({
+        state: this.state,
+        deviceManager: this.deviceManager,
+        updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+        log: (...args: unknown[]) => this.log(...args),
+        logDebug: (...args: unknown[]) => this.logDebug(...args),
+        error: (...args: unknown[]) => this.error(...args),
+        deviceId,
+        name,
+        desired: false,
+        snapshot: snapshotEntry,
+        logContext: 'capacity',
+        reason,
+      });
+      if (!applied) return;
       this.state.lastSheddingMs = now;
       this.state.lastDeviceShedMs[deviceId] = now;
     } catch (error) {

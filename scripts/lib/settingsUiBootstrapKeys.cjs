@@ -11,6 +11,7 @@ const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'operating_mode',
   'controllable_devices',
   'managed_devices',
+  'experimental_ev_support_enabled',
   'mode_aliases',
   'overshoot_behaviors',
   'price_optimization_settings',

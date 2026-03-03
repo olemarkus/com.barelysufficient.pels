@@ -269,3 +269,25 @@ export function disableUnsupportedDevices(params: {
     logDebug(`Enforced temperature shedding for ${shedBehaviorUpdated} non-onoff temperature device${suffix}`);
   }
 }
+
+export function disableManagedEvDevices(params: {
+  snapshot: TargetDeviceSnapshot[];
+  settings: Homey.App['homey']['settings'];
+  logDebug: (...args: unknown[]) => void;
+}): void {
+  const { snapshot, settings, logDebug } = params;
+  const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
+  const evDevices = snapshot.filter((device) => device.deviceClass === 'evcharger');
+  const evIds = evDevices.map((device) => device.id);
+  const changed = applyFalseOverrides({
+    settings,
+    key: MANAGED_DEVICES,
+    current: managed,
+    ids: evIds,
+  });
+
+  if (!changed) return;
+
+  const names = evDevices.map((device) => device.name || device.id).join(', ');
+  logDebug(`Disabled managed EV devices: ${names}`);
+}

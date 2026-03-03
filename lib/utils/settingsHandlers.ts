@@ -14,6 +14,7 @@ import {
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
+  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
   HOMEY_PRICES_CURRENCY,
@@ -52,6 +53,8 @@ export type SettingsHandlerDeps = {
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
+  getExperimentalEvSupportEnabled: () => boolean;
+  disableManagedEvDevices: () => void;
   log: (message: string) => void;
   errorLog: (message: string, error: unknown) => void;
 };
@@ -63,6 +66,7 @@ const DEDUPED_CAPACITY_KEYS = [
   'capacity_priorities',
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
+  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
@@ -173,6 +177,8 @@ type NoopWriteSkipper = {
   markProcessedWrite: (key: string) => void;
 };
 
+type SettingsHandlerMap = Record<string, () => Promise<void>>;
+
 const createNoopWriteSkipper = (deps: SettingsHandlerDeps): NoopWriteSkipper => {
   const lastProcessedFingerprints = new Map<string, string>();
 
@@ -199,7 +205,30 @@ const createNoopWriteSkipper = (deps: SettingsHandlerDeps): NoopWriteSkipper => 
 
 export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) => Promise<void> {
   const scheduleDailyBudgetPriceSync = createDailyBudgetPriceSyncScheduler(deps);
-  const handlers: Record<string, () => Promise<void>> = {
+  const handlers = buildSettingsHandlers(deps, scheduleDailyBudgetPriceSync);
+
+  const { shouldSkipNoopWrite, markProcessedWrite } = createNoopWriteSkipper(deps);
+
+  let queue = Promise.resolve();
+  return async (key: string) => {
+    const handler = handlers[key];
+    if (!handler) return;
+    queue = queue.then(async () => {
+      if (shouldSkipNoopWrite(key)) return;
+      await handler();
+      markProcessedWrite(key);
+    }).catch((error) => {
+      deps.errorLog('Settings handler failed', error);
+    });
+    await queue;
+  };
+}
+
+function buildSettingsHandlers(
+  deps: SettingsHandlerDeps,
+  scheduleDailyBudgetPriceSync: () => Promise<void>,
+): SettingsHandlerMap {
+  return {
     mode_device_targets: async () => handleModeTargetsChange(deps),
     [OPERATING_MODE_SETTING]: async () => handleModeTargetsChange(deps),
     mode_aliases: async () => deps.loadCapacitySettings(),
@@ -216,6 +245,14 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after managed change');
       await rebuildPlanFromSettings(deps, 'managed_devices');
+    },
+    [EXPERIMENTAL_EV_SUPPORT_ENABLED]: async () => {
+      deps.loadCapacitySettings();
+      if (!deps.getExperimentalEvSupportEnabled()) {
+        deps.disableManagedEvDevices();
+      }
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after EV support change');
+      await rebuildPlanFromSettings(deps, EXPERIMENTAL_EV_SUPPORT_ENABLED);
     },
     power_tracker_state: async () => deps.loadPowerTracker(),
     [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),
@@ -262,7 +299,9 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     [NORWAY_PRICE_MODEL]: async () => {
       await refreshPriceDerivedState(deps);
     },
-    provider_surcharge: async () => { await refreshPriceDerivedState(deps); },
+    provider_surcharge: async () => {
+      await refreshPriceDerivedState(deps);
+    },
     price_threshold_percent: async () => {
       await refreshPriceDerivedState(deps);
     },
@@ -300,22 +339,6 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) 
     debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
     [DEBUG_LOGGING_TOPICS]: async () => deps.updateDebugLoggingEnabled(true),
     settings_ui_log: async () => handleSettingsUiLog(deps),
-  };
-
-  const { shouldSkipNoopWrite, markProcessedWrite } = createNoopWriteSkipper(deps);
-
-  let queue = Promise.resolve();
-  return async (key: string) => {
-    const handler = handlers[key];
-    if (!handler) return;
-    queue = queue.then(async () => {
-      if (shouldSkipNoopWrite(key)) return;
-      await handler();
-      markProcessedWrite(key);
-    }).catch((error) => {
-      deps.errorLog('Settings handler failed', error);
-    });
-    await queue;
   };
 }
 

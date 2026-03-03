@@ -1,4 +1,4 @@
-import { disableUnsupportedDevices } from '../lib/app/appDeviceSupport';
+import { disableManagedEvDevices, disableUnsupportedDevices } from '../lib/app/appDeviceSupport';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
@@ -29,6 +29,15 @@ const buildFullyUnsupportedDevice = (): TargetDeviceSnapshot => ({
   name: 'Garage Socket',
   deviceType: 'onoff',
   powerCapable: false,
+  targets: [],
+});
+
+const buildEvDevice = (): TargetDeviceSnapshot => ({
+  id: 'ev-1',
+  name: 'Driveway Charger',
+  deviceClass: 'evcharger',
+  deviceType: 'onoff',
+  powerCapable: true,
   targets: [],
 });
 
@@ -97,5 +106,25 @@ describe('disableUnsupportedDevices', () => {
     expect(logDebug.mock.calls.flat().some(
       (entry) => typeof entry === 'string' && entry.includes('Price-only support enabled'),
     )).toBe(false);
+  });
+});
+
+describe('disableManagedEvDevices', () => {
+  it('forces managed EV devices to unmanaged without clearing controllable settings', () => {
+    const settings = makeSettings({
+      [MANAGED_DEVICES]: { 'ev-1': true },
+      [CONTROLLABLE_DEVICES]: { 'ev-1': true },
+    });
+    const logDebug = jest.fn();
+
+    disableManagedEvDevices({
+      snapshot: [buildEvDevice()],
+      settings: settings as any,
+      logDebug,
+    });
+
+    expect(settings.get(MANAGED_DEVICES)).toEqual({ 'ev-1': false });
+    expect(settings.get(CONTROLLABLE_DEVICES)).toEqual({ 'ev-1': true });
+    expect(logDebug).toHaveBeenCalledWith('Disabled managed EV devices: Driveway Charger');
   });
 });

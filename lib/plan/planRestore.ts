@@ -13,20 +13,9 @@ import {
   SHED_COOLDOWN_MS,
 } from './planConstants';
 import { getShedCooldownState } from './planTiming';
-import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
-import {
-  SwapState,
-  SwapStateSnapshot,
-  buildSwapState,
-  cleanupStaleSwaps,
-  exportSwapState,
-} from './planSwapState';
-import {
-  buildInsufficientHeadroomUpdate,
-  buildSwapCandidates,
-  computeRestoreBufferKw,
-  estimateRestorePower,
-} from './planRestoreSwap';
+import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, exportSwapState } from './planSwapState';
+import { buildInsufficientHeadroomUpdate, buildSwapCandidates, computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
+import { getEvRestoreStateBlockReason, getEvUnknownPowerBlockReason, getOffDevices, getOnDevices, markOffDevicesStayOff } from './planRestoreDevices';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -92,14 +81,25 @@ export function applyRestorePlan(params: {
       restoredOneThisCycle = result.restoredOneThisCycle;
     }
   } else if (context.headroomRaw === null) {
-    markOffDevicesStayOff(deviceMap, timing, deps.logDebug, (dev) => {
+    markOffDevicesStayOff({
+      deviceMap,
+      timing,
+      logDebug: deps.logDebug,
+      setDevice: (id, updates) => setDevice(deviceMap, id, updates),
+      reasonOverride: (dev) => {
       const plannedPower = estimateRestorePower(dev);
       const restoreBuffer = computeRestoreBufferKw(plannedPower);
       const needed = plannedPower + restoreBuffer;
       return `insufficient headroom (need ${needed.toFixed(2)}kW, headroom unknown)`;
+      },
     });
   } else if (sheddingActive || timing.inCooldown || timing.inRestoreCooldown) {
-    markOffDevicesStayOff(deviceMap, timing, deps.logDebug);
+    markOffDevicesStayOff({
+      deviceMap,
+      timing,
+      logDebug: deps.logDebug,
+      setDevice: (id, updates) => setDevice(deviceMap, id, updates),
+    });
   }
 
   return {
@@ -243,38 +243,6 @@ function shouldPlanRestores(
   return headroomRaw !== null && !sheddingActive && !timing.inCooldown && !timing.inRestoreCooldown;
 }
 
-function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
-  const filtered = planDevices
-    .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed');
-  return sortByPriorityAsc(filtered);
-}
-
-function getOnDevices(
-  planDevices: DevicePlanDevice[],
-  getShedBehavior: (deviceId: string) => { action: 'turn_off' | 'set_temperature'; temperature: number | null },
-): DevicePlanDevice[] {
-  const filtered = planDevices
-    .filter((d) => d.controllable !== false && d.plannedState !== 'shed')
-    .filter((d) => d.currentState === 'on' || d.currentState === 'not_applicable')
-    .filter((d) => canSwapOutDevice(d, getShedBehavior(d.id)));
-  return sortByPriorityDesc(filtered);
-}
-
-function canSwapOutDevice(
-  dev: DevicePlanDevice,
-  behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null },
-): boolean {
-  if (behavior.action !== 'set_temperature' || behavior.temperature === null) return true;
-  let currentTarget: number | null = null;
-  if (typeof dev.currentTarget === 'number') {
-    currentTarget = dev.currentTarget;
-  } else if (typeof dev.plannedTarget === 'number') {
-    currentTarget = dev.plannedTarget;
-  }
-  if (currentTarget === null) return true;
-  return currentTarget > behavior.temperature;
-}
-
 function planRestoreForDevice(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -308,6 +276,26 @@ function planRestoreForDevice(params: {
       plannedState: 'shed',
       reason: `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`,
     });
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  const evStateBlock = getEvRestoreStateBlockReason(dev);
+  if (evStateBlock) {
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'shed',
+      reason: `restore blocked (${evStateBlock})`,
+    });
+    deps.logDebug(`Plan: skipping restore of ${dev.name} - ${evStateBlock}`);
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  const evPowerBlock = getEvUnknownPowerBlockReason(dev);
+  if (evPowerBlock) {
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'shed',
+      reason: evPowerBlock,
+    });
+    deps.logDebug(`Plan: skipping restore of ${dev.name} - ${evPowerBlock}`);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -489,34 +477,6 @@ function attemptSwapRestore(params: {
   restoredThisCycle.add(dev.id);
   setDevice(deviceMap, dev.id, { plannedState: 'keep' });
   return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
-}
-
-function markOffDevicesStayOff(
-  deviceMap: Map<string, DevicePlanDevice>,
-  timing: { activeOvershoot: boolean; inCooldown: boolean; restoreCooldownSeconds: number; shedCooldownRemainingSec: number | null },
-  logDebug: (...args: unknown[]) => void,
-  reasonOverride?: (dev: DevicePlanDevice) => string,
-): void {
-  const offDevices = Array.from(deviceMap.values())
-    .filter((d) => d.controllable !== false && d.currentState === 'off' && d.plannedState !== 'shed');
-  for (const dev of offDevices) {
-    const defaultReason = dev.reason || 'shed due to capacity';
-    const nextReason = reasonOverride ? reasonOverride(dev) : resolveOffDeviceReason(timing, defaultReason);
-    setDevice(deviceMap, dev.id, { plannedState: 'shed', reason: nextReason });
-    logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) - ${nextReason}`);
-  }
-}
-
-function resolveOffDeviceReason(
-  timing: { activeOvershoot: boolean; inCooldown: boolean; restoreCooldownSeconds: number; shedCooldownRemainingSec: number | null },
-  defaultReason: string,
-): string {
-  if (timing.activeOvershoot) return defaultReason;
-  if (timing.inCooldown) {
-    const seconds = timing.shedCooldownRemainingSec ?? 0;
-    return `cooldown (shedding, ${seconds}s remaining)`;
-  }
-  return `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`;
 }
 
 function setDevice(

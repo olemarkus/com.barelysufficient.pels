@@ -165,7 +165,114 @@ describe('DeviceManager', () => {
             expect(snapshot[0].deviceType).toBe('temperature');
             expect(snapshot[0].powerCapable).toBe(true);
             expect(snapshot[0].currentOn).toBeUndefined();
-            expect(snapshot[0].canSetOnOff).toBeUndefined();
+            expect(snapshot[0].canSetControl).toBeUndefined();
+        });
+
+        it('skips EV chargers when experimental support is disabled', async () => {
+            await deviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                ev1: {
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                    capabilitiesObj: {
+                        evcharger_charging: { value: true, id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
+                        measure_power: { value: 7200, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getSnapshot()).toHaveLength(0);
+        });
+
+        it('includes official EV chargers when experimental support is enabled', async () => {
+            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                getExperimentalEvSupportEnabled: () => true,
+            });
+            await evDeviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                ev1: {
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: ['onoff', 'evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff', setable: true },
+                        evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
+                        measure_power: { value: 0, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await evDeviceManager.refreshSnapshot();
+
+            const snapshot = evDeviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            expect(snapshot[0]).toEqual(expect.objectContaining({
+                deviceClass: 'evcharger',
+                deviceType: 'onoff',
+                controlCapabilityId: 'evcharger_charging',
+                currentOn: false,
+                canSetControl: true,
+                evChargingState: 'plugged_in_paused',
+            }));
+        });
+
+        it('derives EV charging state when the boolean capability is missing', async () => {
+            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                getExperimentalEvSupportEnabled: () => true,
+            });
+            await evDeviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                ev1: {
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                    capabilitiesObj: {
+                        evcharger_charging: { id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
+                        measure_power: { value: 7100, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await evDeviceManager.refreshSnapshot();
+
+            const snapshot = evDeviceManager.getSnapshot();
+            expect(snapshot[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+                evChargingState: 'plugged_in_charging',
+            }));
+        });
+
+        it('excludes EV chargers without the official charging capability', async () => {
+            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                getExperimentalEvSupportEnabled: () => true,
+            });
+            await evDeviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                ev1: {
+                    id: 'ev1',
+                    name: 'Vendor Charger',
+                    class: 'evcharger',
+                    capabilities: ['onoff', 'measure_power'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 1200, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await evDeviceManager.refreshSnapshot();
+
+            expect(evDeviceManager.getSnapshot()).toHaveLength(0);
+            expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining('missing evcharger_charging'));
         });
 
         it('propagates Homey availability state into snapshot entries', async () => {

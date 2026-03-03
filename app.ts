@@ -18,26 +18,12 @@ import { OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
 import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
 import { resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi } from './lib/utils/homeyEnergy';
-import {
-  persistPowerTrackerStateForApp,
-  prunePowerTrackerHistoryForApp,
-  updateDailyBudgetAndRecordCapForApp,
-  PowerSampleRebuildState,
-  recordPowerSampleForApp,
-  schedulePlanRebuildFromSignal,
-} from './lib/app/appPowerHelpers';
-import {
-  createPlanEngine,
-  createPlanService,
-  createPriceCoordinator,
-  registerAppFlowCards,
-  type FlowCardInitApp,
-  type PlanEngineInitApp,
-  type PlanServiceInitApp,
-} from './lib/app/appInit';
+import { persistPowerTrackerStateForApp, prunePowerTrackerHistoryForApp, updateDailyBudgetAndRecordCapForApp, PowerSampleRebuildState, recordPowerSampleForApp, schedulePlanRebuildFromSignal }
+  from './lib/app/appPowerHelpers';
+import { createPlanEngine, createPlanService, createPriceCoordinator, registerAppFlowCards, type FlowCardInitApp, type PlanEngineInitApp, type PlanServiceInitApp } from './lib/app/appInit';
 import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
-import { disableUnsupportedDevices as disableUnsupportedDevicesHelper } from './lib/app/appDeviceSupport';
+import { disableManagedEvDevices as disableManagedEvDevicesHelper, disableUnsupportedDevices as disableUnsupportedDevicesHelper } from './lib/app/appDeviceSupport';
 import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
 import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
@@ -63,6 +49,7 @@ class PelsApp extends Homey.App {
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
   private controllableDevices: Record<string, boolean> = {};
   private managedDevices: Record<string, boolean> = {};
+  private experimentalEvSupportEnabled = false;
   private shedBehaviors: Record<string, ShedBehavior> = {};
   private debugLoggingTopics = new Set<DebugLoggingTopic>();
   private dailyBudgetService!: DailyBudgetService;
@@ -102,6 +89,7 @@ class PelsApp extends Homey.App {
       homey: this.homey,
       deviceManager: this.deviceManager,
       logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
+      filterEntry: (entry) => this.experimentalEvSupportEnabled || entry.deviceClass !== 'evcharger',
     });
     let snapshotPlanBootstrapDelayMs = 0;
     if (deferStartupBootstrap) {
@@ -169,6 +157,7 @@ class PelsApp extends Homey.App {
       getPriority: (id) => this.getPriorityForDevice(id),
       getControllable: (id) => this.isCapacityControlEnabled(id),
       getManaged: (id) => this.resolveManagedState(id),
+      getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
       lastKnownPowerKw: this.lastKnownPowerKw,
@@ -258,6 +247,8 @@ class PelsApp extends Homey.App {
       updatePriceOptimizationEnabled: (logChange) => this.updatePriceOptimizationEnabled(logChange),
       updateOverheadToken: (value) => this.updateOverheadToken(value),
       updateDebugLoggingEnabled: (logChange) => this.updateDebugLoggingEnabled(logChange),
+      getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
+      disableManagedEvDevices: () => this.disableManagedEvDevices(),
       log: (message: string) => this.log(message),
       error: (message: string, error: Error) => this.error(message, error),
     });
@@ -379,6 +370,7 @@ class PelsApp extends Homey.App {
         capacityDryRun: this.capacityDryRun,
         controllableDevices: this.controllableDevices,
         managedDevices: this.managedDevices,
+        experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
         shedBehaviors: this.shedBehaviors,
       },
     });
@@ -390,9 +382,17 @@ class PelsApp extends Homey.App {
     this.capacityDryRun = next.capacityDryRun;
     this.controllableDevices = next.controllableDevices;
     this.managedDevices = next.managedDevices;
+    this.experimentalEvSupportEnabled = next.experimentalEvSupportEnabled;
     this.shedBehaviors = next.shedBehaviors;
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.capacitySettings.marginKw);
+  }
+  private disableManagedEvDevices(): void {
+    disableManagedEvDevicesHelper({
+      snapshot: this.latestTargetSnapshot,
+      settings: this.homey.settings,
+      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
+    });
   }
   private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }
@@ -621,9 +621,7 @@ class PelsApp extends Homey.App {
   } {
     return this.priceCoordinator.storeFlowPriceData(kind, raw);
   }
-  public async applyPriceOptimization() {
-    return this.priceCoordinator.applyPriceOptimization();
-  }
+  public async applyPriceOptimization() { return this.priceCoordinator.applyPriceOptimization(); }
   private async getDeviceLoadSetting(deviceId: string): Promise<number | null> {
     return getDeviceLoadSetting({
       deviceId,
@@ -641,7 +639,8 @@ class PelsApp extends Homey.App {
   private getShedBehavior = (deviceId: string) => getShedBehaviorHelper(deviceId, this.shedBehaviors);
   private computeDynamicSoftLimit = () => this.planService.computeDynamicSoftLimit();
   private computeShortfallThreshold = () => this.planService.computeShortfallThreshold();
-  private handleShortfall = (deficitKw: number) => this.planService.handleShortfall(deficitKw); private handleShortfallCleared = () => this.planService.handleShortfallCleared();
+  private handleShortfall = (deficitKw: number) => this.planService.handleShortfall(deficitKw);
+  private handleShortfallCleared = () => this.planService.handleShortfallCleared();
   private evaluateHeadroomForDevice = (params: Parameters<PlanService['evaluateHeadroomForDevice']>[0]): HeadroomForDeviceDecision | null => this.planService.evaluateHeadroomForDevice(params);
   public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
   private applySheddingToDevice = (deviceId: string, deviceName?: string, reason?: string) => this.planService.applySheddingToDevice(deviceId, deviceName, reason);

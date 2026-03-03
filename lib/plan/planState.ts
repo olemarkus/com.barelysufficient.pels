@@ -9,6 +9,12 @@ export type PlanEngineState = {
   headroomCardCooldownToKw: Record<string, number>;
   pendingSheds: Set<string>;
   pendingRestores: Set<string>;
+  pendingBinaryCommands: Record<string, {
+    capabilityId: 'onoff' | 'evcharger_charging';
+    desired: boolean;
+    startedMs: number;
+    attempts: number;
+  }>;
   lastSheddingMs: number | null;
   lastOvershootMs: number | null;
   lastRestoreMs: number | null;
@@ -36,6 +42,7 @@ export function createPlanEngineState(): PlanEngineState {
     headroomCardCooldownToKw: {},
     pendingSheds: new Set<string>(),
     pendingRestores: new Set<string>(),
+    pendingBinaryCommands: {},
     lastSheddingMs: null,
     lastOvershootMs: null,
     lastRestoreMs: null,
