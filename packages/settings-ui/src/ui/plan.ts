@@ -1,5 +1,6 @@
 import { planList, planEmpty, planMeta } from './dom';
-import { getSetting } from './homey';
+import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../contracts/src/settingsUiApi';
+import { getApiReadModel } from './homey';
 import { createMetaLine } from './components';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator';
 
@@ -43,7 +44,8 @@ type PlanSnapshot = {
 };
 
 const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => {
-  const plan = await getSetting('device_plan_snapshot');
+  const payload = await getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH);
+  const plan = payload?.plan;
   if (!plan || typeof plan !== 'object') return null;
   return plan as PlanSnapshot;
 };

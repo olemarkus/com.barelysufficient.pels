@@ -1,36 +1,3 @@
-export type DailyBudgetSettings = {
-  enabled: boolean;
-  dailyBudgetKWh: number;
-  priceShapingEnabled: boolean;
-  controlledUsageWeight: number;
-  priceShapingFlexShare: number;
-};
-
-export type DailyBudgetProfile = {
-  weights: number[];
-  sampleCount: number;
-};
-
-export type DailyBudgetState = {
-  dateKey?: string | null;
-  dayStartUtcMs?: number | null;
-  plannedKWh?: number[];
-  frozen?: boolean;
-  lastPlanBucketStartUtcMs?: number | null;
-  lastUsedNowKWh?: number;
-  profile?: DailyBudgetProfile;
-  profileUncontrolled?: DailyBudgetProfile;
-  profileControlled?: DailyBudgetProfile;
-  profileControlledShare?: number;
-  profileSampleCount?: number;
-  profileSplitSampleCount?: number;
-  profileObservedMaxUncontrolledKWh?: number[];
-  profileObservedMaxControlledKWh?: number[];
-  profileObservedMinUncontrolledKWh?: number[];
-  profileObservedMinControlledKWh?: number[];
-  profileObservedStatsConfigKey?: string;
-};
-
 export type DailyBudgetDayPayload = {
   dateKey: string;
   timeZone: string;
@@ -73,9 +40,4 @@ export type DailyBudgetUiPayload = {
   todayKey: string;
   tomorrowKey?: string | null;
   yesterdayKey?: string | null;
-};
-
-export type DailyBudgetUpdate = {
-  snapshot: DailyBudgetDayPayload;
-  shouldPersist: boolean;
 };

@@ -31,6 +31,20 @@ const installHomeyClient = (payload: unknown) => {
         callback(null, payload);
         return;
       }
+      if (method === 'GET' && uri === '/ui_prices') {
+        callback(null, {
+          combinedPrices: null,
+          electricityPrices: null,
+          priceArea: null,
+          gridTariffData: null,
+          flowToday: null,
+          flowTomorrow: null,
+          homeyCurrency: null,
+          homeyToday: null,
+          homeyTomorrow: null,
+        });
+        return;
+      }
       callback(null, null);
     },
     on: () => {},

@@ -39,6 +39,15 @@ const installHomeyClient = (tracker: unknown, timeZone = 'UTC') => {
       cb(null, null);
     },
     set: (_key, _value, cb) => cb(null),
+    api: (method, uri, bodyOrCallback, cb) => {
+      const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
+      if (!callback) return;
+      if (method === 'GET' && uri === '/ui_power') {
+        callback(null, { tracker, status: null, heartbeat: null });
+        return;
+      }
+      callback(null, null);
+    },
     on: () => { },
     clock: {
       getTimezone: () => timeZone,

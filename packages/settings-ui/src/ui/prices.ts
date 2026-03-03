@@ -26,7 +26,12 @@ import {
   priceHomeyToday,
   priceHomeyTomorrow,
 } from './dom';
-import { getHomeyTimezone, getSetting, setSetting } from './homey';
+import {
+  SETTINGS_UI_PRICES_PATH,
+  SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
+  type SettingsUiPricesPayload,
+} from '../../../contracts/src/settingsUiApi';
+import { callApi, getApiReadModel, getHomeyTimezone, getSetting, primeApiCache, setSetting } from './homey';
 import { pushSettingWriteIfChanged } from './settingWrites';
 import { showToast } from './toast';
 import { gridCompanies } from './gridCompanies';
@@ -35,12 +40,6 @@ import type { CombinedPriceData, PriceEntry } from './priceTypes';
 import { logSettingsError } from './logging';
 import { getVatMultiplier } from '../../../shared-domain/src/price/priceComponents';
 import {
-  COMBINED_PRICES,
-  FLOW_PRICES_TODAY,
-  FLOW_PRICES_TOMORROW,
-  HOMEY_PRICES_CURRENCY,
-  HOMEY_PRICES_TODAY,
-  HOMEY_PRICES_TOMORROW,
   NORWAY_PRICE_MODEL,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
@@ -74,6 +73,23 @@ type GridTariffEntry = {
   fastleddEks?: number | null;
   fastleddInk?: number | null;
   datoId?: string;
+};
+
+const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
+  combinedPrices: null,
+  electricityPrices: null,
+  priceArea: null,
+  gridTariffData: null,
+  flowToday: null,
+  flowTomorrow: null,
+  homeyCurrency: null,
+  homeyToday: null,
+  homeyTomorrow: null,
+};
+
+export const getPricesReadModel = async (): Promise<SettingsUiPricesPayload> => {
+  const payload = await getApiReadModel<SettingsUiPricesPayload>(SETTINGS_UI_PRICES_PATH);
+  return payload ?? EMPTY_PRICES_PAYLOAD;
 };
 
 const setNorwayPriceControlsDisabled = (disabled: boolean) => {
@@ -229,11 +245,12 @@ export const refreshFlowStatus = async (schemeOverride?: PriceScheme) => {
   const timeZone = getHomeyTimezone();
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
   const tomorrowKey = getDateKeyInTimeZone(addDays(new Date(), 1), timeZone);
+  const pricePayload = await getPricesReadModel();
 
   updateFlowStatusValue(priceFlowEnabled, 'Enabled', 'ok');
 
-  const todayPayload = getFlowPricePayload(await getSetting(FLOW_PRICES_TODAY));
-  const tomorrowPayload = getFlowPricePayload(await getSetting(FLOW_PRICES_TOMORROW));
+  const todayPayload = getFlowPricePayload(pricePayload.flowToday);
+  const tomorrowPayload = getFlowPricePayload(pricePayload.flowTomorrow);
 
   const todayStatus = formatFlowPayloadStatus(todayPayload, todayKey, timeZone);
   const tomorrowStatus = formatFlowPayloadStatus(tomorrowPayload, tomorrowKey, timeZone);
@@ -249,15 +266,15 @@ export const refreshHomeyStatus = async (schemeOverride?: PriceScheme) => {
   const timeZone = getHomeyTimezone();
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
   const tomorrowKey = getDateKeyInTimeZone(addDays(new Date(), 1), timeZone);
+  const pricePayload = await getPricesReadModel();
 
   updateFlowStatusValue(priceHomeyEnabled, 'Enabled', 'ok');
 
-  const currencySetting = await getSetting(HOMEY_PRICES_CURRENCY);
-  const currency = typeof currencySetting === 'string' ? currencySetting : 'Unknown';
+  const currency = pricePayload.homeyCurrency || 'Unknown';
   updateFlowStatusValue(priceHomeyCurrency, currency, currency === 'Unknown' ? 'warn' : 'ok');
 
-  const todayPayload = getFlowPricePayload(await getSetting(HOMEY_PRICES_TODAY));
-  const tomorrowPayload = getFlowPricePayload(await getSetting(HOMEY_PRICES_TOMORROW));
+  const todayPayload = getFlowPricePayload(pricePayload.homeyToday);
+  const tomorrowPayload = getFlowPricePayload(pricePayload.homeyTomorrow);
 
   const todayStatus = formatFlowPayloadStatus(todayPayload, todayKey, timeZone);
   const tomorrowStatus = formatFlowPayloadStatus(tomorrowPayload, tomorrowKey, timeZone);
@@ -345,11 +362,10 @@ const buildCombinedFromLegacy = (
   };
 };
 
-const buildCombinedFromSpotPrices = async (): Promise<CombinedPriceData | null> => {
-  const priceData = await getSetting('electricity_prices');
+const buildCombinedFromSpotPrices = async (pricePayload: SettingsUiPricesPayload): Promise<CombinedPriceData | null> => {
+  const priceData = pricePayload.electricityPrices;
   if (!priceData || !Array.isArray(priceData) || priceData.length === 0) return null;
-  const priceAreaSetting = await getSetting('price_area');
-  const priceArea = typeof priceAreaSetting === 'string' ? priceAreaSetting : 'NO1';
+  const priceArea = typeof pricePayload.priceArea === 'string' ? pricePayload.priceArea : 'NO1';
   const vatMultiplier = getVatMultiplier(priceArea);
   const prices = (priceData as Array<{ startsAt?: string; spotPriceExVat?: number; total?: number }>)
     .filter((entry) => typeof entry.startsAt === 'string')
@@ -383,17 +399,17 @@ const buildCombinedFromSpotPrices = async (): Promise<CombinedPriceData | null> 
 
 const getPriceData = async (): Promise<CombinedPriceData | null> => {
   const priceScheme = normalizePriceSchemeSetting(await getSetting(PRICE_SCHEME));
-  const currencySetting = priceScheme === 'homey' ? await getSetting(HOMEY_PRICES_CURRENCY) : null;
-  const homeyCurrency = typeof currencySetting === 'string' ? currencySetting : '';
+  const pricePayload = await getPricesReadModel();
+  const homeyCurrency = priceScheme === 'homey' ? (pricePayload.homeyCurrency || '') : '';
   const priceUnit = priceScheme === 'norway' ? 'øre/kWh' : (homeyCurrency || 'price units');
-  const combinedData = await getSetting(COMBINED_PRICES);
+  const combinedData = pricePayload.combinedPrices;
   if (combinedData && typeof combinedData === 'object' && 'prices' in combinedData) {
     return attachSchemeMetadata(combinedData as CombinedPriceData, priceScheme, priceUnit);
   }
   if (priceScheme !== 'norway') return null;
   const legacy = buildCombinedFromLegacy(combinedData, priceScheme, priceUnit);
   if (legacy) return legacy;
-  return buildCombinedFromSpotPrices();
+  return buildCombinedFromSpotPrices(pricePayload);
 };
 
 export const refreshPrices = async (overrides?: PriceOverrideOptions) => {
@@ -475,14 +491,15 @@ export const saveGridTariffSettings = async () => {
   pushSettingWriteIfChanged(writes, 'nettleie_tariffgruppe', currentTariffGroup, tariffGroup);
   if (writes.length > 0) {
     await Promise.all(writes);
-    await setSetting('refresh_nettleie', Date.now());
+    const response = await callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH, {});
+    primeApiCache(SETTINGS_UI_PRICES_PATH, response ?? EMPTY_PRICES_PAYLOAD);
     await refreshGridTariff();
   }
   await showToast('Grid tariff settings saved.', 'ok');
 };
 
 const getGridTariffData = async (): Promise<GridTariffEntry[]> => {
-  const data = await getSetting('nettleie_data');
+  const data = (await getPricesReadModel()).gridTariffData;
   if (!data || !Array.isArray(data)) return [];
   return data as GridTariffEntry[];
 };

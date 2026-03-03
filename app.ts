@@ -40,7 +40,6 @@ import { disableUnsupportedDevices as disableUnsupportedDevicesHelper } from './
 import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
 import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
-import { getHomeyDevicesForDebug as getHomeyDevicesForDebugHelper, logHomeyDeviceForDebug as logHomeyDeviceForDebugHelper } from './lib/app/appDebugHelpers';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { toStableFingerprint } from './lib/utils/stableFingerprint';
 import { startResourceWarningListeners as startResourceWarningListenersHelper } from './lib/app/appResourceWarningHelpers';
@@ -92,20 +91,6 @@ class PelsApp extends Homey.App {
     if (sdkEnergy) return sdkEnergy;
     const homeyApi = this.deviceManager?.getHomeyApi?.();
     return resolveHomeyEnergyApiFromHomeyApi(homeyApi);
-  }
-  async getHomeyDevicesForDebug(): Promise<HomeyDeviceLike[]> {
-    return getHomeyDevicesForDebugHelper({ deviceManager: this.deviceManager }).catch((err) => {
-      this.log('Failed to get Homey devices for debug', err);
-      return [];
-    });
-  }
-  async logHomeyDeviceForDebug(deviceId: string): Promise<boolean> {
-    return logHomeyDeviceForDebugHelper({
-      deviceId,
-      deviceManager: this.deviceManager,
-      log: (msg, payload) => this.log(msg, payload),
-      error: (msg, err) => this.error(msg, err),
-    });
   }
   async onInit() {
     const deferStartupBootstrap = process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1';
@@ -472,6 +457,11 @@ class PelsApp extends Homey.App {
     if (!this.powerTrackerSaveTimer) {
       this.powerTrackerSaveTimer = setTimeout(() => this.persistPowerTrackerState(), POWER_TRACKER_PERSIST_DELAY_MS);
     }
+  }
+  public replacePowerTrackerForUi(nextState: PowerTrackerState): void {
+    this.powerTracker = nextState;
+    this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now(), forcePlanRebuild: true });
+    this.persistPowerTrackerState();
   }
 
   private updateDailyBudgetAndRecordCap(options?: { nowMs?: number; forcePlanRebuild?: boolean }): void {

@@ -41,9 +41,49 @@
     "homey:manager:api"
   ],
   "api": {
+    "ui_bootstrap": {
+      "method": "GET",
+      "path": "/ui_bootstrap"
+    },
+    "ui_devices": {
+      "method": "GET",
+      "path": "/ui_devices"
+    },
+    "ui_plan": {
+      "method": "GET",
+      "path": "/ui_plan"
+    },
+    "ui_power": {
+      "method": "GET",
+      "path": "/ui_power"
+    },
+    "ui_prices": {
+      "method": "GET",
+      "path": "/ui_prices"
+    },
     "get_daily_budget": {
       "method": "GET",
       "path": "/daily_budget"
+    },
+    "ui_refresh_devices": {
+      "method": "POST",
+      "path": "/ui_refresh_devices"
+    },
+    "ui_refresh_prices": {
+      "method": "POST",
+      "path": "/ui_refresh_prices"
+    },
+    "ui_refresh_grid_tariff": {
+      "method": "POST",
+      "path": "/ui_refresh_grid_tariff"
+    },
+    "settings_ui_log": {
+      "method": "POST",
+      "path": "/settings_ui_log"
+    },
+    "ui_reset_power_stats": {
+      "method": "POST",
+      "path": "/ui_reset_power_stats"
     },
     "homey_devices": {
       "method": "GET",

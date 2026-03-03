@@ -14,8 +14,9 @@ import {
   hourlyPattern,
   hourlyPatternMeta,
 } from './dom';
+import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi';
 import { renderPowerWeekChart, disposePowerWeekChart } from './powerWeekChartEcharts';
-import { getHomeyTimezone, getSetting } from './homey';
+import { getApiReadModel, getHomeyTimezone } from './homey';
 import { createToggleGroup } from './components';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes';
 import { buildDayContext } from '../../../shared-domain/src/dailyBudget/dayContext';
@@ -239,6 +240,12 @@ let dailyHistoryRange: DailyHistoryRange = '14';
 let usageHistoryToggleReady = false;
 let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () => {};
 let setDailyHistoryToggleActive: (range: DailyHistoryRange | null) => void = () => {};
+
+const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
+  const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
+  return payload ?? { tracker: null, status: null, heartbeat: null };
+};
+
 const getTimeZoneWeekRange = (now: Date, weekOffset: number, timeZone: string) => {
   const weekStart = getWeekStartInTimeZone(now, timeZone);
   const startMs = weekStart + weekOffset * 7 * 24 * 60 * 60 * 1000;
@@ -424,7 +431,7 @@ const renderUsageHistorySections = () => {
 };
 
 export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZone: string }> => {
-  const tracker = await getSetting('power_tracker_state') as PowerTracker | null;
+  const tracker = (await getPowerReadModel()).tracker as PowerTracker | null;
   if (!tracker || typeof tracker !== 'object') {
     return { stats: getEmptyPowerStats(), timeZone: getHomeyTimezone() };
   }
@@ -471,7 +478,7 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
 };
 
 export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
-  const tracker = await getSetting('power_tracker_state') as PowerTracker | null;
+  const tracker = (await getPowerReadModel()).tracker as PowerTracker | null;
   if (!tracker || typeof tracker !== 'object' || !tracker.buckets) return [];
 
   const unreliablePeriods = tracker.unreliablePeriods || [];
@@ -498,6 +505,8 @@ export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
     })
     .sort((a, b) => a.hour.getTime() - b.hour.getTime());
 };
+
+export { getPowerReadModel };
 
 export const renderPowerStats = async () => {
   const { stats, timeZone } = await getPowerStats();
