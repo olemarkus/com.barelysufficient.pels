@@ -299,15 +299,9 @@ function buildSettingsHandlers(
     [NORWAY_PRICE_MODEL]: async () => {
       await refreshPriceDerivedState(deps);
     },
-    provider_surcharge: async () => {
-      await refreshPriceDerivedState(deps);
-    },
-    price_threshold_percent: async () => {
-      await refreshPriceDerivedState(deps);
-    },
-    price_min_diff_ore: async () => {
-      await refreshPriceDerivedState(deps);
-    },
+    provider_surcharge: async () => refreshPriceDerivedState(deps),
+    price_threshold_percent: async () => refreshPriceDerivedState(deps),
+    price_min_diff_ore: async () => refreshPriceDerivedState(deps),
     [PRICE_OPTIMIZATION_SETTINGS]: async () => {
       deps.loadPriceOptimizationSettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh plan after price optimization settings change');

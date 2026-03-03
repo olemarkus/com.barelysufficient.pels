@@ -115,6 +115,14 @@ describe('device manager support helpers', () => {
     })).toBeNull();
     expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('missing evcharger_charging'));
     expect(resolveDeviceCapabilities({
+      deviceClassKey: 'evcharger',
+      deviceId: 'ev2',
+      deviceLabel: 'EV 2',
+      capabilities: ['evcharger_charging', 'measure_power'],
+      logDebug,
+    })).toBeNull();
+    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('missing evcharger_charging_state'));
+    expect(resolveDeviceCapabilities({
       deviceClassKey: 'heater',
       deviceId: 'heater1',
       deviceLabel: 'Heater',

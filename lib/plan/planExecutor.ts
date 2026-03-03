@@ -177,7 +177,7 @@ export class PlanExecutor {
       return;
     }
     // Mark as pending before async operation
-      this.state.pendingRestores.add(dev.id);
+    this.state.pendingRestores.add(dev.id);
     try {
       try {
         const applied = await setBinaryControl({

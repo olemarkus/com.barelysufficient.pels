@@ -29,6 +29,12 @@ export function resolveDeviceCapabilities(params: {
       );
       return null;
     }
+    if (!capabilities.includes('evcharger_charging_state')) {
+      logDebug(
+        `Skipping EV charger ${deviceLabel} (${deviceId}), missing evcharger_charging_state. Capabilities: ${capabilities.join(', ')}`,
+      );
+      return null;
+    }
     return { targetCaps: [], hasPower };
   }
   if (targetCaps.length > 0 && !capabilities.includes('measure_temperature')) {

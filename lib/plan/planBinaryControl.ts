@@ -1,9 +1,6 @@
 import type { DeviceManager } from '../core/deviceManager';
 import type { TargetDeviceSnapshot } from '../utils/types';
-import {
-  BINARY_COMMAND_PENDING_MS,
-  EV_COMMAND_MAX_ATTEMPTS,
-} from './planConstants';
+import { BINARY_COMMAND_PENDING_MS } from './planConstants';
 import type { PlanEngineState } from './planState';
 
 export type BinaryControlPlan = {
@@ -38,13 +35,20 @@ export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string
   if (snapshot.expectedPowerSource === 'default') {
     return 'charger power unknown';
   }
-  if (snapshot.evChargingState === undefined) return null;
-  if (snapshot.evChargingState === 'plugged_in') return null;
-  if (snapshot.evChargingState === 'plugged_in_paused') return null;
-  if (snapshot.evChargingState === 'plugged_in_charging') return null;
-  if (snapshot.evChargingState === 'plugged_out') return 'charger is unplugged';
-  if (snapshot.evChargingState === 'plugged_in_discharging') return 'charger is discharging';
-  return `unknown charging state '${snapshot.evChargingState}'`;
+  if (snapshot.evChargingState === undefined) return 'charger state unknown';
+
+  switch (snapshot.evChargingState) {
+    case 'plugged_in':
+    case 'plugged_in_paused':
+    case 'plugged_in_charging':
+      return null;
+    case 'plugged_out':
+      return 'charger is unplugged';
+    case 'plugged_in_discharging':
+      return 'charger is discharging';
+    default:
+      return `unknown charging state '${snapshot.evChargingState}'`;
+  }
 }
 
 export function formatEvSnapshot(snapshot?: TargetDeviceSnapshot): string {
@@ -187,7 +191,6 @@ async function setEvBinaryControl(params: BinaryControlDeps & {
     capabilityId: controlPlan.capabilityId,
     desired,
     startedMs: Date.now(),
-    attempts: EV_COMMAND_MAX_ATTEMPTS > 0 ? 1 : 0,
   };
 
   try {

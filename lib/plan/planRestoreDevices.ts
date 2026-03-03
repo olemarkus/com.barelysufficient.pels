@@ -20,13 +20,20 @@ export function getOnDevices(
 
 export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | null {
   if (dev.controlCapabilityId !== 'evcharger_charging') return null;
-  if (dev.evChargingState === undefined) return null;
-  if (dev.evChargingState === 'plugged_in') return null;
-  if (dev.evChargingState === 'plugged_in_paused') return null;
-  if (dev.evChargingState === 'plugged_in_charging') return null;
-  if (dev.evChargingState === 'plugged_out') return 'charger is unplugged';
-  if (dev.evChargingState === 'plugged_in_discharging') return 'charger is discharging';
-  return `unknown charging state '${dev.evChargingState}'`;
+  if (dev.evChargingState === undefined) return 'charger state unknown';
+
+  switch (dev.evChargingState) {
+    case 'plugged_in':
+    case 'plugged_in_paused':
+    case 'plugged_in_charging':
+      return null;
+    case 'plugged_out':
+      return 'charger is unplugged';
+    case 'plugged_in_discharging':
+      return 'charger is discharging';
+    default:
+      return `unknown charging state '${dev.evChargingState}'`;
+  }
 }
 
 export function getEvUnknownPowerBlockReason(dev: DevicePlanDevice): string | null {

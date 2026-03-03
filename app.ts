@@ -18,9 +18,23 @@ import { OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
 import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
 import { resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi } from './lib/utils/homeyEnergy';
-import { persistPowerTrackerStateForApp, prunePowerTrackerHistoryForApp, updateDailyBudgetAndRecordCapForApp, PowerSampleRebuildState, recordPowerSampleForApp, schedulePlanRebuildFromSignal }
-  from './lib/app/appPowerHelpers';
-import { createPlanEngine, createPlanService, createPriceCoordinator, registerAppFlowCards, type FlowCardInitApp, type PlanEngineInitApp, type PlanServiceInitApp } from './lib/app/appInit';
+import {
+  persistPowerTrackerStateForApp,
+  prunePowerTrackerHistoryForApp,
+  updateDailyBudgetAndRecordCapForApp,
+  PowerSampleRebuildState,
+  recordPowerSampleForApp,
+  schedulePlanRebuildFromSignal,
+} from './lib/app/appPowerHelpers';
+import {
+  createPlanEngine,
+  createPlanService,
+  createPriceCoordinator,
+  registerAppFlowCards,
+  type FlowCardInitApp,
+  type PlanEngineInitApp,
+  type PlanServiceInitApp,
+} from './lib/app/appInit';
 import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import { disableManagedEvDevices as disableManagedEvDevicesHelper, disableUnsupportedDevices as disableUnsupportedDevicesHelper } from './lib/app/appDeviceSupport';
@@ -68,7 +82,9 @@ class PelsApp extends Homey.App {
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private heartbeatInterval?: ReturnType<typeof setInterval>;
-  private stopPerfLogging?: () => void; private stopResourceWarningListeners?: () => void;
+  private stopPerfLogging?: () => void;
+  private stopResourceWarningListeners?: () => void;
+
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void { this.deviceManager.updateLocalSnapshot(deviceId, updates); }
   private setExpectedOverride(deviceId: string, kw: number): void {
     this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() }; this.planService?.syncHeadroomCardTrackedUsage({ deviceId, trackedKw: kw });
@@ -295,16 +311,11 @@ class PelsApp extends Homey.App {
     }
   }
   private startHeartbeat(): void {
-    const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now());
-    updateHeartbeat();
-    this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
+    const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now()); updateHeartbeat(); this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
   }
   private startPerfLogging(): void {
     this.stopPerfLogging = startPerfLogger({
-      isEnabled: () => this.debugLoggingTopics.has('perf'),
-      log: (...args: unknown[]) => this.logDebug('perf', ...args),
-      logCpuSpike: (...args: unknown[]) => this.log(...args),
-      intervalMs: 30 * 1000,
+      isEnabled: () => this.debugLoggingTopics.has('perf'), log: (...args: unknown[]) => this.logDebug('perf', ...args), logCpuSpike: (...args: unknown[]) => this.log(...args), intervalMs: 30 * 1000,
     });
   }
   private startResourceWarningListeners(): void {
@@ -312,10 +323,7 @@ class PelsApp extends Homey.App {
       this.stopResourceWarningListeners();
       this.stopResourceWarningListeners = undefined;
     }
-    this.stopResourceWarningListeners = startResourceWarningListenersHelper({
-      homey: this.homey,
-      log: (message) => this.log(message),
-    });
+    this.stopResourceWarningListeners = startResourceWarningListenersHelper({ homey: this.homey, log: (message) => this.log(message) });
   }
   private getDynamicSoftLimitOverride(): number | null {
     if (!this.defaultComputeDynamicSoftLimit || this.computeDynamicSoftLimit === this.defaultComputeDynamicSoftLimit) return null;
@@ -352,12 +360,7 @@ class PelsApp extends Homey.App {
       this.dailyBudgetService.updateState({ refreshObservedStats: false });
     }
   }
-  private migrateManagedDevices(): void {
-    migrateManagedDevicesHelper({
-      homey: this.homey,
-      log: (message) => this.log(message),
-    });
-  }
+  private migrateManagedDevices(): void { migrateManagedDevicesHelper({ homey: this.homey, log: (message) => this.log(message) }); }
   private loadCapacitySettings(): void {
     const next = loadCapacitySettingsFromHomey({
       settings: this.homey.settings,
@@ -388,11 +391,7 @@ class PelsApp extends Homey.App {
     void this.updateOverheadToken(this.capacitySettings.marginKw);
   }
   private disableManagedEvDevices(): void {
-    disableManagedEvDevicesHelper({
-      snapshot: this.latestTargetSnapshot,
-      settings: this.homey.settings,
-      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
-    });
+    disableManagedEvDevicesHelper({ snapshot: this.latestTargetSnapshot, settings: this.homey.settings, logDebug: (...args: unknown[]) => this.logDebug('devices', ...args) });
   }
   private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }
@@ -621,7 +620,9 @@ class PelsApp extends Homey.App {
   } {
     return this.priceCoordinator.storeFlowPriceData(kind, raw);
   }
-  public async applyPriceOptimization() { return this.priceCoordinator.applyPriceOptimization(); }
+  public async applyPriceOptimization() {
+    return this.priceCoordinator.applyPriceOptimization();
+  }
   private async getDeviceLoadSetting(deviceId: string): Promise<number | null> {
     return getDeviceLoadSetting({
       deviceId,

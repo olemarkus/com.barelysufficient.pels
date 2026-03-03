@@ -87,10 +87,10 @@ export function applyRestorePlan(params: {
       logDebug: deps.logDebug,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
       reasonOverride: (dev) => {
-      const plannedPower = estimateRestorePower(dev);
-      const restoreBuffer = computeRestoreBufferKw(plannedPower);
-      const needed = plannedPower + restoreBuffer;
-      return `insufficient headroom (need ${needed.toFixed(2)}kW, headroom unknown)`;
+        const plannedPower = estimateRestorePower(dev);
+        const restoreBuffer = computeRestoreBufferKw(plannedPower);
+        const needed = plannedPower + restoreBuffer;
+        return `insufficient headroom (need ${needed.toFixed(2)}kW, headroom unknown)`;
       },
     });
   } else if (sheddingActive || timing.inCooldown || timing.inRestoreCooldown) {

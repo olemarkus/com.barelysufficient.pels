@@ -1,10 +1,13 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_PORT = 4173;
-const ROOT_DIR = path.join(process.cwd(), 'dist');
-const HOMEY_STUB_PATH = path.join(process.cwd(), 'tests', 'e2e', 'fixtures', 'homey.stub.js');
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const PACKAGE_ROOT = path.resolve(SCRIPT_DIR, '..');
+const ROOT_DIR = path.join(PACKAGE_ROOT, 'dist');
+const HOMEY_STUB_PATH = path.join(PACKAGE_ROOT, 'tests', 'e2e', 'fixtures', 'homey.stub.js');
 
 const CONTENT_TYPES = new Map([
   ['.html', 'text/html; charset=utf-8'],

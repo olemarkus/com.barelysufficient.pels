@@ -275,6 +275,30 @@ describe('DeviceManager', () => {
             expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining('missing evcharger_charging'));
         });
 
+        it('excludes EV chargers without the official charging state capability', async () => {
+            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                getExperimentalEvSupportEnabled: () => true,
+            });
+            await evDeviceManager.init();
+            mockGetDevices.mockResolvedValue({
+                ev1: {
+                    id: 'ev1',
+                    name: 'Vendor Charger',
+                    class: 'evcharger',
+                    capabilities: ['evcharger_charging', 'measure_power'],
+                    capabilitiesObj: {
+                        evcharger_charging: { value: true, id: 'evcharger_charging' },
+                        measure_power: { value: 1200, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await evDeviceManager.refreshSnapshot();
+
+            expect(evDeviceManager.getSnapshot()).toHaveLength(0);
+            expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining('missing evcharger_charging_state'));
+        });
+
         it('propagates Homey availability state into snapshot entries', async () => {
             await deviceManager.init();
             mockGetDevices.mockResolvedValue({

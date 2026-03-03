@@ -13,7 +13,6 @@ export type PlanEngineState = {
     capabilityId: 'onoff' | 'evcharger_charging';
     desired: boolean;
     startedMs: number;
-    attempts: number;
   }>;
   lastSheddingMs: number | null;
   lastOvershootMs: number | null;

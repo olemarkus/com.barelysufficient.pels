@@ -47,6 +47,9 @@ describe('plan restore device helpers', () => {
   it('evaluates EV restore blocks and marks off devices as staying off', () => {
     expect(getEvRestoreStateBlockReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
+    }))).toBe('charger state unknown');
+    expect(getEvRestoreStateBlockReason(makeDevice({
+      controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
     }))).toBe('charger is unplugged');
     expect(getEvRestoreStateBlockReason(makeDevice({
