@@ -1,5 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
+import { resolveCandidatePower } from './planCandidatePower';
 
 export function buildSwapCandidates(params: {
   dev: DevicePlanDevice;
@@ -11,6 +12,7 @@ export function buildSwapCandidates(params: {
 }): {
   ready: boolean;
   toShed: DevicePlanDevice[];
+  shedPowerByDeviceId: Map<string, number>;
   potentialHeadroom: number;
   shedNames: string;
   shedPower: string;
@@ -27,13 +29,17 @@ export function buildSwapCandidates(params: {
   } = params;
   let potentialHeadroom = availableHeadroom;
   const toShed: DevicePlanDevice[] = [];
+  const shedPowerByDeviceId = new Map<string, number>();
   for (const onDev of onDevices) {
     if ((onDev.priority ?? 100) <= (dev.priority ?? 100)) break;
     if (onDev.plannedState === 'shed') continue;
     if (state.swappedOutFor[onDev.id]) continue;
     if (restoredThisCycle.has(onDev.id)) continue;
-    const onDevPower = onDev.powerKw && onDev.powerKw > 0 ? onDev.powerKw : 1;
+    const onDevPower = resolveCandidatePower(onDev);
+    if (onDevPower === null) continue;
+    if (onDevPower <= 0) continue;
     toShed.push(onDev);
+    shedPowerByDeviceId.set(onDev.id, onDevPower);
     potentialHeadroom += onDevPower;
     if (potentialHeadroom >= needed) break;
   }
@@ -41,6 +47,7 @@ export function buildSwapCandidates(params: {
     return {
       ready: false,
       toShed,
+      shedPowerByDeviceId,
       potentialHeadroom,
       shedNames: '',
       shedPower: '0.00',
@@ -49,10 +56,11 @@ export function buildSwapCandidates(params: {
     };
   }
   const shedNames = toShed.map((d) => d.name).join(', ');
-  const shedPower = toShed.reduce((sum, d) => sum + (d.powerKw ?? 1), 0).toFixed(2);
+  const shedPower = Array.from(shedPowerByDeviceId.values()).reduce((sum, power) => sum + power, 0).toFixed(2);
   return {
     ready: true,
     toShed,
+    shedPowerByDeviceId,
     potentialHeadroom,
     shedNames,
     shedPower,
