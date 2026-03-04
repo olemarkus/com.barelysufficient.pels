@@ -75,6 +75,31 @@ describe('buildSwapCandidates', () => {
     expect(result.toShed).toHaveLength(1);
     expect(result.reason).toContain('insufficient headroom');
   });
+
+  it('uses the same effective power estimate as shedding when evaluating swap candidates', () => {
+    const state = createPlanEngineState();
+    const result = buildSwapCandidates({
+      dev: baseDevice({ priority: 50 }),
+      onDevices: [
+        baseDevice({
+          id: 'candidate',
+          name: 'Candidate',
+          priority: 90,
+          powerKw: 0.2,
+          expectedPowerKw: 1.2,
+        }),
+      ],
+      state,
+      availableHeadroom: 0.2,
+      needed: 1.3,
+      restoredThisCycle: new Set(),
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.toShed.map((device) => device.id)).toEqual(['candidate']);
+    expect(result.shedPower).toBe('1.20');
+    expect(result.potentialHeadroom).toBeCloseTo(1.4, 6);
+  });
 });
 
 describe('restore swap helpers', () => {

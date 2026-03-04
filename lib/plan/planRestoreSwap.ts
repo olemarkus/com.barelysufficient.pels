@@ -1,6 +1,19 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 
+function getSwapCandidatePowerKw(device: DevicePlanDevice): number {
+  if (typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)) {
+    return device.measuredPowerKw > 0 ? device.measuredPowerKw : 0;
+  }
+  if (typeof device.expectedPowerKw === 'number' && device.expectedPowerKw > 0) {
+    return device.expectedPowerKw;
+  }
+  if (typeof device.powerKw === 'number' && device.powerKw > 0) {
+    return device.powerKw;
+  }
+  return 1;
+}
+
 export function buildSwapCandidates(params: {
   dev: DevicePlanDevice;
   onDevices: DevicePlanDevice[];
@@ -32,7 +45,8 @@ export function buildSwapCandidates(params: {
     if (onDev.plannedState === 'shed') continue;
     if (state.swappedOutFor[onDev.id]) continue;
     if (restoredThisCycle.has(onDev.id)) continue;
-    const onDevPower = onDev.powerKw && onDev.powerKw > 0 ? onDev.powerKw : 1;
+    const onDevPower = getSwapCandidatePowerKw(onDev);
+    if (onDevPower <= 0) continue;
     toShed.push(onDev);
     potentialHeadroom += onDevPower;
     if (potentialHeadroom >= needed) break;
@@ -49,7 +63,7 @@ export function buildSwapCandidates(params: {
     };
   }
   const shedNames = toShed.map((d) => d.name).join(', ');
-  const shedPower = toShed.reduce((sum, d) => sum + (d.powerKw ?? 1), 0).toFixed(2);
+  const shedPower = toShed.reduce((sum, d) => sum + getSwapCandidatePowerKw(d), 0).toFixed(2);
   return {
     ready: true,
     toShed,
