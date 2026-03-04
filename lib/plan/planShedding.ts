@@ -3,6 +3,7 @@ import type { PowerTrackerState } from '../core/powerTracker';
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
+import { resolveCandidatePower } from './planCandidatePower';
 import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
   RECENT_RESTORE_SHED_GRACE_MS,
@@ -151,20 +152,6 @@ function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
     .map((candidate) => addRecentRestoreState(candidate, state, nowTs, needed, deps.logDebug))
     .filter((d) => isNotAtShedTemperature(d, deps.getShedBehavior))
     .sort(sortCandidates);
-}
-
-function resolveCandidatePower(device: PlanInputDevice): number | null {
-  const measured = device.measuredPowerKw;
-  if (typeof measured === 'number' && Number.isFinite(measured)) {
-    return measured > 0 ? measured : null;
-  }
-  if (typeof device.expectedPowerKw === 'number' && device.expectedPowerKw > 0) {
-    return device.expectedPowerKw;
-  }
-  if (typeof device.powerKw === 'number' && device.powerKw > 0) {
-    return device.powerKw;
-  }
-  return 1;
 }
 
 function addCandidatePower(

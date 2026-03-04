@@ -456,12 +456,13 @@ function attemptSwapRestore(params: {
   }
   let nextHeadroom = swap.availableHeadroom;
   for (const shedDev of swap.toShed) {
+    const shedPowerKw = swap.shedPowerByDeviceId.get(shedDev.id) ?? 1;
     setDevice(deviceMap, shedDev.id, {
       plannedState: 'shed',
       reason: `swapped out for ${dev.name}`,
     });
-    deps.log(`Plan: swapping out ${shedDev.name} (p${shedDev.priority ?? 100}, ~${(shedDev.powerKw ?? 1).toFixed(2)}kW) to restore ${dev.name} (p${dev.priority ?? 100})`);
-    nextHeadroom += shedDev.powerKw && shedDev.powerKw > 0 ? shedDev.powerKw : 1;
+    deps.log(`Plan: swapping out ${shedDev.name} (p${shedDev.priority ?? 100}, ~${shedPowerKw.toFixed(2)}kW) to restore ${dev.name} (p${dev.priority ?? 100})`);
+    nextHeadroom += shedPowerKw;
     swapState.swappedOutFor.set(shedDev.id, dev.id);
   }
   restoredThisCycle.add(dev.id);
