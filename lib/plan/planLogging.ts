@@ -47,6 +47,9 @@ function isChange(device: DevicePlanDevice): boolean {
 
 function getDesiredPower(device: DevicePlanDevice): string {
   if (device.currentState === 'not_applicable') return 'not_applicable';
+  if (device.plannedState === 'inactive') {
+    return device.currentState === 'unknown' ? 'unknown' : 'off';
+  }
   if (device.plannedState !== 'shed') return 'on';
   return device.shedAction === 'set_temperature' ? 'on' : 'off';
 }
@@ -82,6 +85,9 @@ function formatTarget(value: unknown): string {
 function getPlannedPowerLabel(device: DevicePlanDevice): string {
   if (device.currentState === 'not_applicable') return 'not_applicable';
   if (device.controllable === false) return device.currentState;
+  if (device.plannedState === 'inactive') {
+    return device.currentState === 'unknown' ? 'unknown' : 'off';
+  }
   if (device.plannedState !== 'shed') return 'on';
   if (device.shedAction === 'set_temperature') {
     return typeof device.plannedTarget === 'number'

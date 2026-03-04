@@ -14,6 +14,8 @@ import {
   DAILY_BUDGET_BREAKDOWN_ENABLED,
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
+  DEBUG_LOGGING_TOPICS,
+  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   NORWAY_PRICE_MODEL,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
@@ -21,7 +23,7 @@ import {
   PRICE_SCHEME,
 } from '../../../contracts/src/settingsKeys';
 import { getTargetDevices, renderDevices } from './devices';
-import { loadCapacitySettings, loadStaleDataStatus } from './capacity';
+import { loadAdvancedSettings, loadCapacitySettings, loadStaleDataStatus } from './capacity';
 import {
   getHomeyClient,
   invalidateApiCache,
@@ -73,6 +75,7 @@ const DAILY_BUDGET_TUNING_KEYS = new Set([
 ]);
 
 const CAPACITY_SETTINGS_KEYS = new Set([CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]);
+const ADVANCED_SETTINGS_KEYS = new Set([DEBUG_LOGGING_TOPICS, 'debug_logging_enabled', EXPERIMENTAL_EV_SUPPORT_ENABLED]);
 
 const PRICE_REFRESH_KEYS = new Set([
   COMBINED_PRICES,
@@ -197,6 +200,9 @@ const createSettingsSetHandler = () => (key: string) => {
 
   if (CAPACITY_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');
+  }
+  if (ADVANCED_SETTINGS_KEYS.has(key)) {
+    runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
   }
   if (key === 'device_plan_snapshot') {
     refreshPlanForUi('settings.set');

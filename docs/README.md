@@ -39,6 +39,7 @@ Inspired by the Sparegris (Piggy Bank) Homey app.
 - **Multiple Modes** – Define different modes (Home, Away, Night, etc.) with their own temperature targets and device priorities
 - **Smart Load Shedding** – Intelligently selects which devices to turn off based on priority, and can swap lower-priority devices for higher-priority ones
 - **Automatic Recovery** – Restores devices when headroom becomes available
+- **Experimental EV Charger Support** – Can manage official Homey EV chargers behind an Advanced toggle, using EV-specific pause/resume control
 - **Norwegian Grid Tariffs** – Fetches grid tariff energy components (nettleie) from NVE
 - **Spot Prices (Norway)** – Integrates with hvakosterstrommen.no for spot prices (spotpris)
 - **Homey Energy Prices** – Can use dynamic electricity prices from Homey Energy directly
@@ -162,7 +163,7 @@ Backward compatibility note:
 
 ### Devices Tab
 
-The Devices tab shows temperature and on/off devices that PELS can detect. Devices without a usable power estimate cannot be capacity-controlled; temperature devices can still be managed for mode/price behavior (price-only), while non-temperature devices are locked unmanaged.
+The Devices tab shows temperature, on/off, and optionally EV charger devices that PELS can detect. EV chargers are hidden by default and only appear after enabling **Enable EV charger support** in the Advanced tab. Devices without a usable power estimate cannot be capacity-controlled; temperature devices can still be managed for mode/price behavior (price-only), while non-temperature devices are locked unmanaged.
 
 | Setting | Description |
 |---------|-------------|
@@ -174,6 +175,8 @@ The Devices tab shows temperature and on/off devices that PELS can detect. Devic
 > **Note:** Only managed devices appear in the Modes tab and Price optimization list.
 >
 > If expected usage looks wrong for a device, check Homey **Device → Advanced Settings → Energy** and verify “Power usage when on/off”.
+>
+> EV charger support is currently limited to official Homey EV chargers exposing `evcharger_charging` and `evcharger_charging_state`. PELS only pauses/resumes charging; it does not control charger current or target power.
 
 ### Modes Tab
 
@@ -207,9 +210,9 @@ Only managed devices are listed; unmanaged load still contributes to the totals.
 | **Device** | The device name |
 | **Temperature** | Current temperature and target (if available) |
 | **Power** | Current → planned power state (on/off) |
-| **State** | Active, Restoring, Shed, or Capacity control off |
+| **State** | Active, Restoring, Shed, Inactive, or Capacity control off |
 | **Usage** | Current measured power and expected power. Expected power estimator order: flow override → `settings.load` → measured peak → device Energy settings/metadata → 1 kW fallback. |
-| **Status** | The reason for the current plan (or "Waiting for headroom"). This also shows headroom-card cooldowns such as recent step-down hysteresis. |
+| **Status** | The reason for the current plan (or "Waiting for headroom"). This also shows headroom-card cooldowns such as recent step-down hysteresis. For EV chargers, `Inactive` means the charger is not currently resumable, for example because it is unplugged, discharging, or missing a usable EV state/power estimate. |
 
 Click **Refresh plan** to recalculate.
 
@@ -347,6 +350,7 @@ Diagnostics and expert tuning controls.
 
 | Setting | Description |
 |---------|-------------|
+| **Enable EV charger support** | Experimental. Shows official Homey EV chargers in the device list and allows pause/resume capacity control through EV-specific capabilities. Turning this off hides EV chargers and sets managed EV chargers to unmanaged. |
 | **Debug logging topics** | Select which areas emit debug logs. Selections persist across restarts. |
 | **Controlled usage weight** | Balances uncontrolled vs controlled influence in the daily plan (0 = uncontrolled, 1 = controlled). Also used for observed caps/floors. Default: 0.30. |
 | **Price flex share** | Maximum strength for price shaping of controlled load. Effective shaping also depends on the current day’s price spread (low spread = softer effect). Default: 0.35. |

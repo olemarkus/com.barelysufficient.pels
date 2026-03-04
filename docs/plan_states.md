@@ -7,9 +7,10 @@ Only managed devices are included in the plan snapshot; unmanaged devices are hi
 
 - currentState: "on" | "off" | "unknown" | "not_applicable"
   - Derived from device on/off state when available. `not_applicable` is used for temperature-only devices without `onoff`.
-- plannedState: "keep" | "shed"
+- plannedState: "keep" | "shed" | "inactive"
   - "keep" means allow device to stay in its current state or restore if off.
-  - "shed" means device should be off or set to its shed temperature.
+  - "shed" means device should be off or set to its shed temperature because PELS is actively suppressing it for capacity reasons.
+  - "inactive" means the device is not currently activatable, but PELS is not suppressing it. This is used for EV chargers that are unplugged, discharging, missing a usable state, or missing a usable power estimate.
 - shedAction: "turn_off" | "set_temperature"
 - shedTemperature: number | null
 - plannedTarget: number | null (target temperature if applicable)
@@ -41,6 +42,14 @@ Only managed devices are included in the plan snapshot; unmanaged devices are hi
   - After shedding or restoring, restoration is throttled.
   - plannedState = "shed"
   - reason = cooldown or stabilization messages (see list below).
+- EV unavailable / not resumable:
+  - If an EV charger is unplugged, discharging, has an unknown charging state, or lacks a usable power estimate:
+    - plannedState = "inactive"
+    - reason reflects the availability issue, for example:
+      - "inactive (charger is unplugged)"
+      - "inactive (charger is discharging)"
+      - "inactive (charger state unknown)"
+      - "inactive (charger power unknown)"
 - Swap-based restore:
   - If a higher-priority device needs restore but headroom is insufficient:
     - Lower-priority on devices are marked "shed" to free headroom.
@@ -52,6 +61,7 @@ The Overview tab shows a State line derived from plannedState and currentState:
 
 - Shed (powered off): plannedState === "shed" and shedAction === "turn_off"
 - Shed (lowered temperature): plannedState === "shed" and shedAction === "set_temperature"
+- Inactive: plannedState === "inactive"
 - Restoring: plannedState === "keep" and currentState is "off" or "unknown"
 - Active: plannedState === "keep" and currentState is "on"
 - Active (temperature-managed): plannedState === "keep" and currentState is "not_applicable"
@@ -82,11 +92,18 @@ Parentheses indicate dynamic values.
 - insufficient headroom (need XkW, headroom YkW)
 - shedding active
 - restore throttled
+- inactive (charger is unplugged)
+- inactive (charger is discharging)
+- inactive (charger state unknown)
+- inactive (unknown charging state 'VALUE')
+- inactive (charger power unknown; configure expected power or let PELS observe a charging peak)
 
 ## State vs Status
 
 The State line carries the on/off vs shed distinction (including "Shed (powered off)" vs "Shed (lowered temperature)").
 Status lines are now simplified and avoid repeating the state, focusing on why the device is blocked or changing.
+
+`shed` is reserved for capacity suppression and its short stabilization/cooldown period. `inactive` is neutral and means the device is not currently available for restoration, but not because PELS is suppressing it.
 
 ## Notes on min-temperature shedding
 

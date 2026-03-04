@@ -194,6 +194,13 @@ describe('plan device state', () => {
           controllable: true,
         },
         {
+          id: 'dev-inactive',
+          name: 'Device Inactive',
+          currentState: 'off',
+          plannedState: 'inactive',
+          controllable: true,
+        },
+        {
           id: 'dev-uncontrolled',
           name: 'Device Uncontrolled',
           currentState: 'off',
@@ -219,9 +226,30 @@ describe('plan device state', () => {
 
     expect(getBadgeClassList('dev-active')?.contains('cheap')).toBe(true);
     expect(getBadgeClassList('dev-shed')?.contains('expensive')).toBe(true);
+    expect(getBadgeClassList('dev-inactive')?.contains('neutral')).toBe(true);
     expect(getBadgeClassList('dev-uncontrolled')?.contains('neutral')).toBe(true);
     expect(getBadgeClassList('dev-on-uncontrolled')?.contains('neutral')).toBe(true);
     expect(getBadgeClassList('dev-off-controllable')?.contains('neutral')).toBe(true);
+  });
+
+  it('renders inactive EV state without a fake restore power transition', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-ev-inactive',
+          name: 'EV Charger',
+          currentState: 'off',
+          plannedState: 'inactive',
+          controllable: true,
+          reason: 'inactive (charger is unplugged)',
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Inactive');
+    expect(getPowerText()).toBe('off');
+    expect(getStatusText()).toBe('inactive (charger is unplugged)');
+    expect(getBadgeClassList('dev-ev-inactive')?.contains('neutral')).toBe(true);
   });
 
   it('renders temperature-managed state for devices without onoff power state', () => {

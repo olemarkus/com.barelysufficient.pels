@@ -183,21 +183,33 @@ const buildPlanTemperatureLine = (dev: PlanDeviceSnapshot) => {
   return createMetaLine('Temperature', `${currentTemp} / target ${targetText}`);
 };
 
-const buildPlanPowerLine = (dev: PlanDeviceSnapshot) => {
-  const currentPowerRaw = dev.currentState || 'unknown';
-  const currentPower = currentPowerRaw === 'not_applicable' ? 'N/A' : currentPowerRaw;
+const resolvePlannedPowerState = (
+  dev: PlanDeviceSnapshot,
+  currentPowerRaw: string,
+  currentPower: string,
+): string => {
+  if (currentPowerRaw === 'not_applicable') return currentPower;
+
   const isMinTempActive = dev.shedAction === 'set_temperature'
     && typeof dev.shedTemperature === 'number'
     && dev.currentTarget === dev.shedTemperature;
-  let plannedPowerState = currentPower;
-  if (currentPowerRaw !== 'not_applicable') {
-    plannedPowerState = dev.plannedState || 'keep';
-    if (dev.plannedState === 'shed') {
-      plannedPowerState = dev.shedAction === 'set_temperature' ? 'on' : 'off';
-    } else if (dev.plannedState === 'keep') {
-      plannedPowerState = isMinTempActive ? 'on' : currentPower;
-    }
+
+  switch (dev.plannedState) {
+    case 'shed':
+      return dev.shedAction === 'set_temperature' ? 'on' : 'off';
+    case 'inactive':
+      return currentPowerRaw === 'unknown' ? currentPower : 'off';
+    case 'keep':
+      return isMinTempActive ? 'on' : currentPower;
+    default:
+      return dev.plannedState || currentPower;
   }
+};
+
+const buildPlanPowerLine = (dev: PlanDeviceSnapshot) => {
+  const currentPowerRaw = dev.currentState || 'unknown';
+  const currentPower = currentPowerRaw === 'not_applicable' ? 'N/A' : currentPowerRaw;
+  const plannedPowerState = resolvePlannedPowerState(dev, currentPowerRaw, currentPower);
   const powerChanging = plannedPowerState !== currentPower;
   const powerText = powerChanging ? `${currentPower} → ${plannedPowerState}` : plannedPowerState;
   return createMetaLine('Power', powerText);
@@ -213,6 +225,8 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
     stateText = dev.shedAction === 'set_temperature'
       ? 'Shed (lowered temperature)'
       : 'Shed (powered off)';
+  } else if (dev.plannedState === 'inactive') {
+    stateText = 'Inactive';
   } else if (dev.plannedState === 'keep') {
     if (dev.currentState === 'off' || dev.currentState === 'unknown') {
       stateText = 'Restoring';
@@ -251,17 +265,18 @@ const isOnLikeState = (value: string | undefined): boolean => {
   return normalized !== 'off' && normalized !== 'unknown' && normalized !== 'not_applicable';
 };
 
-const resolvePlanBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'shed' | 'uncontrolled' | 'restoring' => {
+const resolvePlanBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring' => {
   if (dev.controllable === false) return 'uncontrolled';
+  if (dev.plannedState === 'inactive') return 'inactive';
   if (dev.plannedState === 'shed') return 'shed';
   if (dev.currentState === 'not_applicable') return 'active';
   if (isOnLikeState(dev.currentState)) return 'active';
   return 'restoring';
 };
 
-const getPlanStateTone = (state: 'active' | 'shed' | 'uncontrolled' | 'restoring'): PriceIndicatorTone => {
+const getPlanStateTone = (state: 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring'): PriceIndicatorTone => {
   if (state === 'shed') return 'expensive';
-  if (state === 'uncontrolled' || state === 'restoring') return 'neutral';
+  if (state === 'inactive' || state === 'uncontrolled' || state === 'restoring') return 'neutral';
   return 'cheap';
 };
 
@@ -270,7 +285,9 @@ const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
   const state = resolvePlanBadgeState(dev);
   const tone = getPlanStateTone(state);
   let label = 'Active';
-  if (state === 'shed') {
+  if (state === 'inactive') {
+    label = 'Inactive';
+  } else if (state === 'shed') {
     label = 'Shed';
   } else if (state === 'uncontrolled') {
     label = 'Uncontrolled';
