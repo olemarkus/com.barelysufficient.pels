@@ -305,17 +305,18 @@ class PelsApp extends Homey.App {
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
   }
-  private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
-    if (this.debugLoggingTopics.has(topic)) {
-      this.log(...args);
-    }
-  }
+  private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void { if (this.debugLoggingTopics.has(topic)) this.log(...args); }
   private startHeartbeat(): void {
-    const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now()); updateHeartbeat(); this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
+    const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now());
+    updateHeartbeat();
+    this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
   }
   private startPerfLogging(): void {
     this.stopPerfLogging = startPerfLogger({
-      isEnabled: () => this.debugLoggingTopics.has('perf'), log: (...args: unknown[]) => this.logDebug('perf', ...args), logCpuSpike: (...args: unknown[]) => this.log(...args), intervalMs: 30 * 1000,
+      isEnabled: () => this.debugLoggingTopics.has('perf'),
+      log: (...args: unknown[]) => this.logDebug('perf', ...args),
+      logCpuSpike: (...args: unknown[]) => this.log(...args),
+      intervalMs: 30 * 1000,
     });
   }
   private startResourceWarningListeners(): void {
@@ -323,24 +324,20 @@ class PelsApp extends Homey.App {
       this.stopResourceWarningListeners();
       this.stopResourceWarningListeners = undefined;
     }
-    this.stopResourceWarningListeners = startResourceWarningListenersHelper({ homey: this.homey, log: (message) => this.log(message) });
+    this.stopResourceWarningListeners = startResourceWarningListenersHelper({
+      homey: this.homey,
+      log: (message) => this.log(message),
+    });
   }
   private getDynamicSoftLimitOverride(): number | null {
     if (!this.defaultComputeDynamicSoftLimit || this.computeDynamicSoftLimit === this.defaultComputeDynamicSoftLimit) return null;
-    const value = this.computeDynamicSoftLimit();
-    return Number.isFinite(value) ? value : null;
+    const value = this.computeDynamicSoftLimit(); return Number.isFinite(value) ? value : null;
   }
-  private updatePriceOptimizationEnabled(logChange = false): void {
-    this.priceCoordinator.updatePriceOptimizationEnabled(logChange);
-  }
+  private updatePriceOptimizationEnabled(logChange = false): void { this.priceCoordinator.updatePriceOptimizationEnabled(logChange); }
   private get priceOptimizationEnabled(): boolean { return this.priceCoordinator.getPriceOptimizationEnabled(); }
   private get priceOptimizationSettings(): Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }> { return this.priceCoordinator.getPriceOptimizationSettings(); }
   private updateDebugLoggingEnabled(logChange = false): void {
-    this.debugLoggingTopics = buildDebugLoggingTopics({
-      settings: this.homey.settings,
-      log: (...args: unknown[]) => this.log(...args),
-      logChange,
-    });
+    this.debugLoggingTopics = buildDebugLoggingTopics({ settings: this.homey.settings, log: (...args: unknown[]) => this.log(...args), logChange });
   }
   private notifyOperatingModeChanged(mode: string): void {
     const trimmed = (mode || '').trim();
@@ -353,14 +350,15 @@ class PelsApp extends Homey.App {
   }
   private loadPowerTracker(options: { skipDailyBudgetUpdate?: boolean } = {}): void {
     const stored = this.homey.settings.get('power_tracker_state') as unknown;
-    if (isPowerTrackerState(stored)) {
-      this.powerTracker = stored;
-    }
-    if (options.skipDailyBudgetUpdate !== true) {
-      this.dailyBudgetService.updateState({ refreshObservedStats: false });
-    }
+    if (isPowerTrackerState(stored)) this.powerTracker = stored;
+    if (options.skipDailyBudgetUpdate !== true) this.dailyBudgetService.updateState({ refreshObservedStats: false });
   }
-  private migrateManagedDevices(): void { migrateManagedDevicesHelper({ homey: this.homey, log: (message) => this.log(message) }); }
+  private migrateManagedDevices(): void {
+    migrateManagedDevicesHelper({
+      homey: this.homey,
+      log: (message) => this.log(message),
+    });
+  }
   private loadCapacitySettings(): void {
     const next = loadCapacitySettingsFromHomey({
       settings: this.homey.settings,
@@ -554,8 +552,7 @@ class PelsApp extends Homey.App {
   }
   private getCurrentPriceLevel(): PriceLevel {
     const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
-    const fallback = this.planService?.getLastNotifiedPriceLevel() ?? PriceLevel.UNKNOWN;
-    return (status?.priceLevel || fallback) as PriceLevel;
+    return (status?.priceLevel || this.planService?.getLastNotifiedPriceLevel() || PriceLevel.UNKNOWN) as PriceLevel;
   }
   private startPeriodicSnapshotRefresh(): void {
     if (this.snapshotRefreshInterval) clearInterval(this.snapshotRefreshInterval);
@@ -572,8 +569,7 @@ class PelsApp extends Homey.App {
       operatingMode: this.operatingMode,
       capacityDryRun: this.capacityDryRun,
     }));
-    const dailyBudgetLog = this.dailyBudgetService.getPeriodicStatusLog();
-    if (dailyBudgetLog) this.log(dailyBudgetLog);
+    const dailyBudgetLog = this.dailyBudgetService.getPeriodicStatusLog(); if (dailyBudgetLog) this.log(dailyBudgetLog);
   }
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] { return this.deviceManager?.getSnapshot() ?? []; }
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.deviceManager.setSnapshotForTests(snapshot); }

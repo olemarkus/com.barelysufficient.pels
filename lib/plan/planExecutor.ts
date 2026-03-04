@@ -159,7 +159,7 @@ export class PlanExecutor {
   }
 
   private async applyRestorePower(dev: DevicePlan['devices'][number]): Promise<void> {
-    if (dev.plannedState === 'shed' || dev.currentState !== 'off') return;
+    if (dev.plannedState !== 'keep' || dev.currentState !== 'off') return;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (snapshot?.deviceClass === 'evcharger') {
       this.logDebug(`Capacity: evaluating EV restore for ${dev.name || dev.id} (${formatEvSnapshot(snapshot)})`);
@@ -217,6 +217,7 @@ export class PlanExecutor {
     dev: DevicePlan['devices'][number],
     snapshot?: TargetDeviceSnapshot,
   ): Promise<void> {
+    if (dev.plannedState !== 'keep') return;
     if (dev.currentState !== 'off') return;
     const lastShed = this.state.lastDeviceShedMs[dev.id];
     if (!lastShed) return;

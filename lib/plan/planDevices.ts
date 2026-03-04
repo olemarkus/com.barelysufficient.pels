@@ -3,6 +3,7 @@ import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
+import { getInactiveReason } from './planRestoreDevices';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -209,7 +210,16 @@ function applyOffStateReason(params: {
 }): DevicePlanDevice {
   const { planDevice, headroomRaw, guardInShortfall } = params;
   if (!planDevice.controllable) return planDevice;
-  if (planDevice.plannedState === 'shed' || planDevice.currentState !== 'off') return planDevice;
+  if (planDevice.currentState !== 'off') return planDevice;
+  const inactiveReason = getInactiveReason(planDevice);
+  if (inactiveReason) {
+    return {
+      ...planDevice,
+      plannedState: 'inactive',
+      reason: inactiveReason,
+    };
+  }
+  if (planDevice.plannedState === 'shed') return planDevice;
   const estimatedPower = estimateRestorePower(planDevice);
   const restoreBuffer = computeRestoreBufferKw(estimatedPower);
   const need = estimatedPower + restoreBuffer;

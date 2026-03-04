@@ -1,6 +1,7 @@
 import {
   getEvRestoreStateBlockReason,
   getEvUnknownPowerBlockReason,
+  getInactiveReason,
   getOffDevices,
   getOnDevices,
   markOffDevicesStayOff,
@@ -59,15 +60,31 @@ describe('plan restore device helpers', () => {
     expect(getEvUnknownPowerBlockReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       expectedPowerSource: 'default',
-    }))).toContain('charger power unknown');
+    }))).toBe('charger power unknown; configure expected power or let PELS observe a charging peak');
     expect(getEvUnknownPowerBlockReason(makeDevice({
       controlCapabilityId: 'onoff',
       expectedPowerSource: 'default',
     }))).toBeNull();
+    expect(getInactiveReason(makeDevice({
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_out',
+    }))).toBe('inactive (charger is unplugged)');
+    expect(getInactiveReason(makeDevice({
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_paused',
+      expectedPowerSource: 'default',
+    }))).toBe('inactive (charger power unknown; configure expected power or let PELS observe a charging peak)');
 
     const deviceMap = new Map<string, DevicePlanDevice>([
       ['dev1', makeDevice({ id: 'dev1', name: 'Device 1', powerKw: 1.1 })],
       ['dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: 'shed due to capacity', powerKw: 2.2 })],
+      ['ev1', makeDevice({
+        id: 'ev1',
+        name: 'EV 1',
+        controlCapabilityId: 'evcharger_charging',
+        evChargingState: 'plugged_out',
+        expectedPowerSource: 'load-setting',
+      })],
     ]);
     const setDevice = jest.fn((id: string, updates: Partial<DevicePlanDevice>) => {
       const current = deviceMap.get(id);
@@ -87,6 +104,10 @@ describe('plan restore device helpers', () => {
       setDevice,
     });
     expect(setDevice).toHaveBeenCalledWith('dev1', expect.objectContaining({ reason: 'cooldown (shedding, 7s remaining)' }));
+    expect(setDevice).toHaveBeenCalledWith('ev1', expect.objectContaining({
+      plannedState: 'inactive',
+      reason: 'inactive (charger is unplugged)',
+    }));
     setDevice.mockClear();
     deviceMap.set('dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: 'shed due to capacity', powerKw: 2.2 }));
 

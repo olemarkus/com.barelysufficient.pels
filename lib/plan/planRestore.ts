@@ -15,7 +15,7 @@ import {
 import { getShedCooldownState } from './planTiming';
 import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, exportSwapState } from './planSwapState';
 import { buildInsufficientHeadroomUpdate, buildSwapCandidates, computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
-import { getEvRestoreStateBlockReason, getEvUnknownPowerBlockReason, getOffDevices, getOnDevices, markOffDevicesStayOff } from './planRestoreDevices';
+import { getInactiveReason, getOffDevices, getOnDevices, markOffDevicesStayOff } from './planRestoreDevices';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -271,31 +271,21 @@ function planRestoreForDevice(params: {
     deps,
   } = params;
 
+  const inactiveReason = getInactiveReason(dev);
+  if (inactiveReason) {
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'inactive',
+      reason: inactiveReason,
+    });
+    deps.logDebug(`Plan: marking ${dev.name} inactive - ${inactiveReason}`);
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
   if (restoredOneThisCycle) {
     setDevice(deviceMap, dev.id, {
       plannedState: 'shed',
       reason: `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`,
     });
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  const evStateBlock = getEvRestoreStateBlockReason(dev);
-  if (evStateBlock) {
-    setDevice(deviceMap, dev.id, {
-      plannedState: 'shed',
-      reason: `restore blocked (${evStateBlock})`,
-    });
-    deps.logDebug(`Plan: skipping restore of ${dev.name} - ${evStateBlock}`);
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  const evPowerBlock = getEvUnknownPowerBlockReason(dev);
-  if (evPowerBlock) {
-    setDevice(deviceMap, dev.id, {
-      plannedState: 'shed',
-      reason: evPowerBlock,
-    });
-    deps.logDebug(`Plan: skipping restore of ${dev.name} - ${evPowerBlock}`);
     return { availableHeadroom, restoredOneThisCycle };
   }
 

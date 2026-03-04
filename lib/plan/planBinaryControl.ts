@@ -203,6 +203,7 @@ async function setEvBinaryControl(params: BinaryControlDeps & {
     );
     return true;
   } catch (caughtError) {
+    delete state.pendingBinaryCommands[deviceId];
     error(`Failed to ${desired ? 'resume' : 'pause'} EV charging for ${name} via DeviceManager`, caughtError);
     return false;
   }

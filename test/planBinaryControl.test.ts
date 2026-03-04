@@ -183,4 +183,37 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(false);
     expect(error).toHaveBeenCalledWith('Failed to turn on Socket via DeviceManager', expect.any(Error));
   });
+
+  it('clears pending EV commands after a failed capability write', async () => {
+    const state = createPlanEngineState();
+    const error = jest.fn();
+
+    await expect(setBinaryControl({
+      state,
+      deviceManager: {
+        setCapability: jest.fn().mockRejectedValue(new Error('kaput')),
+        getSnapshot: jest.fn().mockReturnValue([]),
+      } as never,
+      updateLocalSnapshot: jest.fn(),
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error,
+      deviceId: 'ev1',
+      name: 'EV',
+      desired: true,
+      snapshot: {
+        id: 'ev1',
+        name: 'EV',
+        deviceClass: 'evcharger',
+        controlCapabilityId: 'evcharger_charging',
+        canSetControl: true,
+        evChargingState: 'plugged_in_paused',
+        expectedPowerSource: 'load-setting',
+      },
+      logContext: 'capacity',
+    })).resolves.toBe(false);
+
+    expect(state.pendingBinaryCommands.ev1).toBeUndefined();
+    expect(error).toHaveBeenCalledWith('Failed to resume EV charging for EV via DeviceManager', expect.any(Error));
+  });
 });

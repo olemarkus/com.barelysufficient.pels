@@ -39,7 +39,17 @@ export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | nu
 export function getEvUnknownPowerBlockReason(dev: DevicePlanDevice): string | null {
   if (dev.controlCapabilityId !== 'evcharger_charging') return null;
   if (dev.expectedPowerSource !== 'default') return null;
-  return 'restore blocked (charger power unknown; configure expected power or let PELS observe a charging peak)';
+  return 'charger power unknown; configure expected power or let PELS observe a charging peak';
+}
+
+export function getInactiveReason(dev: DevicePlanDevice): string | null {
+  const evStateBlock = getEvRestoreStateBlockReason(dev);
+  if (evStateBlock) return `inactive (${evStateBlock})`;
+
+  const evPowerBlock = getEvUnknownPowerBlockReason(dev);
+  if (evPowerBlock) return `inactive (${evPowerBlock})`;
+
+  return null;
 }
 
 export function markOffDevicesStayOff(params: {
@@ -64,6 +74,12 @@ export function markOffDevicesStayOff(params: {
   const offDevices = Array.from(deviceMap.values())
     .filter((device) => device.controllable !== false && device.currentState === 'off' && device.plannedState !== 'shed');
   for (const dev of offDevices) {
+    const inactiveReason = getInactiveReason(dev);
+    if (inactiveReason) {
+      setDevice(dev.id, { plannedState: 'inactive', reason: inactiveReason });
+      logDebug(`Plan: marking ${dev.name} inactive - ${inactiveReason}`);
+      continue;
+    }
     const defaultReason = dev.reason || 'shed due to capacity';
     const nextReason = reasonOverride ? reasonOverride(dev) : resolveOffDeviceReason(timing, defaultReason);
     setDevice(dev.id, { plannedState: 'shed', reason: nextReason });

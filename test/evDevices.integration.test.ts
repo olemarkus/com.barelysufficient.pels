@@ -264,7 +264,7 @@ describe('EV charger integration', () => {
     ['plugged_in_discharging', 'charger is discharging'],
     ['mystery', "unknown charging state 'mystery'"],
   ] as Array<[EaseeChargingState, string]>)(
-    'keeps an Easee-like charger shed when restore is blocked by state %s',
+    'marks an Easee-like charger inactive when restore is blocked by state %s',
     async (state, reason) => {
       const charger = new EaseeMockCharger({ loadW: 7200 });
       await charger.seedState(state);
@@ -273,8 +273,8 @@ describe('EV charger integration', () => {
       const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
       const evPlan = getPlanEntry(plan, charger.idValue);
 
-      expect(evPlan.plannedState).toBe('shed');
-      expect(evPlan.reason).toContain(reason);
+      expect(evPlan.plannedState).toBe('inactive');
+      expect(evPlan.reason).toBe(`inactive (${reason})`);
       expect(charger.commandLog).toHaveLength(0);
 
       const snapshot = await refreshSnapshot(app);
@@ -286,7 +286,7 @@ describe('EV charger integration', () => {
     },
   );
 
-  it('keeps a paused charger shed when power is unknown', async () => {
+  it('marks a paused charger inactive when power is unknown', async () => {
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_paused');
     const app = await createEvApp(charger);
@@ -297,9 +297,30 @@ describe('EV charger integration', () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.plannedState).toBe('shed');
+    expect(evPlan.plannedState).toBe('inactive');
     expect(evPlan.reason).toContain('charger power unknown');
     expect(charger.commandLog).toHaveLength(0);
+  });
+
+  it('keeps an unplugged charger inactive during restore cooldown instead of marking it shed', async () => {
+    const charger = new EaseeMockCharger({ loadW: 7200 });
+    await charger.seedState('plugged_in_charging');
+    const app = await createEvApp(charger);
+
+    let plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 4.0 });
+    expect(getPlanEntry(plan, charger.idValue).plannedState).toBe('shed');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
+
+    await charger.setObservedState('plugged_out');
+    await refreshSnapshot(app);
+    currentTimeMs += 5_000;
+
+    plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
+    const evPlan = getPlanEntry(plan, charger.idValue);
+
+    expect(evPlan.plannedState).toBe('inactive');
+    expect(evPlan.reason).toBe('inactive (charger is unplugged)');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
   });
 
   it('restores a paused charger by swapping out a lower-priority running load', async () => {

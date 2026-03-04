@@ -91,7 +91,7 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
     planEngine: app.planEngine,
     getPlanDevices: () => app.getLatestTargetSnapshot().map((device) => ({
       ...device,
-      hasBinaryControl: typeof device.controlCapabilityId === 'string',
+      hasBinaryControl: resolveHasBinaryControl(device),
       managed: app.resolveManagedState(device.id),
       controllable: app.isCapacityControlEnabled(device.id),
     })).filter((device) => device.managed !== false),
@@ -104,6 +104,12 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
     getCombinedPrices: () => app.homey.settings.get(COMBINED_PRICES) as unknown,
     getLastPowerUpdate: () => app.getLastPowerUpdate(),
   });
+}
+
+function resolveHasBinaryControl(device: TargetDeviceSnapshot): boolean {
+  if (typeof device.controlCapabilityId === 'string') return true;
+  if (!Array.isArray(device.capabilities)) return false;
+  return device.capabilities.some((capabilityId) => capabilityId === 'onoff' || capabilityId === 'evcharger_charging');
 }
 
 export type FlowCardInitApp = {
