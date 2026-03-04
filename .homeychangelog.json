@@ -175,5 +175,8 @@
   },
   "1.16.2": {
     "en": "Improved the Settings UI so live power data, stale-data status, and the Overview update more reliably without needing manual refresh.\n\nImproved the “Is there headroom for device?” flow condition with built-in cooldown/hysteresis after step-downs and recent PELS control changes, making headroom checks more stable and reducing rapid re-ramping."
+  },
+  "1.17.0": {
+    "en": "This release adds experimental support for EV chargers in PELS. When enabled in Advanced settings, PELS can now detect and control supported official Homey EV chargers, so EV charging can participate in capacity control as a managed load."
   }
 }
