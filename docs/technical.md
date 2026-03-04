@@ -24,8 +24,8 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 PELS requires the `homey:manager:api` permission to function. This permission grants access to Homey's internal device API (HomeyAPI), which PELS uses to:
 
 1. **Discover devices** – List all devices in your home to find thermostats, water heaters, and other eligible devices
-2. **Read device state** – Get current temperatures, power consumption, and on/off states
-3. **Control devices** – Set thermostat target temperatures and turn devices on/off for load shedding and price optimization
+2. **Read device state** – Get current temperatures, power consumption, on/off states, and official EV charging state where available
+3. **Control devices** – Set thermostat target temperatures, turn generic devices on/off, and pause/resume official EV chargers through `evcharger_charging`
 
 Without this permission, PELS would not be able to see or control any devices. This is why Homey shows a warning that apps with this permission require more thorough review.
 
@@ -170,6 +170,8 @@ When headroom becomes available:
 3. **Hysteresis buffer**: Require extra headroom beyond the device's power draw to prevent immediate re-shedding
 4. **Respect swap targets**: If a device was swapped out for a higher-priority device, the high-priority one must restore first
 
+For EV chargers, restoration is only attempted when the charger is currently resumable. Chargers that are unplugged, discharging, missing a usable EV charging state, or missing a usable power estimate are marked `inactive` instead of `shed`. This keeps capacity suppression distinct from device unavailability.
+
 ---
 
 ## Power Estimation
@@ -187,6 +189,8 @@ PELS needs to estimate how much power a device will draw when turned on:
    - Approximation on-state: `approximation.usageOn`
    - Fallback to `W` when the device is not explicitly off
 6. **Fallback**: Assume 1 kW if no better estimate is available
+
+Official EV chargers are supported only when they expose both `evcharger_charging` and `evcharger_charging_state`. PELS uses `evcharger_charging` for pause/resume control and never falls back to generic `onoff` for EV actuation.
 
 This estimation is inherently imperfect, which is why PELS:
 - Restores only one device at a time

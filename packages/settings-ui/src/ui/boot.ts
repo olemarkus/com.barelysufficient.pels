@@ -12,6 +12,7 @@ import {
   priceMinDiffInput,
   priceRefreshButton,
   priceOptimizationEnabledCheckbox,
+  advancedEvSupportEnabledInput,
   gridTariffSettingsForm,
   gridTariffCountySelect,
   gridTariffCompanySelect,
@@ -47,6 +48,7 @@ import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
 import {
   DEBUG_LOGGING_TOPICS,
+  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   PRICE_OPTIMIZATION_ENABLED,
 } from '../../../contracts/src/settingsKeys';
 import {
@@ -253,6 +255,21 @@ const initAdvancedHandlers = () => {
     input.addEventListener('change', () => {
       void saveDebugTopics();
     });
+  });
+
+  advancedEvSupportEnabledInput?.addEventListener('change', async () => {
+    try {
+      await setSetting(EXPERIMENTAL_EV_SUPPORT_ENABLED, advancedEvSupportEnabledInput.checked);
+      await showToast(
+        advancedEvSupportEnabledInput.checked
+          ? 'EV charger support enabled.'
+          : 'EV charger support disabled. Managed EV chargers were set to unmanaged.',
+        'ok',
+      );
+    } catch (error) {
+      await logSettingsError('Failed to update EV charger support setting', error, 'advancedEvSupportEnabledInput');
+      await showToastError(error, 'Failed to update EV charger support setting.');
+    }
   });
 
   initAdvancedDeviceCleanupHandlers();

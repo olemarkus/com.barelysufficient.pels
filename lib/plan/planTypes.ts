@@ -14,9 +14,12 @@ export type DevicePlanDevice = {
   plannedState: string;
   currentTarget: unknown;
   plannedTarget: number | null;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  evChargingState?: string;
   priority?: number;
   powerKw?: number;
   expectedPowerKw?: number;
+  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
   measuredPowerKw?: number;
   reason?: string;
   zone?: string;
@@ -59,11 +62,14 @@ export type PlanInputDevice = {
   name: string;
   targets: Array<{ id: string; value: unknown; unit: string }>;
   deviceType?: 'temperature' | 'onoff';
-  hasOnOff?: boolean;
+  hasBinaryControl?: boolean;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   priority?: number;
   currentOn?: boolean;
+  evChargingState?: string;
   powerKw?: number;
   expectedPowerKw?: number;
+  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
   measuredPowerKw?: number;
   currentTemperature?: number;
   controllable?: boolean;

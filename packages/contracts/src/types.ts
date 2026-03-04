@@ -4,12 +4,14 @@ export type TargetDeviceSnapshot = {
     targets: Array<{ id: string; value: unknown; unit: string }>;
     deviceClass?: string;
     deviceType?: 'temperature' | 'onoff';
+    controlCapabilityId?: 'onoff' | 'evcharger_charging';
     powerKw?: number;
     expectedPowerKw?: number;
     expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
     loadKw?: number;
     priority?: number;
     currentOn?: boolean;
+    evChargingState?: string;
     currentTemperature?: number;
     measuredPowerKw?: number;
     powerCapable?: boolean;
@@ -17,7 +19,7 @@ export type TargetDeviceSnapshot = {
     controllable?: boolean;
     managed?: boolean;
     capabilities?: string[];
-    canSetOnOff?: boolean;
+    canSetControl?: boolean;
     available?: boolean;
     lastUpdated?: number;
 };

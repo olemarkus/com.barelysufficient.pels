@@ -7,6 +7,7 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 
 const PACKAGE_ROOT = path.resolve(__dirname, '..');
+const REPO_ROOT = path.resolve(PACKAGE_ROOT, '..', '..');
 const DIST_DIR = path.join(PACKAGE_ROOT, 'dist');
 const STATIC_SERVER_PATH = path.join(PACKAGE_ROOT, 'scripts', 'static-server.mjs');
 const FIXTURE_NAME = 'static-server-fixture.txt';
@@ -118,7 +119,7 @@ describe('settings-ui static server', () => {
     await fs.writeFile(FIXTURE_PATH, FIXTURE_CONTENT, 'utf8');
     port = await getFreePort();
     server = spawn(process.execPath, [STATIC_SERVER_PATH, '--port', String(port)], {
-      cwd: PACKAGE_ROOT,
+      cwd: REPO_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     await waitForServer(server);

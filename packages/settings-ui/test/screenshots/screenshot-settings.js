@@ -159,7 +159,11 @@ const useFirefox = process.argv.includes('firefox');
             tempLine.innerHTML = `<span class="plan-label">Temperature</span><span>${dev.currentTemperature.toFixed(1)}° / target ${targetText}</span>`;
             
             const powerLine = el('div', 'plan-meta-line');
-            const plannedPower = dev.plannedState === 'shed' ? 'off' : dev.currentState;
+            const plannedPower = dev.plannedState === 'shed'
+              ? 'off'
+              : dev.plannedState === 'inactive'
+                ? 'off'
+                : dev.currentState;
             const powerChanging = dev.currentState !== plannedPower;
             const powerText = powerChanging ? `${dev.currentState} → ${plannedPower}` : dev.currentState;
             powerLine.innerHTML = `<span class="plan-label">Power</span><span>${powerText}</span>`;

@@ -7,6 +7,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
@@ -23,6 +24,7 @@ export type CapacitySettingsSnapshot = {
   capacityDryRun: boolean;
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
+  experimentalEvSupportEnabled: boolean;
   shedBehaviors: Record<string, ShedBehavior>;
 };
 
@@ -40,6 +42,7 @@ export function buildCapacitySettingsSnapshot(params: {
   const dryRun = settings.get(CAPACITY_DRY_RUN) as unknown;
   const controllables = settings.get('controllable_devices') as unknown;
   const managed = settings.get(MANAGED_DEVICES) as unknown;
+  const experimentalEvSupportEnabled = settings.get(EXPERIMENTAL_EV_SUPPORT_ENABLED) as unknown;
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
 
   const nextCapacity = {
@@ -62,6 +65,9 @@ export function buildCapacitySettingsSnapshot(params: {
   const nextDryRun = typeof dryRun === 'boolean' ? dryRun : current.capacityDryRun;
   const nextControllables = isBooleanMap(controllables) ? controllables : current.controllableDevices;
   const nextManaged = isBooleanMap(managed) ? managed : current.managedDevices;
+  const nextExperimentalEvSupportEnabled = typeof experimentalEvSupportEnabled === 'boolean'
+    ? experimentalEvSupportEnabled
+    : current.experimentalEvSupportEnabled;
   const nextBehaviors = normalizeShedBehaviorsHelper(rawShedBehaviors as Record<string, ShedBehavior> | undefined);
 
   return {
@@ -73,6 +79,7 @@ export function buildCapacitySettingsSnapshot(params: {
     capacityDryRun: nextDryRun,
     controllableDevices: nextControllables,
     managedDevices: nextManaged,
+    experimentalEvSupportEnabled: nextExperimentalEvSupportEnabled,
     shedBehaviors: nextBehaviors,
   };
 }
@@ -104,6 +111,8 @@ export function initSettingsHandlerForApp(params: {
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
+  getExperimentalEvSupportEnabled: () => boolean;
+  disableManagedEvDevices: () => void;
   log: (message: string) => void;
   error: (message: string, error: Error) => void;
 }): (key: string) => Promise<void> {
@@ -126,6 +135,8 @@ export function initSettingsHandlerForApp(params: {
     updatePriceOptimizationEnabled,
     updateOverheadToken,
     updateDebugLoggingEnabled,
+    getExperimentalEvSupportEnabled,
+    disableManagedEvDevices,
     log,
     error,
   } = params;
@@ -146,6 +157,8 @@ export function initSettingsHandlerForApp(params: {
     updatePriceOptimizationEnabled,
     updateOverheadToken,
     updateDebugLoggingEnabled,
+    getExperimentalEvSupportEnabled,
+    disableManagedEvDevices,
     log,
     errorLog: (message: string, err: unknown) => error(message, err as Error),
   });

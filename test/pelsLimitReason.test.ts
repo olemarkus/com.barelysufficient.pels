@@ -107,4 +107,39 @@ describe('pels status limit reason', () => {
 
     expect(status.limitReason).toBe('none');
   });
+
+  it('does not count inactive EV devices as shed or active', () => {
+    const plan: DevicePlan = {
+      meta: {
+        totalKw: 0.4,
+        softLimitKw: 6,
+        softLimitSource: 'capacity',
+        headroomKw: 5.6,
+      },
+      devices: [
+        {
+          id: 'ev-1',
+          name: 'EV Charger',
+          currentState: 'off',
+          plannedState: 'inactive',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'inactive (charger is unplugged)',
+        },
+      ],
+    };
+
+    const { status } = buildPelsStatus({
+      plan,
+      isCheap: false,
+      isExpensive: false,
+      combinedPrices: { prices: [{ total: 1.2 }] },
+      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+    });
+
+    expect(status.limitReason).toBe('none');
+    expect(status.devicesOn).toBe(0);
+    expect(status.devicesOff).toBe(0);
+  });
 });

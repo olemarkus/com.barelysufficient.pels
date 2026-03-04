@@ -4,12 +4,14 @@ export type TargetDeviceSnapshot = {
     targets: Array<{ id: string; value: unknown; unit: string }>;
     deviceClass?: string;
     deviceType?: 'temperature' | 'onoff';
+    controlCapabilityId?: 'onoff' | 'evcharger_charging';
     powerKw?: number;
     expectedPowerKw?: number;
     expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
     loadKw?: number;
     priority?: number;
     currentOn?: boolean;
+    evChargingState?: string;
     currentTemperature?: number;
     measuredPowerKw?: number;
     powerCapable?: boolean;
@@ -17,7 +19,7 @@ export type TargetDeviceSnapshot = {
     controllable?: boolean;
     managed?: boolean;
     capabilities?: string[];
-    canSetOnOff?: boolean;
+    canSetControl?: boolean;
     available?: boolean;
     lastUpdated?: number;
 };
@@ -63,6 +65,7 @@ export type FlowHomeyLike = {
 export type CapabilityValue<T> = {
     value?: T;
     units?: string;
+    setable?: boolean;
 };
 
 export type HomeyDeviceLike = {
@@ -77,6 +80,8 @@ export type HomeyDeviceLike = {
         measure_power?: CapabilityValue<number>;
         meter_power?: CapabilityValue<number>;
         onoff?: CapabilityValue<boolean>;
+        evcharger_charging?: CapabilityValue<boolean>;
+        evcharger_charging_state?: CapabilityValue<string>;
         target_temperature?: CapabilityValue<number>;
     };
     settings?: Record<string, unknown> & {

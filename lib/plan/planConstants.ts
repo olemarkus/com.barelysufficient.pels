@@ -10,3 +10,4 @@ export const RECENT_SHED_EXTRA_BUFFER_KW = 0.15; // Or at least an extra 0.15 kW
 export const RECENT_RESTORE_SHED_GRACE_MS = 3 * 60 * 1000; // Avoid re-shedding a freshly restored device for 3 minutes unless overshoot is large
 export const RECENT_RESTORE_OVERSHOOT_BYPASS_KW = 0.5; // Allow immediate re-shed if overshoot is >= 0.5 kW
 export const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
+export const BINARY_COMMAND_PENDING_MS = 15000;

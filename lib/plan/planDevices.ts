@@ -3,6 +3,7 @@ import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
+import { getInactiveReason } from './planRestoreDevices';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -40,7 +41,7 @@ export function buildInitialPlanDevices(params: {
       deps,
     });
     const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
-    const currentState = resolveCurrentState(dev.currentOn, dev.hasOnOff);
+    const currentState = resolveCurrentState(dev.currentOn, dev.hasBinaryControl);
     const controllable = dev.controllable !== false;
     const shedBehavior: { action: ShedAction; temperature: number | null } = supportsTemperature
       ? deps.getShedBehavior(dev.id)
@@ -104,9 +105,9 @@ function applyPriceOptimizationDelta(
   return target;
 }
 
-function resolveCurrentState(currentOn?: boolean, hasOnOff?: boolean): string {
+function resolveCurrentState(currentOn?: boolean, hasBinaryControl?: boolean): string {
   if (typeof currentOn === 'boolean') return currentOn ? 'on' : 'off';
-  if (hasOnOff === false) return 'not_applicable';
+  if (hasBinaryControl === false) return 'not_applicable';
   return 'unknown';
 }
 
@@ -161,7 +162,10 @@ function buildBasePlanDevice(params: {
     priority,
     powerKw: dev.powerKw,
     expectedPowerKw: dev.expectedPowerKw,
+    expectedPowerSource: dev.expectedPowerSource,
     measuredPowerKw: dev.measuredPowerKw,
+    controlCapabilityId: dev.controlCapabilityId,
+    evChargingState: dev.evChargingState,
     reason: baseReason,
     zone: dev.zone || 'Unknown',
     controllable,
@@ -206,7 +210,16 @@ function applyOffStateReason(params: {
 }): DevicePlanDevice {
   const { planDevice, headroomRaw, guardInShortfall } = params;
   if (!planDevice.controllable) return planDevice;
-  if (planDevice.plannedState === 'shed' || planDevice.currentState !== 'off') return planDevice;
+  if (planDevice.currentState !== 'off') return planDevice;
+  const inactiveReason = getInactiveReason(planDevice);
+  if (inactiveReason) {
+    return {
+      ...planDevice,
+      plannedState: 'inactive',
+      reason: inactiveReason,
+    };
+  }
+  if (planDevice.plannedState === 'shed') return planDevice;
   const estimatedPower = estimateRestorePower(planDevice);
   const restoreBuffer = computeRestoreBufferKw(estimatedPower);
   const need = estimatedPower + restoreBuffer;

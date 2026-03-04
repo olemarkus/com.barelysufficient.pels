@@ -172,4 +172,24 @@ describe('plan logging helpers', () => {
     expect(lines[0]).toContain('power n/a -> n/a');
     expect(lines[0]).not.toContain('unknown -> on');
   });
+
+  it('does not model inactive EV devices as restore transitions', () => {
+    const plan = {
+      meta: { headroomKw: 3.2 },
+      devices: [
+        {
+          id: 'ev-1',
+          name: 'EV Charger',
+          plannedState: 'inactive',
+          plannedTarget: null,
+          currentState: 'off',
+          currentTarget: null,
+          reason: 'inactive (charger is unplugged)',
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    const lines = buildPlanChangeLines(plan);
+    expect(lines).toEqual([]);
+  });
 });
