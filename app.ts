@@ -84,10 +84,17 @@ class PelsApp extends Homey.App {
   private heartbeatInterval?: ReturnType<typeof setInterval>;
   private stopPerfLogging?: () => void;
   private stopResourceWarningListeners?: () => void;
+  private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
 
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void { this.deviceManager.updateLocalSnapshot(deviceId, updates); }
-  private setExpectedOverride(deviceId: string, kw: number): void {
-    this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() }; this.planService?.syncHeadroomCardTrackedUsage({ deviceId, trackedKw: kw });
+  private setExpectedOverride(deviceId: string, kw: number): boolean {
+    const existing = this.expectedPowerKwOverrides[deviceId];
+    if (typeof existing?.kw === 'number' && Math.abs(existing.kw - kw) <= PelsApp.EXPECTED_OVERRIDE_EQUALS_EPSILON_KW) {
+      return false;
+    }
+    this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
+    this.planService?.syncHeadroomCardTrackedUsage({ deviceId, trackedKw: kw });
+    return true;
   }
   private getHomeyEnergyApi(): HomeyEnergyApi | null { return resolveHomeyEnergyApiFromSdk(this.homey) ?? resolveHomeyEnergyApiFromHomeyApi(this.deviceManager?.getHomeyApi?.()); }
   async onInit() {

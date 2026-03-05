@@ -72,6 +72,20 @@ describe('Expected power flow card', () => {
     expect((app as any).expectedPowerKwOverrides['dev-1']).toBeTruthy();
   });
 
+  it('does not rewrite override when requested expected power is unchanged', async () => {
+    const device = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await device.setCapabilityValue('onoff', true);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).expectedPowerKwOverrides['dev-1'] = { kw: 1.25, ts: 12345 };
+    const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
+    await expect(runAction({ device: { id: 'dev-1' }, power_w: 1250 })).resolves.toBe(true);
+    expect((app as any).expectedPowerKwOverrides['dev-1']).toEqual({ kw: 1.25, ts: 12345 });
+  });
+
   it('fails when device has configured load setting', async () => {
     const device = new MockDevice('dev-2', 'Heater', ['target_temperature']);
     device.setSettings({ load: 500 });

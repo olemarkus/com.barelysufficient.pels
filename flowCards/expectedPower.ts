@@ -44,7 +44,7 @@ export function registerExpectedPowerCard(
   deps: {
     getSnapshot: () => Promise<TargetDeviceSnapshot[]>;
     getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
-    setExpectedOverride: (deviceId: string, kw: number) => void;
+    setExpectedOverride: (deviceId: string, kw: number) => boolean;
     refreshSnapshot: () => Promise<void>;
     rebuildPlan: () => void;
     log: (...args: unknown[]) => void;
@@ -56,12 +56,16 @@ export function registerExpectedPowerCard(
     const payload = args as { device?: DeviceRef; power_w?: number } | null;
     const deviceId = extractDeviceId(payload);
     const powerW = parseExpectedPowerW(payload);
+    const requestedKw = powerW / 1000;
     await assertNoConfiguredLoad(deps, deviceId);
 
     const snapshot = await deps.getSnapshot();
+    const changed = deps.setExpectedOverride(deviceId, requestedKw);
+    if (!changed) {
+      return true;
+    }
     const deviceName = resolveDeviceName(snapshot, deviceId);
-    deps.setExpectedOverride(deviceId, powerW / 1000);
-    deps.log(`Flow: set expected power for ${deviceName} to ${(powerW / 1000).toFixed(3)} kW`);
+    deps.log(`Flow: set expected power for ${deviceName} to ${requestedKw.toFixed(3)} kW`);
     await deps.refreshSnapshot();
     deps.rebuildPlan();
     return true;

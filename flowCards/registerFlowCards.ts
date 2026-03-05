@@ -28,7 +28,7 @@ export type FlowCardDeps = {
   getSnapshot: () => Promise<TargetDeviceSnapshot[]>;
   refreshSnapshot: () => Promise<void>;
   getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
-  setExpectedOverride: (deviceId: string, kw: number) => void;
+  setExpectedOverride: (deviceId: string, kw: number) => boolean;
   storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
     dateKey: string;
     storedCount: number;
