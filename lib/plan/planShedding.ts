@@ -289,6 +289,9 @@ function countRemainingCandidates(
 ): number {
   if (headroom === null || headroom >= 0) return 0;
   return devices.filter((d) => d.controllable !== false && d.currentOn !== false && !shedSet.has(d.id))
-    .filter((d) => resolveCandidatePower(d) !== null)
+    .filter((d) => {
+      const power = resolveCandidatePower(d);
+      return power !== null && power > 0;
+    })
     .length;
 }
