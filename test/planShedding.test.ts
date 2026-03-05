@@ -252,4 +252,47 @@ describe('buildSheddingPlan', () => {
     // Daily soft-limit hours should still evaluate hourly shortfall risk.
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 1);
   });
+
+  it('does not count zero-power devices as remaining shortfall candidates', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'zero',
+            name: 'Zero',
+            expectedPowerKw: 0,
+            powerKw: 0,
+            controllable: true,
+            currentOn: true,
+          }),
+        ],
+        total: 7,
+        softLimit: 5,
+        capacitySoftLimit: 8,
+        headroomRaw: -2,
+        headroom: -2,
+        softLimitSource: 'daily',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1001 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 1);
+  });
 });
