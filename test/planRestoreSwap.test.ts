@@ -4,7 +4,6 @@ import {
   computeRestoreBufferKw,
   estimateRestorePower,
 } from '../lib/plan/planRestoreSwap';
-import { createPlanEngineState } from '../lib/plan/planState';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
 
 const baseDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice => ({
@@ -19,11 +18,10 @@ const baseDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice
 
 describe('buildSwapCandidates', () => {
   it('stops when encountering lower priority devices', () => {
-    const state = createPlanEngineState();
     const result = buildSwapCandidates({
       dev: baseDevice({ priority: 50 }),
       onDevices: [baseDevice({ id: 'low', name: 'Low', priority: 40, powerKw: 2 })],
-      state,
+      swappedOutFor: new Map(),
       availableHeadroom: 1,
       needed: 3,
       restoredThisCycle: new Set(),
@@ -34,8 +32,7 @@ describe('buildSwapCandidates', () => {
   });
 
   it('skips ineligible devices and returns ready when enough headroom is found', () => {
-    const state = createPlanEngineState();
-    state.swappedOutFor.skip = 'target';
+    const swappedOutFor = new Map<string, string>([['skip', 'target']]);
     const restoredThisCycle = new Set(['restored']);
     const onDevices = [
       baseDevice({ id: 'shed', name: 'Shed', priority: 100, plannedState: 'shed', powerKw: 2 }),
@@ -48,7 +45,7 @@ describe('buildSwapCandidates', () => {
     const result = buildSwapCandidates({
       dev: baseDevice({ priority: 50 }),
       onDevices,
-      state,
+      swappedOutFor,
       availableHeadroom: 0,
       needed: 3,
       restoredThisCycle,
@@ -61,11 +58,10 @@ describe('buildSwapCandidates', () => {
   });
 
   it('returns not ready when potential headroom is still insufficient', () => {
-    const state = createPlanEngineState();
     const result = buildSwapCandidates({
       dev: baseDevice({ priority: 50 }),
       onDevices: [baseDevice({ id: 'on', name: 'On', priority: 90, powerKw: 1 })],
-      state,
+      swappedOutFor: new Map(),
       availableHeadroom: 0,
       needed: 5,
       restoredThisCycle: new Set(),
@@ -77,7 +73,6 @@ describe('buildSwapCandidates', () => {
   });
 
   it('uses the same effective power estimate as shedding when evaluating swap candidates', () => {
-    const state = createPlanEngineState();
     const result = buildSwapCandidates({
       dev: baseDevice({ priority: 50 }),
       onDevices: [
@@ -89,7 +84,7 @@ describe('buildSwapCandidates', () => {
           expectedPowerKw: 1.2,
         }),
       ],
-      state,
+      swappedOutFor: new Map(),
       availableHeadroom: 0.2,
       needed: 1.3,
       restoredThisCycle: new Set(),
@@ -103,7 +98,6 @@ describe('buildSwapCandidates', () => {
   });
 
   it('treats explicit zero expected or configured power as zero instead of falling back to 1kW', () => {
-    const state = createPlanEngineState();
     const result = buildSwapCandidates({
       dev: baseDevice({ priority: 50 }),
       onDevices: [
@@ -115,7 +109,7 @@ describe('buildSwapCandidates', () => {
           powerKw: 0,
         }),
       ],
-      state,
+      swappedOutFor: new Map(),
       availableHeadroom: 0.2,
       needed: 0.3,
       restoredThisCycle: new Set(),

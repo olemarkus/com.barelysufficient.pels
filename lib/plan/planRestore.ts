@@ -306,7 +306,6 @@ function planRestoreForDevice(params: {
     deviceMap,
     onDevices,
     swapState,
-    state,
     availableHeadroom,
     restoreNeed,
     measurementTs: timing.measurementTs,
@@ -398,7 +397,6 @@ function attemptSwapRestore(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   onDevices: DevicePlanDevice[];
   swapState: SwapState;
-  state: PlanEngineState;
   availableHeadroom: number;
   restoreNeed: { needed: number; devPower: number };
   measurementTs: number | null;
@@ -410,7 +408,6 @@ function attemptSwapRestore(params: {
     deviceMap,
     onDevices,
     swapState,
-    state,
     availableHeadroom,
     restoreNeed,
     measurementTs,
@@ -433,7 +430,7 @@ function attemptSwapRestore(params: {
   const swap = buildSwapCandidates({
     dev,
     onDevices,
-    state,
+    swappedOutFor: swapState.swappedOutFor,
     availableHeadroom,
     needed: restoreNeed.needed,
     restoredThisCycle,
@@ -456,7 +453,7 @@ function attemptSwapRestore(params: {
   }
   let nextHeadroom = swap.availableHeadroom;
   for (const shedDev of swap.toShed) {
-    const shedPowerKw = swap.shedPowerByDeviceId.get(shedDev.id) ?? 1;
+    const shedPowerKw = swap.shedPowerByDeviceId.get(shedDev.id)!;
     setDevice(deviceMap, shedDev.id, {
       plannedState: 'shed',
       reason: `swapped out for ${dev.name}`,

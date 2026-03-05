@@ -16,8 +16,6 @@ export function resolveCandidatePower(device: PowerCandidate): number | null {
 }
 
 function resolveExpectedOrConfiguredPower(powerKw: number | undefined): number | null {
-  if (typeof powerKw !== 'number' || !Number.isFinite(powerKw)) return null;
-  if (powerKw > 0) return powerKw;
-  if (powerKw === 0) return 0;
+  if (typeof powerKw === 'number' && Number.isFinite(powerKw) && powerKw >= 0) return powerKw;
   return null;
 }

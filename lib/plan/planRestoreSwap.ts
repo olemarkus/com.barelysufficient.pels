@@ -1,11 +1,10 @@
 import type { DevicePlanDevice } from './planTypes';
-import type { PlanEngineState } from './planState';
 import { resolveCandidatePower } from './planCandidatePower';
 
 export function buildSwapCandidates(params: {
   dev: DevicePlanDevice;
   onDevices: DevicePlanDevice[];
-  state: PlanEngineState;
+  swappedOutFor: ReadonlyMap<string, string>;
   availableHeadroom: number;
   needed: number;
   restoredThisCycle: Set<string>;
@@ -22,7 +21,7 @@ export function buildSwapCandidates(params: {
   const {
     dev,
     onDevices,
-    state,
+    swappedOutFor,
     availableHeadroom,
     needed,
     restoredThisCycle,
@@ -33,7 +32,7 @@ export function buildSwapCandidates(params: {
   const shedPowerByDeviceId = new Map<string, number>();
   for (const onDev of onDevices) {
     if ((onDev.priority ?? 100) <= targetPriority) break;
-    const onDevPower = getSwapCandidatePower(onDev, state, restoredThisCycle);
+    const onDevPower = getSwapCandidatePower(onDev, swappedOutFor, restoredThisCycle);
     if (onDevPower === null) continue;
     toShed.push(onDev);
     shedPowerByDeviceId.set(onDev.id, onDevPower);
@@ -68,11 +67,11 @@ export function buildSwapCandidates(params: {
 
 function getSwapCandidatePower(
   onDev: DevicePlanDevice,
-  state: PlanEngineState,
+  swappedOutFor: ReadonlyMap<string, string>,
   restoredThisCycle: Set<string>,
 ): number | null {
   if (onDev.plannedState === 'shed') return null;
-  if (state.swappedOutFor[onDev.id]) return null;
+  if (swappedOutFor.has(onDev.id)) return null;
   if (restoredThisCycle.has(onDev.id)) return null;
   const onDevPower = resolveCandidatePower(onDev);
   if (onDevPower === null || onDevPower <= 0) return null;
