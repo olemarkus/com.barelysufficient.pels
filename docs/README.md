@@ -13,6 +13,7 @@ Inspired by the Sparegris (Piggy Bank) Homey app.
 - [Getting Started](#getting-started)
 - [Terminology and Units](#terminology-and-units)
 - [How to Use (Scenarios)](#how-to-use-scenarios)
+- [How-To: Let PELS Manage Device Power Usage](howto_headroom_expected_power_flow_control.md)
 - [Configuration](#configuration)
   - [Devices Tab](#devices-tab)
   - [Modes Tab](#modes-tab)
@@ -156,6 +157,10 @@ Backward compatibility note:
 ### 6) Reapply mode targets to fix drift
 - If a device has drifted from its mode target (e.g., manual override), trigger **Set operating mode** with the *current* mode (and ensure dry-run is off).  
 - The card will re-send the configured targets for that mode to bring devices back in line.
+
+### 7) Let PELS manage stepped-load device power (EV, water heater, etc.)
+- See [How-To: Let PELS Manage Device Power Usage](howto_headroom_expected_power_flow_control.md) for a reusable pattern.
+- It combines headroom-based level control and expected-power synchronization in one Advanced Flow, with `Connected 300` as a concrete worked example.
 
 ---
 
