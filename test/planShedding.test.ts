@@ -295,4 +295,55 @@ describe('buildSheddingPlan', () => {
 
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 1);
   });
+
+  it('excludes zero-power devices from shed candidate stats', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4.5),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'positive',
+            name: 'Positive',
+            expectedPowerKw: 1,
+            currentOn: true,
+            controllable: true,
+          }),
+          buildDevice({
+            id: 'zero',
+            name: 'Zero',
+            expectedPowerKw: 0,
+            powerKw: 0,
+            currentOn: true,
+            controllable: true,
+          }),
+        ],
+        total: 5,
+        softLimit: 4.5,
+        capacitySoftLimit: 4.5,
+        headroomRaw: -0.5,
+        headroom: -0.5,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1002 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.overshootStats?.candidates).toBe(1);
+    expect(result.overshootStats?.totalSheddable).toBeCloseTo(1, 6);
+  });
 });
