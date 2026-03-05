@@ -27,17 +27,14 @@ export function buildSwapCandidates(params: {
     needed,
     restoredThisCycle,
   } = params;
+  const targetPriority = dev.priority ?? 100;
   let potentialHeadroom = availableHeadroom;
   const toShed: DevicePlanDevice[] = [];
   const shedPowerByDeviceId = new Map<string, number>();
   for (const onDev of onDevices) {
-    if ((onDev.priority ?? 100) <= (dev.priority ?? 100)) break;
-    if (onDev.plannedState === 'shed') continue;
-    if (state.swappedOutFor[onDev.id]) continue;
-    if (restoredThisCycle.has(onDev.id)) continue;
-    const onDevPower = resolveCandidatePower(onDev);
+    if ((onDev.priority ?? 100) <= targetPriority) break;
+    const onDevPower = getSwapCandidatePower(onDev, state, restoredThisCycle);
     if (onDevPower === null) continue;
-    if (onDevPower <= 0) continue;
     toShed.push(onDev);
     shedPowerByDeviceId.set(onDev.id, onDevPower);
     potentialHeadroom += onDevPower;
@@ -67,6 +64,19 @@ export function buildSwapCandidates(params: {
     availableHeadroom,
     reason: '',
   };
+}
+
+function getSwapCandidatePower(
+  onDev: DevicePlanDevice,
+  state: PlanEngineState,
+  restoredThisCycle: Set<string>,
+): number | null {
+  if (onDev.plannedState === 'shed') return null;
+  if (state.swappedOutFor[onDev.id]) return null;
+  if (restoredThisCycle.has(onDev.id)) return null;
+  const onDevPower = resolveCandidatePower(onDev);
+  if (onDevPower === null || onDevPower <= 0) return null;
+  return onDevPower;
 }
 
 export function buildInsufficientHeadroomUpdate(
