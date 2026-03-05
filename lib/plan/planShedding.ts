@@ -159,7 +159,7 @@ function addCandidatePower(
   getPriority: (deviceId: string) => number,
 ): BaseShedCandidate | null {
   const power = resolveCandidatePower(device);
-  if (power === null) return null;
+  if (power === null || power <= 0) return null;
   const priority = getPriority(device.id);
   return { ...device, priority, effectivePower: power };
 }

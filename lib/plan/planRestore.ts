@@ -451,20 +451,31 @@ function attemptSwapRestore(params: {
   if (measurementTs !== null) {
     swapState.lastSwapPlanMeasurementTs.set(dev.id, measurementTs);
   }
-  let nextHeadroom = swap.availableHeadroom;
+  const nextHeadroom = swap.potentialHeadroom;
   for (const shedDev of swap.toShed) {
-    const shedPowerKw = swap.shedPowerByDeviceId.get(shedDev.id)!;
+    const shedPowerKw = getSwapShedPower(swap, shedDev.id, dev.id);
     setDevice(deviceMap, shedDev.id, {
       plannedState: 'shed',
       reason: `swapped out for ${dev.name}`,
     });
     deps.log(`Plan: swapping out ${shedDev.name} (p${shedDev.priority ?? 100}, ~${shedPowerKw.toFixed(2)}kW) to restore ${dev.name} (p${dev.priority ?? 100})`);
-    nextHeadroom += shedPowerKw;
     swapState.swappedOutFor.set(shedDev.id, dev.id);
   }
   restoredThisCycle.add(dev.id);
   setDevice(deviceMap, dev.id, { plannedState: 'keep' });
   return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+}
+
+function getSwapShedPower(
+  swap: ReturnType<typeof buildSwapCandidates>,
+  shedDeviceId: string,
+  restoreDeviceId: string,
+): number {
+  const shedPowerKw = swap.shedPowerByDeviceId.get(shedDeviceId);
+  if (shedPowerKw !== undefined) return shedPowerKw;
+  throw new Error(
+    `Plan: missing shed power entry for device ${shedDeviceId} while swapping to restore ${restoreDeviceId}`,
+  );
 }
 
 function setDevice(
