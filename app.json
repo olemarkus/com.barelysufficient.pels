@@ -175,6 +175,106 @@
           }
         ],
         "id": "price_level_changed"
+      },
+      {
+        "title": {
+          "en": "Current price is one of the lowest before a time"
+        },
+        "titleFormatted": {
+          "en": "Current price is one of [[number]] lowest in the [[period]] hours before [[time]]:00"
+        },
+        "args": [
+          {
+            "name": "period",
+            "type": "number",
+            "title": {
+              "en": "Hours"
+            },
+            "placeholder": {
+              "en": "2 - 23"
+            },
+            "min": 2,
+            "max": 23,
+            "step": 1
+          },
+          {
+            "name": "number",
+            "type": "number",
+            "title": {
+              "en": "Lowest count"
+            },
+            "placeholder": {
+              "en": "1 - 24"
+            },
+            "hint": {
+              "en": "Ties at the cutoff price are included."
+            },
+            "min": 1,
+            "max": 24,
+            "step": 1
+          },
+          {
+            "name": "time",
+            "type": "number",
+            "title": {
+              "en": "End hour"
+            },
+            "placeholder": {
+              "en": "1 - 24"
+            },
+            "min": 1,
+            "max": 24,
+            "step": 1
+          }
+        ],
+        "tokens": [
+          {
+            "name": "current_price",
+            "type": "number",
+            "title": {
+              "en": "Current price"
+            },
+            "example": 24.5
+          }
+        ],
+        "id": "price_lowest_before"
+      },
+      {
+        "title": {
+          "en": "Current price is one of today's lowest"
+        },
+        "titleFormatted": {
+          "en": "Current price is one of [[number]] lowest prices today"
+        },
+        "args": [
+          {
+            "name": "number",
+            "type": "number",
+            "title": {
+              "en": "Lowest count"
+            },
+            "placeholder": {
+              "en": "1 - 24"
+            },
+            "hint": {
+              "en": "Ties at the cutoff price are included."
+            },
+            "min": 1,
+            "max": 24,
+            "step": 1
+          }
+        ],
+        "tokens": [
+          {
+            "name": "current_price",
+            "type": "number",
+            "title": {
+              "en": "Current price"
+            },
+            "example": 24.5
+          }
+        ],
+        "id": "price_lowest_today"
       }
     ],
     "conditions": [
@@ -323,6 +423,86 @@
           }
         ],
         "id": "price_level_is"
+      },
+      {
+        "title": {
+          "en": "Current price is one of the lowest before a time"
+        },
+        "titleFormatted": {
+          "en": "Current price is one of [[number]] lowest in the [[period]] hours before [[time]]:00"
+        },
+        "args": [
+          {
+            "name": "period",
+            "type": "number",
+            "title": {
+              "en": "Hours"
+            },
+            "placeholder": {
+              "en": "2 - 23"
+            },
+            "min": 2,
+            "max": 23,
+            "step": 1
+          },
+          {
+            "name": "number",
+            "type": "number",
+            "title": {
+              "en": "Lowest count"
+            },
+            "placeholder": {
+              "en": "1 - 24"
+            },
+            "hint": {
+              "en": "Ties at the cutoff price are included."
+            },
+            "min": 1,
+            "max": 24,
+            "step": 1
+          },
+          {
+            "name": "time",
+            "type": "number",
+            "title": {
+              "en": "End hour"
+            },
+            "placeholder": {
+              "en": "1 - 24"
+            },
+            "min": 1,
+            "max": 24,
+            "step": 1
+          }
+        ],
+        "id": "price_lowest_before"
+      },
+      {
+        "title": {
+          "en": "Current price is one of today's lowest"
+        },
+        "titleFormatted": {
+          "en": "Current price is one of [[number]] lowest prices today"
+        },
+        "args": [
+          {
+            "name": "number",
+            "type": "number",
+            "title": {
+              "en": "Lowest count"
+            },
+            "placeholder": {
+              "en": "1 - 24"
+            },
+            "hint": {
+              "en": "Ties at the cutoff price are included."
+            },
+            "min": 1,
+            "max": 24,
+            "step": 1
+          }
+        ],
+        "id": "price_lowest_today"
       }
     ],
     "actions": [

@@ -1,0 +1,27 @@
+{
+  "title": {
+    "en": "Current price is one of today's lowest"
+  },
+  "titleFormatted": {
+    "en": "Current price is one of [[number]] lowest prices today"
+  },
+  "args": [
+    {
+      "name": "number",
+      "type": "number",
+      "title": {
+        "en": "Lowest count"
+      },
+      "placeholder": {
+        "en": "1 - 24"
+      },
+      "hint": {
+        "en": "Ties at the cutoff price are included."
+      },
+      "min": 1,
+      "max": 24,
+      "step": 1
+    }
+  ],
+  "id": "price_lowest_today"
+}

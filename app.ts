@@ -19,22 +19,9 @@ import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
 import { resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi } from './lib/utils/homeyEnergy';
 import {
-  persistPowerTrackerStateForApp,
-  prunePowerTrackerHistoryForApp,
-  updateDailyBudgetAndRecordCapForApp,
-  PowerSampleRebuildState,
-  recordPowerSampleForApp,
-  schedulePlanRebuildFromSignal,
+  persistPowerTrackerStateForApp, prunePowerTrackerHistoryForApp, updateDailyBudgetAndRecordCapForApp, PowerSampleRebuildState, recordPowerSampleForApp, schedulePlanRebuildFromSignal,
 } from './lib/app/appPowerHelpers';
-import {
-  createPlanEngine,
-  createPlanService,
-  createPriceCoordinator,
-  registerAppFlowCards,
-  type FlowCardInitApp,
-  type PlanEngineInitApp,
-  type PlanServiceInitApp,
-} from './lib/app/appInit';
+import { createPlanEngine, createPlanService, createPriceCoordinator, registerAppFlowCards, type FlowCardInitApp, type PlanEngineInitApp, type PlanServiceInitApp } from './lib/app/appInit';
 import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import { disableManagedEvDevices as disableManagedEvDevicesHelper, disableUnsupportedDevices as disableUnsupportedDevicesHelper } from './lib/app/appDeviceSupport';
@@ -46,6 +33,7 @@ import { toStableFingerprint } from './lib/utils/stableFingerprint';
 import { startResourceWarningListeners as startResourceWarningListenersHelper } from './lib/app/appResourceWarningHelpers';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
 import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
+import { startPriceLowestTriggerChecker as startPriceLowestTriggerCheckerHelper } from './lib/app/appPriceLowestTrigger';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 10 * 1000;
@@ -82,6 +70,7 @@ class PelsApp extends Homey.App {
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private heartbeatInterval?: ReturnType<typeof setInterval>;
+  private stopPriceLowestTriggerChecker?: () => void;
   private stopPerfLogging?: () => void;
   private stopResourceWarningListeners?: () => void;
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
@@ -146,6 +135,7 @@ class PelsApp extends Homey.App {
       runPriceBootstrapInBackground: deferStartupBootstrap,
       applyPriceOptimizationImmediatelyOnStart: !deferStartupBootstrap,
     }));
+    await runStartupStep('startPriceLowestTriggerChecker', () => this.startPriceLowestTriggerChecker());
     await runStartupStep('startPowerTrackerPruning', () => this.startPowerTrackerPruning());
   }
   private initPriceCoordinator(): void {
@@ -277,9 +267,7 @@ class PelsApp extends Homey.App {
     });
   }
   async onUninit(): Promise<void> {
-    if (this.powerTrackerSaveTimer) {
-      this.persistPowerTrackerState();
-    }
+    if (this.powerTrackerSaveTimer) this.persistPowerTrackerState();
     if (this.powerTrackerPruneTimer) {
       clearTimeout(this.powerTrackerPruneTimer);
       this.powerTrackerPruneTimer = undefined;
@@ -288,35 +276,32 @@ class PelsApp extends Homey.App {
       clearInterval(this.powerTrackerPruneInterval);
       this.powerTrackerPruneInterval = undefined;
     }
-    if (this.snapshotRefreshInterval) {
-      clearInterval(this.snapshotRefreshInterval);
-      this.snapshotRefreshInterval = undefined;
-    }
-    if (this.powerSampleRebuildState.timer) {
-      clearTimeout(this.powerSampleRebuildState.timer);
-      this.powerSampleRebuildState.timer = undefined;
-    }
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = undefined;
-    }
-    if (this.stopPerfLogging) {
-      this.stopPerfLogging();
-      this.stopPerfLogging = undefined;
-    }
-    if (this.stopResourceWarningListeners) {
-      this.stopResourceWarningListeners();
-      this.stopResourceWarningListeners = undefined;
-    }
+    if (this.snapshotRefreshInterval) { clearInterval(this.snapshotRefreshInterval); this.snapshotRefreshInterval = undefined; }
+    if (this.powerSampleRebuildState.timer) { clearTimeout(this.powerSampleRebuildState.timer); this.powerSampleRebuildState.timer = undefined; }
+    if (this.heartbeatInterval) { clearInterval(this.heartbeatInterval); this.heartbeatInterval = undefined; }
+    if (this.stopPriceLowestTriggerChecker) this.stopPriceLowestTriggerChecker();
+    this.stopPriceLowestTriggerChecker = undefined;
+    if (this.stopPerfLogging) { this.stopPerfLogging(); this.stopPerfLogging = undefined; }
+    if (this.stopResourceWarningListeners) { this.stopResourceWarningListeners(); this.stopResourceWarningListeners = undefined; }
     this.planService?.destroy();
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
   }
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void { if (this.debugLoggingTopics.has(topic)) this.log(...args); }
-  private startHeartbeat(): void {
-    const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now());
-    updateHeartbeat();
-    this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
+  private startHeartbeat(): void { const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now()); updateHeartbeat(); this.heartbeatInterval = setInterval(
+    updateHeartbeat,
+    30 * 1000,
+  ); }
+  private startPriceLowestTriggerChecker(): void {
+    if (this.stopPriceLowestTriggerChecker) this.stopPriceLowestTriggerChecker();
+    this.stopPriceLowestTriggerChecker = startPriceLowestTriggerCheckerHelper({
+      getNow: () => this.getNow(),
+      getTimeZone: () => this.getTimeZone(),
+      getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
+      getTriggerCard: (id) => this.homey.flow.getTriggerCard(id),
+      logDebug: (message) => this.logDebug('price', message),
+      error: (message, error) => this.error(message, error),
+    });
   }
   private startPerfLogging(): void {
     this.stopPerfLogging = startPerfLogger({
@@ -455,7 +440,6 @@ class PelsApp extends Homey.App {
     this.powerTrackerPruneTimer = setTimeout(() => this.prunePowerTrackerHistory(), POWER_TRACKER_PRUNE_INITIAL_DELAY_MS);
     this.powerTrackerPruneInterval = setInterval(() => this.prunePowerTrackerHistory(), POWER_TRACKER_PRUNE_INTERVAL_MS);
   }
-
   private savePowerTracker(nextState: PowerTrackerState = this.powerTracker): void {
     this.powerTracker = nextState;
     this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now() });
@@ -470,7 +454,6 @@ class PelsApp extends Homey.App {
     this.emitSettingsUiPowerUpdated();
     this.persistPowerTrackerState();
   }
-
   private updateDailyBudgetAndRecordCap(options?: { nowMs?: number; forcePlanRebuild?: boolean }): void {
     this.powerTracker = updateDailyBudgetAndRecordCapForApp({
       powerTracker: this.powerTracker,
@@ -531,6 +514,9 @@ class PelsApp extends Homey.App {
       evaluateHeadroomForDevice: (params) => this.evaluateHeadroomForDevice(params),
       loadDailyBudgetSettings: () => this.dailyBudgetService.loadSettings(),
       updateDailyBudgetState: (options) => this.dailyBudgetService.updateState(options),
+      getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
+      getTimeZone: () => this.getTimeZone(),
+      getNow: () => this.getNow(),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
     };
@@ -612,6 +598,8 @@ class PelsApp extends Homey.App {
     }
   }
   public getCombinedHourlyPrices = (): unknown => this.priceCoordinator.getCombinedHourlyPrices();
+  private getTimeZone = (): string => this.homey.clock.getTimezone();
+  private getNow = (): Date => new Date();
   public findCheapestHours = (count: number): string[] => this.priceCoordinator.findCheapestHours(count);
   private isCurrentHourCheap = (): boolean => this.priceCoordinator.isCurrentHourCheap();
   private isCurrentHourExpensive = (): boolean => this.priceCoordinator.isCurrentHourExpensive();

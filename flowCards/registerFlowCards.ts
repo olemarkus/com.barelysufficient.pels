@@ -11,6 +11,7 @@ import {
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { incPerfCounters } from '../lib/utils/perfCounters';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
+import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 
 type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
 
@@ -45,6 +46,9 @@ export type FlowCardDeps = {
   }) => HeadroomForDeviceDecision | null;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
+  getCombinedHourlyPrices: () => unknown;
+  getTimeZone: () => string;
+  getNow: () => Date;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -109,6 +113,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     registerManagedDeviceCondition(deps);
     registerCapacityControlCondition(deps);
     registerFlowPriceCards(deps);
+    registerLowestPriceCards(deps);
   } finally {
     stopSpan();
   }
@@ -138,6 +143,59 @@ function createPriceCardRunListener(kind: 'today' | 'tomorrow', deps: FlowCardDe
       throw error;
     }
   };
+}
+
+function registerLowestPriceCards(deps: FlowCardDeps): void {
+  const cardIds: LowestPriceCardId[] = ['price_lowest_before', 'price_lowest_today'];
+
+  for (const cardId of cardIds) {
+    const conditionCard = deps.homey.flow.getConditionCard(cardId);
+    conditionCard.registerRunListener(async (args: unknown) => (
+      evaluateLowestPriceFlowCard(cardId, args, 'condition', deps)
+    ));
+
+    const triggerCard = deps.homey.flow.getTriggerCard(cardId);
+    triggerCard.registerRunListener(async (args: unknown, state?: unknown) => (
+      evaluateLowestPriceFlowCard(cardId, args, 'trigger', deps, state)
+    ));
+  }
+}
+
+function evaluateLowestPriceFlowCard(
+  cardId: LowestPriceCardId,
+  args: unknown,
+  source: 'trigger' | 'condition',
+  deps: FlowCardDeps,
+  state?: unknown,
+): boolean {
+  const triggerState = source === 'trigger' && state && typeof state === 'object'
+    ? state as Record<string, unknown>
+    : null;
+  const stateCurrentPriceRaw = Number(triggerState?.current_price);
+  const currentPriceOverride = Number.isFinite(stateCurrentPriceRaw) ? stateCurrentPriceRaw : undefined;
+  const triggeredAtRaw = triggerState?.triggered_at;
+  const triggeredAt = typeof triggeredAtRaw === 'string' ? new Date(triggeredAtRaw) : null;
+  const now = triggeredAt && Number.isFinite(triggeredAt.getTime()) ? triggeredAt : deps.getNow();
+
+  const result = evaluateLowestPriceCard({
+    cardId,
+    args,
+    combinedPrices: deps.getCombinedHourlyPrices(),
+    timeZone: deps.getTimeZone(),
+    now,
+    currentPriceOverride,
+  });
+
+  const currentPrice = typeof result.currentPrice === 'number' ? result.currentPrice.toFixed(6) : 'n/a';
+  const cutoff = typeof result.cutoff === 'number' ? result.cutoff.toFixed(6) : 'n/a';
+  const statePrice = typeof currentPriceOverride === 'number' ? currentPriceOverride.toFixed(6) : 'n/a';
+  deps.logDebug(
+    `Flow ${source} ${cardId}: reason=${result.reason}, current=${currentPrice}, `
+    + `state_current=${statePrice}, cutoff=${cutoff}, candidates=${result.candidateCount} `
+    + `=> ${result.matches ? 'PASS' : 'FAIL'}`,
+  );
+
+  return result.matches;
 }
 
 function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {
