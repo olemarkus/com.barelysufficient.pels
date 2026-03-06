@@ -22,13 +22,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22.x
+      - name: Setup Node.js 22.22.0
         uses: actions/setup-node@v4
         with:
-          node-version: 22.x
+          node-version: 22.22.0
           cache: npm
 
-      - name: Pin npm 10
+      - name: Pin npm 10.9.4
         run: npm install --global npm@10.9.4
 
       - name: Install Homey CLI
@@ -48,13 +48,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22.x
+      - name: Setup Node.js 22.22.0
         uses: actions/setup-node@v4
         with:
-          node-version: 22.x
+          node-version: 22.22.0
           cache: npm
 
-      - name: Pin npm 10
+      - name: Pin npm 10.9.4
         run: npm install --global npm@10.9.4
 
       - name: Install dependencies
@@ -71,13 +71,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22.x
+      - name: Setup Node.js 22.22.0
         uses: actions/setup-node@v4
         with:
-          node-version: 22.x
+          node-version: 22.22.0
           cache: npm
 
-      - name: Pin npm 10
+      - name: Pin npm 10.9.4
         run: npm install --global npm@10.9.4
 
       - name: Install dependencies
@@ -103,13 +103,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 22.x
+      - name: Setup Node.js 22.22.0
         uses: actions/setup-node@v4
         with:
-          node-version: 22.x
+          node-version: 22.22.0
           cache: npm
 
-      - name: Pin npm 10
+      - name: Pin npm 10.9.4
         run: npm install --global npm@10.9.4
 
       - name: Install dependencies
