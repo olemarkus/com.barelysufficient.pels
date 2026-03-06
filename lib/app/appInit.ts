@@ -141,6 +141,9 @@ export type FlowCardInitApp = {
   }) => HeadroomForDeviceDecision | null;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
+  getCombinedHourlyPrices: () => unknown;
+  getTimeZone: () => string;
+  getNow: () => Date;
   log: (...args: unknown[]) => void;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
 };
@@ -166,6 +169,9 @@ export function registerAppFlowCards(app: FlowCardInitApp): void {
     evaluateHeadroomForDevice: (params) => app.evaluateHeadroomForDevice(params),
     loadDailyBudgetSettings: () => app.loadDailyBudgetSettings(),
     updateDailyBudgetState: (options) => app.updateDailyBudgetState(options),
+    getCombinedHourlyPrices: () => app.getCombinedHourlyPrices(),
+    getTimeZone: () => app.getTimeZone(),
+    getNow: () => app.getNow(),
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug('settings', ...args),
   });
