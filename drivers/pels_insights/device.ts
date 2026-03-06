@@ -312,7 +312,10 @@ class PelsInsightsDevice extends Homey.Device {
           return current?.buffer ?? slot.buffer;
         }
         const renderId = ++this.planImageRenderCounter;
-        this.log(`[plan-image] ${slot.cameraId}: render start id=${renderId} force=${options.force === true} key=${key}`);
+        this.log(
+          `[plan-image] ${slot.cameraId}: render start id=${renderId} `
+          + `force=${options.force === true} key=${key}`,
+        );
         this.logPlanImageDebug(`${slot.cameraId}: Refreshing image (force=${options.force === true}) key=${key}`);
         const renderStartedAtMs = Date.now();
         const payload = await this.generatePlanImagePayload(snapshot, dayKey, combinedPrices, slot.filename);
@@ -325,8 +328,14 @@ class PelsInsightsDevice extends Homey.Device {
           lastRenderedAtMs: nowMs,
         });
         await image.update();
-        this.log(`[plan-image] ${slot.cameraId}: render done id=${renderId} ms=${renderDurationMs} bytes=${payload.buffer.length}`);
-        this.logPlanImageDebug(`${slot.cameraId}: Image updated (${payload.buffer.length} bytes, ${renderDurationMs}ms)`);
+        this.log(
+          `[plan-image] ${slot.cameraId}: render done id=${renderId} `
+          + `ms=${renderDurationMs} bytes=${payload.buffer.length}`,
+        );
+        this.logPlanImageDebug(
+          `${slot.cameraId}: Image updated `
+          + `(${payload.buffer.length} bytes, ${renderDurationMs}ms)`,
+        );
         return payload.buffer;
       } finally {
         stopSpan();
@@ -390,7 +399,10 @@ class PelsInsightsDevice extends Homey.Device {
     const prices = combinedPrices?.prices ?? [];
     const firstStartsAt = prices[0]?.startsAt ?? '';
     const lastStartsAt = prices[prices.length - 1]?.startsAt ?? '';
-    const totalChecksum = prices.reduce((sum, entry) => sum + (Number.isFinite(entry.total) ? Math.round(entry.total * 100) : 0), 0);
+    const totalChecksum = prices.reduce(
+      (sum, entry) => sum + (Number.isFinite(entry.total) ? Math.round(entry.total * 100) : 0),
+      0,
+    );
     const priceKey = `${prices.length}-${firstStartsAt}-${lastStartsAt}-${totalChecksum}`;
     const unitKey = combinedPrices?.priceUnit ?? '';
     return `${priceKey}-${unitKey}`;
@@ -429,7 +441,10 @@ class PelsInsightsDevice extends Homey.Device {
   }
 
   private hasActivePlanImageDemand(nowMs: number = Date.now()): boolean {
-    return this.planImages.some((slot) => typeof slot.lastStreamedAtMs === 'number' && (nowMs - slot.lastStreamedAtMs) <= PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS);
+    return this.planImages.some((slot) => (
+      typeof slot.lastStreamedAtMs === 'number'
+      && (nowMs - slot.lastStreamedAtMs) <= PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS
+    ));
   }
 
   private invalidatePlanImageCache(): void {

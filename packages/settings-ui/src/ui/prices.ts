@@ -362,7 +362,9 @@ const buildCombinedFromLegacy = (
   };
 };
 
-const buildCombinedFromSpotPrices = async (pricePayload: SettingsUiPricesPayload): Promise<CombinedPriceData | null> => {
+const buildCombinedFromSpotPrices = async (
+  pricePayload: SettingsUiPricesPayload,
+): Promise<CombinedPriceData | null> => {
   const priceData = pricePayload.electricityPrices;
   if (!priceData || !Array.isArray(priceData) || priceData.length === 0) return null;
   const priceArea = typeof pricePayload.priceArea === 'string' ? pricePayload.priceArea : 'NO1';

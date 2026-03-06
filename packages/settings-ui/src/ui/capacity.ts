@@ -59,7 +59,8 @@ const updateStaleDataBanner = (lastPowerUpdate: number | null, lastHeartbeat: nu
   const isStale = (now - lastPowerUpdate) > STALE_DATA_THRESHOLD_MS;
   staleDataBanner.hidden = !isStale;
   if (staleDataBannerText && isStale) {
-    staleDataBannerText.textContent = 'No power data received in the last minute. Check your Flow that reports power usage.';
+    staleDataBannerText.textContent = 'No power data received in the last minute. '
+      + 'Check your Flow that reports power usage.';
   }
 };
 

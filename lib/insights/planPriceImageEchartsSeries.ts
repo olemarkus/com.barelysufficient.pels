@@ -1,4 +1,8 @@
-import { PLAN_PRICE_COLORS as COLORS, PLAN_PRICE_FONT_SIZES as FONT_SIZES, PLAN_PRICE_LAYOUT } from './planPriceImageTheme';
+import {
+  PLAN_PRICE_COLORS as COLORS,
+  PLAN_PRICE_FONT_SIZES as FONT_SIZES,
+  PLAN_PRICE_LAYOUT,
+} from './planPriceImageTheme';
 
 type LegendTextStyle = {
   color?: string;

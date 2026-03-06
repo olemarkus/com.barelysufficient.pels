@@ -72,7 +72,10 @@ export class PlanBuilder {
     return this.deps.getPriceOptimizationEnabled();
   }
 
-  private get priceOptimizationSettings(): Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }> {
+  private get priceOptimizationSettings(): Record<
+    string,
+    { enabled: boolean; cheapDelta: number; expensiveDelta: number }
+  > {
     return this.deps.getPriceOptimizationSettings();
   }
 
@@ -189,14 +192,17 @@ export class PlanBuilder {
       dailyBudget: this.buildDailyBudgetContext(dailyBudgetSnapshot),
     }));
 
-    const sheddingPlan = await this.trackDurationAsync('plan_shedding_ms', () => buildSheddingPlan(context, this.state, {
-      capacityGuard: this.capacityGuard,
-      powerTracker: this.powerTracker,
-      getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-      getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
-      log: (...args: unknown[]) => this.deps.log(...args),
-      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
-    }));
+    const sheddingPlan = await this.trackDurationAsync(
+      'plan_shedding_ms',
+      () => buildSheddingPlan(context, this.state, {
+        capacityGuard: this.capacityGuard,
+        powerTracker: this.powerTracker,
+        getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
+        getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
+        log: (...args: unknown[]) => this.deps.log(...args),
+        logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+      }),
+    );
     this.applySheddingUpdates(sheddingPlan);
 
     return { context, dailyBudgetSnapshot, sheddingPlan };

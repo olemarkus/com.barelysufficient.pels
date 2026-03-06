@@ -70,7 +70,11 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     operatingModeChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
       const payload = args as { mode?: string | { id?: string; name?: string } } | null;
       const statePayload = state as { mode?: string } | null;
-      const argModeValue = typeof payload?.mode === 'object' && payload?.mode !== null ? payload.mode.id : payload?.mode;
+      const argModeValue = (
+        typeof payload?.mode === 'object' && payload?.mode !== null
+          ? payload.mode.id
+          : payload?.mode
+      );
       const chosenModeRaw = (argModeValue || '').trim();
       const chosenMode = deps.resolveModeName(chosenModeRaw);
       const stateMode = deps.resolveModeName((statePayload?.mode || '').trim());
@@ -85,7 +89,11 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     priceLevelChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
       const payload = args as { level?: string | { id?: string; name?: string } } | null;
       const statePayload = state as { priceLevel?: PriceLevel } | null;
-      const argLevelValue = typeof payload?.level === 'object' && payload?.level !== null ? payload.level.id : payload?.level;
+      const argLevelValue = (
+        typeof payload?.level === 'object' && payload?.level !== null
+          ? payload.level.id
+          : payload?.level
+      );
       const chosenLevelRaw = (argLevelValue || '').trim().toLowerCase();
       const chosenLevel = (chosenLevelRaw || PriceLevel.UNKNOWN) as PriceLevel;
       const stateLevel = (statePayload?.priceLevel || PriceLevel.UNKNOWN) as PriceLevel;
@@ -98,7 +106,11 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     const priceLevelIsCond = homey.flow.getConditionCard('price_level_is');
     priceLevelIsCond.registerRunListener(async (args: unknown) => {
       const payload = args as { level?: string | { id?: string; name?: string } } | null;
-      const argLevelValue = typeof payload?.level === 'object' && payload?.level !== null ? payload.level.id : payload?.level;
+      const argLevelValue = (
+        typeof payload?.level === 'object' && payload?.level !== null
+          ? payload.level.id
+          : payload?.level
+      );
       const chosenLevel = ((argLevelValue || '').trim().toLowerCase() || PriceLevel.UNKNOWN) as PriceLevel;
       const currentLevel = deps.getCurrentPriceLevel();
       return chosenLevel === currentLevel;
@@ -260,7 +272,10 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     }
     const isDisabling = raw === 0;
     if (!isDisabling && (raw < MIN_DAILY_BUDGET_KWH || raw > MAX_DAILY_BUDGET_KWH)) {
-      throw new Error(`Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
+      throw new Error(
+        `Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} `
+        + `and ${MAX_DAILY_BUDGET_KWH} kWh.`,
+      );
     }
 
     const previousBudget = deps.homey.settings.get(DAILY_BUDGET_KWH);
@@ -317,7 +332,10 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const activeMode = deps.getCurrentOperatingMode();
     const matches = activeMode.toLowerCase() === chosenMode.toLowerCase();
     if (!matches && chosenModeRaw !== chosenMode) {
-      deps.logDebug(`Mode condition checked using alias '${chosenModeRaw}' -> '${chosenMode}', but active mode is '${activeMode}'`);
+      deps.logDebug(
+        `Mode condition checked using alias '${chosenModeRaw}' -> `
+        + `'${chosenMode}', but active mode is '${activeMode}'`,
+      );
     }
     return matches;
   });
@@ -496,7 +514,9 @@ function logHeadroomCheck(params: {
   const softLimit = capacityGuard.getSoftLimit();
   const currentPower = capacityGuard.getLastTotalPower();
   const deviceName = deviceSnap?.name || deviceId;
-  const expectedPowerKwStr = deviceSnap?.expectedPowerKw !== undefined ? deviceSnap.expectedPowerKw.toFixed(2) : 'unknown';
+  const expectedPowerKwStr = deviceSnap?.expectedPowerKw !== undefined
+    ? deviceSnap.expectedPowerKw.toFixed(2)
+    : 'unknown';
   const sourceStr = deviceSnap?.expectedPowerSource ? ` (${deviceSnap.expectedPowerSource})` : '';
   const cooldownStr = decision.cooldownSource && typeof decision.cooldownRemainingSec === 'number'
     ? `, cooldown=${decision.cooldownSource} (${decision.cooldownRemainingSec}s remaining)`

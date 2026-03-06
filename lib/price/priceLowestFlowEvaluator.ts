@@ -102,7 +102,11 @@ const buildSlotIndex = (
   for (const entry of entries) {
     const slotDate = new Date(entry.startsAtMs);
     const slotParts = getZonedParts(slotDate, timeZone);
-    const dateKey = `${slotParts.year.toString().padStart(4, '0')}-${slotParts.month.toString().padStart(2, '0')}-${slotParts.day.toString().padStart(2, '0')}`;
+    const dateKey = [
+      slotParts.year.toString().padStart(4, '0'),
+      slotParts.month.toString().padStart(2, '0'),
+      slotParts.day.toString().padStart(2, '0'),
+    ].join('-');
     const dayMap = grouped.get(dateKey) ?? new Map<number, HourSlot[]>();
     const currentHourList = dayMap.get(slotParts.hour) ?? [];
     const hourList = [...currentHourList, {

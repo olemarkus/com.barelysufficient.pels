@@ -19,7 +19,10 @@ export function updateLastKnownPower(params: {
   const previousPeak = state.lastKnownPowerKw[deviceId] || 0;
   if (measuredKw > previousPeak) {
     state.lastKnownPowerKw[deviceId] = measuredKw;
-    logger.debug(`Power estimate: updated peak power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW (was ${previousPeak.toFixed(3)} kW)`);
+    logger.debug(
+      `Power estimate: updated peak power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW `
+      + `(was ${previousPeak.toFixed(3)} kW)`,
+    );
   }
 }
 

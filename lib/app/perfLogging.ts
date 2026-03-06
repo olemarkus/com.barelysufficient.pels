@@ -10,7 +10,14 @@ type PerfDurationEntry = {
 
 type PerfDelta = {
   counts: Record<string, number>;
-  durations: Record<string, { totalMs: number; count: number; maxMs: number; avgMs: number }>;
+  durations: Record<string, PerfDeltaDurationEntry>;
+};
+
+type PerfDeltaDurationEntry = {
+  totalMs: number;
+  count: number;
+  maxMs: number;
+  avgMs: number;
 };
 
 type PerfSummary = {
@@ -73,7 +80,7 @@ const buildPerfDelta = (current: PerfSnapshot, previous?: PerfSnapshot | null): 
     if (delta === 0) return acc;
     return { ...acc, [key]: delta };
   }, {});
-  const durationsDelta = Object.keys(current.durations).reduce<Record<string, { totalMs: number; count: number; maxMs: number; avgMs: number }>>((acc, key) => {
+  const durationsDelta = Object.keys(current.durations).reduce<Record<string, PerfDeltaDurationEntry>>((acc, key) => {
     const currentEntry = current.durations[key];
     const previousEntry = previous.durations[key] || { totalMs: 0, count: 0, maxMs: 0 };
     const deltaTotalMs = currentEntry.totalMs - previousEntry.totalMs;
@@ -104,7 +111,8 @@ const formatDurations = (durations: Record<string, PerfDurationEntry>, useProvid
     } else if (value.count > 0) {
       avgMs = value.totalMs / value.count;
     }
-    return `${key}: count=${value.count} totalMs=${value.totalMs.toFixed(1)} avgMs=${avgMs.toFixed(1)} maxMs=${value.maxMs.toFixed(1)}`;
+    return `${key}: count=${value.count} totalMs=${value.totalMs.toFixed(1)} `
+      + `avgMs=${avgMs.toFixed(1)} maxMs=${value.maxMs.toFixed(1)}`;
   })
 );
 

@@ -14,7 +14,12 @@ import {
 } from './planConstants';
 import { getShedCooldownState } from './planTiming';
 import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, exportSwapState } from './planSwapState';
-import { buildInsufficientHeadroomUpdate, buildSwapCandidates, computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
+import {
+  buildInsufficientHeadroomUpdate,
+  buildSwapCandidates,
+  computeRestoreBufferKw,
+  estimateRestorePower,
+} from './planRestoreSwap';
 import { getInactiveReason, getOffDevices, getOnDevices, markOffDevicesStayOff } from './planRestoreDevices';
 
 export type RestoreDeps = {
@@ -150,7 +155,9 @@ function buildRestoreTiming(
   const restoreCooldownRemainingMs = sinceRestore !== null
     ? Math.max(0, cooldownState.restoreCooldownMs - sinceRestore)
     : null;
-  const restoreCooldownRemainingSec = restoreCooldownRemainingMs !== null ? Math.ceil(restoreCooldownRemainingMs / 1000) : null;
+  const restoreCooldownRemainingSec = restoreCooldownRemainingMs !== null
+    ? Math.ceil(restoreCooldownRemainingMs / 1000)
+    : null;
   const inShedWindow = inCooldown || activeOvershoot || inRestoreCooldown;
 
   return {
@@ -364,7 +371,10 @@ function shouldBlockRestoreForPendingSwap(
         plannedState: 'shed',
         reason: `swap pending (${swapTargetDev.name})`,
       });
-      logDebug(`Plan: blocking restore of ${dev.name} (p${devPriority}) - swap target ${swapTargetDev.name} (p${swapTargetPriority}) should restore first`);
+      logDebug(
+        `Plan: blocking restore of ${dev.name} (p${devPriority}) - `
+        + `swap target ${swapTargetDev.name} (p${swapTargetPriority}) should restore first`,
+      );
       return true;
     }
     if (swapTargetDev.currentState === 'on') {
@@ -438,7 +448,11 @@ function attemptSwapRestore(params: {
   if (!swap.ready) {
     const update = buildInsufficientHeadroomUpdate(restoreNeed.needed, availableHeadroom);
     setDevice(deviceMap, dev.id, update);
-    deps.logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${restoreNeed.devPower.toFixed(2)}kW) - ${swap.reason}`);
+    deps.logDebug(
+      `Plan: skipping restore of ${dev.name} `
+      + `(p${dev.priority ?? 100}, ~${restoreNeed.devPower.toFixed(2)}kW) `
+      + `- ${swap.reason}`,
+    );
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
@@ -458,7 +472,11 @@ function attemptSwapRestore(params: {
       plannedState: 'shed',
       reason: `swapped out for ${dev.name}`,
     });
-    deps.log(`Plan: swapping out ${shedDev.name} (p${shedDev.priority ?? 100}, ~${shedPowerKw.toFixed(2)}kW) to restore ${dev.name} (p${dev.priority ?? 100})`);
+    deps.log(
+      `Plan: swapping out ${shedDev.name} `
+      + `(p${shedDev.priority ?? 100}, ~${shedPowerKw.toFixed(2)}kW) `
+      + `to restore ${dev.name} (p${dev.priority ?? 100})`,
+    );
     swapState.swappedOutFor.set(shedDev.id, dev.id);
   }
   restoredThisCycle.add(dev.id);

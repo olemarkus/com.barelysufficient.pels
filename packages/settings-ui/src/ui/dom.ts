@@ -40,8 +40,12 @@ export const dailyBudgetEnabledInput = document.querySelector('#daily-budget-ena
 export const dailyBudgetKwhInput = document.querySelector('#daily-budget-kwh') as HTMLInputElement;
 export const dailyBudgetPriceShapingInput = document.querySelector('#daily-budget-price-shaping') as HTMLInputElement;
 export const dailyBudgetAdvancedForm = document.querySelector('#daily-budget-advanced-form') as HTMLFormElement;
-export const dailyBudgetControlledWeightInput = document.querySelector('#daily-budget-controlled-weight') as HTMLInputElement;
-export const dailyBudgetPriceFlexShareInput = document.querySelector('#daily-budget-price-flex-share') as HTMLInputElement;
+export const dailyBudgetControlledWeightInput = document.querySelector(
+  '#daily-budget-controlled-weight',
+) as HTMLInputElement;
+export const dailyBudgetPriceFlexShareInput = document.querySelector(
+  '#daily-budget-price-flex-share',
+) as HTMLInputElement;
 export const dailyBudgetStatusPill = qs('#daily-budget-status-pill');
 export const dailyBudgetTitle = qs('#daily-budget-title');
 export const dailyBudgetDay = qs('#daily-budget-day');
@@ -106,13 +110,19 @@ export const gridTariffRefreshButton = document.querySelector('#nettleie-refresh
 export const priceOptimizationList = qs('#price-optimization-list');
 export const priceOptimizationEmpty = qs('#price-optimization-empty');
 export const priceOptimizationSection = qs('#price-optimization-section');
-export const priceOptimizationEnabledCheckbox = document.querySelector('#price-optimization-enabled') as HTMLInputElement;
+export const priceOptimizationEnabledCheckbox = document.querySelector(
+  '#price-optimization-enabled',
+) as HTMLInputElement;
 export const advancedEvSupportEnabledInput = document.querySelector('#advanced-ev-support-enabled') as HTMLInputElement;
 export const advancedDeviceSelect = document.querySelector('#advanced-device-select') as HTMLSelectElement;
 export const advancedDeviceClearButton = document.querySelector('#advanced-device-clear') as HTMLButtonElement;
-export const advancedDeviceClearUnknownButton = document.querySelector('#advanced-device-clear-unknown') as HTMLButtonElement;
+export const advancedDeviceClearUnknownButton = document.querySelector(
+  '#advanced-device-clear-unknown',
+) as HTMLButtonElement;
 export const advancedApiDeviceSelect = document.querySelector('#advanced-api-device-select') as HTMLSelectElement;
-export const advancedApiDeviceRefreshButton = document.querySelector('#advanced-api-device-refresh') as HTMLButtonElement;
+export const advancedApiDeviceRefreshButton = document.querySelector(
+  '#advanced-api-device-refresh',
+) as HTMLButtonElement;
 export const advancedApiDeviceLogButton = document.querySelector('#advanced-api-device-log') as HTMLButtonElement;
 
 export const deviceDetailOverlay = qs('#device-detail-overlay');

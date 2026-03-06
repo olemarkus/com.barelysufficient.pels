@@ -58,7 +58,9 @@ const resolveIntervalMinutes = (doc: HomeyEnergyPriceDocument): number | null =>
   return fromPriceInterval !== null ? fromPriceInterval : null;
 };
 
-export const resolveHomeyEnergyDocument = (response: HomeyEnergyPricesResponse | unknown): HomeyEnergyPriceDocument | null => {
+export const resolveHomeyEnergyDocument = (
+  response: HomeyEnergyPricesResponse | unknown,
+): HomeyEnergyPriceDocument | null => {
   if (!response || typeof response !== 'object') return null;
   if (Array.isArray(response)) {
     return response.length > 0 && response[0] && typeof response[0] === 'object'

@@ -25,7 +25,12 @@ import type {
   DailyBudgetState,
   DailyBudgetUpdate,
 } from './dailyBudgetTypes';
-import { isDailyBudgetState, type DailyBudgetManagerDeps, type ExistingPlanState, type PlanResult } from './dailyBudgetManagerTypes';
+import {
+  isDailyBudgetState,
+  type DailyBudgetManagerDeps,
+  type ExistingPlanState,
+  type PlanResult,
+} from './dailyBudgetManagerTypes';
 import { CONTROLLED_USAGE_WEIGHT } from './dailyBudgetConstants';
 import { finalizePreviousDayLearning } from './dailyBudgetLearning';
 import { ensureObservedHourlyStats } from './dailyBudgetObservedStats';

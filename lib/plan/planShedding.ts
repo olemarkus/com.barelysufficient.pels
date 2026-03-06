@@ -188,7 +188,9 @@ function addRecentRestoreState(
   const overshootSevere = needed > RECENT_RESTORE_OVERSHOOT_BYPASS_KW;
   if (recentlyRestored && !overshootSevere) {
     logDebug(
-      `Plan: deprioritizing ${device.name} for shedding (recently restored ${Math.round(sinceRestoreMs / 1000)}s ago, overshoot ${needed.toFixed(2)}kW)`,
+      `Plan: deprioritizing ${device.name} for shedding `
+      + `(recently restored ${Math.round(sinceRestoreMs / 1000)}s ago, `
+      + `overshoot ${needed.toFixed(2)}kW)`,
     );
     return { ...device, recentlyRestored: true };
   }

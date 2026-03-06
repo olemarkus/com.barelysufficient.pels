@@ -173,7 +173,8 @@ function resolveRestoreDecision(params: {
   } = params;
   const restoreBuffer = computeRestoreBufferKw(estimateRestorePower(dev));
   if (availableHeadroom < restoreBuffer) {
-    const reason = `insufficient headroom (need ${restoreBuffer.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`;
+    const reason = `insufficient headroom (need ${restoreBuffer.toFixed(2)}kW, `
+      + `headroom ${availableHeadroom.toFixed(2)}kW)`;
     return { type: 'hold', reason };
   }
   if (restoredOneThisCycle) {
@@ -229,7 +230,8 @@ function resolveHoldDecision(params: {
     return { type: 'skip' };
   }
 
-  const atMinTemp = Number(dev.currentTarget) === behavior.temperature || Number(dev.plannedTarget) === behavior.temperature;
+  const atMinTemp = Number(dev.currentTarget) === behavior.temperature
+    || Number(dev.plannedTarget) === behavior.temperature;
   const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
   const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
   const shouldHold = (inShedWindow || holdDuringRestoreCooldown)
@@ -475,7 +477,8 @@ function maybeApplyShortfallReason(params: {
   const estimatedPower = estimateRestorePower(dev);
   const restoreBuffer = computeRestoreBufferKw(estimatedPower);
   const estimatedNeed = estimatedPower + restoreBuffer;
-  return `shortfall (need ${estimatedNeed.toFixed(2)}kW, headroom ${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`;
+  return `shortfall (need ${estimatedNeed.toFixed(2)}kW, headroom `
+    + `${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`;
 }
 
 function maybeApplyCooldownReason(params: {
@@ -497,7 +500,13 @@ function maybeApplyCooldownReason(params: {
   if (inCooldown && !activeOvershoot && !reasonFlags.isSwapReason) {
     return `cooldown (shedding, ${shedCooldownRemainingSec ?? 0}s remaining)`;
   }
-    if (inRestoreCooldown && !activeOvershoot && !reasonFlags.isSwapReason && !reasonFlags.isBudgetReason && !reasonFlags.isShortfallReason) {
+  if (
+    inRestoreCooldown
+    && !activeOvershoot
+    && !reasonFlags.isSwapReason
+    && !reasonFlags.isBudgetReason
+    && !reasonFlags.isShortfallReason
+  ) {
     return `cooldown (restore, ${restoreCooldownRemainingSec ?? 0}s remaining)`;
   }
   return null;

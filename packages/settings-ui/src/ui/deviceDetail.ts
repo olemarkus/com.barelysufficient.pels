@@ -26,7 +26,10 @@ import {
   supportsPowerDevice,
   supportsTemperatureDevice,
 } from './deviceUtils';
-import { AIRTREATMENT_SHED_FLOOR_C, NON_ONOFF_TEMPERATURE_SHED_FLOOR_C } from '../../../shared-domain/src/utils/airtreatmentConstants';
+import {
+  AIRTREATMENT_SHED_FLOOR_C,
+  NON_ONOFF_TEMPERATURE_SHED_FLOOR_C,
+} from '../../../shared-domain/src/utils/airtreatmentConstants';
 import {
   OVERSHOOT_BEHAVIORS,
 } from '../../../contracts/src/settingsKeys';
@@ -183,7 +186,8 @@ const updateDeltaSectionVisibility = () => {
 const getShedDefaultTemp = (deviceId: string | null): number => {
   if (!deviceId) return 10;
   const device = state.latestDevices.find((d) => d.id === deviceId);
-  const modeTarget = state.modeTargets[state.activeMode]?.[deviceId] ?? state.modeTargets[state.editingMode]?.[deviceId];
+  const modeTarget = state.modeTargets[state.activeMode]?.[deviceId]
+    ?? state.modeTargets[state.editingMode]?.[deviceId];
   const normalizedModeTarget = typeof modeTarget === 'number' ? modeTarget : null;
   const currentTarget = typeof device?.targets?.[0]?.value === 'number'
     ? device.targets[0].value

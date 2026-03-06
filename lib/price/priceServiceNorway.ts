@@ -65,7 +65,10 @@ const sortByStartsAtMs = (aMs: number, bMs: number): number => {
   return aMs - bMs;
 };
 
-const normalizeSpotList = (spotPrices: unknown, timeZone: string): Array<{ spot: SpotEntry; timeInfo: ZonedTimeInfo }> => {
+const normalizeSpotList = (
+  spotPrices: unknown,
+  timeZone: string,
+): Array<{ spot: SpotEntry; timeInfo: ZonedTimeInfo }> => {
   const spotList = Array.isArray(spotPrices) ? spotPrices as SpotEntry[] : [];
   return spotList
     .map((spot) => ({ spot, timeInfo: getZonedTimeInfo(spot.startsAt, timeZone) }))

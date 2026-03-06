@@ -87,6 +87,7 @@ const PRICE_LINE_WIDTH = PLAN_PRICE_LAYOUT.priceLineWidth;
 const BAR_RADIUS = PLAN_PRICE_LAYOUT.barRadius;
 const DOT_RADIUS = PLAN_PRICE_LAYOUT.dotRadius;
 const Y_AXIS_FONT_SIZE = Math.max(12, FONT_SIZES.axis - 2);
+const TOP_BAR_RADIUS = [BAR_RADIUS, BAR_RADIUS, 0, 0] as [number, number, number, number];
 
 const buildTextMarkup = (params: {
   x: number;
@@ -129,7 +130,8 @@ const buildEmptySvg = (params: {
     subtitle,
   } = params;
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeText(title)}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" `
+      + `viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeText(title)}">`,
     `<rect width="${width}" height="${height}" fill="${COLORS.background}"/>`,
     buildTextMarkup({
       x: PADDING,
@@ -262,7 +264,7 @@ const buildPlanSeries = (params: {
     barWidth: Math.max(6, barWidth),
     itemStyle: {
       color: COLORS.plan,
-      borderRadius: [BAR_RADIUS, BAR_RADIUS, 0, 0],
+      borderRadius: TOP_BAR_RADIUS,
     },
     emphasis: { disabled: true },
     ...(markLine ? { markLine } : {}),
@@ -347,7 +349,12 @@ const buildYAxisOption = (params: {
       splitNumber: GRID_LINES,
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: { color: COLORS.text, fontSize: Y_AXIS_FONT_SIZE, fontWeight: 600, formatter: (value: number) => formatNumber(value, 1) },
+      axisLabel: {
+        color: COLORS.text,
+        fontSize: Y_AXIS_FONT_SIZE,
+        fontWeight: 600,
+        formatter: (value: number) => formatNumber(value, 1),
+      },
       splitLine: { lineStyle: { color: COLORS.grid, width: 1 } },
     },
     {
@@ -357,7 +364,12 @@ const buildYAxisOption = (params: {
       splitNumber: GRID_LINES,
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: { color: COLORS.text, fontSize: Y_AXIS_FONT_SIZE, fontWeight: 600, formatter: (value: number) => formatNumber(value, 0) },
+      axisLabel: {
+        color: COLORS.text,
+        fontSize: Y_AXIS_FONT_SIZE,
+        fontWeight: 600,
+        formatter: (value: number) => formatNumber(value, 0),
+      },
       splitLine: { show: false },
     },
   ];

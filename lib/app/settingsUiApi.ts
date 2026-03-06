@@ -69,8 +69,12 @@ const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null
 );
 
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
-  const tracker = getPowerTrackerForUiFromApp(homey) ?? homey.settings.get('power_tracker_state') as PowerTrackerState | null;
-  const status = homey.settings.get('pels_status') as { lastPowerUpdate?: number | null; priceLevel?: string | null } | null;
+  const tracker = getPowerTrackerForUiFromApp(homey)
+    ?? (homey.settings.get('power_tracker_state') as PowerTrackerState | null);
+  const status = homey.settings.get('pels_status') as {
+    lastPowerUpdate?: number | null;
+    priceLevel?: string | null;
+  } | null;
   const heartbeat = homey.settings.get('app_heartbeat') as unknown;
   return {
     tracker: tracker && typeof tracker === 'object' ? tracker : null,

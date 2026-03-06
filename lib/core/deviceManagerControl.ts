@@ -168,7 +168,10 @@ function buildEvSnapshotChangeLines(
     changes.push(`available ${String(previousEv.available !== false)} -> ${String(nextEv.available !== false)}`);
   }
   if (previousEv.controlCapabilityId !== nextEv.controlCapabilityId) {
-    changes.push(`control ${previousEv.controlCapabilityId ?? 'unknown'} -> ${nextEv.controlCapabilityId ?? 'unknown'}`);
+    changes.push(
+      `control ${previousEv.controlCapabilityId ?? 'unknown'} `
+      + `-> ${nextEv.controlCapabilityId ?? 'unknown'}`,
+    );
   }
   const previousPower = previousEv.powerKw ?? previousEv.measuredPowerKw;
   const nextPower = nextEv.powerKw ?? nextEv.measuredPowerKw;

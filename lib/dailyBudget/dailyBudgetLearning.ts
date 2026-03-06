@@ -380,7 +380,8 @@ export function finalizePreviousDayLearning(params: {
   return {
     nextState,
     shouldMarkDirty: true,
-    logMessage: `Daily budget: finalized ${previousDateKey} (${totalKWh.toFixed(2)} kWh ${sourceLabel}, window buckets ${windowBucketCount})`,
+    logMessage: `Daily budget: finalized ${previousDateKey} `
+      + `(${totalKWh.toFixed(2)} kWh ${sourceLabel}, window buckets ${windowBucketCount})`,
   };
 }
 
