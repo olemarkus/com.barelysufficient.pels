@@ -6,8 +6,8 @@
     "packages/*"
   ],
   "engines": {
-    "node": ">=22",
-    "npm": "^10.9.4"
+    "node": "22.x",
+    "npm": "10.9.4"
   },
   "scripts": {
     "build": "npm run ensure:resvg-arm64 && npm run build:echarts-runtime && tsc && npm run build:settings && npm run sanitize:homey-build",
@@ -100,5 +100,9 @@
     "ts-prune": "^0.10.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.53.0"
+  },
+  "volta": {
+    "node": "22.22.0",
+    "npm": "10.9.4"
   }
 }
