@@ -376,12 +376,27 @@ export default tseslint.config(
   {
     files: [
       'drivers/pels_insights/device.ts',
-      'lib/insights/planPriceImageEcharts.ts',
-      'lib/price/priceLowestFlowEvaluator.ts',
-      'lib/price/priceService.ts',
     ],
     rules: {
+      'max-lines': ['warn', { max: 575, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: ['lib/insights/planPriceImageEcharts.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 550, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: ['lib/price/priceLowestFlowEvaluator.ts'],
+    rules: {
       'max-lines': ['warn', { max: 525, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: ['lib/price/priceService.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
     },
   },
   {

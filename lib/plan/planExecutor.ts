@@ -449,11 +449,12 @@ export class PlanExecutor {
       : this.capacitySettings.limitKw;
     const softLimit = this.capacityGuard ? this.capacityGuard.getSoftLimit() : this.capacitySettings.limitKw;
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
+    const totalStr = total === null ? 'unknown' : total.toFixed(2);
 
     this.log(
       `Capacity shortfall: projected hard-cap budget breach, over by `
       + `~${deficitKw.toFixed(2)}kW `
-      + `(total ${total === null ? 'unknown' : total.toFixed(2)}kW, `
+      + `(total ${totalStr}kW, `
       + `threshold ${shortfallThreshold.toFixed(2)}kW, `
       + `soft ${softLimit.toFixed(2)}kW)`,
     );
