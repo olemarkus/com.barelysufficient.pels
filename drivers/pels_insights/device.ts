@@ -312,9 +312,10 @@ class PelsInsightsDevice extends Homey.Device {
           return current?.buffer ?? slot.buffer;
         }
         const renderId = ++this.planImageRenderCounter;
+        const forceStr = `force=${options.force === true}`;
         this.log(
           `[plan-image] ${slot.cameraId}: render start id=${renderId} `
-          + `force=${options.force === true} key=${key}`,
+          + `${forceStr} key=${key}`,
         );
         this.logPlanImageDebug(`${slot.cameraId}: Refreshing image (force=${options.force === true}) key=${key}`);
         const renderStartedAtMs = Date.now();

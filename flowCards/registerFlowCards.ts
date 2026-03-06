@@ -272,10 +272,9 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     }
     const isDisabling = raw === 0;
     if (!isDisabling && (raw < MIN_DAILY_BUDGET_KWH || raw > MAX_DAILY_BUDGET_KWH)) {
-      throw new Error(
-        `Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} `
-        + `and ${MAX_DAILY_BUDGET_KWH} kWh.`,
-      );
+      const errorMessage = `Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} `
+        + `and ${MAX_DAILY_BUDGET_KWH} kWh.`;
+      throw new Error(errorMessage);
     }
 
     const previousBudget = deps.homey.settings.get(DAILY_BUDGET_KWH);
