@@ -3,7 +3,11 @@ import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
 
 export function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
   const filtered = planDevices
-    .filter((device) => device.controllable !== false && device.currentState === 'off' && device.plannedState !== 'shed');
+    .filter((device) => (
+      device.controllable !== false
+      && device.currentState === 'off'
+      && device.plannedState !== 'shed'
+    ));
   return sortByPriorityAsc(filtered);
 }
 
@@ -72,7 +76,11 @@ export function markOffDevicesStayOff(params: {
     reasonOverride,
   } = params;
   const offDevices = Array.from(deviceMap.values())
-    .filter((device) => device.controllable !== false && device.currentState === 'off' && device.plannedState !== 'shed');
+    .filter((device) => (
+      device.controllable !== false
+      && device.currentState === 'off'
+      && device.plannedState !== 'shed'
+    ));
   for (const dev of offDevices) {
     const inactiveReason = getInactiveReason(dev);
     if (inactiveReason) {
@@ -83,7 +91,11 @@ export function markOffDevicesStayOff(params: {
     const defaultReason = dev.reason || 'shed due to capacity';
     const nextReason = reasonOverride ? reasonOverride(dev) : resolveOffDeviceReason(timing, defaultReason);
     setDevice(dev.id, { plannedState: 'shed', reason: nextReason });
-    logDebug(`Plan: skipping restore of ${dev.name} (p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) - ${nextReason}`);
+    logDebug(
+      `Plan: skipping restore of ${dev.name} `
+      + `(p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) `
+      + `- ${nextReason}`,
+    );
   }
 }
 

@@ -26,7 +26,11 @@ export const gridCompanies: GridCompany[] = [
   { name: "FØIE AS (Akershus)", organizationNumber: "987626844", countyCodes: ["32", "33"] },
   { name: "FØIE AS (Buskerud)", organizationNumber: "971589752", countyCodes: ["33"] },
   { name: "FØRE AS", organizationNumber: "925549738", countyCodes: ["40"] },
-  { name: "GLITRE NETT AS", organizationNumber: "982974011", countyCodes: ["03", "11", "32", "33", "34", "40", "42", "46"] },
+  {
+    name: "GLITRE NETT AS",
+    organizationNumber: "982974011",
+    countyCodes: ["03", "11", "32", "33", "34", "40", "42", "46"],
+  },
   { name: "GRIUG AS", organizationNumber: "953681781", countyCodes: ["34"] },
   { name: "HAVNETT AS", organizationNumber: "924004150", countyCodes: ["46"] },
   { name: "HEMSIL NETT AS", organizationNumber: "923050612", countyCodes: ["33"] },

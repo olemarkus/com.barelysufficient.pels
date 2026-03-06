@@ -227,12 +227,14 @@ function applyOffStateReason(params: {
     return {
       ...planDevice,
       plannedState: 'shed',
-      reason: `shortfall (need ${need.toFixed(2)}kW, headroom ${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`,
+      reason: `shortfall (need ${need.toFixed(2)}kW, headroom `
+        + `${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`,
     };
   }
   return {
     ...planDevice,
-    reason: `restore (need ${need.toFixed(2)}kW, headroom ${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`,
+    reason: `restore (need ${need.toFixed(2)}kW, headroom `
+      + `${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`,
   };
 }
 

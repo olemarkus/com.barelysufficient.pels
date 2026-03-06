@@ -72,7 +72,8 @@ export default class PriceService {
   ) { }
   private getSettingValue(key: string): unknown { return this.homey.settings.get(key) as unknown; }
   private getNumberSetting(key: string, fallback: number): number {
-    const value = this.getSettingValue(key); return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+    const value = this.getSettingValue(key);
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
   }
   private emitRealtime(event: string, payload: unknown): void {
     const api = (this.homey as { api?: { realtime?: (evt: string, data: unknown) => Promise<void> } }).api;
@@ -259,7 +260,10 @@ export default class PriceService {
       const nextLastFetched = getLastFetchedTimestamp(payload);
       const previousLastFetched = getLastFetchedTimestamp(existingPayload);
       const shouldUpdateLastFetched = Boolean(nextLastFetched && nextLastFetched !== previousLastFetched);
-      this.logDebug(shouldUpdateLastFetched ? 'Combined prices unchanged, updating lastFetched timestamp' : 'Combined prices unchanged, skipping settings update');
+      const unchangedMessage = shouldUpdateLastFetched
+        ? 'Combined prices unchanged, updating lastFetched timestamp'
+        : 'Combined prices unchanged, skipping settings update';
+      this.logDebug(unchangedMessage);
       if (shouldUpdateLastFetched) this.homey.settings.set(COMBINED_PRICES, payload);
       this.emitRealtime('prices_updated', payload);
       return;
@@ -377,7 +381,8 @@ export default class PriceService {
 
   private formatNorwayPriceInfo(current: CombinedHourlyPrice): string {
     const format = (value: number | undefined) => (value ?? 0).toFixed(1);
-    const hasNorgesprisAdjustment = typeof current.norgesprisAdjustment === 'number' && Number.isFinite(current.norgesprisAdjustment);
+    const hasNorgesprisAdjustment = typeof current.norgesprisAdjustment === 'number'
+      && Number.isFinite(current.norgesprisAdjustment);
     const norgesprisMagnitude = Math.abs(current.norgesprisAdjustment ?? 0);
     const norgesprisOperator = (current.norgesprisAdjustment ?? 0) < 0 ? '-' : '+';
     const supportSegment = hasNorgesprisAdjustment
@@ -401,7 +406,9 @@ export default class PriceService {
     const countySetting = this.getSettingValue('nettleie_fylke');
     const countyCode = typeof countySetting === 'string' && countySetting ? countySetting : '03';
     const organizationSetting = this.getSettingValue('nettleie_orgnr');
-    const organizationNumber = typeof organizationSetting === 'string' && organizationSetting ? organizationSetting : null;
+    const organizationNumber = typeof organizationSetting === 'string' && organizationSetting
+      ? organizationSetting
+      : null;
     const tariffGroupSetting = this.getSettingValue('nettleie_tariffgruppe');
     const tariffGroup = typeof tariffGroupSetting === 'string' && tariffGroupSetting
       ? tariffGroupSetting

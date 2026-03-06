@@ -48,6 +48,8 @@ type DailyBudgetPalette = {
 
 const DEFAULT_CHART_HEIGHT = 176;
 const DEFAULT_CHART_WIDTH = 480;
+const ROUNDED_BAR_RADIUS = [4, 4, 0, 0] as [number, number, number, number];
+const FLAT_BAR_RADIUS = [0, 0, 0, 0] as [number, number, number, number];
 
 let plot: EChartsType | null = null;
 let plotContainer: HTMLElement | null = null;
@@ -151,7 +153,7 @@ const buildPlanBarData = (params: {
         opacity: resolveBarOpacity(enabled),
         borderWidth: isCurrent ? 1 : 0,
         borderColor: palette.currentBorder,
-        borderRadius: isTopSeries ? [4, 4, 0, 0] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
+        borderRadius: isTopSeries ? ROUNDED_BAR_RADIUS : FLAT_BAR_RADIUS,
       },
     };
   });
@@ -182,7 +184,7 @@ const buildActualBarData = (params: {
         opacity: enabled ? 1 : 0.6,
         borderWidth: isCurrent ? 1 : 0,
         borderColor: palette.currentBorder,
-        borderRadius: [4, 4, 0, 0] as [number, number, number, number],
+        borderRadius: ROUNDED_BAR_RADIUS,
       },
     };
   });
@@ -209,7 +211,7 @@ const buildActualBreakdownData = (params: {
         opacity: resolveBarOpacity(enabled),
         borderWidth: isCurrent ? 1 : 0,
         borderColor: palette.currentBorder,
-        borderRadius: isTopSeries ? [4, 4, 0, 0] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
+        borderRadius: isTopSeries ? ROUNDED_BAR_RADIUS : FLAT_BAR_RADIUS,
       },
     };
   });
@@ -313,7 +315,14 @@ const buildActualTotalSeries = (ctx: SeriesContext): SeriesOption => ({
 const buildBudgetTotalSeries = (ctx: SeriesContext): SeriesOption => ({
   ...BAR_SERIES_BASE,
   name: 'Budget',
-  data: buildPlanBarData({ values: ctx.planned, color: ctx.palette.planned, isTopSeries: true, enabled: ctx.enabled, currentBucketIndex: ctx.currentBucketIndex, palette: ctx.palette }),
+  data: buildPlanBarData({
+    values: ctx.planned,
+    color: ctx.palette.planned,
+    isTopSeries: true,
+    enabled: ctx.enabled,
+    currentBucketIndex: ctx.currentBucketIndex,
+    palette: ctx.palette,
+  }),
 });
 
 const buildSeries = (params: {
@@ -427,7 +436,13 @@ const buildOption = (params: DailyBudgetChartEchartsParams): EChartsOption => {
     && showBreakdown
     && showActual
     && hasActualSplit;
-  const legendData = buildLegendData({ showBreakdown, showActual, hasActualBreakdown, canShowActualBreakdown, palette });
+  const legendData = buildLegendData({
+    showBreakdown,
+    showActual,
+    hasActualBreakdown,
+    canShowActualBreakdown,
+    palette,
+  });
 
   return {
     animation: false,
@@ -477,7 +492,11 @@ const buildOption = (params: DailyBudgetChartEchartsParams): EChartsOption => {
       splitNumber: 4,
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: { color: palette.muted, fontSize: 11, formatter: (value: number) => formatKWh(value).replace(' kWh', '') },
+      axisLabel: {
+        color: palette.muted,
+        fontSize: 11,
+        formatter: (value: number) => formatKWh(value).replace(' kWh', ''),
+      },
       splitLine: { lineStyle: { color: palette.grid, width: 1 } },
     },
     series: buildSeries({

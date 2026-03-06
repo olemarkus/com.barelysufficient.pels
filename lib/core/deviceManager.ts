@@ -17,8 +17,18 @@ import {
     logEvSnapshotChanges,
     type DeviceCapabilityMap,
 } from './deviceManagerControl';
-import { buildTargets, getCapabilityValueByPrefix, getCurrentTemperature, resolveDeviceCapabilities } from './deviceManagerParse';
-import { extractLivePowerWattsByDeviceId, hasPotentialHomeyEnergyEstimate, resolvePreferredPowerRaw, type LiveDevicePowerWatts } from './deviceManagerEnergy';
+import {
+    buildTargets,
+    getCapabilityValueByPrefix,
+    getCurrentTemperature,
+    resolveDeviceCapabilities,
+} from './deviceManagerParse';
+import {
+    extractLivePowerWattsByDeviceId,
+    hasPotentialHomeyEnergyEstimate,
+    resolvePreferredPowerRaw,
+    type LiveDevicePowerWatts,
+} from './deviceManagerEnergy';
 import {
     applyMeasurementUpdates,
     getRawDevices,
@@ -29,11 +39,22 @@ import {
 } from './deviceManagerRuntime';
 
 type HomeyApiConstructor = {
-    createAppAPI: (opts: { homey: Homey.App['homey']; debug?: ((...args: unknown[]) => void) | null }) => Promise<HomeyApiClient>;
+    createAppAPI: (opts: {
+        homey: Homey.App['homey'];
+        debug?: ((...args: unknown[]) => void) | null;
+    }) => Promise<HomeyApiClient>;
 };
 const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
 
-const SUPPORTED_DEVICE_CLASSES = new Set(['thermostat', 'heater', 'socket', 'heatpump', 'airconditioning', 'airtreatment', 'evcharger']);
+const SUPPORTED_DEVICE_CLASSES = new Set([
+    'thermostat',
+    'heater',
+    'socket',
+    'heatpump',
+    'airconditioning',
+    'airtreatment',
+    'evcharger',
+]);
 const MIN_SIGNIFICANT_POWER_W = 5;
 
 type HomeyApiDevicesClient = {
@@ -49,7 +70,10 @@ type HomeyApiClient = {
 };
 
 type CapabilityInstance = { destroy?: () => void };
-type MakeCapabilityInstance = (capabilityId: string, listener: (value: number | null) => void) => CapabilityInstance | Promise<CapabilityInstance>;
+type MakeCapabilityInstance = (
+    capabilityId: string,
+    listener: (value: number | null) => void,
+) => CapabilityInstance | Promise<CapabilityInstance>;
 
 export class DeviceManager extends EventEmitter {
     private homeyApi?: HomeyApiClient;
@@ -299,7 +323,9 @@ export class DeviceManager extends EventEmitter {
         }
     }
 
-    private async initRealtimeListeners(devicesObj: Record<string, HomeyDeviceLike> | HomeyDeviceLike[]): Promise<void> {
+    private async initRealtimeListeners(
+        devicesObj: Record<string, HomeyDeviceLike> | HomeyDeviceLike[],
+    ): Promise<void> {
         const devices = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj);
         for (const device of devices) {
             const deviceId = this.getDeviceId(device);
@@ -309,11 +335,17 @@ export class DeviceManager extends EventEmitter {
             if (this.capabilityInstances.has(deviceId)) continue;
 
             try {
-                const makeCapabilityInstance = (device as { makeCapabilityInstance?: MakeCapabilityInstance }).makeCapabilityInstance;
+                const makeCapabilityInstance = (
+                    device as { makeCapabilityInstance?: MakeCapabilityInstance }
+                ).makeCapabilityInstance;
                 if (typeof makeCapabilityInstance === 'function') {
-                    const instance = await makeCapabilityInstance.call(device, 'measure_power', (value: number | null) => {
-                        this.handlePowerUpdate(deviceId, device.name || deviceId, value);
-                    });
+                    const instance = await makeCapabilityInstance.call(
+                        device,
+                        'measure_power',
+                        (value: number | null) => {
+                            this.handlePowerUpdate(deviceId, device.name || deviceId, value);
+                        },
+                    );
                     this.capabilityInstances.set(deviceId, instance);
                     this.logger.debug(`Real-time power listener attached for ${device.name || deviceId}`);
                 }

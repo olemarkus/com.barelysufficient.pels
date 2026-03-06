@@ -129,7 +129,7 @@ export default tseslint.config(
       // General rules
       'no-console': 'off',
       'no-trailing-spaces': 'error',
-      'max-len': ['warn', { code: 200 }],
+      'max-len': ['warn', { code: 120 }],
       'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
       'max-lines-per-function': ['warn', { max: 120, skipBlankLines: true, skipComments: true }],
       'max-depth': ['warn', 4],
@@ -290,7 +290,7 @@ export default tseslint.config(
         varsIgnorePattern: '^_',
       }],
       'no-trailing-spaces': 'error',
-      'max-len': ['warn', { code: 200 }],
+      'max-len': ['warn', { code: 120 }],
       'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
       'max-lines-per-function': ['warn', { max: 120, skipBlankLines: true, skipComments: true }],
       'max-depth': ['warn', 4],
@@ -370,7 +370,18 @@ export default tseslint.config(
   {
     files: ['app.ts'],
     rules: {
-      'max-lines': ['warn', { max: 650, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 750, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: [
+      'drivers/pels_insights/device.ts',
+      'lib/insights/planPriceImageEcharts.ts',
+      'lib/price/priceLowestFlowEvaluator.ts',
+      'lib/price/priceService.ts',
+    ],
+    rules: {
+      'max-lines': ['warn', { max: 525, skipBlankLines: true, skipComments: true }],
     },
   },
   {

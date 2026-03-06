@@ -2,7 +2,8 @@ import https from 'https';
 
 // CA certificates for hvakosterstrommen.no (Cloudflare + SSL.com chain)
 // These are included to work around Homey's incomplete CA certificate bundle.
-// The chain is: hvakosterstrommen.no -> Cloudflare TLS Issuing ECC CA 1 -> SSL.com TLS Transit ECC CA R2 -> AAA Certificate Services
+// The chain is: hvakosterstrommen.no -> Cloudflare TLS Issuing ECC CA 1
+// -> SSL.com TLS Transit ECC CA R2 -> AAA Certificate Services
 
 // AAA Certificate Services (Comodo Root CA) - expires 2028-12-31
 const COMODO_AAA_ROOT_CA = `-----BEGIN CERTIFICATE-----

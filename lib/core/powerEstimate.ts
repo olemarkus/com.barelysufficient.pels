@@ -265,7 +265,10 @@ function resolveOverrideEstimate(params: {
   const { deviceLabel, expectedOverride, measuredKw, logger } = params;
   const measuredValue = measuredKw ?? 0;
   if (measuredKw !== undefined && measuredValue > expectedOverride.kw) {
-    logger.debug(`Power estimate: current ${measuredValue.toFixed(3)} kW > override ${expectedOverride.kw.toFixed(3)} kW for ${deviceLabel}`);
+    logger.debug(
+      `Power estimate: current ${measuredValue.toFixed(3)} kW > override `
+      + `${expectedOverride.kw.toFixed(3)} kW for ${deviceLabel}`,
+    );
     return {
       powerKw: measuredValue,
       expectedPowerKw: measuredValue,

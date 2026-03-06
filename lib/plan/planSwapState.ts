@@ -45,7 +45,10 @@ export function cleanupStaleSwaps(
     const swapTime = swapState.pendingSwapTimestamps.get(swapTargetId);
     if (swapTime && swapCleanupNow - swapTime > SWAP_TIMEOUT_MS) {
       const swapName = deviceMap.get(swapTargetId)?.name || swapTargetId;
-      log(`Plan: clearing stale swap for ${swapName} (${Math.round((swapCleanupNow - swapTime) / 1000)}s since swap initiated)`);
+      log(
+        `Plan: clearing stale swap for ${swapName} `
+        + `(${Math.round((swapCleanupNow - swapTime) / 1000)}s since swap initiated)`,
+      );
       swapState.pendingSwapTargets.delete(swapTargetId);
       swapState.pendingSwapTimestamps.delete(swapTargetId);
       for (const [deviceId, targetId] of swapState.swappedOutFor.entries()) {

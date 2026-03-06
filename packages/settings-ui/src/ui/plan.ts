@@ -105,7 +105,10 @@ const buildHourLines = (meta: NonNullable<PlanSnapshot['meta']>): string[] => {
     lines.push(`Used ${meta.usedKWh.toFixed(2)} of ${displayBudget.toFixed(1)} kWh`);
   }
   if (typeof meta.hourControlledKWh === 'number' && typeof meta.hourUncontrolledKWh === 'number') {
-    lines.push(`Capacity-controlled ${meta.hourControlledKWh.toFixed(2)} / Other load ${meta.hourUncontrolledKWh.toFixed(2)} kWh`);
+    lines.push(
+      `Capacity-controlled ${meta.hourControlledKWh.toFixed(2)} `
+      + `/ Other load ${meta.hourUncontrolledKWh.toFixed(2)} kWh`,
+    );
   }
   if (typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10) {
     lines.push('End of hour');
@@ -265,7 +268,9 @@ const isOnLikeState = (value: string | undefined): boolean => {
   return normalized !== 'off' && normalized !== 'unknown' && normalized !== 'not_applicable';
 };
 
-const resolvePlanBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring' => {
+const resolvePlanBadgeState = (
+  dev: PlanDeviceSnapshot,
+): 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring' => {
   if (dev.controllable === false) return 'uncontrolled';
   if (dev.plannedState === 'inactive') return 'inactive';
   if (dev.plannedState === 'shed') return 'shed';

@@ -76,7 +76,9 @@ const getUsageDayDateKey = (view: UsageDayView, now: Date, timeZone: string) => 
   return getDateKeyInTimeZone(new Date(todayStart - 60 * 1000), timeZone);
 };
 
-const formatUsageDayTitle = (view: UsageDayView) => (view === 'today' ? 'Hourly usage (today)' : 'Hourly usage (yesterday)');
+const formatUsageDayTitle = (view: UsageDayView) => (
+  view === 'today' ? 'Hourly usage (today)' : 'Hourly usage (yesterday)'
+);
 
 const buildUsageDayBuckets = (
   entries: UsageDayEntry[],
@@ -154,8 +156,10 @@ const renderUsageDayHeader = (dateKey: string, timeZone: string) => {
   }, timeZone)} · ${timeZone}`;
   if (usageDayMeta) {
     usageDayMeta.textContent = usageDayView === 'today'
-      ? 'Hourly kWh within your local day (updates live). Typical usage below is per-hour average; daily history is one bar per day.'
-      : 'Hourly kWh for the previous local day. Typical usage below is per-hour average; daily history is one bar per day.';
+      ? 'Hourly kWh within your local day (updates live). '
+        + 'Typical usage below is per-hour average; daily history is one bar per day.'
+      : 'Hourly kWh for the previous local day. '
+        + 'Typical usage below is per-hour average; daily history is one bar per day.';
   }
 };
 

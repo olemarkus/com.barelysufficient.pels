@@ -18,7 +18,7 @@
     "measure:settings-ui:homey": "node scripts/measure-settings-ui-homey.mjs",
     "start": "npm run build:echarts-runtime && npm run build:settings && homey app run",
     "install-app": "npm run ensure:resvg-arm64 && npm run build:echarts-runtime && npm run build:settings && homey app install",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "lint:runtime": "eslint \"app.ts\" \"api.ts\" \"flowCards/**/*.ts\" \"drivers/**/*.ts\" \"lib/**/*.ts\" --max-warnings=0",
     "lint:css": "stylelint \"packages/settings-ui/public/**/*.css\" --max-warnings=0",
     "lint:html": "html-validate \"packages/settings-ui/public/**/*.html\" --max-warnings=0",

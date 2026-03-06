@@ -25,13 +25,15 @@ export function resolveDeviceCapabilities(params: {
   if (deviceClassKey === 'evcharger') {
     if (!capabilities.includes('evcharger_charging')) {
       logDebug(
-        `Skipping EV charger ${deviceLabel} (${deviceId}), missing evcharger_charging. Capabilities: ${capabilities.join(', ')}`,
+        `Skipping EV charger ${deviceLabel} (${deviceId}), missing evcharger_charging. `
+        + `Capabilities: ${capabilities.join(', ')}`,
       );
       return null;
     }
     if (!capabilities.includes('evcharger_charging_state')) {
       logDebug(
-        `Skipping EV charger ${deviceLabel} (${deviceId}), missing evcharger_charging_state. Capabilities: ${capabilities.join(', ')}`,
+        `Skipping EV charger ${deviceLabel} (${deviceId}), missing evcharger_charging_state. `
+        + `Capabilities: ${capabilities.join(', ')}`,
       );
       return null;
     }

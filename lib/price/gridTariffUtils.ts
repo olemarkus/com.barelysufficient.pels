@@ -26,7 +26,8 @@ export const buildGridTariffUrl = (params: {
   countyCode: string;
   organizationNumber: string;
 }): string => {
-  const baseUrl = 'https://nettleietariffer.dataplattform.nve.no/v1/NettleiePerOmradePrTimeHusholdningFritidEffekttariffer';
+  const baseUrl = 'https://nettleietariffer.dataplattform.nve.no/v1/'
+    + 'NettleiePerOmradePrTimeHusholdningFritidEffekttariffer';
   const search = new URLSearchParams({
     ValgtDato: params.date,
     Tariffgruppe: params.tariffGroup,
@@ -85,7 +86,10 @@ export const fetchAndNormalizeGridTariff = async (params: {
     organizationNumber: settings.organizationNumber,
     tariffGroup: settings.tariffGroup,
   });
-  log(`Grid tariff: Fetching NVE tariffs for ${date}, county=${settings.countyCode}, org=${settings.organizationNumber}`);
+  log(
+    `Grid tariff: Fetching NVE tariffs for ${date}, `
+    + `county=${settings.countyCode}, org=${settings.organizationNumber}`,
+  );
   const gridTariffData = await fetchGridTariffData(url, errorLog);
   if (!gridTariffData) return null;
   const normalized = normalizeGridTariffData(gridTariffData);

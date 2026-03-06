@@ -96,7 +96,9 @@ export class PlanExecutor {
     await this.applyShedTemperaturePlan(dev, plan.targetCap, plan.plannedTarget);
   }
 
-  private getShedTemperaturePlan(dev: DevicePlan['devices'][number]): { targetCap: string; plannedTarget: number } | null {
+  private getShedTemperaturePlan(
+    dev: DevicePlan['devices'][number],
+  ): { targetCap: string; plannedTarget: number } | null {
     const snapshot = this.getShedTemperatureSnapshot(dev.id);
     const currentTarget = typeof snapshot.currentTarget === 'number' ? snapshot.currentTarget : dev.currentTarget;
     if (this.shouldSkipShedTemperature(dev, snapshot.targetCap, currentTarget)) return null;
@@ -118,12 +120,18 @@ export class PlanExecutor {
     currentTarget: unknown,
   ): boolean {
     if (this.capacityDryRun) {
-      this.log(`Capacity (dry run): would set ${targetCap || 'target'} for ${dev.name || dev.id} to ${dev.plannedTarget ?? '–'}°C (overshoot)`);
+      this.log(
+        `Capacity (dry run): would set ${targetCap || 'target'} `
+        + `for ${dev.name || dev.id} to ${dev.plannedTarget ?? '–'}°C (overshoot)`,
+      );
       return true;
     }
     if (!targetCap || typeof dev.plannedTarget !== 'number') return true;
     if (typeof currentTarget === 'number' && currentTarget === dev.plannedTarget) {
-      this.logDebug(`Capacity: skip setting ${targetCap || 'target'} for ${dev.name || dev.id}, already at ${dev.plannedTarget}°C`);
+      this.logDebug(
+        `Capacity: skip setting ${targetCap || 'target'} `
+        + `for ${dev.name || dev.id}, already at ${dev.plannedTarget}°C`,
+      );
       return true;
     }
     return false;
@@ -223,7 +231,10 @@ export class PlanExecutor {
     if (!lastShed) return;
     const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (entry?.deviceClass === 'evcharger') {
-      this.logDebug(`Capacity control off: evaluating EV restore for ${dev.name || dev.id} (${formatEvSnapshot(entry)})`);
+      this.logDebug(
+        `Capacity control off: evaluating EV restore for ${dev.name || dev.id} `
+        + `(${formatEvSnapshot(entry)})`,
+      );
     }
     if (!this.canTurnOnDevice(entry)) return;
     const name = dev.name || dev.id;
@@ -433,12 +444,19 @@ export class PlanExecutor {
   public async handleShortfall(deficitKw: number): Promise<void> {
     if (this.state.inShortfall) return; // Already in shortfall state
 
-    const shortfallThreshold = this.capacityGuard ? this.capacityGuard.getShortfallThreshold() : this.capacitySettings.limitKw;
+    const shortfallThreshold = this.capacityGuard
+      ? this.capacityGuard.getShortfallThreshold()
+      : this.capacitySettings.limitKw;
     const softLimit = this.capacityGuard ? this.capacityGuard.getSoftLimit() : this.capacitySettings.limitKw;
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
 
-    this.log(`Capacity shortfall: projected hard-cap budget breach, over by ~${deficitKw.toFixed(2)}kW (total ${total === null ? 'unknown' : total.toFixed(2)
-      }kW, threshold ${shortfallThreshold.toFixed(2)}kW, soft ${softLimit.toFixed(2)}kW)`);
+    this.log(
+      `Capacity shortfall: projected hard-cap budget breach, over by `
+      + `~${deficitKw.toFixed(2)}kW `
+      + `(total ${total === null ? 'unknown' : total.toFixed(2)}kW, `
+      + `threshold ${shortfallThreshold.toFixed(2)}kW, `
+      + `soft ${softLimit.toFixed(2)}kW)`,
+    );
 
     this.state.inShortfall = true;
     this.deps.homey.settings.set('capacity_in_shortfall', true);

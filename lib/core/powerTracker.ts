@@ -85,7 +85,9 @@ function buildNextPowerState(params: {
     buckets: Object.fromEntries(nextBuckets),
     hourlyBudgets: Object.fromEntries(nextBudgets),
     controlledBuckets: nextControlledBuckets ? Object.fromEntries(nextControlledBuckets) : state.controlledBuckets,
-    uncontrolledBuckets: nextUncontrolledBuckets ? Object.fromEntries(nextUncontrolledBuckets) : state.uncontrolledBuckets,
+    uncontrolledBuckets: nextUncontrolledBuckets
+      ? Object.fromEntries(nextUncontrolledBuckets)
+      : state.uncontrolledBuckets,
     lastTimestamp: nowMs,
     lastPowerW: currentPowerW,
     lastControlledPowerW: currentControlledPowerW,
@@ -343,7 +345,10 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     nextBudgets.set(getHourBucketKey(nowMs), budgetKWh);
   }
 
-  const { controlledPowerW: boundedControlledPowerW, uncontrolledPowerW: boundedUncontrolledPowerW } = resolveControlledSample({
+  const {
+    controlledPowerW: boundedControlledPowerW,
+    uncontrolledPowerW: boundedUncontrolledPowerW,
+  } = resolveControlledSample({
     currentPowerW,
     controlledPowerW,
   });

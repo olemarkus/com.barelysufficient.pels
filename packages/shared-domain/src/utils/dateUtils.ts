@@ -96,7 +96,11 @@ export function getZonedParts(date: Date, timeZone: string): {
 
 export function getDateKeyInTimeZone(date: Date, timeZone: string): string {
     const { year, month, day } = getZonedParts(date, timeZone);
-    return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+    return [
+        year.toString().padStart(4, '0'),
+        month.toString().padStart(2, '0'),
+        day.toString().padStart(2, '0'),
+    ].join('-');
 }
 
 export function getDateKeyStartMs(dateKey: string, timeZone: string): number {

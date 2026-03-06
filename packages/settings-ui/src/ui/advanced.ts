@@ -449,7 +449,11 @@ export const initAdvancedDeviceLoggerHandlers = () => {
 
     try {
       setApiDeviceButtonsBusy(true);
-      const result = await callApi<{ ok: boolean; error?: string } | null>('POST', '/log_homey_device', { id: deviceId });
+      const result = await callApi<{ ok: boolean; error?: string } | null>(
+        'POST',
+        '/log_homey_device',
+        { id: deviceId },
+      );
       if (!result?.ok) {
         throw new Error(result?.error || 'UNABLE_TO_LOG_DEVICE');
       }

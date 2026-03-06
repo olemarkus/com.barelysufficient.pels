@@ -1,8 +1,17 @@
 import type Homey from 'homey';
 import type { ShedBehavior } from '../plan/planTypes';
-import { normalizeShedBehaviors as normalizeShedBehaviorsHelper, resolveModeName as resolveModeNameHelper } from '../utils/capacityHelpers';
+import {
+  normalizeShedBehaviors as normalizeShedBehaviorsHelper,
+  resolveModeName as resolveModeNameHelper,
+} from '../utils/capacityHelpers';
 import { createSettingsHandler } from '../utils/settingsHandlers';
-import { isBooleanMap, isFiniteNumber, isModeDeviceTargets, isPrioritySettings, isStringMap } from '../utils/appTypeGuards';
+import {
+  isBooleanMap,
+  isFiniteNumber,
+  isModeDeviceTargets,
+  isPrioritySettings,
+  isStringMap,
+} from '../utils/appTypeGuards';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
