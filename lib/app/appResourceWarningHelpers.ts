@@ -12,6 +12,7 @@ type HomeyEmitter = {
 type StartResourceWarningListenersParams = {
   homey: Homey.App['homey'];
   log: (message: string) => void;
+  error: (...args: unknown[]) => void;
 };
 
 const summarizeDuration = (
@@ -65,7 +66,7 @@ const buildWarningPerfPayload = (nowMs: number) => {
 
 const createWarnLogger = (
   kind: 'cpuwarn' | 'memwarn',
-  log: (message: string) => void,
+  error: (...args: unknown[]) => void,
 ): ((payload: unknown) => void) => (
   (payload: unknown): void => {
     const data = (payload && typeof payload === 'object') ? payload as { count?: unknown; limit?: unknown } : {};
@@ -73,20 +74,22 @@ const createWarnLogger = (
     const limit = typeof data.limit === 'number' && Number.isFinite(data.limit) ? data.limit : null;
     const countText = count !== null ? count : 'n/a';
     const limitText = limit !== null ? limit : 'n/a';
-    log(`[perf] homey ${kind} count=${countText} limit=${limitText}`);
-    log(`[perf] homey ${kind} context ${JSON.stringify(buildWarningPerfPayload(Date.now()))}`);
+    const summary = `[perf] homey ${kind} count=${countText} limit=${limitText}`;
+    const context = `[perf] homey ${kind} context ${JSON.stringify(buildWarningPerfPayload(Date.now()))}`;
+    error(summary);
+    error(context);
   }
 );
 
 export const startResourceWarningListeners = (
   params: StartResourceWarningListenersParams,
 ): (() => void) | undefined => {
-  const { homey, log } = params;
+  const { homey, log, error } = params;
   const emitter = homey as unknown as HomeyEmitter;
   if (typeof emitter.on !== 'function') return undefined;
 
-  const cpuwarn = createWarnLogger('cpuwarn', log);
-  const memwarn = createWarnLogger('memwarn', log);
+  const cpuwarn = createWarnLogger('cpuwarn', error);
+  const memwarn = createWarnLogger('memwarn', error);
   const unload = (): void => {
     log('[perf] homey unload event');
   };

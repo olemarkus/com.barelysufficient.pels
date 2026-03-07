@@ -377,6 +377,7 @@ class PelsApp extends Homey.App {
     this.stopResourceWarningListeners = startResourceWarningListenersHelper({
       homey: this.homey,
       log: (message) => this.log(message),
+      error: this.error.bind(this),
     });
   }
   private getDynamicSoftLimitOverride(): number | null {
