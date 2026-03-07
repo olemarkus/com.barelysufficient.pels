@@ -100,6 +100,7 @@ const buildDailyBudgetPayload = () => ({
 describe('daily budget chart render', () => {
   beforeEach(() => {
     jest.resetModules();
+    jest.dontMock('../src/ui/dailyBudgetChartEcharts');
     setupDailyBudgetDom();
   });
 
@@ -137,7 +138,7 @@ describe('daily budget chart render', () => {
     const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
 
     const rendered = renderDailyBudgetChartEcharts({
-      bars: [{ label: '00:00', value: 1, title: '00:00 · Planned 1.00 kWh' }],
+      bars: [{ label: '00:00', value: 1, title: '00:00 · Planned use 1.00 kWh' }],
       planned: [1],
       actual: [0.8],
       actualUncontrolled: [],
@@ -161,6 +162,28 @@ describe('daily budget chart render', () => {
       expect.objectContaining({ renderer: 'svg', width: 480, height: 176 }),
     );
     expect(setOption).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses explicit planned and actual labels in the tooltip title', () => {
+    const capturedArgs: Array<{ bars: Array<{ title: string }> }> = [];
+    jest.doMock('../src/ui/dailyBudgetChartEcharts', () => ({
+      renderDailyBudgetChartEcharts: (args: { bars: Array<{ title: string }> }) => {
+        capturedArgs.push(args);
+        return true;
+      },
+    }));
+
+    const { renderDailyBudgetChart } = require('../src/ui/dailyBudgetChart') as typeof import('../src/ui/dailyBudgetChart');
+    const payload = buildDailyBudgetPayload().days['2026-02-01'];
+    const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
+
+    renderDailyBudgetChart({ payload, showActual: true, showBreakdown: true, barsEl, labelsEl });
+
+    expect(capturedArgs).toHaveLength(1);
+    expect(capturedArgs[0].bars[2]?.title).toBe(
+      '02:00 · Planned use 2.00 kWh · Planned uncontrolled 1.20 kWh · Planned controlled 0.80 kWh · Actual use so far 1.90 kWh · Actual uncontrolled so far 1.20 kWh · Actual controlled so far 0.70 kWh',
+    );
   });
 
   it('stack OFF: renders Actual and Budget as two grouped series per hour', () => {

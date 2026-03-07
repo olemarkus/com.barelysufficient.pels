@@ -15,6 +15,8 @@ export type DailyBudgetState = {
   dateKey?: string | null;
   dayStartUtcMs?: number | null;
   plannedKWh?: number[];
+  plannedUncontrolledKWh?: number[];
+  plannedControlledKWh?: number[];
   frozen?: boolean;
   lastPlanBucketStartUtcMs?: number | null;
   lastUsedNowKWh?: number;

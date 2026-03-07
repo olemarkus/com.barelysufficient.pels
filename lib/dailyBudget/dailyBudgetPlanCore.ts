@@ -41,6 +41,8 @@ type BuildPlanParams = {
   priceShapingEnabled: boolean;
   priceShapingFlexShare?: number;
   previousPlannedKWh?: number[];
+  previousPlannedUncontrolledKWh?: number[];
+  previousPlannedControlledKWh?: number[];
   capacityBudgetKWh?: number;
   lockCurrentBucket?: boolean;
   controlledUsageWeight?: number;
@@ -93,6 +95,10 @@ export function buildPlan(params: BuildPlanParams): BuildPlanResult {
     plannedKWh,
     splitShares: setup.splitShares,
     controlledMinFloors,
+    previousPlannedUncontrolledKWh: params.previousPlannedUncontrolledKWh,
+    previousPlannedControlledKWh: params.previousPlannedControlledKWh,
+    currentBucketIndex: setup.bounds.safeCurrentBucketIndex,
+    shouldLockCurrent: setup.bounds.shouldLockCurrent,
   });
 
   return {
@@ -293,23 +299,84 @@ const buildPlannedSplit = (params: {
   plannedKWh: number[];
   splitShares: SplitShares;
   controlledMinFloors?: number[];
+  previousPlannedUncontrolledKWh?: number[];
+  previousPlannedControlledKWh?: number[];
+  currentBucketIndex: number;
+  shouldLockCurrent: boolean;
 }): Array<{ plannedUncontrolled: number; plannedControlled: number }> => {
-  const { plannedKWh, splitShares, controlledMinFloors } = params;
+  const {
+    plannedKWh,
+    splitShares,
+    controlledMinFloors,
+    previousPlannedUncontrolledKWh,
+    previousPlannedControlledKWh,
+    currentBucketIndex,
+    shouldLockCurrent,
+  } = params;
+  const hasPreviousSplit = Array.isArray(previousPlannedUncontrolledKWh)
+    && Array.isArray(previousPlannedControlledKWh)
+    && previousPlannedUncontrolledKWh.length === plannedKWh.length
+    && previousPlannedControlledKWh.length === plannedKWh.length;
+
   return splitShares.uncontrolled.map((_share, index) => {
     const planned = plannedKWh[index] ?? 0;
-    const shareControlled = splitShares.controlled[index] ?? 0;
-    let plannedControlled = planned * shareControlled;
-    const controlledFloor = controlledMinFloors?.[index] ?? 0;
-    if (controlledFloor > plannedControlled) {
-      plannedControlled = Math.min(planned, controlledFloor);
-    }
-    const plannedUncontrolled = Math.max(0, planned - plannedControlled);
-    return {
-      plannedUncontrolled,
-      plannedControlled,
-    };
+    const shouldPreservePreviousSplit = hasPreviousSplit
+      && (index < currentBucketIndex || (shouldLockCurrent && index === currentBucketIndex));
+    const preservedSplit = shouldPreservePreviousSplit
+      ? resolvePreservedSplit({
+        planned,
+        previousUncontrolled: previousPlannedUncontrolledKWh?.[index],
+        previousControlled: previousPlannedControlledKWh?.[index],
+      })
+      : null;
+    if (preservedSplit) return preservedSplit;
+    return resolveComputedSplit({
+      planned,
+      shareControlled: splitShares.controlled[index] ?? 0,
+      controlledFloor: controlledMinFloors?.[index] ?? 0,
+    });
   });
 };
+
+function resolvePreservedSplit(params: {
+  planned: number;
+  previousUncontrolled: number | undefined;
+  previousControlled: number | undefined;
+}): { plannedUncontrolled: number; plannedControlled: number } | null {
+  const { planned, previousUncontrolled, previousControlled } = params;
+  if (!Number.isFinite(previousUncontrolled) || !Number.isFinite(previousControlled)) return null;
+  const preservedUncontrolled = Math.max(0, previousUncontrolled as number);
+  const preservedControlled = Math.max(0, previousControlled as number);
+  const preservedTotal = preservedUncontrolled + preservedControlled;
+  if (planned <= 0) {
+    return {
+      plannedUncontrolled: 0,
+      plannedControlled: 0,
+    };
+  }
+  if (preservedTotal <= 0) return null;
+  const scale = planned / preservedTotal;
+  return {
+    plannedUncontrolled: preservedUncontrolled * scale,
+    plannedControlled: preservedControlled * scale,
+  };
+}
+
+function resolveComputedSplit(params: {
+  planned: number;
+  shareControlled: number;
+  controlledFloor: number;
+}): { plannedUncontrolled: number; plannedControlled: number } {
+  const { planned, shareControlled, controlledFloor } = params;
+  let plannedControlled = planned * shareControlled;
+  if (controlledFloor > plannedControlled) {
+    plannedControlled = Math.min(planned, controlledFloor);
+  }
+  return {
+    plannedUncontrolled: Math.max(0, planned - plannedControlled),
+    plannedControlled,
+  };
+}
 
 function resolveRemainingWeights(params: {
   baseWeights: number[];

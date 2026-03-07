@@ -632,6 +632,51 @@ describe('daily budget migration and defaults', () => {
 });
 
 describe('daily budget stale-plan and split persistence', () => {
+  const buildHourlyRolloverSplitScenario = () => {
+    const settings = buildSettings({
+      dailyBudgetKWh: 10,
+      controlledUsageWeight: 1,
+      priceShapingEnabled: true,
+      priceShapingFlexShare: 1,
+    });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 10)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const firstNow = dayStart + 10 * 60 * 1000;
+    const secondNow = dayStart + 70 * 60 * 1000;
+    const firstBucketKey = new Date(dayStart).toISOString();
+    const secondBucketKey = new Date(dayStart + 60 * 60 * 1000).toISOString();
+    const powerTracker = { buckets: { [firstBucketKey]: 0, [secondBucketKey]: 0 } };
+    const prices = [
+      10,
+      100,
+      ...Array.from({ length: 22 }, () => 100),
+    ].map((total, hour) => ({
+      startsAt: new Date(dayStart + hour * 60 * 60 * 1000).toISOString(),
+      total,
+    }));
+    const initialState = {
+      profileUncontrolled: {
+        weights: normalizeWeights([1, 1, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+      profileControlled: {
+        weights: normalizeWeights([1, 1, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+      profileControlledShare: 0.5,
+      profileSampleCount: 14,
+      profileSplitSampleCount: 14,
+    };
+    return {
+      settings,
+      initialState,
+      firstNow,
+      secondNow,
+      powerTracker,
+      combinedPrices: { prices },
+    };
+  };
+
   it('does not freeze from a stale plan when last plan bucket is outside current day', () => {
     const manager = buildManager();
     const settings = buildSettings({ dailyBudgetKWh: 100 });
@@ -716,6 +761,76 @@ describe('daily budget stale-plan and split persistence', () => {
     const secondControlled = second.snapshot.buckets.plannedControlledKWh ?? [];
     const secondUncontrolled = second.snapshot.buckets.plannedUncontrolledKWh ?? [];
 
+    expect(secondControlled[0]).toBeCloseTo(firstControlled[0], 6);
+    expect(secondUncontrolled[0]).toBeCloseTo(firstUncontrolled[0], 6);
+  });
+
+  it('keeps planned controlled/uncontrolled split stable for past buckets after an hourly rebuild', () => {
+    const scenario = buildHourlyRolloverSplitScenario();
+    const manager = buildManager();
+    manager.loadState(scenario.initialState);
+
+    const first = manager.update({
+      nowMs: scenario.firstNow,
+      timeZone: TZ,
+      settings: scenario.settings,
+      powerTracker: scenario.powerTracker,
+      combinedPrices: scenario.combinedPrices,
+      priceOptimizationEnabled: true,
+    });
+    const firstControlled = first.snapshot.buckets.plannedControlledKWh ?? [];
+    const firstUncontrolled = first.snapshot.buckets.plannedUncontrolledKWh ?? [];
+
+    const second = manager.update({
+      nowMs: scenario.secondNow,
+      timeZone: TZ,
+      settings: scenario.settings,
+      powerTracker: scenario.powerTracker,
+      combinedPrices: scenario.combinedPrices,
+      priceOptimizationEnabled: true,
+    });
+    const secondControlled = second.snapshot.buckets.plannedControlledKWh ?? [];
+    const secondUncontrolled = second.snapshot.buckets.plannedUncontrolledKWh ?? [];
+
+    expect(second.snapshot.buckets.plannedKWh[0]).toBeCloseTo(first.snapshot.buckets.plannedKWh[0], 6);
+    expect(secondControlled[0]).toBeCloseTo(firstControlled[0], 6);
+    expect(secondUncontrolled[0]).toBeCloseTo(firstUncontrolled[0], 6);
+  });
+
+  it('keeps planned controlled/uncontrolled split stable after exporting and reloading manager state', () => {
+    const scenario = buildHourlyRolloverSplitScenario();
+    const firstManager = buildManager();
+    firstManager.loadState(scenario.initialState);
+
+    const first = firstManager.update({
+      nowMs: scenario.firstNow,
+      timeZone: TZ,
+      settings: scenario.settings,
+      powerTracker: scenario.powerTracker,
+      combinedPrices: scenario.combinedPrices,
+      priceOptimizationEnabled: true,
+    });
+    const firstControlled = first.snapshot.buckets.plannedControlledKWh ?? [];
+    const firstUncontrolled = first.snapshot.buckets.plannedUncontrolledKWh ?? [];
+    const exported = firstManager.exportState();
+
+    expect(exported.plannedControlledKWh?.[0]).toBeCloseTo(firstControlled[0], 6);
+    expect(exported.plannedUncontrolledKWh?.[0]).toBeCloseTo(firstUncontrolled[0], 6);
+
+    const reloadedManager = buildManager();
+    reloadedManager.loadState(exported);
+    const second = reloadedManager.update({
+      nowMs: scenario.secondNow,
+      timeZone: TZ,
+      settings: scenario.settings,
+      powerTracker: scenario.powerTracker,
+      combinedPrices: scenario.combinedPrices,
+      priceOptimizationEnabled: true,
+    });
+    const secondControlled = second.snapshot.buckets.plannedControlledKWh ?? [];
+    const secondUncontrolled = second.snapshot.buckets.plannedUncontrolledKWh ?? [];
+
+    expect(second.snapshot.buckets.plannedKWh[0]).toBeCloseTo(first.snapshot.buckets.plannedKWh[0], 6);
     expect(secondControlled[0]).toBeCloseTo(firstControlled[0], 6);
     expect(secondUncontrolled[0]).toBeCloseTo(firstUncontrolled[0], 6);
   });

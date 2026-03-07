@@ -436,5 +436,7 @@ function resetLearningPlanState(state: DailyBudgetState): DailyBudgetState {
     frozen: false,
     lastPlanBucketStartUtcMs: null,
     plannedKWh: [],
+    plannedUncontrolledKWh: [],
+    plannedControlledKWh: [],
   };
 }

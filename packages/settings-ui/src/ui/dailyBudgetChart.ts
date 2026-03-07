@@ -25,23 +25,30 @@ const buildDailyBudgetBarTitle = (params: {
     plannedControlledKWh,
     showBreakdown,
   } = params;
-  const titleParts = [];
+  const titleParts: string[] = [];
   if (label) titleParts.push(label);
-  titleParts.push(`Planned ${formatKWh(plannedKWh)}`);
+  titleParts.push(`Planned use ${formatKWh(plannedKWh)}`);
   if (showBreakdown
     && typeof plannedUncontrolledKWh === 'number'
     && typeof plannedControlledKWh === 'number') {
-    titleParts.push(`Uncontrolled ${formatKWh(plannedUncontrolledKWh)}`);
-    titleParts.push(`Controlled ${formatKWh(plannedControlledKWh)}`);
+    titleParts.push(`Planned uncontrolled ${formatKWh(plannedUncontrolledKWh)}`);
+    titleParts.push(`Planned controlled ${formatKWh(plannedControlledKWh)}`);
   }
   const hasActualSplit = Number.isFinite(actualControlledKWh) && Number.isFinite(actualUncontrolledKWh);
+  let actualUseKWh: number | undefined;
+  if (Number.isFinite(actualKWh)) {
+    actualUseKWh = actualKWh as number;
+  } else if (hasActualSplit) {
+    actualUseKWh = (actualControlledKWh as number) + (actualUncontrolledKWh as number);
+  }
   if (hasActualSplit) {
-    const actualLabel = isCurrent ? 'Actual so far' : 'Actual';
-    titleParts.push(`${actualLabel} controlled ${formatKWh(actualControlledKWh as number)}`);
-    titleParts.push(`${actualLabel} uncontrolled ${formatKWh(actualUncontrolledKWh as number)}`);
-  } else if (Number.isFinite(actualKWh)) {
-    const actualLabel = isCurrent ? 'Actual so far' : 'Actual';
-    titleParts.push(`${actualLabel} ${formatKWh(actualKWh as number)}`);
+    const actualTimingSuffix = isCurrent ? ' so far' : '';
+    titleParts.push(`Actual use${actualTimingSuffix} ${formatKWh(actualUseKWh as number)}`);
+    titleParts.push(`Actual uncontrolled${actualTimingSuffix} ${formatKWh(actualUncontrolledKWh as number)}`);
+    titleParts.push(`Actual controlled${actualTimingSuffix} ${formatKWh(actualControlledKWh as number)}`);
+  } else if (typeof actualUseKWh === 'number') {
+    const actualLabel = isCurrent ? 'Actual use so far' : 'Actual use';
+    titleParts.push(`${actualLabel} ${formatKWh(actualUseKWh)}`);
   }
   return titleParts.join(' \u00B7 ');
 };
