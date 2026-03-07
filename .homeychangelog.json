@@ -181,5 +181,8 @@
   },
   "1.18.0": {
     "en": "Adds new price-aware Flow cards that let you build automations when the current price is among today’s lowest hours, or among the lowest hours before a chosen time. Also improves load shedding and restore decisions for managed devices, especially for devices that use expected power or stepped power levels, and reduces unnecessary churn when using the Set expected power for device Flow card by ignoring unchanged values."
+  },
+  "1.18.1": {
+    "en": "Prevent budget split recalculation of past hours. Various stability and maintainability improvements."
   }
 }
