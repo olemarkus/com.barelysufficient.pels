@@ -61,6 +61,12 @@ const isNullableFiniteNumberOrUndefined = (value: unknown): boolean => (
   value === undefined || value === null || (typeof value === 'number' && Number.isFinite(value))
 );
 
+const isFiniteNumberArrayOrUndefined = (value: unknown): boolean => (
+  value === undefined
+  || (Array.isArray(value)
+    && value.every((entry) => typeof entry === 'number' && Number.isFinite(entry)))
+);
+
 const isHourlyArrayOrUndefined = (value: unknown): boolean => (
   value === undefined
   || (Array.isArray(value)
@@ -83,10 +89,9 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     , isHourlyArrayOrUndefined(state.profileObservedMinUncontrolledKWh)
     , isHourlyArrayOrUndefined(state.profileObservedMinControlledKWh)
     , isNullableStringOrUndefined(state.profileObservedStatsConfigKey)
-    , (state.plannedKWh === undefined || (
-      Array.isArray(state.plannedKWh)
-      && state.plannedKWh.every((entry) => typeof entry === 'number' && Number.isFinite(entry))
-    ))
+    , isFiniteNumberArrayOrUndefined(state.plannedKWh)
+    , isFiniteNumberArrayOrUndefined(state.plannedUncontrolledKWh)
+    , isFiniteNumberArrayOrUndefined(state.plannedControlledKWh)
     , isNullableStringOrUndefined(state.dateKey)
     , isNullableFiniteNumberOrUndefined(state.dayStartUtcMs)
     , isNullableFiniteNumberOrUndefined(state.lastPlanBucketStartUtcMs)

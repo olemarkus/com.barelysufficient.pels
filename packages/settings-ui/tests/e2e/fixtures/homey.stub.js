@@ -1,5 +1,16 @@
 (() => {
   const listeners = Object.create(null);
+  const initialOverrides = (
+    window.__PELS_HOMEY_STUB__ && typeof window.__PELS_HOMEY_STUB__ === 'object'
+  )
+    ? window.__PELS_HOMEY_STUB__
+    : {};
+  const hasInitialDailyBudgetPayload = Object.prototype.hasOwnProperty.call(initialOverrides, 'dailyBudgetPayload');
+  const runtimeOverrides = {
+    apiHandlers: Object.create(null),
+    apiCallCounts: Object.create(null),
+    dailyBudgetPayload: hasInitialDailyBudgetPayload ? initialOverrides.dailyBudgetPayload : undefined,
+  };
 
   const emit = (event, ...args) => {
     const cbs = listeners[event];
@@ -423,6 +434,11 @@
     debug_logging_enabled: false,
   };
 
+  const initialSettings = initialOverrides.settings;
+  if (initialSettings && typeof initialSettings === 'object') {
+    Object.assign(settings, initialSettings);
+  }
+
   const syncExperimentalEvSupportState = () => {
     const hasEvDevice = settings.target_devices_snapshot.some((device) => device.id === evDeviceSnapshot.id);
     const hasEvPlanDevice = Array.isArray(settings.device_plan_snapshot?.devices)
@@ -472,6 +488,12 @@
     homeyTomorrow: settings.homey_prices_tomorrow ?? null,
   });
 
+  const resolveDailyBudgetPayload = () => (
+    runtimeOverrides.dailyBudgetPayload === undefined
+      ? buildSampleDailyBudgetPayload()
+      : runtimeOverrides.dailyBudgetPayload
+  );
+
   const buildBootstrapSettings = () => ({
     capacity_limit_kw: settings.capacity_limit_kw,
     capacity_margin_kw: settings.capacity_margin_kw,
@@ -506,7 +528,7 @@
   });
 
   const apiHandlers = {
-    'GET /daily_budget': () => buildSampleDailyBudgetPayload(),
+    'GET /daily_budget': () => resolveDailyBudgetPayload(),
     'GET /homey_devices': () => {
       // Used by advanced device logger/cleanup.
       return [
@@ -518,7 +540,7 @@
     },
     'GET /ui_bootstrap': () => ({
       settings: buildBootstrapSettings(),
-      dailyBudget: buildSampleDailyBudgetPayload(),
+      dailyBudget: resolveDailyBudgetPayload(),
       devices: settings.target_devices_snapshot,
       plan: settings.device_plan_snapshot,
       power: buildPowerPayload(),
@@ -543,7 +565,8 @@
     }
 
     const key = `${String(method).toUpperCase()} ${uri}`;
-    const handler = apiHandlers[key];
+    const handler = runtimeOverrides.apiHandlers[key] ?? apiHandlers[key];
+    runtimeOverrides.apiCallCounts[key] = (runtimeOverrides.apiCallCounts[key] ?? 0) + 1;
 
     setTimeout(() => {
       if (typeof callback !== 'function') return;
@@ -595,6 +618,27 @@
 
     i18n: {
       getTimezone: () => 'UTC',
+    },
+
+    __stub: {
+      setDailyBudgetPayload: (payload) => {
+        runtimeOverrides.dailyBudgetPayload = payload;
+      },
+      getDailyBudgetPayload: () => runtimeOverrides.dailyBudgetPayload,
+      getApiCallCount: (key) => runtimeOverrides.apiCallCounts[key] ?? 0,
+      setApiHandler: (key, handler) => {
+        runtimeOverrides.apiHandlers[key] = handler;
+      },
+      clearApiHandler: (key) => {
+        delete runtimeOverrides.apiHandlers[key];
+      },
+      emitSettingsSet: (key) => {
+        emit('settings.set', key);
+      },
+      setSetting: (key, value) => {
+        settings[key] = value;
+      },
+      getSetting: (key) => settings[key],
     },
   };
 
