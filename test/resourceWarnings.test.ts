@@ -24,74 +24,91 @@ describe('Homey resource warning perf logging', () => {
   it('logs cpuwarn count/limit and perf context after startup', async () => {
     const app = createApp();
     const logSpy = jest.spyOn(app, 'log');
+    const errorSpy = jest.spyOn(app, 'error').mockImplementation(() => undefined);
+    try {
+      await app.onInit();
+      await (app as any).planService.rebuildPlanFromCache('test_warning_measurement');
+      logSpy.mockClear();
+      errorSpy.mockClear();
 
-    await app.onInit();
-    await (app as any).planService.rebuildPlanFromCache('test_warning_measurement');
-    logSpy.mockClear();
+      mockHomeyInstance.emit('cpuwarn', { count: 1, limit: 12 });
 
-    mockHomeyInstance.emit('cpuwarn', { count: 1, limit: 12 });
+      expect(logSpy).not.toHaveBeenCalled();
+      const errorMessages = errorSpy.mock.calls.map(([message]) => String(message));
+      expect(errorMessages).toEqual(expect.arrayContaining([
+        expect.stringContaining('[perf] homey cpuwarn count=1 limit=12'),
+        expect.stringContaining('[perf] homey cpuwarn context '),
+      ]));
+      const contextLine = errorMessages.find((message) => message.includes('[perf] homey cpuwarn context '));
+      expect(contextLine).toBeDefined();
+      expect(contextLine).not.toContain('\n');
 
-    const messages = logSpy.mock.calls.map(([message]) => String(message));
-    expect(messages).toEqual(expect.arrayContaining([
-      expect.stringContaining('[perf] homey cpuwarn count=1 limit=12'),
-    ]));
-
-    const contextLine = messages.find((message) => message.includes('[perf] homey cpuwarn context '));
-    expect(contextLine).toBeDefined();
-    const jsonStart = contextLine!.indexOf('{');
-    const payload = JSON.parse(contextLine!.slice(jsonStart)) as {
-      uptimeSec?: number;
-      counts?: Record<string, number>;
-      durations?: Record<string, { count: number; avgMs: number; maxMs: number }>;
-      rebuilds?: {
-        window?: { count?: number; reasons?: Record<string, number> };
-        recent?: Array<{ reason?: string; totalMs?: number; ageMs?: number }>;
+      const jsonStart = contextLine!.indexOf('{');
+      const payload = JSON.parse(contextLine!.slice(jsonStart)) as {
+        uptimeSec?: number;
+        counts?: Record<string, number>;
+        durations?: Record<string, { count: number; avgMs: number; maxMs: number }>;
+        rebuilds?: {
+          window?: { count?: number; reasons?: Record<string, number> };
+          recent?: Array<{ reason?: string; totalMs?: number; ageMs?: number }>;
+        };
+        active?: string[];
+        recent?: string[];
       };
-      active?: string[];
-      recent?: string[];
-    };
-    expect(typeof payload.uptimeSec).toBe('number');
-    expect(payload.counts).toEqual(expect.objectContaining({
-      planRebuildRequested: expect.any(Number),
-      planRebuild: expect.any(Number),
-      dailyBudgetUpdate: expect.any(Number),
-      powerSample: expect.any(Number),
-    }));
-    expect(payload.durations).toEqual(expect.objectContaining({
-      planBuild: expect.any(Object),
-      planRebuild: expect.any(Object),
-      planRebuildBuild: expect.any(Object),
-      planRebuildSnapshot: expect.any(Object),
-      planRebuildStatus: expect.any(Object),
-      deviceRefresh: expect.any(Object),
-      deviceFetch: expect.any(Object),
-      dailyBudgetUpdate: expect.any(Object),
-    }));
-    expect(payload.rebuilds?.window?.count).toBeGreaterThanOrEqual(1);
-    expect(payload.rebuilds?.window?.reasons).toEqual(expect.objectContaining({
-      test_warning_measurement: expect.any(Number),
-    }));
-    expect(payload.rebuilds?.recent?.[0]).toEqual(expect.objectContaining({
-      reason: 'test_warning_measurement',
-      totalMs: expect.any(Number),
-      ageMs: expect.any(Number),
-    }));
-    expect(Array.isArray(payload.active)).toBe(true);
-    expect(Array.isArray(payload.recent)).toBe(true);
+      expect(typeof payload.uptimeSec).toBe('number');
+      expect(payload.counts).toEqual(expect.objectContaining({
+        planRebuildRequested: expect.any(Number),
+        planRebuild: expect.any(Number),
+        dailyBudgetUpdate: expect.any(Number),
+        powerSample: expect.any(Number),
+      }));
+      expect(payload.durations).toEqual(expect.objectContaining({
+        planBuild: expect.any(Object),
+        planRebuild: expect.any(Object),
+        planRebuildBuild: expect.any(Object),
+        planRebuildSnapshot: expect.any(Object),
+        planRebuildStatus: expect.any(Object),
+        deviceRefresh: expect.any(Object),
+        deviceFetch: expect.any(Object),
+        dailyBudgetUpdate: expect.any(Object),
+      }));
+      expect(payload.rebuilds?.window?.count).toBeGreaterThanOrEqual(1);
+      expect(payload.rebuilds?.window?.reasons).toEqual(expect.objectContaining({
+        test_warning_measurement: expect.any(Number),
+      }));
+      expect(payload.rebuilds?.recent?.[0]).toEqual(expect.objectContaining({
+        reason: 'test_warning_measurement',
+        totalMs: expect.any(Number),
+        ageMs: expect.any(Number),
+      }));
+      expect(Array.isArray(payload.active)).toBe(true);
+      expect(Array.isArray(payload.recent)).toBe(true);
+    } finally {
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   it('removes warning listeners on uninit', async () => {
     const app = createApp();
     const logSpy = jest.spyOn(app, 'log');
+    const errorSpy = jest.spyOn(app, 'error').mockImplementation(() => undefined);
 
-    await app.onInit();
-    await app.onUninit();
-    logSpy.mockClear();
+    try {
+      await app.onInit();
+      await app.onUninit();
+      logSpy.mockClear();
+      errorSpy.mockClear();
 
-    mockHomeyInstance.emit('cpuwarn', { count: 2, limit: 12 });
-    mockHomeyInstance.emit('memwarn', { count: 3, limit: 12 });
-    mockHomeyInstance.emit('unload');
+      mockHomeyInstance.emit('cpuwarn', { count: 2, limit: 12 });
+      mockHomeyInstance.emit('memwarn', { count: 3, limit: 12 });
+      mockHomeyInstance.emit('unload');
 
-    expect(logSpy).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 });
