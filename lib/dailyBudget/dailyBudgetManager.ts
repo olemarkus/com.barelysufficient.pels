@@ -1,9 +1,5 @@
 import type { PowerTrackerState } from '../core/powerTracker';
-import {
-  buildDefaultProfile,
-  buildPlan,
-  buildPriceDebugData,
-} from './dailyBudgetMath';
+import { buildDefaultProfile, buildPlan, buildPriceDebugData } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
 import { buildSnapshot, logBudgetSummaryIfNeeded, logPlanDebugIfNeeded } from './dailyBudgetManagerSnapshot';
 import {
@@ -13,10 +9,7 @@ import {
 } from './dailyBudgetManagerPlan';
 import { logNextDayPlanDebug } from './dailyBudgetNextDayDebug';
 import { buildDailyBudgetPreview } from './dailyBudgetPreview';
-import {
-  buildDayContext,
-  computeBudgetState,
-} from './dailyBudgetState';
+import { buildDayContext, computeBudgetState } from './dailyBudgetState';
 import { buildDailyBudgetHistory } from './dailyBudgetHistory';
 import type { DayContext, PriceData } from './dailyBudgetState';
 import type {
@@ -41,6 +34,7 @@ import {
   getProfileSampleCount,
   getProfileSplitSampleCount,
 } from './dailyBudgetProfile';
+import { type ConfidenceCache, createConfidenceCache, resolveConfidence } from './dailyBudgetConfidence';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
 
@@ -51,6 +45,7 @@ export class DailyBudgetManager {
   private dirty = false;
   private lastPersistMs = 0;
   private lastPlanRebuildMs = 0;
+  private confidenceCache: ConfidenceCache = createConfidenceCache();
 
   constructor(private deps: DailyBudgetManagerDeps) { }
   loadState(raw: unknown): void {
@@ -112,19 +107,7 @@ export class DailyBudgetManager {
     const profileResult = ensureDailyBudgetProfile(this.state, DEFAULT_PROFILE);
     if (profileResult.changed) this.markDirty();
     this.state = profileResult.state;
-    if (refreshObservedStats) {
-      const observedResult = ensureObservedHourlyStats({
-        state: this.state,
-        powerTracker,
-        timeZone,
-        nowMs: context.nowMs,
-      });
-      if (observedResult.changed) {
-        this.state = observedResult.nextState;
-        this.markDirty(true);
-        if (observedResult.logMessage) this.deps.logDebug(observedResult.logMessage);
-      }
-    }
+    if (refreshObservedStats) this.maybeUpdateObservedStats(powerTracker, timeZone, context.nowMs);
     this.handleRollover({ context, settings, powerTracker });
 
     const enabled = this.isEnabled(settings);
@@ -148,15 +131,20 @@ export class DailyBudgetManager {
       capacityBudgetKWh,
     });
 
-    const budget = computeBudgetState({
+    const budget = { ...computeBudgetState({
       context,
       enabled,
       dailyBudgetKWh: settings.dailyBudgetKWh,
       plannedKWh: plan.plannedKWh,
       profileSampleCount: getProfileSampleCount(this.state),
       profileSplitSampleCount: getProfileSplitSampleCount(this.state),
-    });
+    }) };
 
+    const cr = resolveConfidence({
+      cache: this.confidenceCache, nowMs: context.nowMs, timeZone, powerTracker,
+      profileBlendConfidence: budget.confidence, dateKey: context.dateKey,
+    });
+    budget.confidence = cr.confidence;
     this.maybeFreezeFromDeviation(enabled, budget.deviationKWh);
     this.maybeUnfreezeFromDeviation(enabled, budget.deviationKWh);
     logBudgetSummaryIfNeeded({
@@ -174,6 +162,7 @@ export class DailyBudgetManager {
       budget,
       context,
       defaultProfile: DEFAULT_PROFILE,
+      confidenceDebug: cr.debug,
     });
     this.snapshot = snapshot;
 
@@ -436,6 +425,16 @@ export class DailyBudgetManager {
     return { plannedUncontrolledKWh, plannedControlledKWh };
   }
 
+  private maybeUpdateObservedStats(
+    powerTracker: PowerTrackerState, timeZone: string, nowMs: number,
+  ): void {
+    const result = ensureObservedHourlyStats({ state: this.state, powerTracker, timeZone, nowMs });
+    if (result.changed) {
+      this.state = result.nextState;
+      this.markDirty(true);
+      if (result.logMessage) this.deps.logDebug(result.logMessage);
+    }
+  }
   private maybeFreezeFromDeviation(enabled: boolean, deviationKWh: number): void {
     if (!enabled || deviationKWh <= 0 || this.state.frozen) return;
     this.state.frozen = true; this.markDirty(true);

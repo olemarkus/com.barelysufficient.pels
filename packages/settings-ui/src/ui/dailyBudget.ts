@@ -23,6 +23,7 @@ import { callApi, getSetting } from './homey';
 import { showToast, showToastError } from './toast';
 import { pushSettingWriteIfChanged } from './settingWrites';
 import { logSettingsError } from './logging';
+import { setTooltip } from './tooltips';
 import { formatKWh, formatSignedKWh } from './dailyBudgetFormat';
 import { renderDailyBudgetChart } from './dailyBudgetChart';
 import { getPricesReadModel } from './prices';
@@ -160,6 +161,11 @@ const setConfidence = (value: number | null) => {
     return;
   }
   dailyBudgetConfidence.textContent = `Confidence ${Math.round(value * 100)}%`;
+  setTooltip(
+    dailyBudgetConfidence,
+    'How well PELS can predict your energy use based on the regularity'
+    + ' of your usage patterns and how closely your home follows the budget plan.',
+  );
   dailyBudgetConfidence.hidden = false;
 };
 

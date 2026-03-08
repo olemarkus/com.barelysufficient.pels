@@ -7,7 +7,7 @@ import {
 } from './dailyBudgetAllocation';
 import { buildPlan } from './dailyBudgetPlanCore';
 
-export function getConfidence(sampleCount: number): number {
+export function getProfileBlendConfidence(sampleCount: number): number {
   if (!Number.isFinite(sampleCount) || sampleCount <= 0) return 0;
   return clamp(sampleCount / 14, 0, 1);
 }

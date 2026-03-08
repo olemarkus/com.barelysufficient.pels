@@ -5,7 +5,8 @@ This document explains the exact math behind:
 - **Controlled usage weight** (Advanced tab)
 - **Price flex share** (Advanced tab)
 - **Observed hourly peak caps** (split-budget safety)
-- **Confidence** (how quickly learned behavior influences the plan)
+- **Confidence** (backtested forecast-skill score shown in the UI)
+- **Profile blend confidence** (how quickly learned behavior influences the plan internally)
 
 The formulas here match the current implementation in `lib/dailyBudget`.
 
@@ -112,60 +113,85 @@ controlledScale   = 0.12 / 0.72 = 0.1667
 
 So even though controlled energy share is 40%, the learned shape uses about 16.7% controlled influence at this stage.
 
-## 4) Confidence math
+## 4) Confidence
 
-Confidence ramps learned influence in over time:
+PELS has two distinct confidence concepts:
 
-```text
-confidenceFromCount(n) = clamp(n / 14, 0, 1)
-```
+### 4a) Profile blend confidence (internal)
 
-PELS tracks:
-
-- `profileSampleCount`: days with usable total data
-- `profileSplitSampleCount`: days with usable split (controlled/uncontrolled) data
-
-Planner confidence used for profile blending:
+Profile blend confidence controls how quickly learned profiles replace the default profile in the planner. It is **not** shown in the UI.
 
 ```text
-plannerConfidence = confidenceFromCount(profileSampleCount)
-```
-
-Final confidence shown in UI:
-
-```text
-baseConfidence  = confidenceFromCount(profileSampleCount)
-splitConfidence = confidenceFromCount(profileSplitSampleCount)
-uiConfidence    = min(baseConfidence, splitConfidence)
+profileBlendConfidence = clamp(profileSampleCount / 14, 0, 1)
 ```
 
 Profile blending applied by the planner:
 
 ```text
-effectiveUncontrolled[h] = D[h] * (1 - plannerConfidence) + learnedUncontrolled[h] * plannerConfidence
-effectiveControlled[h]   = learnedControlled[h] * plannerConfidence
+effectiveUncontrolled[h] = D[h] * (1 - profileBlendConfidence) + learnedUncontrolled[h] * profileBlendConfidence
+effectiveControlled[h]   = learnedControlled[h] * profileBlendConfidence
 combined[h]              = normalize(effectiveUncontrolled[h] + effectiveControlled[h])
 ```
 
 Implications:
 
 - Early days: plan stays close to default profile
-- As planner confidence grows: learned behavior gradually takes over
-- Controlled contribution ramps with planner confidence
-- If split data lags total data, UI confidence can be lower than planner confidence
+- As profile blend confidence grows: learned behavior gradually takes over
+- Controlled contribution ramps with profile blend confidence
 
-### Example B: confidence ramp
+### 4b) Budget confidence (UI-facing)
 
-- After `3` valid days: planner confidence is `3/14 = 0.214`
-- After `10` valid days: planner confidence is `10/14 = 0.714`
-- After `14+` valid days: planner confidence saturates at `1.0`
+Budget confidence is a backtested forecast-skill score computed from the last 30 complete local days (excluding today and days overlapping unreliable periods). This is the value shown in the Budget tab.
 
-If split data only exists for 4 days but total data exists for 12 days:
+It has two components:
 
-- `baseConfidence = 12/14 = 0.857`
-- `splitConfidence = 4/14 = 0.286`
-- `uiConfidence = 0.286` (the limiting factor for displayed confidence)
-- `plannerConfidence = 0.857` (used for profile blending)
+#### Regularity score
+
+Measures how consistent the home's daily usage shape is across history.
+
+```text
+For each valid day i:
+  looCentroid   = mean of all other days' normalized actual profiles
+  dayScore[i]   = clamp(1 - L1(actualProfile[i], looCentroid) / 2, 0, 1)
+
+regularityScore = mean(dayScores) * clamp(validActualDays / 14, 0, 1)
+```
+
+#### Adaptability score
+
+Measures how well the home follows shifted budget plans when controlled load exists. Only uses days with near-complete plan data (≥90% of hourly buckets).
+
+```text
+For each valid planned day:
+  planFitScore    = clamp(1 - L1(actualProfile, plannedProfile) / 2, 0, 1)
+  controlledShare = controlledDayKWh / totalDayKWh
+  shiftDemand     = max(0.20, L1(plannedProfile, centroid) / 2)
+  dayWeight       = controlledShare * shiftDemand
+
+adaptabilityScore = weightedMean(planFitScores, dayWeights) * clamp(validPlannedDays / 14, 0, 1)
+```
+
+#### Combined confidence
+
+```text
+weightedControlledShare = weightedMean(controlledShare, weights = shiftDemand)
+adaptabilityInfluence   = clamp(weightedControlledShare * 1.2, 0, 0.85)
+
+confidence = regularityScore * (1 - adaptabilityInfluence)
+           + adaptabilityScore * adaptabilityInfluence
+```
+
+If there is no valid planned-day data or total day weight is zero, confidence falls back to regularity score alone.
+
+This makes adaptability dominate only when the home historically has meaningful controlled share; otherwise confidence is mostly whole-home regularity.
+
+A bootstrap confidence interval (5th/95th percentile, 500 iterations) is computed for debug/validation but is not shown in the UI.
+
+### Example B: profile blend confidence ramp
+
+- After `3` valid days: profile blend confidence is `3/14 = 0.214`
+- After `10` valid days: profile blend confidence is `10/14 = 0.714`
+- After `14+` valid days: profile blend confidence saturates at `1.0`
 
 ## 5) Observed hourly peak caps (split-budget safety)
 
@@ -314,9 +340,10 @@ So shaping remains meaningful, and naturally scales with day volatility.
 
 With debug logging enabled for daily budget, these fields are useful:
 
+### Profile & planner fields
+
 - `profileSampleCount`
 - `profileSplitSampleCount`
-- `profileConfidence`
 - `profileControlledShare`
 - `profileLearnedWeights`
 - `profileEffectiveWeights`
@@ -326,4 +353,16 @@ With debug logging enabled for daily budget, these fields are useful:
 - `priceSpreadFactor`
 - `effectivePriceShapingFlexShare`
 
-These values let you verify whether behavior is caused by profile learning, observed-peak caps, confidence ramping, or price shaping.
+### Budget confidence fields (in `state.confidenceDebug`)
+
+- `confidenceRegularity` — regularity score (0..1)
+- `confidenceAdaptability` — adaptability score (0..1)
+- `confidenceAdaptabilityInfluence` — weight of adaptability in combined score (0..0.85)
+- `confidenceWeightedControlledShare` — controlled share weighted by shift-demand
+- `confidenceValidActualDays` — number of valid days used for regularity
+- `confidenceValidPlannedDays` — number of valid planned days used for adaptability
+- `confidenceBootstrapLow` — 5th percentile bootstrap interval (debug only)
+- `confidenceBootstrapHigh` — 95th percentile bootstrap interval (debug only)
+- `profileBlendConfidence` — internal profile blend confidence (sample-count ramp)
+
+These values let you verify whether behavior is caused by profile learning, observed-peak caps, budget confidence scoring, or price shaping.

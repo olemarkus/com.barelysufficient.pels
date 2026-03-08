@@ -6,7 +6,7 @@ import {
   buildDefaultProfile,
   buildPlan,
   buildWeightsFromPlan,
-  getConfidence,
+  getProfileBlendConfidence,
   normalizeWeights,
   resolveCurrentBucketIndex,
 } from '../lib/dailyBudget/dailyBudgetMath';
@@ -112,9 +112,9 @@ describe('daily budget math helpers', () => {
   const timeZone = 'UTC';
 
   it('clamps confidence and normalizes blended weights', () => {
-    expect(getConfidence(-1)).toBe(0);
-    expect(getConfidence(7)).toBeCloseTo(0.5, 5);
-    expect(getConfidence(28)).toBe(1);
+    expect(getProfileBlendConfidence(-1)).toBe(0);
+    expect(getProfileBlendConfidence(7)).toBeCloseTo(0.5, 5);
+    expect(getProfileBlendConfidence(28)).toBe(1);
 
     expect(normalizeWeights([0, 0])).toEqual([0, 0]);
     expect(normalizeWeights([1, 1])).toEqual([0.5, 0.5]);

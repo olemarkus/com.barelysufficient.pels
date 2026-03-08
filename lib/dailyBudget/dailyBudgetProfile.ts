@@ -1,6 +1,6 @@
 import { clamp } from '../utils/mathUtils';
 import { CONTROLLED_USAGE_WEIGHT } from './dailyBudgetConstants';
-import { getConfidence, normalizeWeights } from './dailyBudgetMath';
+import { getProfileBlendConfidence, normalizeWeights } from './dailyBudgetMath';
 import type { DailyBudgetProfile, DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';
 
 type LearnedProfileParts = {
@@ -249,7 +249,7 @@ export const getEffectiveProfileData = (
   controlledShare: number;
 } => {
   const learned = getLearnedProfileParts(state, settings, defaultProfile);
-  const confidence = getConfidence(getProfileSampleCount(state));
+  const confidence = getProfileBlendConfidence(getProfileSampleCount(state));
   if (!learned) {
     return {
       combinedWeights: [...defaultProfile],

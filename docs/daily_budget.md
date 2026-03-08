@@ -85,7 +85,7 @@ The Budget tab shows a "Today plan" chart and live stats:
 - **Allowed now**: cumulative kWh that the plan allows up to the current hour.
 - **Remaining**: daily budget minus used (can be negative).
 - **Deviation**: used minus allowed so far (positive means over plan).
-- **Confidence**: how much learned history is influencing the plan.
+- **Confidence**: backtested forecast-skill score — how regular the home's hourly usage is, and how well it follows shifted budget plans when controlled load exists.
 - **Price shaping**: shows whether price shaping is active.
 - **Plan frozen**: appears while you're over plan; it clears once you are back under plan.
 
@@ -99,7 +99,7 @@ Buckets are computed from local midnight to the next local midnight. On DST tran
 
 - **Default profile**: a safe baseline distribution across the day.
 - **Learned profile**: updated at the end of each day from actual usage.
-- **Confidence blending**: ramps from default to learned over time.
+- **Profile blending**: ramps from default to learned over time (internal, not shown in UI).
 - **Price shaping** (optional): reweights remaining buckets based on today's prices.
 
 The plan is a cumulative curve. The current bucket's planned kWh is turned into a daily soft limit for that hour, and the planner uses the effective soft limit (smaller of hourly and daily).

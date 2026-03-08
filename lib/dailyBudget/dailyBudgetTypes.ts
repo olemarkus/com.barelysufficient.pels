@@ -33,6 +33,18 @@ export type DailyBudgetState = {
   profileObservedStatsConfigKey?: string;
 };
 
+export type ConfidenceDebug = {
+  confidenceRegularity: number;
+  confidenceAdaptability: number;
+  confidenceAdaptabilityInfluence: number;
+  confidenceWeightedControlledShare: number;
+  confidenceValidActualDays: number;
+  confidenceValidPlannedDays: number;
+  confidenceBootstrapLow: number;
+  confidenceBootstrapHigh: number;
+  profileBlendConfidence: number;
+};
+
 export type DailyBudgetDayPayload = {
   dateKey: string;
   timeZone: string;
@@ -53,6 +65,7 @@ export type DailyBudgetDayPayload = {
     frozen: boolean;
     confidence: number;
     priceShapingActive: boolean;
+    confidenceDebug?: ConfidenceDebug;
   };
   buckets: {
     startUtc: string[];
