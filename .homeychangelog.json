@@ -184,5 +184,8 @@
   },
   "1.18.1": {
     "en": "Prevent budget split recalculation of past hours. Various stability and maintainability improvements."
+  },
+  "1.18.2": {
+    "en": "The Daily Budget confidence indicator now uses recent usage and budget history instead of a simple sample-count estimate, so it better reflects how predictable the home’s consumption is and how closely usage follows the planned budget.\n\nAlso includes stability and performance improvements in the Daily Budget calculations."
   }
 }
