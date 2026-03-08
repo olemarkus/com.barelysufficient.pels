@@ -2,6 +2,7 @@ import {
   computeBacktestedConfidence,
   createConfidenceCache,
   resolveConfidence,
+  sampleDayIndex,
 } from '../lib/dailyBudget/dailyBudgetConfidence';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import {
@@ -224,6 +225,41 @@ describe('computeBacktestedConfidence', () => {
     expect(result.debug.confidenceRegularity).toBeGreaterThan(0.9);
   });
 
+  it('ignores orphan controlled buckets and clamps controlled share to total usage', () => {
+    const buckets: Record<string, number> = {};
+    const controlledBuckets: Record<string, number> = {};
+    const dailyBudgetCaps: Record<string, number> = {};
+
+    for (let i = 1; i <= 14; i++) {
+      const dateKey = buildDateKey(i);
+      const dayStartUtcMs = getDateKeyStartMs(dateKey, TZ);
+      const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, TZ);
+      const { bucketStartUtcMs } = buildLocalDayBuckets({
+        dayStartUtcMs, nextDayStartUtcMs, timeZone: TZ,
+      });
+
+      const activeHour = i % 2 === 0 ? 6 : 18;
+      const activeKey = new Date(bucketStartUtcMs[activeHour]!).toISOString();
+      const orphanKey = new Date(bucketStartUtcMs[12]!).toISOString();
+
+      for (const ts of bucketStartUtcMs) {
+        dailyBudgetCaps[new Date(ts).toISOString()] = 0;
+      }
+      buckets[activeKey] = 1;
+      controlledBuckets[activeKey] = 0.5;
+      controlledBuckets[orphanKey] = 8;
+      dailyBudgetCaps[activeKey] = 1;
+    }
+
+    const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
+    const result = computeBacktestedConfidence({
+      nowMs: NOW_MS, timeZone: TZ, powerTracker: pt, profileBlendConfidence: 1,
+    });
+
+    expect(result.debug.confidenceWeightedControlledShare).toBeCloseTo(0.5, 6);
+    expect(result.debug.confidenceAdaptabilityInfluence).toBeCloseTo(0.6, 6);
+  });
+
   it('excludes days with unreliable overlap', () => {
     const buckets: Record<string, number> = {};
     const flatHourly = Array.from({ length: 24 }, () => 1);
@@ -309,6 +345,12 @@ describe('computeBacktestedConfidence', () => {
     expect(result.debug.confidenceBootstrapHigh).toBeGreaterThanOrEqual(0);
     expect(result.debug.confidenceBootstrapHigh).toBeLessThanOrEqual(1);
     expect(result.debug.confidenceBootstrapLow).toBeLessThanOrEqual(result.debug.confidenceBootstrapHigh);
+  });
+
+  it('clamps sampled bootstrap indices when random input reaches 1', () => {
+    expect(sampleDayIndex(0, 7)).toBe(0);
+    expect(sampleDayIndex(0.999999, 7)).toBe(6);
+    expect(sampleDayIndex(1, 7)).toBe(6);
   });
 
   it('excludes partial-plan days from adaptability scoring', () => {
@@ -743,7 +785,7 @@ describe('computeBacktestedConfidence', () => {
 
     // All days: very high controlled share (0.95), shifted plans.
     // weightedControlledShare ≈ 0.95 → plan formula: clamp(0.95 * 1.2, 0, 0.85) = 0.85.
-    // Current code: clamp(0.95, 0, 1) = 0.95 — exceeds 0.85 cap.
+    // Previously: clamp(0.95, 0, 1) = 0.95 — exceeded the intended 0.85 cap.
     for (let i = 1; i <= 14; i++) {
       const actual = Array.from({ length: 24 }, () => 0);
       const controlled = Array.from({ length: 24 }, () => 0);

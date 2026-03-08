@@ -40,6 +40,7 @@ export type BudgetState = {
   deviationKWh: number;
   exceeded: boolean;
   confidence: number;
+  profileBlendConfidence: number;
 };
 
 export type PriceData = {
@@ -214,6 +215,7 @@ export const computeBudgetState = (params: {
     deviationKWh,
     exceeded,
     confidence,
+    profileBlendConfidence: baseConfidence,
   };
 };
 

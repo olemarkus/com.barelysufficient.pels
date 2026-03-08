@@ -79,6 +79,37 @@ describe('daily budget profile blending', () => {
     expect(getProfileBlendConfidence(14)).toBe(1);
   });
 
+  it('reports profileBlendConfidence from total profile samples even when split samples lag', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+
+    manager.loadState({
+      profileUncontrolled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 10,
+      },
+      profileControlled: {
+        weights: buildDefaultProfile(),
+        sampleCount: 10,
+      },
+      profileControlledShare: 0.5,
+      profileSampleCount: 10,
+      profileSplitSampleCount: 2,
+    });
+
+    const update = manager.update({
+      nowMs: dayStart + 30 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: {} },
+      priceOptimizationEnabled: false,
+    });
+
+    expect(update.snapshot.state.confidenceDebug?.profileBlendConfidence)
+      .toBeCloseTo(getProfileBlendConfidence(10), 10);
+  });
 });
 
 describe('daily budget planning', () => {
