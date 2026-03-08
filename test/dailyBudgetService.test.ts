@@ -111,4 +111,27 @@ describe('DailyBudgetService', () => {
     expect(snapshot?.days['2025-03-14']?.state.confidence).toBe(0.72);
     expect(snapshot?.days['2025-03-14']?.state.confidenceDebug).toEqual(todayDebug);
   });
+
+  it('refreshes confidence explicitly when fetching the UI payload', () => {
+    const service = buildService();
+    const updateSpy = jest.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      shouldPersist: false,
+    }));
+    (service as any).deps.homey.settings.get = jest.fn((key: string) => (
+      key === 'debug_logging_enabled' ? true : null
+    ));
+    (service as any).manager.update = updateSpy;
+
+    service.getUiPayload();
+
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      refreshConfidence: true,
+      includeConfidenceBootstrapDebug: true,
+    }));
+  });
 });
