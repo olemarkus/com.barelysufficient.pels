@@ -3,7 +3,7 @@ import {
   buildDefaultProfile,
 } from '../lib/dailyBudget/dailyBudgetManager';
 import {
-  getConfidence,
+  getProfileBlendConfidence,
   normalizeWeights,
 } from '../lib/dailyBudget/dailyBudgetMath';
 import { buildPriceFactors } from '../lib/dailyBudget/dailyBudgetPrices';
@@ -74,9 +74,9 @@ describe('daily budget time boundaries', () => {
 
 describe('daily budget profile blending', () => {
   it('ramps confidence from 0 to 1 over 14 days', () => {
-    expect(getConfidence(0)).toBe(0);
-    expect(getConfidence(7)).toBeCloseTo(0.5, 3);
-    expect(getConfidence(14)).toBe(1);
+    expect(getProfileBlendConfidence(0)).toBe(0);
+    expect(getProfileBlendConfidence(7)).toBeCloseTo(0.5, 3);
+    expect(getProfileBlendConfidence(14)).toBe(1);
   });
 
 });

@@ -1,6 +1,6 @@
 import { computePlanDeviation, type DayContext, type PriceData } from './dailyBudgetState';
 import type { ExistingPlanState } from './dailyBudgetManagerTypes';
-import { getConfidence } from './dailyBudgetMath';
+import { getProfileBlendConfidence } from './dailyBudgetMath';
 import {
   OBSERVED_HOURLY_MAX_QUANTILE,
   OBSERVED_HOURLY_MIN_QUANTILE,
@@ -225,7 +225,7 @@ function buildPlanDebugPayload(params: {
       capacityBudgetKWh: Number.isFinite(capacityBudgetKWh) ? capacityBudgetKWh : null,
       profileSampleCount: profileMeta.sampleCount,
       profileSplitSampleCount: profileMeta.splitSampleCount,
-      profileConfidence: getConfidence(profileMeta.sampleCount),
+      profileConfidence: getProfileBlendConfidence(profileMeta.sampleCount),
       profileDefaultWeights: defaultProfile,
       profileLearnedWeights: learnedWeights,
       profileEffectiveWeights: combinedWeights,

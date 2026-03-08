@@ -9,11 +9,11 @@ import { clamp } from '../utils/mathUtils';
 import {
   buildAllowedCumKWh,
   buildWeightsFromPlan,
-  getConfidence,
+  getProfileBlendConfidence,
   resolveCurrentBucketIndex,
   sumArray,
 } from './dailyBudgetMath';
-import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
+import type { ConfidenceDebug, DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
 
 export type DayContext = {
   nowMs: number;
@@ -199,9 +199,9 @@ export const computeBudgetState = (params: {
     usedNowKWh: context.usedNowKWh,
   });
   const remainingKWh = enabled ? dailyBudgetKWh - context.usedNowKWh : 0;
-  const baseConfidence = getConfidence(profileSampleCount);
+  const baseConfidence = getProfileBlendConfidence(profileSampleCount);
   const splitConfidence = typeof profileSplitSampleCount === 'number'
-    ? getConfidence(profileSplitSampleCount)
+    ? getProfileBlendConfidence(profileSplitSampleCount)
     : baseConfidence;
   const confidence = Math.min(baseConfidence, splitConfidence);
   const exceeded = enabled && (context.usedNowKWh > dailyBudgetKWh || deviationKWh > 0);
@@ -256,6 +256,7 @@ export const buildDailyBudgetSnapshot = (params: {
   priceData: PriceData;
   budget: BudgetState;
   frozen: boolean;
+  confidenceDebug?: ConfidenceDebug;
 }): DailyBudgetDayPayload => {
   const {
     context,
@@ -267,6 +268,7 @@ export const buildDailyBudgetSnapshot = (params: {
     priceData,
     budget,
     frozen,
+    confidenceDebug,
   } = params;
 
   return {
@@ -289,6 +291,7 @@ export const buildDailyBudgetSnapshot = (params: {
       frozen,
       confidence: budget.confidence,
       priceShapingActive: priceData.priceShapingActive,
+      confidenceDebug,
     },
     buckets: {
       startUtc: context.bucketKeys,

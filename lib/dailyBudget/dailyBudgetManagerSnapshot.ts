@@ -3,6 +3,7 @@ import { buildDailyBudgetSnapshot, type BudgetState, type DayContext, type Price
 import { getEffectiveProfileData } from './dailyBudgetProfile';
 import { logDailyBudgetPlanDebug } from './dailyBudgetManagerPlan';
 import type {
+  ConfidenceDebug,
   DailyBudgetDayPayload,
   DailyBudgetSettings,
   DailyBudgetState,
@@ -33,6 +34,7 @@ export function buildSnapshot(params: {
   budget: BudgetState;
   context: DayContext;
   defaultProfile: number[];
+  confidenceDebug?: ConfidenceDebug;
 }): DailyBudgetDayPayload {
   const {
     state,
@@ -42,6 +44,7 @@ export function buildSnapshot(params: {
     budget,
     context,
     defaultProfile,
+    confidenceDebug,
   } = params;
   const profileData = getEffectiveProfileData(state, settings, defaultProfile);
   const hasPlannedBreakdown = Array.isArray(plan.plannedUncontrolledKWh)
@@ -69,6 +72,7 @@ export function buildSnapshot(params: {
     priceData: plan.priceData,
     budget,
     frozen: Boolean(state.frozen),
+    confidenceDebug,
   });
 }
 

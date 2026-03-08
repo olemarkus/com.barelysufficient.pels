@@ -18,6 +18,7 @@ export type DailyBudgetDayPayload = {
     frozen: boolean;
     confidence: number;
     priceShapingActive: boolean;
+    confidenceDebug?: ConfidenceDebug;
   };
   buckets: {
     startUtc: string[];
@@ -33,6 +34,18 @@ export type DailyBudgetDayPayload = {
     price?: Array<number | null>;
     priceFactor?: Array<number | null>;
   };
+};
+
+export type ConfidenceDebug = {
+  confidenceRegularity: number;
+  confidenceAdaptability: number;
+  confidenceAdaptabilityInfluence: number;
+  confidenceWeightedControlledShare: number;
+  confidenceValidActualDays: number;
+  confidenceValidPlannedDays: number;
+  confidenceBootstrapLow: number;
+  confidenceBootstrapHigh: number;
+  profileBlendConfidence: number;
 };
 
 export type DailyBudgetUiPayload = {
