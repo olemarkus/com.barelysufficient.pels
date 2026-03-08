@@ -34,7 +34,12 @@ import {
   getProfileSampleCount,
   getProfileSplitSampleCount,
 } from './dailyBudgetProfile';
-import { type ConfidenceCache, createConfidenceCache, resolveConfidence } from './dailyBudgetConfidence';
+import {
+  type ConfidenceCache,
+  createConfidenceCache,
+  getCachedConfidence,
+  resolveConfidence,
+} from './dailyBudgetConfidence';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
 
@@ -90,6 +95,7 @@ export class DailyBudgetManager {
     forcePlanRebuild?: boolean;
     capacityBudgetKWh?: number;
     refreshObservedStats?: boolean;
+    refreshConfidence?: boolean;
     includeConfidenceBootstrapDebug?: boolean;
   }): DailyBudgetUpdate {
     const {
@@ -102,6 +108,7 @@ export class DailyBudgetManager {
       forcePlanRebuild,
       capacityBudgetKWh,
       refreshObservedStats = true,
+      refreshConfidence = false,
       includeConfidenceBootstrapDebug = false,
     } = params;
 
@@ -142,13 +149,18 @@ export class DailyBudgetManager {
       profileSplitSampleCount: getProfileSplitSampleCount(this.state),
     }) };
 
-    const cr = resolveConfidence({
-      cache: this.confidenceCache, nowMs: context.nowMs, timeZone, powerTracker,
-      profileBlendConfidence: budget.profileBlendConfidence,
-      dateKey: context.dateKey,
-      // Bootstrap confidence intervals are debug-only and should not run on routine updates.
-      includeBootstrapDebug: includeConfidenceBootstrapDebug,
-    });
+    const cr = refreshConfidence
+      ? resolveConfidence({
+        cache: this.confidenceCache, nowMs: context.nowMs, timeZone, powerTracker,
+        profileBlendConfidence: budget.profileBlendConfidence,
+        dateKey: context.dateKey,
+        // Bootstrap confidence intervals are debug-only and should not run on routine updates.
+        includeBootstrapDebug: includeConfidenceBootstrapDebug,
+      })
+      : getCachedConfidence({
+        cache: this.confidenceCache,
+        profileBlendConfidence: budget.profileBlendConfidence,
+      });
     budget.confidence = cr.confidence;
     this.maybeFreezeFromDeviation(enabled, budget.deviationKWh);
     this.maybeUnfreezeFromDeviation(enabled, budget.deviationKWh);

@@ -14,6 +14,7 @@ import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_STATE,
+  DEBUG_LOGGING_TOPICS,
 } from '../utils/settingsKeys';
 import {
   CONTROLLED_USAGE_WEIGHT,
@@ -99,6 +100,7 @@ export class DailyBudgetService {
     forcePlanRebuild?: boolean;
     includeAdjacentDays?: boolean;
     refreshObservedStats?: boolean;
+    refreshConfidence?: boolean;
     includeConfidenceBootstrapDebug?: boolean;
   } = {}): void {
     const stopSpan = startRuntimeSpan('daily_budget_update');
@@ -120,6 +122,7 @@ export class DailyBudgetService {
         forcePlanRebuild: params.forcePlanRebuild,
         capacityBudgetKWh,
         refreshObservedStats: params.refreshObservedStats,
+        refreshConfidence: params.refreshConfidence,
         includeConfidenceBootstrapDebug: params.includeConfidenceBootstrapDebug,
       });
       this.setDaySnapshot(update.snapshot, nowMs, includeAdjacentDays);
@@ -209,6 +212,12 @@ export class DailyBudgetService {
     return this.snapshot;
   }
 
+  private shouldIncludeConfidenceBootstrapDebug(): boolean {
+    const topics = this.deps.homey.settings.get(DEBUG_LOGGING_TOPICS);
+    if (Array.isArray(topics) && topics.length > 0) return true;
+    return this.deps.homey.settings.get('debug_logging_enabled') === true;
+  }
+
   getPeriodicStatusLog(): string | null {
     const nowMs = Date.now();
     this.updateState({ nowMs, forcePlanRebuild: false });
@@ -241,7 +250,13 @@ export class DailyBudgetService {
 
   getUiPayload(): DailyBudgetUiPayload | null {
     const nowMs = Date.now();
-    this.updateState({ nowMs, forcePlanRebuild: false, includeAdjacentDays: true });
+    this.updateState({
+      nowMs,
+      forcePlanRebuild: false,
+      includeAdjacentDays: true,
+      refreshConfidence: true,
+      includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
+    });
     if (!this.snapshot) return null;
     return this.snapshot;
   }

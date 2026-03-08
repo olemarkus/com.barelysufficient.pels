@@ -1,6 +1,7 @@
 import {
   computeBacktestedConfidence,
   createConfidenceCache,
+  getCachedConfidence,
   resolveConfidence,
   sampleDayIndex,
 } from '../lib/dailyBudget/dailyBudgetConfidence';
@@ -870,6 +871,19 @@ describe('computeBacktestedConfidence', () => {
     expect(second.debug.confidenceBootstrapLow).toBeCloseTo(first.debug.confidenceBootstrapLow, 10);
     expect(second.debug.confidenceBootstrapHigh).toBeCloseTo(first.debug.confidenceBootstrapHigh, 10);
     expect(second.debug.profileBlendConfidence).toBe(0.75);
+  });
+
+  it('returns an empty cached confidence result when no confidence has been computed yet', () => {
+    const cache = createConfidenceCache();
+    const result = getCachedConfidence({
+      cache,
+      profileBlendConfidence: 0.6,
+    });
+
+    expect(result.confidence).toBe(0);
+    expect(result.debug.profileBlendConfidence).toBe(0.6);
+    expect(result.debug.confidenceBootstrapLow).toBe(0);
+    expect(result.debug.confidenceBootstrapHigh).toBe(0);
   });
 
   it('requires near-full plan coverage to count as a planned day', () => {

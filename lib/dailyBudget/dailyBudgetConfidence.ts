@@ -36,6 +36,27 @@ export type ConfidenceResult = {
   debug: ConfidenceDebug;
 };
 
+function createEmptyConfidenceDebug(profileBlendConfidence: number): ConfidenceDebug {
+  return {
+    confidenceRegularity: 0,
+    confidenceAdaptability: 0,
+    confidenceAdaptabilityInfluence: 0,
+    confidenceWeightedControlledShare: 0,
+    confidenceValidActualDays: 0,
+    confidenceValidPlannedDays: 0,
+    confidenceBootstrapLow: 0,
+    confidenceBootstrapHigh: 0,
+    profileBlendConfidence,
+  };
+}
+
+function createEmptyConfidenceResult(profileBlendConfidence: number): ConfidenceResult {
+  return {
+    confidence: 0,
+    debug: createEmptyConfidenceDebug(profileBlendConfidence),
+  };
+}
+
 export function computeBacktestedConfidence(params: {
   nowMs: number;
   timeZone: string;
@@ -53,20 +74,7 @@ export function computeBacktestedConfidence(params: {
   const days = collectValidDays({ nowMs, timeZone, powerTracker });
 
   if (days.length === 0) {
-    return {
-      confidence: 0,
-      debug: {
-        confidenceRegularity: 0,
-        confidenceAdaptability: 0,
-        confidenceAdaptabilityInfluence: 0,
-        confidenceWeightedControlledShare: 0,
-        confidenceValidActualDays: 0,
-        confidenceValidPlannedDays: 0,
-        confidenceBootstrapLow: 0,
-        confidenceBootstrapHigh: 0,
-        profileBlendConfidence,
-      },
-    };
+    return createEmptyConfidenceResult(profileBlendConfidence);
   }
 
   const regularity = computeRegularityScore(days);
@@ -482,6 +490,15 @@ export type ConfidenceCache = {
 
 export function createConfidenceCache(): ConfidenceCache {
   return { result: null, lastMs: 0, lastInputKey: null, bootstrapComplete: false };
+}
+
+export function getCachedConfidence(params: {
+  cache: ConfidenceCache;
+  profileBlendConfidence: number;
+}): ConfidenceResult {
+  const { cache, profileBlendConfidence } = params;
+  if (!cache.result) return createEmptyConfidenceResult(profileBlendConfidence);
+  return withProfileBlendConfidence(cache.result, profileBlendConfidence);
 }
 
 export function resolveConfidence(params: {

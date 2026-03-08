@@ -110,6 +110,49 @@ describe('daily budget profile blending', () => {
     expect(update.snapshot.state.confidenceDebug?.profileBlendConfidence)
       .toBeCloseTo(getProfileBlendConfidence(10), 10);
   });
+
+  it('reuses cached confidence on background updates when refreshConfidence is false', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const now = new Date(Date.UTC(2024, 0, 15, 0, 30));
+    const dateKey = getDateKeyInTimeZone(now, TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const flatBuckets: Record<string, number> = {};
+    for (let dayOffset = 1; dayOffset <= 14; dayOffset += 1) {
+      const priorDayStart = dayStart - dayOffset * 24 * 60 * 60 * 1000;
+      const { bucketStartUtcMs } = buildLocalDayBuckets({
+        dayStartUtcMs: priorDayStart,
+        nextDayStartUtcMs: getNextLocalDayStartUtcMs(priorDayStart, TZ),
+        timeZone: TZ,
+      });
+      for (const ts of bucketStartUtcMs) {
+        flatBuckets[new Date(ts).toISOString()] = 1;
+      }
+    }
+
+    const refreshed = manager.update({
+      nowMs: dayStart + 30 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: flatBuckets },
+      priceOptimizationEnabled: false,
+      refreshConfidence: true,
+    });
+    expect(refreshed.snapshot.state.confidence).toBeGreaterThan(0);
+
+    const background = manager.update({
+      nowMs: dayStart + 31 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: {} },
+      priceOptimizationEnabled: false,
+      refreshConfidence: false,
+    });
+
+    expect(background.snapshot.state.confidence).toBeCloseTo(refreshed.snapshot.state.confidence, 10);
+    expect(background.snapshot.state.confidenceDebug?.profileBlendConfidence)
+      .toBeCloseTo(refreshed.snapshot.state.confidenceDebug?.profileBlendConfidence ?? 0, 10);
+  });
 });
 
 describe('daily budget planning', () => {
