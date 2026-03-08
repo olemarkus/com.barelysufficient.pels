@@ -29,6 +29,9 @@ type DayData = {
   controlledShare: number;
 };
 
+const FNV_OFFSET_BASIS = 2166136261;
+const FNV_PRIME = 16777619;
+
 export type ConfidenceResult = {
   confidence: number;
   debug: ConfidenceDebug;
@@ -286,29 +289,31 @@ function computeAdaptabilityScore(days: DayData[], centroid: number[]): {
   let weightSum = 0;
   let shiftDemandSum = 0;
   let weightedShareSum = 0;
+  let weightedDayCount = 0;
 
   for (const day of daysWithPlans) {
     const plannedProfile = day.plannedProfile!;
     const shiftDemand = Math.max(0.20, l1Distance(plannedProfile, centroid) / 2);
     const weight = day.controlledShare * shiftDemand;
+    shiftDemandSum += shiftDemand;
+    weightedShareSum += day.controlledShare * shiftDemand;
 
     if (weight <= 0) continue;
 
     const planFit = clamp(1 - l1Distance(day.totalProfile, plannedProfile) / 2, 0, 1);
     weightedScoreSum += planFit * weight;
     weightSum += weight;
-    weightedShareSum += day.controlledShare * shiftDemand;
-    shiftDemandSum += shiftDemand;
+    weightedDayCount++;
   }
 
-  if (weightSum <= 0) {
+  if (weightSum <= 0 || shiftDemandSum <= 0) {
     return {
       score: 0, influence: 0, weightedControlledShare: 0,
-      validPlannedDays: daysWithPlans.length,
+      validPlannedDays: 0,
     };
   }
 
-  const ramp = clamp(daysWithPlans.length / RAMP_DAYS, 0, 1);
+  const ramp = clamp(weightedDayCount / RAMP_DAYS, 0, 1);
   const score = (weightedScoreSum / weightSum) * ramp;
   const weightedControlledShare = weightedShareSum / shiftDemandSum;
   const influence = clamp(weightedControlledShare * 1.2, 0, 0.85);
@@ -317,7 +322,7 @@ function computeAdaptabilityScore(days: DayData[], centroid: number[]): {
     score,
     influence,
     weightedControlledShare,
-    validPlannedDays: daysWithPlans.length,
+    validPlannedDays: weightedDayCount,
   };
 }
 
@@ -367,6 +372,98 @@ function sampleDays(days: DayData[], nextRandom: () => number): DayData[] {
   });
 }
 
+function getConfidenceWindowBounds(nowMs: number, timeZone: string): {
+  dayStartUtcMs: number;
+  windowStartUtcMs: number;
+} {
+  const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
+  const dayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
+  let windowStartUtcMs = dayStartUtcMs;
+  for (let i = 0; i < LOOKBACK_DAYS; i++) {
+    windowStartUtcMs = getPreviousLocalDayStartUtcMs(windowStartUtcMs, timeZone);
+  }
+  return { dayStartUtcMs, windowStartUtcMs };
+}
+
+function appendHashString(hash: number, value: string): number {
+  let next = hash >>> 0;
+  for (let i = 0; i < value.length; i++) {
+    next ^= value.charCodeAt(i);
+    next = Math.imul(next, FNV_PRIME) >>> 0;
+  }
+  return next;
+}
+
+function appendHashNumber(hash: number, value: number): number {
+  return appendHashString(hash, Number.isFinite(value) ? value.toString() : 'NaN');
+}
+
+function appendRecordFingerprint(
+  hash: number,
+  label: string,
+  record: Record<string, number> | undefined,
+  windowStartUtcMs: number,
+  dayStartUtcMs: number,
+): number {
+  let next = appendHashString(hash, label);
+  if (!record) return next;
+  const relevantKeys = Object.keys(record)
+    .filter((key) => {
+      const ts = Date.parse(key);
+      return Number.isFinite(ts) && ts >= windowStartUtcMs && ts < dayStartUtcMs;
+    })
+    .sort();
+  for (const key of relevantKeys) {
+    next = appendHashString(next, key);
+    next = appendHashNumber(next, record[key]!);
+  }
+  return next;
+}
+
+function appendUnreliablePeriodsFingerprint(
+  hash: number,
+  unreliablePeriods: PowerTrackerState['unreliablePeriods'],
+  windowStartUtcMs: number,
+  dayStartUtcMs: number,
+): number {
+  let next = appendHashString(hash, 'u');
+  const relevantPeriods = (unreliablePeriods ?? [])
+    .filter((period) => period.end > windowStartUtcMs && period.start < dayStartUtcMs)
+    .slice()
+    .sort((a, b) => (a.start - b.start) || (a.end - b.end));
+  for (const period of relevantPeriods) {
+    next = appendHashNumber(next, period.start);
+    next = appendHashNumber(next, period.end);
+  }
+  return next;
+}
+
+function buildConfidenceInputKey(params: {
+  nowMs: number;
+  timeZone: string;
+  powerTracker: PowerTrackerState;
+  profileBlendConfidence: number;
+  dateKey: string;
+}): string {
+  const {
+    nowMs,
+    timeZone,
+    powerTracker,
+    profileBlendConfidence,
+    dateKey,
+  } = params;
+  const { dayStartUtcMs, windowStartUtcMs } = getConfidenceWindowBounds(nowMs, timeZone);
+  let hash = FNV_OFFSET_BASIS;
+  hash = appendHashString(hash, timeZone);
+  hash = appendHashString(hash, dateKey);
+  hash = appendHashNumber(hash, profileBlendConfidence);
+  hash = appendRecordFingerprint(hash, 'b', powerTracker.buckets, windowStartUtcMs, dayStartUtcMs);
+  hash = appendRecordFingerprint(hash, 'c', powerTracker.controlledBuckets, windowStartUtcMs, dayStartUtcMs);
+  hash = appendRecordFingerprint(hash, 'p', powerTracker.dailyBudgetCaps, windowStartUtcMs, dayStartUtcMs);
+  hash = appendUnreliablePeriodsFingerprint(hash, powerTracker.unreliablePeriods, windowStartUtcMs, dayStartUtcMs);
+  return hash.toString(16);
+}
+
 function combineScores(params: {
   regularityScore: number;
   adaptabilityScore: number;
@@ -381,12 +478,12 @@ function combineScores(params: {
 export type ConfidenceCache = {
   result: ConfidenceResult | null;
   lastMs: number;
-  lastDateKey: string | null;
+  lastInputKey: string | null;
   bootstrapComplete: boolean;
 };
 
 export function createConfidenceCache(): ConfidenceCache {
-  return { result: null, lastMs: 0, lastDateKey: null, bootstrapComplete: false };
+  return { result: null, lastMs: 0, lastInputKey: null, bootstrapComplete: false };
 }
 
 export function resolveConfidence(params: {
@@ -408,8 +505,15 @@ export function resolveConfidence(params: {
     includeBootstrapDebug = true,
   } = params;
   const elapsed = nowMs - cache.lastMs;
+  const inputKey = buildConfidenceInputKey({
+    nowMs,
+    timeZone,
+    powerTracker,
+    profileBlendConfidence,
+    dateKey,
+  });
   const canReuseCachedResult = cache.result
-    && dateKey === cache.lastDateKey
+    && inputKey === cache.lastInputKey
     && elapsed < RECOMPUTE_INTERVAL_MS
     && (includeBootstrapDebug === false || cache.bootstrapComplete);
   if (canReuseCachedResult) {
@@ -425,7 +529,7 @@ export function resolveConfidence(params: {
   Object.assign(cache, {
     result,
     lastMs: nowMs,
-    lastDateKey: dateKey,
+    lastInputKey: inputKey,
     bootstrapComplete: includeBootstrapDebug,
   });
   return result;

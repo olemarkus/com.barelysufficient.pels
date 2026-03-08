@@ -244,11 +244,31 @@ export class DailyBudgetService {
     return this.snapshot;
   }
 
+  private applyOverallModelConfidence(
+    snapshot: DailyBudgetDayPayload | null,
+    reference: DailyBudgetDayPayload,
+  ): DailyBudgetDayPayload | null {
+    if (!snapshot) return null;
+    // Confidence represents the model quality as a whole, not a per-day forecast delta.
+    return {
+      ...snapshot,
+      state: {
+        ...snapshot.state,
+        confidence: reference.state.confidence,
+        confidenceDebug: reference.state.confidenceDebug,
+      },
+    };
+  }
+
   private setDaySnapshot(snapshot: DailyBudgetDayPayload, nowMs: number, includeAdjacentDays = false): void {
     const todayKey = snapshot.dateKey;
-    const tomorrowSnapshot = includeAdjacentDays ? this.buildTomorrowPreview(nowMs) : null;
+    const tomorrowSnapshot = includeAdjacentDays
+      ? this.applyOverallModelConfidence(this.buildTomorrowPreview(nowMs), snapshot)
+      : null;
     const tomorrowKey = includeAdjacentDays ? tomorrowSnapshot?.dateKey ?? null : null;
-    const yesterdaySnapshot = includeAdjacentDays ? this.buildYesterdayHistory(nowMs) : null;
+    const yesterdaySnapshot = includeAdjacentDays
+      ? this.applyOverallModelConfidence(this.buildYesterdayHistory(nowMs), snapshot)
+      : null;
     const yesterdayKey = includeAdjacentDays ? yesterdaySnapshot?.dateKey ?? null : null;
 
     this.daySnapshots = includeAdjacentDays

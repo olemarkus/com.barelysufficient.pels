@@ -458,14 +458,14 @@ describe('computeBacktestedConfidence', () => {
     expect(result.debug.confidenceWeightedControlledShare).toBeGreaterThan(0.3);
   });
 
-  it('does not divide controlled share sum by zero-weighted planned days', () => {
+  it('lets zero-controlled planned days lower adaptability influence without adding adaptability evidence', () => {
     const buckets: Record<string, number> = {};
     const controlledBuckets: Record<string, number> = {};
     const dailyBudgetCaps: Record<string, number> = {};
 
     // Build days where some have controlledShare=0 (weight=0), others have controlledShare=0.8.
-    // The zero-controlled days should not dilute the influence denominator.
-    // Use alternating plan shapes so shiftDemand (L1 from centroid) is nonzero.
+    // The zero-controlled days should lower the controlled-share influence, but should not count
+    // as positive adaptability evidence for the score ramp.
     for (let i = 1; i <= 14; i++) {
       const actual = Array.from({ length: 24 }, () => 0);
       const controlled = Array.from({ length: 24 }, () => 0);
@@ -502,11 +502,52 @@ describe('computeBacktestedConfidence', () => {
       profileBlendConfidence: 1,
     });
 
-    // Only 7 out of 14 planned days have positive weight (controlled > 0 and shiftDemand > 0);
-    // influence should reflect the controlled share of the weighted days (~0.8),
-    // not be diluted by 14 days.
-    expect(result.debug.confidenceAdaptabilityInfluence).toBeGreaterThan(0.5);
-    expect(result.debug.confidenceWeightedControlledShare).toBeGreaterThan(0.5);
+    // Only 7 out of 14 planned days have positive score weight, so the ramp should see 7 days.
+    // But weightedControlledShare should still include the zero-controlled days and land near 0.4,
+    // which keeps adaptability influence well below the high-controlled-only case.
+    expect(result.debug.confidenceValidPlannedDays).toBe(7);
+    expect(result.debug.confidenceWeightedControlledShare).toBeCloseTo(0.4, 6);
+    expect(result.debug.confidenceAdaptabilityInfluence).toBeCloseTo(0.48, 6);
+  });
+
+  it('does not count zero-controlled planned days toward adaptability evidence', () => {
+    const buckets: Record<string, number> = {};
+    const controlledBuckets: Record<string, number> = {};
+    const dailyBudgetCaps: Record<string, number> = {};
+
+    for (let i = 1; i <= 14; i++) {
+      const actual = Array.from({ length: 24 }, () => 0);
+      const controlled = Array.from({ length: 24 }, () => 0);
+      const planned = Array.from({ length: 24 }, () => 0);
+
+      actual[6] = 10;
+      planned[6] = 10;
+      if (i === 1) {
+        controlled[6] = 9;
+      }
+
+      addDayUsage({
+        buckets,
+        dateKey: buildDateKey(i),
+        hourlyKWh: actual,
+        controlledBuckets,
+        dailyBudgetCaps,
+        hourlyControlledKWh: controlled,
+        hourlyPlannedKWh: planned,
+      });
+    }
+
+    const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
+    const result = computeBacktestedConfidence({
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: pt,
+      profileBlendConfidence: 1,
+    });
+
+    expect(result.debug.confidenceValidPlannedDays).toBe(1);
+    expect(result.debug.confidenceAdaptability).toBeLessThan(0.2);
+    expect(result.debug.confidenceAdaptabilityInfluence).toBeLessThan(0.2);
   });
 
   it('bootstrap interval reflects combined confidence, not just regularity', () => {
@@ -739,6 +780,72 @@ describe('computeBacktestedConfidence', () => {
     expect(fullResult.debug.confidenceBootstrapLow).toBeLessThan(fullResult.debug.confidenceBootstrapHigh);
     expect(fullResult.debug.confidenceBootstrapLow).toBeLessThanOrEqual(fullResult.confidence);
     expect(fullResult.debug.confidenceBootstrapHigh).toBeGreaterThanOrEqual(fullResult.confidence);
+  });
+
+  it('recomputes cached confidence when the power-tracker history changes', () => {
+    const buckets: Record<string, number> = {};
+    const flatHourly = Array.from({ length: 24 }, () => 1);
+    for (let i = 1; i <= 10; i++) {
+      addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: flatHourly });
+    }
+
+    const cache = createConfidenceCache();
+    const first = resolveConfidence({
+      cache,
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: buildPowerTracker({ buckets }),
+      profileBlendConfidence: 1,
+      dateKey: buildDateKey(0),
+    });
+    const second = resolveConfidence({
+      cache,
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: buildPowerTracker({ buckets, unreliablePeriods: [{ start: 0, end: NOW_MS }] }),
+      profileBlendConfidence: 1,
+      dateKey: buildDateKey(0),
+    });
+
+    expect(second).not.toBe(first);
+    expect(second.debug.confidenceValidActualDays).toBe(0);
+  });
+
+  it('recomputes cached confidence when the timezone or profile blend debug input changes', () => {
+    const buckets: Record<string, number> = {};
+    for (let i = 1; i <= 10; i++) {
+      addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: Array.from({ length: 24 }, (_, h) => (h === 23 ? 3 : 1)) });
+    }
+
+    const cache = createConfidenceCache();
+    const first = resolveConfidence({
+      cache,
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: buildPowerTracker({ buckets }),
+      profileBlendConfidence: 0.25,
+      dateKey: buildDateKey(0),
+    });
+    const second = resolveConfidence({
+      cache,
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      powerTracker: buildPowerTracker({ buckets }),
+      profileBlendConfidence: 0.25,
+      dateKey: buildDateKey(0),
+    });
+    const third = resolveConfidence({
+      cache,
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      powerTracker: buildPowerTracker({ buckets }),
+      profileBlendConfidence: 0.75,
+      dateKey: buildDateKey(0),
+    });
+
+    expect(second).not.toBe(first);
+    expect(third).not.toBe(second);
+    expect(third.debug.profileBlendConfidence).toBe(0.75);
   });
 
   it('requires near-full plan coverage to count as a planned day', () => {

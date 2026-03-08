@@ -166,10 +166,12 @@ For each valid planned day:
   planFitScore    = clamp(1 - L1(actualProfile, plannedProfile) / 2, 0, 1)
   controlledShare = controlledDayKWh / totalDayKWh
   shiftDemand     = max(0.20, L1(plannedProfile, centroid) / 2)
-  dayWeight       = controlledShare * shiftDemand
+  scoreWeight     = controlledShare * shiftDemand
 
-adaptabilityScore = weightedMean(planFitScores, dayWeights) * clamp(validPlannedDays / 14, 0, 1)
+adaptabilityScore = weightedMean(planFitScores, scoreWeights) * clamp(validPlannedDays / 14, 0, 1)
 ```
+
+`validPlannedDays` counts only planned days with positive `scoreWeight`, so low-evidence histories ramp slowly.
 
 #### Combined confidence
 
