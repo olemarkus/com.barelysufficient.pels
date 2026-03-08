@@ -115,9 +115,10 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 - Also applies after detecting overshoot conditions
 - Prevents oscillation when power measurements fluctuate
 
-### RESTORE_COOLDOWN (60 seconds)
+### RESTORE_COOLDOWN (base 60 seconds)
 
-- After restoring a device, wait 60 seconds for power measurements to stabilize
+- After restoring a device, wait at least 60 seconds for power measurements to stabilize
+- If a restore is followed by overshoot or new shedding, this cooldown backs off exponentially up to 5 minutes
 - Only one device is restored per planning cycle
 - Prevents "restore avalanche" where multiple devices turn on simultaneously
 
@@ -127,6 +128,7 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 - If that tracked/expected usable draw drops by at least 0.15 kW, the condition stays `false` for 60 seconds before allowing another increase
 - Pure measurement-only dips that do not change the tracked/expected usable draw do **not** start this cooldown
 - The same card also respects recent same-device PELS shed/restore cooldowns
+- Repeated failed re-activations on the same device also increase the headroom requirement before the card returns `true`
 - This is intended to absorb charger and water-heater step changes without forcing users to build manual hysteresis ladders in Homey flows
 
 ### Why These Timers Matter
@@ -168,7 +170,8 @@ When headroom becomes available:
 1. **Highest priority first** (lowest number): Priority 1 restores before priority 3
 2. **One device per cycle**: Wait for power measurement after each restore
 3. **Hysteresis buffer**: Require extra headroom beyond the device's power draw to prevent immediate re-shedding
-4. **Respect swap targets**: If a device was swapped out for a higher-priority device, the high-priority one must restore first
+4. **Failed-activation backoff**: Devices that are restored and then quickly need to be limited again require increasingly more headroom before the next restore attempt
+5. **Respect swap targets**: If a device was swapped out for a higher-priority device, the high-priority one must restore first
 
 For EV chargers, restoration is only attempted when the charger is currently resumable. Chargers that are unplugged, discharging, missing a usable EV charging state, or missing a usable power estimate are marked `inactive` instead of `shed`. This keeps capacity suppression distinct from device unavailability.
 

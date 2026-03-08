@@ -11,6 +11,10 @@ import {
   getEvRestoreBlockReason,
   setBinaryControl,
 } from './planBinaryControl';
+import {
+  recordActivationAttemptStart,
+  recordActivationSetback,
+} from './planActivationBackoff';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -148,6 +152,7 @@ export class PlanExecutor {
       this.updateLocalSnapshot(dev.id, { target: plannedTarget });
       const now = Date.now();
       this.state.lastDeviceShedMs[dev.id] = now;
+      recordActivationSetback({ state: this.state, deviceId: dev.id, nowTs: now });
       const guardShedding = this.capacityGuard?.isSheddingActive?.() === true;
       const guardHeadroom = this.capacityGuard?.getHeadroom?.();
       if (guardShedding || (typeof guardHeadroom === 'number' && guardHeadroom < 0)) {
@@ -204,6 +209,12 @@ export class PlanExecutor {
         if (!applied) return;
         this.state.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
         this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
+        recordActivationAttemptStart({
+          state: this.state,
+          deviceId: dev.id,
+          source: 'pels_restore',
+          nowTs: this.state.lastRestoreMs,
+        });
         // Clear this device from pending swap targets if it was one
         this.state.pendingSwapTargets.delete(dev.id);
         delete this.state.pendingSwapTimestamps[dev.id];
@@ -315,6 +326,12 @@ export class PlanExecutor {
       if (isRestoring) {
         this.state.lastRestoreMs = Date.now();
         this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
+        recordActivationAttemptStart({
+          state: this.state,
+          deviceId: dev.id,
+          source: 'pels_restore',
+          nowTs: this.state.lastRestoreMs,
+        });
       }
     } catch (error) {
       this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via DeviceManager`, error);
@@ -393,6 +410,7 @@ export class PlanExecutor {
       this.state.lastSheddingMs = now;
       this.state.lastOvershootMs = now;
       this.state.lastDeviceShedMs[deviceId] = now;
+      recordActivationSetback({ state: this.state, deviceId, nowTs: now });
       return true;
     } catch (error) {
       this.error(`Failed to set shed temperature for ${name} via DeviceManager`, error);
@@ -436,6 +454,7 @@ export class PlanExecutor {
       if (!applied) return;
       this.state.lastSheddingMs = now;
       this.state.lastDeviceShedMs[deviceId] = now;
+      recordActivationSetback({ state: this.state, deviceId, nowTs: now });
     } catch (error) {
       this.error(`Failed to turn off ${name} via DeviceManager`, error);
     }

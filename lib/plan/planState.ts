@@ -3,7 +3,12 @@ import { RESTORE_COOLDOWN_MS } from './planConstants';
 export type PlanEngineState = {
   lastDeviceShedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
+  activationPenaltyLevelByDevice: Record<string, number>;
+  activationAttemptStartedMsByDevice: Record<string, number>;
+  activationAttemptSourceByDevice: Record<string, 'pels_restore' | 'tracked_step_up'>;
+  activationAttemptStickReachedByDevice: Record<string, boolean>;
   headroomCardLastObservedKw: Record<string, number>;
+  headroomCardLastStepDownMs: Record<string, number>;
   headroomCardCooldownUntilMs: Record<string, number>;
   headroomCardCooldownFromKw: Record<string, number>;
   headroomCardCooldownToKw: Record<string, number>;
@@ -35,7 +40,12 @@ export function createPlanEngineState(): PlanEngineState {
   return {
     lastDeviceShedMs: {},
     lastDeviceRestoreMs: {},
+    activationPenaltyLevelByDevice: {},
+    activationAttemptStartedMsByDevice: {},
+    activationAttemptSourceByDevice: {},
+    activationAttemptStickReachedByDevice: {},
     headroomCardLastObservedKw: {},
+    headroomCardLastStepDownMs: {},
     headroomCardCooldownUntilMs: {},
     headroomCardCooldownFromKw: {},
     headroomCardCooldownToKw: {},

@@ -27,6 +27,7 @@ export type DevicePlanDevice = {
   currentTemperature?: number;
   shedAction?: ShedAction;
   shedTemperature?: number | null;
+  available?: boolean;
   headroomCardBlocked?: boolean;
   headroomCardCooldownSec?: number | null;
   headroomCardCooldownSource?: HeadroomCardCooldownSource;
@@ -74,5 +75,6 @@ export type PlanInputDevice = {
   currentTemperature?: number;
   controllable?: boolean;
   managed?: boolean;
+  available?: boolean;
   zone?: string;
 };

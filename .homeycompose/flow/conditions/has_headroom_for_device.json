@@ -24,6 +24,6 @@
     }
   ],
   "hint": {
-    "en": "Checks if the current headroom plus the device's estimated usage is enough to add the requested load. Built-in hysteresis keeps this false for about 60 seconds after a meaningful step-down or recent PELS control on the same device."
+    "en": "Checks if the current headroom plus the device's estimated usage is enough to add the requested load. Built-in hysteresis keeps this false for about 60 seconds after a meaningful step-down or recent PELS control on the same device, and repeated failed re-activations require extra headroom before it turns true again."
   }
 }
