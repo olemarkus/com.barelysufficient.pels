@@ -1020,93 +1020,104 @@ describe('Price optimization', () => {
   const HOUR_MS = 60 * 60 * 1000;
   const MINUTE_MS = 60 * 1000;
   const APP_TIME_ZONE = mockHomeyInstance.clock.getTimezone();
-  type PriceTestScenario = {
+  const STABLE_PRICE_TEST_DATE_KEY = '2026-03-07';
+  type PriceTimezoneScenario = {
     label: string;
     appDateKey: string;
   };
-  const PRICE_TIMEZONE_SCENARIOS = Object.freeze<PriceTestScenario[]>([
+  // These app-local dates line up with the host clock being before and on the US DST
+  // transition day when the timezone regression suite runs under America/Los_Angeles.
+  const PRICE_TIMEZONE_SCENARIOS = Object.freeze<PriceTimezoneScenario[]>([
     {
-      label: 'the day before the US DST transition',
-      appDateKey: '2026-03-07',
-    },
-    {
-      label: 'the app-local day spanning the US DST transition',
+      label: 'before the US DST transition',
       appDateKey: '2026-03-08',
     },
+    {
+      label: 'on the US DST transition day',
+      appDateKey: '2026-03-09',
+    },
   ]);
-  const DEFAULT_PRICE_TEST_SCENARIO = PRICE_TIMEZONE_SCENARIOS[0];
 
-  const buildAppDayBucketStarts = (scenario: PriceTestScenario): number[] => {
-    const dayStartUtcMs = getDateKeyStartMs(scenario.appDateKey, APP_TIME_ZONE);
+  const buildAppDayBucketStarts = (dateKey: string): {
+    bucketStartUtcMs: number[];
+    nextDayStartUtcMs: number;
+  } => {
+    const dayStartUtcMs = getDateKeyStartMs(dateKey, APP_TIME_ZONE);
     const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, APP_TIME_ZONE);
-    const bucketStartUtcMs = buildLocalDayBuckets({
-      dayStartUtcMs,
+    return {
+      bucketStartUtcMs: buildLocalDayBuckets({
+        dayStartUtcMs,
+        nextDayStartUtcMs,
+        timeZone: APP_TIME_ZONE,
+      }).bucketStartUtcMs,
       nextDayStartUtcMs,
-      timeZone: APP_TIME_ZONE,
-    }).bucketStartUtcMs;
-    if (bucketStartUtcMs.length !== 24) {
-      throw new Error(
-        `Expected 24 hourly buckets for ${scenario.label} (${scenario.appDateKey}) in ${APP_TIME_ZONE}, `
-        + `got ${bucketStartUtcMs.length}`,
-      );
-    }
-    return bucketStartUtcMs;
+    };
   };
 
-  const buildScenarioDate = (params: {
-    scenario?: PriceTestScenario;
-    hour: number;
-    minute?: number;
-  }): Date => {
-    const {
-      scenario = DEFAULT_PRICE_TEST_SCENARIO,
-      hour,
-      minute = 0,
-    } = params;
-    const bucketStartUtcMs = buildAppDayBucketStarts(scenario);
-    if (!Number.isInteger(hour) || hour < 0 || hour >= bucketStartUtcMs.length) {
+  const { bucketStartUtcMs: STABLE_PRICE_TEST_BUCKET_STARTS } = buildAppDayBucketStarts(STABLE_PRICE_TEST_DATE_KEY);
+  if (STABLE_PRICE_TEST_BUCKET_STARTS.length !== 24) {
+    throw new Error(
+      `Expected 24 hourly buckets for stable price test day ${STABLE_PRICE_TEST_DATE_KEY}, `
+      + `got ${STABLE_PRICE_TEST_BUCKET_STARTS.length}`,
+    );
+  }
+
+  const buildStablePriceTestDate = (hour = 0, minute = 0): Date => {
+    if (!Number.isInteger(hour) || hour < 0 || hour >= STABLE_PRICE_TEST_BUCKET_STARTS.length) {
       throw new Error(
-        `Hour out of range for ${scenario.label}: ${hour} (valid 0-${bucketStartUtcMs.length - 1})`,
+        `Hour out of range for stable price test day: ${hour} `
+        + `(valid 0-${STABLE_PRICE_TEST_BUCKET_STARTS.length - 1})`,
       );
     }
     if (!Number.isInteger(minute) || minute < 0 || minute >= 60) {
-      throw new Error(`Minute out of range for ${scenario.label}: ${minute} (valid 0-59)`);
+      throw new Error(`Minute out of range for stable price test day: ${minute} (valid 0-59)`);
     }
-    return new Date(bucketStartUtcMs[hour] + minute * MINUTE_MS);
-  };
-
-  const buildStablePriceTestDate = (hour = 0, minute = 0): Date => buildScenarioDate({
-    hour,
-    minute,
-  });
-
-  const buildSpotPricesForScenarioDay = (params: {
-    scenario?: PriceTestScenario;
-    resolveSpotPriceExVat: (hour: number) => number;
-  }): Array<{
-    startsAt: string;
-    spotPriceExVat: number;
-    currency: string;
-  }> => {
-    const {
-      scenario = DEFAULT_PRICE_TEST_SCENARIO,
-      resolveSpotPriceExVat,
-    } = params;
-    return buildAppDayBucketStarts(scenario).map((bucketStartUtcMs, hour) => {
-      const date = new Date(bucketStartUtcMs);
-      return {
-        startsAt: date.toISOString(),
-        spotPriceExVat: resolveSpotPriceExVat(hour),
-        currency: 'NOK',
-      };
-    });
+    return new Date(STABLE_PRICE_TEST_BUCKET_STARTS[hour] + minute * MINUTE_MS);
   };
 
   const buildSpotPricesForStableDay = (resolveSpotPriceExVat: (hour: number) => number): Array<{
     startsAt: string;
     spotPriceExVat: number;
     currency: string;
-  }> => buildSpotPricesForScenarioDay({ resolveSpotPriceExVat });
+  }> => (
+    STABLE_PRICE_TEST_BUCKET_STARTS.map((bucketStartUtcMs, hour) => {
+      const date = new Date(bucketStartUtcMs);
+      return {
+        startsAt: date.toISOString(),
+        spotPriceExVat: resolveSpotPriceExVat(hour),
+        currency: 'NOK',
+      };
+    })
+  );
+
+  const buildScenarioCurrentHourFixture = (params: {
+    scenario: PriceTimezoneScenario;
+    currentHourPriceExVat: number;
+    defaultPriceExVat: number;
+  }): {
+    now: Date;
+    spotPrices: Array<{ startsAt: string; spotPriceExVat: number; currency: string }>;
+  } => {
+    const { scenario, currentHourPriceExVat, defaultPriceExVat } = params;
+    const { bucketStartUtcMs } = buildAppDayBucketStarts(scenario.appDateKey);
+    if (bucketStartUtcMs.length !== 24) {
+      throw new Error(
+        `Expected 24 hourly buckets for ${scenario.label} (${scenario.appDateKey}), `
+        + `got ${bucketStartUtcMs.length}`,
+      );
+    }
+    const currentBucketIndex = 3;
+    const now = new Date(bucketStartUtcMs[currentBucketIndex] + 30 * MINUTE_MS);
+
+    return {
+      now,
+      spotPrices: bucketStartUtcMs.map((bucketStartUtcMs, index) => ({
+        startsAt: new Date(bucketStartUtcMs).toISOString(),
+        spotPriceExVat: index === currentBucketIndex ? currentHourPriceExVat : defaultPriceExVat,
+        currency: 'NOK',
+      })),
+    };
+  };
 
   const withMockedNow = async <T>(now: Date, run: () => Promise<T>): Promise<T> => {
     const MockDate = class extends Date {
@@ -1132,12 +1143,9 @@ describe('Price optimization', () => {
     }
   };
 
-  // Generate mock prices for a 24-hour app-local day with varying prices.
+  // Generate mock prices for the app-local day that contains the provided timestamp.
   const generateMockPricesForAppDay = (baseDate: Date) => {
-    const bucketStartUtcMs = buildAppDayBucketStarts({
-      label: `the app-local day for ${getDateKeyInTimeZone(baseDate, APP_TIME_ZONE)}`,
-      appDateKey: getDateKeyInTimeZone(baseDate, APP_TIME_ZONE),
-    });
+    const { bucketStartUtcMs } = buildAppDayBucketStarts(getDateKeyInTimeZone(baseDate, APP_TIME_ZONE));
     const prices: any[] = [];
     for (const [hour, startUtcMs] of bucketStartUtcMs.entries()) {
       const date = new Date(startUtcMs);
@@ -1840,7 +1848,7 @@ describe('Price optimization', () => {
   });
 
   it.each(PRICE_TIMEZONE_SCENARIOS)(
-    'plan shows cheapDelta applied during cheap hours on $label',
+    'plan shows cheapDelta applied during cheap hours when the host clock is $label',
     async (scenario) => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     waterHeater.setCapabilityValue('target_temperature', 55);
@@ -1849,18 +1857,10 @@ describe('Price optimization', () => {
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-    // Create price data that makes the current hour clearly cheap
-    // Average = 50, cheap threshold = 35, expensive threshold = 65
-      const now = buildScenarioDate({
+      const { now, spotPrices } = buildScenarioCurrentHourFixture({
         scenario,
-        hour: 3,
-        minute: 30,
-      });
-
-    // Create simple controlled prices - hour 3 will be 20 øre, others 50 øre
-      const spotPrices = buildSpotPricesForScenarioDay({
-        scenario,
-        resolveSpotPriceExVat: (hour) => (hour === 3 ? 20 : 50),
+        currentHourPriceExVat: 20,
+        defaultPriceExVat: 50,
       });
 
     // No grid tariff to keep prices simple
@@ -2236,24 +2236,17 @@ describe('Price optimization', () => {
   });
 
   it.each(PRICE_TIMEZONE_SCENARIOS)(
-    'isCurrentHourCheap returns true when price is 25% below average on $label',
+    'isCurrentHourCheap returns true when price is 25% below average when the host clock is $label',
     async (scenario) => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-      const now = buildScenarioDate({
+      const { now, spotPrices } = buildScenarioCurrentHourFixture({
         scenario,
-        hour: 3,
-        minute: 30,
-      });
-
-    // Average = ~51.25, threshold = 35.9
-    // Hour 3 at 20 is below threshold
-      const spotPrices = buildSpotPricesForScenarioDay({
-        scenario,
-        resolveSpotPriceExVat: (hour) => (hour === 3 ? 20 : 50),
+        currentHourPriceExVat: 20,
+        defaultPriceExVat: 50,
       });
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
@@ -2328,23 +2321,17 @@ describe('Price optimization', () => {
   });
 
   it.each(PRICE_TIMEZONE_SCENARIOS)(
-    'respects configurable threshold percent on $label',
+    'respects configurable threshold percent when the host clock is $label',
     async (scenario) => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-      const now = buildScenarioDate({
+      const { now, spotPrices } = buildScenarioCurrentHourFixture({
         scenario,
-        hour: 3,
-        minute: 30,
-      });
-
-    // Hour 3 at 40 is 20% below average of 50 - NOT cheap with 25% threshold, but IS cheap with 15% threshold
-      const spotPrices = buildSpotPricesForScenarioDay({
-        scenario,
-        resolveSpotPriceExVat: (hour) => (hour === 3 ? 40 : 50),
+        currentHourPriceExVat: 40,
+        defaultPriceExVat: 50,
       });
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
@@ -2372,24 +2359,17 @@ describe('Price optimization', () => {
   );
 
   it.each(PRICE_TIMEZONE_SCENARIOS)(
-    'respects minimum price difference setting on $label',
+    'respects minimum price difference setting when the host clock is $label',
     async (scenario) => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-      const now = buildScenarioDate({
+      const { now, spotPrices } = buildScenarioCurrentHourFixture({
         scenario,
-        hour: 3,
-        minute: 30,
-      });
-
-    // Hour 3 at 34 is about 26% below the average once fixed charges apply, so it is cheap by threshold.
-    // Absolute difference stays below the min-diff setting when configured higher.
-      const spotPrices = buildSpotPricesForScenarioDay({
-        scenario,
-        resolveSpotPriceExVat: (hour) => (hour === 3 ? 34 : 50),
+        currentHourPriceExVat: 34,
+        defaultPriceExVat: 50,
       });
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
@@ -2405,7 +2385,7 @@ describe('Price optimization', () => {
       await withMockedNow(now, async () => {
         const app = createApp();
 
-        // With no min diff, hour 3 is cheap (~19 øre below average)
+        // With no min diff, the current bucket is cheap (~19 øre below average)
         mockHomeyInstance.settings.set('price_min_diff_ore', 0);
         await app.onInit();
         await flushPromises();
