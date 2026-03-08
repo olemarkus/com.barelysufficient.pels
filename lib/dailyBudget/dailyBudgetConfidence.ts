@@ -24,7 +24,6 @@ const UNIFORM_24 = (): number[] => Array(HOURS).fill(1 / HOURS);
 type DayData = {
   dateKey: string;
   totalProfile: number[];
-  controlledProfile: number[];
   plannedProfile: number[] | null;
   controlledShare: number;
 };
@@ -155,7 +154,6 @@ function buildDayData(params: {
   return {
     dateKey,
     totalProfile: normalizeProfile(hourly.total),
-    controlledProfile: normalizeProfile(hourly.controlled),
     plannedProfile: hourly.hasPlanData ? normalizeProfile(hourly.planned) : null,
     controlledShare: clamp(totalControlled / totalUsage, 0, 1),
   };
@@ -232,21 +230,6 @@ function computeCentroid(days: DayData[]): number[] {
   return centroid;
 }
 
-function computeLooCentroid(days: DayData[], skipIndex: number): number[] {
-  const n = days.length;
-  const centroid = ZEROS_24();
-  for (let j = 0; j < n; j++) {
-    if (j === skipIndex) continue;
-    for (let h = 0; h < HOURS; h++) {
-      centroid[h] += days[j].totalProfile[h];
-    }
-  }
-  for (let h = 0; h < HOURS; h++) {
-    centroid[h] /= (n - 1);
-  }
-  return centroid;
-}
-
 function computeRegularityScore(days: DayData[]): {
   score: number;
   dayScores: number[];
@@ -261,11 +244,15 @@ function computeRegularityScore(days: DayData[]): {
   }
 
   const centroid = computeCentroid(days);
+  const totalProfile = centroid.map((value) => value * n);
 
   const dayScores: number[] = [];
   for (let i = 0; i < n; i++) {
-    const looCentroid = computeLooCentroid(days, i);
-    const dist = l1Distance(days[i].totalProfile, looCentroid);
+    let dist = 0;
+    for (let h = 0; h < HOURS; h++) {
+      const looValue = (totalProfile[h]! - days[i].totalProfile[h]!) / (n - 1);
+      dist += Math.abs(days[i].totalProfile[h]! - looValue);
+    }
     dayScores.push(clamp(1 - dist / 2, 0, 1));
   }
 
@@ -442,26 +429,37 @@ function buildConfidenceInputKey(params: {
   nowMs: number;
   timeZone: string;
   powerTracker: PowerTrackerState;
-  profileBlendConfidence: number;
   dateKey: string;
 }): string {
   const {
     nowMs,
     timeZone,
     powerTracker,
-    profileBlendConfidence,
     dateKey,
   } = params;
   const { dayStartUtcMs, windowStartUtcMs } = getConfidenceWindowBounds(nowMs, timeZone);
   let hash = FNV_OFFSET_BASIS;
   hash = appendHashString(hash, timeZone);
   hash = appendHashString(hash, dateKey);
-  hash = appendHashNumber(hash, profileBlendConfidence);
   hash = appendRecordFingerprint(hash, 'b', powerTracker.buckets, windowStartUtcMs, dayStartUtcMs);
   hash = appendRecordFingerprint(hash, 'c', powerTracker.controlledBuckets, windowStartUtcMs, dayStartUtcMs);
   hash = appendRecordFingerprint(hash, 'p', powerTracker.dailyBudgetCaps, windowStartUtcMs, dayStartUtcMs);
   hash = appendUnreliablePeriodsFingerprint(hash, powerTracker.unreliablePeriods, windowStartUtcMs, dayStartUtcMs);
   return hash.toString(16);
+}
+
+function withProfileBlendConfidence(
+  result: ConfidenceResult,
+  profileBlendConfidence: number,
+): ConfidenceResult {
+  if (result.debug.profileBlendConfidence === profileBlendConfidence) return result;
+  return {
+    ...result,
+    debug: {
+      ...result.debug,
+      profileBlendConfidence,
+    },
+  };
 }
 
 function combineScores(params: {
@@ -509,7 +507,6 @@ export function resolveConfidence(params: {
     nowMs,
     timeZone,
     powerTracker,
-    profileBlendConfidence,
     dateKey,
   });
   const canReuseCachedResult = cache.result
@@ -517,7 +514,7 @@ export function resolveConfidence(params: {
     && elapsed < RECOMPUTE_INTERVAL_MS
     && (includeBootstrapDebug === false || cache.bootstrapComplete);
   if (canReuseCachedResult) {
-    return cache.result as ConfidenceResult;
+    return withProfileBlendConfidence(cache.result as ConfidenceResult, profileBlendConfidence);
   }
   const result = computeBacktestedConfidence({
     nowMs,

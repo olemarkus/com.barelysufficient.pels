@@ -90,6 +90,7 @@ export class DailyBudgetManager {
     forcePlanRebuild?: boolean;
     capacityBudgetKWh?: number;
     refreshObservedStats?: boolean;
+    includeConfidenceBootstrapDebug?: boolean;
   }): DailyBudgetUpdate {
     const {
       nowMs = Date.now(),
@@ -101,6 +102,7 @@ export class DailyBudgetManager {
       forcePlanRebuild,
       capacityBudgetKWh,
       refreshObservedStats = true,
+      includeConfidenceBootstrapDebug = false,
     } = params;
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker });
@@ -144,9 +146,8 @@ export class DailyBudgetManager {
       cache: this.confidenceCache, nowMs: context.nowMs, timeZone, powerTracker,
       profileBlendConfidence: budget.profileBlendConfidence,
       dateKey: context.dateKey,
-      // Startup/bootstrap updates skip the expensive debug interval, then a later
-      // normal refresh fills it in from the same cache entry.
-      includeBootstrapDebug: refreshObservedStats,
+      // Bootstrap confidence intervals are debug-only and should not run on routine updates.
+      includeBootstrapDebug: includeConfidenceBootstrapDebug,
     });
     budget.confidence = cr.confidence;
     this.maybeFreezeFromDeviation(enabled, budget.deviationKWh);
