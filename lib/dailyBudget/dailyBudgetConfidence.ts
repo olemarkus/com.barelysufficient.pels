@@ -17,17 +17,9 @@ const BOOTSTRAP_SEED = 42;
 const HOURS = 24;
 const RECOMPUTE_INTERVAL_MS = 5 * 60 * 1000;
 
-const ZEROS_24 = (): number[] => {
-  const arr: number[] = [];
-  for (let i = 0; i < HOURS; i++) arr.push(0);
-  return arr;
-};
+const ZEROS_24 = (): number[] => Array(HOURS).fill(0);
 
-const UNIFORM_24 = (): number[] => {
-  const arr: number[] = [];
-  for (let i = 0; i < HOURS; i++) arr.push(1 / HOURS);
-  return arr;
-};
+const UNIFORM_24 = (): number[] => Array(HOURS).fill(1 / HOURS);
 
 type DayData = {
   dateKey: string;
@@ -162,7 +154,7 @@ function buildDayData(params: {
     totalProfile: normalizeProfile(hourly.total),
     controlledProfile: normalizeProfile(hourly.controlled),
     plannedProfile: hourly.hasPlanData ? normalizeProfile(hourly.planned) : null,
-    controlledShare: totalControlled / totalUsage,
+    controlledShare: clamp(totalControlled / totalUsage, 0, 1),
   };
 }
 
@@ -185,11 +177,12 @@ function aggregateHourlyBins(
     const hour = getZonedParts(new Date(ts), timeZone).hour;
     const totalVal = totalBuckets[isoKey];
     if (typeof totalVal === 'number' && Number.isFinite(totalVal)) {
-      total[hour] += Math.max(0, totalVal);
-    }
-    const controlledVal = controlledBuckets[isoKey];
-    if (typeof controlledVal === 'number' && Number.isFinite(controlledVal)) {
-      controlled[hour] += Math.max(0, controlledVal);
+      const boundedTotalVal = Math.max(0, totalVal);
+      total[hour] += boundedTotalVal;
+      const controlledVal = controlledBuckets[isoKey];
+      if (typeof controlledVal === 'number' && Number.isFinite(controlledVal)) {
+        controlled[hour] += clamp(controlledVal, 0, boundedTotalVal);
+      }
     }
     const cap = dailyBudgetCaps[isoKey];
     if (typeof cap === 'number' && Number.isFinite(cap)) {
@@ -359,14 +352,18 @@ function createSeededRandom(initialSeed: number): () => number {
   let seed = initialSeed;
   return () => {
     seed = (seed * 1664525 + 1013904223) & 0x7fffffff;
-    return seed / 0x7fffffff;
+    return seed / 0x80000000;
   };
+}
+
+export function sampleDayIndex(randomValue: number, dayCount: number): number {
+  return Math.min(dayCount - 1, Math.max(0, Math.floor(randomValue * dayCount)));
 }
 
 function sampleDays(days: DayData[], nextRandom: () => number): DayData[] {
   return days.map(() => {
-    const idx = Math.floor(nextRandom() * days.length);
-    return days[idx];
+    const idx = sampleDayIndex(nextRandom(), days.length);
+    return days[idx]!;
   });
 }
 
