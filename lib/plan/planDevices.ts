@@ -169,6 +169,7 @@ function buildBasePlanDevice(params: {
     reason: baseReason,
     zone: dev.zone || 'Unknown',
     controllable,
+    available: dev.available,
     currentTemperature: dev.currentTemperature,
     shedAction,
     shedTemperature,

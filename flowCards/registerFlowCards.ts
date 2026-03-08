@@ -520,6 +520,10 @@ function logHeadroomCheck(params: {
   const cooldownStr = decision.cooldownSource && typeof decision.cooldownRemainingSec === 'number'
     ? `, cooldown=${decision.cooldownSource} (${decision.cooldownRemainingSec}s remaining)`
     : '';
+  const penaltyStr = decision.penaltyLevel > 0
+    ? `, activation penalty=L${decision.penaltyLevel} `
+      + `(stick=${decision.stickRemainingSec ?? 0}s, clear=${decision.clearRemainingSec ?? 0}s)`
+    : '';
 
   deps.logDebug(
     `Headroom check for device "${deviceName}": `
@@ -528,6 +532,7 @@ function logHeadroomCheck(params: {
     + `device consumption=${decision.observedKw.toFixed(2)}kW, `
     + `expected power=${expectedPowerKwStr}kW${sourceStr}, `
     + `headroom for device=${decision.calculatedHeadroomForDeviceKw.toFixed(2)}kW `
-    + `(required=${requiredKw.toFixed(2)}kW)${cooldownStr} → ${decision.allowed ? 'PASS' : 'FAIL'}`,
+    + `(required=${requiredKw.toFixed(2)}kW, effective=${decision.requiredKwWithPenalty.toFixed(2)}kW)`
+    + `${cooldownStr}${penaltyStr} → ${decision.allowed ? 'PASS' : 'FAIL'}`,
   );
 }

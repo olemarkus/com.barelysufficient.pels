@@ -21,6 +21,10 @@ import {
   estimateRestorePower,
 } from './planRestoreSwap';
 import { getInactiveReason, getOffDevices, getOnDevices, markOffDevicesStayOff } from './planRestoreDevices';
+import {
+  applyActivationPenalty,
+  syncActivationPenaltyState,
+} from './planActivationBackoff';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -388,7 +392,7 @@ function shouldBlockRestoreForPendingSwap(
 function getRestoreNeed(
   dev: DevicePlanDevice,
   state: PlanEngineState,
-): { needed: number; devPower: number } {
+): { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number } {
   const devPower = estimateRestorePower(dev);
   const restoreBuffer = computeRestoreBufferKw(devPower);
   const baseNeeded = devPower + restoreBuffer;
@@ -396,10 +400,28 @@ function getRestoreNeed(
   const recentlyShed = Boolean(
     lastDeviceShed && Date.now() - lastDeviceShed < RECENT_SHED_RESTORE_BACKOFF_MS,
   );
-  const needed = recentlyShed
+  const recentShedNeeded = recentlyShed
     ? Math.max(baseNeeded * RECENT_SHED_RESTORE_MULTIPLIER, baseNeeded + RECENT_SHED_EXTRA_BUFFER_KW)
     : baseNeeded;
-  return { needed, devPower };
+  const penaltyInfo = syncActivationPenaltyState({
+    state,
+    deviceId: dev.id,
+    observation: {
+      available: dev.available,
+      currentState: dev.currentState,
+      measuredPowerKw: dev.measuredPowerKw,
+    },
+  });
+  const penalty = applyActivationPenalty({
+    baseRequiredKw: recentShedNeeded,
+    penaltyLevel: penaltyInfo.penaltyLevel,
+  });
+  return {
+    needed: penalty.requiredKwWithPenalty,
+    devPower,
+    penaltyLevel: penaltyInfo.penaltyLevel,
+    penaltyExtraKw: penalty.penaltyExtraKw,
+  };
 }
 
 function attemptSwapRestore(params: {
@@ -408,7 +430,7 @@ function attemptSwapRestore(params: {
   onDevices: DevicePlanDevice[];
   swapState: SwapState;
   availableHeadroom: number;
-  restoreNeed: { needed: number; devPower: number };
+  restoreNeed: { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number };
   measurementTs: number | null;
   restoredThisCycle: Set<string>;
   deps: RestoreDeps;
@@ -451,7 +473,10 @@ function attemptSwapRestore(params: {
     deps.logDebug(
       `Plan: skipping restore of ${dev.name} `
       + `(p${dev.priority ?? 100}, ~${restoreNeed.devPower.toFixed(2)}kW) `
-      + `- ${swap.reason}`,
+      + `- ${swap.reason}`
+      + (restoreNeed.penaltyLevel > 0
+        ? `, activation penalty L${restoreNeed.penaltyLevel} (+${restoreNeed.penaltyExtraKw.toFixed(2)}kW)`
+        : ''),
     );
     return { availableHeadroom, restoredOneThisCycle: false };
   }
