@@ -10,11 +10,15 @@ import {
   ELECTRICITY_SUPPORT_COVERAGE,
   ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT,
 } from '../lib/price/priceComponents';
+import { PriceCoordinator } from '../lib/price/priceCoordinator';
+import { PriceLevel } from '../lib/price/priceLevels';
 import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
+  getHourStartInTimeZone,
   getNextLocalDayStartUtcMs,
+  getZonedParts,
 } from '../lib/utils/dateUtils';
 
 // Mock the https module
@@ -1020,25 +1024,44 @@ describe('Price optimization', () => {
   const HOUR_MS = 60 * 60 * 1000;
   const MINUTE_MS = 60 * 1000;
   const APP_TIME_ZONE = mockHomeyInstance.clock.getTimezone();
-  const STABLE_PRICE_TEST_DATE_KEY = '2026-03-07';
-  type PriceTimezoneScenario = {
-    label: string;
-    appDateKey: string;
+  const HOST_TIME_ZONE_FOR_DST_REGRESSION = 'America/Los_Angeles';
+  const FIXED_NON_DST_APP_DATE_KEY = '2026-01-15';
+  type StoredSpotPriceFixture = {
+    startsAt: string;
+    spotPriceExVat: number;
+    currency: string;
   };
-  // These app-local dates line up with the host clock being before and on the US DST
-  // transition day when the timezone regression suite runs under America/Los_Angeles.
-  const PRICE_TIMEZONE_SCENARIOS = Object.freeze<PriceTimezoneScenario[]>([
+  type RawSpotPriceFixture = {
+    NOK_per_kWh: number;
+    EUR_per_kWh: number;
+    EXR: number;
+    time_start: string;
+    time_end: string;
+  };
+  type HostClockScenario = {
+    label: string;
+    nowIso: string;
+    expectedAppDateKey: string;
+    expectedHostDateKey: string;
+  };
+  // Hold the app-local time steady at 03:30 while the host clock in the regression suite
+  // first lands on the day before the US spring-forward transition and then on the transition day.
+  const HOST_CLOCK_DST_SCENARIOS = Object.freeze<HostClockScenario[]>([
     {
-      label: 'before the US DST transition',
-      appDateKey: '2026-03-08',
+      label: 'host clock on the day before the US DST transition in America/Los_Angeles',
+      nowIso: '2026-03-08T02:30:00.000Z',
+      expectedAppDateKey: '2026-03-08',
+      expectedHostDateKey: '2026-03-07',
     },
     {
-      label: 'on the US DST transition day',
-      appDateKey: '2026-03-09',
+      label: 'host clock on the US DST transition day in America/Los_Angeles',
+      nowIso: '2026-03-09T02:30:00.000Z',
+      expectedAppDateKey: '2026-03-09',
+      expectedHostDateKey: '2026-03-08',
     },
   ]);
 
-  const buildAppDayBucketStarts = (dateKey: string): {
+  const buildAppDayBucketStartsForDateKey = (dateKey: string): {
     bucketStartUtcMs: number[];
     nextDayStartUtcMs: number;
   } => {
@@ -1054,33 +1077,37 @@ describe('Price optimization', () => {
     };
   };
 
-  const { bucketStartUtcMs: STABLE_PRICE_TEST_BUCKET_STARTS } = buildAppDayBucketStarts(STABLE_PRICE_TEST_DATE_KEY);
-  if (STABLE_PRICE_TEST_BUCKET_STARTS.length !== 24) {
+  const buildAppDayBucketStartsForDate = (date: Date) => (
+    buildAppDayBucketStartsForDateKey(getDateKeyInTimeZone(date, APP_TIME_ZONE))
+  );
+
+  const { bucketStartUtcMs: FIXED_NON_DST_APP_BUCKET_STARTS } = buildAppDayBucketStartsForDateKey(
+    FIXED_NON_DST_APP_DATE_KEY,
+  );
+  if (FIXED_NON_DST_APP_BUCKET_STARTS.length !== 24) {
     throw new Error(
-      `Expected 24 hourly buckets for stable price test day ${STABLE_PRICE_TEST_DATE_KEY}, `
-      + `got ${STABLE_PRICE_TEST_BUCKET_STARTS.length}`,
+      `Expected 24 hourly buckets for fixed app test day ${FIXED_NON_DST_APP_DATE_KEY}, `
+      + `got ${FIXED_NON_DST_APP_BUCKET_STARTS.length}`,
     );
   }
 
-  const buildStablePriceTestDate = (hour = 0, minute = 0): Date => {
-    if (!Number.isInteger(hour) || hour < 0 || hour >= STABLE_PRICE_TEST_BUCKET_STARTS.length) {
+  const buildFixedNonDstAppDate = (hour = 0, minute = 0): Date => {
+    if (!Number.isInteger(hour) || hour < 0 || hour >= FIXED_NON_DST_APP_BUCKET_STARTS.length) {
       throw new Error(
-        `Hour out of range for stable price test day: ${hour} `
-        + `(valid 0-${STABLE_PRICE_TEST_BUCKET_STARTS.length - 1})`,
+        `Hour out of range for fixed app test day: ${hour} `
+        + `(valid 0-${FIXED_NON_DST_APP_BUCKET_STARTS.length - 1})`,
       );
     }
     if (!Number.isInteger(minute) || minute < 0 || minute >= 60) {
-      throw new Error(`Minute out of range for stable price test day: ${minute} (valid 0-59)`);
+      throw new Error(`Minute out of range for fixed app test day: ${minute} (valid 0-59)`);
     }
-    return new Date(STABLE_PRICE_TEST_BUCKET_STARTS[hour] + minute * MINUTE_MS);
+    return new Date(FIXED_NON_DST_APP_BUCKET_STARTS[hour] + minute * MINUTE_MS);
   };
 
-  const buildSpotPricesForStableDay = (resolveSpotPriceExVat: (hour: number) => number): Array<{
-    startsAt: string;
-    spotPriceExVat: number;
-    currency: string;
-  }> => (
-    STABLE_PRICE_TEST_BUCKET_STARTS.map((bucketStartUtcMs, hour) => {
+  const buildSpotPricesForFixedNonDstAppDay = (
+    resolveSpotPriceExVat: (hour: number) => number,
+  ): StoredSpotPriceFixture[] => (
+    FIXED_NON_DST_APP_BUCKET_STARTS.map((bucketStartUtcMs, hour) => {
       const date = new Date(bucketStartUtcMs);
       return {
         startsAt: date.toISOString(),
@@ -1090,24 +1117,41 @@ describe('Price optimization', () => {
     })
   );
 
-  const buildScenarioCurrentHourFixture = (params: {
-    scenario: PriceTimezoneScenario;
+  const buildHostClockDstRegressionFixture = (params: {
+    scenario: HostClockScenario;
     currentHourPriceExVat: number;
     defaultPriceExVat: number;
   }): {
     now: Date;
-    spotPrices: Array<{ startsAt: string; spotPriceExVat: number; currency: string }>;
+    spotPrices: StoredSpotPriceFixture[];
   } => {
     const { scenario, currentHourPriceExVat, defaultPriceExVat } = params;
-    const { bucketStartUtcMs } = buildAppDayBucketStarts(scenario.appDateKey);
-    if (bucketStartUtcMs.length !== 24) {
+    const now = new Date(scenario.nowIso);
+    const appDateKey = getDateKeyInTimeZone(now, APP_TIME_ZONE);
+    if (appDateKey !== scenario.expectedAppDateKey) {
+      throw new Error(`Unexpected app-local date for ${scenario.label}: ${appDateKey}`);
+    }
+    const appParts = getZonedParts(now, APP_TIME_ZONE);
+    if (appParts.hour !== 3 || appParts.minute !== 30) {
       throw new Error(
-        `Expected 24 hourly buckets for ${scenario.label} (${scenario.appDateKey}), `
-        + `got ${bucketStartUtcMs.length}`,
+        `Expected ${scenario.label} to land at 03:30 in ${APP_TIME_ZONE}, `
+        + `got ${appParts.hour.toString().padStart(2, '0')}:${appParts.minute.toString().padStart(2, '0')}`,
       );
     }
-    const currentBucketIndex = 3;
-    const now = new Date(bucketStartUtcMs[currentBucketIndex] + 30 * MINUTE_MS);
+    const hostDateKey = getDateKeyInTimeZone(now, HOST_TIME_ZONE_FOR_DST_REGRESSION);
+    if (hostDateKey !== scenario.expectedHostDateKey) {
+      throw new Error(`Unexpected host date for ${scenario.label}: ${hostDateKey}`);
+    }
+
+    const { bucketStartUtcMs } = buildAppDayBucketStartsForDate(now);
+    const currentBucketStartUtcMs = getHourStartInTimeZone(now, APP_TIME_ZONE);
+    const currentBucketIndex = bucketStartUtcMs.indexOf(currentBucketStartUtcMs);
+    if (currentBucketIndex < 0) {
+      throw new Error(
+        `Could not locate app-local bucket ${new Date(currentBucketStartUtcMs).toISOString()} `
+        + `for ${scenario.label}`,
+      );
+    }
 
     return {
       now,
@@ -1143,10 +1187,19 @@ describe('Price optimization', () => {
     }
   };
 
+  const createPriceCoordinatorForTest = (): PriceCoordinator => new PriceCoordinator({
+    homey: mockHomeyInstance as never,
+    getCurrentPriceLevel: () => PriceLevel.NORMAL,
+    rebuildPlanFromCache: async () => undefined,
+    log: () => undefined,
+    logDebug: () => undefined,
+    error: () => undefined,
+  });
+
   // Generate mock prices for the app-local day that contains the provided timestamp.
   const generateMockPricesForAppDay = (baseDate: Date) => {
-    const { bucketStartUtcMs } = buildAppDayBucketStarts(getDateKeyInTimeZone(baseDate, APP_TIME_ZONE));
-    const prices: any[] = [];
+    const { bucketStartUtcMs } = buildAppDayBucketStartsForDate(baseDate);
+    const prices: RawSpotPriceFixture[] = [];
     for (const [hour, startUtcMs] of bucketStartUtcMs.entries()) {
       const date = new Date(startUtcMs);
       // Cheap hours: 2-5 (night), expensive hours: 7-9 and 17-19 (morning/evening peaks)
@@ -1676,7 +1729,7 @@ describe('Price optimization', () => {
     });
 
     // Create price data that makes the current hour clearly cheap
-    const spotPrices = buildSpotPricesForStableDay((hour) => (hour === 3 ? 20 : 50));
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 3 ? 20 : 50));
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
@@ -1847,9 +1900,7 @@ describe('Price optimization', () => {
     expect(totals).toContain(0.261);
   });
 
-  it.each(PRICE_TIMEZONE_SCENARIOS)(
-    'plan shows cheapDelta applied during cheap hours when the host clock is $label',
-    async (scenario) => {
+  it('plan shows cheapDelta applied during cheap hours', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     waterHeater.setCapabilityValue('target_temperature', 55);
     waterHeater.setCapabilityValue('onoff', true);
@@ -1857,11 +1908,8 @@ describe('Price optimization', () => {
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-      const { now, spotPrices } = buildScenarioCurrentHourFixture({
-        scenario,
-        currentHourPriceExVat: 20,
-        defaultPriceExVat: 50,
-      });
+    const now = buildFixedNonDstAppDate(3, 30);
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 3 ? 20 : 50));
 
     // No grid tariff to keep prices simple
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
@@ -1898,24 +1946,23 @@ describe('Price optimization', () => {
       driverA: new MockDriver('driverA', [waterHeater2]),
     });
 
-      await withMockedNow(now, async () => {
-        const app = createApp();
-        await app.onInit();
-        await flushPromises();
+    await withMockedNow(now, async () => {
+      const app = createApp();
+      await app.onInit();
+      await flushPromises();
 
-        // Get the plan from settings
-        const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-        expect(plan).toBeDefined();
-        expect(plan.devices).toBeDefined();
+      // Get the plan from settings
+      const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+      expect(plan).toBeDefined();
+      expect(plan.devices).toBeDefined();
 
-        const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
-        expect(waterHeaterPlan).toBeDefined();
+      const waterHeaterPlan = plan.devices.find((d: any) => d.id === 'water-heater-1');
+      expect(waterHeaterPlan).toBeDefined();
 
-        // During cheap hour, plannedTarget should be base (55) + cheapDelta (10) = 65
-        expect(waterHeaterPlan.plannedTarget).toBe(65);
-      });
-    },
-  );
+      // During cheap hour, plannedTarget should be base (55) + cheapDelta (10) = 65
+      expect(waterHeaterPlan.plannedTarget).toBe(65);
+    });
+  });
 
   it('plan shows expensiveDelta applied during expensive hours', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
@@ -1926,10 +1973,10 @@ describe('Price optimization', () => {
     });
 
     // Create price data that makes the current hour clearly expensive
-    const now = buildStablePriceTestDate(8, 30);
+    const now = buildFixedNonDstAppDate(8, 30);
 
     // Create simple controlled prices - hour 8 will be 80 øre, others 50 øre
-    const spotPrices = buildSpotPricesForStableDay((hour) => (hour === 8 ? 80 : 50));
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 8 ? 80 : 50));
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
@@ -2005,9 +2052,9 @@ describe('Price optimization', () => {
     });
 
     // All prices the same = normal hour
-    const now = buildStablePriceTestDate(12, 30);
+    const now = buildFixedNonDstAppDate(12, 30);
 
-    const spotPrices = buildSpotPricesForStableDay(() => 50);
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay(() => 50);
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
@@ -2083,9 +2130,9 @@ describe('Price optimization', () => {
     });
 
     // Hour 3 is cheap, but optimization is disabled
-    const now = buildStablePriceTestDate(3, 30);
+    const now = buildFixedNonDstAppDate(3, 30);
 
-    const spotPrices = buildSpotPricesForStableDay((hour) => (hour === 3 ? 20 : 50));
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 3 ? 20 : 50));
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
@@ -2161,10 +2208,10 @@ describe('Price optimization', () => {
     });
 
     // Set current time to hour 8 (will be expensive)
-    const now = buildStablePriceTestDate(8, 40);
+    const now = buildFixedNonDstAppDate(8, 40);
 
     // Create spot prices where hour 8 is expensive (80 øre ex VAT, avg ~51)
-    const spotPrices = buildSpotPricesForStableDay((hour) => (hour === 8 ? 80 : 50));
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 8 ? 80 : 50));
 
     // Mock https to return spot prices when fetched
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
@@ -2235,19 +2282,14 @@ describe('Price optimization', () => {
     }
   });
 
-  it.each(PRICE_TIMEZONE_SCENARIOS)(
-    'isCurrentHourCheap returns true when price is 25% below average when the host clock is $label',
-    async (scenario) => {
+  it('isCurrentHourCheap returns true when price is 25% below average', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-      const { now, spotPrices } = buildScenarioCurrentHourFixture({
-        scenario,
-        currentHourPriceExVat: 20,
-        defaultPriceExVat: 50,
-      });
+    const now = buildFixedNonDstAppDate(3, 30);
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 3 ? 20 : 50));
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
@@ -2258,16 +2300,15 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-      await withMockedNow(now, async () => {
-        const app = createApp();
-        await app.onInit();
-        await flushPromises();
+    await withMockedNow(now, async () => {
+      const app = createApp();
+      await app.onInit();
+      await flushPromises();
 
-        const isCheap = app['isCurrentHourCheap']();
-        expect(isCheap).toBe(true);
-      });
-    },
-  );
+      const isCheap = app['isCurrentHourCheap']();
+      expect(isCheap).toBe(true);
+    });
+  });
 
   it('isCurrentHourExpensive returns true when price is 25% above average', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
@@ -2275,11 +2316,11 @@ describe('Price optimization', () => {
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-    const now = buildStablePriceTestDate(8, 30);
+    const now = buildFixedNonDstAppDate(8, 30);
 
     // Average = ~51.25, threshold = 66.6
     // Hour 8 at 80 is above threshold
-    const spotPrices = buildSpotPricesForStableDay((hour) => (hour === 8 ? 80 : 50));
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 8 ? 80 : 50));
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
@@ -2290,49 +2331,24 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-    const app = createApp();
-
-    const MockDate = class extends Date {
-      constructor(...args: any[]) {
-        if (args.length === 0) {
-          super(now.getTime());
-        } else {
-          // @ts-ignore
-          super(...args);
-        }
-      }
-
-      static now() {
-        return now.getTime();
-      }
-    } as DateConstructor;
-    const originalDate = global.Date;
-    global.Date = MockDate;
-
-    try {
+    await withMockedNow(now, async () => {
+      const app = createApp();
       await app.onInit();
       await flushPromises();
 
       const isExpensive = app['isCurrentHourExpensive']();
       expect(isExpensive).toBe(true);
-    } finally {
-      global.Date = originalDate;
-    }
+    });
   });
 
-  it.each(PRICE_TIMEZONE_SCENARIOS)(
-    'respects configurable threshold percent when the host clock is $label',
-    async (scenario) => {
+  it('respects configurable threshold percent', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-      const { now, spotPrices } = buildScenarioCurrentHourFixture({
-        scenario,
-        currentHourPriceExVat: 40,
-        defaultPriceExVat: 50,
-      });
+    const now = buildFixedNonDstAppDate(3, 30);
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 3 ? 40 : 50));
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
@@ -2343,34 +2359,28 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
-      await withMockedNow(now, async () => {
-        const app = createApp();
+    await withMockedNow(now, async () => {
+      const app = createApp();
 
-        // With default 25% threshold, 20% deviation is NOT cheap
-        await app.onInit();
-        await flushPromises();
-        expect(app['isCurrentHourCheap']()).toBe(false);
+      // With default 25% threshold, 20% deviation is NOT cheap
+      await app.onInit();
+      await flushPromises();
+      expect(app['isCurrentHourCheap']()).toBe(false);
 
-        // Set threshold to 15% - now 20% deviation IS cheap
-        mockHomeyInstance.settings.set('price_threshold_percent', 15);
-        expect(app['isCurrentHourCheap']()).toBe(true);
-      });
-    },
-  );
+      // Set threshold to 15% - now 20% deviation IS cheap
+      mockHomeyInstance.settings.set('price_threshold_percent', 15);
+      expect(app['isCurrentHourCheap']()).toBe(true);
+    });
+  });
 
-  it.each(PRICE_TIMEZONE_SCENARIOS)(
-    'respects minimum price difference setting when the host clock is $label',
-    async (scenario) => {
+  it('respects minimum price difference setting', async () => {
     const waterHeater = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [waterHeater]),
     });
 
-      const { now, spotPrices } = buildScenarioCurrentHourFixture({
-        scenario,
-        currentHourPriceExVat: 34,
-        defaultPriceExVat: 50,
-      });
+    const now = buildFixedNonDstAppDate(3, 30);
+    const spotPrices = buildSpotPricesForFixedNonDstAppDay((hour) => (hour === 3 ? 34 : 50));
 
     mockHomeyInstance.settings.set('electricity_prices', spotPrices);
     mockHomeyInstance.settings.set('nettleie_data', []);
@@ -2382,22 +2392,65 @@ describe('Price optimization', () => {
       return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
     });
 
+    await withMockedNow(now, async () => {
+      const app = createApp();
+
+      // With no min diff, the current bucket is cheap (~19 øre below average)
+      mockHomeyInstance.settings.set('price_min_diff_ore', 0);
+      await app.onInit();
+      await flushPromises();
+      expect(app['isCurrentHourCheap']()).toBe(true);
+
+      // With 20 øre min diff, 15 øre difference is NOT enough to be cheap
+      mockHomeyInstance.settings.set('price_min_diff_ore', 20);
+      expect(app['isCurrentHourCheap']()).toBe(false);
+
+      // With 10 øre min diff, 15 øre difference IS enough
+      mockHomeyInstance.settings.set('price_min_diff_ore', 10);
+      expect(app['isCurrentHourCheap']()).toBe(true);
+    });
+  });
+
+  it.each(HOST_CLOCK_DST_SCENARIOS)(
+    'isCurrentHourCheap uses the app timezone when the host clock is $label',
+    async (scenario) => {
+      const { now, spotPrices } = buildHostClockDstRegressionFixture({
+        scenario,
+        currentHourPriceExVat: 20,
+        defaultPriceExVat: 50,
+      });
+      mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+      mockHomeyInstance.settings.set('nettleie_data', []);
+      mockHomeyInstance.settings.set('price_threshold_percent', 25);
+      mockHomeyInstance.settings.set('price_min_diff_ore', 0);
+
       await withMockedNow(now, async () => {
-        const app = createApp();
+        const coordinator = createPriceCoordinatorForTest();
+        expect(coordinator.isCurrentHourCheap()).toBe(true);
+      });
+    },
+  );
 
-        // With no min diff, the current bucket is cheap (~19 øre below average)
+  it.each(HOST_CLOCK_DST_SCENARIOS)(
+    'cheap-hour thresholds still apply when the host clock is $label',
+    async (scenario) => {
+      const { now, spotPrices } = buildHostClockDstRegressionFixture({
+        scenario,
+        currentHourPriceExVat: 40,
+        defaultPriceExVat: 50,
+      });
+      mockHomeyInstance.settings.set('electricity_prices', spotPrices);
+      mockHomeyInstance.settings.set('nettleie_data', []);
+
+      await withMockedNow(now, async () => {
+        const coordinator = createPriceCoordinatorForTest();
+
+        mockHomeyInstance.settings.set('price_threshold_percent', 25);
         mockHomeyInstance.settings.set('price_min_diff_ore', 0);
-        await app.onInit();
-        await flushPromises();
-        expect(app['isCurrentHourCheap']()).toBe(true);
+        expect(coordinator.isCurrentHourCheap()).toBe(false);
 
-        // With 20 øre min diff, 15 øre difference is NOT enough to be cheap
-        mockHomeyInstance.settings.set('price_min_diff_ore', 20);
-        expect(app['isCurrentHourCheap']()).toBe(false);
-
-        // With 10 øre min diff, 15 øre difference IS enough
-        mockHomeyInstance.settings.set('price_min_diff_ore', 10);
-        expect(app['isCurrentHourCheap']()).toBe(true);
+        mockHomeyInstance.settings.set('price_threshold_percent', 15);
+        expect(coordinator.isCurrentHourCheap()).toBe(true);
       });
     },
   );
