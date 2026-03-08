@@ -811,7 +811,7 @@ describe('computeBacktestedConfidence', () => {
     expect(second.debug.confidenceValidActualDays).toBe(0);
   });
 
-  it('recomputes cached confidence when the timezone or profile blend debug input changes', () => {
+  it('recomputes cached confidence when the timezone changes', () => {
     const buckets: Record<string, number> = {};
     for (let i = 1; i <= 10; i++) {
       addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: Array.from({ length: 24 }, (_, h) => (h === 23 ? 3 : 1)) });
@@ -834,18 +834,42 @@ describe('computeBacktestedConfidence', () => {
       profileBlendConfidence: 0.25,
       dateKey: buildDateKey(0),
     });
-    const third = resolveConfidence({
+
+    expect(second).not.toBe(first);
+  });
+
+  it('reuses cached confidence while updating profile blend debug metadata', () => {
+    const buckets: Record<string, number> = {};
+    for (let i = 1; i <= 10; i++) {
+      addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: Array.from({ length: 24 }, (_, h) => (h === 23 ? 3 : 1)) });
+    }
+
+    const cache = createConfidenceCache();
+    const first = resolveConfidence({
       cache,
       nowMs: NOW_MS,
-      timeZone: 'UTC',
+      timeZone: TZ,
+      powerTracker: buildPowerTracker({ buckets }),
+      profileBlendConfidence: 0.25,
+      dateKey: buildDateKey(0),
+      includeBootstrapDebug: true,
+    });
+    const lastMs = cache.lastMs;
+    const second = resolveConfidence({
+      cache,
+      nowMs: NOW_MS + 1000,
+      timeZone: TZ,
       powerTracker: buildPowerTracker({ buckets }),
       profileBlendConfidence: 0.75,
       dateKey: buildDateKey(0),
+      includeBootstrapDebug: true,
     });
 
-    expect(second).not.toBe(first);
-    expect(third).not.toBe(second);
-    expect(third.debug.profileBlendConfidence).toBe(0.75);
+    expect(cache.lastMs).toBe(lastMs);
+    expect(second.confidence).toBeCloseTo(first.confidence, 10);
+    expect(second.debug.confidenceBootstrapLow).toBeCloseTo(first.debug.confidenceBootstrapLow, 10);
+    expect(second.debug.confidenceBootstrapHigh).toBeCloseTo(first.debug.confidenceBootstrapHigh, 10);
+    expect(second.debug.profileBlendConfidence).toBe(0.75);
   });
 
   it('requires near-full plan coverage to count as a planned day', () => {

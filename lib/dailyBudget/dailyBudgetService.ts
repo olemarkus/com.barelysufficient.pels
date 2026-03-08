@@ -99,6 +99,7 @@ export class DailyBudgetService {
     forcePlanRebuild?: boolean;
     includeAdjacentDays?: boolean;
     refreshObservedStats?: boolean;
+    includeConfidenceBootstrapDebug?: boolean;
   } = {}): void {
     const stopSpan = startRuntimeSpan('daily_budget_update');
     const start = Date.now();
@@ -119,6 +120,7 @@ export class DailyBudgetService {
         forcePlanRebuild: params.forcePlanRebuild,
         capacityBudgetKWh,
         refreshObservedStats: params.refreshObservedStats,
+        includeConfidenceBootstrapDebug: params.includeConfidenceBootstrapDebug,
       });
       this.setDaySnapshot(update.snapshot, nowMs, includeAdjacentDays);
       if (update.shouldPersist) {
