@@ -213,8 +213,8 @@ export class DailyBudgetService {
   }
 
   private shouldIncludeConfidenceBootstrapDebug(): boolean {
-    const topics = this.deps.homey.settings.get(DEBUG_LOGGING_TOPICS);
-    if (Array.isArray(topics) && topics.length > 0) return true;
+    const rawTopics = this.deps.homey.settings.get(DEBUG_LOGGING_TOPICS) as unknown;
+    if (Array.isArray(rawTopics) && rawTopics.length > 0) return true;
     return this.deps.homey.settings.get('debug_logging_enabled') === true;
   }
 
