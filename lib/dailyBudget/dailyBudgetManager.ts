@@ -142,7 +142,11 @@ export class DailyBudgetManager {
 
     const cr = resolveConfidence({
       cache: this.confidenceCache, nowMs: context.nowMs, timeZone, powerTracker,
-      profileBlendConfidence: budget.confidence, dateKey: context.dateKey,
+      profileBlendConfidence: budget.confidence,
+      dateKey: context.dateKey,
+      // Startup/bootstrap updates skip the expensive debug interval, then a later
+      // normal refresh fills it in from the same cache entry.
+      includeBootstrapDebug: refreshObservedStats,
     });
     budget.confidence = cr.confidence;
     this.maybeFreezeFromDeviation(enabled, budget.deviationKWh);
