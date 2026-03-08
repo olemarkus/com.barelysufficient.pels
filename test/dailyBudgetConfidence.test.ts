@@ -1,4 +1,8 @@
-import { computeBacktestedConfidence } from '../lib/dailyBudget/dailyBudgetConfidence';
+import {
+  computeBacktestedConfidence,
+  createConfidenceCache,
+  resolveConfidence,
+} from '../lib/dailyBudget/dailyBudgetConfidence';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import {
   getDateKeyStartMs,
@@ -635,6 +639,64 @@ describe('computeBacktestedConfidence', () => {
     expect(result.debug.confidenceBootstrapHigh).toBeGreaterThanOrEqual(result.confidence);
     expect(bootstrapMid).toBeLessThan(0.4);
     expect(Math.abs(bootstrapMid - result.confidence)).toBeLessThan(0.15);
+  });
+
+  it('recomputes full bootstrap debug after a startup-style cached confidence update', () => {
+    const buckets: Record<string, number> = {};
+    const controlledBuckets: Record<string, number> = {};
+    const dailyBudgetCaps: Record<string, number> = {};
+
+    for (let i = 1; i <= 14; i++) {
+      const actual = Array.from({ length: 24 }, () => 0);
+      const controlled = Array.from({ length: 24 }, () => 0);
+      const planned = Array.from({ length: 24 }, () => 0);
+
+      if (i <= 3) {
+        actual[6] = 10;
+        controlled[6] = 9;
+        planned[6] = 10;
+      } else {
+        actual[18] = 10;
+      }
+
+      addDayUsage({
+        buckets,
+        dateKey: buildDateKey(i),
+        hourlyKWh: actual,
+        controlledBuckets: i <= 3 ? controlledBuckets : undefined,
+        dailyBudgetCaps: i <= 3 ? dailyBudgetCaps : undefined,
+        hourlyControlledKWh: i <= 3 ? controlled : undefined,
+        hourlyPlannedKWh: i <= 3 ? planned : undefined,
+      });
+    }
+
+    const cache = createConfidenceCache();
+    const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
+    const startupResult = resolveConfidence({
+      cache,
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: pt,
+      profileBlendConfidence: 1,
+      dateKey: buildDateKey(0),
+      includeBootstrapDebug: false,
+    });
+    expect(startupResult.debug.confidenceBootstrapLow).toBeCloseTo(startupResult.confidence, 10);
+    expect(startupResult.debug.confidenceBootstrapHigh).toBeCloseTo(startupResult.confidence, 10);
+
+    const fullResult = resolveConfidence({
+      cache,
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: pt,
+      profileBlendConfidence: 1,
+      dateKey: buildDateKey(0),
+      includeBootstrapDebug: true,
+    });
+    expect(fullResult.confidence).toBeCloseTo(startupResult.confidence, 10);
+    expect(fullResult.debug.confidenceBootstrapLow).toBeLessThan(fullResult.debug.confidenceBootstrapHigh);
+    expect(fullResult.debug.confidenceBootstrapLow).toBeLessThanOrEqual(fullResult.confidence);
+    expect(fullResult.debug.confidenceBootstrapHigh).toBeGreaterThanOrEqual(fullResult.confidence);
   });
 
   it('requires near-full plan coverage to count as a planned day', () => {

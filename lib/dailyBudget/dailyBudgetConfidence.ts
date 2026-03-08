@@ -47,8 +47,15 @@ export function computeBacktestedConfidence(params: {
   timeZone: string;
   powerTracker: PowerTrackerState;
   profileBlendConfidence: number;
+  includeBootstrapDebug?: boolean;
 }): ConfidenceResult {
-  const { nowMs, timeZone, powerTracker, profileBlendConfidence } = params;
+  const {
+    nowMs,
+    timeZone,
+    powerTracker,
+    profileBlendConfidence,
+    includeBootstrapDebug = true,
+  } = params;
   const days = collectValidDays({ nowMs, timeZone, powerTracker });
 
   if (days.length === 0) {
@@ -75,7 +82,9 @@ export function computeBacktestedConfidence(params: {
     adaptabilityScore: adaptability.score,
     adaptabilityInfluence: adaptability.influence,
   });
-  const bootstrap = computeBootstrapInterval(days);
+  const bootstrap = includeBootstrapDebug
+    ? computeBootstrapInterval(days)
+    : { low: confidence, high: confidence };
 
   return {
     confidence,
@@ -376,10 +385,11 @@ export type ConfidenceCache = {
   result: ConfidenceResult | null;
   lastMs: number;
   lastDateKey: string | null;
+  bootstrapComplete: boolean;
 };
 
 export function createConfidenceCache(): ConfidenceCache {
-  return { result: null, lastMs: 0, lastDateKey: null };
+  return { result: null, lastMs: 0, lastDateKey: null, bootstrapComplete: false };
 }
 
 export function resolveConfidence(params: {
@@ -389,13 +399,37 @@ export function resolveConfidence(params: {
   powerTracker: PowerTrackerState;
   profileBlendConfidence: number;
   dateKey: string;
+  includeBootstrapDebug?: boolean;
 }): ConfidenceResult {
-  const { cache, nowMs, timeZone, powerTracker, profileBlendConfidence, dateKey } = params;
+  const {
+    cache,
+    nowMs,
+    timeZone,
+    powerTracker,
+    profileBlendConfidence,
+    dateKey,
+    includeBootstrapDebug = true,
+  } = params;
   const elapsed = nowMs - cache.lastMs;
-  if (cache.result && dateKey === cache.lastDateKey && elapsed < RECOMPUTE_INTERVAL_MS) {
-    return cache.result;
+  const canReuseCachedResult = cache.result
+    && dateKey === cache.lastDateKey
+    && elapsed < RECOMPUTE_INTERVAL_MS
+    && (includeBootstrapDebug === false || cache.bootstrapComplete);
+  if (canReuseCachedResult) {
+    return cache.result as ConfidenceResult;
   }
-  const result = computeBacktestedConfidence({ nowMs, timeZone, powerTracker, profileBlendConfidence });
-  Object.assign(cache, { result, lastMs: nowMs, lastDateKey: dateKey });
+  const result = computeBacktestedConfidence({
+    nowMs,
+    timeZone,
+    powerTracker,
+    profileBlendConfidence,
+    includeBootstrapDebug,
+  });
+  Object.assign(cache, {
+    result,
+    lastMs: nowMs,
+    lastDateKey: dateKey,
+    bootstrapComplete: includeBootstrapDebug,
+  });
   return result;
 }
