@@ -27,6 +27,7 @@ import type { CombinedPriceData } from './dailyBudgetManager';
 import type { DailyBudgetDayPayload, DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
 import { incPerfCounter, addPerfDuration } from '../utils/perfCounters';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
+import { normalizeDebugLoggingTopics } from '../utils/debugLogging';
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
@@ -213,9 +214,9 @@ export class DailyBudgetService {
   }
 
   private shouldIncludeConfidenceBootstrapDebug(): boolean {
+    if (this.deps.homey.settings.get('debug_logging_enabled') === true) return true;
     const rawTopics = this.deps.homey.settings.get(DEBUG_LOGGING_TOPICS) as unknown;
-    if (Array.isArray(rawTopics) && rawTopics.length > 0) return true;
-    return this.deps.homey.settings.get('debug_logging_enabled') === true;
+    return normalizeDebugLoggingTopics(rawTopics).includes('daily_budget');
   }
 
   getPeriodicStatusLog(): string | null {

@@ -1,5 +1,5 @@
 import { computePlanDeviation, type DayContext, type PriceData } from './dailyBudgetState';
-import type { ExistingPlanState } from './dailyBudgetManagerTypes';
+import type { ExistingPlanState, RebuildPlanDebug } from './dailyBudgetManagerTypes';
 import { getProfileBlendConfidence } from './dailyBudgetMath';
 import {
   OBSERVED_HOURLY_MAX_QUANTILE,
@@ -136,12 +136,7 @@ export function logDailyBudgetPlanDebug(params: {
   state: DailyBudgetState;
   defaultProfile: number[];
   label?: string;
-  planDebug?: {
-    lockCurrentBucket: boolean;
-    shouldLockCurrent: boolean;
-    remainingStartIndex: number;
-    hasPreviousPlan: boolean;
-  };
+  planDebug?: RebuildPlanDebug;
 }): void {
   const {
     logDebug,
@@ -192,12 +187,7 @@ function buildPlanDebugPayload(params: {
   combinedWeights: number[];
   learnedWeights: number[] | null;
   profileMeta: ReturnType<typeof getProfileDebugSummary>['profileMeta'];
-  planDebug?: {
-    lockCurrentBucket: boolean;
-    shouldLockCurrent: boolean;
-    remainingStartIndex: number;
-    hasPreviousPlan: boolean;
-  };
+  planDebug?: RebuildPlanDebug;
 }): DailyBudgetDayPayload & { meta: Record<string, unknown> } {
   const {
     snapshot,
@@ -225,7 +215,7 @@ function buildPlanDebugPayload(params: {
       capacityBudgetKWh: Number.isFinite(capacityBudgetKWh) ? capacityBudgetKWh : null,
       profileSampleCount: profileMeta.sampleCount,
       profileSplitSampleCount: profileMeta.splitSampleCount,
-      profileConfidence: getProfileBlendConfidence(profileMeta.sampleCount),
+      profileBlendConfidence: getProfileBlendConfidence(profileMeta.sampleCount),
       profileDefaultWeights: defaultProfile,
       profileLearnedWeights: learnedWeights,
       profileEffectiveWeights: combinedWeights,

@@ -19,10 +19,12 @@ import type {
   DailyBudgetUpdate,
 } from './dailyBudgetTypes';
 import {
+  type DailyBudgetUpdateParams,
   isDailyBudgetState,
   type DailyBudgetManagerDeps,
   type ExistingPlanState,
   type PlanResult,
+  type RebuildPlanDebug,
 } from './dailyBudgetManagerTypes';
 import { CONTROLLED_USAGE_WEIGHT } from './dailyBudgetConstants';
 import { finalizePreviousDayLearning } from './dailyBudgetLearning';
@@ -42,9 +44,6 @@ import {
 } from './dailyBudgetConfidence';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
-type RebuildPlanDebug = {
-  lockCurrentBucket: boolean; shouldLockCurrent: boolean; remainingStartIndex: number; hasPreviousPlan: boolean;
-};
 
 export class DailyBudgetManager {
   private static readonly STATE_PERSIST_INTERVAL_MS = 60 * 1000;
@@ -78,12 +77,7 @@ export class DailyBudgetManager {
     this.state.frozen = false;
     this.markDirty();
   }
-  update(params: {
-    nowMs?: number; timeZone: string; settings: DailyBudgetSettings; powerTracker: PowerTrackerState;
-    combinedPrices?: CombinedPriceData | null; priceOptimizationEnabled: boolean;
-    forcePlanRebuild?: boolean; capacityBudgetKWh?: number; refreshObservedStats?: boolean;
-    refreshConfidence?: boolean; includeConfidenceBootstrapDebug?: boolean;
-  }): DailyBudgetUpdate {
+  update(params: DailyBudgetUpdateParams): DailyBudgetUpdate {
     const {
       nowMs = Date.now(),
       timeZone,

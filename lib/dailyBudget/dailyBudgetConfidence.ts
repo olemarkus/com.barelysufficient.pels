@@ -69,7 +69,7 @@ export function computeBacktestedConfidence(params: {
     timeZone,
     powerTracker,
     profileBlendConfidence,
-    includeBootstrapDebug = true,
+    includeBootstrapDebug = false,
   } = params;
   const days = collectValidDays({ nowMs, timeZone, powerTracker });
 
@@ -517,7 +517,7 @@ export function resolveConfidence(params: {
     powerTracker,
     profileBlendConfidence,
     dateKey,
-    includeBootstrapDebug = true,
+    includeBootstrapDebug = false,
   } = params;
   const elapsed = nowMs - cache.lastMs;
   const inputKey = buildConfidenceInputKey({

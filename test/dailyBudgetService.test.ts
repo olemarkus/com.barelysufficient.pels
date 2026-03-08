@@ -1,5 +1,6 @@
 import { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
 import type { ConfidenceDebug, DailyBudgetDayPayload } from '../lib/dailyBudget/dailyBudgetTypes';
+import { DEBUG_LOGGING_TOPICS } from '../lib/utils/settingsKeys';
 
 const TZ = 'Europe/Oslo';
 const NOW_MS = new Date('2025-03-15T12:00:00Z').getTime();
@@ -124,6 +125,52 @@ describe('DailyBudgetService', () => {
     }));
     (service as any).deps.homey.settings.get = jest.fn((key: string) => (
       key === 'debug_logging_enabled' ? true : null
+    ));
+    (service as any).manager.update = updateSpy;
+
+    service.getUiPayload();
+
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      refreshConfidence: true,
+      includeConfidenceBootstrapDebug: true,
+    }));
+  });
+
+  it('does not enable confidence bootstrap debug for unrelated topic filters', () => {
+    const service = buildService();
+    const updateSpy = jest.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      shouldPersist: false,
+    }));
+    (service as any).deps.homey.settings.get = jest.fn((key: string) => (
+      key === DEBUG_LOGGING_TOPICS ? ['plan'] : null
+    ));
+    (service as any).manager.update = updateSpy;
+
+    service.getUiPayload();
+
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      refreshConfidence: true,
+      includeConfidenceBootstrapDebug: false,
+    }));
+  });
+
+  it('enables confidence bootstrap debug for legacy object-form daily_budget topic settings', () => {
+    const service = buildService();
+    const updateSpy = jest.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      shouldPersist: false,
+    }));
+    (service as any).deps.homey.settings.get = jest.fn((key: string) => (
+      key === DEBUG_LOGGING_TOPICS ? { plan: true, daily_budget: true } : null
     ));
     (service as any).manager.update = updateSpy;
 
