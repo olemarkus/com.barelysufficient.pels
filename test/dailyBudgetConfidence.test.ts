@@ -70,10 +70,19 @@ function buildDateKey(daysAgo: number, baseDate: Date = new Date('2025-03-15T12:
 
 const NOW_MS = new Date('2025-03-15T12:00:00Z').getTime();
 
+function computeConfidence(
+  params: Parameters<typeof computeBacktestedConfidence>[0],
+) {
+  return computeBacktestedConfidence({
+    includeBootstrapDebug: false,
+    ...params,
+  });
+}
+
 describe('computeBacktestedConfidence', () => {
   it('returns confidence 0 when no valid days exist', () => {
     const pt = buildPowerTracker();
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -91,7 +100,7 @@ describe('computeBacktestedConfidence', () => {
       addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: flatHourly });
     }
     const pt = buildPowerTracker({ buckets });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -111,7 +120,7 @@ describe('computeBacktestedConfidence', () => {
       addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh });
     }
     const pt = buildPowerTracker({ buckets });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -153,7 +162,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -196,7 +205,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -213,7 +222,7 @@ describe('computeBacktestedConfidence', () => {
       addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: flatHourly });
     }
     const pt = buildPowerTracker({ buckets });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -253,7 +262,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS, timeZone: TZ, powerTracker: pt, profileBlendConfidence: 1,
     });
 
@@ -271,7 +280,7 @@ describe('computeBacktestedConfidence', () => {
 
     // First verify all 10 days are valid without unreliable periods
     const ptClean = buildPowerTracker({ buckets });
-    const clean = computeBacktestedConfidence({
+    const clean = computeConfidence({
       nowMs: NOW_MS, timeZone: TZ, powerTracker: ptClean, profileBlendConfidence: 0.5,
     });
     const totalDays = clean.debug.confidenceValidActualDays;
@@ -283,7 +292,7 @@ describe('computeBacktestedConfidence', () => {
       buckets,
       unreliablePeriods: [{ start: periodStart, end: periodEnd }],
     });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS, timeZone: TZ, powerTracker: pt, profileBlendConfidence: 0.5,
     });
     // Should have fewer days than the clean run
@@ -314,7 +323,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: dstNow,
       timeZone: TZ,
       powerTracker: pt,
@@ -333,11 +342,12 @@ describe('computeBacktestedConfidence', () => {
       addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh });
     }
     const pt = buildPowerTracker({ buckets });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
       profileBlendConfidence: 0.5,
+      includeBootstrapDebug: true,
     });
     expect(Number.isFinite(result.debug.confidenceBootstrapLow)).toBe(true);
     expect(Number.isFinite(result.debug.confidenceBootstrapHigh)).toBe(true);
@@ -389,7 +399,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -445,7 +455,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -496,7 +506,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -539,7 +549,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,
@@ -584,14 +594,22 @@ describe('computeBacktestedConfidence', () => {
 
     // Run with plan data to get combined bootstrap
     const ptWithPlans = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const withPlans = computeBacktestedConfidence({
-      nowMs: NOW_MS, timeZone: TZ, powerTracker: ptWithPlans, profileBlendConfidence: 1,
+    const withPlans = computeConfidence({
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: ptWithPlans,
+      profileBlendConfidence: 1,
+      includeBootstrapDebug: true,
     });
 
     // Run without plan data to get regularity-only bootstrap
     const ptNoPlan = buildPowerTracker({ buckets });
-    const noPlan = computeBacktestedConfidence({
-      nowMs: NOW_MS, timeZone: TZ, powerTracker: ptNoPlan, profileBlendConfidence: 1,
+    const noPlan = computeConfidence({
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: ptNoPlan,
+      profileBlendConfidence: 1,
+      includeBootstrapDebug: true,
     });
 
     // With adaptability influence pulling the combined score down (bad plan fit),
@@ -630,8 +648,11 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
-      nowMs: NOW_MS, timeZone: TZ, powerTracker: pt, profileBlendConfidence: 1,
+    const result = computeConfidence({
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: pt,
+      profileBlendConfidence: 1,
     });
 
     // With the floor, near-centroid plans should still produce positive adaptability influence.
@@ -674,8 +695,12 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
-      nowMs: NOW_MS, timeZone: TZ, powerTracker: pt, profileBlendConfidence: 1,
+    const result = computeConfidence({
+      nowMs: NOW_MS,
+      timeZone: TZ,
+      powerTracker: pt,
+      profileBlendConfidence: 1,
+      includeBootstrapDebug: true,
     });
 
     // With only 3 planned days out of 14, the ramp = 3/14 ≈ 0.214.
@@ -714,7 +739,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS, timeZone: TZ, powerTracker: pt, profileBlendConfidence: 1,
     });
 
@@ -815,7 +840,11 @@ describe('computeBacktestedConfidence', () => {
   it('recomputes cached confidence when the timezone changes', () => {
     const buckets: Record<string, number> = {};
     for (let i = 1; i <= 10; i++) {
-      addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: Array.from({ length: 24 }, (_, h) => (h === 23 ? 3 : 1)) });
+      addDayUsage({
+        buckets,
+        dateKey: buildDateKey(i),
+        hourlyKWh: Array.from({ length: 24 }, (_, h) => (h === 23 ? 3 : 1)),
+      });
     }
 
     const cache = createConfidenceCache();
@@ -842,7 +871,11 @@ describe('computeBacktestedConfidence', () => {
   it('reuses cached confidence while updating profile blend debug metadata', () => {
     const buckets: Record<string, number> = {};
     for (let i = 1; i <= 10; i++) {
-      addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: Array.from({ length: 24 }, (_, h) => (h === 23 ? 3 : 1)) });
+      addDayUsage({
+        buckets,
+        dateKey: buildDateKey(i),
+        hourlyKWh: Array.from({ length: 24 }, (_, h) => (h === 23 ? 3 : 1)),
+      });
     }
 
     const cache = createConfidenceCache();
@@ -915,7 +948,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS, timeZone: TZ, powerTracker: pt, profileBlendConfidence: 1,
     });
 
@@ -958,7 +991,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS, timeZone: TZ, powerTracker: pt, profileBlendConfidence: 1,
     });
 
@@ -1010,7 +1043,7 @@ describe('computeBacktestedConfidence', () => {
     }
 
     const pt = buildPowerTracker({ buckets, controlledBuckets, dailyBudgetCaps });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS, timeZone: TZ, powerTracker: pt, profileBlendConfidence: 1,
     });
 
@@ -1029,7 +1062,7 @@ describe('computeBacktestedConfidence', () => {
       addDayUsage({ buckets, dateKey: buildDateKey(i), hourlyKWh: flatHourly });
     }
     const pt = buildPowerTracker({ buckets });
-    const result = computeBacktestedConfidence({
+    const result = computeConfidence({
       nowMs: NOW_MS,
       timeZone: TZ,
       powerTracker: pt,

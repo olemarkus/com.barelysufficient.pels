@@ -1,5 +1,7 @@
+import type { PowerTrackerState } from '../core/powerTracker';
+import type { CombinedPriceData } from './dailyBudgetMath';
 import type { PriceData } from './dailyBudgetState';
-import type { DailyBudgetState } from './dailyBudgetTypes';
+import type { DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';
 
 export type DailyBudgetManagerDeps = {
   log: (...args: unknown[]) => void;
@@ -12,18 +14,34 @@ export type ExistingPlanState = {
   deviationExisting: number;
 };
 
+export type RebuildPlanDebug = {
+  lockCurrentBucket: boolean;
+  shouldLockCurrent: boolean;
+  remainingStartIndex: number;
+  hasPreviousPlan: boolean;
+};
+
+export type DailyBudgetUpdateParams = {
+  nowMs?: number;
+  timeZone: string;
+  settings: DailyBudgetSettings;
+  powerTracker: PowerTrackerState;
+  combinedPrices?: CombinedPriceData | null;
+  priceOptimizationEnabled: boolean;
+  forcePlanRebuild?: boolean;
+  capacityBudgetKWh?: number;
+  refreshObservedStats?: boolean;
+  refreshConfidence?: boolean;
+  includeConfidenceBootstrapDebug?: boolean;
+};
+
 export type PlanResult = {
   plannedKWh: number[];
   plannedUncontrolledKWh?: number[];
   plannedControlledKWh?: number[];
   priceData: PriceData;
   shouldLog: boolean;
-  planDebug?: {
-    lockCurrentBucket: boolean;
-    shouldLockCurrent: boolean;
-    remainingStartIndex: number;
-    hasPreviousPlan: boolean;
-  };
+  planDebug?: RebuildPlanDebug;
 };
 
 const isValidProfile = (profile?: DailyBudgetState['profile']): boolean => {
