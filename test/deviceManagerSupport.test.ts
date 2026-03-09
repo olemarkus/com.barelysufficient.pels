@@ -17,11 +17,10 @@ import {
 } from '../lib/core/deviceManagerParse';
 import {
   applyMeasurementUpdates,
-  getRawDevices,
   handlePowerUpdate,
   updateLastKnownPower,
-  writeErrorToStderr,
 } from '../lib/core/deviceManagerRuntime';
+import { getRawDevices, writeErrorToStderr } from '../lib/core/deviceManagerHomeyApi';
 
 const createLogger = () => ({
   log: jest.fn(),
@@ -65,7 +64,8 @@ describe('device manager support helpers', () => {
     expect(getEvChargingState(capabilityObj)).toBe('plugged_in_paused');
     expect(getCurrentTemperature(capabilityObj)).toBe(21);
     expect(buildTargets(['target_temperature'], capabilityObj)).toEqual([{ id: 'target_temperature', value: 22, unit: 'C' }]);
-    expect(buildOptimisticCapabilityUpdate('evcharger_charging', true)).toEqual({ on: true });
+    expect(buildOptimisticCapabilityUpdate('evcharger_charging', true)).toBeNull();
+    expect(buildOptimisticCapabilityUpdate('onoff', true)).toBeNull();
     expect(buildOptimisticCapabilityUpdate('target_temperature', 20)).toEqual({ target: 20 });
     expect(buildOptimisticCapabilityUpdate('measure_power', 300)).toBeNull();
   });

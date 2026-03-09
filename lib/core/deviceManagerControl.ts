@@ -66,9 +66,6 @@ export function buildOptimisticCapabilityUpdate(
   capabilityId: string,
   value: unknown,
 ): { target?: number | null; on?: boolean } | null {
-  if ((capabilityId === 'onoff' || capabilityId === 'evcharger_charging') && typeof value === 'boolean') {
-    return { on: value };
-  }
   if (capabilityId.startsWith('target_temperature') && typeof value === 'number') {
     return { target: value };
   }

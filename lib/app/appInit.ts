@@ -52,7 +52,6 @@ export type PlanEngineInitApp = {
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
   getDynamicSoftLimitOverride: () => number | null;
-  applySheddingToDevice: (deviceId: string, deviceName?: string, reason?: string) => Promise<void>;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   log: (...args: unknown[]) => void;
@@ -78,7 +77,6 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
     getPriorityForDevice: (deviceId) => app.getPriorityForDevice(deviceId),
     getShedBehavior: (deviceId) => app.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: () => app.getDynamicSoftLimitOverride(),
-    applySheddingToDevice: (deviceId, deviceName, reason) => app.applySheddingToDevice(deviceId, deviceName, reason),
     updateLocalSnapshot: (deviceId, updates) => app.updateLocalSnapshot(deviceId, updates),
     deviceDiagnostics: app.deviceDiagnostics,
     log: (...args: unknown[]) => app.log(...args),

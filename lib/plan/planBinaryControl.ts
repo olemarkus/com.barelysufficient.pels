@@ -10,6 +10,7 @@ export type BinaryControlPlan = {
 };
 
 type BinaryControlLogContext = 'capacity' | 'capacity_control_off';
+type BinaryControlRestoreSource = 'shed_state' | 'current_plan';
 
 type BinaryControlDeps = {
   state: PlanEngineState;
@@ -69,6 +70,7 @@ export async function setBinaryControl(params: BinaryControlDeps & {
   desired: boolean;
   snapshot?: TargetDeviceSnapshot;
   logContext: BinaryControlLogContext;
+  restoreSource?: BinaryControlRestoreSource;
   reason?: string;
 }): Promise<boolean> {
   const {
@@ -77,6 +79,7 @@ export async function setBinaryControl(params: BinaryControlDeps & {
     desired,
     snapshot,
     logContext,
+    restoreSource,
     reason,
   } = params;
   const controlPlan = getBinaryControlPlan(snapshot);
@@ -108,6 +111,7 @@ export async function setBinaryControl(params: BinaryControlDeps & {
     desired,
     reason,
     logContext,
+    restoreSource,
   });
 }
 
@@ -160,7 +164,7 @@ async function setEvBinaryControl(params: BinaryControlDeps & {
   const {
     state,
     deviceManager,
-    updateLocalSnapshot,
+    updateLocalSnapshot: _updateLocalSnapshot,
     log,
     logDebug,
     error,
@@ -195,7 +199,6 @@ async function setEvBinaryControl(params: BinaryControlDeps & {
 
   try {
     await deviceManager.setCapability(deviceId, controlPlan.capabilityId, desired);
-    updateLocalSnapshot(deviceId, { on: desired });
     log(buildEvBinaryControlLogMessage(logContext, desired, name, reason));
     logDebug(
       `Capacity: EV action completed for ${name}: ${controlPlan.capabilityId}=${desired} `
@@ -216,10 +219,11 @@ async function setStandardBinaryControl(params: BinaryControlDeps & {
   desired: boolean;
   reason?: string;
   logContext: BinaryControlLogContext;
+  restoreSource?: BinaryControlRestoreSource;
 }): Promise<boolean> {
   const {
     deviceManager,
-    updateLocalSnapshot,
+    updateLocalSnapshot: _updateLocalSnapshot,
     log,
     error,
     controlPlan,
@@ -228,11 +232,11 @@ async function setStandardBinaryControl(params: BinaryControlDeps & {
     desired,
     reason,
     logContext,
+    restoreSource,
   } = params;
   try {
     await deviceManager.setCapability(deviceId, controlPlan.capabilityId, desired);
-    updateLocalSnapshot(deviceId, { on: desired });
-    log(buildBinaryControlLogMessage(logContext, desired, name, reason));
+    log(buildBinaryControlLogMessage(logContext, desired, name, reason, restoreSource));
     return true;
   } catch (caughtError) {
     error(`Failed to ${desired ? 'turn on' : 'turn off'} ${name} via DeviceManager`, caughtError);
@@ -288,10 +292,16 @@ function buildBinaryControlLogMessage(
   desired: boolean,
   name: string,
   reason?: string,
+  restoreSource: BinaryControlRestoreSource = 'current_plan',
 ): string {
   if (desired) {
     const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
-    const suffix = logContext === 'capacity' ? ' (restored from shed/off state)' : '';
+    let suffix = '';
+    if (logContext === 'capacity') {
+      suffix = restoreSource === 'shed_state'
+        ? ' (restored from shed state)'
+        : ' (to match current plan)';
+    }
     return `${prefix}: turning on ${name}${suffix}`;
   }
   if (reason && logContext === 'capacity') {

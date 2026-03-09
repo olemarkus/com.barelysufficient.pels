@@ -252,6 +252,44 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-ev-inactive')?.contains('neutral')).toBe(true);
   });
 
+  it('renders restore cooldown as restoring when the device is currently off', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-restore-off',
+          name: 'Recently restored heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          controllable: true,
+          reason: 'cooldown (restore, 40s remaining)',
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Restoring');
+    expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
+    expect(getBadgeClassList('dev-restore-off')?.contains('neutral')).toBe(true);
+  });
+
+  it('renders restore cooldown as active when the device is already back on', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-restore-on',
+          name: 'Recently restored heater',
+          currentState: 'on',
+          plannedState: 'shed',
+          controllable: true,
+          reason: 'cooldown (restore, 40s remaining)',
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Active');
+    expect(getStatusText()).toBe('stabilizing after restore (40s remaining)');
+    expect(getBadgeClassList('dev-restore-on')?.contains('cheap')).toBe(true);
+  });
+
   it('renders temperature-managed state for devices without onoff power state', () => {
     renderPlanSnapshot({
       devices: [
@@ -285,7 +323,7 @@ describe('plan device state', () => {
     });
 
     expect(getStateText()).toBe('Active');
-    expect(getStatusText()).toBe('headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)');
+    expect(getStatusText()).toBe('stabilizing after recent step-down (45s remaining; usage 6.00 -> 3.50kW)');
     expect(getBadgeClassList('dev-1')?.contains('cheap')).toBe(true);
   });
 });
