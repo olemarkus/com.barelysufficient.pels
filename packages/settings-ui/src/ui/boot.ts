@@ -223,7 +223,11 @@ const DEBUG_TOPICS: Array<{ topic: string; label: string; hint: string }> = [
   { topic: 'price', label: 'Price optimization', hint: 'Spot prices, tariffs, and price shaping.' },
   { topic: 'daily_budget', label: 'Daily budget', hint: 'Daily plan and rollover.' },
   { topic: 'devices', label: 'Devices', hint: 'Device snapshots and Homey API interactions.' },
-  { topic: 'settings', label: 'Settings', hint: 'Settings changes and housekeeping.' },
+  {
+    topic: 'settings',
+    label: 'Settings',
+    hint: 'Settings checks and updates, including expected power flow cards.',
+  },
   { topic: 'perf', label: 'Performance', hint: 'Hotpath counters and timings.' },
 ];
 

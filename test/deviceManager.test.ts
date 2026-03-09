@@ -1,11 +1,16 @@
-import { DeviceManager } from '../lib/core/deviceManager';
+import { DeviceManager, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../lib/core/deviceManager';
 import { mockHomeyInstance } from './mocks/homey';
 import Homey from 'homey';
+import { EventEmitter } from 'events';
 
 // Mock homey-api
 const mockSetCapabilityValue = jest.fn();
 const mockGetDevices = jest.fn();
 const mockGetLiveReport = jest.fn();
+const mockDevicesConnect = jest.fn().mockResolvedValue(undefined);
+const mockDevicesDisconnect = jest.fn().mockResolvedValue(undefined);
+const mockDevicesEmitter = new EventEmitter();
+mockDevicesEmitter.setMaxListeners(0);
 
 jest.mock('homey-api', () => ({
     HomeyAPI: {
@@ -13,6 +18,10 @@ jest.mock('homey-api', () => ({
             devices: {
                 getDevices: mockGetDevices,
                 setCapabilityValue: mockSetCapabilityValue,
+                connect: mockDevicesConnect,
+                disconnect: mockDevicesDisconnect,
+                on: mockDevicesEmitter.on.bind(mockDevicesEmitter),
+                off: mockDevicesEmitter.off.bind(mockDevicesEmitter),
             },
             energy: {
                 getLiveReport: mockGetLiveReport,
@@ -31,9 +40,17 @@ const findSnapshotDevice = <T extends { id: string }>(
     return undefined;
 };
 
+const getCapabilityCallback = (makeInstanceMock: jest.Mock, capabilityId: string) => {
+    const call = makeInstanceMock.mock.calls.find(([nextCapabilityId]) => nextCapabilityId === capabilityId);
+    if (!call) {
+        throw new Error(`Missing capability listener for ${capabilityId}`);
+    }
+    return call[1] as (value: unknown) => void;
+};
+
 const makeCapabilityInstanceImpl = (destroyInstanceMock: jest.Mock) => (
     _cap: string,
-    cb: (value: number | null) => void,
+    cb: (value: unknown) => void,
 ) => Promise.resolve({
     destroy: destroyInstanceMock,
     __trigger: cb,
@@ -64,6 +81,7 @@ describe('DeviceManager', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        mockDevicesEmitter.removeAllListeners();
         mockGetLiveReport.mockResolvedValue({ items: [] });
         homeyMock = mockHomeyInstance as unknown as Homey.App;
 
@@ -640,15 +658,96 @@ describe('DeviceManager', () => {
             await deviceManager.init();
         });
 
-        it('initializes capability listener for measure_power', async () => {
+        it('initializes realtime listeners for power and onoff capabilities', async () => {
             await deviceManager.refreshSnapshot();
             expect(makeInstanceMock).toHaveBeenCalledWith('measure_power', expect.any(Function));
+            expect(makeInstanceMock).toHaveBeenCalledWith('onoff', expect.any(Function));
+        });
+
+        it('does not attach capability listeners for unmanaged devices', async () => {
+            const managedDeviceManager = new DeviceManager(
+                homeyMock,
+                loggerMock,
+                { getManaged: (deviceId) => deviceId === 'dev1' },
+            );
+            await managedDeviceManager.init();
+
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Managed heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    class: 'heater',
+                    makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                        makeCapabilityInstanceImpl(destroyInstanceMock),
+                    ),
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+                dev2: {
+                    id: 'dev2',
+                    name: 'Unmanaged heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    class: 'heater',
+                    makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                        makeCapabilityInstanceImpl(destroyInstanceMock),
+                    ),
+                    capabilitiesObj: {
+                        measure_power: { value: 900, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+
+            await managedDeviceManager.refreshSnapshot();
+
+            expect(makeInstanceMock).toHaveBeenCalledTimes(2);
+            expect(makeInstanceMock).toHaveBeenNthCalledWith(1, 'measure_power', expect.any(Function));
+            expect(makeInstanceMock).toHaveBeenNthCalledWith(2, 'onoff', expect.any(Function));
+            expect(mockDevicesConnect).toHaveBeenCalledTimes(1);
+            expect(mockDevicesEmitter.listenerCount('device.update')).toBe(1);
+        });
+
+        it('attaches realtime capability listeners when a device becomes managed', async () => {
+            const managedState: Record<string, boolean> = { dev1: false };
+            const managedDeviceManager = new DeviceManager(
+                homeyMock,
+                loggerMock,
+                { getManaged: (deviceId) => managedState[deviceId] === true },
+            );
+            await managedDeviceManager.init();
+
+            await managedDeviceManager.refreshSnapshot();
+            expect(makeInstanceMock).not.toHaveBeenCalled();
+            expect(mockDevicesConnect).not.toHaveBeenCalled();
+            expect(mockDevicesEmitter.listenerCount('device.update')).toBe(0);
+
+            managedState.dev1 = true;
+            await managedDeviceManager.refreshSnapshot();
+
+            expect(makeInstanceMock).toHaveBeenCalledTimes(2);
+            expect(makeInstanceMock).toHaveBeenNthCalledWith(1, 'measure_power', expect.any(Function));
+            expect(makeInstanceMock).toHaveBeenNthCalledWith(2, 'onoff', expect.any(Function));
+            expect(mockDevicesConnect).toHaveBeenCalledTimes(1);
+            expect(mockDevicesEmitter.listenerCount('device.update')).toBe(1);
+        });
+
+        it('logs device.update listener attachment failures as errors', async () => {
+            mockDevicesConnect.mockRejectedValueOnce(new TypeError('parseuri is not a function'));
+
+            await deviceManager.refreshSnapshot();
+
+            expect(loggerMock.error).toHaveBeenCalledWith(
+                'Failed to attach device.update listener',
+                expect.any(TypeError),
+            );
         });
 
         it('updates local state on power change', async () => {
             await deviceManager.refreshSnapshot();
-            // Get the registered callback
-            const callback = makeInstanceMock.mock.calls[0][1];
+            const callback = getCapabilityCallback(makeInstanceMock, 'measure_power');
 
             // Verify initial state
             expect(deviceManager.getSnapshot()[0].measuredPowerKw).toBe(1);
@@ -661,11 +760,310 @@ describe('DeviceManager', () => {
             expect(snapshot[0].powerKw).toBe(2);
         });
 
+        it('emits reconcile event when onoff changes via capability listener', async () => {
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = jest.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            const onOffCallback = getCapabilityCallback(makeInstanceMock, 'onoff');
+            onOffCallback(false);
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: false,
+            }));
+            expect(realtimeListener).toHaveBeenCalledWith({
+                deviceId: 'dev1',
+                name: 'Heater',
+                capabilityId: 'onoff',
+                changes: [{
+                    capabilityId: 'onoff',
+                    previousValue: 'unknown',
+                    nextValue: 'off',
+                }],
+            });
+        });
+
+        it('suppresses reconcile for the realtime echo of a local onoff write', async () => {
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = jest.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            await deviceManager.setCapability('dev1', 'onoff', true);
+
+            const onOffCallback = getCapabilityCallback(makeInstanceMock, 'onoff');
+            onOffCallback(true);
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+            }));
+            expect(realtimeListener).not.toHaveBeenCalled();
+            expect(loggerMock.debug).toHaveBeenCalledWith(
+                'Realtime capability update for Heater (dev1) via onoff: true [local echo]',
+            );
+        });
+
+        it('suppresses reconcile when the realtime echo arrives before the local write resolves', async () => {
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                        makeCapabilityInstanceImpl(destroyInstanceMock),
+                    ),
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: false, id: 'onoff' },
+                    },
+                },
+            });
+
+            let resolveWrite: (() => void) | undefined;
+            mockSetCapabilityValue.mockImplementationOnce(() => new Promise<void>((resolve) => {
+                resolveWrite = resolve;
+            }));
+
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = jest.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            const setCapabilityPromise = deviceManager.setCapability('dev1', 'onoff', true);
+            const onOffCallback = getCapabilityCallback(makeInstanceMock, 'onoff');
+            onOffCallback(true);
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+            }));
+            expect(realtimeListener).not.toHaveBeenCalled();
+            expect(loggerMock.debug).toHaveBeenCalledWith(
+                'Realtime capability update for Heater (dev1) via onoff: true [local echo]',
+            );
+
+            resolveWrite?.();
+            await setCapabilityPromise;
+        });
+
+        it('preserves local onoff state after a successful binary write when no realtime capability listener is available', async () => {
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: false, id: 'onoff' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: false,
+            }));
+
+            await deviceManager.setCapability('dev1', 'onoff', true);
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+            }));
+        });
+
+        it('keeps binary writes non-optimistic when a realtime capability listener is available', async () => {
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                        makeCapabilityInstanceImpl(destroyInstanceMock),
+                    ),
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: false, id: 'onoff' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            await deviceManager.setCapability('dev1', 'onoff', true);
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: false,
+            }));
+        });
+
+        it('emits reconcile event when target temperature changes via capability listener', async () => {
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                    makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                        makeCapabilityInstanceImpl(destroyInstanceMock),
+                    ),
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = jest.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            const targetCallback = getCapabilityCallback(makeInstanceMock, 'target_temperature');
+            targetCallback(18);
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
+            }));
+            expect(realtimeListener).toHaveBeenCalledWith({
+                deviceId: 'dev1',
+                name: 'Heater',
+                capabilityId: 'target_temperature',
+                changes: [{
+                    capabilityId: 'target_temperature',
+                    previousValue: '20°C',
+                    nextValue: '18°C',
+                }],
+            });
+        });
+
+        it('updates local state on generic device.update events', async () => {
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = jest.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: undefined,
+                measuredPowerKw: 1,
+            }));
+
+            mockDevicesEmitter.emit('device.update', {
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['measure_power', 'onoff'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 2865, id: 'measure_power' },
+                    onoff: { value: true, id: 'onoff' },
+                },
+            });
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+                measuredPowerKw: 2.865,
+                powerKw: 2.865,
+            }));
+            expect(realtimeListener).toHaveBeenCalledWith({
+                deviceId: 'dev1',
+                name: 'Heater',
+                changes: [{
+                    capabilityId: 'onoff',
+                    previousValue: 'unknown',
+                    nextValue: 'on',
+                }],
+            });
+        });
+
+        it('ignores generic device.update events for unmanaged devices', async () => {
+            const managedDeviceManager = new DeviceManager(
+                homeyMock,
+                loggerMock,
+                { getManaged: () => false },
+            );
+            await managedDeviceManager.init();
+            await managedDeviceManager.refreshSnapshot();
+            const realtimeListener = jest.fn();
+            managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            mockDevicesEmitter.emit('device.update', {
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['measure_power', 'onoff'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 2865, id: 'measure_power' },
+                    onoff: { value: true, id: 'onoff' },
+                },
+            });
+
+            expect(realtimeListener).not.toHaveBeenCalled();
+            expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
+                managed: false,
+                measuredPowerKw: 1,
+            }));
+            expect(mockDevicesConnect).not.toHaveBeenCalled();
+            expect(mockDevicesEmitter.listenerCount('device.update')).toBe(0);
+        });
+
+        it('does not emit reconcile event for temperature-only generic device changes', async () => {
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = jest.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            mockDevicesEmitter.emit('device.update', {
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['measure_power', 'onoff', 'measure_temperature', 'target_temperature'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 1000, id: 'measure_power' },
+                    onoff: { value: true, id: 'onoff' },
+                    measure_temperature: { value: 23, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
+                },
+            });
+
+            expect(realtimeListener).not.toHaveBeenCalled();
+        });
+
         it('cleans up listeners on destroy', async () => {
             await deviceManager.refreshSnapshot();
             // Instance created
             deviceManager.destroy();
             expect(destroyInstanceMock).toHaveBeenCalled();
+        });
+
+        it('destroys realtime capability listeners when a device stops being managed', async () => {
+            const managedState: Record<string, boolean> = { dev1: true };
+            const managedDeviceManager = new DeviceManager(
+                homeyMock,
+                loggerMock,
+                { getManaged: (deviceId) => managedState[deviceId] === true },
+            );
+            await managedDeviceManager.init();
+            await managedDeviceManager.refreshSnapshot();
+
+            managedState.dev1 = false;
+            await managedDeviceManager.refreshSnapshot();
+
+            expect(destroyInstanceMock).toHaveBeenCalledTimes(2);
+            expect(mockDevicesDisconnect).toHaveBeenCalledTimes(1);
+            expect(mockDevicesEmitter.listenerCount('device.update')).toBe(0);
         });
     });
 });

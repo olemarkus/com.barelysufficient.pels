@@ -117,7 +117,7 @@ describe('Mixed Type Restoration Throttling', () => {
         const mockD2 = mockHomeyInstance.drivers.getDrivers()['driver-1'].getDevices()[1];
         await mockD1.setCapabilityValue('onoff', false);
         await mockD2.setCapabilityValue('target_temperature', 10);
-        (app as any).lastSnapshotRefreshMs = 0; // Force refresh
+        await (app as any).refreshTargetDevicesSnapshot();
 
         // Advance time past Shed Cooldown (60s)
         currentTime += 61000;
@@ -140,6 +140,13 @@ describe('Mixed Type Restoration Throttling', () => {
         // Throttling check
         expect(d1Restored && d2Restored).toBe(false);
         expect(d1Restored || d2Restored).toBe(true);
+
+        if (d1Restored) {
+            await mockD1.setCapabilityValue('onoff', true);
+        } else if (d2Restored) {
+            await mockD2.setCapabilityValue('target_temperature', 20);
+        }
+        await (app as any).refreshTargetDevicesSnapshot();
 
         // Assume D2 (Temp) restored (based on user logs/priority).
         // Or whoever restored, verify the OTHER restores later.

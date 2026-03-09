@@ -24,7 +24,6 @@ type RebuildDecision = {
   shouldRebuild: boolean;
   deltaW: number;
   deltaMeaningful: boolean;
-  softLimitChanged: boolean;
   maxIntervalExceeded: boolean;
   isDangerZone: boolean;
   headroomTight: boolean;
@@ -52,8 +51,6 @@ export function recordDailyBudgetCap(params: {
 const DANGER_ZONE_MARGIN_RATIO = 0.1; // 10%
 const MIN_REBUILD_DELTA_W = 100;
 const MIN_REBUILD_DELTA_RATIO = 0.005; // 0.5% of limit
-const MIN_SOFT_LIMIT_DELTA_KW = 0.1;
-const MIN_SOFT_LIMIT_DELTA_RATIO = 0.01; // 1% of limit
 
 const resolveDangerZone = (currentPowerW: number | undefined, limitKw: number): boolean => {
   if (typeof currentPowerW !== 'number') return false;
@@ -81,19 +78,6 @@ const resolvePowerDelta = (params: {
   return { deltaW, deltaMeaningful: deltaW >= deltaThresholdW };
 };
 
-const resolveSoftLimitChange = (params: {
-  softLimitKw?: number;
-  lastSoftLimitKw?: number;
-  limitKw: number;
-}): { softLimitChanged: boolean } => {
-  const { softLimitKw, lastSoftLimitKw, limitKw } = params;
-  if (typeof softLimitKw !== 'number') return { softLimitChanged: false };
-  const softLimitDeltaThresholdKw = Math.max(MIN_SOFT_LIMIT_DELTA_KW, limitKw * MIN_SOFT_LIMIT_DELTA_RATIO);
-  if (typeof lastSoftLimitKw !== 'number') return { softLimitChanged: true };
-  const softLimitDeltaKw = Math.abs(softLimitKw - lastSoftLimitKw);
-  return { softLimitChanged: softLimitDeltaKw >= softLimitDeltaThresholdKw };
-};
-
 const resolveRebuildDecision = (params: {
   state: PowerSampleRebuildState;
   elapsedMs: number;
@@ -101,7 +85,6 @@ const resolveRebuildDecision = (params: {
   limitKw: number;
   currentPowerW?: number;
   powerDeltaW?: number;
-  softLimitKw?: number;
   headroomKw?: number | null;
   isInShortfall?: boolean;
 }): RebuildDecision => {
@@ -112,7 +95,6 @@ const resolveRebuildDecision = (params: {
     limitKw,
     currentPowerW,
     powerDeltaW,
-    softLimitKw,
     headroomKw,
     isInShortfall,
   } = params;
@@ -124,24 +106,17 @@ const resolveRebuildDecision = (params: {
     lastRebuildPowerW: state.lastRebuildPowerW,
     limitKw,
   });
-  const { softLimitChanged } = resolveSoftLimitChange({
-    softLimitKw,
-    lastSoftLimitKw: state.lastSoftLimitKw,
-    limitKw,
-  });
   const maxIntervalExceeded = maxIntervalMs > 0 && elapsedMs >= maxIntervalMs;
   const shouldRebuild = state.lastMs === 0
     || isDangerZone
     || headroomTight
     || isInShortfall
-    || softLimitChanged
     || deltaMeaningful
     || maxIntervalExceeded;
   return {
     shouldRebuild,
     deltaW,
     deltaMeaningful,
-    softLimitChanged,
     maxIntervalExceeded,
     isDangerZone,
     headroomTight,
@@ -158,7 +133,6 @@ const resolveRebuildReason = (params: {
   if (decision.isDangerZone) return 'danger_zone';
   if (decision.headroomTight) return 'headroom_tight';
   if (isInShortfall) return 'shortfall';
-  if (decision.softLimitChanged) return 'soft_limit_changed';
   if (decision.deltaMeaningful) return 'power_delta';
   if (decision.maxIntervalExceeded) return 'max_interval';
   return 'unknown';
@@ -276,7 +250,6 @@ export function schedulePlanRebuildFromPowerSample(params: {
     limitKw,
     currentPowerW,
     powerDeltaW,
-    softLimitKw,
     headroomKw,
     isInShortfall,
   });

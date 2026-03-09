@@ -1,6 +1,31 @@
-import type Homey from 'homey';
 import type { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import type { PowerMeasurementUpdates } from './powerMeasurement';
+import {
+  formatBinaryState,
+  formatTargetValue,
+} from './deviceManagerRealtimeSupport';
+import { writeErrorToStderr } from './deviceManagerHomeyApi';
+
+const REALTIME_POWER_CAPABILITY_PREFIX = 'measure_power';
+const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
+const REALTIME_TARGET_CAPABILITY_PREFIX = 'target_temperature';
+
+export type CapabilityInstance = { destroy?: () => void };
+export type RealtimeDeviceReconcileChange = {
+  capabilityId: string;
+  previousValue: string;
+  nextValue: string;
+};
+
+type RealtimeReconcileResult = {
+  shouldReconcilePlan: boolean;
+  changes: RealtimeDeviceReconcileChange[];
+};
+
+type MakeCapabilityInstance = (
+  capabilityId: string,
+  listener: (value: unknown) => void,
+) => CapabilityInstance | Promise<CapabilityInstance>;
 
 export function updateLastKnownPower(params: {
   state: { lastKnownPowerKw: Record<string, number> };
@@ -84,43 +109,379 @@ export function handlePowerUpdate(params: {
   snapshot.powerKw = measuredKw;
 }
 
-export async function getRawDevices(
-  homey: Homey.App,
-  path: string,
-): Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]> {
-  const api = extractHomeyApi(homey);
-  if (!api?.get) {
-    throw new Error('Homey API client not available');
-  }
-  const data = await api.get(path);
-  if (Array.isArray(data)) return data as HomeyDeviceLike[];
-  if (typeof data === 'object' && data !== null) return data as Record<string, HomeyDeviceLike>;
-  return [];
-}
+export async function attachRealtimeDeviceUpdateListener(params: {
+  devicesApi?: {
+    connect?: () => Promise<void>;
+    on?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
+  };
+  alreadyAttached: boolean;
+  listener: (device: HomeyDeviceLike) => void;
+  eventName: string;
+  logger: Logger;
+}): Promise<boolean> {
+  const { devicesApi, alreadyAttached, listener, eventName, logger } = params;
+  if (!devicesApi || alreadyAttached) return alreadyAttached;
+  const connect = devicesApi.connect;
+  const on = devicesApi.on;
+  if (typeof connect !== 'function' || typeof on !== 'function') return false;
 
-export function writeErrorToStderr(message: string, error: unknown): void {
-  const stderr = typeof process !== 'undefined' ? process.stderr : undefined;
-  if (!stderr || typeof stderr.write !== 'function') return;
-  const errorText = error instanceof Error ? (error.stack || error.message) : String(error);
   try {
-    stderr.write(`[PelsApp] ${message} ${errorText}\n`);
-  } catch (_) {
-    // ignore stderr failures
+    await connect.call(devicesApi);
+    on.call(devicesApi, eventName, listener);
+    logger.debug(`Real-time ${eventName} listener attached`);
+    return true;
+  } catch (error) {
+    const message = `Failed to attach ${eventName} listener`;
+    logger.error(message, error as Error);
+    writeErrorToStderr(message, error);
+    return false;
   }
 }
 
-export function resolveHomeyInstance(homey: Homey.App): Homey.App['homey'] {
-  if (isHomeyAppWrapper(homey)) {
-    return homey.homey;
+export async function syncRealtimeDeviceUpdateListener(params: {
+  devicesApi?: {
+    connect?: () => Promise<void>;
+    on?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
+    off?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
+    disconnect?: () => Promise<void>;
+  };
+  attached: boolean;
+  devices: HomeyDeviceLike[];
+  shouldTrackRealtimeDevice: (deviceId: string) => boolean;
+  listener: (device: HomeyDeviceLike) => void;
+  eventName: string;
+  logger: Logger;
+}): Promise<boolean> {
+  const {
+    devicesApi,
+    attached,
+    devices,
+    shouldTrackRealtimeDevice,
+    listener,
+    eventName,
+    logger,
+  } = params;
+  const shouldAttach = devices.some((device) => {
+    const deviceId = device.id || device.data?.id;
+    return typeof deviceId === 'string' && shouldTrackRealtimeDevice(deviceId);
+  });
+  if (shouldAttach) {
+    return attachRealtimeDeviceUpdateListener({
+      devicesApi,
+      alreadyAttached: attached,
+      listener,
+      eventName,
+      logger,
+    });
   }
-  return homey as unknown as Homey.App['homey'];
+  detachRealtimeDeviceUpdateListener({
+    devicesApi,
+    attached,
+    listener,
+    eventName,
+    logger,
+  });
+  return false;
 }
 
-function isHomeyAppWrapper(value: unknown): value is { homey: Homey.App['homey'] } {
-  return typeof value === 'object' && value !== null && 'homey' in value;
+export function detachRealtimeDeviceUpdateListener(params: {
+  devicesApi?: {
+    off?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
+    disconnect?: () => Promise<void>;
+  };
+  attached: boolean;
+  listener: (device: HomeyDeviceLike) => void;
+  eventName: string;
+  logger: Logger;
+}): boolean {
+  const {
+    devicesApi,
+    attached,
+    listener,
+    eventName,
+    logger,
+  } = params;
+  if (!attached || typeof devicesApi?.off !== 'function') {
+    return false;
+  }
+  try {
+    devicesApi.off.call(devicesApi, eventName, listener);
+    if (typeof devicesApi.disconnect === 'function') {
+      void devicesApi.disconnect.call(devicesApi).catch((error: unknown) => {
+        const message = `Failed to disconnect realtime ${eventName} listener`;
+        logger.error(message, error as Error);
+        writeErrorToStderr(message, error);
+      });
+    }
+  } catch (error) {
+    const message = `Failed to detach ${eventName} listener`;
+    logger.error(message, error as Error);
+    writeErrorToStderr(message, error);
+  }
+  return false;
 }
 
-function extractHomeyApi(homey: Homey.App): { get?: (path: string) => Promise<unknown> } | undefined {
-  const homeyInstance = resolveHomeyInstance(homey);
-  return (homeyInstance as { api?: { get?: (path: string) => Promise<unknown> } }).api;
+export function reconcileRealtimeDeviceUpdate(params: {
+  latestSnapshot: TargetDeviceSnapshot[];
+  device: HomeyDeviceLike;
+  parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+}): RealtimeReconcileResult {
+  const { latestSnapshot, device, parseDevice } = params;
+  const deviceId = device.id || device.data?.id;
+  if (!deviceId) return { shouldReconcilePlan: false, changes: [] };
+
+  const parsed = parseDevice(device, Date.now());
+  const snapshotIndex = latestSnapshot.findIndex((entry) => entry.id === deviceId);
+  const previous = snapshotIndex >= 0 ? latestSnapshot[snapshotIndex] : null;
+  if (!parsed) {
+    if (snapshotIndex >= 0) {
+      latestSnapshot.splice(snapshotIndex, 1);
+      return { shouldReconcilePlan: false, changes: [] };
+    }
+    return { shouldReconcilePlan: false, changes: [] };
+  }
+
+  if (snapshotIndex >= 0) {
+    latestSnapshot[snapshotIndex] = parsed;
+  } else {
+    latestSnapshot.push(parsed);
+  }
+
+  const changes = getPlanReconcileRealtimeChanges(previous, parsed);
+  return {
+    shouldReconcilePlan: changes.length > 0,
+    changes,
+  };
+}
+
+export function getRealtimeCapabilityIds(device: HomeyDeviceLike): string[] {
+  const capabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
+  return capabilities.filter((capabilityId) => (
+    isRealtimePowerCapability(capabilityId)
+    || isRealtimeControlCapability(capabilityId)
+    || capabilityId.startsWith(REALTIME_TARGET_CAPABILITY_PREFIX)
+  ));
+}
+
+export function reconcileRealtimeCapabilityValue(params: {
+  latestSnapshot: TargetDeviceSnapshot[];
+  deviceId: string;
+  capabilityId: string;
+  value: unknown;
+}): RealtimeReconcileResult {
+  const { latestSnapshot, deviceId, capabilityId, value } = params;
+  const snapshot = latestSnapshot.find((entry) => entry.id === deviceId);
+  if (!snapshot) return { shouldReconcilePlan: false, changes: [] };
+
+  if (isRealtimePowerCapability(capabilityId)) {
+    return { shouldReconcilePlan: false, changes: [] };
+  }
+  if (isRealtimeControlCapability(capabilityId) && typeof value === 'boolean') {
+    if (snapshot.currentOn === value) return { shouldReconcilePlan: false, changes: [] };
+    const previousValue = formatBinaryState(snapshot.currentOn);
+    snapshot.currentOn = value;
+    return {
+      shouldReconcilePlan: true,
+      changes: [{
+        capabilityId,
+        previousValue,
+        nextValue: formatBinaryState(value),
+      }],
+    };
+  }
+  if (capabilityId.startsWith(REALTIME_TARGET_CAPABILITY_PREFIX) && typeof value === 'number') {
+    const target = snapshot.targets.find((entry) => entry.id === capabilityId);
+    if (!target || target.value === value) return { shouldReconcilePlan: false, changes: [] };
+    const previousValue = formatTargetValue(target.value, target.unit);
+    target.value = value;
+    return {
+      shouldReconcilePlan: true,
+      changes: [{
+        capabilityId,
+        previousValue,
+        nextValue: formatTargetValue(value, target.unit),
+      }],
+    };
+  }
+  return { shouldReconcilePlan: false, changes: [] };
+}
+
+export function hasRealtimeCapabilityListener(params: {
+  capabilityInstances: Map<string, CapabilityInstance>;
+  deviceId: string;
+  capabilityId: string;
+}): boolean {
+  const { capabilityInstances, deviceId, capabilityId } = params;
+  return capabilityInstances.has(buildCapabilityListenerKey(deviceId, capabilityId));
+}
+
+export async function syncRealtimeCapabilityListeners(params: {
+  devices: HomeyDeviceLike[];
+  shouldTrackRealtimeDevice: (deviceId: string) => boolean;
+  capabilityInstances: Map<string, CapabilityInstance>;
+  onCapabilityValue: (deviceId: string, deviceLabel: string, capabilityId: string, value: unknown) => void;
+  logger: Logger;
+}): Promise<void> {
+  const {
+    devices,
+    shouldTrackRealtimeDevice,
+    capabilityInstances,
+    onCapabilityValue,
+    logger,
+  } = params;
+  const desiredListenerKeys = new Set<string>();
+  for (const device of devices) {
+    await syncRealtimeCapabilityListenersForDevice({
+      device,
+      shouldTrackRealtimeDevice,
+      desiredListenerKeys,
+      capabilityInstances,
+      onCapabilityValue,
+      logger,
+    });
+  }
+
+  destroyStaleRealtimeCapabilityListeners(capabilityInstances, desiredListenerKeys);
+}
+
+async function syncRealtimeCapabilityListenersForDevice(params: {
+  device: HomeyDeviceLike;
+  shouldTrackRealtimeDevice: (deviceId: string) => boolean;
+  desiredListenerKeys: Set<string>;
+  capabilityInstances: Map<string, CapabilityInstance>;
+  onCapabilityValue: (deviceId: string, deviceLabel: string, capabilityId: string, value: unknown) => void;
+  logger: Logger;
+}): Promise<void> {
+  const {
+    device,
+    shouldTrackRealtimeDevice,
+    desiredListenerKeys,
+    capabilityInstances,
+    onCapabilityValue,
+    logger,
+  } = params;
+  const deviceId = device.id || device.data?.id;
+  if (typeof deviceId !== 'string' || !shouldTrackRealtimeDevice(deviceId)) return;
+  const realtimeCapabilityIds = getRealtimeCapabilityIds(device);
+  if (realtimeCapabilityIds.length === 0) return;
+  const makeCapabilityInstance = (
+    device as { makeCapabilityInstance?: MakeCapabilityInstance }
+  ).makeCapabilityInstance;
+  if (typeof makeCapabilityInstance !== 'function') return;
+
+  try {
+    for (const capabilityId of realtimeCapabilityIds) {
+      await ensureRealtimeCapabilityListener({
+        device,
+        deviceId,
+        capabilityId,
+        desiredListenerKeys,
+        capabilityInstances,
+        makeCapabilityInstance,
+        onCapabilityValue,
+        logger,
+      });
+    }
+  } catch (error) {
+    const label = device.name || deviceId || 'unknown';
+    const message = `Failed to attach capability listener for ${label}`;
+    logger.error(message, error as Error);
+    writeErrorToStderr(message, error);
+  }
+}
+
+async function ensureRealtimeCapabilityListener(params: {
+  device: HomeyDeviceLike;
+  deviceId: string;
+  capabilityId: string;
+  desiredListenerKeys: Set<string>;
+  capabilityInstances: Map<string, CapabilityInstance>;
+  makeCapabilityInstance: MakeCapabilityInstance;
+  onCapabilityValue: (deviceId: string, deviceLabel: string, capabilityId: string, value: unknown) => void;
+  logger: Logger;
+}): Promise<void> {
+  const {
+    device,
+    deviceId,
+    capabilityId,
+    desiredListenerKeys,
+    capabilityInstances,
+    makeCapabilityInstance,
+    onCapabilityValue,
+    logger,
+  } = params;
+  const listenerKey = buildCapabilityListenerKey(deviceId, capabilityId);
+  desiredListenerKeys.add(listenerKey);
+  if (capabilityInstances.has(listenerKey)) return;
+
+  const instance = await makeCapabilityInstance.call(
+    device,
+    capabilityId,
+    (value: unknown) => {
+      onCapabilityValue(deviceId, device.name || deviceId, capabilityId, value);
+    },
+  );
+  capabilityInstances.set(listenerKey, instance);
+  logger.debug(`Real-time ${capabilityId} listener attached for ${device.name || deviceId}`);
+}
+
+function destroyStaleRealtimeCapabilityListeners(
+  capabilityInstances: Map<string, CapabilityInstance>,
+  desiredListenerKeys: Set<string>,
+): void {
+  for (const [listenerKey, instance] of capabilityInstances.entries()) {
+    if (desiredListenerKeys.has(listenerKey)) continue;
+    try {
+      if (typeof instance.destroy === 'function') instance.destroy();
+    } catch (_) {
+      // ignore listener cleanup failures during teardown/reconfiguration
+    }
+    capabilityInstances.delete(listenerKey);
+  }
+}
+
+function getPlanReconcileRealtimeChanges(
+  previous: TargetDeviceSnapshot | null,
+  next: TargetDeviceSnapshot,
+): RealtimeDeviceReconcileChange[] {
+  if (!previous) return [];
+
+  const changes: RealtimeDeviceReconcileChange[] = [];
+  if (previous.currentOn !== next.currentOn) {
+    changes.push({
+      capabilityId: next.controlCapabilityId ?? previous.controlCapabilityId ?? 'onoff',
+      previousValue: formatBinaryState(previous.currentOn),
+      nextValue: formatBinaryState(next.currentOn),
+    });
+  }
+
+  const previousTargetsById = new Map(previous.targets.map((target) => [target.id, target]));
+  for (const nextTarget of next.targets) {
+    const previousTarget = previousTargetsById.get(nextTarget.id);
+    if (!previousTarget || previousTarget.value === nextTarget.value) continue;
+    changes.push({
+      capabilityId: nextTarget.id,
+      previousValue: formatTargetValue(previousTarget.value, previousTarget.unit),
+      nextValue: formatTargetValue(nextTarget.value, nextTarget.unit),
+    });
+  }
+
+  return changes;
+}
+
+export function isRealtimePowerCapability(capabilityId: string): boolean {
+  return capabilityId === REALTIME_POWER_CAPABILITY_PREFIX
+    || capabilityId.startsWith(`${REALTIME_POWER_CAPABILITY_PREFIX}.`);
+}
+
+function isRealtimeControlCapability(
+  capabilityId: string,
+): capabilityId is (typeof REALTIME_CONTROL_CAPABILITY_IDS)[number] {
+  return REALTIME_CONTROL_CAPABILITY_IDS.includes(
+    capabilityId as (typeof REALTIME_CONTROL_CAPABILITY_IDS)[number],
+  );
+}
+
+function buildCapabilityListenerKey(deviceId: string, capabilityId: string): string {
+  return `${deviceId}:${capabilityId}`;
 }

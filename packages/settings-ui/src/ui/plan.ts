@@ -209,6 +209,43 @@ const resolvePlannedPowerState = (
   }
 };
 
+const isRestoreCooldownReason = (reason: string | undefined): boolean => {
+  if (!reason) return false;
+  return reason.startsWith('cooldown (restore') || reason === 'restore throttled';
+};
+
+const isRestoreCooldownState = (dev: PlanDeviceSnapshot): boolean => (
+  dev.plannedState === 'shed' && isRestoreCooldownReason(dev.reason)
+);
+
+const isActiveStatusDevice = (dev: PlanDeviceSnapshot): boolean => (
+  dev.currentState === 'not_applicable' || isOnLikeState(dev.currentState)
+);
+
+const formatActivePlanStatusReason = (reason: string): string => {
+  const restoreMatch = reason.match(/^cooldown \(restore, (.+)\)$/);
+  if (restoreMatch) {
+    return `stabilizing after restore (${restoreMatch[1]})`;
+  }
+
+  const headroomRestoreMatch = reason.match(/^headroom cooldown \((.+); recent PELS restore\)$/);
+  if (headroomRestoreMatch) {
+    return `stabilizing after recent PELS restore (${headroomRestoreMatch[1]})`;
+  }
+
+  const headroomShedMatch = reason.match(/^headroom cooldown \((.+); recent PELS shed\)$/);
+  if (headroomShedMatch) {
+    return `stabilizing after recent PELS shed (${headroomShedMatch[1]})`;
+  }
+
+  const stepDownMatch = reason.match(/^headroom cooldown \((.+); usage (.+)\)$/);
+  if (stepDownMatch) {
+    return `stabilizing after recent step-down (${stepDownMatch[1]}; usage ${stepDownMatch[2]})`;
+  }
+
+  return reason;
+};
+
 const buildPlanPowerLine = (dev: PlanDeviceSnapshot) => {
   const currentPowerRaw = dev.currentState || 'unknown';
   const currentPower = currentPowerRaw === 'not_applicable' ? 'N/A' : currentPowerRaw;
@@ -224,7 +261,11 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
     stateText = 'Capacity control off';
     return createMetaLine('State', stateText);
   }
-  if (dev.plannedState === 'shed') {
+  if (isRestoreCooldownState(dev)) {
+    stateText = dev.currentState === 'off' || dev.currentState === 'unknown'
+      ? 'Restoring'
+      : 'Active';
+  } else if (dev.plannedState === 'shed') {
     stateText = dev.shedAction === 'set_temperature'
       ? 'Shed (lowered temperature)'
       : 'Shed (powered off)';
@@ -260,7 +301,13 @@ const buildPlanUsageLine = (dev: PlanDeviceSnapshot) => {
   return createMetaLine('Usage', usageText);
 };
 
-const buildPlanStatusLine = (dev: PlanDeviceSnapshot) => createMetaLine('Status', dev.reason || 'Waiting for headroom');
+const buildPlanStatusLine = (dev: PlanDeviceSnapshot) => {
+  if (!dev.reason) return createMetaLine('Status', 'Waiting for headroom');
+  const statusText = isActiveStatusDevice(dev)
+    ? formatActivePlanStatusReason(dev.reason)
+    : dev.reason;
+  return createMetaLine('Status', statusText);
+};
 
 const isOnLikeState = (value: string | undefined): boolean => {
   const normalized = (value || '').trim().toLowerCase();
@@ -273,6 +320,10 @@ const resolvePlanBadgeState = (
 ): 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring' => {
   if (dev.controllable === false) return 'uncontrolled';
   if (dev.plannedState === 'inactive') return 'inactive';
+  if (isRestoreCooldownState(dev)) {
+    if (dev.currentState === 'not_applicable' || isOnLikeState(dev.currentState)) return 'active';
+    return 'restoring';
+  }
   if (dev.plannedState === 'shed') return 'shed';
   if (dev.currentState === 'not_applicable') return 'active';
   if (isOnLikeState(dev.currentState)) return 'active';

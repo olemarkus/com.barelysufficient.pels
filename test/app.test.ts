@@ -1,4 +1,6 @@
 import {
+  clearMockHomeyApiDeviceListeners,
+  emitMockHomeyApiDeviceUpdate,
   mockHomeyInstance,
   setMockDrivers,
   MockDevice,
@@ -23,6 +25,7 @@ const flushPromises = () => new Promise<void>((resolve) => {
   }
   setTimeout(() => resolve(), 0);
 });
+const REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS = 350;
 
 const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
   const start = Date.now();
@@ -72,6 +75,7 @@ jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', '
 
 describe('MyApp initialization', () => {
   beforeEach(() => {
+    clearMockHomeyApiDeviceListeners();
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.settings.set('price_scheme', 'flow');
@@ -417,6 +421,289 @@ describe('MyApp initialization', () => {
         lastPowerW: 2000,
         lastTimestamp: now,
       }),
+    });
+  });
+
+  it('reconciles the current plan after an external onoff drift without rebuilding', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('measure_temperature', 21);
+    await heater.setCapabilityValue('target_temperature', 20);
+    await heater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await initApp(app);
+    const reconcileSpy = jest.spyOn((app as any).planService, 'reconcileLatestPlanState');
+    const rebuildSpy = jest.spyOn((app as any).planService, 'rebuildPlanFromCache');
+
+    emitMockHomeyApiDeviceUpdate({
+      id: 'dev-1',
+      name: 'Heater',
+      class: 'heater',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
+      capabilitiesObj: {
+        target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
+        measure_temperature: { id: 'measure_temperature', value: 21, units: '°C' },
+        measure_power: { id: 'measure_power', value: 0 },
+        onoff: { id: 'onoff', value: false },
+      },
+    });
+
+    await waitFor(() => reconcileSpy.mock.calls.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    expect(rebuildSpy).not.toHaveBeenCalled();
+    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+      currentOn: false,
+    });
+  });
+
+  it('reconciles the current plan after an external target drift without rebuilding', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('measure_temperature', 21);
+    await heater.setCapabilityValue('target_temperature', 20);
+    await heater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await initApp(app);
+    const reconcileSpy = jest.spyOn((app as any).planService, 'reconcileLatestPlanState');
+    const rebuildSpy = jest.spyOn((app as any).planService, 'rebuildPlanFromCache');
+
+    emitMockHomeyApiDeviceUpdate({
+      id: 'dev-1',
+      name: 'Heater',
+      class: 'heater',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
+      capabilitiesObj: {
+        target_temperature: { id: 'target_temperature', value: 18, units: '°C' },
+        measure_temperature: { id: 'measure_temperature', value: 21, units: '°C' },
+        measure_power: { id: 'measure_power', value: 0 },
+        onoff: { id: 'onoff', value: true },
+      },
+    });
+
+    await waitFor(() => reconcileSpy.mock.calls.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    expect(rebuildSpy).not.toHaveBeenCalled();
+    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+      targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
+    });
+  });
+
+  it('coalesces multiple realtime device drifts into a single plan reconcile', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('measure_temperature', 21);
+    await heater.setCapabilityValue('target_temperature', 20);
+    await heater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await initApp(app);
+    const reconcileSpy = jest.spyOn((app as any).planService, 'reconcileLatestPlanState');
+
+    emitMockHomeyApiDeviceUpdate({
+      id: 'dev-1',
+      name: 'Heater',
+      class: 'heater',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
+      capabilitiesObj: {
+        target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
+        measure_temperature: { id: 'measure_temperature', value: 21, units: '°C' },
+        measure_power: { id: 'measure_power', value: 0 },
+        onoff: { id: 'onoff', value: false },
+      },
+    });
+    emitMockHomeyApiDeviceUpdate({
+      id: 'dev-1',
+      name: 'Heater',
+      class: 'heater',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
+      capabilitiesObj: {
+        target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
+        measure_temperature: { id: 'measure_temperature', value: 21, units: '°C' },
+        measure_power: { id: 'measure_power', value: 0 },
+        onoff: { id: 'onoff', value: true },
+      },
+    });
+
+    await waitFor(() => reconcileSpy.mock.calls.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    expect(reconcileSpy).toHaveBeenCalledTimes(1);
+    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+      currentOn: true,
+    });
+  });
+
+  it('does not reconcile when a realtime change brings the device back in line with the current plan', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('measure_temperature', 21);
+    await heater.setCapabilityValue('target_temperature', 20);
+    await heater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await initApp(app);
+    const reconcileSpy = jest
+      .spyOn((app as any).planService, 'reconcileLatestPlanState')
+      .mockResolvedValue(false);
+
+    emitMockHomeyApiDeviceUpdate({
+      id: 'dev-1',
+      name: 'Heater',
+      class: 'heater',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
+      capabilitiesObj: {
+        target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
+        measure_temperature: { id: 'measure_temperature', value: 21, units: '°C' },
+        measure_power: { id: 'measure_power', value: 0 },
+        onoff: { id: 'onoff', value: false },
+      },
+    });
+
+    await waitFor(() => reconcileSpy.mock.calls.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    emitMockHomeyApiDeviceUpdate({
+      id: 'dev-1',
+      name: 'Heater',
+      class: 'heater',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
+      capabilitiesObj: {
+        target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
+        measure_temperature: { id: 'measure_temperature', value: 21, units: '°C' },
+        measure_power: { id: 'measure_power', value: 0 },
+        onoff: { id: 'onoff', value: true },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    expect(reconcileSpy).toHaveBeenCalledTimes(1);
+    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+      currentOn: true,
+    });
+  });
+
+  it('opens a per-device reconcile circuit breaker during repeated external drift', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('measure_temperature', 21);
+    await heater.setCapabilityValue('target_temperature', 20);
+    await heater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await initApp(app);
+    const reconcileSpy = jest
+      .spyOn((app as any).planService, 'reconcileLatestPlanState')
+      .mockImplementation(async () => {
+        const snapshot = (app as any).latestTargetSnapshot;
+        const heaterSnapshot = snapshot.find((device: { id: string }) => device.id === 'dev-1');
+        if (heaterSnapshot) heaterSnapshot.currentOn = true;
+        return true;
+      });
+    const logSpy = jest.spyOn(app, 'log');
+
+    const emitOnOffDrift = (value: boolean) => {
+      emitMockHomeyApiDeviceUpdate({
+        id: 'dev-1',
+        name: 'Heater',
+        class: 'heater',
+        capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
+        capabilitiesObj: {
+          target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
+          measure_temperature: { id: 'measure_temperature', value: 21, units: '°C' },
+          measure_power: { id: 'measure_power', value: 0 },
+          onoff: { id: 'onoff', value },
+        },
+      });
+    };
+
+    emitOnOffDrift(false);
+    await waitFor(() => reconcileSpy.mock.calls.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    emitOnOffDrift(false);
+    await waitFor(() => reconcileSpy.mock.calls.length === 2);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    emitOnOffDrift(false);
+    await waitFor(() => reconcileSpy.mock.calls.length === 3);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    emitOnOffDrift(false);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    expect(reconcileSpy).toHaveBeenCalledTimes(3);
+    expect(logSpy.mock.calls.some(
+      (call) => typeof call[0] === 'string'
+        && call[0].includes('Realtime reconcile circuit breaker opened for Heater (dev-1)'),
+    )).toBe(true);
+  });
+
+  it('does not reconcile the current plan for temperature-only realtime device updates', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('measure_temperature', 21);
+    await heater.setCapabilityValue('target_temperature', 20);
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 1000);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await initApp(app);
+    const reconcileSpy = jest.spyOn((app as any).planService, 'reconcileLatestPlanState');
+
+    emitMockHomeyApiDeviceUpdate({
+      id: 'dev-1',
+      name: 'Heater',
+      class: 'heater',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power', 'onoff'],
+      capabilitiesObj: {
+        target_temperature: { id: 'target_temperature', value: 20, units: '°C' },
+        measure_temperature: { id: 'measure_temperature', value: 23, units: '°C' },
+        measure_power: { id: 'measure_power', value: 1000 },
+        onoff: { id: 'onoff', value: true },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    expect(reconcileSpy).not.toHaveBeenCalled();
+    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+      currentTemperature: 23,
+      currentOn: true,
     });
   });
 

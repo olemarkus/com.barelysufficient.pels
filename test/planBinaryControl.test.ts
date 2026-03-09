@@ -68,7 +68,7 @@ describe('plan binary control helpers', () => {
       logContext: 'capacity',
     })).resolves.toBe(true);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('ev1', 'evcharger_charging', true);
-    expect(updateLocalSnapshot).toHaveBeenCalledWith('ev1', { on: true });
+    expect(updateLocalSnapshot).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith('Capacity: resumed charging for EV');
 
     await expect(setBinaryControl({
