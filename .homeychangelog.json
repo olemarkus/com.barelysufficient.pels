@@ -190,5 +190,8 @@
   },
   "1.19.0": {
     "en": "Added per-device diagnostics in the device details view. You can now see recent blocked time, shed and restore activity, activation instability, and penalty history over the last 1, 7, and 21 days to help spot devices that are frequently held back or oscillate.\n\nPELS is also more conservative about reactivating devices that quickly end up being shed again. Devices that flap will now need more headroom before they are allowed back on, which reduces repeated on/off cycling while still keeping shedding fast when capacity is tight."
+  },
+  "1.19.1": {
+    "en": "Fix a bug that prevented device diagnostics from loading."
   }
 }
