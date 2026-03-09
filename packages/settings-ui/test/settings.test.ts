@@ -1,3 +1,5 @@
+import { buildHomeyApiMock, installHomeyMock } from './helpers/homeyApiMock';
+
 const { getDateKeyInTimeZone } = require('../src/ui/timezone');
 
 jest.mock('../src/ui/toast', () => ({
@@ -175,6 +177,30 @@ const buildDom = () => {
         <input id="daily-budget-breakdown" type="checkbox">
       </form>
     </section>
+    <div id="device-detail-overlay" hidden>
+      <div id="device-detail-panel">
+        <div id="device-detail-title"></div>
+        <button id="device-detail-close"></button>
+        <input id="device-detail-managed" type="checkbox">
+        <input id="device-detail-controllable" type="checkbox">
+        <input id="device-detail-price-opt" type="checkbox">
+        <div id="device-detail-modes"></div>
+        <div id="device-detail-delta-section"></div>
+        <input id="device-detail-cheap-delta">
+        <input id="device-detail-expensive-delta">
+        <select id="device-detail-overshoot">
+          <option value="turn_off">Turn off</option>
+          <option value="set_temperature">Set to temperature</option>
+        </select>
+        <div id="device-detail-overshoot-temp-row"></div>
+        <input id="device-detail-overshoot-temp">
+        <details id="device-detail-diagnostics-disclosure">
+          <summary>Advanced diagnostics</summary>
+          <div id="device-detail-diagnostics-status"></div>
+          <div id="device-detail-diagnostics-cards"></div>
+        </details>
+      </div>
+    </div>
     <button id="refresh-button"></button>
     <button id="reset-stats-button"></button>
   `;
@@ -190,194 +216,32 @@ const loadSettingsScript = async () => {
   });
 };
 
-const BOOTSTRAP_SETTING_KEYS = [
-  'capacity_limit_kw',
-  'capacity_margin_kw',
-  'capacity_dry_run',
-  'capacity_priorities',
-  'mode_device_targets',
-  'operating_mode',
-  'controllable_devices',
-  'managed_devices',
-  'mode_aliases',
-  'overshoot_behaviors',
-  'price_optimization_settings',
-  'price_optimization_enabled',
-  'price_scheme',
-  'norway_price_model',
-  'price_area',
-  'provider_surcharge',
-  'price_threshold_percent',
-  'price_min_diff_ore',
-  'nettleie_fylke',
-  'nettleie_orgnr',
-  'nettleie_tariffgruppe',
-  'daily_budget_enabled',
-  'daily_budget_kwh',
-  'daily_budget_price_shaping_enabled',
-  'daily_budget_controlled_weight',
-  'daily_budget_price_flex_share',
-  'daily_budget_breakdown_enabled',
-  'debug_logging_topics',
-  'debug_logging_enabled',
-];
-
-const getHomeySetting = (key) => new Promise((resolve) => {
-  global.Homey.get(key, (_err, value) => resolve(value));
+const buildSettingsHomeyState = (settings: Record<string, unknown> = {}) => ({
+  target_devices_snapshot: [
+    {
+      id: 'dev-1',
+      name: 'Heater',
+      targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+    },
+  ],
+  operating_mode: 'Home',
+  capacity_priorities: {},
+  mode_device_targets: {},
+  controllable_devices: {},
+  managed_devices: {},
+  price_optimization_settings: {},
+  ...settings,
 });
 
-const getUiOverride = (key) => {
-  const uiState = global.Homey && typeof global.Homey === 'object' ? global.Homey.__uiState : null;
-  if (!uiState || !Object.prototype.hasOwnProperty.call(uiState, key)) return undefined;
-  return uiState[key];
-};
-
-const getUiPlan = async () => {
-  const override = getUiOverride('plan');
-  if (override !== undefined) return override;
-  return await getHomeySetting('device_plan_snapshot') || null;
-};
-
-const getUiPower = async () => {
-  const override = getUiOverride('power');
-  if (override !== undefined) return override;
-  return {
-    tracker: await getHomeySetting('power_tracker_state') || null,
-    status: await getHomeySetting('pels_status') || null,
-    heartbeat: await getHomeySetting('app_heartbeat') || null,
-  };
-};
-
-const buildUiBootstrap = async () => ({
-  settings: Object.fromEntries(await Promise.all(BOOTSTRAP_SETTING_KEYS.map(async (key) => [key, await getHomeySetting(key)]))),
-  dailyBudget: null,
-  devices: await getHomeySetting('target_devices_snapshot') || [],
-  plan: await getUiPlan(),
-  power: await getUiPower(),
-  prices: {
-    combinedPrices: await getHomeySetting('combined_prices') || null,
-    electricityPrices: await getHomeySetting('electricity_prices') || null,
-    priceArea: await getHomeySetting('price_area') || null,
-    gridTariffData: await getHomeySetting('nettleie_data') || null,
-    flowToday: await getHomeySetting('flow_prices_today') || null,
-    flowTomorrow: await getHomeySetting('flow_prices_tomorrow') || null,
-    homeyCurrency: await getHomeySetting('homey_prices_currency') || null,
-    homeyToday: await getHomeySetting('homey_prices_today') || null,
-    homeyTomorrow: await getHomeySetting('homey_prices_tomorrow') || null,
-  },
-});
-
-const buildHomeyApiMock = () => jest.fn((method, uri, bodyOrCallback, cb) => {
-  const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
-  if (!callback) return;
-
-  void (async () => {
-    if (method === 'GET' && uri === '/ui_bootstrap') {
-      callback(null, await buildUiBootstrap());
-      return;
-    }
-    if (method === 'GET' && uri === '/ui_devices') {
-      callback(null, { devices: await getHomeySetting('target_devices_snapshot') || [] });
-      return;
-    }
-    if (method === 'GET' && uri === '/ui_plan') {
-      callback(null, { plan: await getUiPlan() });
-      return;
-    }
-    if (method === 'GET' && uri === '/ui_power') {
-      callback(null, await getUiPower());
-      return;
-    }
-    if (method === 'GET' && uri === '/ui_prices') {
-      callback(null, {
-        combinedPrices: await getHomeySetting('combined_prices') || null,
-        electricityPrices: await getHomeySetting('electricity_prices') || null,
-        priceArea: await getHomeySetting('price_area') || null,
-        gridTariffData: await getHomeySetting('nettleie_data') || null,
-        flowToday: await getHomeySetting('flow_prices_today') || null,
-        flowTomorrow: await getHomeySetting('flow_prices_tomorrow') || null,
-        homeyCurrency: await getHomeySetting('homey_prices_currency') || null,
-        homeyToday: await getHomeySetting('homey_prices_today') || null,
-        homeyTomorrow: await getHomeySetting('homey_prices_tomorrow') || null,
-      });
-      return;
-    }
-    if (method === 'POST' && uri === '/ui_refresh_devices') {
-      callback(null, { devices: await getHomeySetting('target_devices_snapshot') || [] });
-      return;
-    }
-    if (method === 'POST' && (uri === '/ui_refresh_prices' || uri === '/ui_refresh_grid_tariff')) {
-      callback(null, {
-        combinedPrices: await getHomeySetting('combined_prices') || null,
-        electricityPrices: await getHomeySetting('electricity_prices') || null,
-        priceArea: await getHomeySetting('price_area') || null,
-        gridTariffData: await getHomeySetting('nettleie_data') || null,
-        flowToday: await getHomeySetting('flow_prices_today') || null,
-        flowTomorrow: await getHomeySetting('flow_prices_tomorrow') || null,
-        homeyCurrency: await getHomeySetting('homey_prices_currency') || null,
-        homeyToday: await getHomeySetting('homey_prices_today') || null,
-        homeyTomorrow: await getHomeySetting('homey_prices_tomorrow') || null,
-      });
-      return;
-    }
-    if (method === 'POST' && uri === '/ui_reset_power_stats') {
-      callback(null, {
-        power: await getUiPower(),
-        dailyBudget: null,
-      });
-      return;
-    }
-    if (method === 'POST' && uri === '/settings_ui_log') {
-      callback(null, { ok: true });
-      return;
-    }
-    if (method === 'GET' && uri === '/daily_budget') {
-      callback(null, null);
-      return;
-    }
-    if (method === 'GET' && uri === '/homey_devices') {
-      callback(null, []);
-      return;
-    }
-    callback(null, null);
-  })();
+const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => installHomeyMock({
+  settings: buildSettingsHomeyState(settings),
 });
 
 describe('settings script', () => {
   beforeEach(() => {
     jest.resetModules();
     buildDom();
-    // @ts-ignore expose mock Homey
-    global.Homey = {
-      ready: jest.fn().mockResolvedValue(undefined),
-      set: jest.fn((key, val, cb) => cb && cb(null)),
-      api: buildHomeyApiMock(),
-      __uiState: {},
-      clock: {
-        getTimezone: () => 'UTC',
-      },
-      i18n: {
-        getTimezone: () => 'UTC',
-      },
-      get: jest.fn((key, cb) => {
-        if (key === 'target_devices_snapshot') {
-          return cb(null, [
-            {
-              id: 'dev-1',
-              name: 'Heater',
-              targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-            },
-          ]);
-        }
-        if (key === 'operating_mode') return cb(null, 'Home');
-        if (key === 'capacity_priorities') return cb(null, {});
-        if (key === 'mode_device_targets') return cb(null, {});
-        if (key === 'controllable_devices') return cb(null, {});
-        if (key === 'managed_devices') return cb(null, {});
-        if (key === 'price_optimization_settings') return cb(null, {});
-        return cb(null, null);
-      }),
-    };
+    installSettingsHomeyMock();
   });
 
   it('renders devices with target temperature capabilities', async () => {
@@ -1432,63 +1296,137 @@ describe('settings script', () => {
     expect(document.querySelector('#daily-budget-legend')).toBeNull();
     expect(document.querySelector('#daily-budget-chart')?.hasAttribute('hidden')).toBe(false);
   });
+
+  it('loads device diagnostics through the Homey API when opening device detail', async () => {
+    global.Homey.__uiState.deviceDiagnostics = {
+      generatedAt: Date.now(),
+      windowDays: 21,
+      diagnosticsByDeviceId: {
+        'dev-1': {
+          currentPenaltyLevel: 2,
+          windows: {
+            '1d': {
+              unmetDemandMs: 2 * 60 * 60 * 1000,
+              blockedByHeadroomMs: 60 * 60 * 1000,
+              blockedByCooldownBackoffMs: 30 * 60 * 1000,
+              targetDeficitMs: 2 * 60 * 60 * 1000,
+              shedCount: 1,
+              restoreCount: 1,
+              failedActivationCount: 1,
+              stableActivationCount: 0,
+              penaltyBumpCount: 1,
+              maxPenaltyLevelSeen: 2,
+              avgShedToRestoreMs: 15 * 60 * 1000,
+              avgRestoreToSetbackMs: 5 * 60 * 1000,
+              minRestoreToSetbackMs: 5 * 60 * 1000,
+              maxRestoreToSetbackMs: 5 * 60 * 1000,
+            },
+            '7d': {
+              unmetDemandMs: 2 * 60 * 60 * 1000,
+              blockedByHeadroomMs: 60 * 60 * 1000,
+              blockedByCooldownBackoffMs: 30 * 60 * 1000,
+              targetDeficitMs: 2 * 60 * 60 * 1000,
+              shedCount: 1,
+              restoreCount: 1,
+              failedActivationCount: 1,
+              stableActivationCount: 0,
+              penaltyBumpCount: 1,
+              maxPenaltyLevelSeen: 2,
+              avgShedToRestoreMs: 15 * 60 * 1000,
+              avgRestoreToSetbackMs: 5 * 60 * 1000,
+              minRestoreToSetbackMs: 5 * 60 * 1000,
+              maxRestoreToSetbackMs: 5 * 60 * 1000,
+            },
+            '21d': {
+              unmetDemandMs: 2 * 60 * 60 * 1000,
+              blockedByHeadroomMs: 60 * 60 * 1000,
+              blockedByCooldownBackoffMs: 30 * 60 * 1000,
+              targetDeficitMs: 2 * 60 * 60 * 1000,
+              shedCount: 1,
+              restoreCount: 1,
+              failedActivationCount: 1,
+              stableActivationCount: 0,
+              penaltyBumpCount: 1,
+              maxPenaltyLevelSeen: 3,
+              avgShedToRestoreMs: 15 * 60 * 1000,
+              avgRestoreToSetbackMs: 5 * 60 * 1000,
+              minRestoreToSetbackMs: 5 * 60 * 1000,
+              maxRestoreToSetbackMs: 5 * 60 * 1000,
+            },
+          },
+        },
+      },
+    };
+
+    await loadSettingsScript();
+    (global.Homey.api as jest.Mock).mockClear();
+
+    await waitFor(() => document.querySelector('[data-device-id="dev-1"]') !== null);
+    const deviceRow = document.querySelector('[data-device-id="dev-1"]') as HTMLElement | null;
+    deviceRow?.click();
+
+    expect((global.Homey.api as jest.Mock).mock.calls.some(
+      (call) => call[0] === 'GET' && call[1] === '/ui_device_diagnostics',
+    )).toBe(false);
+
+    const diagnosticsDisclosure = document.querySelector('#device-detail-diagnostics-disclosure') as HTMLDetailsElement | null;
+    diagnosticsDisclosure!.open = true;
+    diagnosticsDisclosure!.dispatchEvent(new Event('toggle'));
+
+    await waitFor(() => (
+      (document.querySelector('#device-detail-diagnostics-status') as HTMLElement | null)?.textContent?.includes('Current penalty level: L2')
+        === true
+    ));
+
+    expect((global.Homey.api as jest.Mock).mock.calls).toEqual(expect.arrayContaining([
+      expect.arrayContaining(['GET', '/ui_device_diagnostics']),
+    ]));
+    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
+    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
+  });
+
+  it('shows a diagnostics unavailable state when the Homey API route fails', async () => {
+    const baseApi = buildHomeyApiMock(global.Homey);
+    global.Homey.api = jest.fn((method, uri, bodyOrCallback, cb) => {
+      const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
+      if (method === 'GET' && uri === '/ui_device_diagnostics') {
+        callback?.(new Error('Cannot GET /api/app/com.barelysufficient.pels/ui_device_diagnostics'));
+        return;
+      }
+      return baseApi(method, uri, bodyOrCallback, cb);
+    });
+
+    await loadSettingsScript();
+
+    await waitFor(() => document.querySelector('[data-device-id="dev-1"]') !== null);
+    const deviceRow = document.querySelector('[data-device-id="dev-1"]') as HTMLElement | null;
+    deviceRow?.click();
+
+    const diagnosticsDisclosure = document.querySelector('#device-detail-diagnostics-disclosure') as HTMLDetailsElement | null;
+    diagnosticsDisclosure!.open = true;
+    diagnosticsDisclosure!.dispatchEvent(new Event('toggle'));
+
+    await waitFor(() => (
+      (document.querySelector('#device-detail-diagnostics-status') as HTMLElement | null)?.textContent === 'Diagnostics unavailable.'
+    ));
+  });
 });
 
 describe('Plan sorting', () => {
   beforeEach(() => {
     jest.resetModules();
     buildDom();
-    // @ts-ignore expose mock Homey
-    global.Homey = {
-      ready: jest.fn().mockResolvedValue(undefined),
-      set: jest.fn((key, val, cb) => cb && cb(null)),
-      api: buildHomeyApiMock(),
-      __uiState: {},
-      get: jest.fn((key, cb) => {
-        if (key === 'device_plan_snapshot') return cb(null, null);
-        if (key === 'target_devices_snapshot') return cb(null, []);
-        if (key === 'operating_mode') return cb(null, 'Home');
-        if (key === 'capacity_priorities') return cb(null, {});
-        if (key === 'mode_device_targets') return cb(null, {});
-        if (key === 'controllable_devices') return cb(null, {});
-        if (key === 'managed_devices') return cb(null, {});
-        if (key === 'price_optimization_settings') return cb(null, {});
-        return cb(null, null);
-      }),
-      clock: {
-        getTimezone: () => 'UTC',
-      },
-      i18n: {
-        getTimezone: () => 'UTC',
-      },
-    };
+    installSettingsHomeyMock({
+      device_plan_snapshot: null,
+      target_devices_snapshot: [],
+    });
   });
 
   const setupPlanHomeyMock = (planSnapshot: any) => {
-    // @ts-ignore expose mock Homey
-    global.Homey = {
-      ready: jest.fn().mockResolvedValue(undefined),
-      set: jest.fn((key, val, cb) => cb && cb(null)),
-      api: buildHomeyApiMock(),
-      __uiState: {},
-      get: jest.fn((key, cb) => {
-        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
-        if (key === 'target_devices_snapshot') return cb(null, []);
-        if (key === 'operating_mode') return cb(null, 'Home');
-        if (key === 'capacity_priorities') return cb(null, {});
-        if (key === 'mode_device_targets') return cb(null, {});
-        if (key === 'controllable_devices') return cb(null, {});
-        if (key === 'managed_devices') return cb(null, {});
-        if (key === 'price_optimization_settings') return cb(null, {});
-        return cb(null, null);
-      }),
-      clock: {
-        getTimezone: () => 'UTC',
-      },
-      i18n: {
-        getTimezone: () => 'UTC',
-      },
-    };
+    installSettingsHomeyMock({
+      device_plan_snapshot: planSnapshot,
+      target_devices_snapshot: [],
+    });
   };
 
   it('sorts devices by priority ascending within each zone (priority 1 = most important, first)', async () => {
@@ -1662,29 +1600,10 @@ describe('Plan sorting', () => {
       ],
     };
 
-    // @ts-ignore expose mock Homey
-    global.Homey = {
-      ready: jest.fn().mockResolvedValue(undefined),
-      set: jest.fn((key, val, cb) => cb && cb(null)),
-      api: buildHomeyApiMock(),
-      get: jest.fn((key, cb) => {
-        if (key === 'device_plan_snapshot') return cb(null, planSnapshot);
-        if (key === 'target_devices_snapshot') return cb(null, []);
-        if (key === 'operating_mode') return cb(null, 'Home');
-        if (key === 'capacity_priorities') return cb(null, {});
-        if (key === 'mode_device_targets') return cb(null, {});
-        if (key === 'controllable_devices') return cb(null, {});
-        if (key === 'managed_devices') return cb(null, {});
-        if (key === 'price_optimization_settings') return cb(null, {});
-        return cb(null, null);
-      }),
-      clock: {
-        getTimezone: () => 'UTC',
-      },
-      i18n: {
-        getTimezone: () => 'UTC',
-      },
-    };
+    installSettingsHomeyMock({
+      device_plan_snapshot: planSnapshot,
+      target_devices_snapshot: [],
+    });
 
     await loadSettingsScript();
 
@@ -1718,23 +1637,20 @@ describe('Plan sorting', () => {
       return cb(null, null);
     });
 
-    // @ts-ignore override mock Homey
-    global.Homey = {
-      ready: jest.fn().mockResolvedValue(undefined),
-      set: jest.fn((key, val, cb) => cb && cb(null)),
-      get: getSpy,
-      api: buildHomeyApiMock(),
-      on: jest.fn((event, cb) => {
-        if (!listeners[event]) listeners[event] = [];
-        listeners[event].push(cb);
-      }),
-      clock: {
-        getTimezone: () => 'UTC',
+    installSettingsHomeyMock({
+      device_plan_snapshot: {
+        meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+        devices: [],
       },
-      i18n: {
-        getTimezone: () => 'UTC',
-      },
-    };
+      target_devices_snapshot: [],
+      capacity_priorities: { Home: {} },
+      mode_device_targets: { Home: {} },
+    });
+    global.Homey.get = getSpy;
+    global.Homey.on = jest.fn((event, cb) => {
+      if (!listeners[event]) listeners[event] = [];
+      listeners[event].push(cb);
+    });
 
     await loadSettingsScript();
 
@@ -1789,16 +1705,12 @@ describe('Plan sorting', () => {
       heartbeat: Date.now(),
     };
 
-    // @ts-ignore override mock Homey
-    global.Homey = {
-      ...global.Homey,
-      api: buildHomeyApiMock(),
-      __uiState: { power: stalePower },
-      on: jest.fn((event, cb) => {
-        if (!listeners[event]) listeners[event] = [];
-        listeners[event].push(cb);
-      }),
-    };
+    global.Homey.__uiState = { power: stalePower };
+    global.Homey.on = jest.fn((event, cb) => {
+      if (!listeners[event]) listeners[event] = [];
+      listeners[event].push(cb);
+    });
+    global.Homey.api = buildHomeyApiMock(global.Homey);
 
     await loadSettingsScript();
 
@@ -1881,6 +1793,18 @@ describe('Plan sorting', () => {
     const planGetCalls = (global.Homey.api as jest.Mock).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_plan');
     expect(planGetCalls).toHaveLength(2);
+  });
+
+  it('returns a Homey-style 404 for API paths not declared in app.json', async () => {
+    const api = buildHomeyApiMock(global.Homey);
+
+    const result = await new Promise<{ err: Error | null; value?: unknown }>((resolve) => {
+      api('GET', '/definitely_missing_route', {}, (err, value) => resolve({ err, value }));
+    });
+
+    expect(result.value).toBeUndefined();
+    expect(result.err).toBeInstanceOf(Error);
+    expect(result.err?.message).toContain('Cannot GET /api/app/com.barelysufficient.pels/definitely_missing_route');
   });
 
   it('savePriorities assigns priority 1 to top device', () => {

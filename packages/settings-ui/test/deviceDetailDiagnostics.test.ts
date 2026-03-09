@@ -1,4 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import { createHomeyMock, type MockHomeyClient } from './helpers/homeyApiMock';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -24,8 +25,11 @@ const buildDom = () => {
     </select>
     <div id="device-detail-overshoot-temp-row"></div>
     <input id="device-detail-overshoot-temp">
-    <div id="device-detail-diagnostics-status"></div>
-    <div id="device-detail-diagnostics-cards"></div>
+    <details id="device-detail-diagnostics-disclosure">
+      <summary>Advanced diagnostics</summary>
+      <div id="device-detail-diagnostics-status"></div>
+      <div id="device-detail-diagnostics-cards"></div>
+    </details>
   `;
 };
 
@@ -48,7 +52,7 @@ describe('device detail diagnostics', () => {
 
   it('renders lazy-loaded diagnostics in the device detail panel', async () => {
     buildDom();
-    const getApiReadModel = jest.fn().mockResolvedValue({
+    const diagnosticsPayload = {
       generatedAt: Date.now(),
       windowDays: 21,
       diagnosticsByDeviceId: {
@@ -106,13 +110,7 @@ describe('device detail diagnostics', () => {
           },
         },
       },
-    });
-
-    jest.doMock('../src/ui/homey', () => ({
-      getSetting: jest.fn().mockResolvedValue({}),
-      setSetting: jest.fn().mockResolvedValue(undefined),
-      getApiReadModel,
-    }));
+    };
     jest.doMock('../src/ui/devices', () => ({
       renderDevices: jest.fn(),
     }));
@@ -130,10 +128,20 @@ describe('device detail diagnostics', () => {
       logSettingsError: jest.fn().mockResolvedValue(undefined),
     }));
 
+    let initDeviceDetailHandlers!: typeof import('../src/ui/deviceDetail').initDeviceDetailHandlers;
     let openDeviceDetail!: typeof import('../src/ui/deviceDetail').openDeviceDetail;
     let state!: typeof import('../src/ui/state').state;
+    let homey!: MockHomeyClient;
 
     jest.isolateModules(() => {
+      const homeyModule = require('../src/ui/homey') as typeof import('../src/ui/homey');
+      homey = createHomeyMock({
+        uiState: {
+          deviceDiagnostics: diagnosticsPayload,
+        },
+      });
+      homeyModule.setHomeyClient(homey);
+      ({ initDeviceDetailHandlers } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
       ({ openDeviceDetail } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
       ({ state } = require('../src/ui/state') as typeof import('../src/ui/state'));
     });
@@ -146,11 +154,23 @@ describe('device detail diagnostics', () => {
     state.modeTargets = { Home: { 'heater-1': 22 } };
     state.activeMode = 'Home';
     state.editingMode = 'Home';
+    initDeviceDetailHandlers();
 
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    expect(getApiReadModel).toHaveBeenCalledWith('/ui_device_diagnostics');
+    expect(homey.api.mock.calls.some(
+      (call) => call[0] === 'GET' && call[1] === '/ui_device_diagnostics',
+    )).toBe(false);
+
+    const diagnosticsDisclosure = document.getElementById('device-detail-diagnostics-disclosure') as HTMLDetailsElement | null;
+    diagnosticsDisclosure!.open = true;
+    diagnosticsDisclosure!.dispatchEvent(new Event('toggle'));
+    await flushPromises();
+
+    expect(homey.api.mock.calls).toEqual(expect.arrayContaining([
+      expect.arrayContaining(['GET', '/ui_device_diagnostics']),
+    ]));
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Current penalty level: L2');
     expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(3);
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
@@ -159,17 +179,11 @@ describe('device detail diagnostics', () => {
 
   it('shows an empty diagnostics state when the device has no recorded diagnostics yet', async () => {
     buildDom();
-    const getApiReadModel = jest.fn().mockResolvedValue({
+    const diagnosticsPayload = {
       generatedAt: Date.now(),
       windowDays: 21,
       diagnosticsByDeviceId: {},
-    });
-
-    jest.doMock('../src/ui/homey', () => ({
-      getSetting: jest.fn().mockResolvedValue({}),
-      setSetting: jest.fn().mockResolvedValue(undefined),
-      getApiReadModel,
-    }));
+    };
     jest.doMock('../src/ui/devices', () => ({
       renderDevices: jest.fn(),
     }));
@@ -187,10 +201,20 @@ describe('device detail diagnostics', () => {
       logSettingsError: jest.fn().mockResolvedValue(undefined),
     }));
 
+    let initDeviceDetailHandlers!: typeof import('../src/ui/deviceDetail').initDeviceDetailHandlers;
     let openDeviceDetail!: typeof import('../src/ui/deviceDetail').openDeviceDetail;
     let state!: typeof import('../src/ui/state').state;
+    let homey!: MockHomeyClient;
 
     jest.isolateModules(() => {
+      const homeyModule = require('../src/ui/homey') as typeof import('../src/ui/homey');
+      homey = createHomeyMock({
+        uiState: {
+          deviceDiagnostics: diagnosticsPayload,
+        },
+      });
+      homeyModule.setHomeyClient(homey);
+      ({ initDeviceDetailHandlers } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
       ({ openDeviceDetail } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
       ({ state } = require('../src/ui/state') as typeof import('../src/ui/state'));
     });
@@ -203,10 +227,23 @@ describe('device detail diagnostics', () => {
     state.modeTargets = { Home: { 'heater-1': 22 } };
     state.activeMode = 'Home';
     state.editingMode = 'Home';
+    initDeviceDetailHandlers();
 
     openDeviceDetail('heater-1');
     await flushPromises();
 
+    expect(homey.api.mock.calls.some(
+      (call) => call[0] === 'GET' && call[1] === '/ui_device_diagnostics',
+    )).toBe(false);
+
+    const diagnosticsDisclosure = document.getElementById('device-detail-diagnostics-disclosure') as HTMLDetailsElement | null;
+    diagnosticsDisclosure!.open = true;
+    diagnosticsDisclosure!.dispatchEvent(new Event('toggle'));
+    await flushPromises();
+
+    expect(homey.api.mock.calls).toEqual(expect.arrayContaining([
+      expect.arrayContaining(['GET', '/ui_device_diagnostics']),
+    ]));
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toBe('No diagnostics recorded yet.');
     expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(0);
   });

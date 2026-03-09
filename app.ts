@@ -115,7 +115,6 @@ class PelsApp extends Homey.App {
   private stopPerfLogging?: () => void;
   private stopResourceWarningListeners?: () => void;
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
-
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     this.deviceManager.updateLocalSnapshot(deviceId, updates);
   }
@@ -352,7 +351,6 @@ class PelsApp extends Homey.App {
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
     if (this.debugLoggingTopics.has(topic)) this.log(...args);
   }
-
   private startHeartbeat(): void {
     const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now());
     updateHeartbeat();
@@ -471,9 +469,6 @@ class PelsApp extends Homey.App {
   }
   private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }
-  public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
-    return this.deviceDiagnosticsService.getUiPayload();
-  }
   public getLatestPlanSnapshotForUi(): DevicePlan | null { return this.planService?.getLatestPlanSnapshot() ?? null; }
   private emitSettingsUiPowerUpdated(): void {
     const api = this.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
@@ -744,11 +739,12 @@ class PelsApp extends Homey.App {
   private evaluateHeadroomForDevice = (
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
   ): HeadroomForDeviceDecision | null => this.planService.evaluateHeadroomForDevice(params);
+  public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
+    return this.deviceDiagnosticsService?.getUiPayload?.()
+      ?? { generatedAt: Date.now(), windowDays: 21, diagnosticsByDeviceId: {} };
+  }
   public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
-  private applySheddingToDevice = (
-    deviceId: string,
-    deviceName?: string,
-    reason?: string,
-  ) => this.planService.applySheddingToDevice(deviceId, deviceName, reason);
+  private applySheddingToDevice = (deviceId: string, deviceName?: string, reason?: string) =>
+    this.planService.applySheddingToDevice(deviceId, deviceName, reason);
 }
 export = PelsApp;
