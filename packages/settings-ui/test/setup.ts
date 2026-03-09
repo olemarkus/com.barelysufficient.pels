@@ -106,6 +106,13 @@ beforeAll(() => {
   consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 
+afterEach(() => {
+  delete (globalThis as { Homey?: unknown }).Homey;
+  if (typeof window !== 'undefined') {
+    delete (window as Window & { Homey?: unknown }).Homey;
+  }
+});
+
 afterAll(() => {
   consoleErrorSpy.mockRestore();
   consoleLogSpy.mockRestore();

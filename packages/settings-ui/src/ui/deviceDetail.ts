@@ -1,5 +1,6 @@
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types';
 import {
+  deviceDetailDiagnosticsDisclosure,
   deviceDetailOverlay,
   deviceDetailTitle,
   deviceDetailClose,
@@ -38,7 +39,9 @@ import {
   normalizeShedTemperature,
 } from '../../../shared-domain/src/utils/airtreatmentShedTemperature';
 import {
+  isDeviceDetailDiagnosticsExpanded,
   refreshDeviceDetailDiagnostics,
+  resetDeviceDetailDiagnosticsView,
   resetDeviceDetailDiagnosticsRequests,
   showDeviceDetailDiagnosticsLoading,
 } from './deviceDetailDiagnostics';
@@ -295,6 +298,7 @@ export const openDeviceDetail = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   if (!device) return;
 
+  resetDeviceDetailDiagnosticsRequests();
   currentDetailDeviceId = deviceId;
 
   setDeviceDetailTitle(device.name);
@@ -308,16 +312,13 @@ export const openDeviceDetail = (deviceId: string) => {
   updateDeltaSectionVisibility();
   updateShedTempVisibility();
 
+  resetDeviceDetailDiagnosticsView();
   showDeviceDetailOverlay();
-  showDeviceDetailDiagnosticsLoading();
-  void refreshDeviceDetailDiagnostics({
-    deviceId,
-    isCurrentDevice: () => currentDetailDeviceId === deviceId,
-  });
 };
 
 const closeDeviceDetail = () => {
   resetDeviceDetailDiagnosticsRequests();
+  resetDeviceDetailDiagnosticsView();
   currentDetailDeviceId = null;
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = true;
@@ -443,6 +444,22 @@ const initDeviceDetailOpenHandler = () => {
   });
 };
 
+const initDeviceDetailDiagnosticsHandler = () => {
+  deviceDetailDiagnosticsDisclosure?.addEventListener('toggle', () => {
+    if (!currentDetailDeviceId) return;
+    if (!isDeviceDetailDiagnosticsExpanded()) {
+      resetDeviceDetailDiagnosticsRequests();
+      return;
+    }
+    const deviceId = currentDetailDeviceId;
+    showDeviceDetailDiagnosticsLoading();
+    void refreshDeviceDetailDiagnostics({
+      deviceId,
+      isCurrentDevice: () => currentDetailDeviceId === deviceId && isDeviceDetailDiagnosticsExpanded(),
+    });
+  });
+};
+
 const refreshOpenDeviceDetail = () => {
   if (!currentDetailDeviceId) return;
   const device = getDeviceById(currentDetailDeviceId);
@@ -464,17 +481,19 @@ const initDeviceDetailRefreshHandlers = () => {
     if (!currentDetailDeviceId) return;
     const deviceId = currentDetailDeviceId;
     refreshOpenDeviceDetail();
+    if (!isDeviceDetailDiagnosticsExpanded()) return;
     void refreshDeviceDetailDiagnostics({
       deviceId,
-      isCurrentDevice: () => currentDetailDeviceId === deviceId,
+      isCurrentDevice: () => currentDetailDeviceId === deviceId && isDeviceDetailDiagnosticsExpanded(),
     });
   });
   document.addEventListener('plan-updated', () => {
     if (!currentDetailDeviceId) return;
+    if (!isDeviceDetailDiagnosticsExpanded()) return;
     const deviceId = currentDetailDeviceId;
     void refreshDeviceDetailDiagnostics({
       deviceId,
-      isCurrentDevice: () => currentDetailDeviceId === deviceId,
+      isCurrentDevice: () => currentDetailDeviceId === deviceId && isDeviceDetailDiagnosticsExpanded(),
     });
   });
 };
@@ -485,6 +504,7 @@ export const initDeviceDetailHandlers = () => {
   initDeviceDetailControllableHandler();
   initDeviceDetailPriceOptHandlers();
   initDeviceDetailShedHandlers();
+  initDeviceDetailDiagnosticsHandler();
   initDeviceDetailEscapeHandler();
   initDeviceDetailOpenHandler();
   initDeviceDetailRefreshHandlers();

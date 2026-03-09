@@ -1530,6 +1530,44 @@ input[type="text"]:focus {
   font-size: var(--font-size-sm);
 }
 
+.detail-disclosure {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 14px 16px;
+}
+
+.detail-disclosure__summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+.detail-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-disclosure__summary::after {
+  content: '+';
+  float: right;
+  color: var(--muted);
+}
+
+.detail-disclosure[open] > .detail-disclosure__summary {
+  margin-bottom: 8px;
+}
+
+.detail-disclosure[open] > .detail-disclosure__summary::after {
+  content: '-';
+}
+
+.detail-disclosure > .muted {
+  margin: 0 0 12px;
+  font-size: var(--font-size-sm);
+}
+
 .detail-controls {
   display: flex;
   flex-direction: column;

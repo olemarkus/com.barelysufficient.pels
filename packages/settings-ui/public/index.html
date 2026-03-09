@@ -343,7 +343,7 @@
       <div class="card__header">
         <div>
           <p class="eyebrow">Advanced</p>
-          <h2>Diagnostics</h2>
+          <h2>Device diagnostics</h2>
         </div>
       </div>
       <details class="settings-collapse" open>
@@ -380,7 +380,7 @@
             <label class="field checkbox-field">
               <input id="debug-topic-diagnostics" data-debug-topic="diagnostics" type="checkbox">
               <span class="checkbox-field__content">
-                <span class="field__label">Diagnostics</span>
+                <span class="field__label">Device diagnostics</span>
                 <small class="field__hint">Per-device starvation, hysteresis, penalty, and diagnostics persistence.</small>
               </span>
             </label>
@@ -761,10 +761,12 @@
         </section>
 
         <section class="detail-section" id="device-detail-diagnostics-section">
-          <h3>Diagnostics</h3>
-          <p class="muted">Read-only blocked time, activation instability, and penalty history over the last 21 days.</p>
-          <div id="device-detail-diagnostics-status" class="detail-diagnostics-status">Loading diagnostics…</div>
-          <div id="device-detail-diagnostics-cards" class="detail-diagnostics-grid"></div>
+          <details id="device-detail-diagnostics-disclosure" class="detail-disclosure">
+            <summary class="detail-disclosure__summary">Advanced diagnostics</summary>
+            <p class="muted">Read-only blocked time, activation instability, and penalty history over the last 21 days.</p>
+            <div id="device-detail-diagnostics-status" class="detail-diagnostics-status"></div>
+            <div id="device-detail-diagnostics-cards" class="detail-diagnostics-grid"></div>
+          </details>
         </section>
       </div>
 

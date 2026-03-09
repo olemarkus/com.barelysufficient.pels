@@ -270,6 +270,20 @@ describe('settingsUiApi', () => {
     });
   });
 
+  it('returns an empty diagnostics payload when the diagnostics API throws', () => {
+    const homey = createHomey();
+    homey.getDeviceDiagnosticsUiPayload.mockImplementation(() => {
+      throw new Error('diagnostics not ready');
+    });
+
+    expect(getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toEqual({
+      generatedAt: expect.any(Number),
+      windowDays: 21,
+      diagnosticsByDeviceId: {},
+    });
+    expect(homey.error).toHaveBeenCalledWith('Device diagnostics API failed', expect.any(Error));
+  });
+
   it('prefers the live in-memory plan snapshot over the persisted settings snapshot', () => {
     const homey = createHomey({
       latestPlanSnapshot: { devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }] },

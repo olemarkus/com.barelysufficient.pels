@@ -60,6 +60,10 @@
       "method": "GET",
       "path": "/ui_prices"
     },
+    "ui_device_diagnostics": {
+      "method": "GET",
+      "path": "/ui_device_diagnostics"
+    },
     "get_daily_budget": {
       "method": "GET",
       "path": "/daily_budget"

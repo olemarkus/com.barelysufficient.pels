@@ -101,6 +101,12 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
   };
 };
 
+const buildEmptyDeviceDiagnosticsPayload = (): SettingsUiDeviceDiagnosticsResponse => ({
+  generatedAt: Date.now(),
+  windowDays: 21,
+  diagnosticsByDeviceId: {},
+});
+
 export const buildSettingsUiBootstrap = ({ homey }: ApiContext): SettingsUiBootstrap => {
   const app = getApp(homey);
   return {
@@ -131,14 +137,15 @@ export const getSettingsUiPricesPayload = ({ homey }: ApiContext): SettingsUiPri
 
 export const getSettingsUiDeviceDiagnosticsPayload = ({ homey }: ApiContext): SettingsUiDeviceDiagnosticsResponse => {
   const app = getApp(homey);
-  if (app?.getDeviceDiagnosticsUiPayload) {
-    return app.getDeviceDiagnosticsUiPayload();
+  if (!app?.getDeviceDiagnosticsUiPayload) {
+    return buildEmptyDeviceDiagnosticsPayload();
   }
-  return {
-    generatedAt: Date.now(),
-    windowDays: 21,
-    diagnosticsByDeviceId: {},
-  };
+  try {
+    return app.getDeviceDiagnosticsUiPayload();
+  } catch (error) {
+    app.error?.('Device diagnostics API failed', error as Error);
+    return buildEmptyDeviceDiagnosticsPayload();
+  }
 };
 
 export const refreshSettingsUiDevices = async ({ homey }: ApiContext): Promise<SettingsUiDevicesPayload> => {

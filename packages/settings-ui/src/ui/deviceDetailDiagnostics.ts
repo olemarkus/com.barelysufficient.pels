@@ -4,7 +4,11 @@ import type {
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../../contracts/src/deviceDiagnosticsTypes';
 import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../contracts/src/settingsUiApi';
-import { deviceDetailDiagnosticsCards, deviceDetailDiagnosticsStatus } from './dom';
+import {
+  deviceDetailDiagnosticsCards,
+  deviceDetailDiagnosticsDisclosure,
+  deviceDetailDiagnosticsStatus,
+} from './dom';
 import { getApiReadModel } from './homey';
 import { logSettingsError } from './logging';
 
@@ -105,6 +109,15 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
 export const showDeviceDetailDiagnosticsLoading = () => {
   renderDeviceDiagnosticsEmpty('Loading diagnostics…');
 };
+
+export const resetDeviceDetailDiagnosticsView = () => {
+  if (deviceDetailDiagnosticsDisclosure) {
+    deviceDetailDiagnosticsDisclosure.open = false;
+  }
+  renderDeviceDiagnosticsEmpty('');
+};
+
+export const isDeviceDetailDiagnosticsExpanded = () => deviceDetailDiagnosticsDisclosure?.open === true;
 
 export const resetDeviceDetailDiagnosticsRequests = () => {
   diagnosticsRequestSeq += 1;

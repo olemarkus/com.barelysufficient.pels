@@ -2,7 +2,7 @@ export const DEBUG_LOGGING_TOPICS = [
   { id: 'plan', label: 'Plan engine', description: 'Shedding, restore, and soft-limit decisions.' },
   {
     id: 'diagnostics',
-    label: 'Diagnostics',
+    label: 'Device diagnostics',
     description: 'Per-device starvation, hysteresis, penalty, and diagnostics persistence.',
   },
   { id: 'price', label: 'Price optimization', description: 'Spot prices, tariffs, and price shaping.' },

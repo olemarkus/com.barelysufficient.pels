@@ -217,7 +217,7 @@ const DEBUG_TOPICS: Array<{ topic: string; label: string; hint: string }> = [
   { topic: 'plan', label: 'Plan engine', hint: 'Shedding, restore, and soft-limit decisions.' },
   {
     topic: 'diagnostics',
-    label: 'Diagnostics',
+    label: 'Device diagnostics',
     hint: 'Per-device starvation, hysteresis, penalty, and diagnostics persistence.',
   },
   { topic: 'price', label: 'Price optimization', hint: 'Spot prices, tariffs, and price shaping.' },

@@ -139,5 +139,8 @@ export const deviceDetailExpensiveDelta = document.querySelector('#device-detail
 export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
 export const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
 export const deviceDetailShedTemp = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
+export const deviceDetailDiagnosticsDisclosure = document.querySelector(
+  '#device-detail-diagnostics-disclosure',
+) as HTMLDetailsElement | null;
 export const deviceDetailDiagnosticsStatus = qs('#device-detail-diagnostics-status');
 export const deviceDetailDiagnosticsCards = qs('#device-detail-diagnostics-cards');
