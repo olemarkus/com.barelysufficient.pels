@@ -90,13 +90,12 @@ export function handleRealtimeCapabilityUpdate(params: {
     capabilityId,
     value,
   });
-  const isLocalEcho = result.shouldReconcilePlan
-    && consumeMatchingLocalCapabilityWrite({
-      recentLocalCapabilityWrites,
-      deviceId,
-      capabilityId,
-      value,
-    });
+  const isLocalEcho = consumeMatchingLocalCapabilityWrite({
+    recentLocalCapabilityWrites,
+    deviceId,
+    capabilityId,
+    value,
+  });
   let reconcileSuffix = '';
   if (isLocalEcho) {
     reconcileSuffix = ' [local echo]';

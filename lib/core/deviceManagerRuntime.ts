@@ -174,14 +174,13 @@ export async function syncRealtimeDeviceUpdateListener(params: {
       logger,
     });
   }
-  detachRealtimeDeviceUpdateListener({
+  return detachRealtimeDeviceUpdateListener({
     devicesApi,
     attached,
     listener,
     eventName,
     logger,
   });
-  return false;
 }
 
 export function detachRealtimeDeviceUpdateListener(params: {
@@ -201,8 +200,11 @@ export function detachRealtimeDeviceUpdateListener(params: {
     eventName,
     logger,
   } = params;
-  if (!attached || typeof devicesApi?.off !== 'function') {
+  if (!attached) {
     return false;
+  }
+  if (typeof devicesApi?.off !== 'function') {
+    return attached;
   }
   try {
     devicesApi.off.call(devicesApi, eventName, listener);
@@ -217,6 +219,7 @@ export function detachRealtimeDeviceUpdateListener(params: {
     const message = `Failed to detach ${eventName} listener`;
     logger.error(message, error as Error);
     writeErrorToStderr(message, error);
+    return attached;
   }
   return false;
 }

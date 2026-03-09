@@ -65,12 +65,14 @@ export function scheduleRealtimeDeviceReconcile(params: {
 export async function flushRealtimeDeviceReconcileQueue(params: {
   state: RealtimeDeviceReconcileState;
   reconcile: () => Promise<boolean>;
+  shouldRecordAttempt?: (event: RealtimeDeviceReconcileEvent) => boolean;
   logDebug: (message: string) => void;
   log: (message: string) => void;
 }): Promise<void> {
   const {
     state,
     reconcile,
+    shouldRecordAttempt,
     logDebug,
     log,
   } = params;
@@ -89,9 +91,13 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
 
   const reconciled = await reconcile();
   if (!reconciled) return;
+  const driftedEvents = shouldRecordAttempt
+    ? eligibleEvents.filter((event) => shouldRecordAttempt(event))
+    : eligibleEvents;
+  if (driftedEvents.length === 0) return;
   recordRealtimeDeviceReconcileAttempts({
     state,
-    events: eligibleEvents,
+    events: driftedEvents,
     now: Date.now(),
     log,
   });

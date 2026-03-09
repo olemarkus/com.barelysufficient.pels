@@ -53,7 +53,6 @@ export function canRefreshPlanSnapshotFromLiveState(
   }
   return true;
 }
-
 export function hasPlanExecutionDriftForDevice(
   previousPlan: DevicePlan,
   liveDevices: PlanInputDevice[],

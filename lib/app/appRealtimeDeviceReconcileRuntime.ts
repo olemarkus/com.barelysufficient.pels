@@ -8,6 +8,20 @@ import {
 import { hasPlanExecutionDriftForDevice } from '../plan/planReconcileState';
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
 
+export function hasRealtimeDeviceReconcileDrift(params: {
+  event: RealtimeDeviceReconcileEvent;
+  latestPlanSnapshot: DevicePlan | null;
+  liveDevices: PlanInputDevice[];
+}): boolean {
+  const {
+    event,
+    latestPlanSnapshot,
+    liveDevices,
+  } = params;
+  if (!latestPlanSnapshot) return true;
+  return hasPlanExecutionDriftForDevice(latestPlanSnapshot, liveDevices, event.deviceId);
+}
+
 export function shouldQueueRealtimeDeviceReconcile(params: {
   event: RealtimeDeviceReconcileEvent;
   latestPlanSnapshot: DevicePlan | null;
@@ -20,9 +34,11 @@ export function shouldQueueRealtimeDeviceReconcile(params: {
     liveDevices,
     logDebug,
   } = params;
-  if (!latestPlanSnapshot) return true;
-
-  const hasDrift = hasPlanExecutionDriftForDevice(latestPlanSnapshot, liveDevices, event.deviceId);
+  const hasDrift = hasRealtimeDeviceReconcileDrift({
+    event,
+    latestPlanSnapshot,
+    liveDevices,
+  });
   if (hasDrift) return true;
 
   logDebug(
@@ -36,8 +52,8 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
   event: RealtimeDeviceReconcileEvent;
   state: RealtimeDeviceReconcileState;
   hasPendingTimer: boolean;
-  latestPlanSnapshot: DevicePlan | null;
-  liveDevices: PlanInputDevice[];
+  getLatestPlanSnapshot: () => DevicePlan | null;
+  getLiveDevices: () => PlanInputDevice[];
   logDebug: (message: string) => void;
   log: (message: string) => void;
   reconcile: () => Promise<boolean>;
@@ -48,8 +64,8 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
     event,
     state,
     hasPendingTimer,
-    latestPlanSnapshot,
-    liveDevices,
+    getLatestPlanSnapshot,
+    getLiveDevices,
     logDebug,
     log,
     reconcile,
@@ -58,8 +74,8 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
   } = params;
   if (!shouldQueueRealtimeDeviceReconcile({
     event,
-    latestPlanSnapshot,
-    liveDevices,
+    latestPlanSnapshot: getLatestPlanSnapshot(),
+    liveDevices: getLiveDevices(),
     logDebug,
   })) {
     return undefined;
@@ -75,6 +91,11 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
       await flushRealtimeDeviceReconcileQueue({
         state,
         reconcile,
+        shouldRecordAttempt: (nextEvent) => hasRealtimeDeviceReconcileDrift({
+          event: nextEvent,
+          latestPlanSnapshot: getLatestPlanSnapshot(),
+          liveDevices: getLiveDevices(),
+        }),
         logDebug,
         log,
       });

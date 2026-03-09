@@ -938,6 +938,51 @@ describe('DeviceManager', () => {
             });
         });
 
+        it('consumes local target writes even when the first realtime echo has no drift', async () => {
+            mockGetDevices.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                    makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                        makeCapabilityInstanceImpl(destroyInstanceMock),
+                    ),
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = jest.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            await deviceManager.setCapability('dev1', 'target_temperature', 18);
+
+            const targetCallback = getCapabilityCallback(makeInstanceMock, 'target_temperature');
+            targetCallback(18);
+            expect(realtimeListener).not.toHaveBeenCalled();
+
+            const snapshot = deviceManager.getSnapshot();
+            snapshot[0].targets[0].value = 20;
+
+            targetCallback(18);
+
+            expect(realtimeListener).toHaveBeenCalledWith({
+                deviceId: 'dev1',
+                name: 'Heater',
+                capabilityId: 'target_temperature',
+                changes: [{
+                    capabilityId: 'target_temperature',
+                    previousValue: '20°C',
+                    nextValue: '18°C',
+                }],
+            });
+        });
         it('updates local state on generic device.update events', async () => {
             await deviceManager.refreshSnapshot();
             const realtimeListener = jest.fn();

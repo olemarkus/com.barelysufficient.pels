@@ -349,8 +349,8 @@ class PelsApp extends Homey.App {
       event,
       state: this.realtimeDeviceReconcileState,
       hasPendingTimer: Boolean(this.realtimeDeviceReconcileTimer),
-      latestPlanSnapshot: this.planService?.getLatestPlanSnapshot() ?? null,
-      liveDevices: this.latestTargetSnapshot,
+      getLatestPlanSnapshot: () => this.planService?.getLatestPlanSnapshot() ?? null,
+      getLiveDevices: () => this.latestTargetSnapshot,
       logDebug: (message) => this.logDebug('devices', message),
       log: (message) => this.log(message),
       reconcile: () => this.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),
@@ -361,7 +361,8 @@ class PelsApp extends Homey.App {
   }
   private startHeartbeat(): void {
     const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now());
-    updateHeartbeat(); this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
+    updateHeartbeat();
+    this.heartbeatInterval = setInterval(updateHeartbeat, 30 * 1000);
   }
   private startPriceLowestTriggerChecker(): void {
     if (this.stopPriceLowestTriggerChecker) this.stopPriceLowestTriggerChecker();

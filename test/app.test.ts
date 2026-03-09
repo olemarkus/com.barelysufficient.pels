@@ -607,7 +607,7 @@ describe('MyApp initialization', () => {
     });
   });
 
-  it('opens a per-device reconcile circuit breaker during repeated external drift', async () => {
+  it('does not open the reconcile circuit breaker when reconcile clears the drift', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('measure_temperature', 21);
     await heater.setCapabilityValue('target_temperature', 20);
@@ -661,11 +661,20 @@ describe('MyApp initialization', () => {
     emitOnOffDrift(false);
     await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
 
-    expect(reconcileSpy).toHaveBeenCalledTimes(3);
+    emitOnOffDrift(false);
+    await waitFor(() => reconcileSpy.mock.calls.length >= 4);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
+
+    const reconcileCountAfterFourDrifts = reconcileSpy.mock.calls.length;
+    expect(reconcileCountAfterFourDrifts).toBeGreaterThanOrEqual(4);
     expect(logSpy.mock.calls.some(
       (call) => typeof call[0] === 'string'
         && call[0].includes('Realtime reconcile circuit breaker opened for Heater (dev-1)'),
-    )).toBe(true);
+    )).toBe(false);
+
+    emitOnOffDrift(false);
+    await waitFor(() => reconcileSpy.mock.calls.length > reconcileCountAfterFourDrifts);
+    await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
   });
 
   it('does not reconcile the current plan for temperature-only realtime device updates', async () => {
