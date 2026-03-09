@@ -4,7 +4,7 @@ import { DeviceManager } from '../core/deviceManager';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
-import { PlanExecutor, PlanExecutorDeps } from './planExecutor';
+import { PlanActuationMode, PlanExecutor, PlanExecutorDeps } from './planExecutor';
 import { createPlanEngineState, PlanEngineState } from './planState';
 import {
   evaluateHeadroomForDevice,
@@ -34,7 +34,6 @@ export type PlanEngineDeps = {
   getPriorityForDevice: (deviceId: string) => number;
   getDynamicSoftLimitOverride?: () => number | null;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  applySheddingToDevice?: (deviceId: string, deviceName?: string, reason?: string) => Promise<void>;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
@@ -80,7 +79,6 @@ export class PlanEngine {
       getCapacityDryRun: deps.getCapacityDryRun,
       getOperatingMode: deps.getOperatingMode,
       getShedBehavior: deps.getShedBehavior,
-      applySheddingToDevice: deps.applySheddingToDevice,
       updateLocalSnapshot: deps.updateLocalSnapshot,
       deviceDiagnostics: deps.deviceDiagnostics,
       log: deps.log,
@@ -112,8 +110,8 @@ export class PlanEngine {
     return this.executor.handleShortfallCleared();
   }
 
-  public async applyPlanActions(plan: DevicePlan): Promise<void> {
-    return this.executor.applyPlanActions(plan);
+  public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<void> {
+    return this.executor.applyPlanActions(plan, mode);
   }
 
   public evaluateHeadroomForDevice(params: {

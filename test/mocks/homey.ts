@@ -102,9 +102,19 @@ export class MockDriver {
 
 let autoEnableMockDevices = false;
 const mockHomeyEmitter = new EventEmitter();
+const mockHomeyApiDevicesEmitter = new EventEmitter();
+mockHomeyApiDevicesEmitter.setMaxListeners(0);
 
 export const setAutoEnableMockDevices = (enabled: boolean): void => {
   autoEnableMockDevices = enabled;
+};
+
+export const emitMockHomeyApiDeviceUpdate = (device: Record<string, any>): void => {
+  mockHomeyApiDevicesEmitter.emit('device.update', device);
+};
+
+export const clearMockHomeyApiDeviceListeners = (): void => {
+  mockHomeyApiDevicesEmitter.removeAllListeners();
 };
 
 const buildControllableDevices = (drivers: Record<string, MockDriver>): Record<string, boolean> => {
@@ -346,6 +356,10 @@ export const mockHomeyApiInstance = {
     getCurrency: async () => ({ currency: 'NOK' }),
   },
   devices: {
+    connect: async () => undefined,
+    disconnect: async () => undefined,
+    on: mockHomeyApiDevicesEmitter.on.bind(mockHomeyApiDevicesEmitter),
+    off: mockHomeyApiDevicesEmitter.off.bind(mockHomeyApiDevicesEmitter),
     // Mirror Homey's device API using the in-memory mock drivers
     getDevices: async () => {
       const drivers = mockHomeyInstance.drivers.getDrivers();

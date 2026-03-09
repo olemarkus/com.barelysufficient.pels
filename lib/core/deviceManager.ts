@@ -2,7 +2,14 @@ import Homey from 'homey';
 import { EventEmitter } from 'events';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
-import { resolveDeviceLabel, resolveZoneLabel } from './deviceManagerHelpers';
+import {
+    getCapabilities,
+    getDeviceId,
+    getIsAvailable,
+    resolveDeviceClassKey,
+    resolveDeviceLabel,
+    resolveZoneLabel,
+} from './deviceManagerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
@@ -24,20 +31,30 @@ import {
     resolveDeviceCapabilities,
 } from './deviceManagerParse';
 import {
-    extractLivePowerWattsByDeviceId,
     hasPotentialHomeyEnergyEstimate,
     resolvePreferredPowerRaw,
     type LiveDevicePowerWatts,
 } from './deviceManagerEnergy';
+import { fetchDevicesWithFallback, fetchLivePowerWattsByDeviceId } from './deviceManagerFetch';
 import {
     applyMeasurementUpdates,
-    getRawDevices,
-    handlePowerUpdate,
-    resolveHomeyInstance,
+    type CapabilityInstance,
+    detachRealtimeDeviceUpdateListener,
+    hasRealtimeCapabilityListener,
+    handlePowerUpdate as applyRealtimePowerUpdate,
+    syncRealtimeCapabilityListeners,
     updateLastKnownPower,
-    writeErrorToStderr,
 } from './deviceManagerRuntime';
-
+import {
+    clearLocalCapabilityWrite,
+    recordLocalCapabilityWrite,
+    type RecentLocalCapabilityWrites,
+} from './deviceManagerRealtimeSupport';
+import { resolveHomeyInstance } from './deviceManagerHomeyApi';
+import {
+    handleRealtimeCapabilityUpdate,
+    handleRealtimeDeviceUpdate,
+} from './deviceManagerRealtimeHandlers';
 type HomeyApiConstructor = {
     createAppAPI: (opts: {
         homey: Homey.App['homey'];
@@ -45,36 +62,23 @@ type HomeyApiConstructor = {
     }) => Promise<HomeyApiClient>;
 };
 const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
-
-const SUPPORTED_DEVICE_CLASSES = new Set([
-    'thermostat',
-    'heater',
-    'socket',
-    'heatpump',
-    'airconditioning',
-    'airtreatment',
-    'evcharger',
-]);
 const MIN_SIGNIFICANT_POWER_W = 5;
-
+export const HOMEY_DEVICE_UPDATE_EVENT = 'device.update';
+export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 type HomeyApiDevicesClient = {
     getDevices?: () => Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]>;
     setCapabilityValue?: (args: { deviceId: string; capabilityId: string; value: unknown }) => Promise<void>;
     getDevice?: (args: { id: string }) => Promise<unknown>;
     getDeviceSettingsObj?: (args: { id: string }) => Promise<unknown>;
+    connect?: () => Promise<void>;
+    disconnect?: () => Promise<void>;
+    on?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
+    off?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
 };
-
 type HomeyApiClient = {
     devices?: HomeyApiDevicesClient;
     energy?: HomeyEnergyApi;
 };
-
-type CapabilityInstance = { destroy?: () => void };
-type MakeCapabilityInstance = (
-    capabilityId: string,
-    listener: (value: number | null) => void,
-) => CapabilityInstance | Promise<CapabilityInstance>;
-
 export class DeviceManager extends EventEmitter {
     private homeyApi?: HomeyApiClient;
     private logger: Logger;
@@ -82,13 +86,46 @@ export class DeviceManager extends EventEmitter {
     private latestSnapshot: TargetDeviceSnapshot[] = [];
     private powerState: Required<PowerEstimateState>;
     private capabilityInstances: Map<string, CapabilityInstance> = new Map();
-
+    private hasRealtimeDeviceUpdateListener = false;
+    private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private providers: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
         getManaged?: (deviceId: string) => boolean;
         getExperimentalEvSupportEnabled?: () => boolean;
     } = {};
+    private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
+        handleRealtimeDeviceUpdate({
+            device,
+            latestSnapshot: this.latestSnapshot,
+            shouldTrackRealtimeDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
+            parseDevice: (nextDevice, nowTs) => this.parseDevice(nextDevice, nowTs, {}),
+            logDebug: (message) => this.logger.debug(message),
+            emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
+        });
+    };
+
+    private readonly handleRealtimeCapabilityUpdate = (
+        deviceId: string,
+        label: string,
+        capabilityId: string,
+        value: unknown,
+    ): void => {
+        handleRealtimeCapabilityUpdate({
+            deviceId,
+            label,
+            capabilityId,
+            value,
+            latestSnapshot: this.latestSnapshot,
+            recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
+            shouldTrackRealtimeDevice: (nextDeviceId) => this.shouldTrackRealtimeDevice(nextDeviceId),
+            handlePowerUpdate: (nextDeviceId, nextLabel, nextValue) => (
+                this.handlePowerUpdate(nextDeviceId, nextLabel, nextValue)
+            ),
+            logDebug: (message) => this.logger.debug(message),
+            emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
+        });
+    };
 
     constructor(homey: Homey.App, logger: Logger, providers?: {
         getPriority?: (deviceId: string) => number;
@@ -108,40 +145,16 @@ export class DeviceManager extends EventEmitter {
         };
     }
 
-    getSnapshot(): TargetDeviceSnapshot[] {
-        return this.latestSnapshot;
-    }
-
-    // Test helper: allow direct snapshot injection
-    setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
-        this.setSnapshot(snapshot);
-    }
-
-    setSnapshot(snapshot: TargetDeviceSnapshot[]): void {
-        this.latestSnapshot = snapshot;
-    }
-
-    // Test helper: reuse parsing logic
-    parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
-        return this.parseDeviceList(list);
-    }
-
-    // Expose HomeyAPI instance for consumers that need direct access (e.g., app load lookups)
-    getHomeyApi(): HomeyApiClient | undefined {
-        return this.homeyApi;
-    }
-
-    // Debug helper: fetch full device list without mutating snapshots
-    async getDevicesForDebug(): Promise<HomeyDeviceLike[]> {
-        return this.fetchDevices();
-    }
+    getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
+    setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.setSnapshot(snapshot); }
+    setSnapshot(snapshot: TargetDeviceSnapshot[]): void { this.latestSnapshot = snapshot; }
+    parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] { return this.parseDeviceList(list); }
+    getHomeyApi(): HomeyApiClient | undefined { return this.homeyApi; }
+    async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return this.fetchDevices(); }
 
     async init(): Promise<void> {
         if (this.homeyApi) return;
 
-        // Access the underlying Homey instance from the App instance
-        // In real app and MockApp, this is this.homey.homey
-        // In unit tests with POJO mock, this.homey IS the Homey instance mock
         const homeyInstance = resolveHomeyInstance(this.homey);
 
         if (
@@ -217,14 +230,33 @@ export class DeviceManager extends EventEmitter {
 
         incPerfCounter('device_action_total');
         incPerfCounter(`device_action.capability.${capabilityId}`);
-        await setCapabilityValue({
+        recordLocalCapabilityWrite({
+            recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
             deviceId,
             capabilityId,
             value,
         });
+        try {
+            await setCapabilityValue({
+                deviceId,
+                capabilityId,
+                value,
+            });
+        } catch (error) {
+            clearLocalCapabilityWrite({
+                recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
+                deviceId,
+                capabilityId,
+            });
+            throw error;
+        }
 
         const optimisticUpdate = buildOptimisticCapabilityUpdate(capabilityId, value);
-        if (optimisticUpdate) this.updateLocalSnapshot(deviceId, optimisticUpdate);
+        if (optimisticUpdate) {
+            this.updateLocalSnapshot(deviceId, optimisticUpdate);
+        } else if (this.shouldPreserveLocalBinaryState(deviceId, capabilityId, value)) {
+            this.updateLocalSnapshot(deviceId, { on: value });
+        }
 
         const snapshotAfter = this.latestSnapshot.find((device) => device.id === deviceId);
         logEvCapabilityAccepted({
@@ -233,6 +265,20 @@ export class DeviceManager extends EventEmitter {
             deviceId,
             capabilityId,
             value,
+        });
+    }
+
+    private shouldPreserveLocalBinaryState(
+        deviceId: string,
+        capabilityId: string,
+        value: unknown,
+    ): value is boolean {
+        if (typeof value !== 'boolean') return false;
+        if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return false;
+        return !hasRealtimeCapabilityListener({
+            capabilityInstances: this.capabilityInstances,
+            deviceId,
+            capabilityId,
         });
     }
 
@@ -275,91 +321,46 @@ export class DeviceManager extends EventEmitter {
     private async fetchDevices(): Promise<HomeyDeviceLike[]> {
         const start = Date.now();
         try {
-            const devicesApi = this.homeyApi?.devices;
-            if (devicesApi?.getDevices) {
-                try {
-                    const devicesObj = await devicesApi.getDevices();
-                    const list = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj || {});
-                    this.logger.debug(`HomeyAPI returned ${list.length} devices`);
-                    await this.initRealtimeListeners(devicesObj);
-                    return list;
-                } catch (error) {
-                    this.logger.debug('HomeyAPI.getDevices failed, falling back to raw API', error as Error);
-                }
-            }
-
-            // Fallback to manager/devices then /devices
-            try {
-                const devices = await getRawDevices(this.homey, 'manager/devices');
-                const list = Array.isArray(devices) ? devices : Object.values(devices || {});
-                this.logger.debug(`Manager API returned ${list.length} devices`);
-                return list;
-            } catch (err) {
-                this.logger.debug('Manager API manager/devices failed, retrying devices', err as Error);
-                try {
-                    const devices = await getRawDevices(this.homey, 'devices');
-                    const list = Array.isArray(devices) ? devices : Object.values(devices || {});
-                    this.logger.debug(`Manager API devices returned ${list.length} devices`);
-                    return list;
-                } catch (error) {
-                    this.logger.debug('Manager API devices failed as well', error as Error);
-                    return [];
-                }
-            }
+            const result = await fetchDevicesWithFallback({
+                devicesApi: this.homeyApi?.devices,
+                homey: this.homey,
+                logger: this.logger,
+                hasRealtimeDeviceUpdateListener: this.hasRealtimeDeviceUpdateListener,
+                shouldTrackRealtimeDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
+                realtimeDeviceUpdateListener: this.handleRealtimeDeviceUpdate,
+                realtimeDeviceUpdateEventName: HOMEY_DEVICE_UPDATE_EVENT,
+                initRealtimeListeners: (devices) => this.initRealtimeListeners(devices),
+            });
+            this.hasRealtimeDeviceUpdateListener = result.hasRealtimeDeviceUpdateListener;
+            return result.devices;
         } finally {
             addPerfDuration('device_fetch_ms', Date.now() - start);
         }
     }
 
     private async fetchLivePowerWattsByDeviceId(): Promise<LiveDevicePowerWatts> {
-        const getLiveReport = this.homeyApi?.energy?.getLiveReport;
-        if (typeof getLiveReport !== 'function') return {};
-        try {
-            const liveReport = await getLiveReport({});
-            return extractLivePowerWattsByDeviceId(liveReport);
-        } catch (error) {
-            this.logger.debug('Homey energy live report unavailable for device snapshot', error as Error);
-            return {};
-        }
+        return fetchLivePowerWattsByDeviceId({
+            energyApi: this.homeyApi?.energy,
+            logger: this.logger,
+        });
     }
 
     private async initRealtimeListeners(
-        devicesObj: Record<string, HomeyDeviceLike> | HomeyDeviceLike[],
+        devices: HomeyDeviceLike[],
     ): Promise<void> {
-        const devices = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj);
-        for (const device of devices) {
-            const deviceId = this.getDeviceId(device);
-            if (!deviceId || !device.capabilities?.includes('measure_power')) continue;
-
-            // Check if listener already exists
-            if (this.capabilityInstances.has(deviceId)) continue;
-
-            try {
-                const makeCapabilityInstance = (
-                    device as { makeCapabilityInstance?: MakeCapabilityInstance }
-                ).makeCapabilityInstance;
-                if (typeof makeCapabilityInstance === 'function') {
-                    const instance = await makeCapabilityInstance.call(
-                        device,
-                        'measure_power',
-                        (value: number | null) => {
-                            this.handlePowerUpdate(deviceId, device.name || deviceId, value);
-                        },
-                    );
-                    this.capabilityInstances.set(deviceId, instance);
-                    this.logger.debug(`Real-time power listener attached for ${device.name || deviceId}`);
-                }
-            } catch (error) {
-                const label = device.name || deviceId || 'unknown';
-                const message = `Failed to attach capability listener for ${label}`;
-                this.logger.error(message, error);
-                writeErrorToStderr(message, error);
-            }
-        }
+        await syncRealtimeCapabilityListeners({
+            devices,
+            shouldTrackRealtimeDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
+            capabilityInstances: this.capabilityInstances,
+            onCapabilityValue: (deviceId, label, capabilityId, value) => {
+                this.handleRealtimeCapabilityUpdate(deviceId, label, capabilityId, value);
+            },
+            logger: this.logger,
+        });
     }
 
     private handlePowerUpdate(deviceId: string, label: string, value: number | null): void {
-        handlePowerUpdate({
+        applyRealtimePowerUpdate({
             state: this.powerState,
             logger: this.logger,
             latestSnapshot: this.latestSnapshot,
@@ -369,7 +370,19 @@ export class DeviceManager extends EventEmitter {
         });
     }
 
+    private shouldTrackRealtimeDevice(deviceId: string): boolean {
+        return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
+    }
+
     public destroy(): void {
+        const devicesApi = this.homeyApi?.devices;
+        this.hasRealtimeDeviceUpdateListener = detachRealtimeDeviceUpdateListener({
+            devicesApi,
+            attached: this.hasRealtimeDeviceUpdateListener,
+            listener: this.handleRealtimeDeviceUpdate,
+            eventName: HOMEY_DEVICE_UPDATE_EVENT,
+            logger: this.logger,
+        });
         for (const instance of this.capabilityInstances.values()) {
             try {
                 if (typeof instance.destroy === 'function') instance.destroy();
@@ -394,15 +407,18 @@ export class DeviceManager extends EventEmitter {
         now: number,
         livePowerWByDeviceId: LiveDevicePowerWatts,
     ): TargetDeviceSnapshot | null {
-        const deviceId = this.getDeviceId(device);
+        const deviceId = getDeviceId(device);
         if (!deviceId) {
             this.logger.error('Device missing ID, skipping:', device.name || 'unknown');
             return null;
         }
-        const deviceClassKey = this.resolveDeviceClassKey(device);
+        const deviceClassKey = resolveDeviceClassKey({
+            device,
+            experimentalEvSupportEnabled: this.providers.getExperimentalEvSupportEnabled?.() === true,
+        });
         if (!deviceClassKey) return null;
         const deviceLabel = resolveDeviceLabel(device, deviceId);
-        const capabilities = this.getCapabilities(device);
+        const capabilities = getCapabilities(device);
         const capsStatus = resolveDeviceCapabilities({
             deviceClassKey,
             deviceId,
@@ -445,10 +461,10 @@ export class DeviceManager extends EventEmitter {
         const { targetCaps } = capsStatus;
         const targets = buildTargets(targetCaps, capabilityObj);
         const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
-        const currentOn = this.getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId });
+        const currentOn = getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId });
         const canSetControl = getCanSetControl(controlCapabilityId, capabilityObj);
         const evChargingState = getEvChargingState(capabilityObj);
-        const available = this.getIsAvailable(device);
+        const available = getIsAvailable(device);
         const zone = resolveZoneLabel(device);
         const deviceType: TargetDeviceSnapshot['deviceType'] = targetCaps.length > 0 ? 'temperature' : 'onoff';
         const powerCapable = capsStatus.hasPower
@@ -483,45 +499,10 @@ export class DeviceManager extends EventEmitter {
         };
     }
 
-    private getDeviceId(device: HomeyDeviceLike): string | null {
-        return device.id || device.data?.id || null;
-    }
-    private getDeviceClass(device: HomeyDeviceLike): string | null {
-        if (typeof device.class === 'string' && device.class.trim()) {
-            return device.class.trim();
-        }
-        return null;
-    }
-    private resolveDeviceClassKey(device: HomeyDeviceLike): string | null {
-        const deviceClass = this.getDeviceClass(device);
-        if (!deviceClass) return null;
-        const deviceClassKey = deviceClass.toLowerCase();
-        if (!SUPPORTED_DEVICE_CLASSES.has(deviceClassKey)) {
-            return null;
-        }
-        if (deviceClassKey === 'evcharger' && this.providers.getExperimentalEvSupportEnabled?.() !== true) {
-            return null;
-        }
-        return deviceClassKey;
-    }
-    private getCapabilities(device: HomeyDeviceLike): string[] {
-        return Array.isArray(device.capabilities) ? device.capabilities : [];
-    }
     private getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {
         if (device.capabilitiesObj && typeof device.capabilitiesObj === 'object') {
             return device.capabilitiesObj as DeviceCapabilityMap;
         }
         return {};
-    }
-    private getCurrentOn(params: {
-        deviceClassKey: string;
-        capabilityObj: DeviceCapabilityMap;
-        controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-    }): boolean | undefined {
-        return getCurrentOn(params);
-    }
-    private getIsAvailable(device: HomeyDeviceLike): boolean {
-        if (typeof device.available === 'boolean') return device.available;
-        return true;
     }
 }

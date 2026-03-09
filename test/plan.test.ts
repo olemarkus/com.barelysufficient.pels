@@ -824,8 +824,9 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const spy = jest.fn().mockResolvedValue(undefined);
-    (app as any).applySheddingToDevice = spy;
+    const spy = jest
+      .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
+      .mockResolvedValue(undefined);
 
     const plan = {
       devices: [
@@ -1008,7 +1009,7 @@ describe('Device plan snapshot', () => {
     // Step 2: Small positive headroom (below restore margin) - device should STAY shed
     // First, update mock device to reflect it was turned off
     await dev1.setCapabilityValue('onoff', false);
-    (app as any).lastSnapshotRefreshMs = 0; // Force refresh
+    await (app as any).refreshTargetDevicesSnapshot();
 
     // Clear shedding-related cooldowns but NOT restore margin consideration
     (app as any).planEngine.state.lastSheddingMs = 0;
@@ -1043,6 +1044,9 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 2);
     }
 
+    // Soft-limit changes alone no longer trigger an immediate rebuild.
+    // Force the periodic max-interval rebuild path for this restore check.
+    (app as any).powerSampleRebuildState.lastMs = Date.now() - 200;
     await (app as any).recordPowerSample(500);
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('keep');
@@ -1178,8 +1182,9 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    const shedSpy = jest.fn().mockResolvedValue(undefined);
-    (app as any).applySheddingToDevice = shedSpy;
+    const shedSpy = jest
+      .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
+      .mockResolvedValue(undefined);
 
     await (app as any).recordPowerSample(2000);
 
@@ -1214,7 +1219,9 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 3.1);
     }
 
-    const shedSpy = jest.spyOn(app as any, 'applySheddingToDevice').mockResolvedValue(undefined);
+    const shedSpy = jest
+      .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
+      .mockResolvedValue(undefined);
 
     await (app as any).recordPowerSample(5630); // 5.63 kW total
 
@@ -1553,7 +1560,9 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 3);
     }
 
-    const shedSpy = jest.spyOn(app as any, 'applySheddingToDevice').mockResolvedValue(undefined);
+    const shedSpy = jest
+      .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
+      .mockResolvedValue(undefined);
 
     await (app as any).recordPowerSample(6300);
 
@@ -3752,7 +3761,7 @@ describe('Dry run mode', () => {
       return undefined;
     });
 
-    (app as any).planEngine.executor.applySheddingToDeviceCallback = callback;
+    jest.spyOn((app as any).planEngine.executor, 'applySheddingToDevice').mockImplementation(callback);
 
     const plan = {
       devices: [

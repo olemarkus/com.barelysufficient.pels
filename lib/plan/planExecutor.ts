@@ -31,7 +31,6 @@ export type PlanExecutorDeps = {
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
-  applySheddingToDevice?: (deviceId: string, deviceName?: string, reason?: string) => Promise<void>;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   log: (...args: unknown[]) => void;
@@ -39,12 +38,10 @@ export type PlanExecutorDeps = {
   error: (...args: unknown[]) => void;
 };
 
-export class PlanExecutor {
-  private applySheddingToDeviceCallback: (deviceId: string, deviceName?: string, reason?: string) => Promise<void>;
+export type PlanActuationMode = 'plan' | 'reconcile';
 
+export class PlanExecutor {
   constructor(private deps: PlanExecutorDeps, private state: PlanEngineState) {
-    this.applySheddingToDeviceCallback = deps.applySheddingToDevice
-      ?? ((deviceId, deviceName, reason) => this.applySheddingToDevice(deviceId, deviceName, reason));
   }
 
   private get deviceManager(): DeviceManager {
@@ -149,10 +146,13 @@ export class PlanExecutor {
     if (dev.currentState === 'off') return;
     const reason = dev.reason;
     const isSwap = reason ? reason.includes('swapped out for') : false;
-    await this.applySheddingToDeviceCallback(dev.id, dev.name, isSwap ? reason : undefined);
+    await this.applySheddingToDevice(dev.id, dev.name, isSwap ? reason : undefined);
   }
 
-  private async applyRestorePower(dev: DevicePlan['devices'][number]): Promise<void> {
+  private async applyRestorePower(
+    dev: DevicePlan['devices'][number],
+    mode: PlanActuationMode,
+  ): Promise<void> {
     if (dev.plannedState !== 'keep' || dev.currentState !== 'off') return;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (snapshot?.deviceClass === 'evcharger') {
@@ -186,23 +186,26 @@ export class PlanExecutor {
           desired: true,
           snapshot,
           logContext: 'capacity',
+          restoreSource: this.getRestoreLogSource(dev.id),
         });
         if (!applied) return;
-        this.state.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
-        this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
-        recordDiagnosticsRestore({
-          diagnostics: this.deps.deviceDiagnostics,
-          deviceId: dev.id,
-          name,
-          nowTs: this.state.lastRestoreMs,
-        });
-        recordActivationAttemptStarted({
-          state: this.state,
-          diagnostics: this.deps.deviceDiagnostics,
-          deviceId: dev.id,
-          name,
-          nowTs: this.state.lastRestoreMs,
-        });
+        if (mode === 'plan') {
+          this.state.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
+          this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
+          recordDiagnosticsRestore({
+            diagnostics: this.deps.deviceDiagnostics,
+            deviceId: dev.id,
+            name,
+            nowTs: this.state.lastRestoreMs,
+          });
+          recordActivationAttemptStarted({
+            state: this.state,
+            diagnostics: this.deps.deviceDiagnostics,
+            deviceId: dev.id,
+            name,
+            nowTs: this.state.lastRestoreMs,
+          });
+        }
         // Clear this device from pending swap targets if it was one
         this.state.pendingSwapTargets.delete(dev.id);
         delete this.state.pendingSwapTimestamps[dev.id];
@@ -214,10 +217,14 @@ export class PlanExecutor {
     }
   }
 
-  private async applyTargetUpdate(dev: DevicePlan['devices'][number], snapshot?: TargetDeviceSnapshot): Promise<void> {
+  private async applyTargetUpdate(
+    dev: DevicePlan['devices'][number],
+    snapshot: TargetDeviceSnapshot | undefined,
+    mode: PlanActuationMode,
+  ): Promise<void> {
     const plan = this.getTargetUpdatePlan(dev, snapshot);
     if (!plan) return;
-    await this.applyTargetUpdatePlan(dev, plan.targetCap, plan.isRestoring);
+    await this.applyTargetUpdatePlan(dev, plan.targetCap, plan.isRestoring, mode);
   }
 
   private async applyUncontrolledRestore(
@@ -280,6 +287,7 @@ export class PlanExecutor {
     dev: DevicePlan['devices'][number],
     targetCap: string,
     isRestoring: boolean,
+    mode: PlanActuationMode,
   ): Promise<void> {
     try {
       await this.deviceManager.setCapability(dev.id, targetCap, dev.plannedTarget as number);
@@ -293,7 +301,7 @@ export class PlanExecutor {
 
       // If this was a restoration from shed temperature, update lastRestoreMs
       // This ensures cooldown applies between restoring different devices
-      if (isRestoring) {
+      if (isRestoring && mode === 'plan') {
         this.state.lastRestoreMs = Date.now();
         this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
         recordDiagnosticsRestore({
@@ -464,7 +472,7 @@ export class PlanExecutor {
     incPerfCounter('settings_set.capacity_in_shortfall');
   }
 
-  public async applyPlanActions(plan: DevicePlan): Promise<void> {
+  public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<void> {
     if (!plan || !Array.isArray(plan.devices)) return;
 
     const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
@@ -482,13 +490,13 @@ export class PlanExecutor {
         }
         if (dev.controllable === false) {
           await this.applyUncontrolledRestore(dev, snapshot);
-          await this.applyTargetUpdate(dev, snapshot);
+          await this.applyTargetUpdate(dev, snapshot, mode);
           continue;
         }
         const handledShed = await this.applyShedAction(dev);
         if (handledShed) continue;
-        await this.applyRestorePower(dev);
-        await this.applyTargetUpdate(dev, snapshot);
+        await this.applyRestorePower(dev, mode);
+        await this.applyTargetUpdate(dev, snapshot, mode);
       } catch (error) {
         this.error(
           `Failed to apply action for ${dev.name || dev.id}; continuing with remaining devices`,
@@ -496,5 +504,12 @@ export class PlanExecutor {
         );
       }
     }
+  }
+
+  private getRestoreLogSource(deviceId: string): 'shed_state' | 'current_plan' {
+    const lastShedMs = this.state.lastDeviceShedMs[deviceId];
+    if (!lastShedMs) return 'current_plan';
+    const lastRestoreMs = this.state.lastDeviceRestoreMs[deviceId];
+    return !lastRestoreMs || lastRestoreMs < lastShedMs ? 'shed_state' : 'current_plan';
   }
 }

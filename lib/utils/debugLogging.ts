@@ -8,7 +8,11 @@ export const DEBUG_LOGGING_TOPICS = [
   { id: 'price', label: 'Price optimization', description: 'Spot prices, tariffs, and price shaping.' },
   { id: 'daily_budget', label: 'Daily budget', description: 'Daily plan and rollover.' },
   { id: 'devices', label: 'Devices', description: 'Device snapshots and Homey API interactions.' },
-  { id: 'settings', label: 'Settings', description: 'Settings changes and housekeeping.' },
+  {
+    id: 'settings',
+    label: 'Settings',
+    description: 'Settings checks and updates, including expected power flow cards.',
+  },
   { id: 'perf', label: 'Performance', description: 'Hotpath counters and timings.' },
 ] as const;
 

@@ -193,7 +193,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 
-  it('rebuilds when soft limit changes meaningfully', async () => {
+  it('does not rebuild only because the soft limit changes', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 8 };
     const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
 
@@ -212,8 +212,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       headroomKw: 3.2,
     });
 
-    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-    expect(state.lastSoftLimitKw).toBe(8.2);
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    expect(state.lastSoftLimitKw).toBe(8);
   });
 
   it('rebuilds in danger zone regardless of delta', async () => {

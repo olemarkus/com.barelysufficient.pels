@@ -19,9 +19,11 @@ import {
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
+import { buildLiveStatePlan, hasPlanExecutionDrift } from './planReconcileState';
 import type { PlanEngine } from './planEngine';
 import type { DevicePlan, PlanInputDevice } from './planTypes';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './planHeadroomDevice';
+import type { PlanActuationMode } from './planExecutor';
 
 export type PlanServiceDeps = {
   homey: Homey.App['homey'];
@@ -47,7 +49,7 @@ export class PlanService {
   private pendingNonActionSnapshotReason: Exclude<PlanSnapshotWriteReason, 'action_changed'> = 'meta_only';
   private pendingNonActionSnapshotPlan: DevicePlan | null = null;
   private pendingNonActionSnapshotTimer?: ReturnType<typeof setTimeout>;
-  private rebuildPlanQueue: Promise<void> = Promise.resolve();
+  private planOperationQueue: Promise<void> = Promise.resolve();
   private queuedRebuilds = 0;
   private planStatusWriter: PlanStatusWriter;
 
@@ -90,12 +92,24 @@ export class PlanService {
     return this.latestPlanSnapshot;
   }
 
-  applyPlanActions(plan: DevicePlan): Promise<void> {
-    return this.deps.planEngine.applyPlanActions(plan);
+  async reconcileLatestPlanState(): Promise<boolean> {
+    return this.enqueuePlanOperation(
+      () => this.performPlanReconcile(),
+      'Failed to reconcile latest plan state',
+      false,
+    );
+  }
+
+  applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<void> {
+    return this.deps.planEngine.applyPlanActions(plan, mode);
   }
 
   applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
-    return this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
+    return this.enqueuePlanOperation(
+      () => this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason),
+      `Failed to apply shedding to ${deviceName || deviceId}`,
+      undefined,
+    );
   }
 
   evaluateHeadroomForDevice(params: {
@@ -135,23 +149,58 @@ export class PlanService {
       incPerfCounter('plan_rebuild_queue_depth_ge_4_total');
     }
 
-    this.rebuildPlanQueue = this.rebuildPlanQueue
-      .then(async () => {
+    await this.enqueuePlanOperation(
+      async () => {
         const waitMs = Date.now() - enqueuedAt;
         addPerfDuration('plan_rebuild_queue_wait_ms', waitMs);
         if (waitMs > 0) {
           incPerfCounter('plan_rebuild_queue_waited_total');
         }
         await this.performPlanRebuild({ reason, queueWaitMs: waitMs, queueDepth });
+      },
+      'Failed to rebuild plan',
+      undefined,
+      () => {
+        this.queuedRebuilds = Math.max(0, this.queuedRebuilds - 1);
+      },
+    );
+  }
+
+  private async enqueuePlanOperation<T>(
+    operation: () => Promise<T>,
+    errorMessage: string,
+    fallbackValue: T,
+    onFinally?: () => void,
+  ): Promise<T> {
+    let result = fallbackValue;
+    this.planOperationQueue = this.planOperationQueue
+      .then(async () => {
+        result = await operation();
       })
       .catch((error) => {
-        this.deps.error('Failed to rebuild plan', error as Error);
+        this.deps.error(errorMessage, error as Error);
       })
       .finally(() => {
-        this.queuedRebuilds = Math.max(0, this.queuedRebuilds - 1);
+        onFinally?.();
       });
 
-    await this.rebuildPlanQueue;
+    await this.planOperationQueue;
+    return result;
+  }
+
+  private async performPlanReconcile(): Promise<boolean> {
+    if (this.deps.getCapacityDryRun()) return false;
+    if (!this.latestPlanSnapshot) return false;
+
+    const plannedSnapshot = this.latestPlanSnapshot;
+    const driftedLivePlan = buildLiveStatePlan(plannedSnapshot, this.deps.getPlanDevices());
+    if (!hasPlanExecutionDrift(plannedSnapshot, driftedLivePlan)) {
+      return false;
+    }
+
+    this.deps.logDebug('Realtime device drift detected, reapplying current plan');
+    await this.applyPlanActions(driftedLivePlan, 'reconcile');
+    return true;
   }
 
   private trackPlanChanges(plan: DevicePlan, metaSignature: string): PlanChangeSet {
@@ -431,6 +480,7 @@ export class PlanService {
     try {
       await this.applyPlanActions(plan);
       appliedActions = true;
+      this.refreshLatestPlanSnapshotFromLiveState(plan);
     } catch (error) {
       this.deps.error('Failed to apply plan actions', error as Error);
     }
@@ -481,6 +531,14 @@ export class PlanService {
 
   updatePelsStatus(plan: DevicePlan, changes?: StatusPlanChanges): number {
     return this.planStatusWriter.update(plan, changes);
+  }
+
+  private refreshLatestPlanSnapshotFromLiveState(basePlan: DevicePlan): boolean {
+    const livePlan = buildLiveStatePlan(basePlan, this.deps.getPlanDevices());
+    if (!hasPlanExecutionDrift(basePlan, livePlan)) return false;
+    this.latestPlanSnapshot = livePlan;
+    this.emitPlanUpdated(livePlan);
+    return true;
   }
 
   destroy(): void {
