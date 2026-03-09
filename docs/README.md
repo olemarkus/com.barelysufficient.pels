@@ -182,6 +182,8 @@ The Devices tab shows temperature, on/off, and optionally EV charger devices tha
 > If expected usage looks wrong for a device, check Homey **Device → Advanced Settings → Energy** and verify “Power usage when on/off”.
 >
 > EV charger support is currently limited to official Homey EV chargers exposing `evcharger_charging` and `evcharger_charging_state`. PELS only pauses/resumes charging; it does not control charger current or target power.
+>
+> Open a device to see its **Diagnostics** section. This shows 21-day read-only metrics for blocked time, activation instability, and penalty history. EV chargers only show hysteresis and penalty metrics, not starvation, because PELS does not know charging intent.
 
 ### Modes Tab
 
@@ -356,12 +358,19 @@ Diagnostics and expert tuning controls.
 | Setting | Description |
 |---------|-------------|
 | **Enable EV charger support** | Experimental. Shows official Homey EV chargers in the device list and allows pause/resume capacity control through EV-specific capabilities. Turning this off hides EV chargers and sets managed EV chargers to unmanaged. |
-| **Debug logging topics** | Select which areas emit debug logs. Selections persist across restarts. |
+| **Debug logging topics** | Select which areas emit debug logs. Selections persist across restarts. The `diagnostics` topic logs per-device starvation, hysteresis, penalty, and diagnostics persistence events. |
 | **Controlled usage weight** | Balances uncontrolled vs controlled influence in the daily plan (0 = uncontrolled, 1 = controlled). Also used for observed caps/floors. Default: 0.30. |
 | **Price flex share** | Maximum strength for price shaping of controlled load. Effective shaping also depends on the current day’s price spread (low spread = softer effect). Default: 0.35. |
 | **Show daily budget breakdown in chart** | Splits charted plan into controlled vs. uncontrolled portions. |
 
 > **Warning:** Changing **Controlled usage weight** or **Price flex share** can materially change daily-budget behavior and shed/restore timing. Defaults are recommended unless you are actively tuning. Change one value at a time and observe for at least a day.
+
+Diagnostics terminology:
+
+- **Unmet demand** means the device is below the state PELS would prefer.
+- **Starvation** means unmet demand stayed unmet because PELS kept blocking the device.
+- Blocked time is split into **headroom** and **cooldown/backoff** causes.
+- EV chargers are excluded from starvation and unmet-demand metrics in v1.
 
 For detailed formulas, confidence behavior, and tuning examples, see [Daily Budget Weighting Math (Advanced)](daily_budget_weights.md).
 

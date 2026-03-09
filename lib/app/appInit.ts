@@ -17,8 +17,23 @@ import { COMBINED_PRICES } from '../utils/settingsKeys';
 import type { CapacitySettingsSnapshot } from './appSettingsHelpers';
 import { PriceCoordinator } from '../price/priceCoordinator';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
+import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 
 export type { CapacitySettingsSnapshot };
+
+export const createDeviceDiagnosticsService = (app: {
+  homey: Homey.App['homey'];
+  getTimeZone: () => string;
+  isDebugEnabled?: () => boolean;
+  logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
+}): DeviceDiagnosticsService => new DeviceDiagnosticsService({
+  homey: app.homey,
+  getTimeZone: () => app.getTimeZone(),
+  isDebugEnabled: app.isDebugEnabled,
+  logDebug: (...args: unknown[]) => app.logDebug('diagnostics', ...args),
+  error: (...args: unknown[]) => app.error(...args),
+});
 
 export type PlanEngineInitApp = {
   homey: Homey.App['homey'];
@@ -39,6 +54,7 @@ export type PlanEngineInitApp = {
   getDynamicSoftLimitOverride: () => number | null;
   applySheddingToDevice: (deviceId: string, deviceName?: string, reason?: string) => Promise<void>;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
+  deviceDiagnostics?: DeviceDiagnosticsRecorder;
   log: (...args: unknown[]) => void;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -64,6 +80,7 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
     getDynamicSoftLimitOverride: () => app.getDynamicSoftLimitOverride(),
     applySheddingToDevice: (deviceId, deviceName, reason) => app.applySheddingToDevice(deviceId, deviceName, reason),
     updateLocalSnapshot: (deviceId, updates) => app.updateLocalSnapshot(deviceId, updates),
+    deviceDiagnostics: app.deviceDiagnostics,
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug('plan', ...args),
     error: (...args: unknown[]) => app.error(...args),

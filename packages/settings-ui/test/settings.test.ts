@@ -164,6 +164,7 @@ const buildDom = () => {
     </section>
     <section class="panel hidden" data-panel="advanced">
       <input id="debug-topic-plan" data-debug-topic="plan" type="checkbox">
+      <input id="debug-topic-diagnostics" data-debug-topic="diagnostics" type="checkbox">
       <input id="debug-topic-price" data-debug-topic="price" type="checkbox">
       <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
       <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">

@@ -1394,6 +1394,13 @@ input[type="text"]:focus {
   margin: 0;
 }
 
+.detail-diagnostics-card h4 {
+  margin: 0 0 10px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
 .settings-collapse .collapse-content h4 {
   margin: 16px 0 12px;
   font-size: var(--font-size-sm);
@@ -1589,6 +1596,48 @@ input[type="text"]:focus {
 
 .detail-deltas .field {
   margin-bottom: 0;
+}
+
+.detail-diagnostics-status {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+}
+
+.detail-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.detail-diagnostics-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.detail-diagnostics-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.detail-diagnostics-list div {
+  display: grid;
+  gap: 2px;
+}
+
+.detail-diagnostics-list dt {
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+}
+
+.detail-diagnostics-list dd {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
 }
 
 /* Make device rows clickable */

@@ -1,4 +1,5 @@
 import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
+import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type { SettingsUiLogEntry, TargetDeviceSnapshot } from './types.js';
 
@@ -10,6 +11,7 @@ export const SETTINGS_UI_PRICES_PATH = '/ui_prices';
 export const SETTINGS_UI_REFRESH_DEVICES_PATH = '/ui_refresh_devices';
 export const SETTINGS_UI_REFRESH_PRICES_PATH = '/ui_refresh_prices';
 export const SETTINGS_UI_REFRESH_GRID_TARIFF_PATH = '/ui_refresh_grid_tariff';
+export const SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH = '/ui_device_diagnostics';
 export const SETTINGS_UI_LOG_PATH = '/settings_ui_log';
 export const SETTINGS_UI_RESET_POWER_STATS_PATH = '/ui_reset_power_stats';
 
@@ -62,6 +64,8 @@ export type SettingsUiPricesPayload = {
   homeyToday: unknown | null;
   homeyTomorrow: unknown | null;
 };
+
+export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPayload;
 
 export type SettingsUiResetPowerStatsResponse = {
   power: SettingsUiPowerPayload;

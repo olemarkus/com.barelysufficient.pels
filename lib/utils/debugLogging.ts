@@ -1,5 +1,10 @@
 export const DEBUG_LOGGING_TOPICS = [
   { id: 'plan', label: 'Plan engine', description: 'Shedding, restore, and soft-limit decisions.' },
+  {
+    id: 'diagnostics',
+    label: 'Diagnostics',
+    description: 'Per-device starvation, hysteresis, penalty, and diagnostics persistence.',
+  },
   { id: 'price', label: 'Price optimization', description: 'Spot prices, tariffs, and price shaping.' },
   { id: 'daily_budget', label: 'Daily budget', description: 'Daily plan and rollover.' },
   { id: 'devices', label: 'Devices', description: 'Device snapshots and Homey API interactions.' },

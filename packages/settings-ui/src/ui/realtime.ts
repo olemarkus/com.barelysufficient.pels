@@ -1,6 +1,7 @@
 import { panels, tabs } from './dom';
 import {
   SETTINGS_UI_DEVICES_PATH,
+  SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
@@ -146,6 +147,7 @@ const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices
 
 const refreshDevicesForUi = () => {
   invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+  invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
   getTargetDevices()
     .then((devices) => renderLatestDevices(devices))
     .catch((error) => {
@@ -209,9 +211,11 @@ const createSettingsSetHandler = () => (key: string) => {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
   }
   if (key === 'device_plan_snapshot') {
+    invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
     refreshPlanForUi('settings.set');
   }
   if (key === 'target_devices_snapshot') {
+    invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
     refreshDevicesForUi();
   }
   if (key === OPERATING_MODE_SETTING) {
@@ -234,6 +238,8 @@ const createSettingsSetHandler = () => (key: string) => {
 
 const handlePlanUpdated = (plan: unknown) => {
   primeApiCache(SETTINGS_UI_PLAN_PATH, { plan });
+  invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
+  document.dispatchEvent(new CustomEvent('plan-updated', { detail: { plan } }));
   if (!isPanelVisible('#overview-panel')) return;
   renderPlan(plan as PlanSnapshot | null);
 };

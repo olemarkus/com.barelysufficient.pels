@@ -1,5 +1,6 @@
 import {
   buildSettingsUiBootstrap,
+  getSettingsUiDeviceDiagnosticsPayload,
   getSettingsUiDevicesPayload,
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
@@ -50,6 +51,65 @@ describe('settingsUiApi', () => {
       persistPowerTrackerState();
     });
     const getDailyBudgetUiPayload = jest.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
+    const getDeviceDiagnosticsUiPayload = jest.fn().mockReturnValue({
+      generatedAt: 123456,
+      windowDays: 21,
+      diagnosticsByDeviceId: {
+        'dev-1': {
+          currentPenaltyLevel: 2,
+          windows: {
+            '1d': {
+              unmetDemandMs: 1,
+              blockedByHeadroomMs: 1,
+              blockedByCooldownBackoffMs: 0,
+              targetDeficitMs: 1,
+              shedCount: 0,
+              restoreCount: 0,
+              failedActivationCount: 0,
+              stableActivationCount: 0,
+              penaltyBumpCount: 0,
+              maxPenaltyLevelSeen: 2,
+              avgShedToRestoreMs: null,
+              avgRestoreToSetbackMs: null,
+              minRestoreToSetbackMs: null,
+              maxRestoreToSetbackMs: null,
+            },
+            '7d': {
+              unmetDemandMs: 1,
+              blockedByHeadroomMs: 1,
+              blockedByCooldownBackoffMs: 0,
+              targetDeficitMs: 1,
+              shedCount: 0,
+              restoreCount: 0,
+              failedActivationCount: 0,
+              stableActivationCount: 0,
+              penaltyBumpCount: 0,
+              maxPenaltyLevelSeen: 2,
+              avgShedToRestoreMs: null,
+              avgRestoreToSetbackMs: null,
+              minRestoreToSetbackMs: null,
+              maxRestoreToSetbackMs: null,
+            },
+            '21d': {
+              unmetDemandMs: 1,
+              blockedByHeadroomMs: 1,
+              blockedByCooldownBackoffMs: 0,
+              targetDeficitMs: 1,
+              shedCount: 0,
+              restoreCount: 0,
+              failedActivationCount: 0,
+              stableActivationCount: 0,
+              penaltyBumpCount: 0,
+              maxPenaltyLevelSeen: 2,
+              avgShedToRestoreMs: null,
+              avgRestoreToSetbackMs: null,
+              minRestoreToSetbackMs: null,
+              maxRestoreToSetbackMs: null,
+            },
+          },
+        },
+      },
+    });
     const app = {
       log,
       error,
@@ -60,6 +120,7 @@ describe('settingsUiApi', () => {
       },
       replacePowerTrackerForUi,
       getDailyBudgetUiPayload,
+      getDeviceDiagnosticsUiPayload,
       get latestTargetSnapshot() {
         return latestDevices;
       },
@@ -90,6 +151,7 @@ describe('settingsUiApi', () => {
       updateDailyBudgetAndRecordCap,
       persistPowerTrackerState,
       getDailyBudgetUiPayload,
+      getDeviceDiagnosticsUiPayload,
     };
   };
 
@@ -187,6 +249,24 @@ describe('settingsUiApi', () => {
       homeyCurrency: 'NOK',
       homeyToday: { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' },
       homeyTomorrow: { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' },
+    });
+    expect(getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toEqual({
+      generatedAt: 123456,
+      windowDays: 21,
+      diagnosticsByDeviceId: expect.objectContaining({
+        'dev-1': expect.objectContaining({ currentPenaltyLevel: 2 }),
+      }),
+    });
+  });
+
+  it('returns an empty diagnostics payload when the app has no diagnostics API yet', () => {
+    const homey = createHomey();
+    delete (homey.app as { getDeviceDiagnosticsUiPayload?: unknown }).getDeviceDiagnosticsUiPayload;
+
+    expect(getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toEqual({
+      generatedAt: expect.any(Number),
+      windowDays: 21,
+      diagnosticsByDeviceId: {},
     });
   });
 

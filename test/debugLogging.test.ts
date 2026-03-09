@@ -2,8 +2,8 @@ import { ALL_DEBUG_LOGGING_TOPICS, normalizeDebugLoggingTopics } from '../lib/ut
 
 describe('normalizeDebugLoggingTopics', () => {
   it('filters arrays to known topics', () => {
-    const result = normalizeDebugLoggingTopics(['plan', 'nope', 123, 'settings']);
-    expect(result).toEqual(['plan', 'settings']);
+    const result = normalizeDebugLoggingTopics(['plan', 'diagnostics', 'nope', 123, 'settings']);
+    expect(result).toEqual(['plan', 'diagnostics', 'settings']);
   });
 
   it('maps object flags into topic names', () => {
