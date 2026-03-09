@@ -1,6 +1,7 @@
 import {
   createRealtimeDeviceReconcileState,
   formatRealtimeDeviceReconcileEvent,
+  flushRealtimeDeviceReconcileQueue,
   scheduleRealtimeDeviceReconcile,
 } from '../lib/app/appRealtimeDeviceReconcile';
 import { shouldQueueRealtimeDeviceReconcile } from '../lib/app/appRealtimeDeviceReconcileRuntime';
@@ -84,6 +85,46 @@ describe('appRealtimeDeviceReconcile', () => {
     expect(logDebug).toHaveBeenCalledWith(
       'Realtime device change matches current plan, skipping reconcile: '
       + 'Heater (dev-1) via onoff [onoff: off -> on]',
+    );
+  });
+
+  it('records breaker attempts only for devices that still drift after reconcile', async () => {
+    const state = createRealtimeDeviceReconcileState();
+    state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
+    state.pendingEvents.set('dev-2', { deviceId: 'dev-2', name: 'Heater 2', capabilityId: 'onoff' });
+
+    await flushRealtimeDeviceReconcileQueue({
+      state,
+      reconcile: jest.fn().mockResolvedValue(true),
+      shouldRecordAttempt: (event) => event.deviceId === 'dev-2',
+      logDebug: jest.fn(),
+      log: jest.fn(),
+    });
+
+    expect(state.circuitState.get('dev-1')).toBeUndefined();
+    expect(state.circuitState.get('dev-2')).toEqual(expect.objectContaining({
+      reconcileCount: 1,
+    }));
+  });
+
+  it('opens the breaker after repeated reconcile attempts for devices that still drift', async () => {
+    const state = createRealtimeDeviceReconcileState();
+    const log = jest.fn();
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
+      await flushRealtimeDeviceReconcileQueue({
+        state,
+        reconcile: jest.fn().mockResolvedValue(true),
+        shouldRecordAttempt: () => true,
+        logDebug: jest.fn(),
+        log,
+      });
+    }
+
+    expect(log).toHaveBeenCalledWith(
+      'Realtime reconcile circuit breaker opened for Heater 1 (dev-1) via onoff; '
+      + 'suppressing automatic reconcile for 60s',
     );
   });
 });

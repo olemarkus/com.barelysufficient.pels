@@ -1072,7 +1072,6 @@ describe('PlanService', () => {
       ],
     }));
   });
-
   it('refreshes the live plan snapshot after reconcile re-applies a restore', async () => {
     let currentOn = false;
     const applyPlanActions = jest.fn().mockImplementation(async () => {
