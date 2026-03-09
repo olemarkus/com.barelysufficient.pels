@@ -4,6 +4,7 @@ import type { PowerTrackerState } from '../../packages/contracts/src/powerTracke
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
 import type {
   SettingsUiBootstrap,
+  SettingsUiDeviceDiagnosticsResponse,
   SettingsUiDevicesPayload,
   SettingsUiLogRequest,
   SettingsUiPlanPayload,
@@ -25,6 +26,7 @@ import {
 
 type SettingsUiApiApp = Homey.App & {
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
+  getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
 };
 
 type ApiContext = {
@@ -126,6 +128,18 @@ export const getSettingsUiPowerPayload = ({ homey }: ApiContext): SettingsUiPowe
 export const getSettingsUiPricesPayload = ({ homey }: ApiContext): SettingsUiPricesPayload => (
   getSettingsUiPrices({ homey })
 );
+
+export const getSettingsUiDeviceDiagnosticsPayload = ({ homey }: ApiContext): SettingsUiDeviceDiagnosticsResponse => {
+  const app = getApp(homey);
+  if (app?.getDeviceDiagnosticsUiPayload) {
+    return app.getDeviceDiagnosticsUiPayload();
+  }
+  return {
+    generatedAt: Date.now(),
+    windowDays: 21,
+    diagnosticsByDeviceId: {},
+  };
+};
 
 export const refreshSettingsUiDevices = async ({ homey }: ApiContext): Promise<SettingsUiDevicesPayload> => {
   await refreshSettingsUiDevicesForApp(homey);

@@ -35,6 +35,7 @@ import {
   schedulePlanRebuildFromSignal,
 } from './lib/app/appPowerHelpers';
 import {
+  createDeviceDiagnosticsService,
   createPlanEngine,
   createPlanService,
   createPriceCoordinator,
@@ -62,6 +63,8 @@ import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
 import {
   startPriceLowestTriggerChecker as startPriceLowestTriggerCheckerHelper,
 } from './lib/app/appPriceLowestTrigger';
+import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
+import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 10 * 1000;
@@ -92,6 +95,7 @@ class PelsApp extends Homey.App {
   private shedBehaviors: Record<string, ShedBehavior> = {};
   private debugLoggingTopics = new Set<DebugLoggingTopic>();
   private dailyBudgetService!: DailyBudgetService;
+  private deviceDiagnosticsService!: DeviceDiagnosticsService;
   private priceCoordinator!: PriceCoordinator;
   private deviceManager!: DeviceManager;
   private planEngine!: PlanEngine;
@@ -112,10 +116,7 @@ class PelsApp extends Homey.App {
   private stopResourceWarningListeners?: () => void;
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
 
-  private updateLocalSnapshot(
-    deviceId: string,
-    updates: { target?: number | null; on?: boolean },
-  ): void {
+  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     this.deviceManager.updateLocalSnapshot(deviceId, updates);
   }
   private setExpectedOverride(deviceId: string, kw: number): boolean {
@@ -141,6 +142,7 @@ class PelsApp extends Homey.App {
     await runStartupStep('migrateManagedDevices', () => this.migrateManagedDevices());
     await runStartupStep('loadCapacitySettings', () => this.loadCapacitySettings());
     await runStartupStep('initDailyBudgetService', () => this.initDailyBudgetService());
+    await runStartupStep('initDeviceDiagnosticsService', () => this.initDeviceDiagnosticsService());
     await runStartupStep('initDeviceManager', () => this.initDeviceManager());
     const hasCachedTargetSnapshot = restoreCachedTargetSnapshotForApp({
       homey: this.homey,
@@ -227,12 +229,8 @@ class PelsApp extends Homey.App {
     this.capacityGuard = new CapacityGuard({
       limitKw: this.capacitySettings.limitKw,
       softMarginKw: this.capacitySettings.marginKw,
-      onShortfall: async (deficitKw) => {
-        await this.handleShortfall(deficitKw);
-      },
-      onShortfallCleared: async () => {
-        await this.handleShortfallCleared();
-      },
+      onShortfall: async (deficitKw) => this.handleShortfall(deficitKw),
+      onShortfallCleared: async () => this.handleShortfallCleared(),
       log: (...args) => this.log(...args),
     });
   }
@@ -256,11 +254,20 @@ class PelsApp extends Homey.App {
       getDynamicSoftLimitOverride: () => this.getDynamicSoftLimitOverride(),
       applySheddingToDevice: (deviceId, deviceName, reason) => this.applySheddingToDevice(deviceId, deviceName, reason),
       updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+      deviceDiagnostics: this.deviceDiagnosticsService,
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
       error: (...args: unknown[]) => this.error(...args),
     };
     this.planEngine = createPlanEngine(deps);
+  }
+  private initDeviceDiagnosticsService(): void {
+    this.deviceDiagnosticsService = createDeviceDiagnosticsService({
+      homey: this.homey, getTimeZone: () => this.getTimeZone(),
+      isDebugEnabled: () => this.debugLoggingTopics.has('diagnostics'),
+      logDebug: (topic, ...args) => this.logDebug(topic, ...args),
+      error: (...args) => this.error(...args),
+    });
   }
   private initPlanService(): void {
     const deps: PlanServiceInitApp = {
@@ -337,6 +344,7 @@ class PelsApp extends Homey.App {
       this.stopResourceWarningListeners();
       this.stopResourceWarningListeners = undefined;
     }
+    this.deviceDiagnosticsService?.destroy();
     this.planService?.destroy();
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
@@ -463,6 +471,9 @@ class PelsApp extends Homey.App {
   }
   private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }
+  public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
+    return this.deviceDiagnosticsService.getUiPayload();
+  }
   public getLatestPlanSnapshotForUi(): DevicePlan | null { return this.planService?.getLatestPlanSnapshot() ?? null; }
   private emitSettingsUiPowerUpdated(): void {
     const api = this.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;

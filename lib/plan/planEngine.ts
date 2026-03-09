@@ -14,6 +14,7 @@ import {
   type HeadroomForDeviceDecision,
 } from './planHeadroomDevice';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -32,6 +33,7 @@ export type PlanEngineDeps = {
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
   getPriorityForDevice: (deviceId: string) => number;
   getDynamicSoftLimitOverride?: () => number | null;
+  deviceDiagnostics?: DeviceDiagnosticsRecorder;
   applySheddingToDevice?: (deviceId: string, deviceName?: string, reason?: string) => Promise<void>;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   log: (...args: unknown[]) => void;
@@ -44,9 +46,11 @@ export class PlanEngine {
 
   private builder: PlanBuilder;
   private executor: PlanExecutor;
+  private readonly deviceDiagnostics?: DeviceDiagnosticsRecorder;
 
   constructor(deps: PlanEngineDeps) {
     this.state = createPlanEngineState();
+    this.deviceDiagnostics = deps.deviceDiagnostics;
 
     const builderDeps: PlanBuilderDeps = {
       homey: deps.homey,
@@ -63,6 +67,7 @@ export class PlanEngine {
       getPriorityForDevice: deps.getPriorityForDevice,
       getShedBehavior: deps.getShedBehavior,
       getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
+      deviceDiagnostics: deps.deviceDiagnostics,
       log: deps.log,
       logDebug: deps.logDebug,
     };
@@ -77,6 +82,7 @@ export class PlanEngine {
       getShedBehavior: deps.getShedBehavior,
       applySheddingToDevice: deps.applySheddingToDevice,
       updateLocalSnapshot: deps.updateLocalSnapshot,
+      deviceDiagnostics: deps.deviceDiagnostics,
       log: deps.log,
       logDebug: deps.logDebug,
       error: deps.error,
@@ -126,6 +132,7 @@ export class PlanEngine {
       headroom: params.headroom,
       requiredKw: params.requiredKw,
       cleanupMissingDevices: params.cleanupMissingDevices,
+      diagnostics: this.deviceDiagnostics,
     });
   }
 
@@ -137,6 +144,7 @@ export class PlanEngine {
       state: this.state,
       devices: params.devices,
       cleanupMissingDevices: params.cleanupMissingDevices,
+      diagnostics: this.deviceDiagnostics,
     });
   }
 
@@ -148,6 +156,7 @@ export class PlanEngine {
       state: this.state,
       deviceId: params.deviceId,
       trackedKw: params.trackedKw,
+      diagnostics: this.deviceDiagnostics,
     });
   }
 

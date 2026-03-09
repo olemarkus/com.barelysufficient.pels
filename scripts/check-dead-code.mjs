@@ -57,6 +57,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_REFRESH_DEVICES_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_REFRESH_PRICES_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_REFRESH_GRID_TARIFF_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_LOG_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_RESET_POWER_STATS_PATH$/,
 ];

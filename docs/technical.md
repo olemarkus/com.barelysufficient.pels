@@ -13,6 +13,7 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 - [Shedding Order](#shedding-order)
 - [Restoration Order](#restoration-order)
 - [Power Estimation](#power-estimation)
+- [Per-Device Diagnostics](#per-device-diagnostics)
 - [Power Usage Data Retention](#power-usage-data-retention)
 - [Daily Budget Weighting Math](#daily-budget-weighting-math)
 - [Assumptions and Limitations](#assumptions-and-limitations)
@@ -203,6 +204,60 @@ This estimation is inherently imperfect, which is why PELS:
 For shedding decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
 
 For `meter_power`, PELS computes an average kW from the change in kWh over time and updates the peak. If the counter decreases (reset/rollover), the delta is ignored and the baseline is reset.
+
+---
+
+## Per-Device Diagnostics
+
+PELS keeps a compact **21-day** rolling diagnostics history per managed device. These diagnostics are shown in the settings UI device detail panel and are intended for troubleshooting, not control.
+
+### Unmet Demand vs Starvation
+
+- **Unmet demand** means the device is below the state PELS would prefer right now.
+- **Starvation** means that unmet demand stayed unmet because PELS kept blocking the device.
+- Starvation is therefore a **subset** of unmet demand.
+
+For temperature devices, unmet demand means the desired target exceeds the currently applied target by at least **0.5 C**. For binary on/off devices, unmet demand means the device is off while PELS would otherwise want it on.
+
+### Starvation Cause Split
+
+Blocked unmet-demand time is split into:
+
+- **Blocked by headroom**: insufficient effective headroom under the current active soft limit. This includes cases where the daily budget lowers the effective limit.
+- **Blocked by cooldown/backoff**: global restore cooldown, shed cooldown, restore throttling, or per-device failed-activation backoff.
+
+### EV Scope
+
+EV chargers are intentionally excluded from unmet-demand and starvation metrics in v1. PELS can tell whether it paused or resumed an EV charger, but it does **not** know the charger’s real charging objective such as target SoC or deadline.
+
+EV chargers are still included in:
+
+- **Hysteresis metrics** such as `shed -> restore` and `restore -> setback`
+- **Penalty metrics** such as penalty bump count, current penalty level, and max penalty level seen
+
+### Hysteresis And Penalty Metrics
+
+PELS tracks:
+
+- Shed count and restore count
+- Average `shed -> restore` duration
+- Average, shortest, and longest `restore -> setback` duration
+- Failed activation count and stable activation count
+- Penalty bump count, current penalty level, and max penalty level seen in the window
+
+### Debug Logging
+
+The debug logging topic **`diagnostics`** emits diagnostics-specific logs. It is separate from the plan topic and is meant for validating this feature without enabling broad planner logs.
+
+When enabled, it logs:
+
+- persisted diagnostics load, repair, and prune actions
+- throttled persistence flushes
+- skipped attribution after long observation gaps
+- unmet-demand start/end transitions
+- block-cause changes between `headroom`, `cooldown_backoff`, and `not_blocked`
+- shed/restore cycle completions
+- activation attempt lifecycle transitions and penalty changes
 
 ---
 

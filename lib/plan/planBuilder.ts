@@ -22,6 +22,8 @@ import {
 import { getHourBucketKey } from '../utils/dateUtils';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 
 export type PlanBuilderDeps = {
   homey: Homey.App['homey'];
@@ -38,12 +40,12 @@ export type PlanBuilderDeps = {
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
   getDynamicSoftLimitOverride?: () => number | null;
+  deviceDiagnostics?: DeviceDiagnosticsRecorder;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
 
 const SOFT_LIMIT_EPSILON = 1e-3;
-
 const getCurrentHourKWh = (buckets?: Record<string, number>): number | undefined => {
   const value = buckets?.[getHourBucketKey()];
   return typeof value === 'number' ? value : undefined;
@@ -160,6 +162,11 @@ export class PlanBuilder {
     const meta = this.trackDuration('plan_meta_ms', () => (
       this.buildPlanMeta(context, finalized.planDevices, dailyBudgetSnapshot)
     ));
+    this.observeDiagnostics({
+      context,
+      planDevices: finalized.planDevices,
+      restoreResult,
+    });
     return {
       meta,
       devices: finalized.planDevices,
@@ -306,6 +313,7 @@ export class PlanBuilder {
         devices: planDevices,
         nowTs,
         cleanupMissingDevices: false,
+        diagnostics: this.deps.deviceDiagnostics,
       });
 
       return planDevices.map((device) => {
@@ -348,6 +356,25 @@ export class PlanBuilder {
     if (device.currentState === 'off' || device.currentState === 'unknown') return false;
     if (!device.reason) return true;
     return device.reason === 'keep' || device.reason.startsWith('keep (');
+  }
+
+  private observeDiagnostics(params: {
+    context: PlanContext;
+    planDevices: DevicePlanDevice[];
+    restoreResult: RestorePlanResult;
+  }): void {
+    if (!this.deps.deviceDiagnostics) return;
+    const nowTs = Date.now();
+    const observations = buildDeviceDiagnosticsObservations({
+      context: params.context,
+      planDevices: params.planDevices,
+      restoreResult: params.restoreResult,
+      priceOptimizationEnabled: this.priceOptimizationEnabled,
+      priceOptimizationSettings: this.priceOptimizationSettings,
+      isCurrentHourCheap: () => this.deps.isCurrentHourCheap(),
+      isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
+    });
+    this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
   }
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {
@@ -439,6 +466,7 @@ export class PlanBuilder {
       deps: {
         powerTracker: this.powerTracker,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
+        deviceDiagnostics: this.deps.deviceDiagnostics,
         log: (...args: unknown[]) => this.deps.log(...args),
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       },

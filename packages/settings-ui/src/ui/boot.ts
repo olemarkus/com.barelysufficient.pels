@@ -215,6 +215,11 @@ const initGridTariffHandlers = () => {
 
 const DEBUG_TOPICS: Array<{ topic: string; label: string; hint: string }> = [
   { topic: 'plan', label: 'Plan engine', hint: 'Shedding, restore, and soft-limit decisions.' },
+  {
+    topic: 'diagnostics',
+    label: 'Diagnostics',
+    hint: 'Per-device starvation, hysteresis, penalty, and diagnostics persistence.',
+  },
   { topic: 'price', label: 'Price optimization', hint: 'Spot prices, tariffs, and price shaping.' },
   { topic: 'daily_budget', label: 'Daily budget', hint: 'Daily plan and rollover.' },
   { topic: 'devices', label: 'Devices', hint: 'Device snapshots and Homey API interactions.' },

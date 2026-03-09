@@ -11,10 +11,17 @@ import {
   getEvRestoreBlockReason,
   setBinaryControl,
 } from './planBinaryControl';
+import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
-  recordActivationAttemptStart,
-  recordActivationSetback,
-} from './planActivationBackoff';
+  canTurnOnDevice,
+  recordActivationAttemptStarted,
+  recordActivationSetbackForDevice,
+  recordDiagnosticsRestore,
+  recordDiagnosticsShed,
+  resolveShedTemperaturePlan,
+  shouldSkipShedding,
+  shouldSkipUnavailable,
+} from './planExecutorSupport';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -26,6 +33,7 @@ export type PlanExecutorDeps = {
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
   applySheddingToDevice?: (deviceId: string, deviceName?: string, reason?: string) => Promise<void>;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
+  deviceDiagnostics?: DeviceDiagnosticsRecorder;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -95,50 +103,16 @@ export class PlanExecutor {
   }
 
   private async applyShedTemperature(dev: DevicePlan['devices'][number]): Promise<void> {
-    const plan = this.getShedTemperaturePlan(dev);
+    const snapshot = this.latestTargetSnapshot.find((entry) => entry.id === dev.id);
+    const plan = resolveShedTemperaturePlan({
+      dev,
+      snapshot,
+      capacityDryRun: this.capacityDryRun,
+      log: (...args: unknown[]) => this.log(...args),
+      logDebug: (...args: unknown[]) => this.logDebug(...args),
+    });
     if (!plan) return;
     await this.applyShedTemperaturePlan(dev, plan.targetCap, plan.plannedTarget);
-  }
-
-  private getShedTemperaturePlan(
-    dev: DevicePlan['devices'][number],
-  ): { targetCap: string; plannedTarget: number } | null {
-    const snapshot = this.getShedTemperatureSnapshot(dev.id);
-    const currentTarget = typeof snapshot.currentTarget === 'number' ? snapshot.currentTarget : dev.currentTarget;
-    if (this.shouldSkipShedTemperature(dev, snapshot.targetCap, currentTarget)) return null;
-    if (typeof dev.plannedTarget !== 'number') return null;
-    return { targetCap: snapshot.targetCap as string, plannedTarget: dev.plannedTarget };
-  }
-
-  private getShedTemperatureSnapshot(deviceId: string): { targetCap: string | undefined; currentTarget: unknown } {
-    const snapshotEntry = this.latestTargetSnapshot.find((d) => d.id === deviceId);
-    return {
-      targetCap: snapshotEntry?.targets?.[0]?.id,
-      currentTarget: snapshotEntry?.targets?.[0]?.value,
-    };
-  }
-
-  private shouldSkipShedTemperature(
-    dev: DevicePlan['devices'][number],
-    targetCap: string | undefined,
-    currentTarget: unknown,
-  ): boolean {
-    if (this.capacityDryRun) {
-      this.log(
-        `Capacity (dry run): would set ${targetCap || 'target'} `
-        + `for ${dev.name || dev.id} to ${dev.plannedTarget ?? '–'}°C (overshoot)`,
-      );
-      return true;
-    }
-    if (!targetCap || typeof dev.plannedTarget !== 'number') return true;
-    if (typeof currentTarget === 'number' && currentTarget === dev.plannedTarget) {
-      this.logDebug(
-        `Capacity: skip setting ${targetCap || 'target'} `
-        + `for ${dev.name || dev.id}, already at ${dev.plannedTarget}°C`,
-      );
-      return true;
-    }
-    return false;
   }
 
   private async applyShedTemperaturePlan(
@@ -152,7 +126,14 @@ export class PlanExecutor {
       this.updateLocalSnapshot(dev.id, { target: plannedTarget });
       const now = Date.now();
       this.state.lastDeviceShedMs[dev.id] = now;
-      recordActivationSetback({ state: this.state, deviceId: dev.id, nowTs: now });
+      recordDiagnosticsShed({ diagnostics: this.deps.deviceDiagnostics, deviceId: dev.id, name: dev.name, nowTs: now });
+      recordActivationSetbackForDevice({
+        state: this.state,
+        diagnostics: this.deps.deviceDiagnostics,
+        deviceId: dev.id,
+        name: dev.name,
+        nowTs: now,
+      });
       const guardShedding = this.capacityGuard?.isSheddingActive?.() === true;
       const guardHeadroom = this.capacityGuard?.getHeadroom?.();
       if (guardShedding || (typeof guardHeadroom === 'number' && guardHeadroom < 0)) {
@@ -177,7 +158,7 @@ export class PlanExecutor {
     if (snapshot?.deviceClass === 'evcharger') {
       this.logDebug(`Capacity: evaluating EV restore for ${dev.name || dev.id} (${formatEvSnapshot(snapshot)})`);
     }
-    if (!this.canTurnOnDevice(snapshot)) {
+    if (!canTurnOnDevice(snapshot)) {
       const evReason = getEvRestoreBlockReason(snapshot);
       const suffix = evReason ? ` (${evReason})` : '';
       this.logDebug(`Capacity: skip restoring ${dev.name || dev.id}, cannot turn on from current snapshot${suffix}`);
@@ -209,10 +190,17 @@ export class PlanExecutor {
         if (!applied) return;
         this.state.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
         this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
-        recordActivationAttemptStart({
-          state: this.state,
+        recordDiagnosticsRestore({
+          diagnostics: this.deps.deviceDiagnostics,
           deviceId: dev.id,
-          source: 'pels_restore',
+          name,
+          nowTs: this.state.lastRestoreMs,
+        });
+        recordActivationAttemptStarted({
+          state: this.state,
+          diagnostics: this.deps.deviceDiagnostics,
+          deviceId: dev.id,
+          name,
           nowTs: this.state.lastRestoreMs,
         });
         // Clear this device from pending swap targets if it was one
@@ -247,7 +235,7 @@ export class PlanExecutor {
         + `(${formatEvSnapshot(entry)})`,
       );
     }
-    if (!this.canTurnOnDevice(entry)) return;
+    if (!canTurnOnDevice(entry)) return;
     const name = dev.name || dev.id;
     try {
       const applied = await setBinaryControl({
@@ -288,24 +276,6 @@ export class PlanExecutor {
     return { targetCap, isRestoring };
   }
 
-  private canTurnOnDevice(snapshot?: TargetDeviceSnapshot): boolean {
-    if (!snapshot) return false;
-    if (snapshot.available === false) return false;
-    const controlPlan = getBinaryControlPlan(snapshot);
-    if (!controlPlan) return false;
-    if (!controlPlan.canSet) return false;
-    if (controlPlan.isEv && getEvRestoreBlockReason(snapshot) !== null) {
-      return false;
-    }
-    return true;
-  }
-
-  private shouldSkipUnavailable(snapshot: TargetDeviceSnapshot | undefined, name: string, operation: string): boolean {
-    if (snapshot?.available !== false) return false;
-    this.logDebug(`Capacity: skip ${operation} for ${name}, device unavailable`);
-    return true;
-  }
-
   private async applyTargetUpdatePlan(
     dev: DevicePlan['devices'][number],
     targetCap: string,
@@ -326,10 +296,17 @@ export class PlanExecutor {
       if (isRestoring) {
         this.state.lastRestoreMs = Date.now();
         this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
-        recordActivationAttemptStart({
-          state: this.state,
+        recordDiagnosticsRestore({
+          diagnostics: this.deps.deviceDiagnostics,
           deviceId: dev.id,
-          source: 'pels_restore',
+          name: dev.name,
+          nowTs: this.state.lastRestoreMs,
+        });
+        recordActivationAttemptStarted({
+          state: this.state,
+          diagnostics: this.deps.deviceDiagnostics,
+          deviceId: dev.id,
+          name: dev.name,
           nowTs: this.state.lastRestoreMs,
         });
       }
@@ -341,7 +318,15 @@ export class PlanExecutor {
   public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
     if (this.capacityDryRun) return;
     const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
-    if (this.shouldSkipShedding(deviceId, deviceName, snapshotState)) return;
+    if (shouldSkipShedding({
+      state: this.state,
+      deviceId,
+      deviceName,
+      snapshotState,
+      logDebug: (...args: unknown[]) => this.logDebug(...args),
+    })) {
+      return;
+    }
     const name = deviceName || deviceId;
     const shedBehavior = this.getShedBehavior(deviceId);
     const targetCap = snapshotState?.targets?.[0]?.id;
@@ -361,39 +346,6 @@ export class PlanExecutor {
     }
   }
 
-  private shouldSkipShedding(
-    deviceId: string,
-    deviceName: string | undefined,
-    snapshotState: TargetDeviceSnapshot | undefined,
-  ): boolean {
-    if (snapshotState?.deviceClass === 'evcharger') {
-      this.logDebug(`Actuator: evaluating EV shed for ${deviceName || deviceId} (${formatEvSnapshot(snapshotState)})`);
-    }
-    if (snapshotState?.available === false) {
-      this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, device unavailable`);
-      return true;
-    }
-    const now = Date.now();
-    const lastForDevice = this.state.lastDeviceShedMs[deviceId];
-    const throttleMs = 5000;
-    if (lastForDevice && now - lastForDevice < throttleMs) {
-      this.logDebug(
-        `Actuator: skip shedding ${deviceName || deviceId}, throttled (${now - lastForDevice}ms since last)`,
-      );
-      return true;
-    }
-    // Check if this device is already being shed (in-flight)
-    if (this.state.pendingSheds.has(deviceId)) {
-      this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, already in progress`);
-      return true;
-    }
-    if (snapshotState && snapshotState.currentOn === false) {
-      this.logDebug(`Actuator: skip shedding ${deviceName || deviceId}, already off in snapshot`);
-      return true;
-    }
-    return false;
-  }
-
   private async trySetShedTemperature(
     deviceId: string,
     name: string,
@@ -410,7 +362,14 @@ export class PlanExecutor {
       this.state.lastSheddingMs = now;
       this.state.lastOvershootMs = now;
       this.state.lastDeviceShedMs[deviceId] = now;
-      recordActivationSetback({ state: this.state, deviceId, nowTs: now });
+      recordDiagnosticsShed({ diagnostics: this.deps.deviceDiagnostics, deviceId, name, nowTs: now });
+      recordActivationSetbackForDevice({
+        state: this.state,
+        diagnostics: this.deps.deviceDiagnostics,
+        deviceId,
+        name,
+        nowTs: now,
+      });
       return true;
     } catch (error) {
       this.error(`Failed to set shed temperature for ${name} via DeviceManager`, error);
@@ -454,7 +413,14 @@ export class PlanExecutor {
       if (!applied) return;
       this.state.lastSheddingMs = now;
       this.state.lastDeviceShedMs[deviceId] = now;
-      recordActivationSetback({ state: this.state, deviceId, nowTs: now });
+      recordDiagnosticsShed({ diagnostics: this.deps.deviceDiagnostics, deviceId, name, nowTs: now });
+      recordActivationSetbackForDevice({
+        state: this.state,
+        diagnostics: this.deps.deviceDiagnostics,
+        deviceId,
+        name,
+        nowTs: now,
+      });
     } catch (error) {
       this.error(`Failed to turn off ${name} via DeviceManager`, error);
     }
@@ -502,10 +468,16 @@ export class PlanExecutor {
     if (!plan || !Array.isArray(plan.devices)) return;
 
     const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
+    const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
     for (const dev of plan.devices) {
       const snapshot = snapshotMap.get(dev.id);
       try {
-        if (this.shouldSkipUnavailable(snapshot, dev.name || dev.id, 'actuation')) {
+        if (shouldSkipUnavailable({
+          snapshot,
+          name: dev.name || dev.id,
+          operation: 'actuation',
+          logDebug: logCapacityDebug,
+        })) {
           continue;
         }
         if (dev.controllable === false) {

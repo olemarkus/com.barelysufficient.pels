@@ -58,7 +58,7 @@ describe('activation backoff', () => {
       deviceId: 'dev-1',
       source: 'pels_restore',
       nowTs: now,
-    })).toBe(true);
+    })).toMatchObject({ started: true, stateChanged: true });
 
     const first = recordActivationSetback({
       state,
