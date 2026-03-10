@@ -22,9 +22,7 @@ import { OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
 import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
 import {
-  resolveHomeyEnergyApiFromHomeyApi,
-  resolveHomeyEnergyApiFromSdk,
-  type HomeyEnergyApi,
+  resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi,
 } from './lib/utils/homeyEnergy';
 import {
   persistPowerTrackerStateForApp,
@@ -55,19 +53,12 @@ import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { toStableFingerprint } from './lib/utils/stableFingerprint';
-import {
-  startResourceWarningListeners as startResourceWarningListenersHelper,
-} from './lib/app/appResourceWarningHelpers';
+import { startResourceWarningListeners as startResourceWarnings } from './lib/app/appResourceWarningHelpers';
+import { createFlowRebuildScheduler, type FlowRebuildScheduler } from './lib/app/appFlowRebuildScheduler';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
 import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
-import {
-  startPriceLowestTriggerChecker as startPriceLowestTriggerCheckerHelper,
-} from './lib/app/appPriceLowestTrigger';
-import {
-  clearRealtimeDeviceReconcileState,
-  createRealtimeDeviceReconcileState,
-  type RealtimeDeviceReconcileEvent,
-} from './lib/app/appRealtimeDeviceReconcile';
+import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
+import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
@@ -79,7 +70,6 @@ const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 type PelsStatus = { lastPowerUpdate?: number | null; priceLevel?: string | null };
-
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
   private capacityGuard?: CapacityGuard;
@@ -111,11 +101,13 @@ class PelsApp extends Homey.App {
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private realtimeDeviceReconcileTimer?: ReturnType<typeof setTimeout>;
-  private realtimeDeviceReconcileState = createRealtimeDeviceReconcileState();
+  private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private heartbeatInterval?: ReturnType<typeof setInterval>;
   private stopPriceLowestTriggerChecker?: () => void;
   private stopPerfLogging?: () => void;
   private stopResourceWarningListeners?: () => void;
+  private stopSettingsHandler?: () => void;
+  private flowRebuildScheduler?: FlowRebuildScheduler;
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     this.deviceManager.updateLocalSnapshot(deviceId, updates);
@@ -227,7 +219,7 @@ class PelsApp extends Homey.App {
     await this.deviceManager.init();
     this.deviceManager.on(
       PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
-      (event: RealtimeDeviceReconcileEvent) => {
+      (event: realtimeReconcile.RealtimeDeviceReconcileEvent) => {
         this.scheduleRealtimeDeviceReconcile(event);
       },
     );
@@ -299,7 +291,7 @@ class PelsApp extends Homey.App {
     this.capacityGuard.setShortfallThresholdProvider(() => this.computeShortfallThreshold());
   }
   private initSettingsHandler(): void {
-    initSettingsHandlerForApp({
+    const settingsHandler = initSettingsHandlerForApp({
       homey: this.homey,
       getOperatingMode: () => this.operatingMode,
       notifyOperatingModeChanged: (mode) => this.notifyOperatingModeChanged(mode),
@@ -323,28 +315,35 @@ class PelsApp extends Homey.App {
       log: (message: string) => this.log(message),
       error: (message: string, error: Error) => this.error(message, error),
     });
+    this.stopSettingsHandler = settingsHandler.stop;
   }
   async onUninit(): Promise<void> {
+    this.clearUninitTimers();
+    realtimeReconcile.clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
+    this.stopUninitServices();
+    this.flowRebuildScheduler?.stop();
+    this.deviceDiagnosticsService?.destroy();
+    this.planService?.destroy();
+    this.priceCoordinator.stop();
+    this.deviceManager?.destroy();
+  }
+  private clearUninitTimers(): void {
     if (this.powerTrackerSaveTimer) this.persistPowerTrackerState();
     if (this.powerTrackerPruneTimer) clearTimeout(this.powerTrackerPruneTimer);
     if (this.powerTrackerPruneInterval) clearInterval(this.powerTrackerPruneInterval);
     if (this.snapshotRefreshInterval) clearInterval(this.snapshotRefreshInterval);
     if (this.powerSampleRebuildState.timer) clearTimeout(this.powerSampleRebuildState.timer);
     if (this.realtimeDeviceReconcileTimer) clearTimeout(this.realtimeDeviceReconcileTimer);
-    clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
+  }
+  private stopUninitServices(): void {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-    if (this.stopPriceLowestTriggerChecker) this.stopPriceLowestTriggerChecker();
-    if (this.stopPerfLogging) this.stopPerfLogging();
-    if (this.stopResourceWarningListeners) this.stopResourceWarningListeners();
-    this.deviceDiagnosticsService?.destroy();
-    this.planService?.destroy();
-    this.priceCoordinator.stop();
-    this.deviceManager?.destroy();
+    this.stopPriceLowestTriggerChecker?.(); this.stopPerfLogging?.();
+    this.stopResourceWarningListeners?.(); this.stopSettingsHandler?.();
   }
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
     if (this.debugLoggingTopics.has(topic)) this.log(...args);
   }
-  private scheduleRealtimeDeviceReconcile(event: RealtimeDeviceReconcileEvent): void {
+  private scheduleRealtimeDeviceReconcile(event: realtimeReconcile.RealtimeDeviceReconcileEvent): void {
     const timer = scheduleAppRealtimeDeviceReconcile({
       event,
       state: this.realtimeDeviceReconcileState,
@@ -366,7 +365,7 @@ class PelsApp extends Homey.App {
   }
   private startPriceLowestTriggerChecker(): void {
     if (this.stopPriceLowestTriggerChecker) this.stopPriceLowestTriggerChecker();
-    this.stopPriceLowestTriggerChecker = startPriceLowestTriggerCheckerHelper({
+    this.stopPriceLowestTriggerChecker = startPriceLowestTriggers({
       getNow: () => this.getNow(), getTimeZone: () => this.getTimeZone(),
       getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
       getTriggerCard: (id) => this.homey.flow.getTriggerCard(id),
@@ -381,7 +380,7 @@ class PelsApp extends Homey.App {
   }
   private startResourceWarningListeners(): void {
     if (this.stopResourceWarningListeners) this.stopResourceWarningListeners();
-    this.stopResourceWarningListeners = startResourceWarningListenersHelper({
+    this.stopResourceWarningListeners = startResourceWarnings({
       homey: this.homey, log: (message) => this.log(message), error: this.error.bind(this),
     });
   }
@@ -582,6 +581,11 @@ class PelsApp extends Homey.App {
     }
   }
   private registerFlowCards(): void {
+    this.flowRebuildScheduler ??= createFlowRebuildScheduler({
+      rebuildPlanFromCache: (reason) => this.planService.rebuildPlanFromCache(reason),
+      logDebug: (...args: unknown[]) => this.logDebug('settings', ...args),
+      logError: (message, error) => this.error(message, error),
+    });
     const deps: FlowCardInitApp = {
       homey: this.homey,
       resolveModeName: (mode) => this.resolveModeName(mode),
@@ -596,7 +600,7 @@ class PelsApp extends Homey.App {
       getDeviceLoadSetting: (deviceId) => this.getDeviceLoadSetting(deviceId),
       setExpectedOverride: (deviceId, kw) => this.setExpectedOverride(deviceId, kw),
       storeFlowPriceData: (kind, raw) => this.storeFlowPriceData(kind, raw),
-      planService: this.planService,
+      requestFlowPlanRebuild: (source) => this.flowRebuildScheduler?.requestRebuild(source),
       evaluateHeadroomForDevice: (params) => this.evaluateHeadroomForDevice(params),
       loadDailyBudgetSettings: () => this.dailyBudgetService.loadSettings(),
       updateDailyBudgetState: (options) => this.dailyBudgetService.updateState(options),
@@ -654,7 +658,6 @@ class PelsApp extends Homey.App {
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
     this.deviceManager.setSnapshotForTests(snapshot);
   }
-
   parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
     return this.deviceManager.parseDeviceListForTests(list);
   }

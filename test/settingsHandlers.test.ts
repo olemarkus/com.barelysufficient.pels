@@ -2,10 +2,17 @@ import { createSettingsHandler, type SettingsHandlerDeps } from '../lib/utils/se
 import {
   CAPACITY_LIMIT_KW,
   COMBINED_PRICES,
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
   MANAGED_DEVICES,
 } from '../lib/utils/settingsKeys';
+
+const flushMicrotasks = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
 
 const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandlerDeps => {
   const homey = {
@@ -36,6 +43,8 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     updatePriceOptimizationEnabled: jest.fn(),
     updateOverheadToken: jest.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: jest.fn(),
+    getExperimentalEvSupportEnabled: jest.fn().mockReturnValue(false),
+    disableManagedEvDevices: jest.fn(),
     log: jest.fn(),
     errorLog: jest.fn(),
     ...overrides,
@@ -287,7 +296,7 @@ describe('createSettingsHandler', () => {
 
     const first = handler(COMBINED_PRICES);
     await jest.advanceTimersByTimeAsync(1000);
-    await Promise.resolve();
+    await flushMicrotasks();
 
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -296,14 +305,13 @@ describe('createSettingsHandler', () => {
     const third = handler(COMBINED_PRICES);
 
     await jest.advanceTimersByTimeAsync(1000);
-    await Promise.resolve();
+    await flushMicrotasks();
 
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
     resolveFirstRebuild?.();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushMicrotasks();
 
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
@@ -311,12 +319,139 @@ describe('createSettingsHandler', () => {
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
 
     await jest.advanceTimersByTimeAsync(1);
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushMicrotasks();
     await Promise.all([first, second, third]);
 
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+  });
+
+  it('debounces daily budget setting writes into one sync and rebuild', async () => {
+    jest.useFakeTimers();
+    const settingsStore: Record<string, unknown> = {
+      [DAILY_BUDGET_KWH]: 40,
+      [DAILY_BUDGET_ENABLED]: true,
+    };
+    const deps = buildDeps();
+    deps.homey.settings.get = jest.fn((key: string) => settingsStore[key]);
+    const handler = createSettingsHandler(deps);
+
+    const first = handler(DAILY_BUDGET_KWH);
+    const second = handler(DAILY_BUDGET_ENABLED);
+    await Promise.all([first, second]);
+
+    expect(deps.loadDailyBudgetSettings).not.toHaveBeenCalled();
+    expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(499);
+    await flushMicrotasks();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(1);
+    await flushMicrotasks();
+
+    expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(1);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:daily_budget_settings');
+  });
+
+  it('resets the daily budget debounce window when another write arrives later', async () => {
+    jest.useFakeTimers();
+    const settingsStore: Record<string, unknown> = {
+      [DAILY_BUDGET_KWH]: 40,
+      [DAILY_BUDGET_ENABLED]: false,
+    };
+    const deps = buildDeps();
+    deps.homey.settings.get = jest.fn((key: string) => settingsStore[key]);
+    const handler = createSettingsHandler(deps);
+
+    await handler(DAILY_BUDGET_KWH);
+    await jest.advanceTimersByTimeAsync(300);
+    await flushMicrotasks();
+
+    settingsStore[DAILY_BUDGET_ENABLED] = true;
+    await handler(DAILY_BUDGET_ENABLED);
+
+    await jest.advanceTimersByTimeAsync(199);
+    await flushMicrotasks();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(1);
+    await flushMicrotasks();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(300);
+    await flushMicrotasks();
+
+    expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(1);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('reruns daily budget sync once after in-flight writes finish', async () => {
+    jest.useFakeTimers();
+    let resolveFirstRebuild: (() => void) | null = null;
+    const firstRebuildPromise = new Promise<void>((resolve) => {
+      resolveFirstRebuild = resolve;
+    });
+    const settingsStore: Record<string, unknown> = {
+      [DAILY_BUDGET_KWH]: 40,
+    };
+    const deps = buildDeps({
+      rebuildPlanFromCache: jest.fn()
+        .mockImplementationOnce(() => firstRebuildPromise)
+        .mockResolvedValue(undefined),
+    });
+    deps.homey.settings.get = jest.fn((key: string) => settingsStore[key]);
+    const handler = createSettingsHandler(deps);
+
+    const first = handler(DAILY_BUDGET_KWH);
+    await jest.advanceTimersByTimeAsync(500);
+    await flushMicrotasks();
+
+    expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(1);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    settingsStore[DAILY_BUDGET_KWH] = 45;
+    const second = handler(DAILY_BUDGET_KWH);
+    await flushMicrotasks();
+    await Promise.all([first, second]);
+
+    expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    resolveFirstRebuild?.();
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(2);
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
+    expect((deps.rebuildPlanFromCache as jest.Mock).mock.calls[1]?.[0]).toBe('settings:daily_budget_settings');
+  });
+
+  it('cancels pending debounced daily budget syncs on stop', async () => {
+    jest.useFakeTimers();
+    const settingsStore: Record<string, unknown> = {
+      [DAILY_BUDGET_KWH]: 40,
+    };
+    const deps = buildDeps();
+    deps.homey.settings.get = jest.fn((key: string) => settingsStore[key]);
+    const handler = createSettingsHandler(deps);
+
+    await handler(DAILY_BUDGET_KWH);
+    handler.stop();
+
+    await jest.advanceTimersByTimeAsync(500);
+    await flushMicrotasks();
+
+    expect(deps.loadDailyBudgetSettings).not.toHaveBeenCalled();
+    expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 
   it('refreshes managed devices and rebuilds', async () => {

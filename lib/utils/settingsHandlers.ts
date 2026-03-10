@@ -108,8 +108,30 @@ const DEDUPED_WRITE_KEYS = new Set<string>([
   ...DEDUPED_LOGGING_KEYS,
 ]);
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
+const DAILY_BUDGET_SETTINGS_REBUILD_DEBOUNCE_MS = 500;
 
-const createDailyBudgetPriceSyncScheduler = (deps: SettingsHandlerDeps): (() => Promise<void>) => {
+type DebouncedSyncSchedulerParams = {
+  debounceMs: number;
+  rerunAfterRun?: 'debounce' | 'immediate';
+  run: () => Promise<void>;
+  onError: (error: unknown) => void;
+};
+
+type DebouncedSyncScheduler = {
+  schedule: () => Promise<void>;
+  stop: () => void;
+};
+
+const createDebouncedSyncScheduler = (
+  params: DebouncedSyncSchedulerParams,
+): DebouncedSyncScheduler => {
+  const {
+    debounceMs,
+    rerunAfterRun = 'debounce',
+    run,
+    onError,
+  } = params;
+
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running = false;
   let rerunRequested = false;
@@ -132,40 +154,84 @@ const createDailyBudgetPriceSyncScheduler = (deps: SettingsHandlerDeps): (() => 
     resolve?.();
   };
 
-  const scheduleRun = (): void => {
-    if (timer) return;
-    timer = setTimeout(() => {
-      timer = null;
-      running = true;
-      void Promise.resolve()
-        .then(() => {
-          deps.updateDailyBudgetState({ forcePlanRebuild: true });
-        })
-        .then(() => rebuildPlanFromSettings(deps, 'daily_budget_price'))
-        .catch((error) => deps.errorLog('Failed to sync daily budget state after combined price update', error))
-        .finally(() => {
-          running = false;
-          if (rerunRequested) {
-            rerunRequested = false;
-            scheduleRun();
+  const executeRun = (): void => {
+    timer = null;
+    running = true;
+    void Promise.resolve()
+      .then(() => run())
+      .catch((error) => onError(error))
+      .finally(() => {
+        running = false;
+        if (rerunRequested) {
+          rerunRequested = false;
+          if (rerunAfterRun === 'immediate') {
+            executeRun();
             return;
           }
-          finishPendingRun();
-        });
-    }, DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS);
+          scheduleRun();
+          return;
+        }
+        finishPendingRun();
+      });
   };
 
-  return (): Promise<void> => {
-    const promise = ensurePendingRun();
-    if (timer) return promise;
-    if (running) {
-      rerunRequested = true;
-      return promise;
+  const scheduleRun = (): void => {
+    if (timer) {
+      clearTimeout(timer);
     }
-    scheduleRun();
-    return promise;
+    timer = setTimeout(() => {
+      executeRun();
+    }, debounceMs);
+  };
+
+  return {
+    schedule: (): Promise<void> => {
+      const promise = ensurePendingRun();
+      if (running) {
+        rerunRequested = true;
+        return promise;
+      }
+      scheduleRun();
+      return promise;
+    },
+    stop: (): void => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      rerunRequested = false;
+      finishPendingRun();
+    },
   };
 };
+
+export type SettingsHandler = ((key: string) => Promise<void>) & {
+  stop: () => void;
+};
+
+const createDailyBudgetPriceSyncScheduler = (deps: SettingsHandlerDeps): DebouncedSyncScheduler => (
+  createDebouncedSyncScheduler({
+    debounceMs: DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS,
+    run: async () => {
+      deps.updateDailyBudgetState({ forcePlanRebuild: true });
+      await rebuildPlanFromSettings(deps, 'daily_budget_price');
+    },
+    onError: (error) => deps.errorLog('Failed to sync daily budget state after combined price update', error),
+  })
+);
+
+const createDailyBudgetSettingsSyncScheduler = (deps: SettingsHandlerDeps): DebouncedSyncScheduler => (
+  createDebouncedSyncScheduler({
+    debounceMs: DAILY_BUDGET_SETTINGS_REBUILD_DEBOUNCE_MS,
+    rerunAfterRun: 'immediate',
+    run: async () => {
+      deps.loadDailyBudgetSettings();
+      deps.updateDailyBudgetState({ forcePlanRebuild: true });
+      await rebuildPlanFromSettings(deps, 'daily_budget_settings');
+    },
+    onError: (error) => deps.errorLog('Failed to sync daily budget settings', error),
+  })
+);
 
 const refreshPriceDerivedState = async (deps: SettingsHandlerDeps): Promise<void> => {
   deps.priceService.updateCombinedPrices();
@@ -178,6 +244,32 @@ type NoopWriteSkipper = {
 };
 
 type SettingsHandlerMap = Record<string, () => Promise<void>>;
+
+const buildDailyBudgetSettingsHandlers = (
+  scheduleDailyBudgetSettingsSync: () => Promise<void>,
+): Pick<SettingsHandlerMap,
+  typeof DAILY_BUDGET_ENABLED
+  | typeof DAILY_BUDGET_KWH
+  | typeof DAILY_BUDGET_PRICE_SHAPING_ENABLED
+  | typeof DAILY_BUDGET_CONTROLLED_WEIGHT
+  | typeof DAILY_BUDGET_PRICE_FLEX_SHARE
+> => ({
+  [DAILY_BUDGET_ENABLED]: async () => {
+    void scheduleDailyBudgetSettingsSync();
+  },
+  [DAILY_BUDGET_KWH]: async () => {
+    void scheduleDailyBudgetSettingsSync();
+  },
+  [DAILY_BUDGET_PRICE_SHAPING_ENABLED]: async () => {
+    void scheduleDailyBudgetSettingsSync();
+  },
+  [DAILY_BUDGET_CONTROLLED_WEIGHT]: async () => {
+    void scheduleDailyBudgetSettingsSync();
+  },
+  [DAILY_BUDGET_PRICE_FLEX_SHARE]: async () => {
+    void scheduleDailyBudgetSettingsSync();
+  },
+});
 
 const createNoopWriteSkipper = (deps: SettingsHandlerDeps): NoopWriteSkipper => {
   const lastProcessedFingerprints = new Map<string, string>();
@@ -203,32 +295,47 @@ const createNoopWriteSkipper = (deps: SettingsHandlerDeps): NoopWriteSkipper => 
   return { shouldSkipNoopWrite, markProcessedWrite };
 };
 
-export function createSettingsHandler(deps: SettingsHandlerDeps): (key: string) => Promise<void> {
-  const scheduleDailyBudgetPriceSync = createDailyBudgetPriceSyncScheduler(deps);
-  const handlers = buildSettingsHandlers(deps, scheduleDailyBudgetPriceSync);
+export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandler {
+  const dailyBudgetPriceSyncScheduler = createDailyBudgetPriceSyncScheduler(deps);
+  const dailyBudgetSettingsSyncScheduler = createDailyBudgetSettingsSyncScheduler(deps);
+  const handlers = buildSettingsHandlers(
+    deps,
+    () => dailyBudgetPriceSyncScheduler.schedule(),
+    () => dailyBudgetSettingsSyncScheduler.schedule(),
+  );
 
   const { shouldSkipNoopWrite, markProcessedWrite } = createNoopWriteSkipper(deps);
 
   let queue = Promise.resolve();
-  return async (key: string) => {
-    const handler = handlers[key];
-    if (!handler) return;
+  const handler = (async (key: string) => {
+    const keyHandler = handlers[key];
+    if (!keyHandler) return;
     queue = queue.then(async () => {
       if (shouldSkipNoopWrite(key)) return;
-      await handler();
+      await keyHandler();
       markProcessedWrite(key);
     }).catch((error) => {
       deps.errorLog('Settings handler failed', error);
     });
     await queue;
-  };
+  }) as SettingsHandler;
+
+  // eslint-disable-next-line functional/immutable-data
+  return Object.assign(handler, {
+    stop: (): void => {
+      dailyBudgetPriceSyncScheduler.stop();
+      dailyBudgetSettingsSyncScheduler.stop();
+    },
+  });
 }
 
 function buildSettingsHandlers(
   deps: SettingsHandlerDeps,
   scheduleDailyBudgetPriceSync: () => Promise<void>,
+  scheduleDailyBudgetSettingsSync: () => Promise<void>,
 ): SettingsHandlerMap {
   return {
+    ...buildDailyBudgetSettingsHandlers(scheduleDailyBudgetSettingsSync),
     mode_device_targets: async () => handleModeTargetsChange(deps),
     [OPERATING_MODE_SETTING]: async () => handleModeTargetsChange(deps),
     mode_aliases: async () => deps.loadCapacitySettings(),
@@ -306,14 +413,9 @@ function buildSettingsHandlers(
       deps.loadPriceOptimizationSettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh plan after price optimization settings change');
     },
-    [DAILY_BUDGET_ENABLED]: async () => handleDailyBudgetChange(deps),
-    [DAILY_BUDGET_KWH]: async () => handleDailyBudgetChange(deps),
-    [DAILY_BUDGET_PRICE_SHAPING_ENABLED]: async () => handleDailyBudgetChange(deps),
     [COMBINED_PRICES]: async () => {
       void scheduleDailyBudgetPriceSync();
     },
-    [DAILY_BUDGET_CONTROLLED_WEIGHT]: async () => handleDailyBudgetChange(deps),
-    [DAILY_BUDGET_PRICE_FLEX_SHARE]: async () => handleDailyBudgetChange(deps),
     [OVERSHOOT_BEHAVIORS]: async () => {
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after overshoot behavior change');
@@ -380,12 +482,6 @@ async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<voi
   await deps.updateOverheadToken(marginKw);
   deps.updateDailyBudgetState({ forcePlanRebuild: true });
   await rebuildPlanFromSettings(deps, 'capacity_limit_or_margin');
-}
-
-async function handleDailyBudgetChange(deps: SettingsHandlerDeps): Promise<void> {
-  deps.loadDailyBudgetSettings();
-  deps.updateDailyBudgetState({ forcePlanRebuild: true });
-  await rebuildPlanFromSettings(deps, 'daily_budget_settings');
 }
 
 async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<void> {

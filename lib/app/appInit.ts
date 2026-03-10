@@ -145,7 +145,7 @@ export type FlowCardInitApp = {
     storedCount: number;
     missingHours: number[];
   };
-  planService: PlanService;
+  requestFlowPlanRebuild: (source: string) => void;
   evaluateHeadroomForDevice: (params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;
@@ -180,7 +180,7 @@ export function registerAppFlowCards(app: FlowCardInitApp): void {
     getDeviceLoadSetting: (deviceId) => app.getDeviceLoadSetting(deviceId),
     setExpectedOverride: (deviceId, kw) => app.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => app.storeFlowPriceData(kind, raw),
-    rebuildPlan: () => app.planService.rebuildPlanFromCache('flow_card'),
+    rebuildPlan: (source) => app.requestFlowPlanRebuild(source),
     evaluateHeadroomForDevice: (params) => app.evaluateHeadroomForDevice(params),
     loadDailyBudgetSettings: () => app.loadDailyBudgetSettings(),
     updateDailyBudgetState: (options) => app.updateDailyBudgetState(options),

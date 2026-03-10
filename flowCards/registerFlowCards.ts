@@ -35,7 +35,7 @@ export type FlowCardDeps = {
     storedCount: number;
     missingHours: number[];
   };
-  rebuildPlan: () => void;
+  rebuildPlan: (source: string) => void;
   evaluateHeadroomForDevice: (params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;
@@ -289,9 +289,6 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
 
     deps.homey.settings.set(DAILY_BUDGET_KWH, raw);
     deps.homey.settings.set(DAILY_BUDGET_ENABLED, nextEnabled);
-    deps.loadDailyBudgetSettings();
-    deps.updateDailyBudgetState({ forcePlanRebuild: true });
-    requestPlanRebuildFromFlow(deps, 'daily_budget_action');
     if (isDisabling) {
       deps.log('Flow: daily budget disabled (0 kWh)');
     } else {
@@ -450,7 +447,7 @@ function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
     'plan_rebuild_requested.flow_total',
     `plan_rebuild_requested.flow.${source}_total`,
   ]);
-  deps.rebuildPlan();
+  deps.rebuildPlan(source);
 }
 
 async function checkHeadroomForDevice(

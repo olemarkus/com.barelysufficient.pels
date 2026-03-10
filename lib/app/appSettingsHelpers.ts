@@ -23,6 +23,7 @@ import {
 } from '../utils/settingsKeys';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type CapacityGuard from '../core/capacityGuard';
+import type { SettingsHandler } from '../utils/settingsHandlers';
 
 export type CapacitySettingsSnapshot = {
   capacitySettings: { limitKw: number; marginKw: number };
@@ -124,7 +125,7 @@ export function initSettingsHandlerForApp(params: {
   disableManagedEvDevices: () => void;
   log: (message: string) => void;
   error: (message: string, error: Error) => void;
-}): (key: string) => Promise<void> {
+}): { handle: SettingsHandler; stop: () => void } {
   const {
     homey,
     getOperatingMode,
@@ -171,11 +172,18 @@ export function initSettingsHandlerForApp(params: {
     log,
     errorLog: (message: string, err: unknown) => error(message, err as Error),
   });
-  homey.settings.on('set', async (key: string) => {
+  const onSettingsSet = async (key: string) => {
     await settingsHandler?.(key);
     if (key === OPERATING_MODE_SETTING) {
       notifyOperatingModeChanged(getOperatingMode());
     }
-  });
-  return settingsHandler;
+  };
+  homey.settings.on('set', onSettingsSet);
+  return {
+    handle: settingsHandler,
+    stop: () => {
+      homey.settings.off('set', onSettingsSet);
+      settingsHandler.stop();
+    },
+  };
 }
