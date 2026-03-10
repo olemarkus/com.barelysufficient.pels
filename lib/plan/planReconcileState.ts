@@ -38,6 +38,22 @@ export function hasPlanExecutionDrift(previousPlan: DevicePlan, livePlan: Device
   return false;
 }
 
+export function canRefreshPlanSnapshotFromLiveState(
+  basePlan: DevicePlan,
+  livePlan: DevicePlan,
+): boolean {
+  if (!hasPlanExecutionDrift(basePlan, livePlan)) return false;
+  if (basePlan.devices.length !== livePlan.devices.length) return false;
+
+  for (let index = 0; index < basePlan.devices.length; index += 1) {
+    const baseDevice = basePlan.devices[index];
+    const liveDevice = livePlan.devices[index];
+    if (!liveDevice || baseDevice.id !== liveDevice.id) return false;
+    if (!hasSettledPostActuationState(baseDevice, liveDevice)) return false;
+  }
+  return true;
+}
+
 export function hasPlanExecutionDriftForDevice(
   previousPlan: DevicePlan,
   liveDevices: PlanInputDevice[],
@@ -61,4 +77,34 @@ function resolveCurrentStateFromPlanInput(currentOn?: boolean, hasBinaryControl?
   if (typeof currentOn === 'boolean') return currentOn ? 'on' : 'off';
   if (hasBinaryControl === false) return 'not_applicable';
   return 'unknown';
+}
+
+function hasSettledPostActuationState(
+  baseDevice: DevicePlan['devices'][number],
+  liveDevice: DevicePlan['devices'][number],
+): boolean {
+  if (baseDevice.available === false || liveDevice.available === false) return true;
+  if (requiresBinaryRestore(baseDevice) && liveDevice.currentState !== 'on') return false;
+  if (requiresBinaryShed(baseDevice) && liveDevice.currentState !== 'off') return false;
+  if (requiresTargetUpdate(baseDevice) && liveDevice.currentTarget !== baseDevice.plannedTarget) return false;
+  return true;
+}
+
+function requiresBinaryRestore(device: DevicePlan['devices'][number]): boolean {
+  return device.controllable !== false
+    && device.plannedState === 'keep'
+    && device.currentState === 'off';
+}
+
+function requiresBinaryShed(device: DevicePlan['devices'][number]): boolean {
+  return device.plannedState === 'shed'
+    && device.currentState !== 'off'
+    && device.shedAction !== 'set_temperature';
+}
+
+function requiresTargetUpdate(device: DevicePlan['devices'][number]): boolean {
+  if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
+    return false;
+  }
+  return typeof device.plannedTarget === 'number' && device.plannedTarget !== device.currentTarget;
 }

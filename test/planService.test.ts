@@ -580,7 +580,126 @@ describe('PlanService', () => {
     expect(realtime).not.toHaveBeenCalled();
   });
 
-  it('refreshes the live plan snapshot after applying a restore during rebuild', async () => {
+  it('does not refresh the stored plan snapshot from partially updated live state immediately after rebuild actuation', async () => {
+    let liveCurrentOnById: Record<string, boolean> = {
+      'dev-1': false,
+      'dev-2': false,
+    };
+    const realtime = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = jest.fn().mockImplementation(async () => {
+      liveCurrentOnById = {
+        'dev-1': true,
+        'dev-2': false,
+      };
+    });
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn().mockResolvedValue({
+          meta: {
+            totalKw: 1,
+            softLimitKw: 5,
+            headroomKw: 4,
+          },
+          devices: [
+            {
+              id: 'dev-1',
+              name: 'Heater 1',
+              currentState: 'off',
+              plannedState: 'keep',
+              currentTarget: 20,
+              plannedTarget: 20,
+              reason: 'stable',
+              controllable: true,
+            },
+            {
+              id: 'dev-2',
+              name: 'Heater 2',
+              currentState: 'off',
+              plannedState: 'keep',
+              currentTarget: 20,
+              plannedTarget: 20,
+              reason: 'stable',
+              controllable: true,
+            },
+          ],
+        }),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [
+        {
+          id: 'dev-1',
+          name: 'Heater 1',
+          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+          deviceType: 'temperature',
+          hasBinaryControl: true,
+          currentOn: liveCurrentOnById['dev-1'],
+          currentTemperature: 21,
+        },
+        {
+          id: 'dev-2',
+          name: 'Heater 2',
+          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+          deviceType: 'temperature',
+          hasBinaryControl: true,
+          currentOn: liveCurrentOnById['dev-2'],
+          currentTemperature: 21,
+        },
+      ],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    await service.rebuildPlanFromCache();
+
+    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'off',
+          currentTarget: 20,
+          plannedState: 'keep',
+          plannedTarget: 20,
+        }),
+        expect.objectContaining({
+          id: 'dev-2',
+          currentState: 'off',
+          currentTarget: 20,
+          plannedState: 'keep',
+          plannedTarget: 20,
+        }),
+      ],
+    }));
+    expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'off',
+        }),
+        expect.objectContaining({
+          id: 'dev-2',
+          currentState: 'off',
+        }),
+      ],
+    }));
+  });
+
+  it('refreshes the stored plan snapshot after rebuild actuation once all live state has settled', async () => {
     let currentOn = false;
     const realtime = jest.fn().mockResolvedValue(undefined);
     const applyPlanActions = jest.fn().mockImplementation(async () => {
@@ -643,6 +762,312 @@ describe('PlanService', () => {
         expect.objectContaining({
           id: 'dev-1',
           currentState: 'on',
+        }),
+      ],
+    }));
+  });
+
+  it('refreshes the stored plan snapshot when settled actuation leaves an uncontrollable keep-device off', async () => {
+    let liveCurrentOnById: Record<string, boolean> = {
+      'dev-1': false,
+      'dev-2': false,
+    };
+    const realtime = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = jest.fn().mockImplementation(async () => {
+      liveCurrentOnById = {
+        'dev-1': true,
+        'dev-2': false,
+      };
+    });
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn().mockResolvedValue({
+          meta: {
+            totalKw: 1,
+            softLimitKw: 5,
+            headroomKw: 4,
+          },
+          devices: [
+            {
+              id: 'dev-1',
+              name: 'Heater 1',
+              currentState: 'off',
+              plannedState: 'keep',
+              currentTarget: 20,
+              plannedTarget: 20,
+              reason: 'stable',
+              controllable: true,
+            },
+            {
+              id: 'dev-2',
+              name: 'Heater 2',
+              currentState: 'off',
+              plannedState: 'keep',
+              currentTarget: 20,
+              plannedTarget: 20,
+              reason: 'stable',
+              controllable: false,
+            },
+          ],
+        }),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [
+        {
+          id: 'dev-1',
+          name: 'Heater 1',
+          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+          deviceType: 'temperature',
+          hasBinaryControl: true,
+          currentOn: liveCurrentOnById['dev-1'],
+          currentTemperature: 21,
+          controllable: true,
+        },
+        {
+          id: 'dev-2',
+          name: 'Heater 2',
+          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+          deviceType: 'temperature',
+          hasBinaryControl: true,
+          currentOn: liveCurrentOnById['dev-2'],
+          currentTemperature: 21,
+          controllable: false,
+        },
+      ],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    await service.rebuildPlanFromCache();
+
+    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'on',
+        }),
+        expect.objectContaining({
+          id: 'dev-2',
+          currentState: 'off',
+        }),
+      ],
+    }));
+    expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'on',
+        }),
+        expect.objectContaining({
+          id: 'dev-2',
+          currentState: 'off',
+        }),
+      ],
+    }));
+  });
+
+  it('refreshes the stored plan snapshot when settled actuation leaves an unavailable keep-device off', async () => {
+    let liveCurrentOnById: Record<string, boolean> = {
+      'dev-1': false,
+      'dev-2': false,
+    };
+    const realtime = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = jest.fn().mockImplementation(async () => {
+      liveCurrentOnById = {
+        'dev-1': true,
+        'dev-2': false,
+      };
+    });
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn().mockResolvedValue({
+          meta: {
+            totalKw: 1,
+            softLimitKw: 5,
+            headroomKw: 4,
+          },
+          devices: [
+            {
+              id: 'dev-1',
+              name: 'Heater 1',
+              currentState: 'off',
+              plannedState: 'keep',
+              currentTarget: 20,
+              plannedTarget: 20,
+              reason: 'stable',
+              controllable: true,
+              available: true,
+            },
+            {
+              id: 'dev-2',
+              name: 'Heater 2',
+              currentState: 'off',
+              plannedState: 'keep',
+              currentTarget: 20,
+              plannedTarget: 20,
+              reason: 'stable',
+              controllable: true,
+              available: false,
+            },
+          ],
+        }),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [
+        {
+          id: 'dev-1',
+          name: 'Heater 1',
+          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+          deviceType: 'temperature',
+          hasBinaryControl: true,
+          currentOn: liveCurrentOnById['dev-1'],
+          currentTemperature: 21,
+          controllable: true,
+          available: true,
+        },
+        {
+          id: 'dev-2',
+          name: 'Heater 2',
+          targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+          deviceType: 'temperature',
+          hasBinaryControl: true,
+          currentOn: liveCurrentOnById['dev-2'],
+          currentTemperature: 21,
+          controllable: true,
+          available: false,
+        },
+      ],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    await service.rebuildPlanFromCache();
+
+    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'on',
+        }),
+        expect.objectContaining({
+          id: 'dev-2',
+          currentState: 'off',
+          available: false,
+        }),
+      ],
+    }));
+    expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'on',
+        }),
+        expect.objectContaining({
+          id: 'dev-2',
+          currentState: 'off',
+          available: false,
+        }),
+      ],
+    }));
+  });
+
+  it('refreshes the stored plan snapshot after a settled shed-off even if the target remains unchanged', async () => {
+    let currentOn = true;
+    const realtime = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = jest.fn().mockImplementation(async () => {
+      currentOn = false;
+    });
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(21, 'stable', {}, {
+          currentState: 'on',
+          currentTarget: 21,
+          plannedState: 'shed',
+          plannedTarget: 18,
+          shedAction: 'turn_off',
+        })),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    await service.rebuildPlanFromCache();
+
+    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'off',
+          currentTarget: 21,
+          plannedState: 'shed',
+          plannedTarget: 18,
+        }),
+      ],
+    }));
+    expect(realtime).toHaveBeenLastCalledWith('plan_updated', expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'off',
+          currentTarget: 21,
         }),
       ],
     }));

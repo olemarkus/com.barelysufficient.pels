@@ -19,7 +19,11 @@ import {
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
-import { buildLiveStatePlan, hasPlanExecutionDrift } from './planReconcileState';
+import {
+  buildLiveStatePlan,
+  canRefreshPlanSnapshotFromLiveState,
+  hasPlanExecutionDrift,
+} from './planReconcileState';
 import type { PlanEngine } from './planEngine';
 import type { DevicePlan, PlanInputDevice } from './planTypes';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './planHeadroomDevice';
@@ -480,7 +484,7 @@ export class PlanService {
     try {
       await this.applyPlanActions(plan);
       appliedActions = true;
-      this.refreshLatestPlanSnapshotFromLiveState(plan);
+      this.refreshLatestPlanSnapshotFromSettledLiveState(plan);
     } catch (error) {
       this.deps.error('Failed to apply plan actions', error as Error);
     }
@@ -533,9 +537,9 @@ export class PlanService {
     return this.planStatusWriter.update(plan, changes);
   }
 
-  private refreshLatestPlanSnapshotFromLiveState(basePlan: DevicePlan): boolean {
+  private refreshLatestPlanSnapshotFromSettledLiveState(basePlan: DevicePlan): boolean {
     const livePlan = buildLiveStatePlan(basePlan, this.deps.getPlanDevices());
-    if (!hasPlanExecutionDrift(basePlan, livePlan)) return false;
+    if (!canRefreshPlanSnapshotFromLiveState(basePlan, livePlan)) return false;
     this.latestPlanSnapshot = livePlan;
     this.emitPlanUpdated(livePlan);
     return true;
