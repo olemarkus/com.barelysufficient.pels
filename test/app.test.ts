@@ -268,6 +268,36 @@ describe('MyApp initialization', () => {
     rebuildSpy.mockRestore();
   });
 
+  it('set_daily_budget_kwh flow card leaves reconciliation to the settings pipeline', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+
+    const loadSettingsSpy = jest.spyOn((app as any).dailyBudgetService, 'loadSettings');
+    const updateStateSpy = jest.spyOn((app as any).dailyBudgetService, 'updateState');
+    const rebuildSpy = jest.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    loadSettingsSpy.mockClear();
+    updateStateSpy.mockClear();
+    rebuildSpy.mockClear();
+
+    const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
+    const result = await setBudgetListener({ budget_kwh: 45 });
+
+    expect(result).toBe(true);
+    expect(loadSettingsSpy).not.toHaveBeenCalled();
+    expect(updateStateSpy).not.toHaveBeenCalled();
+    expect(rebuildSpy).not.toHaveBeenCalled();
+
+    await app.onUninit?.();
+    loadSettingsSpy.mockRestore();
+    updateStateSpy.mockRestore();
+    rebuildSpy.mockRestore();
+  });
+
   it('set_daily_budget_kwh flow card rejects invalid values', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({

@@ -6,6 +6,11 @@ import { startRuntimeSpan } from '../../lib/utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../../lib/utils/debugLogging';
 import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
 import {
+  createDebouncedPlanImageRefreshScheduler,
+  getActivePlanImageIndices,
+  type DebouncedPlanImageRefreshScheduler,
+} from './planImageRefreshScheduler';
+import {
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
@@ -91,6 +96,7 @@ const PLAN_IMAGE_SETTINGS_KEYS = new Set([
 const HOUR_MS = 60 * 60 * 1000;
 const PLAN_IMAGE_STREAM_REFRESH_MIN_MS = 2 * 60 * 1000;
 const PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS = 30 * 60 * 1000;
+const PLAN_IMAGE_SETTINGS_REFRESH_DEBOUNCE_MS = 500;
 const EMPTY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=',
   'base64',
@@ -127,6 +133,7 @@ class PelsInsightsDevice extends Homey.Device {
   ];
   private planImageTimer?: ReturnType<typeof setTimeout>;
   private planImageInterval?: ReturnType<typeof setInterval>;
+  private planImageSettingsRefreshScheduler?: DebouncedPlanImageRefreshScheduler;
   private planImageRenderCounter = 0;
 
   private updatePlanImageSlot(index: number, patch: Partial<PlanImageState>): PlanImageState {
@@ -198,8 +205,7 @@ class PelsInsightsDevice extends Homey.Device {
         await this.updateFromStatus();
       }
       if (PLAN_IMAGE_SETTINGS_KEYS.has(key)) {
-        if (this.hasActivePlanImageDemand()) void this.refreshPlanImages();
-        else this.invalidatePlanImageCache();
+        this.schedulePlanImageSettingsRefresh();
       }
     });
   }
@@ -257,6 +263,13 @@ class PelsInsightsDevice extends Homey.Device {
       }
     }
     if (!this.planImages.some((slot) => slot.image)) return;
+    this.planImageSettingsRefreshScheduler ??= createDebouncedPlanImageRefreshScheduler({
+      debounceMs: PLAN_IMAGE_SETTINGS_REFRESH_DEBOUNCE_MS,
+      getActiveIndices: () => this.getActivePlanImageIndices(),
+      invalidateCache: () => this.invalidatePlanImageCache(),
+      refreshIndices: (indices) => this.refreshPlanImages({ indices }),
+      onError: (error) => this.error('Failed to refresh active plan images after settings change', error as Error),
+    });
     this.schedulePlanImageRefresh();
   }
 
@@ -269,15 +282,20 @@ class PelsInsightsDevice extends Homey.Device {
     const delay = Math.max(1000, next.getTime() - now.getTime());
     this.planImageTimer = setTimeout(() => {
       this.planImageTimer = undefined;
-      if (this.hasActivePlanImageDemand()) void this.refreshPlanImages();
+      const activeIndices = this.getActivePlanImageIndices();
+      if (activeIndices.length > 0) void this.refreshPlanImages({ indices: activeIndices });
       this.planImageInterval = setInterval(() => {
-        if (this.hasActivePlanImageDemand()) void this.refreshPlanImages();
+        const nextActiveIndices = this.getActivePlanImageIndices();
+        if (nextActiveIndices.length > 0) void this.refreshPlanImages({ indices: nextActiveIndices });
       }, HOUR_MS);
     }, delay);
   }
 
-  private async refreshPlanImages(options: { force?: boolean } = {}): Promise<void> {
-    for (const [index] of this.planImages.entries()) {
+  private async refreshPlanImages(options: { force?: boolean; indices?: number[] } = {}): Promise<void> {
+    const indices = Array.isArray(options.indices)
+      ? options.indices.filter((index) => index >= 0 && index < this.planImages.length)
+      : this.planImages.map((_slot, index) => index);
+    for (const index of indices) {
       await this.refreshPlanImage(index, options);
     }
   }
@@ -418,6 +436,7 @@ class PelsInsightsDevice extends Homey.Device {
       clearInterval(this.planImageInterval);
       this.planImageInterval = undefined;
     }
+    this.planImageSettingsRefreshScheduler?.stop();
   }
 
   private async unregisterPlanImages(): Promise<void> {
@@ -441,11 +460,11 @@ class PelsInsightsDevice extends Homey.Device {
     return null;
   }
 
-  private hasActivePlanImageDemand(nowMs: number = Date.now()): boolean {
-    return this.planImages.some((slot) => (
-      typeof slot.lastStreamedAtMs === 'number'
-      && (nowMs - slot.lastStreamedAtMs) <= PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS
-    ));
+  private getActivePlanImageIndices(nowMs: number = Date.now()): number[] {
+    return getActivePlanImageIndices(this.planImages, {
+      nowMs,
+      activityWindowMs: PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS,
+    });
   }
 
   private invalidatePlanImageCache(): void {
@@ -507,6 +526,10 @@ class PelsInsightsDevice extends Homey.Device {
 
   private getCombinedPrices(): CombinedPriceData | null {
     return this.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
+  }
+
+  private schedulePlanImageSettingsRefresh(): void {
+    this.planImageSettingsRefreshScheduler?.schedule();
   }
 
   private async writePlanImageToStream(
