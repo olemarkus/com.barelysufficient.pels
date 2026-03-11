@@ -2,11 +2,11 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
+  shiftDateKey,
   getZonedParts,
 } from '../utils/dateUtils';
 const STEPS_PER_DAY = 24;
 const DEFAULT_EPSILON = 1e-6;
-const PREVIOUS_DAY_PROBE_HOURS = 26;
 type ParsedPriceEntry = {
   startsAtMs: number;
   price: number;
@@ -176,20 +176,7 @@ const getDateKeyForDayOffset = (
 ): string => {
   const cached = cache.get(offset);
   if (cached) return cached;
-  let dayStartUtcMs = getDateKeyStartMs(context.todayKey, context.timeZone);
-  if (offset > 0) {
-    for (let index = 0; index < offset; index += 1) {
-      dayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, context.timeZone);
-    }
-  }
-  if (offset < 0) {
-    for (let index = 0; index < Math.abs(offset); index += 1) {
-      const previousProbe = new Date(dayStartUtcMs - PREVIOUS_DAY_PROBE_HOURS * 60 * 60 * 1000);
-      const previousKey = getDateKeyInTimeZone(previousProbe, context.timeZone);
-      dayStartUtcMs = getDateKeyStartMs(previousKey, context.timeZone);
-    }
-  }
-  const dateKey = getDateKeyInTimeZone(new Date(dayStartUtcMs), context.timeZone);
+  const dateKey = shiftDateKey(context.todayKey, offset);
   cache.set(offset, dateKey);
   return dateKey;
 };

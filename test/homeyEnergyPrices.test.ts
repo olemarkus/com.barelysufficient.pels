@@ -3,6 +3,7 @@ import {
   fetchHomeyEnergyPricesForDate,
   normalizeHomeyEnergyPrices,
 } from '../lib/price/homeyEnergyPriceFetch';
+import { buildFlowDaySlots } from '../lib/price/flowPriceUtils';
 import {
   isHomeyEnergyApi,
   resolveCurrencyLabel,
@@ -143,5 +144,56 @@ describe('Homey energy price fetch', () => {
       fetchDynamicElectricityPrices: async () => ([]),
     };
     await expect(fetchHomeyEnergyCurrency(api)).resolves.toBeNull();
+  });
+
+  it('preserves 23 exact slots on spring-forward days', () => {
+    const springDate = new Date(Date.UTC(2026, 2, 29, 12, 0, 0));
+    const springDateKey = getDateKeyInTimeZone(springDate, timeZone);
+    const springSlots = buildFlowDaySlots(springDateKey, timeZone);
+    const response = {
+      interval: 60,
+      pricesPerInterval: springSlots.map((slot, index) => ({
+        periodStart: slot.startsAt,
+        periodEnd: new Date(Date.parse(slot.startsAt) + 60 * 60 * 1000).toISOString(),
+        value: index + 1,
+      })),
+      priceUnit: 'NOK',
+    };
+
+    const result = normalizeHomeyEnergyPrices({ response, date: springDate, timeZone });
+
+    expect(springSlots).toHaveLength(23);
+    expect(result.payload?.pricesBySlot).toHaveLength(23);
+    expect(result.payload?.pricesByHour['2']).toBeUndefined();
+    expect(result.payload?.pricesByHour['3']).toBe(3);
+  });
+
+  it('preserves both repeated fall-back slots distinctly', () => {
+    const fallDate = new Date(Date.UTC(2026, 9, 25, 12, 0, 0));
+    const fallDateKey = getDateKeyInTimeZone(fallDate, timeZone);
+    const fallSlots = buildFlowDaySlots(fallDateKey, timeZone);
+    const repeatedHourSlots = fallSlots.filter((slot) => slot.hour === 2);
+    const response = {
+      interval: 60,
+      pricesPerInterval: fallSlots.map((slot, index) => ({
+        periodStart: slot.startsAt,
+        periodEnd: new Date(Date.parse(slot.startsAt) + 60 * 60 * 1000).toISOString(),
+        value: index + 1,
+      })),
+      priceUnit: 'NOK',
+    };
+
+    const result = normalizeHomeyEnergyPrices({ response, date: fallDate, timeZone });
+    const repeatedEntries = result.payload?.pricesBySlot?.filter(
+      (entry) => repeatedHourSlots.some((slot) => slot.startsAt === entry.startsAt),
+    );
+
+    expect(fallSlots).toHaveLength(25);
+    expect(repeatedHourSlots).toHaveLength(2);
+    expect(result.payload?.pricesBySlot).toHaveLength(25);
+    expect(repeatedEntries).toEqual([
+      { startsAt: repeatedHourSlots[0].startsAt, totalPrice: 3 },
+      { startsAt: repeatedHourSlots[1].startsAt, totalPrice: 4 },
+    ]);
   });
 });
