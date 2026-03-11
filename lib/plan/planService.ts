@@ -17,6 +17,7 @@ import {
   type StatusPlanChanges,
 } from './planServiceInternals';
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
+import { normalizeError } from '../utils/errorUtils';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
 import {
@@ -182,7 +183,7 @@ export class PlanService {
         result = await operation();
       })
       .catch((error) => {
-        this.deps.error(errorMessage, error as Error);
+        this.deps.error(errorMessage, normalizeError(error));
       })
       .finally(() => {
         onFinally?.();
@@ -221,7 +222,7 @@ export class PlanService {
           this.deps.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
         }
       } catch (err) {
-        this.deps.logDebug('Plan updated (logging failed)', err);
+        this.deps.error('Plan updated (logging failed)', normalizeError(err));
       }
       incPerfCounter('plan_rebuild_action_signature_changed_total');
     } else if (detailChanged || metaChanged) {
@@ -359,7 +360,7 @@ export class PlanService {
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
       realtime.call(api, 'plan_updated', plan)
-        .catch((err: unknown) => this.deps.error('Failed to emit plan_updated event', err as Error));
+        .catch((err: unknown) => this.deps.error('Failed to emit plan_updated event', normalizeError(err)));
     }
   }
 
@@ -486,7 +487,7 @@ export class PlanService {
       appliedActions = true;
       this.refreshLatestPlanSnapshotFromSettledLiveState(plan);
     } catch (error) {
-      this.deps.error('Failed to apply plan actions', error as Error);
+      this.deps.error('Failed to apply plan actions', normalizeError(error));
     }
     return {
       applyMs: Date.now() - applyStart,

@@ -536,6 +536,7 @@ export default class PriceService {
       results,
       setSetting: (key, value) => this.homey.settings.set(key, value),
       logDebug: this.logDebug,
+      errorLog: this.errorLog,
     });
     const stored = storeHomeyEnergyPayloads({
       results,

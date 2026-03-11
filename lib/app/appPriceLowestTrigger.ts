@@ -1,5 +1,6 @@
 import { resolveCurrentPriceFromCombined } from '../price/priceLowestFlowEvaluator';
 import { getHourStartInTimeZone } from '../utils/dateUtils';
+import { normalizeError } from '../utils/errorUtils';
 
 type LowestPriceTriggerCardId = 'price_lowest_before' | 'price_lowest_today';
 
@@ -17,10 +18,6 @@ export type PriceLowestTriggerCheckerDeps = {
 };
 
 const PRICE_LOWEST_TRIGGER_CHECK_INTERVAL_MS = 30 * 1000;
-
-const normalizeError = (error: unknown): Error => (
-  error instanceof Error ? error : new Error(String(error))
-);
 
 const getCurrentLocalHourKey = (now: Date, timeZone: string): string | undefined => {
   const hourStartMs = getHourStartInTimeZone(now, timeZone);

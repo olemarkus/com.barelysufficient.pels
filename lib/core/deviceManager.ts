@@ -1,7 +1,6 @@
 import Homey from 'homey';
 import { EventEmitter } from 'events';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
-import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import {
     getCapabilities,
     getDeviceId,
@@ -55,30 +54,13 @@ import {
     handleRealtimeCapabilityUpdate,
     handleRealtimeDeviceUpdate,
 } from './deviceManagerRealtimeHandlers';
-type HomeyApiConstructor = {
-    createAppAPI: (opts: {
-        homey: Homey.App['homey'];
-        debug?: ((...args: unknown[]) => void) | null;
-    }) => Promise<HomeyApiClient>;
-};
+import type { HomeyApiClient, HomeyApiConstructor } from './deviceManagerApiTypes';
+import { shouldPromoteHomeyApiDebug } from './deviceManagerDebug';
 const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
 const MIN_SIGNIFICANT_POWER_W = 5;
 export const HOMEY_DEVICE_UPDATE_EVENT = 'device.update';
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
-type HomeyApiDevicesClient = {
-    getDevices?: () => Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]>;
-    setCapabilityValue?: (args: { deviceId: string; capabilityId: string; value: unknown }) => Promise<void>;
-    getDevice?: (args: { id: string }) => Promise<unknown>;
-    getDeviceSettingsObj?: (args: { id: string }) => Promise<unknown>;
-    connect?: () => Promise<void>;
-    disconnect?: () => Promise<void>;
-    on?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
-    off?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
-};
-type HomeyApiClient = {
-    devices?: HomeyApiDevicesClient;
-    energy?: HomeyEnergyApi;
-};
+
 export class DeviceManager extends EventEmitter {
     private homeyApi?: HomeyApiClient;
     private logger: Logger;
@@ -172,7 +154,13 @@ export class DeviceManager extends EventEmitter {
         }
 
         try {
-            this.homeyApi = await HomeyAPI.createAppAPI({ homey: homeyInstance });
+            this.homeyApi = await HomeyAPI.createAppAPI({
+                homey: homeyInstance,
+                debug: (...args: unknown[]) => {
+                    if (!shouldPromoteHomeyApiDebug(args)) return;
+                    this.logger.error('HomeyAPI:', ...args);
+                },
+            });
             this.logger.log('HomeyAPI initialized successfully');
         } catch (error) {
             this.logger.error('Failed to initialize HomeyAPI:', error);

@@ -1,5 +1,6 @@
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from './planRebuildTrace';
 import { listRecentRuntimeSpans, listRuntimeSpans } from './runtimeTrace';
+import { normalizeError } from './errorUtils';
 
 const MB = 1024 * 1024;
 
@@ -92,6 +93,7 @@ const buildCpuSpikeMessage = (sample: CpuSample, nowMs: number): string => {
 
 export const startCpuSpikeMonitor = (params: {
   log: (...args: unknown[]) => void;
+  error?: (...args: unknown[]) => void;
   isEnabled?: () => boolean;
   sampleIntervalMs?: number;
   cpuThresholdPct?: number;
@@ -100,6 +102,7 @@ export const startCpuSpikeMonitor = (params: {
 }): (() => void) => {
   const {
     log,
+    error: logError,
     isEnabled,
     sampleIntervalMs = 1000,
     cpuThresholdPct = 85,
@@ -145,8 +148,14 @@ export const startCpuSpikeMonitor = (params: {
 
       lastLogAtMs = nowMs;
       log(buildCpuSpikeMessage(sample, nowMs));
-    } catch (error) {
-      log(`[perf] cpu spike monitor error ${(error as Error).message}`);
+    } catch (caughtError) {
+      const error = normalizeError(caughtError);
+      const message = `[perf] cpu spike monitor error ${error.message}`;
+      if (typeof logError === 'function') {
+        logError(message, error);
+      } else {
+        log(message, error);
+      }
     }
   }, effectiveIntervalMs);
 

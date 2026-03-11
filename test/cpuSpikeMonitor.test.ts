@@ -68,4 +68,67 @@ describe('startCpuSpikeMonitor', () => {
 
     stop();
   });
+
+  it('routes monitor exceptions to error when provided', () => {
+    const log = jest.fn();
+    const error = jest.fn();
+    const stop = startCpuSpikeMonitor({
+      log,
+      error,
+      sampleIntervalMs: 250,
+      cpuThresholdPct: 0,
+      minConsecutiveSamples: 1,
+      minLogIntervalMs: 0,
+    });
+    cpuUsageSpy.mockImplementation((previous?: NodeJS.CpuUsage) => {
+      if (previous) throw new Error('boom');
+      return { user: 0, system: 0 };
+    });
+
+    jest.advanceTimersByTime(250);
+
+    expect(error).toHaveBeenCalledWith('[perf] cpu spike monitor error boom', expect.any(Error));
+    stop();
+  });
+
+  it('normalizes non-Error monitor exceptions before logging', () => {
+    const error = jest.fn();
+    const stop = startCpuSpikeMonitor({
+      log: jest.fn(),
+      error,
+      sampleIntervalMs: 250,
+      cpuThresholdPct: 0,
+      minConsecutiveSamples: 1,
+      minLogIntervalMs: 0,
+    });
+    cpuUsageSpy.mockImplementation((previous?: NodeJS.CpuUsage) => {
+      if (previous) throw 'boom';
+      return { user: 0, system: 0 };
+    });
+
+    jest.advanceTimersByTime(250);
+
+    expect(error).toHaveBeenCalledWith('[perf] cpu spike monitor error boom', expect.any(Error));
+    stop();
+  });
+
+  it('includes the normalized error when falling back to standard log output', () => {
+    const log = jest.fn();
+    const stop = startCpuSpikeMonitor({
+      log,
+      sampleIntervalMs: 250,
+      cpuThresholdPct: 0,
+      minConsecutiveSamples: 1,
+      minLogIntervalMs: 0,
+    });
+    cpuUsageSpy.mockImplementation((previous?: NodeJS.CpuUsage) => {
+      if (previous) throw 'boom';
+      return { user: 0, system: 0 };
+    });
+
+    jest.advanceTimersByTime(250);
+
+    expect(log).toHaveBeenCalledWith('[perf] cpu spike monitor error boom', expect.any(Error));
+    stop();
+  });
 });
