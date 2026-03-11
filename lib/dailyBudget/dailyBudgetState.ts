@@ -85,15 +85,16 @@ export const buildDayContext = (params: {
     currentBucketIndex,
     nextDayStartUtcMs,
   });
-  const meteredUsedNowKWh = sumArray(bucketUsage);
-  const exemptUsedNowKWh = sumArray(bucketUsageExempt || []);
-  // Keep user-visible budget reporting on real meter data while giving the planner
-  // an exempt-adjusted view for soft-limit enforcement only.
-  const budgetControlBucketUsage = bucketUsage.map((value, index) => (
-    Math.max(0, value - (bucketUsageExempt?.[index] ?? 0))
-  ));
-  const budgetControlUsedNowKWh = sumArray(budgetControlBucketUsage);
-  const usedNowKWh = meteredUsedNowKWh;
+  const {
+    budgetControlBucketUsage,
+    budgetControlUsedNowKWh,
+    meteredUsedNowKWh,
+    exemptUsedNowKWh,
+    usedNowKWh,
+  } = buildBudgetUsageViews({
+    bucketUsage,
+    bucketUsageExempt,
+  });
   const currentBucketUsage = bucketUsage[currentBucketIndex] ?? 0;
 
   return {
@@ -116,6 +117,37 @@ export const buildDayContext = (params: {
     meteredUsedNowKWh,
     exemptUsedNowKWh,
     currentBucketUsage,
+  };
+};
+
+export const buildBudgetUsageViews = (params: {
+  bucketUsage: number[];
+  bucketUsageExempt?: number[];
+}): {
+  budgetControlBucketUsage: number[];
+  budgetControlUsedNowKWh: number;
+  meteredUsedNowKWh: number;
+  exemptUsedNowKWh: number;
+  usedNowKWh: number;
+} => {
+  const { bucketUsage, bucketUsageExempt } = params;
+  const budgetControlBucketUsage = bucketUsage.map((value, index) => {
+    const total = Math.max(0, value);
+    const exempt = clamp(bucketUsageExempt?.[index] ?? 0, 0, total);
+    return Math.max(0, total - exempt);
+  });
+  const meteredUsedNowKWh = sumArray(bucketUsage);
+  const exemptUsedNowKWh = sumArray(bucketUsage.map((value, index) => (
+    clamp(bucketUsageExempt?.[index] ?? 0, 0, Math.max(0, value))
+  )));
+  const budgetControlUsedNowKWh = sumArray(budgetControlBucketUsage);
+
+  return {
+    budgetControlBucketUsage,
+    budgetControlUsedNowKWh,
+    meteredUsedNowKWh,
+    exemptUsedNowKWh,
+    usedNowKWh: meteredUsedNowKWh,
   };
 };
 

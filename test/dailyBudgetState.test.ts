@@ -1,4 +1,4 @@
-import { buildBucketUsage, buildDayContext } from '../lib/dailyBudget/dailyBudgetState';
+import { buildBucketUsage, buildBudgetUsageViews, buildDayContext } from '../lib/dailyBudget/dailyBudgetState';
 
 describe('daily budget state helpers', () => {
   it('buildBucketUsage clamps split data to total usage', () => {
@@ -108,6 +108,19 @@ describe('daily budget state helpers', () => {
 
     expect(result.bucketUsageControlled).toBeUndefined();
     expect(result.bucketUsageUncontrolled).toBeUndefined();
+  });
+
+  it('buildBudgetUsageViews clamps exempt reductions for budget control math', () => {
+    const result = buildBudgetUsageViews({
+      bucketUsage: [2, 1, 0],
+      bucketUsageExempt: [0.5, 2, 1],
+    });
+
+    expect(result.budgetControlBucketUsage).toEqual([1.5, 0, 0]);
+    expect(result.meteredUsedNowKWh).toBeCloseTo(3, 6);
+    expect(result.exemptUsedNowKWh).toBeCloseTo(1.5, 6);
+    expect(result.usedNowKWh).toBeCloseTo(3, 6);
+    expect(result.budgetControlUsedNowKWh).toBeCloseTo(1.5, 6);
   });
 
   it('buildDayContext keeps reported usage real while using exempt-adjusted values for budget control', () => {
