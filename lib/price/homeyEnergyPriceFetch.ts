@@ -1,5 +1,5 @@
-import { getDateKeyInTimeZone, getZonedParts } from '../utils/dateUtils';
-import type { FlowPricePayload } from './flowPriceUtils';
+import { getDateKeyInTimeZone, getHourStartInTimeZone, getZonedParts } from '../utils/dateUtils';
+import { buildFlowDaySlots, type FlowHourlyPrice, type FlowPricePayload } from './flowPriceUtils';
 import {
   HomeyEnergyApi,
   HomeyEnergyPriceDocument,
@@ -8,7 +8,7 @@ import {
   resolveCurrencyLabel,
 } from '../utils/homeyEnergy';
 
-type HourlyAccumulator = Record<string, { sum: number; count: number }>;
+type SlotAccumulator = Record<string, { sum: number; count: number }>;
 
 const normalizeNumber = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -16,35 +16,58 @@ const normalizeNumber = (value: unknown): number | null => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
-const toHourKey = (date: Date, timeZone: string): string => {
-  const { hour } = getZonedParts(date, timeZone);
-  return String(hour);
-};
-
-const accumulateHourlyValues = (
+const accumulateSlotValues = (
   intervals: HomeyEnergyPriceInterval[],
   timeZone: string,
   dateKey: string,
-): HourlyAccumulator => {
-  return intervals.reduce<HourlyAccumulator>((acc, interval) => {
+): SlotAccumulator => {
+  const daySlots = buildFlowDaySlots(dateKey, timeZone);
+  const validSlotKeys = new Set(daySlots.map((slot) => slot.startsAt));
+  return intervals.reduce<SlotAccumulator>((acc, interval) => {
     const startMs = Date.parse(interval.periodStart);
     if (Number.isNaN(startMs)) return acc;
     const value = normalizeNumber(interval.value);
     if (value === null) return acc;
     const startDate = new Date(startMs);
     if (getDateKeyInTimeZone(startDate, timeZone) !== dateKey) return acc;
-    const hourKey = toHourKey(startDate, timeZone);
-    const current = acc[hourKey] ?? { sum: 0, count: 0 };
-    return { ...acc, [hourKey]: { sum: current.sum + value, count: current.count + 1 } };
+    const slotKey = new Date(getHourStartInTimeZone(startDate, timeZone)).toISOString();
+    if (!validSlotKeys.has(slotKey)) return acc;
+    const current = acc[slotKey] ?? { sum: 0, count: 0 };
+    return { ...acc, [slotKey]: { sum: current.sum + value, count: current.count + 1 } };
   }, {});
 };
 
-const buildPricesByHour = (
+const buildPricesBySlot = (
   intervals: HomeyEnergyPriceInterval[],
   timeZone: string,
   dateKey: string,
+): FlowHourlyPrice[] => {
+  const slotBuckets = accumulateSlotValues(intervals, timeZone, dateKey);
+  return buildFlowDaySlots(dateKey, timeZone).flatMap((slot) => {
+    const bucket = slotBuckets[slot.startsAt];
+    if (!bucket || bucket.count === 0) return [];
+    return [{
+      startsAt: slot.startsAt,
+      totalPrice: bucket.sum / bucket.count,
+    }];
+  });
+};
+
+const buildPricesByHour = (
+  slotPrices: FlowHourlyPrice[],
+  timeZone: string,
 ): Record<string, number> => {
-  const buckets = accumulateHourlyValues(intervals, timeZone, dateKey);
+  const buckets = slotPrices.reduce<Record<string, { sum: number; count: number }>>((acc, entry) => {
+    const startsAtMs = Date.parse(entry.startsAt);
+    if (!Number.isFinite(startsAtMs)) return acc;
+    const hourKey = String(getZonedParts(new Date(startsAtMs), timeZone).hour);
+    const current = acc[hourKey] ?? { sum: 0, count: 0 };
+    return {
+      ...acc,
+      [hourKey]: { sum: current.sum + entry.totalPrice, count: current.count + 1 },
+    };
+  }, {});
+
   return Object.entries(buckets).reduce<Record<string, number>>((acc, [hourKey, bucket]) => {
     if (bucket.count === 0) return acc;
     return { ...acc, [hourKey]: bucket.sum / bucket.count };
@@ -81,14 +104,16 @@ export const normalizeHomeyEnergyPrices = (params: {
     return { payload: null, intervalMinutes: null, priceUnit: null };
   }
   const dateKey = getDateKeyInTimeZone(date, timeZone);
-  const pricesByHour = buildPricesByHour(doc.pricesPerInterval, timeZone, dateKey);
-  if (Object.keys(pricesByHour).length === 0) {
+  const pricesBySlot = buildPricesBySlot(doc.pricesPerInterval, timeZone, dateKey);
+  const pricesByHour = buildPricesByHour(pricesBySlot, timeZone);
+  if (pricesBySlot.length === 0 && Object.keys(pricesByHour).length === 0) {
     return { payload: null, intervalMinutes: resolveIntervalMinutes(doc), priceUnit: doc.priceUnit ?? null };
   }
   return {
     payload: {
       dateKey,
       pricesByHour,
+      pricesBySlot: pricesBySlot.length > 0 ? pricesBySlot : undefined,
       updatedAt: new Date().toISOString(),
     },
     intervalMinutes: resolveIntervalMinutes(doc),

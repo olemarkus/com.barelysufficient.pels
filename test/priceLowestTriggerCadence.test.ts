@@ -1,5 +1,6 @@
 import { mockHomeyInstance } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
+import { buildFlowDaySlots } from '../lib/price/flowPriceUtils';
 
 type PriceEntry = { startsAt: string; totalPrice: number };
 
@@ -10,6 +11,13 @@ const buildUtcDay = (dateKey: string): PriceEntry[] => {
     totalPrice: hour,
   }));
 };
+
+const buildDstDay = (dateKey: string, timeZone: string): PriceEntry[] => (
+  buildFlowDaySlots(dateKey, timeZone).map((slot, index) => ({
+    startsAt: slot.startsAt,
+    totalPrice: index,
+  }))
+);
 
 describe('Lowest price trigger cadence', () => {
   const originalGetTimezone = mockHomeyInstance.clock.getTimezone;
@@ -103,5 +111,29 @@ describe('Lowest price trigger cadence', () => {
 
     expect(beforeTriggers).toHaveLength(1);
     expect(todayTriggers).toHaveLength(1);
+  });
+
+  it('treats repeated fall-back occurrences as separate local hours', () => {
+    jest.setSystemTime(new Date('2024-10-27T00:30:00.000Z'));
+    mockHomeyInstance.clock.getTimezone = () => 'Europe/Oslo';
+
+    const app = createApp();
+    (app as any).priceCoordinator = {
+      getCombinedHourlyPrices: () => buildDstDay('2024-10-27', 'Europe/Oslo'),
+    };
+
+    (app as any).startPriceLowestTriggerChecker();
+
+    jest.setSystemTime(new Date('2024-10-27T01:00:00.000Z'));
+    jest.advanceTimersByTime(30_000);
+
+    jest.setSystemTime(new Date('2024-10-27T02:00:00.000Z'));
+    jest.advanceTimersByTime(30_000);
+
+    const beforeTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_before ?? [];
+    const todayTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_today ?? [];
+
+    expect(beforeTriggers).toHaveLength(2);
+    expect(todayTriggers).toHaveLength(2);
   });
 });

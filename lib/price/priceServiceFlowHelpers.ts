@@ -1,12 +1,12 @@
-import { getDateKeyInTimeZone } from '../utils/dateUtils';
+import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
 import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW } from '../utils/settingsKeys';
 import {
   buildFlowEntries,
+  getExpectedFlowHours,
   getMissingFlowHours,
-  parseFlowPriceInput,
+  parseFlowPricePayloadInput,
   type FlowPricePayload,
 } from './flowPriceUtils';
-import { addDays } from './priceServiceUtils';
 
 type BaseHourlyPrice = {
   startsAt: string;
@@ -34,7 +34,8 @@ export const buildCombinedHourlyPricesFromPayloads = (params: CombinedPayloadPar
     allowTomorrowAsToday,
   } = params;
   const todayKey = getDateKeyInTimeZone(now, timeZone);
-  const tomorrowKey = getDateKeyInTimeZone(addDays(now, 1), timeZone);
+  // Compare payloads by local calendar day instead of adding 24h to the current instant.
+  const tomorrowKey = shiftDateKey(todayKey, 1);
   const resolvePayload = (
     payload: FlowPricePayload | null,
     key: string,
@@ -81,20 +82,22 @@ export const storeFlowPriceData = (params: StoreFlowPriceParams): {
   missingHours: number[];
 } => {
   const { kind, raw, timeZone, logDebug, setSetting, updateCombinedPrices } = params;
-  const pricesByHour = parseFlowPriceInput(raw);
-  const baseDate = kind === 'tomorrow' ? addDays(new Date(), 1) : new Date();
-  const dateKey = getDateKeyInTimeZone(baseDate, timeZone);
+  const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
+  const dateKey = kind === 'tomorrow' ? shiftDateKey(todayKey, 1) : todayKey;
+  const parsed = parseFlowPricePayloadInput(raw, { dateKey, timeZone });
+  const pricesByHour = parsed.pricesByHour;
 
   const payload: FlowPricePayload = {
     dateKey,
     pricesByHour,
+    pricesBySlot: parsed.pricesBySlot,
     updatedAt: new Date().toISOString(),
   };
 
   const settingKey = kind === 'today' ? FLOW_PRICES_TODAY : FLOW_PRICES_TOMORROW;
   setSetting(settingKey, payload);
 
-  const missingHours = getMissingFlowHours(pricesByHour);
+  const missingHours = getMissingFlowHours(pricesByHour, getExpectedFlowHours(dateKey, timeZone));
   if (missingHours.length > 0) {
     logDebug(`Flow prices: Missing ${missingHours.length} hour(s) for ${dateKey}`, missingHours);
   }
@@ -103,7 +106,7 @@ export const storeFlowPriceData = (params: StoreFlowPriceParams): {
 
   return {
     dateKey,
-    storedCount: Object.keys(pricesByHour).length,
+    storedCount: parsed.pricesBySlot?.length ?? Object.keys(pricesByHour).length,
     missingHours,
   };
 };

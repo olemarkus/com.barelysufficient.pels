@@ -1,4 +1,4 @@
-import { getDateKeyInTimeZone, getZonedParts } from '../utils/dateUtils';
+import { getDateKeyInTimeZone, getDateKeyStartMs, getZonedParts, shiftDateKey } from '../utils/dateUtils';
 import { HOMEY_PRICES_CURRENCY, HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW } from '../utils/settingsKeys';
 import { formatHomeyEnergyError, type HomeyEnergyApi } from '../utils/homeyEnergy';
 import { normalizeError } from '../utils/errorUtils';
@@ -22,13 +22,16 @@ export type HomeyEnergyDateInfo = {
 
 export const buildHomeyEnergyDateInfo = (timeZone: string, now = new Date()): HomeyEnergyDateInfo => {
   const today = now;
-  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  // Derive tomorrow from the local date key so 23/25-hour days do not drift.
+  const todayKey = getDateKeyInTimeZone(today, timeZone);
+  const tomorrowKey = shiftDateKey(todayKey, 1);
+  const tomorrow = new Date(getDateKeyStartMs(tomorrowKey, timeZone));
   return {
     timeZone,
     today,
     tomorrow,
-    todayKey: getDateKeyInTimeZone(today, timeZone),
-    tomorrowKey: getDateKeyInTimeZone(tomorrow, timeZone),
+    todayKey,
+    tomorrowKey,
   };
 };
 

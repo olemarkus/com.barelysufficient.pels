@@ -3,6 +3,18 @@
  */
 
 const timeZoneOffsetErrorLogged = new Set<string>();
+const DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1000;
+
+const compareDateKeys = (left: string, right: string): number => {
+    if (left < right) return -1;
+    if (left > right) return 1;
+    return 0;
+};
+
+const parseDateKey = (dateKey: string): { year: number; month: number; day: number } => {
+    const [year, month, day] = dateKey.split('-').map((value) => Number(value));
+    return { year, month, day };
+};
 
 export function truncateToUtcHour(timestamp: number): number {
     const date = new Date(timestamp);
@@ -106,11 +118,36 @@ export function getDateKeyInTimeZone(date: Date, timeZone: string): string {
     return `${yyyy}-${mm}-${dd}`;
 }
 
+export function shiftDateKey(dateKey: string, dayDelta: number): string {
+    const { year, month, day } = parseDateKey(dateKey);
+    return new Date(Date.UTC(year, month - 1, day + dayDelta, 0, 0, 0, 0)).toISOString().slice(0, 10);
+}
+
 export function getDateKeyStartMs(dateKey: string, timeZone: string): number {
-    const [year, month, day] = dateKey.split('-').map((value) => Number(value));
-    const utcMidnight = Date.UTC(year, month - 1, day, 0, 0, 0);
-    const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcMidnight), timeZone);
-    return utcMidnight - offsetMinutes * 60 * 1000;
+    const { year, month, day } = parseDateKey(dateKey);
+    const approximateUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+    let low = approximateUtcMs - DAY_START_SEARCH_WINDOW_MS;
+    let high = approximateUtcMs + DAY_START_SEARCH_WINDOW_MS;
+
+    while (compareDateKeys(getDateKeyInTimeZone(new Date(low), timeZone), dateKey) >= 0) {
+        high = low;
+        low -= DAY_START_SEARCH_WINDOW_MS;
+    }
+    while (compareDateKeys(getDateKeyInTimeZone(new Date(high), timeZone), dateKey) < 0) {
+        low = high;
+        high += DAY_START_SEARCH_WINDOW_MS;
+    }
+
+    while ((high - low) > 1) {
+        const mid = low + Math.floor((high - low) / 2);
+        if (compareDateKeys(getDateKeyInTimeZone(new Date(mid), timeZone), dateKey) < 0) {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+
+    return high;
 }
 
 export function getStartOfDayInTimeZone(date: Date, timeZone: string): number {
@@ -142,14 +179,19 @@ export function formatTimeInTimeZone(date: Date, options: Intl.DateTimeFormatOpt
 export function getHourStartInTimeZone(date: Date, timeZone: string): number {
     const { year, month, day, hour } = getZonedParts(date, timeZone);
     const utcHour = Date.UTC(year, month - 1, day, hour, 0, 0, 0);
-    const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcHour), timeZone);
+    // Use the offset at the actual instant so repeated fall-back hours resolve to the active occurrence.
+    const offsetMinutes = getTimeZoneOffsetMinutes(date, timeZone);
     return utcHour - offsetMinutes * 60 * 1000;
 }
 
 export function getNextLocalDayStartUtcMs(dayStartUtcMs: number, timeZone: string): number {
-    const nextCandidate = new Date(dayStartUtcMs + 26 * 60 * 60 * 1000);
-    const nextKey = getDateKeyInTimeZone(nextCandidate, timeZone);
-    return getDateKeyStartMs(nextKey, timeZone);
+    const currentKey = getDateKeyInTimeZone(new Date(dayStartUtcMs), timeZone);
+    return getDateKeyStartMs(shiftDateKey(currentKey, 1), timeZone);
+}
+
+export function getPreviousLocalDayStartUtcMs(dayStartUtcMs: number, timeZone: string): number {
+    const currentKey = getDateKeyInTimeZone(new Date(dayStartUtcMs), timeZone);
+    return getDateKeyStartMs(shiftDateKey(currentKey, -1), timeZone);
 }
 
 export function buildLocalDayBuckets(params: {
