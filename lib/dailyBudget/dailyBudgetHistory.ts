@@ -7,6 +7,7 @@ import {
 import { buildPriceDebugData, sumArray, type CombinedPriceData } from './dailyBudgetMath';
 import {
   buildBucketUsage,
+  buildBudgetUsageViews,
   buildDailyBudgetSnapshot,
   computeBudgetState,
   type DayContext,
@@ -54,13 +55,16 @@ export const buildDailyBudgetHistory = (params: {
   const hasUsage = bucketUsage.some((value) => value > 0);
   if (!hasPlanned && !hasUsage) return null;
   const dailyBudgetKWh = sumArray(plannedKWh);
-  const meteredUsedNowKWh = sumArray(bucketUsage);
-  const exemptUsedNowKWh = sumArray(bucketUsageExempt || []);
-  const budgetControlBucketUsage = bucketUsage.map((value, index) => (
-    Math.max(0, value - (bucketUsageExempt?.[index] ?? 0))
-  ));
-  const budgetControlUsedNowKWh = sumArray(budgetControlBucketUsage);
-  const usedNowKWh = meteredUsedNowKWh;
+  const {
+    budgetControlBucketUsage,
+    budgetControlUsedNowKWh,
+    meteredUsedNowKWh,
+    exemptUsedNowKWh,
+    usedNowKWh,
+  } = buildBudgetUsageViews({
+    bucketUsage,
+    bucketUsageExempt,
+  });
   const enabled = dailyBudgetKWh > 0;
 
   const currentBucketIndex = bucketStartUtcMs.length;
