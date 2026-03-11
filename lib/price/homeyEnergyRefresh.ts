@@ -1,6 +1,7 @@
 import { getDateKeyInTimeZone, getDateKeyStartMs, getZonedParts, shiftDateKey } from '../utils/dateUtils';
 import { HOMEY_PRICES_CURRENCY, HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW } from '../utils/settingsKeys';
 import { formatHomeyEnergyError, type HomeyEnergyApi } from '../utils/homeyEnergy';
+import { normalizeError } from '../utils/errorUtils';
 import { fetchHomeyEnergyCurrency, fetchHomeyEnergyPricesForDate } from './homeyEnergyPriceFetch';
 import { getFlowPricePayload } from './flowPriceUtils';
 
@@ -133,13 +134,19 @@ export const updateHomeyEnergyCurrency = async (params: {
   results: HomeyEnergyResults;
   setSetting: (key: string, value: unknown) => void;
   logDebug: (...args: unknown[]) => void;
+  errorLog?: (...args: unknown[]) => void;
 }): Promise<void> => {
-  const { energyApi, results, setSetting, logDebug } = params;
+  const { energyApi, results, setSetting, logDebug, errorLog } = params;
   let currency: string | null = null;
   try {
     currency = await fetchHomeyEnergyCurrency(energyApi);
   } catch (error) {
-    logDebug('Homey prices: Failed to fetch currency', error);
+    const normalizedError = normalizeError(error);
+    if (errorLog) {
+      errorLog('Homey prices: Failed to fetch currency', normalizedError);
+    } else {
+      logDebug('Homey prices: Failed to fetch currency', normalizedError);
+    }
   }
   const priceUnit = currency || results.todayResult.priceUnit || results.tomorrowResult.priceUnit;
   if (priceUnit) {

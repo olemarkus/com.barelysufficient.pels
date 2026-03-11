@@ -2,7 +2,7 @@ import type Homey from 'homey';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { extractLivePowerWattsByDeviceId, type LiveDevicePowerWatts } from './deviceManagerEnergy';
-import { getRawDevices } from './deviceManagerHomeyApi';
+import { getRawDevices, logDeviceManagerRuntimeError } from './deviceManagerHomeyApi';
 import { syncRealtimeDeviceUpdateListener } from './deviceManagerRuntime';
 
 type DevicesApiLike = {
@@ -58,7 +58,8 @@ export async function fetchDevicesWithFallback(params: {
         hasRealtimeDeviceUpdateListener: attachedRealtimeDeviceUpdateListener,
       };
     } catch (error) {
-      logger.debug('HomeyAPI.getDevices failed, falling back to raw API', error as Error);
+      const message = 'HomeyAPI.getDevices failed, falling back to raw API';
+      logDeviceManagerRuntimeError(logger, message, error);
     }
   }
 
@@ -103,7 +104,7 @@ async function tryGetRawDevices(params: {
     logger.debug(`${label} ${list.length} devices`);
     return list;
   } catch (error) {
-    logger.debug(errorLabel, error as Error);
+    logDeviceManagerRuntimeError(logger, errorLabel, error);
     return null;
   }
 }
@@ -118,7 +119,8 @@ export async function fetchLivePowerWattsByDeviceId(params: {
     const liveReport = await energyApi.getLiveReport({});
     return extractLivePowerWattsByDeviceId(liveReport);
   } catch (error) {
-    logger.debug('Homey energy live report unavailable for device snapshot', error as Error);
+    const message = 'Homey energy live report unavailable for device snapshot';
+    logDeviceManagerRuntimeError(logger, message, error);
     return {};
   }
 }
