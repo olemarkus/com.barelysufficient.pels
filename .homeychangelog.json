@@ -196,5 +196,8 @@
   },
   "1.19.2": {
     "en": "Significant improvements of stability and performance."
+  },
+  "1.20.0": {
+    "en": "Added flow cards to add or remove daily budget exemptions per device, plus a condition card to check exemption status. You can now open device details directly from the Overview tab. Also improves DST and price handling, and various performance improvements."
   }
 }
