@@ -387,3 +387,98 @@ describe('plan meta budget display', () => {
     expect(metaLines.some((line) => line?.includes('Used 3.50 of 9.5'))).toBe(true);
   });
 });
+
+describe('plan row interactions', () => {
+  it('opens device detail when clicking a device in the overview plan', () => {
+    const openListener = jest.fn();
+    document.addEventListener('open-device-detail', openListener as EventListener, { once: true });
+
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-overview-1',
+          name: 'Overview Device',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+        },
+      ],
+    });
+
+    const row = document.querySelector('[data-device-id="dev-overview-1"]') as HTMLElement | null;
+    if (!row) {
+      throw new Error('Expected overview plan row to exist.');
+    }
+
+    expect(row.getAttribute('role')).toBe('button');
+    expect(row.getAttribute('aria-label')).toBe('Open device details for Overview Device');
+    expect(row.tabIndex).toBe(0);
+    expect(row.classList.contains('device-row')).toBe(true);
+    expect(row.classList.contains('clickable')).toBe(true);
+
+    row.click();
+
+    expect(openListener).toHaveBeenCalledTimes(1);
+    const [event] = openListener.mock.calls[0] as [CustomEvent<{ deviceId: string }>];
+    expect(event.detail).toEqual({ deviceId: 'dev-overview-1' });
+  });
+
+  it('opens device detail from keyboard activation on the overview row', () => {
+    const openListener = jest.fn();
+    document.addEventListener('open-device-detail', openListener as EventListener, { once: true });
+
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-overview-2',
+          name: 'Overview Device Keyboard',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+        },
+      ],
+    });
+
+    const row = document.querySelector('[data-device-id="dev-overview-2"]') as HTMLElement | null;
+    if (!row) {
+      throw new Error('Expected keyboard overview plan row to exist.');
+    }
+
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(openListener).toHaveBeenCalledTimes(1);
+    const [event] = openListener.mock.calls[0] as [CustomEvent<{ deviceId: string }>];
+    expect(event.detail).toEqual({ deviceId: 'dev-overview-2' });
+  });
+
+  it('opens device detail on Space key release, matching button semantics', () => {
+    const openListener = jest.fn();
+    document.addEventListener('open-device-detail', openListener as EventListener, { once: true });
+
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-overview-3',
+          name: 'Overview Device Space',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+        },
+      ],
+    });
+
+    const row = document.querySelector('[data-device-id="dev-overview-3"]') as HTMLElement | null;
+    if (!row) {
+      throw new Error('Expected space-key overview plan row to exist.');
+    }
+
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    expect(openListener).not.toHaveBeenCalled();
+
+    row.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true }));
+
+    expect(openListener).toHaveBeenCalledTimes(1);
+    const [event] = openListener.mock.calls[0] as [CustomEvent<{ deviceId: string }>];
+    expect(event.detail).toEqual({ deviceId: 'dev-overview-3' });
+  });
+});

@@ -358,10 +358,17 @@ const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
   return badge;
 };
 
+const dispatchOpenDeviceDetail = (deviceId: string) => {
+  document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId } }));
+};
+
 const buildPlanRow = (dev: PlanDeviceSnapshot) => {
   const row = document.createElement('li');
-  row.className = 'device-row plan-row';
+  row.className = 'device-row plan-row clickable';
   row.dataset.deviceId = dev.id;
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  row.setAttribute('aria-label', `Open device details for ${dev.name}`);
 
   const name = document.createElement('div');
   name.className = 'device-row__name plan-row__name';
@@ -379,6 +386,23 @@ const buildPlanRow = (dev: PlanDeviceSnapshot) => {
     buildPlanUsageLine(dev),
     buildPlanStatusLine(dev),
   );
+
+  row.addEventListener('click', () => {
+    dispatchOpenDeviceDetail(dev.id);
+  });
+  row.addEventListener('keydown', (event) => {
+    if (event.key === ' ') {
+      event.preventDefault();
+    }
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    dispatchOpenDeviceDetail(dev.id);
+  });
+  row.addEventListener('keyup', (event) => {
+    if (event.key !== ' ') return;
+    event.preventDefault();
+    dispatchOpenDeviceDetail(dev.id);
+  });
 
   row.append(name, metaWrap);
   return row;
