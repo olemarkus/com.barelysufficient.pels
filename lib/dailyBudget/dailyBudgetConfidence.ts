@@ -4,6 +4,7 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
+  getPreviousLocalDayStartUtcMs as resolvePreviousLocalDayStartUtcMs,
   getZonedParts,
 } from '../utils/dateUtils';
 import { clamp } from '../utils/mathUtils';
@@ -205,9 +206,7 @@ function aggregateHourlyBins(
 }
 
 function getPreviousLocalDayStartUtcMs(dayStartUtcMs: number, timeZone: string): number {
-  const prevCandidate = new Date(dayStartUtcMs - 22 * 60 * 60 * 1000);
-  const prevKey = getDateKeyInTimeZone(prevCandidate, timeZone);
-  return getDateKeyStartMs(prevKey, timeZone);
+  return resolvePreviousLocalDayStartUtcMs(dayStartUtcMs, timeZone);
 }
 
 function normalizeProfile(profile: number[]): number[] {

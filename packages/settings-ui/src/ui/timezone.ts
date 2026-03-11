@@ -10,5 +10,6 @@ export {
   getStartOfDayInTimeZone,
   getTimeZoneOffsetMinutes,
   getWeekStartInTimeZone,
+  shiftDateKey,
   getZonedParts,
 } from '../../../shared-domain/src/utils/dateUtils';

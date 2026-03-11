@@ -44,11 +44,15 @@ import {
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
 } from '../../../contracts/src/settingsKeys';
-import { getFlowPricePayload, getMissingFlowHours } from '../../../shared-domain/src/price/flowPriceUtils';
-import { addDays } from '../../../shared-domain/src/price/priceServiceUtils';
+import {
+  buildFlowDaySlots,
+  getExpectedFlowHours,
+  getFlowPricePayload,
+  getMissingFlowHours,
+} from '../../../shared-domain/src/price/flowPriceUtils';
 import { getTimeAgo } from './utils';
 import { applyPriceOverrides, type PriceOverrideOptions } from './priceOverrides';
-import { getDateKeyInTimeZone } from './timezone';
+import { getDateKeyInTimeZone, shiftDateKey } from './timezone';
 
 import {
   normalizeNorwayPriceModel,
@@ -204,6 +208,12 @@ export const loadPriceSettings = async () => {
 };
 
 type FlowStatusTone = 'ok' | 'warn';
+type FlowPayloadCoverage = {
+  storedCount: number;
+  expectedCount: number;
+  missingCount: number;
+  unitLabel: 'slots' | 'hours';
+};
 
 const updateFlowStatusValue = (target: HTMLSpanElement | null, text: string, tone: FlowStatusTone) => {
   if (!target) return;
@@ -211,6 +221,32 @@ const updateFlowStatusValue = (target: HTMLSpanElement | null, text: string, ton
   el.textContent = text;
   el.classList.remove('ok', 'warn');
   el.classList.add(tone);
+};
+
+const getFlowPayloadCoverage = (
+  payload: NonNullable<ReturnType<typeof getFlowPricePayload>>,
+  timeZone: string,
+): FlowPayloadCoverage => {
+  const expectedHours = getExpectedFlowHours(payload.dateKey, timeZone);
+  const expectedSlots = buildFlowDaySlots(payload.dateKey, timeZone);
+  const hasExactSlots = Array.isArray(payload.pricesBySlot) && payload.pricesBySlot.length > 0;
+
+  if (hasExactSlots) {
+    const storedCount = payload.pricesBySlot?.length ?? 0;
+    return {
+      storedCount,
+      expectedCount: expectedSlots.length,
+      missingCount: Math.max(0, expectedSlots.length - storedCount),
+      unitLabel: 'slots',
+    };
+  }
+
+  return {
+    storedCount: Object.keys(payload.pricesByHour).length,
+    expectedCount: expectedHours.length,
+    missingCount: getMissingFlowHours(payload.pricesByHour, expectedHours).length,
+    unitLabel: 'hours',
+  };
 };
 
 const formatFlowPayloadStatus = (
@@ -222,19 +258,18 @@ const formatFlowPayloadStatus = (
     return { text: 'No data received', tone: 'warn' };
   }
 
-  const hourCount = Object.keys(payload.pricesByHour).length;
-  const missingHours = getMissingFlowHours(payload.pricesByHour);
+  const { storedCount, expectedCount, missingCount, unitLabel } = getFlowPayloadCoverage(payload, timeZone);
   const updatedAt = new Date(payload.updatedAt);
   const updatedText = Number.isNaN(updatedAt.getTime())
     ? 'updated time unknown'
     : `updated ${getTimeAgo(updatedAt, new Date(), timeZone)}`;
   const dateMismatch = payload.dateKey !== expectedDateKey;
-  const missingSuffix = missingHours.length > 0 ? ` (${missingHours.length} missing)` : '';
+  const missingSuffix = missingCount > 0 ? ` (${missingCount} missing)` : '';
   const dateSuffix = dateMismatch ? ` (payload ${payload.dateKey})` : '';
 
   return {
-    text: `${hourCount}/24 hours${missingSuffix}, ${updatedText}${dateSuffix}`,
-    tone: dateMismatch || missingHours.length > 0 ? 'warn' : 'ok',
+    text: `${storedCount}/${expectedCount} ${unitLabel}${missingSuffix}, ${updatedText}${dateSuffix}`,
+    tone: dateMismatch || missingCount > 0 ? 'warn' : 'ok',
   };
 };
 
@@ -244,7 +279,7 @@ export const refreshFlowStatus = async (schemeOverride?: PriceScheme) => {
 
   const timeZone = getHomeyTimezone();
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
-  const tomorrowKey = getDateKeyInTimeZone(addDays(new Date(), 1), timeZone);
+  const tomorrowKey = shiftDateKey(todayKey, 1);
   const pricePayload = await getPricesReadModel();
 
   updateFlowStatusValue(priceFlowEnabled, 'Enabled', 'ok');
@@ -265,7 +300,7 @@ export const refreshHomeyStatus = async (schemeOverride?: PriceScheme) => {
 
   const timeZone = getHomeyTimezone();
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
-  const tomorrowKey = getDateKeyInTimeZone(addDays(new Date(), 1), timeZone);
+  const tomorrowKey = shiftDateKey(todayKey, 1);
   const pricePayload = await getPricesReadModel();
 
   updateFlowStatusValue(priceHomeyEnabled, 'Enabled', 'ok');

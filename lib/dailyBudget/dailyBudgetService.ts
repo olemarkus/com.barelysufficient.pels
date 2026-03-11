@@ -5,6 +5,7 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
+  shiftDateKey,
 } from '../utils/dateUtils';
 import {
   COMBINED_PRICES,
@@ -197,10 +198,7 @@ export class DailyBudgetService {
     try {
       const timeZone = this.resolveTimeZone();
       const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
-      const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
-      // Go back 12 hours from start of today to ensure we are in yesterday
-      const yesterdayMs = todayStartUtcMs - 12 * 60 * 60 * 1000;
-      const yesterdayKey = getDateKeyInTimeZone(new Date(yesterdayMs), timeZone);
+      const yesterdayKey = shiftDateKey(todayKey, -1);
       const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
       return { timeZone, yesterdayStartUtcMs };
     } catch (error) {

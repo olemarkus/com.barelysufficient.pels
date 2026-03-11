@@ -8,7 +8,7 @@ import {
   HOMEY_PRICES_TOMORROW,
   PRICE_SCHEME,
 } from '../lib/utils/settingsKeys';
-import { getDateKeyInTimeZone, getDateKeyStartMs } from '../lib/utils/dateUtils';
+import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../lib/utils/dateUtils';
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../lib/utils/homeyEnergy';
 import type Homey from 'homey';
 
@@ -37,7 +37,7 @@ describe('Homey price service', () => {
   it('stores Homey energy prices and currency when scheme is homey', async () => {
     jest.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
-    const tomorrowKey = getDateKeyInTimeZone(new Date(fixedNow.getTime() + 24 * 60 * 60 * 1000), timeZone);
+    const tomorrowKey = shiftDateKey(todayKey, 1);
     const todayStartMs = getDateKeyStartMs(todayKey, timeZone);
     const tomorrowStartMs = getDateKeyStartMs(tomorrowKey, timeZone);
 
@@ -83,7 +83,7 @@ describe('Homey price service', () => {
   it('uses cached Homey price payloads when available', async () => {
     jest.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
-    const tomorrowKey = getDateKeyInTimeZone(new Date(fixedNow.getTime() + 24 * 60 * 60 * 1000), timeZone);
+    const tomorrowKey = shiftDateKey(todayKey, 1);
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
     mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, { dateKey: todayKey, pricesByHour: { '0': 1 }, updatedAt: new Date().toISOString() });
@@ -206,7 +206,7 @@ describe('Homey price service', () => {
   it('ignores cached Homey data with mismatched date keys', () => {
     jest.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
-    const wrongKey = getDateKeyInTimeZone(new Date(fixedNow.getTime() - 24 * 60 * 60 * 1000), timeZone);
+    const wrongKey = shiftDateKey(todayKey, -1);
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
     mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, {
