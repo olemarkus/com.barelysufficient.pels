@@ -1,6 +1,11 @@
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PowerSampleRebuildState } from '../lib/app/appPowerHelpers';
-import { recordDailyBudgetCap, schedulePlanRebuildFromPowerSample } from '../lib/app/appPowerHelpers';
+import {
+  recordDailyBudgetCap,
+  recordPowerSampleForApp,
+  schedulePlanRebuildFromPowerSample,
+} from '../lib/app/appPowerHelpers';
+import { mockHomeyInstance } from './mocks/homey';
 
 describe('recordDailyBudgetCap', () => {
   it('returns existing state for invalid snapshots', () => {
@@ -412,5 +417,57 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(logError).not.toHaveBeenCalled();
     expect(state.pending).toBeUndefined();
     expect(state.timer).toBeUndefined();
+  });
+});
+
+describe('recordPowerSampleForApp', () => {
+  it('records measured budget exempt usage into exempt buckets', async () => {
+    let tracker: PowerTrackerState = {};
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+    const getLatestTargetSnapshot = () => ([
+      {
+        id: 'dev-budget',
+        name: 'Budget exempt heater',
+        targets: [],
+        measuredPowerKw: 0.4,
+        budgetExempt: true,
+      },
+      {
+        id: 'dev-other',
+        name: 'Other heater',
+        targets: [],
+        measuredPowerKw: 0.6,
+        budgetExempt: false,
+      },
+    ]);
+
+    await recordPowerSampleForApp({
+      currentPowerW: 1000,
+      nowMs: start,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      homey: mockHomeyInstance as any,
+      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    await recordPowerSampleForApp({
+      currentPowerW: 1000,
+      nowMs: start + 30 * 60 * 1000,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      homey: mockHomeyInstance as any,
+      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    const bucketKey = new Date(start).toISOString();
+    expect(tracker.exemptBuckets?.[bucketKey]).toBeCloseTo(0.2, 3);
   });
 });

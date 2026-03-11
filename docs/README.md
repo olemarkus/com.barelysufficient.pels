@@ -243,6 +243,13 @@ The Daily Budget is a **soft constraint** – a kWh/day guide that creates a dai
 
 **Unlike the hourly capacity limit**, violating the daily budget will never trigger emergency alarms or "manual action needed" flows. PELS will shed devices to try to stay within the daily budget, but if that's not possible, it simply continues operating without panic.
 
+Budget-exempt devices are handled differently:
+
+- They are ignored by daily budget soft-limit control.
+- Their real usage still shows up in daily/hourly stats, charts, remaining kWh, and deviation.
+- They are treated as uncontrolled load for daily-budget planning.
+- They still participate in hourly capacity protection, including hard-cap and margin shedding.
+
 For details on how the plan is built, how DST is handled, and what each value means, see [Daily Energy Budget](daily_budget.md).
 
 ### Usage Tab
@@ -392,6 +399,7 @@ For detailed formulas, confidence behavior, and tuning examples, see [Daily Budg
 |------|-------------|
 | **Is there enough headroom?** | Check if current headroom can accommodate a specified kW load |
 | **Is there headroom for device?** | Check if the current headroom plus the device's estimated draw can accommodate an extra kW amount (useful for EV chargers, water heaters, etc.) |
+| **Does device have budget exemption?** | Check whether a device is ignored by daily budget soft-limit control while still counting in real usage and capacity management. |
 | **Operating mode is...** | Check which mode is currently active |
 | **Price level is...** | Check the current price level (Cheap/Normal/Expensive/Unknown) |
 
@@ -405,6 +413,8 @@ For detailed formulas, confidence behavior, and tuning examples, see [Daily Budg
 | **Set expected power for device** | Provide an explicit expected draw (W) when the device can’t report it (e.g., map “Power changed to Max” → 3000 W). Fails if the device already has a configured load. |
 | **Enable capacity control for device** | Turn on capacity-based control for a single device |
 | **Disable capacity control for device** | Turn off capacity-based control for a single device |
+| **Add budget exemption for device** | Ignore the device for daily budget soft-limit control. Real usage still counts in charts/budget reporting, and capacity management still applies. |
+| **Remove budget exemption for device** | Make the device follow daily budget soft-limit control again without changing capacity management. |
 | **Set external prices (today)** | Store today’s hourly prices from a flow tag (Power by the Hour) |
 | **Set external prices (tomorrow)** | Store tomorrow’s hourly prices from a flow tag (Power by the Hour) |
 

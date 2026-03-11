@@ -170,6 +170,35 @@ describe('daily budget learning utilities', () => {
     expect(result.hasTotalData).toBe(true);
   });
 
+  it('buildBucketUsageSplit moves exempt usage into the uncontrolled learning bucket', () => {
+    const timeZone = 'UTC';
+    const dateKey = '2024-01-14';
+    const dayStart = getDateKeyStartMs(dateKey, timeZone);
+    const bucketStartUtcMs = [dayStart, dayStart + 60 * 60 * 1000];
+    const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
+
+    const result = buildBucketUsageSplit({
+      bucketStartUtcMs,
+      powerTracker: {
+        buckets: {
+          [bucketKeys[0]]: 4,
+          [bucketKeys[1]]: 3,
+        },
+        controlledBuckets: {
+          [bucketKeys[0]]: 3,
+          [bucketKeys[1]]: 2,
+        },
+        exemptBuckets: {
+          [bucketKeys[0]]: 1.5,
+          [bucketKeys[1]]: 0.5,
+        },
+      },
+    });
+
+    expect(result.bucketUsageControlled).toEqual([1.5, 1.5]);
+    expect(result.bucketUsageUncontrolled).toEqual([2.5, 1.5]);
+  });
+
   it('hasUnreliableOverlap handles boundary and overlap cases', () => {
     expect(hasUnreliableOverlap({
       startUtcMs: 0,

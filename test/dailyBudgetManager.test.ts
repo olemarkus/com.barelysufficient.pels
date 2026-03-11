@@ -276,6 +276,41 @@ describe('daily budget planning', () => {
     expect(update.snapshot.buckets.plannedKWh[1]).toBeCloseTo(previousPlan[1], 6);
   });
 
+  it('reports exempt usage in budget numbers without freezing the plan on exempt-only overage', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 4 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 30 * 60 * 1000;
+    const bucketKey = new Date(dayStart).toISOString();
+
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights([0.5, 0.5, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+    });
+
+    const update = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: {
+        buckets: { [bucketKey]: 2 },
+        exemptBuckets: { [bucketKey]: 1 },
+      },
+      priceOptimizationEnabled: false,
+    });
+
+    expect(update.snapshot.state.usedNowKWh).toBeCloseTo(2, 6);
+    expect(update.snapshot.state.deviationKWh).toBeGreaterThan(0);
+    expect(update.snapshot.state.remainingKWh).toBeCloseTo(2, 6);
+    expect(update.snapshot.state.exceeded).toBe(true);
+    expect(update.snapshot.state.frozen).toBe(false);
+    expect(manager.exportState().frozen).toBe(false);
+    expect(manager.exportState().lastUsedNowKWh).toBeCloseTo(1, 6);
+  });
+
   it('updates the learned profile on day rollover', () => {
     const manager = buildManager();
     const settings = buildSettings({ dailyBudgetKWh: 8 });

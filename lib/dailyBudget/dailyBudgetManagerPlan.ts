@@ -47,7 +47,7 @@ export function resolveExistingPlanState(params: {
       dailyBudgetKWh,
       currentBucketIndex: context.currentBucketIndex,
       currentBucketProgress: context.currentBucketProgress,
-      usedNowKWh: context.usedNowKWh,
+      usedNowKWh: context.budgetControlUsedNowKWh,
     });
     deviationExisting = deviation.deviationKWh;
   }
@@ -113,7 +113,7 @@ export function shouldRebuildDailyBudgetPlan(params: {
   if (!enabled || frozen) return false;
   const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
   const usageDeltaKWh = typeof lastUsedNowKWh === 'number'
-    ? Math.abs(context.usedNowKWh - lastUsedNowKWh)
+    ? Math.abs(context.budgetControlUsedNowKWh - lastUsedNowKWh)
     : 0;
   const usageChanged = usageDeltaKWh >= PLAN_REBUILD_USAGE_DELTA_KWH
     && context.nowMs - lastPlanRebuildMs >= PLAN_REBUILD_USAGE_MIN_INTERVAL_MS;

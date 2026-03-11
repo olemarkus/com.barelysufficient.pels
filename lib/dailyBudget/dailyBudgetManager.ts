@@ -9,7 +9,7 @@ import {
 } from './dailyBudgetManagerPlan';
 import { logNextDayPlanDebug } from './dailyBudgetNextDayDebug';
 import { buildDailyBudgetPreview } from './dailyBudgetPreview';
-import { buildDayContext, computeBudgetState } from './dailyBudgetState';
+import { buildDayContext, computeBudgetState, computePlanDeviation } from './dailyBudgetState';
 import { buildDailyBudgetHistory } from './dailyBudgetHistory';
 import type { DayContext, PriceData } from './dailyBudgetState';
 import type {
@@ -142,8 +142,18 @@ export class DailyBudgetManager {
         profileBlendConfidence: budget.profileBlendConfidence,
       });
     budget.confidence = cr.confidence;
-    this.maybeFreezeFromDeviation(enabled, budget.deviationKWh);
-    this.maybeUnfreezeFromDeviation(enabled, budget.deviationKWh);
+    // Freeze/unfreeze follows the controllable budget view rather than raw reported
+    // usage so exempt devices can overrun the household budget without reshaping the plan.
+    const budgetControlDeviationKWh = computePlanDeviation({
+      enabled,
+      plannedKWh: plan.plannedKWh,
+      dailyBudgetKWh: settings.dailyBudgetKWh,
+      currentBucketIndex: context.currentBucketIndex,
+      currentBucketProgress: context.currentBucketProgress,
+      usedNowKWh: context.budgetControlUsedNowKWh,
+    }).deviationKWh;
+    this.maybeFreezeFromDeviation(enabled, budgetControlDeviationKWh);
+    this.maybeUnfreezeFromDeviation(enabled, budgetControlDeviationKWh);
     logBudgetSummaryIfNeeded({
       logDebug: this.deps.logDebug,
       shouldLog: plan.shouldLog,
@@ -189,7 +199,7 @@ export class DailyBudgetManager {
 
     this.state.dateKey = context.dateKey;
     this.state.dayStartUtcMs = context.dayStartUtcMs;
-    this.state.lastUsedNowKWh = context.usedNowKWh;
+    this.state.lastUsedNowKWh = context.budgetControlUsedNowKWh;
     this.markDirty();
 
     const shouldPersist = this.shouldPersist(context.nowMs);
@@ -318,9 +328,9 @@ export class DailyBudgetManager {
     const profileData = getEffectiveProfileData(this.state, settings, DEFAULT_PROFILE);
     const buildResult = buildPlan({
       bucketStartUtcMs: context.bucketStartUtcMs,
-      bucketUsage: context.bucketUsage,
+      bucketUsage: context.budgetControlBucketUsage,
       currentBucketIndex: context.currentBucketIndex,
-      usedNowKWh: context.usedNowKWh,
+      usedNowKWh: context.budgetControlUsedNowKWh,
       dailyBudgetKWh: settings.dailyBudgetKWh,
       profileWeights: profileData.combinedWeights,
       profileWeightsControlled: profileData.breakdown.controlled,

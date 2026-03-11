@@ -93,6 +93,7 @@ export type PlanServiceInitApp = {
   getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
   resolveManagedState: (deviceId: string) => boolean;
   isCapacityControlEnabled: (deviceId: string) => boolean;
+  isBudgetExempt: (deviceId: string) => boolean;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   log: (...args: unknown[]) => void;
@@ -109,6 +110,7 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
       hasBinaryControl: resolveHasBinaryControl(device),
       managed: app.resolveManagedState(device.id),
       controllable: app.isCapacityControlEnabled(device.id),
+      budgetExempt: app.isBudgetExempt(device.id),
     })).filter((device) => device.managed !== false),
     getCapacityDryRun: () => app.getCapacityDryRun(),
     log: (...args: unknown[]) => app.log(...args),

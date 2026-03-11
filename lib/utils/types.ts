@@ -18,6 +18,7 @@ export type TargetDeviceSnapshot = {
     zone?: string;
     controllable?: boolean;
     managed?: boolean;
+    budgetExempt?: boolean;
     capabilities?: string[];
     canSetControl?: boolean;
     available?: boolean;

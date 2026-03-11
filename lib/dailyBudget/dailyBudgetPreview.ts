@@ -110,9 +110,14 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     currentBucketIndex,
     currentBucketProgress: 0,
     bucketUsage,
+    budgetControlBucketUsage: bucketUsage,
     bucketUsageControlled: undefined,
     bucketUsageUncontrolled: undefined,
+    bucketUsageExempt: undefined,
     usedNowKWh,
+    budgetControlUsedNowKWh: usedNowKWh,
+    meteredUsedNowKWh: usedNowKWh,
+    exemptUsedNowKWh: 0,
     currentBucketUsage: 0,
   };
 

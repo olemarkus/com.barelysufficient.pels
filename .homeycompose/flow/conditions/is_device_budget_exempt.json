@@ -1,0 +1,20 @@
+{
+  "title": {
+    "en": "Does device have budget exemption?"
+  },
+  "titleFormatted": {
+    "en": "[[device]] has budget exemption"
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      }
+    }
+  ],
+  "hint": {
+    "en": "Use this to check if the selected device is ignored by daily budget soft-limit control while still counting in real usage and capacity management."
+  }
+}

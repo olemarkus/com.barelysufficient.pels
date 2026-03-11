@@ -364,6 +364,27 @@
       },
       {
         "title": {
+          "en": "Does device have budget exemption?"
+        },
+        "titleFormatted": {
+          "en": "[[device]] has budget exemption"
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Use this to check if the selected device is ignored by daily budget soft-limit control while still counting in real usage and capacity management."
+        },
+        "id": "is_device_budget_exempt"
+      },
+      {
+        "title": {
           "en": "Is device capacity controlled?"
         },
         "titleFormatted": {
@@ -512,6 +533,30 @@
     "actions": [
       {
         "title": {
+          "en": "Add budget exemption for device"
+        },
+        "titleFormatted": {
+          "en": "Add budget exemption for [[device]]"
+        },
+        "hint": {
+          "en": "Exclude this device from daily budget soft-limit control. Real usage still counts in charts and budget reporting, and capacity management still applies."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "id": "add_budget_exemption"
+      },
+      {
+        "title": {
           "en": "Disable capacity control for device"
         },
         "titleFormatted": {
@@ -557,6 +602,30 @@
           }
         ],
         "id": "enable_device_capacity_control"
+      },
+      {
+        "title": {
+          "en": "Remove budget exemption for device"
+        },
+        "titleFormatted": {
+          "en": "Remove budget exemption for [[device]]"
+        },
+        "hint": {
+          "en": "Make this device follow daily budget soft-limit control again. Capacity management is unchanged."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "id": "remove_budget_exemption"
       },
       {
         "title": {

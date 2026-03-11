@@ -47,13 +47,20 @@ export const buildDailyBudgetHistory = (params: {
     bucketUsage,
     bucketUsageControlled,
     bucketUsageUncontrolled,
+    bucketUsageExempt,
   } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
   const plannedKWh = bucketKeys.map((key) => powerTracker.dailyBudgetCaps?.[key] ?? 0);
   const hasPlanned = plannedKWh.some((value) => value > 0);
   const hasUsage = bucketUsage.some((value) => value > 0);
   if (!hasPlanned && !hasUsage) return null;
   const dailyBudgetKWh = sumArray(plannedKWh);
-  const usedNowKWh = sumArray(bucketUsage);
+  const meteredUsedNowKWh = sumArray(bucketUsage);
+  const exemptUsedNowKWh = sumArray(bucketUsageExempt || []);
+  const budgetControlBucketUsage = bucketUsage.map((value, index) => (
+    Math.max(0, value - (bucketUsageExempt?.[index] ?? 0))
+  ));
+  const budgetControlUsedNowKWh = sumArray(budgetControlBucketUsage);
+  const usedNowKWh = meteredUsedNowKWh;
   const enabled = dailyBudgetKWh > 0;
 
   const currentBucketIndex = bucketStartUtcMs.length;
@@ -68,9 +75,14 @@ export const buildDailyBudgetHistory = (params: {
     currentBucketIndex,
     currentBucketProgress: 1,
     bucketUsage,
+    budgetControlBucketUsage,
     bucketUsageControlled,
     bucketUsageUncontrolled,
+    bucketUsageExempt,
     usedNowKWh,
+    budgetControlUsedNowKWh,
+    meteredUsedNowKWh,
+    exemptUsedNowKWh,
     currentBucketUsage: bucketUsage[currentBucketIndex] ?? 0,
   };
 

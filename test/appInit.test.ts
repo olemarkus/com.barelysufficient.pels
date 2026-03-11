@@ -29,6 +29,7 @@ describe('app init plan service wiring', () => {
       ],
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
+      isBudgetExempt: () => false,
       isCurrentHourCheap: () => false,
       isCurrentHourExpensive: () => false,
       log: jest.fn(),

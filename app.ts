@@ -60,6 +60,7 @@ import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
+import { emitSettingsUiPowerUpdatedForApp } from './lib/app/settingsUiAppRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
@@ -68,7 +69,6 @@ const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 1
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-type PelsStatus = { lastPowerUpdate?: number | null; priceLevel?: string | null };
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
   private capacityGuard?: CapacityGuard;
@@ -80,6 +80,7 @@ class PelsApp extends Homey.App {
   private modeDeviceTargets: Record<string, Record<string, number>> = {};
   private controllableDevices: Record<string, boolean> = {};
   private managedDevices: Record<string, boolean> = {};
+  private budgetExemptDevices: Record<string, boolean> = {};
   private experimentalEvSupportEnabled = false;
   private shedBehaviors: Record<string, ShedBehavior> = {};
   private debugLoggingTopics = new Set<DebugLoggingTopic>();
@@ -210,6 +211,7 @@ class PelsApp extends Homey.App {
       getPriority: (id) => this.getPriorityForDevice(id),
       getControllable: (id) => this.isCapacityControlEnabled(id),
       getManaged: (id) => this.resolveManagedState(id),
+      getBudgetExempt: (id) => this.isBudgetExempt(id),
       getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
@@ -276,6 +278,7 @@ class PelsApp extends Homey.App {
       getLatestTargetSnapshot: () => this.latestTargetSnapshot,
       resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
       isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
+      isBudgetExempt: (deviceId) => this.isBudgetExempt(deviceId),
       isCurrentHourCheap: () => this.isCurrentHourCheap(),
       isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
       log: (...args: unknown[]) => this.log(...args),
@@ -422,10 +425,7 @@ class PelsApp extends Homey.App {
     if (options.skipDailyBudgetUpdate !== true) this.dailyBudgetService.updateState({ refreshObservedStats: false });
   }
   private migrateManagedDevices(): void {
-    migrateManagedDevicesHelper({
-      homey: this.homey,
-      log: (message) => this.log(message),
-    });
+    migrateManagedDevicesHelper({ homey: this.homey, log: this.log.bind(this) });
   }
   private loadCapacitySettings(): void {
     const next = loadCapacitySettingsFromHomey({
@@ -439,6 +439,7 @@ class PelsApp extends Homey.App {
         capacityDryRun: this.capacityDryRun,
         controllableDevices: this.controllableDevices,
         managedDevices: this.managedDevices,
+        budgetExemptDevices: this.budgetExemptDevices,
         experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
         shedBehaviors: this.shedBehaviors,
       },
@@ -451,6 +452,7 @@ class PelsApp extends Homey.App {
     this.capacityDryRun = next.capacityDryRun;
     this.controllableDevices = next.controllableDevices;
     this.managedDevices = next.managedDevices;
+    this.budgetExemptDevices = next.budgetExemptDevices;
     this.experimentalEvSupportEnabled = next.experimentalEvSupportEnabled;
     this.shedBehaviors = next.shedBehaviors;
     this.updatePriceOptimizationEnabled();
@@ -466,18 +468,6 @@ class PelsApp extends Homey.App {
   private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }
   public getLatestPlanSnapshotForUi(): DevicePlan | null { return this.planService?.getLatestPlanSnapshot() ?? null; }
-  private emitSettingsUiPowerUpdated(): void {
-    const api = this.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
-    const realtime = api?.realtime; if (typeof realtime !== 'function') return;
-    const status = this.homey.settings.get('pels_status') as PelsStatus | null;
-    const heartbeat = this.homey.settings.get('app_heartbeat') as unknown;
-    realtime.call(api, 'power_updated', {
-      tracker: this.powerTracker,
-      status: status && typeof status === 'object' ? status : null,
-      heartbeat: typeof heartbeat === 'number' ? heartbeat : null,
-    })
-      .catch((error: unknown) => this.error('Failed to emit power_updated event', error as Error));
-  }
   private async updateOverheadToken(value?: number): Promise<void> {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;
     try {
@@ -528,7 +518,7 @@ class PelsApp extends Homey.App {
   private savePowerTracker(nextState: PowerTrackerState = this.powerTracker): void {
     this.powerTracker = nextState;
     this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now() });
-    this.emitSettingsUiPowerUpdated();
+    emitSettingsUiPowerUpdatedForApp(this.homey, this.powerTracker, (message, error) => this.error(message, error));
     if (!this.powerTrackerSaveTimer) {
       this.powerTrackerSaveTimer = setTimeout(() => this.persistPowerTrackerState(), POWER_TRACKER_PERSIST_DELAY_MS);
     }
@@ -536,7 +526,7 @@ class PelsApp extends Homey.App {
   public replacePowerTrackerForUi(nextState: PowerTrackerState): void {
     this.powerTracker = nextState;
     this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now(), forcePlanRebuild: true });
-    this.emitSettingsUiPowerUpdated();
+    emitSettingsUiPowerUpdatedForApp(this.homey, this.powerTracker, (message, error) => this.error(message, error));
     this.persistPowerTrackerState();
   }
   private updateDailyBudgetAndRecordCap(options?: { nowMs?: number; forcePlanRebuild?: boolean }): void {
@@ -731,6 +721,7 @@ class PelsApp extends Homey.App {
   private isCapacityControlEnabled = (deviceId: string) => (
     this.managedDevices[deviceId] === true && this.controllableDevices[deviceId] === true
   );
+  private isBudgetExempt = (deviceId: string) => this.budgetExemptDevices[deviceId] === true;
   private getShedBehavior = (deviceId: string) => getShedBehaviorHelper(deviceId, this.shedBehaviors);
   private computeDynamicSoftLimit = () => this.planService.computeDynamicSoftLimit();
   private computeShortfallThreshold = () => this.planService.computeShortfallThreshold();

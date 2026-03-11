@@ -22,9 +22,11 @@ export function buildBucketUsageSplit(params: {
   const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
   const totalBuckets = powerTracker.buckets || {};
   const controlledBuckets = powerTracker.controlledBuckets || {};
+  const exemptBuckets = powerTracker.exemptBuckets || {};
   const entries = bucketKeys.map((key) => {
     const total = totalBuckets[key];
     const controlled = controlledBuckets[key];
+    const exempt = exemptBuckets[key];
     const hasTotal = typeof total === 'number' && Number.isFinite(total);
     const hasControlled = typeof controlled === 'number' && Number.isFinite(controlled);
     let nextUncontrolled = 0;
@@ -33,7 +35,10 @@ export function buildBucketUsageSplit(params: {
     if (hasTotal) {
       const safeTotal = Math.max(0, total as number);
       if (hasControlled) {
-        const boundedControlled = Math.max(0, Math.min(controlled as number, safeTotal));
+        const boundedExempt = typeof exempt === 'number' && Number.isFinite(exempt)
+          ? Math.max(0, Math.min(exempt as number, safeTotal))
+          : 0;
+        const boundedControlled = Math.max(0, Math.min((controlled as number) - boundedExempt, safeTotal));
         nextUncontrolled = Math.max(0, safeTotal - boundedControlled);
         nextControlled = boundedControlled;
       } else {

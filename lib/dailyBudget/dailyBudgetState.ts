@@ -26,9 +26,15 @@ export type DayContext = {
   currentBucketIndex: number;
   currentBucketProgress: number;
   bucketUsage: number[];
+  // Budget control ignores exempt load, but reporting stays on real metered usage.
+  budgetControlBucketUsage: number[];
   bucketUsageControlled?: Array<number | null>;
   bucketUsageUncontrolled?: Array<number | null>;
+  bucketUsageExempt?: number[];
   usedNowKWh: number;
+  budgetControlUsedNowKWh: number;
+  meteredUsedNowKWh: number;
+  exemptUsedNowKWh: number;
   currentBucketUsage: number;
 };
 
@@ -70,6 +76,7 @@ export const buildDayContext = (params: {
     bucketUsage,
     bucketUsageControlled,
     bucketUsageUncontrolled,
+    bucketUsageExempt,
   } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
   const currentBucketIndex = resolveCurrentBucketIndex(dayStartUtcMs, bucketStartUtcMs.length, nowMs);
   const currentBucketProgress = resolveBucketProgress({
@@ -78,7 +85,15 @@ export const buildDayContext = (params: {
     currentBucketIndex,
     nextDayStartUtcMs,
   });
-  const usedNowKWh = sumArray(bucketUsage);
+  const meteredUsedNowKWh = sumArray(bucketUsage);
+  const exemptUsedNowKWh = sumArray(bucketUsageExempt || []);
+  // Keep user-visible budget reporting on real meter data while giving the planner
+  // an exempt-adjusted view for soft-limit enforcement only.
+  const budgetControlBucketUsage = bucketUsage.map((value, index) => (
+    Math.max(0, value - (bucketUsageExempt?.[index] ?? 0))
+  ));
+  const budgetControlUsedNowKWh = sumArray(budgetControlBucketUsage);
+  const usedNowKWh = meteredUsedNowKWh;
   const currentBucketUsage = bucketUsage[currentBucketIndex] ?? 0;
 
   return {
@@ -92,9 +107,14 @@ export const buildDayContext = (params: {
     currentBucketIndex,
     currentBucketProgress,
     bucketUsage,
+    budgetControlBucketUsage,
     bucketUsageControlled,
     bucketUsageUncontrolled,
+    bucketUsageExempt,
     usedNowKWh,
+    budgetControlUsedNowKWh,
+    meteredUsedNowKWh,
+    exemptUsedNowKWh,
     currentBucketUsage,
   };
 };
@@ -107,32 +127,40 @@ export const buildBucketUsage = (params: {
   bucketUsage: number[];
   bucketUsageControlled?: Array<number | null>;
   bucketUsageUncontrolled?: Array<number | null>;
+  bucketUsageExempt?: number[];
 } => {
   const { bucketStartUtcMs, powerTracker } = params;
   const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
   const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
   const controlledRaw = powerTracker.controlledBuckets ?? {};
   const uncontrolledRaw = powerTracker.uncontrolledBuckets ?? {};
+  const exemptRaw = powerTracker.exemptBuckets ?? {};
   const splitUsage = bucketKeys.map((key, index) => {
     const total = Math.max(0, bucketUsage[index] ?? 0);
     const rawControlled = controlledRaw[key];
     const rawUncontrolled = uncontrolledRaw[key];
+    const rawExempt = exemptRaw[key];
     const hasControlled = typeof rawControlled === 'number' && Number.isFinite(rawControlled);
     const hasUncontrolled = typeof rawUncontrolled === 'number' && Number.isFinite(rawUncontrolled);
+    const exempt = typeof rawExempt === 'number' && Number.isFinite(rawExempt)
+      ? clamp(rawExempt, 0, total)
+      : 0;
 
     if (!hasControlled && !hasUncontrolled) {
       return { controlled: null, uncontrolled: null };
     }
 
     if (hasControlled) {
-      const controlled = clamp(rawControlled as number, 0, total);
+      // Exempt load stays in the uncontrolled side of budget learning/breakdown even
+      // if the device is still capacity-controllable at runtime.
+      const controlled = clamp((rawControlled as number) - exempt, 0, total);
       return {
         controlled,
         uncontrolled: Math.max(0, total - controlled),
       };
     }
 
-    const uncontrolled = clamp(rawUncontrolled as number, 0, total);
+    const uncontrolled = clamp((rawUncontrolled as number) + exempt, 0, total);
     return {
       controlled: Math.max(0, total - uncontrolled),
       uncontrolled,
@@ -140,13 +168,20 @@ export const buildBucketUsage = (params: {
   });
   const bucketUsageControlled = splitUsage.map((entry) => entry.controlled);
   const bucketUsageUncontrolled = splitUsage.map((entry) => entry.uncontrolled);
+  const bucketUsageExempt = bucketKeys.map((key, index) => {
+    const rawExempt = exemptRaw[key];
+    const exempt = typeof rawExempt === 'number' && Number.isFinite(rawExempt) ? rawExempt : 0;
+    return clamp(exempt, 0, Math.max(0, bucketUsage[index] ?? 0));
+  });
   const hasSplit = bucketUsageControlled.some((value) => typeof value === 'number')
     || bucketUsageUncontrolled.some((value) => typeof value === 'number');
+  const hasExempt = bucketUsageExempt.some((value) => value > 0);
   return {
     bucketKeys,
     bucketUsage,
     bucketUsageControlled: hasSplit ? bucketUsageControlled : undefined,
     bucketUsageUncontrolled: hasSplit ? bucketUsageUncontrolled : undefined,
+    bucketUsageExempt: hasExempt ? bucketUsageExempt : undefined,
   };
 };
 

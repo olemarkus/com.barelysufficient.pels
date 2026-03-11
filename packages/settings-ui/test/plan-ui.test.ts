@@ -232,6 +232,24 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-off-controllable')?.contains('neutral')).toBe(true);
   });
 
+  it('shows a budget exempt chip next to the device name', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-budget',
+          name: 'Device Budget',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          budgetExempt: true,
+        },
+      ],
+    });
+
+    const chip = document.querySelector('[data-device-id="dev-budget"] .plan-row__chip') as HTMLElement | null;
+    expect(chip?.textContent?.trim()).toBe('Budget exempt');
+  });
+
   it('renders inactive EV state without a fake restore power transition', () => {
     renderPlanSnapshot({
       devices: [

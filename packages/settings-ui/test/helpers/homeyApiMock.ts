@@ -30,6 +30,7 @@ const BOOTSTRAP_SETTING_KEYS = [
   'operating_mode',
   'controllable_devices',
   'managed_devices',
+  'budget_exempt_devices',
   'mode_aliases',
   'overshoot_behaviors',
   'price_optimization_settings',

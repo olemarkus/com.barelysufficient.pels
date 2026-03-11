@@ -24,6 +24,7 @@ export type DevicePlanDevice = {
   reason?: string;
   zone?: string;
   controllable?: boolean;
+  budgetExempt?: boolean;
   currentTemperature?: number;
   shedAction?: ShedAction;
   shedTemperature?: number | null;
@@ -75,6 +76,7 @@ export type PlanInputDevice = {
   currentTemperature?: number;
   controllable?: boolean;
   managed?: boolean;
+  budgetExempt?: boolean;
   available?: boolean;
   zone?: string;
 };

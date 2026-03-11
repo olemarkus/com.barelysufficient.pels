@@ -39,13 +39,17 @@ export function isPowerTrackerState(value: unknown): value is PowerTrackerState 
     isOptionalRecord(state.hourlyAverages),
     isOptionalRecord(state.controlledBuckets),
     isOptionalRecord(state.uncontrolledBuckets),
+    isOptionalRecord(state.exemptBuckets),
     isOptionalRecord(state.controlledDailyTotals),
     isOptionalRecord(state.uncontrolledDailyTotals),
+    isOptionalRecord(state.exemptDailyTotals),
     isOptionalRecord(state.controlledHourlyAverages),
     isOptionalRecord(state.uncontrolledHourlyAverages),
+    isOptionalRecord(state.exemptHourlyAverages),
     isOptionalNumber(state.lastPowerW),
     isOptionalNumber(state.lastControlledPowerW),
     isOptionalNumber(state.lastUncontrolledPowerW),
+    isOptionalNumber(state.lastExemptPowerW),
     isOptionalNumber(state.lastTimestamp),
   ];
   return checks.every(Boolean);

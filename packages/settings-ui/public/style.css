@@ -626,6 +626,12 @@ input:focus-visible {
   gap: var(--spacing-1);
 }
 
+.plan-row__chip {
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  line-height: 1.1;
+}
+
 .plan-state-indicator {
   display: inline-block;
   line-height: 1;

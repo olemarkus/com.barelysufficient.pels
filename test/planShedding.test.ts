@@ -346,4 +346,107 @@ describe('buildSheddingPlan', () => {
     expect(result.overshootStats?.candidates).toBe(1);
     expect(result.overshootStats?.totalSheddable).toBeCloseTo(1, 6);
   });
+
+  it('skips budget-exempt devices when shedding due to the daily budget', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(8),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'exempt',
+            name: 'Budget Exempt',
+            measuredPowerKw: 2,
+            currentOn: true,
+            controllable: true,
+            budgetExempt: true,
+          }),
+          buildDevice({
+            id: 'regular',
+            name: 'Regular',
+            measuredPowerKw: 1,
+            currentOn: true,
+            controllable: true,
+          }),
+        ],
+        total: 3,
+        softLimit: 2.5,
+        capacitySoftLimit: 8,
+        headroomRaw: -0.5,
+        headroom: -0.5,
+        softLimitSource: 'daily',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('exempt')).toBe(false);
+    expect(result.shedSet.has('regular')).toBe(true);
+    expect(result.shedReasons.get('regular')).toBe('shed due to daily budget');
+  });
+
+  it('still allows budget-exempt devices to be shed for capacity protection', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(2.5),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'exempt',
+            name: 'Budget Exempt',
+            measuredPowerKw: 2,
+            currentOn: true,
+            controllable: true,
+            budgetExempt: true,
+          }),
+          buildDevice({
+            id: 'regular',
+            name: 'Regular',
+            measuredPowerKw: 1,
+            currentOn: true,
+            controllable: true,
+          }),
+        ],
+        total: 3,
+        softLimit: 2.5,
+        capacitySoftLimit: 2.5,
+        headroomRaw: -0.5,
+        headroom: -0.5,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('exempt')).toBe(true);
+    expect(result.shedReasons.get('exempt')).toBe('shed due to capacity');
+  });
 });
