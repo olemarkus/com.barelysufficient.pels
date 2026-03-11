@@ -159,23 +159,27 @@ describe('Homey price service', () => {
         }
         return { interval: 60, pricesPerInterval: [] };
       }),
-      getCurrency: jest.fn().mockRejectedValue(new Error('nope')),
+      getCurrency: jest.fn().mockRejectedValue('nope'),
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
     const log = jest.fn();
     const logDebug = jest.fn();
+    const errorLog = jest.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       log,
       logDebug,
-      () => {},
+      errorLog,
       () => energyApi,
     );
 
     await service.refreshSpotPrices(true);
 
-    expect(logDebug).toHaveBeenCalledWith('Homey prices: Failed to fetch currency', expect.any(Error));
+    expect(errorLog).toHaveBeenCalledWith('Homey prices: Failed to fetch currency', expect.any(Error));
+    const currencyError = errorLog.mock.calls.find(([message]) => message === 'Homey prices: Failed to fetch currency')?.[1];
+    expect((currencyError as Error).message).toBe('nope');
+    expect(logDebug).not.toHaveBeenCalledWith('Homey prices: Failed to fetch currency', expect.any(Error));
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeTruthy();
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TOMORROW)).toBeUndefined();
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_CURRENCY)).toBe('NOK');

@@ -1,9 +1,6 @@
 import { incPerfCounters } from '../utils/perfCounters';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
-
-const toError = (value: unknown): Error => (
-  value instanceof Error ? value : new Error(String(value))
-);
+import { normalizeError } from '../utils/errorUtils';
 
 const runBackgroundTask = (
   label: string,
@@ -15,7 +12,7 @@ const runBackgroundTask = (
     .then(work)
     .catch((error) => {
       if (typeof logError === 'function') {
-        logError(label, toError(error));
+        logError(label, normalizeError(error));
       }
     })
     .finally(() => {

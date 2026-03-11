@@ -4,7 +4,7 @@ import {
   formatBinaryState,
   formatTargetValue,
 } from './deviceManagerRealtimeSupport';
-import { writeErrorToStderr } from './deviceManagerHomeyApi';
+import { logDeviceManagerRuntimeError } from './deviceManagerHomeyApi';
 
 const REALTIME_POWER_CAPABILITY_PREFIX = 'measure_power';
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
@@ -132,8 +132,7 @@ export async function attachRealtimeDeviceUpdateListener(params: {
     return true;
   } catch (error) {
     const message = `Failed to attach ${eventName} listener`;
-    logger.error(message, error as Error);
-    writeErrorToStderr(message, error);
+    logDeviceManagerRuntimeError(logger, message, error);
     return false;
   }
 }
@@ -211,14 +210,12 @@ export function detachRealtimeDeviceUpdateListener(params: {
     if (typeof devicesApi.disconnect === 'function') {
       void devicesApi.disconnect.call(devicesApi).catch((error: unknown) => {
         const message = `Failed to disconnect realtime ${eventName} listener`;
-        logger.error(message, error as Error);
-        writeErrorToStderr(message, error);
+        logDeviceManagerRuntimeError(logger, message, error);
       });
     }
   } catch (error) {
     const message = `Failed to detach ${eventName} listener`;
-    logger.error(message, error as Error);
-    writeErrorToStderr(message, error);
+    logDeviceManagerRuntimeError(logger, message, error);
     return attached;
   }
   return false;
@@ -388,8 +385,7 @@ async function syncRealtimeCapabilityListenersForDevice(params: {
   } catch (error) {
     const label = device.name || deviceId || 'unknown';
     const message = `Failed to attach capability listener for ${label}`;
-    logger.error(message, error as Error);
-    writeErrorToStderr(message, error);
+    logDeviceManagerRuntimeError(logger, message, error);
   }
 }
 

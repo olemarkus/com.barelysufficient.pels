@@ -180,6 +180,7 @@ export const startPerfLogger = (params: {
   isEnabled: () => boolean;
   log: (...args: unknown[]) => void;
   logCpuSpike?: (...args: unknown[]) => void;
+  error?: (...args: unknown[]) => void;
   intervalMs?: number;
 }): (() => void) => {
   const intervalMs = typeof params.intervalMs === 'number' ? params.intervalMs : 30 * 1000;
@@ -191,6 +192,7 @@ export const startPerfLogger = (params: {
       if (!stopCpuMonitor) {
         stopCpuMonitor = startCpuSpikeMonitor({
           log: params.logCpuSpike,
+          error: params.error,
           isEnabled: params.isEnabled,
         });
       }

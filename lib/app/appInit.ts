@@ -161,6 +161,7 @@ export type FlowCardInitApp = {
   getNow: () => Date;
   log: (...args: unknown[]) => void;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
 };
 
 export function registerAppFlowCards(app: FlowCardInitApp): void {
@@ -189,6 +190,7 @@ export function registerAppFlowCards(app: FlowCardInitApp): void {
     getNow: () => app.getNow(),
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug('settings', ...args),
+    error: (...args: unknown[]) => app.error(...args),
   });
 }
 
