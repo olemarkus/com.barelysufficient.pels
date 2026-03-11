@@ -21,7 +21,7 @@ describe('Homey resource warning perf logging', () => {
     jest.clearAllTimers();
   });
 
-  it('logs cpuwarn count/limit and perf context after startup', async () => {
+  it('skips first cpuwarn count/limit after startup', async () => {
     const app = createApp();
     const logSpy = jest.spyOn(app, 'log');
     const errorSpy = jest.spyOn(app, 'error').mockImplementation(() => undefined);
@@ -34,9 +34,29 @@ describe('Homey resource warning perf logging', () => {
       mockHomeyInstance.emit('cpuwarn', { count: 1, limit: 12 });
 
       expect(logSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('logs cpuwarn count/limit and perf context from the second warning onward', async () => {
+    const app = createApp();
+    const logSpy = jest.spyOn(app, 'log');
+    const errorSpy = jest.spyOn(app, 'error').mockImplementation(() => undefined);
+    try {
+      await app.onInit();
+      await (app as any).planService.rebuildPlanFromCache('test_warning_measurement');
+      logSpy.mockClear();
+      errorSpy.mockClear();
+
+      mockHomeyInstance.emit('cpuwarn', { count: 2, limit: 12 });
+
+      expect(logSpy).not.toHaveBeenCalled();
       const errorMessages = errorSpy.mock.calls.map(([message]) => String(message));
       expect(errorMessages).toEqual(expect.arrayContaining([
-        expect.stringContaining('[perf] homey cpuwarn count=1 limit=12'),
+        expect.stringContaining('[perf] homey cpuwarn count=2 limit=12'),
         expect.stringContaining('[perf] homey cpuwarn context '),
       ]));
       const contextLine = errorMessages.find((message) => message.includes('[perf] homey cpuwarn context '));

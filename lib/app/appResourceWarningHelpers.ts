@@ -72,6 +72,7 @@ const createWarnLogger = (
     const data = (payload && typeof payload === 'object') ? payload as { count?: unknown; limit?: unknown } : {};
     const count = typeof data.count === 'number' && Number.isFinite(data.count) ? data.count : null;
     const limit = typeof data.limit === 'number' && Number.isFinite(data.limit) ? data.limit : null;
+    if (count === 1) return;
     const countText = count !== null ? count : 'n/a';
     const limitText = limit !== null ? limit : 'n/a';
     const summary = `[perf] homey ${kind} count=${countText} limit=${limitText}`;
