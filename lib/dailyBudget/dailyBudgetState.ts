@@ -160,10 +160,9 @@ export const buildBucketUsage = (params: {
       };
     }
 
-    const uncontrolled = clamp((rawUncontrolled as number) + exempt, 0, total);
     return {
-      controlled: Math.max(0, total - uncontrolled),
-      uncontrolled,
+      controlled: 0,
+      uncontrolled: total,
     };
   });
   const bucketUsageControlled = splitUsage.map((entry) => entry.controlled);
