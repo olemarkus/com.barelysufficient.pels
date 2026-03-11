@@ -2,6 +2,7 @@ import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import type { SettingsUiLogEntry } from './types';
 import {
+  BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -66,6 +67,7 @@ const DEDUPED_CAPACITY_KEYS = [
   'capacity_priorities',
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
+  BUDGET_EXEMPT_DEVICES,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -352,6 +354,12 @@ function buildSettingsHandlers(
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after managed change');
       await rebuildPlanFromSettings(deps, 'managed_devices');
+    },
+    [BUDGET_EXEMPT_DEVICES]: async () => {
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after budget exemption change');
+      deps.updateDailyBudgetState();
+      await rebuildPlanFromSettings(deps, BUDGET_EXEMPT_DEVICES);
     },
     [EXPERIMENTAL_EV_SUPPORT_ENABLED]: async () => {
       deps.loadCapacitySettings();

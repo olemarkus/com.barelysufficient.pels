@@ -41,6 +41,10 @@ describe('settings UI app runtime helpers', () => {
         [previousHourKey]: 0.9,
         [currentHourKey]: 0.3,
       },
+      exemptBuckets: {
+        [previousHourKey]: 0.4,
+        [currentHourKey]: 0.1,
+      },
       hourlyBudgets: {
         [previousHourKey]: 2.4,
         [currentHourKey]: 2.2,
@@ -59,10 +63,13 @@ describe('settings UI app runtime helpers', () => {
     expect(result.buckets).toEqual({ [currentHourKey]: 0.5 });
     expect(result.controlledBuckets).toEqual({ [currentHourKey]: 0.2 });
     expect(result.uncontrolledBuckets).toEqual({ [currentHourKey]: 0.3 });
+    expect(result.exemptBuckets).toEqual({ [currentHourKey]: 0.1 });
     expect(result.hourlyBudgets).toEqual({ [currentHourKey]: 2.2 });
     expect(result.dailyBudgetCaps).toEqual({});
     expect(result.dailyTotals).toEqual({});
     expect(result.hourlyAverages).toEqual({});
+    expect(result.exemptDailyTotals).toEqual({});
+    expect(result.exemptHourlyAverages).toEqual({});
     expect(result.unreliablePeriods).toEqual([]);
     expect(result.lastPowerW).toBe(4300);
     expect(result.lastTimestamp).toBe(nowMs - 5_000);

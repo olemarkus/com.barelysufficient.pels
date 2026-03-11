@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Remove budget exemption for device"
+  },
+  "titleFormatted": {
+    "en": "Remove budget exemption for [[device]]"
+  },
+  "hint": {
+    "en": "Make this device follow daily budget soft-limit control again. Capacity management is unchanged."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ]
+}

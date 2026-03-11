@@ -93,6 +93,7 @@ The daily energy budget is a **soft constraint** that helps pace energy use thro
 - **Never triggers shortfall/panic**: If PELS cannot shed enough devices to meet the daily budget, it continues operating without emergency alarms.
 - **No end-of-hour capping**: Daily budget soft limits are not time-critical, so they don't apply the sustainable rate cap.
 - **Combined with hourly**: The planner uses the smaller of the hourly soft limit and daily soft limit for shedding decisions.
+- **Budget exemption is control-only**: Budget-exempt devices are ignored by daily soft-limit control, but their real usage still appears in reporting and they still count for hourly capacity protection.
 
 See [Daily Energy Budget](daily_budget.md) for detailed documentation.
 

@@ -9,6 +9,7 @@ export type PowerTrackerState = {
   lastPowerW?: number;
   lastControlledPowerW?: number;
   lastUncontrolledPowerW?: number;
+  lastExemptPowerW?: number;
   lastTimestamp?: number;
   buckets?: Record<string, number>; // Hourly data (ISO timestamp -> kWh)
   hourlyBudgets?: Record<string, number>; // Hourly budget snapshot (ISO timestamp -> kWh)
@@ -17,10 +18,13 @@ export type PowerTrackerState = {
   hourlyAverages?: Record<string, { sum: number; count: number }>; // day-hour pattern (0-6_0-23 -> { sum, count })
   controlledBuckets?: Record<string, number>;
   uncontrolledBuckets?: Record<string, number>;
+  exemptBuckets?: Record<string, number>;
   controlledDailyTotals?: Record<string, number>;
   uncontrolledDailyTotals?: Record<string, number>;
+  exemptDailyTotals?: Record<string, number>;
   controlledHourlyAverages?: Record<string, { sum: number; count: number }>;
   uncontrolledHourlyAverages?: Record<string, { sum: number; count: number }>;
+  exemptHourlyAverages?: Record<string, { sum: number; count: number }>;
   unreliablePeriods?: Array<{ start: number; end: number }>; // Periods where data is missing/unreliable
 };
 
@@ -28,6 +32,7 @@ export type RecordPowerSampleParams = {
   state: PowerTrackerState;
   currentPowerW: number;
   controlledPowerW?: number;
+  exemptPowerW?: number;
   nowMs?: number;
   homey: Homey.App['homey'];
   capacityGuard?: CapacityGuard;
@@ -62,10 +67,12 @@ function buildNextPowerState(params: {
   nextBudgets: Map<string, number>;
   nextControlledBuckets?: Map<string, number>;
   nextUncontrolledBuckets?: Map<string, number>;
+  nextExemptBuckets?: Map<string, number>;
   nowMs: number;
   currentPowerW: number;
   currentControlledPowerW?: number;
   currentUncontrolledPowerW?: number;
+  currentExemptPowerW?: number;
   unreliablePeriods?: Array<{ start: number; end: number }>;
 }): PowerTrackerState {
   const {
@@ -74,10 +81,12 @@ function buildNextPowerState(params: {
     nextBudgets,
     nextControlledBuckets,
     nextUncontrolledBuckets,
+    nextExemptBuckets,
     nowMs,
     currentPowerW,
     currentControlledPowerW,
     currentUncontrolledPowerW,
+    currentExemptPowerW,
     unreliablePeriods,
   } = params;
   return {
@@ -88,10 +97,12 @@ function buildNextPowerState(params: {
     uncontrolledBuckets: nextUncontrolledBuckets
       ? Object.fromEntries(nextUncontrolledBuckets)
       : state.uncontrolledBuckets,
+    exemptBuckets: nextExemptBuckets ? Object.fromEntries(nextExemptBuckets) : state.exemptBuckets,
     lastTimestamp: nowMs,
     lastPowerW: currentPowerW,
     lastControlledPowerW: currentControlledPowerW,
     lastUncontrolledPowerW: currentUncontrolledPowerW,
+    lastExemptPowerW: currentExemptPowerW,
     unreliablePeriods: unreliablePeriods || state.unreliablePeriods,
   };
 }
@@ -120,14 +131,21 @@ function resolveControlledSample(params: {
   controlledPowerW?: number;
 }): ControlledSample {
   const { currentPowerW, controlledPowerW } = params;
-  if (typeof controlledPowerW !== 'number' || !Number.isFinite(controlledPowerW)) {
+  const boundedControlled = resolveBoundedTrackedPowerW(currentPowerW, controlledPowerW);
+  if (typeof boundedControlled !== 'number') {
     return {};
   }
-  const boundedControlled = Math.max(0, Math.min(controlledPowerW, currentPowerW));
   return {
     controlledPowerW: boundedControlled,
     uncontrolledPowerW: Math.max(0, currentPowerW - boundedControlled),
   };
+}
+
+function resolveBoundedTrackedPowerW(currentPowerW: number, trackedPowerW?: number): number | undefined {
+  if (typeof trackedPowerW !== 'number' || !Number.isFinite(trackedPowerW)) {
+    return undefined;
+  }
+  return Math.max(0, Math.min(trackedPowerW, currentPowerW));
 }
 
 function accumulatePowerIfAvailable(params: {
@@ -274,6 +292,11 @@ export function aggregateAndPruneHistory(
     state.uncontrolledDailyTotals,
     state.uncontrolledHourlyAverages,
   );
+  const exemptAggregate = aggregateForType(
+    state.exemptBuckets,
+    state.exemptDailyTotals,
+    state.exemptHourlyAverages,
+  );
 
   const nextBudgets = new Map<string, number>();
   const nextDailyCaps = new Map<string, number>();
@@ -293,10 +316,13 @@ export function aggregateAndPruneHistory(
     hourlyAverages: totalAggregate.hourlyAverages,
     controlledBuckets: controlledAggregate.buckets,
     uncontrolledBuckets: uncontrolledAggregate.buckets,
+    exemptBuckets: exemptAggregate.buckets,
     controlledDailyTotals: controlledAggregate.dailyTotals,
     uncontrolledDailyTotals: uncontrolledAggregate.dailyTotals,
+    exemptDailyTotals: exemptAggregate.dailyTotals,
     controlledHourlyAverages: controlledAggregate.hourlyAverages,
     uncontrolledHourlyAverages: uncontrolledAggregate.hourlyAverages,
+    exemptHourlyAverages: exemptAggregate.hourlyAverages,
     unreliablePeriods: (state.unreliablePeriods || []).filter((p) => p.end >= hourlyThreshold),
   };
 }
@@ -332,7 +358,7 @@ const calculateEnergyAcrossBoundaries = (params: {
 
 export async function recordPowerSample(params: RecordPowerSampleParams): Promise<void> {
   const {
-    state, currentPowerW, controlledPowerW, nowMs = Date.now(), capacityGuard,
+    state, currentPowerW, controlledPowerW, exemptPowerW, nowMs = Date.now(), capacityGuard,
     hourBudgetKWh, rebuildPlanFromCache, saveState,
   } = params;
 
@@ -340,6 +366,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   const nextBudgets = new Map<string, number>(Object.entries(state.hourlyBudgets || {}));
   const nextControlledBuckets = new Map<string, number>(Object.entries(state.controlledBuckets || {}));
   const nextUncontrolledBuckets = new Map<string, number>(Object.entries(state.uncontrolledBuckets || {}));
+  const nextExemptBuckets = new Map<string, number>(Object.entries(state.exemptBuckets || {}));
   const budgetKWh = typeof hourBudgetKWh === 'number' ? hourBudgetKWh : null;
   if (budgetKWh !== null) {
     nextBudgets.set(getHourBucketKey(nowMs), budgetKWh);
@@ -352,6 +379,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     currentPowerW,
     controlledPowerW,
   });
+  const boundedExemptPowerW = resolveBoundedTrackedPowerW(currentPowerW, exemptPowerW);
 
   if (shouldResetSamplingState(state, nowMs)) {
     const nextState = buildNextPowerState({
@@ -360,10 +388,12 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
       nextBudgets,
       nextControlledBuckets,
       nextUncontrolledBuckets,
+      nextExemptBuckets,
       nowMs,
       currentPowerW,
       currentControlledPowerW: boundedControlledPowerW,
       currentUncontrolledPowerW: boundedUncontrolledPowerW,
+      currentExemptPowerW: boundedExemptPowerW,
     });
     await persistPowerSample({
       nextState, currentPowerW, capacityGuard, saveState, rebuildPlanFromCache,
@@ -404,6 +434,13 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     endTs: nowMs,
     buckets: nextUncontrolledBuckets,
   });
+  accumulatePowerIfAvailable({
+    previousPowerW: state.lastExemptPowerW,
+    nextPowerW: boundedExemptPowerW,
+    startTs: previousTs,
+    endTs: nowMs,
+    buckets: nextExemptBuckets,
+  });
 
   const nextState = buildNextPowerState({
     state,
@@ -411,10 +448,12 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     nextBudgets,
     nextControlledBuckets,
     nextUncontrolledBuckets,
+    nextExemptBuckets,
     nowMs,
     currentPowerW,
     currentControlledPowerW: boundedControlledPowerW,
     currentUncontrolledPowerW: boundedUncontrolledPowerW,
+    currentExemptPowerW: boundedExemptPowerW,
     unreliablePeriods,
   });
   await persistPowerSample({

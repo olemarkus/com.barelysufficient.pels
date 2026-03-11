@@ -8,7 +8,7 @@ import { buildPlanContext, type PlanContext, type SoftLimitSource } from './plan
 import { buildSheddingPlan, type SheddingPlan } from './planShedding';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
-import { sumControlledUsageKw } from './planUsage';
+import { sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from './planUsage';
 import {
   formatHeadroomCooldownReason,
   resolveHeadroomCardCooldown,
@@ -44,35 +44,74 @@ export type PlanBuilderDeps = {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
-
 const SOFT_LIMIT_EPSILON = 1e-3;
 const getCurrentHourKWh = (buckets?: Record<string, number>): number | undefined => {
   const value = buckets?.[getHourBucketKey()];
   return typeof value === 'number' ? value : undefined;
 };
+type DailySoftLimitBucket = {
+  plannedKWh: number;
+  usedKWh: number;
+  bucketStartMs: number;
+  bucketEndMs: number;
+};
+type DailySoftLimitInput = {
+  plannedKWh: number;
+  bucketStartIso: string;
+  nextBucketStartIso?: string;
+};
+const resolveDailySoftLimitInput = (snapshot: DailyBudgetUiPayload | null): DailySoftLimitInput | null => {
+  const today = snapshot?.days[snapshot.todayKey];
+  if (!today?.budget.enabled) return null;
+  const plannedKWh = today.buckets.plannedKWh;
+  const bucketStartUtc = today.buckets.startUtc;
+  const index = today.currentBucketIndex;
+  if (!Array.isArray(plannedKWh) || !Array.isArray(bucketStartUtc)) return null;
+  if (index < 0 || index >= plannedKWh.length || index >= bucketStartUtc.length) return null;
+  const planned = plannedKWh[index];
+  if (!Number.isFinite(planned)) return null;
+  return {
+    plannedKWh: planned,
+    bucketStartIso: bucketStartUtc[index],
+    nextBucketStartIso: index + 1 < bucketStartUtc.length ? bucketStartUtc[index + 1] : undefined,
+  };
+};
+
+const resolveDailySoftLimitWindow = (
+  input: DailySoftLimitInput,
+): Pick<DailySoftLimitBucket, 'bucketStartMs' | 'bucketEndMs'> | null => {
+  const bucketStartMs = new Date(input.bucketStartIso).getTime();
+  if (!Number.isFinite(bucketStartMs)) return null;
+  const bucketEndMs = input.nextBucketStartIso
+    ? new Date(input.nextBucketStartIso).getTime()
+    : bucketStartMs + 60 * 60 * 1000;
+  if (!Number.isFinite(bucketEndMs)) return null;
+  return { bucketStartMs, bucketEndMs };
+};
+const resolveDailySoftLimitBucket = (
+  snapshot: DailyBudgetUiPayload | null,
+  powerTracker: PowerTrackerState,
+): DailySoftLimitBucket | null => {
+  const input = resolveDailySoftLimitInput(snapshot);
+  if (!input) return null;
+  const window = resolveDailySoftLimitWindow(input);
+  if (!window) return null;
+  const meteredUsedKWh = powerTracker.buckets?.[input.bucketStartIso] ?? 0;
+  const exemptUsedKWh = powerTracker.exemptBuckets?.[input.bucketStartIso] ?? 0;
+  return {
+    plannedKWh: input.plannedKWh,
+    usedKWh: Math.max(0, meteredUsedKWh - exemptUsedKWh),
+    ...window,
+  };
+};
 
 export class PlanBuilder {
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) { }
-
-  private get capacityGuard(): CapacityGuard | undefined {
-    return this.deps.getCapacityGuard();
-  }
-
-  private get capacitySettings(): { limitKw: number; marginKw: number } {
-    return this.deps.getCapacitySettings();
-  }
-
-  private get operatingMode(): string {
-    return this.deps.getOperatingMode();
-  }
-
-  private get modeDeviceTargets(): Record<string, Record<string, number>> {
-    return this.deps.getModeDeviceTargets();
-  }
-
-  private get priceOptimizationEnabled(): boolean {
-    return this.deps.getPriceOptimizationEnabled();
-  }
+  private get capacityGuard(): CapacityGuard | undefined { return this.deps.getCapacityGuard(); }
+  private get capacitySettings(): { limitKw: number; marginKw: number } { return this.deps.getCapacitySettings(); }
+  private get operatingMode(): string { return this.deps.getOperatingMode(); }
+  private get modeDeviceTargets(): Record<string, Record<string, number>> { return this.deps.getModeDeviceTargets(); }
+  private get priceOptimizationEnabled(): boolean { return this.deps.getPriceOptimizationEnabled(); }
 
   private get priceOptimizationSettings(): Record<
     string,
@@ -181,7 +220,7 @@ export class PlanBuilder {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
     const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
     const capacitySoftLimit = this.computeDynamicSoftLimit();
-    const dailySoftLimit = this.computeDailySoftLimit(dailyBudgetSnapshot);
+    const dailySoftLimit = this.computeDailySoftLimit(dailyBudgetSnapshot, devices);
     const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
     const softLimitSource = this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit);
 
@@ -383,31 +422,20 @@ export class PlanBuilder {
     return dailySoftLimit < capacitySoftLimit ? 'daily' : 'capacity';
   }
 
-  private computeDailySoftLimit(snapshot: DailyBudgetUiPayload | null): number | null {
-    const today = this.getTodayDailyBudget(snapshot);
-    if (!today?.budget.enabled) return null;
-    const plannedKWh = today.buckets.plannedKWh;
-    const bucketStartUtc = today.buckets.startUtc;
-    const index = today.currentBucketIndex;
-    if (!Array.isArray(plannedKWh) || !Array.isArray(bucketStartUtc)) return null;
-    if (index < 0 || index >= plannedKWh.length || index >= bucketStartUtc.length) return null;
-    const bucketStartIso = bucketStartUtc[index];
-    const bucketStartMs = new Date(bucketStartIso).getTime();
-    if (!Number.isFinite(bucketStartMs)) return null;
-    const bucketEndMs = index + 1 < bucketStartUtc.length
-      ? new Date(bucketStartUtc[index + 1]).getTime()
-      : bucketStartMs + 60 * 60 * 1000;
-    if (!Number.isFinite(bucketEndMs)) return null;
-    const usedKWh = this.powerTracker.buckets?.[bucketStartIso] ?? 0;
-    const planned = plannedKWh[index];
-    if (!Number.isFinite(planned)) return null;
+  private computeDailySoftLimit(
+    snapshot: DailyBudgetUiPayload | null,
+    devices: PlanInputDevice[],
+  ): number | null {
+    const bucket = resolveDailySoftLimitBucket(snapshot, this.powerTracker);
+    if (!bucket) return null;
+    const exemptKw = sumBudgetExemptLiveUsageKw(devices) ?? 0;
+    // Budget-exempt load should not trigger daily-budget shedding of other devices.
+    // Remove exempt energy already metered this hour, then add back the exempt live
+    // run rate so the effective daily limit still allows that load to remain on.
     return computeDailyUsageSoftLimit({
-      plannedKWh: planned,
-      usedKWh,
-      bucketStartMs,
-      bucketEndMs,
+      ...bucket,
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
-    });
+    }) + Math.max(0, exemptKw);
   }
 
   private extractDailyBudgetHourKWh(snapshot: DailyBudgetUiPayload | null): number | undefined {

@@ -74,6 +74,7 @@ export class DeviceManager extends EventEmitter {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
         getManaged?: (deviceId: string) => boolean;
+        getBudgetExempt?: (deviceId: string) => boolean;
         getExperimentalEvSupportEnabled?: () => boolean;
     } = {};
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
@@ -113,6 +114,7 @@ export class DeviceManager extends EventEmitter {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
         getManaged?: (deviceId: string) => boolean;
+        getBudgetExempt?: (deviceId: string) => boolean;
         getExperimentalEvSupportEnabled?: () => boolean;
     }, powerState?: PowerEstimateState) {
         super();
@@ -455,11 +457,7 @@ export class DeviceManager extends EventEmitter {
         const available = getIsAvailable(device);
         const zone = resolveZoneLabel(device);
         const deviceType: TargetDeviceSnapshot['deviceType'] = targetCaps.length > 0 ? 'temperature' : 'onoff';
-        const powerCapable = capsStatus.hasPower
-            || typeof powerEstimate.loadKw === 'number'
-            || typeof powerEstimate.measuredPowerKw === 'number'
-            || hasPotentialHomeyEnergyEstimate(device)
-            || powerEstimate.hasEnergyEstimate === true;
+        const powerCapable = this.isPowerCapable(device, capsStatus, powerEstimate);
 
         return {
             id: deviceId,
@@ -481,6 +479,7 @@ export class DeviceManager extends EventEmitter {
             zone,
             controllable: this.providers.getControllable ? this.providers.getControllable(deviceId) : undefined,
             managed: this.providers.getManaged ? this.providers.getManaged(deviceId) : undefined,
+            budgetExempt: this.providers.getBudgetExempt ? this.providers.getBudgetExempt(deviceId) : undefined,
             capabilities,
             canSetControl,
             available,
@@ -492,5 +491,17 @@ export class DeviceManager extends EventEmitter {
             return device.capabilitiesObj as DeviceCapabilityMap;
         }
         return {};
+    }
+
+    private isPowerCapable(
+        device: HomeyDeviceLike,
+        capsStatus: NonNullable<ReturnType<typeof resolveDeviceCapabilities>>,
+        powerEstimate: ReturnType<typeof estimatePower>,
+    ): boolean {
+        return capsStatus.hasPower
+            || typeof powerEstimate.loadKw === 'number'
+            || typeof powerEstimate.measuredPowerKw === 'number'
+            || hasPotentialHomeyEnergyEstimate(device)
+            || powerEstimate.hasEnergyEstimate === true;
     }
 }

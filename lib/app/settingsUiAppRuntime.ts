@@ -15,6 +15,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   refreshTargetDevicesSnapshot?: (options?: { fast?: boolean }) => Promise<void>;
   replacePowerTrackerForUi?: (nextState: PowerTrackerState) => void;
 };
+type PelsStatus = { lastPowerUpdate?: number | null; priceLevel?: string | null };
 
 const getRuntimeApp = (homey: Homey.App['homey']): SettingsUiRuntimeApp | null => {
   if (!homey || typeof homey !== 'object') return null;
@@ -38,6 +39,24 @@ export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): Settin
 export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTrackerState | null => {
   const tracker = getRuntimeApp(homey)?.powerTracker;
   return tracker && typeof tracker === 'object' ? tracker : null;
+};
+
+export const emitSettingsUiPowerUpdatedForApp = (
+  homey: Homey.App['homey'],
+  powerTracker: PowerTrackerState,
+  onError: (message: string, error: Error) => void,
+): void => {
+  const api = homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
+  const realtime = api?.realtime;
+  if (typeof realtime !== 'function') return;
+  const status = homey.settings.get('pels_status') as PelsStatus | null;
+  const heartbeat = homey.settings.get('app_heartbeat') as unknown;
+  realtime.call(api, 'power_updated', {
+    tracker: powerTracker,
+    status: status && typeof status === 'object' ? status : null,
+    heartbeat: typeof heartbeat === 'number' ? heartbeat : null,
+  })
+    .catch((error: unknown) => onError('Failed to emit power_updated event', error as Error));
 };
 
 export const refreshSettingsUiDevicesForApp = async (homey: Homey.App['homey']): Promise<TargetDeviceSnapshot[]> => {
@@ -83,10 +102,17 @@ export const resetSettingsUiPowerStatsForApp = async (homey: Homey.App['homey'])
     buckets: preserveCurrentHour(currentState.buckets),
     controlledBuckets: preserveCurrentHour(currentState.controlledBuckets),
     uncontrolledBuckets: preserveCurrentHour(currentState.uncontrolledBuckets),
+    exemptBuckets: preserveCurrentHour(currentState.exemptBuckets),
     hourlyBudgets: preserveCurrentHour(currentState.hourlyBudgets),
     dailyBudgetCaps: {},
     dailyTotals: {},
     hourlyAverages: {},
+    controlledDailyTotals: {},
+    uncontrolledDailyTotals: {},
+    exemptDailyTotals: {},
+    controlledHourlyAverages: {},
+    uncontrolledHourlyAverages: {},
+    exemptHourlyAverages: {},
     unreliablePeriods: [],
   };
   app.replacePowerTrackerForUi(nextState);

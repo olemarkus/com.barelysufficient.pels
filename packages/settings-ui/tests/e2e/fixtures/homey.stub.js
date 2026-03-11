@@ -352,6 +352,9 @@
       dev_waterheater: true,
       dev_evcharger: false,
     },
+    budget_exempt_devices: {
+      dev_waterheater: true,
+    },
     controllable_devices: {
       dev_heatpump: true,
       dev_floorheat: false,
@@ -503,6 +506,7 @@
     operating_mode: settings.operating_mode,
     controllable_devices: settings.controllable_devices,
     managed_devices: settings.managed_devices,
+    budget_exempt_devices: settings.budget_exempt_devices,
     mode_aliases: settings.mode_aliases,
     overshoot_behaviors: settings.overshoot_behaviors,
     price_optimization_settings: settings.price_optimization_settings,

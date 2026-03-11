@@ -6,6 +6,17 @@ The Daily Energy Budget is a **soft constraint** – a kWh/day guide that helps 
 
 This feature always uses the whole-home meter data that PELS already collects (the same stats used for hourly and daily usage).
 
+## Budget-Exempt Devices
+
+Budget exemption is a control rule, not a meter rewrite:
+
+- Exempt devices are ignored by daily budget soft-limit control.
+- Their real usage still counts in `used`, `remaining`, `deviation`, and budget overrun reporting.
+- They are treated as uncontrolled load when PELS builds and learns the daily budget plan.
+- They still count toward hourly capacity protection, including hard-cap and margin shedding.
+
+This means a budget-exempt device can leave the household over the daily budget without causing other devices to be shed just to compensate for that exempt load.
+
 ## Terminology
 
 Shared capacity terminology and units are defined in:
@@ -87,7 +98,7 @@ The Budget tab shows a "Today plan" chart and live stats:
 - **Deviation**: used minus allowed so far (positive means over plan).
 - **Confidence**: backtested forecast-skill score — how regular the home's hourly usage is, and how well it follows shifted budget plans when controlled load exists.
 - **Price shaping**: shows whether price shaping is active.
-- **Plan frozen**: appears while you're over plan; it clears once you are back under plan.
+- **Plan frozen**: appears while budget-controlled load is over plan; exempt devices can leave reporting over plan without freezing the daily plan.
 
 The chart shows planned kWh per hour as bars, with actual kWh per hour as dots for completed hours.
 
@@ -108,6 +119,7 @@ The plan is a cumulative curve. The current bucket's planned kWh is turned into 
 
 - **Hourly capacity limit (hard cap)**: Always enforced. Daily budget never bypasses it. Only projected breaches of this hourly hard-cap budget trigger emergency shortfall alarms.
 - **Daily soft limit**: Combined with the hourly soft limit by taking the smaller limit. Never triggers emergency alarms.
+- **Budget-exempt devices**: Skipped by daily-budget control, but still visible in real usage and still managed by hourly capacity protection.
 - **Price optimization**: Can reshape the daily plan if price shaping is enabled.
 
 ## Insights

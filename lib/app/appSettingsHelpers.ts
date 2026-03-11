@@ -13,10 +13,12 @@ import {
   isStringMap,
 } from '../utils/appTypeGuards';
 import {
+  BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
+  CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
@@ -34,6 +36,7 @@ export type CapacitySettingsSnapshot = {
   capacityDryRun: boolean;
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
+  budgetExemptDevices: Record<string, boolean>;
   experimentalEvSupportEnabled: boolean;
   shedBehaviors: Record<string, ShedBehavior>;
 };
@@ -50,8 +53,9 @@ export function buildCapacitySettingsSnapshot(params: {
   const priorities = settings.get('capacity_priorities') as unknown;
   const modeTargets = settings.get('mode_device_targets') as unknown;
   const dryRun = settings.get(CAPACITY_DRY_RUN) as unknown;
-  const controllables = settings.get('controllable_devices') as unknown;
+  const controllables = settings.get(CONTROLLABLE_DEVICES) as unknown;
   const managed = settings.get(MANAGED_DEVICES) as unknown;
+  const budgetExempt = settings.get(BUDGET_EXEMPT_DEVICES) as unknown;
   const experimentalEvSupportEnabled = settings.get(EXPERIMENTAL_EV_SUPPORT_ENABLED) as unknown;
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
 
@@ -75,6 +79,7 @@ export function buildCapacitySettingsSnapshot(params: {
   const nextDryRun = typeof dryRun === 'boolean' ? dryRun : current.capacityDryRun;
   const nextControllables = isBooleanMap(controllables) ? controllables : current.controllableDevices;
   const nextManaged = isBooleanMap(managed) ? managed : current.managedDevices;
+  const nextBudgetExempt = isBooleanMap(budgetExempt) ? budgetExempt : current.budgetExemptDevices;
   const nextExperimentalEvSupportEnabled = typeof experimentalEvSupportEnabled === 'boolean'
     ? experimentalEvSupportEnabled
     : current.experimentalEvSupportEnabled;
@@ -89,6 +94,7 @@ export function buildCapacitySettingsSnapshot(params: {
     capacityDryRun: nextDryRun,
     controllableDevices: nextControllables,
     managedDevices: nextManaged,
+    budgetExemptDevices: nextBudgetExempt,
     experimentalEvSupportEnabled: nextExperimentalEvSupportEnabled,
     shedBehaviors: nextBehaviors,
   };

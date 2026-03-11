@@ -18,6 +18,7 @@ type PlanDeviceSnapshot = {
   reason?: string;
   zone?: string;
   controllable?: boolean;
+  budgetExempt?: boolean;
   currentTemperature?: number;
   shedAction?: 'turn_off' | 'set_temperature';
   shedTemperature?: number | null;
@@ -362,6 +363,13 @@ const dispatchOpenDeviceDetail = (deviceId: string) => {
   document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId } }));
 };
 
+const buildBudgetExemptChip = () => {
+  const chip = document.createElement('span');
+  chip.className = 'chip chip--ok plan-row__chip';
+  chip.textContent = 'Budget exempt';
+  return chip;
+};
+
 const buildPlanRow = (dev: PlanDeviceSnapshot) => {
   const row = document.createElement('li');
   row.className = 'device-row plan-row clickable';
@@ -373,6 +381,9 @@ const buildPlanRow = (dev: PlanDeviceSnapshot) => {
   const name = document.createElement('div');
   name.className = 'device-row__name plan-row__name';
   name.append(buildPlanStateBadge(dev), document.createTextNode(dev.name));
+  if (dev.budgetExempt === true) {
+    name.appendChild(buildBudgetExemptChip());
+  }
 
   const metaWrap = document.createElement('div');
   metaWrap.className = 'device-row__target plan-row__meta';

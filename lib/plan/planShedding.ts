@@ -40,6 +40,7 @@ type ShedCandidate = BaseShedCandidate & { recentlyRestored: boolean };
 type ShedCandidateParams = {
   devices: PlanInputDevice[];
   needed: number;
+  limitSource: PlanContext['softLimitSource'];
   state: PlanEngineState;
   deps: SheddingDeps;
 };
@@ -56,6 +57,7 @@ export async function buildSheddingPlan(
     total: context.total,
     devices: context.devices,
     shedSet,
+    softLimitSource: context.softLimitSource,
     capacityGuard: deps.capacityGuard,
   });
   const guardInShortfall = deps.capacityGuard?.isInShortfall() ?? false;
@@ -110,6 +112,7 @@ function planShedding(
   const candidates = buildSheddingCandidates({
     devices: context.devices,
     needed,
+    limitSource: context.softLimitSource,
     state,
     deps,
   });
@@ -143,10 +146,13 @@ function planShedding(
 }
 
 function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
-  const { devices, needed, state, deps } = params;
+  const { devices, needed, limitSource, state, deps } = params;
   const nowTs = Date.now();
   return devices
     .filter((d) => d.controllable !== false && d.currentOn !== false)
+    // Budget exemption only bypasses daily soft-limit control. Capacity shedding
+    // still considers the device because hard-cap protection remains in force.
+    .filter((d) => limitSource !== 'daily' || d.budgetExempt !== true)
     .map((d) => addCandidatePower(d, deps.getPriorityForDevice))
     .filter((candidate): candidate is BaseShedCandidate => candidate !== null)
     .map((candidate) => addRecentRestoreState(candidate, state, nowTs, needed, deps.logDebug))
@@ -247,11 +253,20 @@ async function updateGuardState(params: {
   total: number | null;
   devices: PlanInputDevice[];
   shedSet: Set<string>;
+  softLimitSource: PlanContext['softLimitSource'];
   capacityGuard: CapacityGuard | undefined;
 }): Promise<{ sheddingActive: boolean }> {
-  const { headroom, capacitySoftLimit, total, devices, shedSet, capacityGuard } = params;
+  const {
+    headroom,
+    capacitySoftLimit,
+    total,
+    devices,
+    shedSet,
+    softLimitSource,
+    capacityGuard,
+  } = params;
   if (shouldActivateShedding(headroom, shedSet)) {
-    const remainingCandidates = countRemainingCandidates(devices, shedSet, headroom);
+    const remainingCandidates = countRemainingCandidates(devices, shedSet, headroom, softLimitSource);
     const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
     const deficitKw = computeShortfallDeficitKw(total, shortfallThreshold);
     await capacityGuard?.setSheddingActive(true);
@@ -288,9 +303,12 @@ function countRemainingCandidates(
   devices: PlanInputDevice[],
   shedSet: Set<string>,
   headroom: number | null,
+  limitSource: PlanContext['softLimitSource'],
 ): number {
   if (headroom === null || headroom >= 0) return 0;
-  return devices.filter((d) => d.controllable !== false && d.currentOn !== false && !shedSet.has(d.id))
+  return devices
+    .filter((d) => d.controllable !== false && d.currentOn !== false && !shedSet.has(d.id))
+    .filter((d) => limitSource !== 'daily' || d.budgetExempt !== true)
     .filter((d) => {
       const power = resolveCandidatePower(d);
       return power !== null && power > 0;
