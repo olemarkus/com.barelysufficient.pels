@@ -60,9 +60,34 @@ describe('daily budget state helpers', () => {
       },
     });
 
-    expect(result.bucketUsageControlled).toEqual([2, 1.5]);
-    expect(result.bucketUsageUncontrolled).toEqual([2, 2.5]);
+    expect(result.bucketUsageControlled).toEqual([2, 0]);
+    expect(result.bucketUsageUncontrolled).toEqual([2, 4]);
     expect(result.bucketUsageExempt).toEqual([1, 1.5]);
+  });
+
+  it('buildBucketUsage falls back to fully uncontrolled usage when controlled data is missing', () => {
+    const dayStart = Date.UTC(2024, 0, 1, 0, 0, 0);
+    const bucketStartUtcMs = [dayStart];
+    const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
+
+    const result = buildBucketUsage({
+      bucketStartUtcMs,
+      powerTracker: {
+        buckets: {
+          [bucketKeys[0]]: 4,
+        },
+        uncontrolledBuckets: {
+          [bucketKeys[0]]: 1,
+        },
+        exemptBuckets: {
+          [bucketKeys[0]]: 1.5,
+        },
+      },
+    });
+
+    expect(result.bucketUsageControlled).toEqual([0]);
+    expect(result.bucketUsageUncontrolled).toEqual([4]);
+    expect(result.bucketUsageExempt).toEqual([1.5]);
   });
 
   it('buildBucketUsage omits split arrays when no split data exists', () => {
