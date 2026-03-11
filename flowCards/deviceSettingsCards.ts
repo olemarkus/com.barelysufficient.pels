@@ -1,5 +1,4 @@
 import { BUDGET_EXEMPT_DEVICES, CONTROLLABLE_DEVICES } from '../lib/utils/settingsKeys';
-import { incPerfCounters } from '../lib/utils/perfCounters';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import type { FlowCardDeps } from './registerFlowCards';
 
@@ -12,7 +11,6 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
     logPrefix: 'Flow: capacity control',
-    rebuildSource: 'device_capacity_control',
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -21,7 +19,6 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
     logPrefix: 'Flow: capacity control',
-    rebuildSource: 'device_capacity_control',
     deps,
   });
 }
@@ -33,8 +30,6 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     settingKey: BUDGET_EXEMPT_DEVICES,
     label: 'budget exemption',
     logPrefix: 'Flow: budget exemption',
-    afterSet: () => deps.updateDailyBudgetState(),
-    rebuildSource: 'budget_exemption',
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -43,8 +38,6 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     settingKey: BUDGET_EXEMPT_DEVICES,
     label: 'budget exemption',
     logPrefix: 'Flow: budget exemption',
-    afterSet: () => deps.updateDailyBudgetState(),
-    rebuildSource: 'budget_exemption',
     deps,
   });
 }
@@ -79,8 +72,6 @@ function registerDeviceBooleanActionCard(params: {
   settingKey: string;
   label: string;
   logPrefix: string;
-  rebuildSource?: string;
-  afterSet?: () => void;
   deps: FlowCardDeps;
 }): void {
   const { cardId, deps, ...settingParams } = params;
@@ -140,8 +131,6 @@ async function setDeviceBooleanSetting(params: {
   settingKey: string;
   label: string;
   logPrefix: string;
-  rebuildSource?: string;
-  afterSet?: () => void;
   deps: FlowCardDeps;
 }): Promise<void> {
   const {
@@ -150,8 +139,6 @@ async function setDeviceBooleanSetting(params: {
     settingKey,
     label,
     logPrefix,
-    rebuildSource,
-    afterSet,
     deps,
   } = params;
   const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
@@ -165,20 +152,6 @@ async function setDeviceBooleanSetting(params: {
   };
   deps.homey.settings.set(settingKey, next);
   deps.log(`${logPrefix} ${enabled ? 'enabled' : 'disabled'} for ${deviceName}`);
-  await deps.refreshSnapshot();
-  afterSet?.();
-  if (rebuildSource) {
-    requestPlanRebuildFromFlow(deps, rebuildSource);
-  }
-}
-
-function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
-  incPerfCounters([
-    'plan_rebuild_requested_total',
-    'plan_rebuild_requested.flow_total',
-    `plan_rebuild_requested.flow.${source}_total`,
-  ]);
-  deps.rebuildPlan(source);
 }
 
 function getBooleanSettingsRecord(value: unknown): Record<string, boolean> {
