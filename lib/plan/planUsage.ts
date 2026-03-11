@@ -48,7 +48,7 @@ const sumBudgetExemptUsageKwInternal = (
   let hasExempt = false;
   let hasUsage = false;
   for (const dev of devices) {
-    if (dev.budgetExempt !== true) continue;
+    if (dev.budgetExempt !== true || dev.controllable === false) continue;
     hasExempt = true;
     const usage = resolveUsageKw(dev, allowExpectedFallback);
     if (usage === null) continue;

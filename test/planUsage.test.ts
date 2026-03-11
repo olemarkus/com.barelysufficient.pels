@@ -32,4 +32,19 @@ describe('plan usage budget exemption helpers', () => {
       },
     ])).toBeCloseTo(2, 6);
   });
+
+  it('ignores budget-exempt devices with capacity control disabled', () => {
+    expect(sumBudgetExemptLiveUsageKw([
+      {
+        budgetExempt: true,
+        controllable: false,
+        measuredPowerKw: 5,
+      },
+      {
+        budgetExempt: true,
+        controllable: true,
+        measuredPowerKw: 1.5,
+      },
+    ])).toBeCloseTo(1.5, 6);
+  });
 });
