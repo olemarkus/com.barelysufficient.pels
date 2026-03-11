@@ -74,6 +74,7 @@ function buildService(): DailyBudgetService {
     } as any,
     log: () => undefined,
     logDebug: () => undefined,
+    error: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => false,
     getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
@@ -180,5 +181,34 @@ describe('DailyBudgetService', () => {
       refreshConfidence: true,
       includeConfidenceBootstrapDebug: true,
     }));
+  });
+
+  it('logs daily budget update failures to error', () => {
+    const error = jest.fn();
+    const service = new DailyBudgetService({
+      homey: {
+        settings: {
+          get: jest.fn(() => null),
+          set: jest.fn(),
+        },
+        clock: {
+          getTimezone: () => TZ,
+        },
+      } as any,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error,
+      getPowerTracker: () => ({ buckets: {} }),
+      getPriceOptimizationEnabled: () => false,
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+    });
+    (service as any).manager.update = jest.fn(() => {
+      throw 'boom';
+    });
+
+    service.updateState();
+
+    expect(error).toHaveBeenCalledWith('Daily budget: failed to update state', expect.any(Error));
+    expect((error.mock.calls[0]?.[1] as Error).message).toBe('boom');
   });
 });

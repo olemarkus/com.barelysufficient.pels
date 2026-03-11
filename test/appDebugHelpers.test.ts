@@ -1,6 +1,6 @@
 import type { DeviceManager } from '../lib/core/deviceManager';
 import type { HomeyDeviceLike } from '../lib/utils/types';
-import { logHomeyDeviceForDebug } from '../lib/app/appDebugHelpers';
+import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebug } from '../lib/app/appDebugHelpers';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];
@@ -18,7 +18,22 @@ const findLogPayload = (logger: jest.Mock, message: string): unknown => {
   return call ? call[1] : undefined;
 };
 
-describe('appDebugHelpers logHomeyDeviceForDebug', () => {
+describe('appDebugHelpers', () => {
+  it('routes debug device fetch failures to app error', async () => {
+    const app = {
+      deviceManager: {
+        getDevicesForDebug: jest.fn().mockRejectedValue({ reason: 'boom' }),
+      },
+      error: jest.fn(),
+      log: jest.fn(),
+    };
+
+    await expect(getHomeyDevicesForDebugFromApp(app as never)).resolves.toEqual([]);
+    expect(app.error).toHaveBeenCalledWith('Failed to get Homey devices for debug', expect.any(Error));
+    expect((app.error.mock.calls[0]?.[1] as Error).message).toBe('{"reason":"boom"}');
+    expect(app.log).not.toHaveBeenCalled();
+  });
+
   it('logs list entry, getDevice detail, and settings object when APIs are available', async () => {
     const device: HomeyDeviceLike = {
       id: 'dev-1',

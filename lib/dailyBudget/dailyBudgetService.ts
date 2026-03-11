@@ -28,11 +28,13 @@ import type { DailyBudgetDayPayload, DailyBudgetSettings, DailyBudgetUiPayload }
 import { incPerfCounter, addPerfDuration } from '../utils/perfCounters';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../utils/debugLogging';
+import { normalizeError } from '../utils/errorUtils';
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
@@ -86,12 +88,16 @@ export class DailyBudgetService {
     this.manager.loadState(this.deps.homey.settings.get(DAILY_BUDGET_STATE));
   }
 
+  private logError(message: string, error: unknown): void {
+    this.deps.error(message, normalizeError(error));
+  }
+
   private resolveTimeZone(): string {
     try {
       const tz = this.deps.homey.clock?.getTimezone?.();
       if (typeof tz === 'string' && tz.trim()) return tz;
     } catch (error) {
-      this.deps.log('Daily budget: failed to read timezone', error);
+      this.logError('Daily budget: failed to read timezone', error);
     }
     return 'Europe/Oslo';
   }
@@ -131,7 +137,7 @@ export class DailyBudgetService {
         this.persistState();
       }
     } catch (error) {
-      this.deps.log('Daily budget: failed to update state', error);
+      this.logError('Daily budget: failed to update state', error);
     } finally {
       stopSpan();
       incPerfCounter('daily_budget_update_total');
@@ -167,7 +173,7 @@ export class DailyBudgetService {
         capacityBudgetKWh,
       });
     } catch (error) {
-      this.deps.log('Daily budget: failed to build tomorrow preview', error);
+      this.logError('Daily budget: failed to build tomorrow preview', error);
       return null;
     }
   }
@@ -188,7 +194,7 @@ export class DailyBudgetService {
         controlledUsageWeight: this.settings.controlledUsageWeight,
       });
     } catch (error) {
-      this.deps.log('Daily budget: failed to build yesterday history', error);
+      this.logError('Daily budget: failed to build yesterday history', error);
       return null;
     }
   }
@@ -204,7 +210,7 @@ export class DailyBudgetService {
       const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
       return { timeZone, yesterdayStartUtcMs };
     } catch (error) {
-      this.deps.log('Daily budget: failed to resolve yesterday date', error);
+      this.logError('Daily budget: failed to resolve yesterday date', error);
       return null;
     }
   }

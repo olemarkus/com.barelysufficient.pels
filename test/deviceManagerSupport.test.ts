@@ -20,7 +20,11 @@ import {
   handlePowerUpdate,
   updateLastKnownPower,
 } from '../lib/core/deviceManagerRuntime';
-import { getRawDevices, writeErrorToStderr } from '../lib/core/deviceManagerHomeyApi';
+import {
+  getRawDevices,
+  logDeviceManagerRuntimeError,
+  writeErrorToStderr,
+} from '../lib/core/deviceManagerHomeyApi';
 
 const createLogger = () => ({
   log: jest.fn(),
@@ -189,5 +193,14 @@ describe('device manager support helpers', () => {
     const stderrWrite = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
     writeErrorToStderr('device manager failed', new Error('boom'));
     expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('device manager failed'));
+
+    logDeviceManagerRuntimeError(logger, 'device manager runtime failed', new Error('runtime boom'));
+    expect(logger.error).toHaveBeenCalledWith('device manager runtime failed', expect.any(Error));
+    expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('device manager runtime failed'));
+
+    logDeviceManagerRuntimeError(logger, 'device manager string failure', 'string boom');
+    const normalizedError = logger.error.mock.calls.find(([message]) => message === 'device manager string failure')?.[1];
+    expect(normalizedError).toBeInstanceOf(Error);
+    expect((normalizedError as Error).message).toBe('string boom');
   });
 });

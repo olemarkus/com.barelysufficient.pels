@@ -107,8 +107,40 @@ describe('DeviceManager', () => {
     describe('init', () => {
         it('initializes HomeyAPI when checks pass', async () => {
             await deviceManager.init();
-            expect(require('homey-api').HomeyAPI.createAppAPI).toHaveBeenCalledWith({ homey: homeyMock });
+            expect(require('homey-api').HomeyAPI.createAppAPI).toHaveBeenCalledWith(expect.objectContaining({
+                homey: homeyMock,
+                debug: expect.any(Function),
+            }));
             expect(loggerMock.log).toHaveBeenCalledWith(expect.stringContaining('initialized'));
+        });
+
+        it('promotes error-like HomeyAPI debug entries to error logs', async () => {
+            await deviceManager.init();
+            const createAppApiCall = require('homey-api').HomeyAPI.createAppAPI.mock.calls[0]?.[0];
+            const debug = createAppApiCall?.debug as ((...args: unknown[]) => void) | undefined;
+
+            debug?.('[HomeyAPIV3Local]', 'SocketIOClient.Namespace[/manager/devices].onConnectError', 'parseuri is not a function');
+
+            expect(loggerMock.error).toHaveBeenCalledWith(
+                'HomeyAPI:',
+                '[HomeyAPIV3Local]',
+                'SocketIOClient.Namespace[/manager/devices].onConnectError',
+                'parseuri is not a function',
+            );
+        });
+
+        it('does not promote routine HomeyAPI debug entries', async () => {
+            await deviceManager.init();
+            const createAppApiCall = require('homey-api').HomeyAPI.createAppAPI.mock.calls[0]?.[0];
+            const debug = createAppApiCall?.debug as ((...args: unknown[]) => void) | undefined;
+
+            debug?.('[HomeyAPIV3Local]', 'SocketIOClient.onConnect');
+
+            expect(loggerMock.error).not.toHaveBeenCalledWith(
+                'HomeyAPI:',
+                '[HomeyAPIV3Local]',
+                'SocketIOClient.onConnect',
+            );
         });
 
         it('skips initialization if checks fail', async () => {

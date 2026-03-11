@@ -65,8 +65,7 @@ import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/sr
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
-const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
-const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 type PelsStatus = { lastPowerUpdate?: number | null; priceLevel?: string | null };
@@ -194,6 +193,7 @@ class PelsApp extends Homey.App {
       homey: this.homey,
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (...args: unknown[]) => this.logDebug('daily_budget', ...args),
+      error: (...args: unknown[]) => this.error(...args),
       getPowerTracker: () => this.powerTracker,
       getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
       getCapacitySettings: () => this.capacitySettings,
@@ -375,6 +375,7 @@ class PelsApp extends Homey.App {
   private startPerfLogging(): void {
     this.stopPerfLogging = startPerfLogger({
       isEnabled: () => this.debugLoggingTopics.has('perf'), log: (...args: unknown[]) => this.logDebug('perf', ...args),
+      error: (...args: unknown[]) => this.error(...args),
       logCpuSpike: (...args: unknown[]) => this.log(...args), intervalMs: 30 * 1000,
     });
   }
@@ -467,8 +468,7 @@ class PelsApp extends Homey.App {
   public getLatestPlanSnapshotForUi(): DevicePlan | null { return this.planService?.getLatestPlanSnapshot() ?? null; }
   private emitSettingsUiPowerUpdated(): void {
     const api = this.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
-    const realtime = api?.realtime;
-    if (typeof realtime !== 'function') return;
+    const realtime = api?.realtime; if (typeof realtime !== 'function') return;
     const status = this.homey.settings.get('pels_status') as PelsStatus | null;
     const heartbeat = this.homey.settings.get('app_heartbeat') as unknown;
     realtime.call(api, 'power_updated', {
@@ -609,6 +609,7 @@ class PelsApp extends Homey.App {
       getNow: () => this.getNow(),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
+      error: (...args: unknown[]) => this.error(...args),
     };
     registerAppFlowCards(deps);
   }

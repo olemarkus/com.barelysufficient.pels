@@ -138,6 +138,42 @@ describe('PlanService', () => {
     expect(planUpdatedCalls).toHaveLength(2);
   });
 
+  it('normalizes plan_updated emission failures before logging', async () => {
+    const realtime = jest.fn().mockRejectedValue('boom');
+    const error = jest.fn();
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(19, 'stable')),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error,
+    });
+
+    await service.rebuildPlanFromCache();
+    await Promise.resolve();
+
+    expect(error).toHaveBeenCalledWith('Failed to emit plan_updated event', expect.any(Error));
+    expect((error.mock.calls[0]?.[1] as Error).message).toBe('boom');
+  });
+
   it('flushes throttled meta-only snapshot without requiring another rebuild', async () => {
     const settingsSet = jest.fn();
     const realtime = jest.fn().mockResolvedValue(undefined);

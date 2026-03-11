@@ -11,6 +11,7 @@ import {
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { incPerfCounters } from '../lib/utils/perfCounters';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
+import { normalizeError } from '../lib/utils/errorUtils';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 
 type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
@@ -51,6 +52,7 @@ export type FlowCardDeps = {
   getNow: () => Date;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
 };
 
 export function registerFlowCards(deps: FlowCardDeps): void {
@@ -151,8 +153,9 @@ function createPriceCardRunListener(kind: 'today' | 'tomorrow', deps: FlowCardDe
       deps.log(`Flow: stored ${result.storedCount} hourly prices for ${result.dateKey} (${kind})`);
       return true;
     } catch (error) {
-      deps.log(`Flow: Failed to store ${kind} prices from flow tag.`, error);
-      throw error;
+      const normalizedError = normalizeError(error);
+      deps.error(`Flow: Failed to store ${kind} prices from flow tag.`, normalizedError);
+      throw normalizedError;
     }
   };
 }

@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import type { DeviceManager } from '../core/deviceManager';
 import type { HomeyDeviceLike } from '../utils/types';
+import { normalizeError } from '../utils/errorUtils';
 import { safeJsonStringify, sanitizeLogValue } from '../utils/logUtils';
 import { resolveHomeyEnergyApiFromHomeyApi } from '../utils/homeyEnergy';
 
@@ -201,7 +202,7 @@ export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<Ho
   const runtimeApp = app as Homey.App & { deviceManager?: DeviceManager };
   if (!runtimeApp.deviceManager) return [];
   return getHomeyDevicesForDebug({ deviceManager: runtimeApp.deviceManager }).catch((err) => {
-    runtimeApp.log?.('Failed to get Homey devices for debug', err);
+    runtimeApp.error?.('Failed to get Homey devices for debug', normalizeError(err));
     return [];
   });
 }
@@ -219,7 +220,7 @@ export async function logHomeyDeviceForDebug(params: {
   try {
     devices = await getHomeyDevicesForDebug({ deviceManager });
   } catch (err) {
-    error('Failed to fetch Homey devices for debug', err as Error);
+    error('Failed to fetch Homey devices for debug', normalizeError(err));
     return false;
   }
 
@@ -251,7 +252,7 @@ export async function logHomeyDeviceForDebug(params: {
       log,
     });
   } catch (err) {
-    error('Homey device energy approximation debug failed', err as Error);
+    error('Homey device energy approximation debug failed', normalizeError(err));
   }
 
   try {
@@ -263,7 +264,7 @@ export async function logHomeyDeviceForDebug(params: {
       log,
     });
   } catch (err) {
-    error('Homey device detail debug failed', err as Error);
+    error('Homey device detail debug failed', normalizeError(err));
   }
 
   try {
@@ -275,13 +276,13 @@ export async function logHomeyDeviceForDebug(params: {
       log,
     });
   } catch (err) {
-    error('Homey device settings object debug failed', err as Error);
+    error('Homey device settings object debug failed', normalizeError(err));
   }
 
   try {
     await logHomeyEnergyLiveReport({ deviceManager, log });
   } catch (err) {
-    error('Homey energy live report debug failed', err as Error);
+    error('Homey energy live report debug failed', normalizeError(err));
   }
 
   return true;
