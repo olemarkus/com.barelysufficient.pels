@@ -64,4 +64,45 @@ describe('registerFlowCards', () => {
     );
     expect(((deps.error as jest.Mock).mock.calls[0]?.[1] as Error).message).toBe('boom');
   });
+
+  it('rebuilds the plan and ignores non-record settings for budget exemption flow cards', async () => {
+    const settingsGet = jest.fn((key: string) => {
+      if (key === 'budget_exempt_devices') return [true];
+      return undefined;
+    });
+    const settingsSet = jest.fn();
+    const { deps, actionListeners } = buildDeps({
+      homey: {
+        flow: {
+          getActionCard: (cardId: string) => ({
+            registerRunListener: (listener: (args: unknown, state?: unknown) => Promise<unknown>) => {
+              actionListeners[cardId] = (args) => listener(args);
+            },
+            registerArgumentAutocompleteListener: jest.fn(),
+            trigger: jest.fn(),
+          }),
+          getConditionCard: (_cardId: string) => ({
+            registerRunListener: jest.fn(),
+            registerArgumentAutocompleteListener: jest.fn(),
+            trigger: jest.fn(),
+          }),
+          getTriggerCard: (_cardId: string) => ({
+            registerRunListener: jest.fn(),
+            registerArgumentAutocompleteListener: jest.fn(),
+            trigger: jest.fn(),
+          }),
+        },
+        settings: { get: settingsGet, set: settingsSet },
+      } as FlowCardDeps['homey'],
+      getSnapshot: jest.fn().mockResolvedValue([{ id: 'dev-1', name: 'Heater' }]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.add_budget_exemption({ device: 'dev-1' })).resolves.toBe(true);
+
+    expect(settingsSet).toHaveBeenCalledWith('budget_exempt_devices', { 'dev-1': true });
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlan).toHaveBeenCalledWith('budget_exemption');
+  });
 });

@@ -1,11 +1,8 @@
-import {
-  sumBudgetExemptLiveUsageKw,
-  sumBudgetExemptUsageKw,
-} from '../lib/plan/planUsage';
+import { sumBudgetExemptLiveUsageKw } from '../lib/plan/planUsage';
 
 describe('plan usage budget exemption helpers', () => {
-  it('tracks historical exempt usage from measured power only', () => {
-    expect(sumBudgetExemptUsageKw([
+  it('prefers measured power over expected power when both are available', () => {
+    expect(sumBudgetExemptLiveUsageKw([
       {
         budgetExempt: true,
         measuredPowerKw: 1.2,
@@ -15,7 +12,7 @@ describe('plan usage budget exemption helpers', () => {
         budgetExempt: true,
         expectedPowerKw: 0.8,
       },
-    ])).toBeCloseTo(1.2, 6);
+    ])).toBeCloseTo(2, 6);
   });
 
   it('allows expected power as a live fallback for exempt soft-limit control', () => {

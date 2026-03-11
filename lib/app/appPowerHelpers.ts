@@ -3,7 +3,7 @@ import type CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { recordPowerSample as recordPowerSampleCore } from '../core/powerTracker';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import { sumBudgetExemptUsageKw, sumControlledUsageKw } from '../plan/planUsage';
+import { sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from '../plan/planUsage';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { aggregateAndPruneHistory } from '../core/powerTracker';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from '../utils/perfCounters';
@@ -413,7 +413,7 @@ export async function recordPowerSampleForApp(params: {
   const hourBudgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
   const snapshot = getLatestTargetSnapshot();
   const totalKw = snapshot.length ? sumControlledUsageKw(snapshot) : null;
-  const exemptKw = snapshot.length ? sumBudgetExemptUsageKw(snapshot) : null;
+  const exemptKw = snapshot.length ? sumBudgetExemptLiveUsageKw(snapshot) : null;
   const controlledPowerW = totalKw !== null ? Math.max(0, totalKw * 1000) : undefined;
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
   await recordPowerSampleCore({

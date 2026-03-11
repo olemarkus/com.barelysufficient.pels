@@ -34,6 +34,7 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     label: 'budget exemption',
     logPrefix: 'Flow: budget exemption',
     afterSet: () => deps.updateDailyBudgetState(),
+    rebuildSource: 'budget_exemption',
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -43,6 +44,7 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     label: 'budget exemption',
     logPrefix: 'Flow: budget exemption',
     afterSet: () => deps.updateDailyBudgetState(),
+    rebuildSource: 'budget_exemption',
     deps,
   });
 }
@@ -158,7 +160,7 @@ async function setDeviceBooleanSetting(params: {
   const deviceName = snapshot.find((device) => device.id === deviceId)?.name || deviceId;
   const existing = deps.homey.settings.get(settingKey);
   const next = {
-    ...(existing && typeof existing === 'object' ? existing as Record<string, boolean> : {}),
+    ...getBooleanSettingsRecord(existing),
     [deviceId]: enabled,
   };
   deps.homey.settings.set(settingKey, next);
@@ -177,4 +179,14 @@ function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
     `plan_rebuild_requested.flow.${source}_total`,
   ]);
   deps.rebuildPlan(source);
+}
+
+function getBooleanSettingsRecord(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const prototype = Object.getPrototypeOf(record) as object | null;
+  if (prototype !== Object.prototype && prototype !== null) return {};
+  const entries = Object.entries(record);
+  if (!entries.every(([key, entry]) => typeof key === 'string' && typeof entry === 'boolean')) return {};
+  return record as Record<string, boolean>;
 }

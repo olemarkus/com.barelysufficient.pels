@@ -470,4 +470,47 @@ describe('recordPowerSampleForApp', () => {
     const bucketKey = new Date(start).toISOString();
     expect(tracker.exemptBuckets?.[bucketKey]).toBeCloseTo(0.2, 3);
   });
+
+  it('falls back to expected power for live budget exempt usage when measured power is unavailable', async () => {
+    let tracker: PowerTrackerState = {};
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+    const getLatestTargetSnapshot = () => ([
+      {
+        id: 'dev-budget',
+        name: 'Budget exempt heater',
+        targets: [],
+        expectedPowerKw: 0.8,
+        budgetExempt: true,
+      },
+    ]);
+
+    await recordPowerSampleForApp({
+      currentPowerW: 800,
+      nowMs: start,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      homey: mockHomeyInstance as any,
+      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    await recordPowerSampleForApp({
+      currentPowerW: 800,
+      nowMs: start + 30 * 60 * 1000,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      homey: mockHomeyInstance as any,
+      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    const bucketKey = new Date(start).toISOString();
+    expect(tracker.exemptBuckets?.[bucketKey]).toBeCloseTo(0.4, 3);
+  });
 });
