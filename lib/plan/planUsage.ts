@@ -36,10 +36,6 @@ export const sumControlledUsageKw = (devices: UsageDevice[]): number | null => {
   return hasUsage ? totalKw : null;
 };
 
-export const sumBudgetExemptUsageKw = (devices: UsageDevice[]): number | null => {
-  return sumBudgetExemptUsageKwInternal(devices, false);
-};
-
 export const sumBudgetExemptLiveUsageKw = (devices: UsageDevice[]): number | null => {
   return sumBudgetExemptUsageKwInternal(devices, true);
 };
