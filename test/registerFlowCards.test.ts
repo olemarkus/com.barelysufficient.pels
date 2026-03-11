@@ -65,7 +65,7 @@ describe('registerFlowCards', () => {
     expect(((deps.error as jest.Mock).mock.calls[0]?.[1] as Error).message).toBe('boom');
   });
 
-  it('rebuilds the plan and ignores non-record settings for budget exemption flow cards', async () => {
+  it('writes a clean boolean map for budget exemption flow cards without direct rebuild work', async () => {
     const settingsGet = jest.fn((key: string) => {
       if (key === 'budget_exempt_devices') return [true];
       return undefined;
@@ -102,7 +102,8 @@ describe('registerFlowCards', () => {
     await expect(actionListeners.add_budget_exemption({ device: 'dev-1' })).resolves.toBe(true);
 
     expect(settingsSet).toHaveBeenCalledWith('budget_exempt_devices', { 'dev-1': true });
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
-    expect(deps.rebuildPlan).toHaveBeenCalledWith('budget_exemption');
+    expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
+    expect(deps.refreshSnapshot).not.toHaveBeenCalled();
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { createSettingsHandler, type SettingsHandlerDeps } from '../lib/utils/settingsHandlers';
 import {
+  BUDGET_EXEMPT_DEVICES,
   CAPACITY_LIMIT_KW,
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
@@ -463,6 +464,18 @@ describe('createSettingsHandler', () => {
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+  });
+
+  it('refreshes budget exempt devices, updates daily budget state, and rebuilds', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler(BUDGET_EXEMPT_DEVICES);
+
+    expect(deps.loadCapacitySettings).toHaveBeenCalled();
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith();
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${BUDGET_EXEMPT_DEVICES}`);
   });
 
   it('resets daily budget learning and clears the reset flag', async () => {
