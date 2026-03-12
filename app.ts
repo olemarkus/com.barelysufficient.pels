@@ -65,6 +65,8 @@ import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosti
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
 const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
+// Let non-urgent power deltas settle before rebuilding the full plan again.
+const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
@@ -553,6 +555,7 @@ class PelsApp extends Homey.App {
             this.powerSampleRebuildState = state;
           },
           minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
+          stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS,
           maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
           currentPowerW,
           capacitySettings: this.capacitySettings,

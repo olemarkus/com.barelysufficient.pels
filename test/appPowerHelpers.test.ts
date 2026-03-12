@@ -1,11 +1,33 @@
+import CapacityGuard from '../lib/core/capacityGuard';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PowerSampleRebuildState } from '../lib/app/appPowerHelpers';
 import {
   recordDailyBudgetCap,
   recordPowerSampleForApp,
   schedulePlanRebuildFromPowerSample,
+  schedulePlanRebuildFromSignal,
 } from '../lib/app/appPowerHelpers';
 import { mockHomeyInstance } from './mocks/homey';
+
+const createCapacityGuardMock = (params: {
+  limitKw?: number;
+  marginKw?: number;
+  softLimitKw?: number;
+  totalPowerKw?: number;
+} = {}): CapacityGuard => {
+  const {
+    limitKw = 10,
+    marginKw = 0.5,
+    softLimitKw = limitKw - marginKw,
+    totalPowerKw,
+  } = params;
+  const capacityGuard = new CapacityGuard({ limitKw, softMarginKw: marginKw });
+  capacityGuard.setSoftLimitProvider(() => softLimitKw);
+  if (typeof totalPowerKw === 'number') {
+    capacityGuard.reportTotalPower(totalPowerKw);
+  }
+  return capacityGuard;
+};
 
 describe('recordDailyBudgetCap', () => {
   it('returns existing state for invalid snapshots', () => {
@@ -417,6 +439,68 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(logError).not.toHaveBeenCalled();
     expect(state.pending).toBeUndefined();
     expect(state.timer).toBeUndefined();
+  });
+});
+
+describe('schedulePlanRebuildFromSignal', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('uses the stable interval for non-urgent power deltas', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 5000, lastSoftLimitKw: 9.5 };
+    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+
+    const pending = schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: jest.fn(),
+      currentPowerW: 5300,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
+    });
+
+    jest.advanceTimersByTime(14999);
+    await Promise.resolve();
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(1);
+    await pending;
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('bypasses the stable interval when headroom is tight', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9300, lastSoftLimitKw: 9.5 };
+    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: jest.fn(),
+      currentPowerW: 9600,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 });
 
