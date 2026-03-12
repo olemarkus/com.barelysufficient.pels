@@ -1,0 +1,124 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+const repoRoot = path.resolve(__dirname, '..');
+const scriptPath = path.join(repoRoot, 'scripts/pre-push-checks.mjs');
+const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+const tempDirs: string[] = [];
+
+const createFakeGitDir = (): { dir: string; logPath: string } => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pels-pre-push-'));
+  tempDirs.push(dir);
+  const logPath = path.join(dir, 'git.log');
+  const gitPath = path.join(dir, 'git');
+  fs.writeFileSync(gitPath, `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$FAKE_GIT_LOG"
+cmd="$1"
+shift || true
+case "$cmd" in
+  symbolic-ref)
+    printf '%s\\n' "\${FAKE_BASE_REF:-origin/main}"
+    ;;
+  merge-base)
+    if [ "\${FAKE_MERGE_BASE_MODE:-value}" = "fail" ]; then
+      exit 1
+    fi
+    printf '%s' "\${FAKE_MERGE_BASE_VALUE:-}"
+    if [ -n "\${FAKE_MERGE_BASE_VALUE:-}" ]; then
+      printf '\\n'
+    fi
+    ;;
+  rev-list)
+    printf '%s' "\${FAKE_ROOT_OUTPUT:-}"
+    if [ -n "\${FAKE_ROOT_OUTPUT:-}" ]; then
+      printf '\\n'
+    fi
+    ;;
+  diff)
+    range="\${!#}"
+    if [ "\${FAKE_DIFF_MODE:-match}" = "error" ]; then
+      printf 'unexpected diff invocation: %s\\n' "$range" >&2
+      exit 99
+    fi
+    if [ "$range" = "\${FAKE_DIFF_RANGE:-}" ]; then
+      printf '%s' "\${FAKE_DIFF_OUTPUT:-}"
+      if [ -n "\${FAKE_DIFF_OUTPUT:-}" ]; then
+        printf '\\n'
+      fi
+      exit 0
+    fi
+    printf 'unexpected diff range: %s\\n' "$range" >&2
+    exit 99
+    ;;
+  *)
+    printf 'unexpected git command: %s %s\\n' "$cmd" "$*" >&2
+    exit 98
+    ;;
+esac
+`, { mode: 0o755 });
+  return { dir, logPath };
+};
+
+const runPrePush = (envOverrides: NodeJS.ProcessEnv) => {
+  const result = spawnSync(
+    process.execPath,
+    [scriptPath],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PELS_PRE_PUSH_DRY_RUN: '1',
+        ...envOverrides,
+      },
+      input: 'refs/heads/fix local-sha refs/heads/fix 0000000000000000000000000000000000000000\n',
+    },
+  );
+
+  return result;
+};
+
+describe('pre-push checks script', () => {
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to diffing from the empty tree when a new branch has no merge-base', () => {
+    const { dir, logPath } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: logPath,
+      FAKE_MERGE_BASE_MODE: 'fail',
+      FAKE_ROOT_OUTPUT: 'root-sha',
+      FAKE_DIFF_RANGE: `${EMPTY_TREE_SHA}..local-sha`,
+      FAKE_DIFF_OUTPUT: 'package.json',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: inspecting 1 changed file(s)');
+    expect(result.stdout).toContain('pre-push: running npm run ci:full');
+    expect(fs.readFileSync(logPath, 'utf8')).toContain(
+      `diff --name-only --diff-filter=ACMR ${EMPTY_TREE_SHA}..local-sha`,
+    );
+  });
+
+  it('skips diffing when the root lookup returns no commit', () => {
+    const { dir, logPath } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: logPath,
+      FAKE_MERGE_BASE_MODE: 'fail',
+      FAKE_ROOT_OUTPUT: '',
+      FAKE_DIFF_MODE: 'error',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: no changed files detected in pushed refs, skipping extra local checks');
+    expect(fs.readFileSync(logPath, 'utf8')).not.toContain('diff ');
+  });
+});

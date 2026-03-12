@@ -48,3 +48,9 @@ Merging pull requests takes time. While we always try to merge your pull request
 * Ask developers to review your code changes and post their feedback.
 * Ask users to test your changes and post their feedback.
 * Keep your changes to the minimal required amount, and dedicated to one issue/feature only.
+
+## Local CI
+
+* `npm test` runs the local CI checks used by the pre-commit hook: build, lint, runtime tests, and settings UI Jest suites.
+* `npm run ci:full` adds the local Playwright browser matrix and is the closest match to the GitHub Actions workflow.
+* The `pre-push` hook adds targeted browser coverage when the pushed diff touches settings UI, Playwright, or CI wiring files.
