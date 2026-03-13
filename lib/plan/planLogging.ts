@@ -24,6 +24,9 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       reason: d.reason,
       shedAction: d.shedAction,
       controllable: d.controllable,
+      pendingTargetDesired: d.pendingTargetCommand?.desired ?? null,
+      pendingTargetRetryCount: d.pendingTargetCommand?.retryCount ?? null,
+      pendingTargetNextRetryAtMs: d.pendingTargetCommand?.nextRetryAtMs ?? null,
     })),
   );
 }

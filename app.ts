@@ -1,6 +1,11 @@
+/* eslint-disable max-lines -- Homey app lifecycle remains centralized in the main app class. */
 import Homey from 'homey';
 import CapacityGuard from './lib/core/capacityGuard';
-import { DeviceManager, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from './lib/core/deviceManager';
+import {
+  DeviceManager,
+  PLAN_LIVE_STATE_OBSERVED_EVENT,
+  PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
+} from './lib/core/deviceManager';
 import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
@@ -60,6 +65,8 @@ import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
+import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
+import type { ObservedDeviceStateEvent } from './lib/core/deviceManagerRealtimeHandlers';
 import { emitSettingsUiPowerUpdatedForApp } from './lib/app/settingsUiAppRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
@@ -227,6 +234,12 @@ class PelsApp extends Homey.App {
         this.scheduleRealtimeDeviceReconcile(event);
       },
     );
+    this.deviceManager.on(
+      PLAN_LIVE_STATE_OBSERVED_EVENT,
+      (event: ObservedDeviceStateEvent) => {
+        void this.planService?.syncLivePlanState(event.source);
+      },
+    );
   }
   private initCapacityGuard(): void {
     this.capacityGuard = new CapacityGuard({
@@ -256,6 +269,17 @@ class PelsApp extends Homey.App {
       getShedBehavior: (deviceId) => this.getShedBehavior(deviceId),
       getDynamicSoftLimitOverride: () => this.getDynamicSoftLimitOverride(),
       updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+      logTargetRetryComparison: async (params) => {
+        await logHomeyDeviceComparisonForDebugFromApp({
+          app: this,
+          deviceId: params.deviceId,
+          reason: `target_retry:${params.skipContext}:${params.targetCap}`,
+          expectedTarget: params.desired,
+          observedTarget: params.observedValue,
+          observedSource: params.observedSource,
+        });
+      },
+      syncLivePlanStateAfterTargetActuation: (source) => this.planService?.syncLivePlanStateInline(source) ?? false,
       deviceDiagnostics: this.deviceDiagnosticsService,
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
@@ -353,7 +377,7 @@ class PelsApp extends Homey.App {
       event,
       state: this.realtimeDeviceReconcileState,
       hasPendingTimer: Boolean(this.realtimeDeviceReconcileTimer),
-      getLatestPlanSnapshot: () => this.planService?.getLatestPlanSnapshot() ?? null,
+      getLatestPlanSnapshot: () => this.planService?.getLatestReconcilePlanSnapshot() ?? null,
       getLiveDevices: () => this.latestTargetSnapshot,
       logDebug: (message) => this.logDebug('devices', message),
       log: (message) => this.log(message),
@@ -668,6 +692,7 @@ class PelsApp extends Homey.App {
         this.logDebug('devices', 'Refreshing target devices snapshot');
         await this.deviceManager.refreshSnapshot({ includeLivePower: options.fast !== true });
         const snapshot = this.deviceManager.getSnapshot();
+        await this.planService?.syncLivePlanState('snapshot_refresh');
         this.planService?.syncHeadroomCardState({
           devices: snapshot,
           cleanupMissingDevices: true,

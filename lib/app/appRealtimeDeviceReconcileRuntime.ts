@@ -34,8 +34,9 @@ export function shouldQueueRealtimeDeviceReconcile(params: {
     liveDevices,
     logDebug,
   } = params;
+  const eventWithPlanExpectation = enrichRealtimeDeviceReconcileEvent(event, latestPlanSnapshot);
   const hasDrift = hasRealtimeDeviceReconcileDrift({
-    event,
+    event: eventWithPlanExpectation,
     latestPlanSnapshot,
     liveDevices,
   });
@@ -43,7 +44,7 @@ export function shouldQueueRealtimeDeviceReconcile(params: {
 
   logDebug(
     `Realtime device change matches current plan, skipping reconcile: `
-    + formatRealtimeDeviceReconcileEvent(event),
+    + formatRealtimeDeviceReconcileEvent(eventWithPlanExpectation),
   );
   return false;
 }
@@ -72,8 +73,9 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
     onTimerFired,
     onError,
   } = params;
+  const eventWithPlanExpectation = enrichRealtimeDeviceReconcileEvent(event, getLatestPlanSnapshot());
   if (!shouldQueueRealtimeDeviceReconcile({
-    event,
+    event: eventWithPlanExpectation,
     latestPlanSnapshot: getLatestPlanSnapshot(),
     liveDevices: getLiveDevices(),
     logDebug,
@@ -84,7 +86,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
   return scheduleRealtimeDeviceReconcile({
     state,
     hasPendingTimer,
-    event,
+    event: eventWithPlanExpectation,
     logDebug,
     onTimerFired,
     onFlush: async () => {
@@ -102,4 +104,38 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
     },
     onError,
   });
+}
+
+function enrichRealtimeDeviceReconcileEvent(
+  event: RealtimeDeviceReconcileEvent,
+  latestPlanSnapshot: DevicePlan | null,
+): RealtimeDeviceReconcileEvent {
+  const planDevice = latestPlanSnapshot?.devices.find((device) => device.id === event.deviceId);
+  if (!planDevice) return event;
+
+  let planExpectation: string | undefined;
+  if (
+    event.capabilityId?.startsWith('target_temperature')
+    && typeof planDevice.plannedTarget === 'number'
+  ) {
+    planExpectation = `plan target: ${planDevice.plannedTarget}°C`;
+  } else if (event.capabilityId === 'onoff' || event.capabilityId === 'evcharger_charging') {
+    planExpectation = resolvePlanStateExpectation(planDevice);
+  }
+
+  if (!planExpectation) return event;
+  return {
+    ...event,
+    planExpectation,
+  };
+}
+
+function resolvePlanStateExpectation(
+  device: DevicePlan['devices'][number],
+): string | undefined {
+  if (device.plannedState === 'keep') return 'plan state: on';
+  if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
+    return 'plan state: off';
+  }
+  return undefined;
 }

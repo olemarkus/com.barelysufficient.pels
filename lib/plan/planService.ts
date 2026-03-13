@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- plan service keeps rebuild/reconcile sequencing in one place. */
 import type Homey from 'homey';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
@@ -26,7 +27,7 @@ import {
   hasPlanExecutionDrift,
 } from './planReconcileState';
 import type { PlanEngine } from './planEngine';
-import type { DevicePlan, PlanInputDevice } from './planTypes';
+import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice } from './planTypes';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './planHeadroomDevice';
 import type { PlanActuationMode } from './planExecutor';
 
@@ -49,6 +50,7 @@ export class PlanService {
   private lastDetailPlanSignature = '';
   private lastPlanMetaSignature = '';
   private latestPlanSnapshot: DevicePlan | null = null;
+  private latestReconcilePlanSnapshot: DevicePlan | null = null;
   private lastPlanSnapshotWriteMs = 0;
   private hasPendingNonActionSnapshot = false;
   private pendingNonActionSnapshotReason: Exclude<PlanSnapshotWriteReason, 'action_changed'> = 'meta_only';
@@ -95,6 +97,61 @@ export class PlanService {
 
   getLatestPlanSnapshot(): DevicePlan | null {
     return this.latestPlanSnapshot;
+  }
+
+  getLatestReconcilePlanSnapshot(): DevicePlan | null {
+    return this.latestReconcilePlanSnapshot ?? this.latestPlanSnapshot;
+  }
+
+  async syncLivePlanState(source: PendingTargetObservationSource): Promise<boolean> {
+    return this.enqueuePlanOperation(
+      () => Promise.resolve(this.syncLivePlanStateInline(source)),
+      'Failed to sync live plan state',
+      false,
+    );
+  }
+
+  // eslint-disable-next-line complexity
+  syncLivePlanStateInline(source: PendingTargetObservationSource): boolean {
+    const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands?.() ?? false;
+    const hasPendingBinaryCommands = this.deps.planEngine.hasPendingBinaryCommands?.() ?? false;
+    if (!hasPendingTargetCommands && !hasPendingBinaryCommands) {
+      return false;
+    }
+
+    const liveDevices = this.deps.getPlanDevices();
+    const pendingTargetChanged = hasPendingTargetCommands
+      ? (this.deps.planEngine.syncPendingTargetCommands?.(liveDevices, source) ?? false)
+      : false;
+    const pendingBinaryChanged = hasPendingBinaryCommands
+      ? (this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, source) ?? false)
+      : false;
+    const pendingChanged = pendingTargetChanged || pendingBinaryChanged;
+    if (!this.latestPlanSnapshot) {
+      return pendingChanged;
+    }
+
+    const livePlan = this.decoratePlanWithPendingTargetCommands(
+      buildLiveStatePlan(this.latestPlanSnapshot, liveDevices),
+    );
+    if (canRefreshPlanSnapshotFromLiveState(this.latestPlanSnapshot, livePlan)) {
+      this.latestPlanSnapshot = livePlan;
+      this.latestReconcilePlanSnapshot = livePlan;
+      this.emitPlanUpdated(livePlan);
+      return true;
+    }
+
+    if (!pendingChanged) {
+      return false;
+    }
+
+    const nextPlan = this.decoratePlanWithPendingTargetCommands(this.latestPlanSnapshot);
+    if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(this.latestPlanSnapshot)) {
+      return false;
+    }
+    this.latestPlanSnapshot = nextPlan;
+    this.emitPlanUpdated(nextPlan);
+    return true;
   }
 
   async reconcileLatestPlanState(): Promise<boolean> {
@@ -195,9 +252,9 @@ export class PlanService {
 
   private async performPlanReconcile(): Promise<boolean> {
     if (this.deps.getCapacityDryRun()) return false;
-    if (!this.latestPlanSnapshot) return false;
+    const plannedSnapshot = this.getLatestReconcilePlanSnapshot();
+    if (!plannedSnapshot) return false;
 
-    const plannedSnapshot = this.latestPlanSnapshot;
     const driftedLivePlan = buildLiveStatePlan(plannedSnapshot, this.deps.getPlanDevices());
     if (!hasPlanExecutionDrift(plannedSnapshot, driftedLivePlan)) {
       return false;
@@ -403,6 +460,9 @@ export class PlanService {
     }
 
     const { applyMs, appliedActions } = await this.maybeApplyPlanChanges(plan, changes, isDryRun);
+    if (changes.actionChanged || !this.latestReconcilePlanSnapshot) {
+      this.latestReconcilePlanSnapshot = this.latestPlanSnapshot ?? plan;
+    }
     Object.assign(outcome, {
       buildMs,
       changeMs,
@@ -420,8 +480,13 @@ export class PlanService {
   }
 
   private async buildPlanForRebuild(): Promise<{ plan: DevicePlan; buildMs: number }> {
+    const liveDevices = this.deps.getPlanDevices() ?? [];
+    this.deps.planEngine.syncPendingTargetCommands?.(liveDevices, 'rebuild');
+    this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, 'rebuild');
     const buildStart = Date.now();
-    const plan = await this.buildDevicePlanSnapshot(this.deps.getPlanDevices() ?? []);
+    let plan = await this.buildDevicePlanSnapshot(liveDevices);
+    this.deps.planEngine.prunePendingTargetCommands?.(plan);
+    plan = this.decoratePlanWithPendingTargetCommands(plan);
     return {
       plan,
       buildMs: Date.now() - buildStart,
@@ -473,10 +538,11 @@ export class PlanService {
 
   private async maybeApplyPlanChanges(
     plan: DevicePlan,
-    _changes: PlanChangeSet,
+    changes: PlanChangeSet,
     isDryRun: boolean,
   ): Promise<{ applyMs: number; appliedActions: boolean }> {
-    if (isDryRun) {
+    const shouldApplyStablePlanActions = this.deps.planEngine.shouldApplyStablePlanActions?.(plan) ?? false;
+    if (isDryRun || (!changes.actionChanged && !shouldApplyStablePlanActions)) {
       return { applyMs: 0, appliedActions: false };
     }
 
@@ -485,7 +551,10 @@ export class PlanService {
     try {
       await this.applyPlanActions(plan);
       appliedActions = true;
-      this.refreshLatestPlanSnapshotFromSettledLiveState(plan);
+      const refreshed = this.refreshLatestPlanSnapshotFromSettledLiveState(plan);
+      if (!refreshed) {
+        this.refreshLatestPlanSnapshotPendingState();
+      }
     } catch (error) {
       this.deps.error('Failed to apply plan actions', normalizeError(error));
     }
@@ -539,11 +608,29 @@ export class PlanService {
   }
 
   private refreshLatestPlanSnapshotFromSettledLiveState(basePlan: DevicePlan): boolean {
-    const livePlan = buildLiveStatePlan(basePlan, this.deps.getPlanDevices());
+    const livePlan = this.decoratePlanWithPendingTargetCommands(
+      buildLiveStatePlan(basePlan, this.deps.getPlanDevices()),
+    );
     if (!canRefreshPlanSnapshotFromLiveState(basePlan, livePlan)) return false;
     this.latestPlanSnapshot = livePlan;
+    this.latestReconcilePlanSnapshot = livePlan;
     this.emitPlanUpdated(livePlan);
     return true;
+  }
+
+  private refreshLatestPlanSnapshotPendingState(): boolean {
+    if (!this.latestPlanSnapshot) return false;
+    const nextPlan = this.decoratePlanWithPendingTargetCommands(this.latestPlanSnapshot);
+    if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(this.latestPlanSnapshot)) {
+      return false;
+    }
+    this.latestPlanSnapshot = nextPlan;
+    this.emitPlanUpdated(nextPlan);
+    return true;
+  }
+
+  private decoratePlanWithPendingTargetCommands(plan: DevicePlan): DevicePlan {
+    return this.deps.planEngine.decoratePlanWithPendingTargetCommands?.(plan) ?? plan;
   }
 
   destroy(): void {

@@ -14,6 +14,7 @@ type DevicesApiLike = {
 };
 
 type EnergyApiLike = Pick<HomeyEnergyApi, 'getLiveReport'>;
+export type DeviceFetchSource = 'homey_api_getDevices' | 'raw_manager_devices' | 'raw_devices';
 
 export async function fetchDevicesWithFallback(params: {
   devicesApi?: DevicesApiLike;
@@ -27,6 +28,7 @@ export async function fetchDevicesWithFallback(params: {
 }): Promise<{
   devices: HomeyDeviceLike[];
   hasRealtimeDeviceUpdateListener: boolean;
+  fetchSource: DeviceFetchSource;
 }> {
   const {
     devicesApi,
@@ -56,6 +58,7 @@ export async function fetchDevicesWithFallback(params: {
       return {
         devices,
         hasRealtimeDeviceUpdateListener: attachedRealtimeDeviceUpdateListener,
+        fetchSource: 'homey_api_getDevices',
       };
     } catch (error) {
       const message = 'HomeyAPI.getDevices failed, falling back to raw API';
@@ -74,6 +77,7 @@ export async function fetchDevicesWithFallback(params: {
     return {
       devices: managerDevices,
       hasRealtimeDeviceUpdateListener,
+      fetchSource: 'raw_manager_devices',
     };
   }
 
@@ -87,6 +91,7 @@ export async function fetchDevicesWithFallback(params: {
   return {
     devices: devices ?? [],
     hasRealtimeDeviceUpdateListener,
+    fetchSource: 'raw_devices',
   };
 }
 

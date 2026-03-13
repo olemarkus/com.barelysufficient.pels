@@ -10,6 +10,7 @@ export type RealtimeDeviceReconcileEvent = {
   name: string;
   capabilityId?: string;
   changes?: RealtimeDeviceReconcileChange[];
+  planExpectation?: string;
 };
 
 type RealtimeDeviceReconcileCircuitState = {
@@ -94,10 +95,15 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
   const driftedEvents = shouldRecordAttempt
     ? eligibleEvents.filter((event) => shouldRecordAttempt(event))
     : eligibleEvents;
-  if (driftedEvents.length === 0) return;
+  const attemptedEvents = driftedEvents.length > 0 ? driftedEvents : eligibleEvents;
+  if (attemptedEvents.length === 0) return;
+  log(
+    `Realtime device drift detected; reapplying current plan: `
+    + attemptedEvents.map((event) => formatRealtimeDeviceReconcileEvent(event)).join('; '),
+  );
   recordRealtimeDeviceReconcileAttempts({
     state,
-    events: driftedEvents,
+    events: attemptedEvents,
     now: Date.now(),
     log,
   });
@@ -175,7 +181,8 @@ function getRealtimeDeviceReconcileCircuitState(
 export function formatRealtimeDeviceReconcileEvent(event: RealtimeDeviceReconcileEvent): string {
   const capabilitySuffix = event.capabilityId ? ` via ${event.capabilityId}` : '';
   const changesSuffix = formatRealtimeDeviceReconcileChanges(event.changes);
-  return `${event.name} (${event.deviceId})${capabilitySuffix}${changesSuffix}`;
+  const expectationSuffix = event.planExpectation ? `; ${event.planExpectation}` : '';
+  return `${event.name} (${event.deviceId})${capabilitySuffix}${changesSuffix}${expectationSuffix}`;
 }
 
 function formatRealtimeDeviceReconcileChanges(

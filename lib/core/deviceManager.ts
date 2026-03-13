@@ -1,3 +1,6 @@
+/* eslint-disable max-lines --
+ * DeviceManager intentionally centralizes snapshot, realtime, and debug observation flows.
+ */
 import Homey from 'homey';
 import { EventEmitter } from 'events';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
@@ -13,7 +16,6 @@ import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import {
-    buildOptimisticCapabilityUpdate,
     getCanSetControl,
     getControlCapabilityId,
     getCurrentOn,
@@ -51,15 +53,68 @@ import {
 } from './deviceManagerRealtimeSupport';
 import { resolveHomeyInstance } from './deviceManagerHomeyApi';
 import {
+    type HandleRealtimeCapabilityUpdateResult,
+    type HandleRealtimeDeviceUpdateResult,
     handleRealtimeCapabilityUpdate,
     handleRealtimeDeviceUpdate,
+    type ObservedDeviceStateEvent,
 } from './deviceManagerRealtimeHandlers';
 import type { HomeyApiClient, HomeyApiConstructor } from './deviceManagerApiTypes';
 import { shouldPromoteHomeyApiDebug } from './deviceManagerDebug';
+import type { DeviceFetchSource } from './deviceManagerFetch';
 const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
 const MIN_SIGNIFICANT_POWER_W = 5;
 export const HOMEY_DEVICE_UPDATE_EVENT = 'device.update';
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
+export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
+
+export type DeviceDebugObservedSource = {
+    observedAt: number;
+    path: 'snapshot_refresh' | 'device_update' | 'realtime_capability' | 'local_write';
+    snapshot: TargetDeviceSnapshot | null;
+    fetchSource?: DeviceFetchSource;
+    capabilityId?: string;
+    value?: unknown;
+    localEcho?: boolean;
+    shouldReconcilePlan?: boolean;
+    preservedLocalState?: boolean;
+    changes?: Array<{
+        capabilityId: string;
+        previousValue: string;
+        nextValue: string;
+    }>;
+};
+
+export type DeviceDebugObservedSources = {
+    snapshotRefresh?: DeviceDebugObservedSource;
+    deviceUpdate?: DeviceDebugObservedSource;
+    realtimeCapabilities: Record<string, DeviceDebugObservedSource>;
+    localWrites: Record<string, DeviceDebugObservedSource>;
+};
+
+function cloneTargetDeviceSnapshotForDebug(snapshot: TargetDeviceSnapshot | null): TargetDeviceSnapshot | null {
+    if (!snapshot) return null;
+    return {
+        ...snapshot,
+        targets: snapshot.targets.map((target) => ({ ...target })),
+        capabilities: Array.isArray(snapshot.capabilities) ? [...snapshot.capabilities] : snapshot.capabilities,
+    };
+}
+
+function cloneObservedSource(source: DeviceDebugObservedSource): DeviceDebugObservedSource {
+    return {
+        ...source,
+        snapshot: cloneTargetDeviceSnapshotForDebug(source.snapshot),
+        changes: source.changes?.map((change) => ({ ...change })),
+    };
+}
+
+function createEmptyObservedSources(): DeviceDebugObservedSources {
+    return {
+        realtimeCapabilities: {},
+        localWrites: {},
+    };
+}
 
 export class DeviceManager extends EventEmitter {
     private homeyApi?: HomeyApiClient;
@@ -70,6 +125,7 @@ export class DeviceManager extends EventEmitter {
     private capabilityInstances: Map<string, CapabilityInstance> = new Map();
     private hasRealtimeDeviceUpdateListener = false;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
+    private debugObservedSourcesByDeviceId: Map<string, DeviceDebugObservedSources> = new Map();
     private providers: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
@@ -78,14 +134,20 @@ export class DeviceManager extends EventEmitter {
         getExperimentalEvSupportEnabled?: () => boolean;
     } = {};
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
-        handleRealtimeDeviceUpdate({
+        const deviceId = getDeviceId(device);
+        const result = handleRealtimeDeviceUpdate({
             device,
             latestSnapshot: this.latestSnapshot,
+            recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
             shouldTrackRealtimeDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
             parseDevice: (nextDevice, nowTs) => this.parseDevice(nextDevice, nowTs, {}),
             logDebug: (message) => this.logger.debug(message),
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
+            emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
+        if (deviceId && result.hadChanges) {
+            this.recordDeviceUpdateObservation(deviceId, result);
+        }
     };
 
     private readonly handleRealtimeCapabilityUpdate = (
@@ -94,7 +156,7 @@ export class DeviceManager extends EventEmitter {
         capabilityId: string,
         value: unknown,
     ): void => {
-        handleRealtimeCapabilityUpdate({
+        const result = handleRealtimeCapabilityUpdate({
             deviceId,
             label,
             capabilityId,
@@ -107,7 +169,11 @@ export class DeviceManager extends EventEmitter {
             ),
             logDebug: (message) => this.logger.debug(message),
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
+            emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
+        if (result.hadChanges) {
+            this.recordRealtimeCapabilityObservation(deviceId, capabilityId, value, result);
+        }
     };
 
     constructor(homey: Homey.App, logger: Logger, providers?: {
@@ -135,6 +201,26 @@ export class DeviceManager extends EventEmitter {
     parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] { return this.parseDeviceList(list); }
     getHomeyApi(): HomeyApiClient | undefined { return this.homeyApi; }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return this.fetchDevices(); }
+    getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
+        const sources = this.debugObservedSourcesByDeviceId.get(deviceId);
+        if (!sources) return null;
+        return {
+            ...(sources.snapshotRefresh ? { snapshotRefresh: cloneObservedSource(sources.snapshotRefresh) } : {}),
+            ...(sources.deviceUpdate ? { deviceUpdate: cloneObservedSource(sources.deviceUpdate) } : {}),
+            realtimeCapabilities: Object.fromEntries(
+                Object.entries(sources.realtimeCapabilities).map(([capabilityId, source]) => [
+                    capabilityId,
+                    cloneObservedSource(source),
+                ]),
+            ),
+            localWrites: Object.fromEntries(
+                Object.entries(sources.localWrites).map(([capabilityId, source]) => [
+                    capabilityId,
+                    cloneObservedSource(source),
+                ]),
+            ),
+        };
+    }
 
     async init(): Promise<void> {
         if (this.homeyApi) return;
@@ -174,12 +260,18 @@ export class DeviceManager extends EventEmitter {
         const start = Date.now();
         try {
             const previousSnapshot = this.latestSnapshot;
-            const list = await this.fetchDevices();
+            const { devices: list, fetchSource } = await this.fetchDevicesForSnapshot();
             const livePowerWByDeviceId = options.includeLivePower === false
                 ? {}
                 : await this.fetchLivePowerWattsByDeviceId();
             const snapshot = this.parseDeviceList(list, livePowerWByDeviceId);
+            this.preserveFresherRealtimeCapabilityObservations({
+                previousSnapshot,
+                nextSnapshot: snapshot,
+                devices: list,
+            });
             this.latestSnapshot = snapshot;
+            this.recordSnapshotRefreshObservations(snapshot, fetchSource);
             this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
             logEvSnapshotChanges({
                 logger: this.logger,
@@ -241,12 +333,13 @@ export class DeviceManager extends EventEmitter {
             throw error;
         }
 
-        const optimisticUpdate = buildOptimisticCapabilityUpdate(capabilityId, value);
-        if (optimisticUpdate) {
-            this.updateLocalSnapshot(deviceId, optimisticUpdate);
-        } else if (this.shouldPreserveLocalBinaryState(deviceId, capabilityId, value)) {
+        const preservedLocalState = this.shouldPreserveLocalBinaryState(deviceId, capabilityId, value);
+        if (preservedLocalState) {
             this.updateLocalSnapshot(deviceId, { on: value });
         }
+        this.recordLocalWriteObservation(deviceId, capabilityId, value, {
+            preservedLocalState,
+        });
 
         const snapshotAfter = this.latestSnapshot.find((device) => device.id === deviceId);
         logEvCapabilityAccepted({
@@ -309,6 +402,14 @@ export class DeviceManager extends EventEmitter {
     }
 
     private async fetchDevices(): Promise<HomeyDeviceLike[]> {
+        const result = await this.fetchDevicesForSnapshot();
+        return result.devices;
+    }
+
+    private async fetchDevicesForSnapshot(): Promise<{
+        devices: HomeyDeviceLike[];
+        fetchSource: DeviceFetchSource;
+    }> {
         const start = Date.now();
         try {
             const result = await fetchDevicesWithFallback({
@@ -322,7 +423,10 @@ export class DeviceManager extends EventEmitter {
                 initRealtimeListeners: (devices) => this.initRealtimeListeners(devices),
             });
             this.hasRealtimeDeviceUpdateListener = result.hasRealtimeDeviceUpdateListener;
-            return result.devices;
+            return {
+                devices: result.devices,
+                fetchSource: result.fetchSource,
+            };
         } finally {
             addPerfDuration('device_fetch_ms', Date.now() - start);
         }
@@ -484,6 +588,197 @@ export class DeviceManager extends EventEmitter {
             canSetControl,
             available,
         };
+    }
+
+    private getOrCreateDebugObservedSources(deviceId: string): DeviceDebugObservedSources {
+        let sources = this.debugObservedSourcesByDeviceId.get(deviceId);
+        if (!sources) {
+            sources = createEmptyObservedSources();
+            this.debugObservedSourcesByDeviceId.set(deviceId, sources);
+        }
+        return sources;
+    }
+
+    private buildCurrentDebugSnapshot(deviceId: string): TargetDeviceSnapshot | null {
+        const snapshot = this.latestSnapshot.find((entry) => entry.id === deviceId) ?? null;
+        return cloneTargetDeviceSnapshotForDebug(snapshot);
+    }
+
+    private recordSnapshotRefreshObservations(
+        snapshot: TargetDeviceSnapshot[],
+        fetchSource: DeviceFetchSource,
+    ): void {
+        const observedAt = Date.now();
+        const activeDeviceIds = new Set(snapshot.map((device) => device.id));
+        for (const deviceId of this.debugObservedSourcesByDeviceId.keys()) {
+            if (!activeDeviceIds.has(deviceId)) {
+                this.debugObservedSourcesByDeviceId.delete(deviceId);
+            }
+        }
+        for (const device of snapshot) {
+            const sources = this.getOrCreateDebugObservedSources(device.id);
+            sources.snapshotRefresh = {
+                observedAt,
+                path: 'snapshot_refresh',
+                snapshot: cloneTargetDeviceSnapshotForDebug(device),
+                fetchSource,
+            };
+        }
+    }
+
+    private recordDeviceUpdateObservation(
+        deviceId: string,
+        result: HandleRealtimeDeviceUpdateResult,
+    ): void {
+        const sources = this.getOrCreateDebugObservedSources(deviceId);
+        sources.deviceUpdate = {
+            observedAt: Date.now(),
+            path: 'device_update',
+            snapshot: this.buildCurrentDebugSnapshot(deviceId),
+            shouldReconcilePlan: result.shouldReconcilePlan,
+            ...(result.changes.length > 0 ? { changes: result.changes.map((change) => ({ ...change })) } : {}),
+        };
+    }
+
+    private recordRealtimeCapabilityObservation(
+        deviceId: string,
+        capabilityId: string,
+        value: unknown,
+        result: HandleRealtimeCapabilityUpdateResult,
+    ): void {
+        const sources = this.getOrCreateDebugObservedSources(deviceId);
+        sources.realtimeCapabilities[capabilityId] = {
+            observedAt: Date.now(),
+            path: 'realtime_capability',
+            snapshot: this.buildCurrentDebugSnapshot(deviceId),
+            capabilityId,
+            value,
+            localEcho: result.isLocalEcho,
+            shouldReconcilePlan: result.shouldReconcilePlan,
+            ...(result.changes.length > 0 ? { changes: result.changes.map((change) => ({ ...change })) } : {}),
+        };
+    }
+
+    private recordLocalWriteObservation(
+        deviceId: string,
+        capabilityId: string,
+        value: unknown,
+        options: { preservedLocalState: boolean },
+    ): void {
+        const sources = this.getOrCreateDebugObservedSources(deviceId);
+        sources.localWrites[capabilityId] = {
+            observedAt: Date.now(),
+            path: 'local_write',
+            snapshot: this.buildCurrentDebugSnapshot(deviceId),
+            capabilityId,
+            value,
+            preservedLocalState: options.preservedLocalState,
+        };
+    }
+
+    private preserveFresherRealtimeCapabilityObservations(params: {
+        previousSnapshot: TargetDeviceSnapshot[];
+        nextSnapshot: TargetDeviceSnapshot[];
+        devices: HomeyDeviceLike[];
+    }): void {
+        const { previousSnapshot, nextSnapshot, devices } = params;
+        const previousById = new Map(previousSnapshot.map((device) => [device.id, device]));
+        const devicesById = new Map<string, HomeyDeviceLike>();
+        for (const device of devices) {
+            const deviceId = getDeviceId(device);
+            if (!deviceId) continue;
+            devicesById.set(deviceId, device);
+        }
+
+        for (const device of nextSnapshot) {
+            const previous = previousById.get(device.id);
+            const sourceDevice = devicesById.get(device.id);
+            if (!previous || !sourceDevice) continue;
+
+            if (device.controlCapabilityId) {
+                this.preserveFresherRealtimeCapabilityObservation({
+                    deviceId: device.id,
+                    deviceName: device.name,
+                    capabilityId: device.controlCapabilityId,
+                    previousSnapshot: previous,
+                    nextSnapshot: device,
+                    sourceDevice,
+                });
+            }
+
+            for (const target of device.targets) {
+                this.preserveFresherRealtimeCapabilityObservation({
+                    deviceId: device.id,
+                    deviceName: device.name,
+                    capabilityId: target.id,
+                    previousSnapshot: previous,
+                    nextSnapshot: device,
+                    sourceDevice,
+                });
+            }
+        }
+    }
+
+    private preserveFresherRealtimeCapabilityObservation(params: {
+        deviceId: string;
+        deviceName: string;
+        capabilityId: string;
+        previousSnapshot: TargetDeviceSnapshot;
+        nextSnapshot: TargetDeviceSnapshot;
+        sourceDevice: HomeyDeviceLike;
+    }): void {
+        const {
+            deviceId,
+            deviceName,
+            capabilityId,
+            previousSnapshot,
+            nextSnapshot,
+            sourceDevice,
+        } = params;
+        const sources = this.debugObservedSourcesByDeviceId.get(deviceId);
+        const realtimeSource = sources?.realtimeCapabilities[capabilityId];
+        if (!realtimeSource?.snapshot) return;
+
+        const fetchedLastUpdatedMs = this.getCapabilityLastUpdatedMs(sourceDevice, capabilityId);
+        if (typeof fetchedLastUpdatedMs !== 'number' || !Number.isFinite(fetchedLastUpdatedMs)) return;
+        if (fetchedLastUpdatedMs >= realtimeSource.observedAt) return;
+
+        if (capabilityId === nextSnapshot.controlCapabilityId) {
+            if (typeof realtimeSource.snapshot.currentOn !== 'boolean') return;
+            if (nextSnapshot.currentOn === realtimeSource.snapshot.currentOn) return;
+            nextSnapshot.currentOn = realtimeSource.snapshot.currentOn;
+            this.logger.debug(
+                `Device snapshot refresh preserved newer realtime ${capabilityId} for ${deviceName} (${deviceId}); `
+                + `fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}, `
+                + `realtime observedAt=${new Date(realtimeSource.observedAt).toISOString()}`,
+            );
+            return;
+        }
+
+        const nextTarget = nextSnapshot.targets.find((target) => target.id === capabilityId);
+        const previousTarget = previousSnapshot.targets.find((target) => target.id === capabilityId);
+        const realtimeTarget = realtimeSource.snapshot.targets.find((target) => target.id === capabilityId);
+        if (!nextTarget || !previousTarget || !realtimeTarget) return;
+        if (!Object.is(previousTarget.value, realtimeTarget.value)) return;
+        if (Object.is(nextTarget.value, realtimeTarget.value)) return;
+        nextTarget.value = realtimeTarget.value;
+        this.logger.debug(
+            `Device snapshot refresh preserved newer realtime ${capabilityId} for ${deviceName} (${deviceId}); `
+            + `fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}, `
+            + `realtime observedAt=${new Date(realtimeSource.observedAt).toISOString()}`,
+        );
+    }
+
+    private getCapabilityLastUpdatedMs(device: HomeyDeviceLike, capabilityId: string): number | undefined {
+        const capabilityObj = this.getCapabilityObj(device);
+        const rawValue = capabilityObj[capabilityId]?.lastUpdated;
+        if (rawValue instanceof Date) return rawValue.getTime();
+        if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue;
+        if (typeof rawValue === 'string') {
+            const parsed = Date.parse(rawValue);
+            if (Number.isFinite(parsed)) return parsed;
+        }
+        return undefined;
     }
 
     private getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {

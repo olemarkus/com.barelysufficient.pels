@@ -27,6 +27,11 @@ type PlanDeviceSnapshot = {
   headroomCardCooldownSource?: 'step_down' | 'pels_shed' | 'pels_restore';
   headroomCardCooldownFromKw?: number | null;
   headroomCardCooldownToKw?: number | null;
+  pendingTargetCommand?: {
+    desired: number;
+    retryCount: number;
+    nextRetryAtMs: number;
+  };
 };
 
 type PlanSnapshot = {
@@ -183,8 +188,14 @@ const buildPlanTemperatureLine = (dev: PlanDeviceSnapshot) => {
   const currentTarget = typeof dev.currentTarget === 'number' ? `${dev.currentTarget}°` : '–';
   const plannedTarget = typeof dev.plannedTarget === 'number' ? `${dev.plannedTarget}°` : '–';
   const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
+  const pendingSuffix = dev.pendingTargetCommand
+    && typeof dev.plannedTarget === 'number'
+    && dev.pendingTargetCommand.desired === dev.plannedTarget
+    ? ' (waiting for confirmation)'
+    : '';
   const targetText = targetChanging ? `${currentTarget} → ${plannedTarget}` : currentTarget;
-  return createMetaLine('Temperature', `${currentTemp} / target ${targetText}`);
+  const targetTextWithPending = `${targetText}${pendingSuffix}`;
+  return createMetaLine('Temperature', `${currentTemp} / target ${targetTextWithPending}`);
 };
 
 const resolvePlannedPowerState = (

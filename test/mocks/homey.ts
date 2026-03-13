@@ -1,5 +1,36 @@
 import { EventEmitter } from 'events';
 
+type MockCapabilityMutationBehavior = {
+  updateActual?: boolean;
+  updateApi?: boolean;
+  emitCapabilityEvent?: boolean;
+  emitDeviceUpdate?: boolean;
+};
+
+type MockApiWriteBehavior = MockCapabilityMutationBehavior & {
+  accept?: boolean;
+};
+
+type MockCapabilityBehaviorConfig = {
+  onApiWrite?: MockApiWriteBehavior;
+  onExternalChange?: MockCapabilityMutationBehavior;
+};
+
+const DEFAULT_API_WRITE_BEHAVIOR: Required<MockApiWriteBehavior> = {
+  accept: true,
+  updateActual: true,
+  updateApi: true,
+  emitCapabilityEvent: false,
+  emitDeviceUpdate: false,
+};
+
+const DEFAULT_EXTERNAL_CHANGE_BEHAVIOR: Required<MockCapabilityMutationBehavior> = {
+  updateActual: true,
+  updateApi: true,
+  emitCapabilityEvent: true,
+  emitDeviceUpdate: true,
+};
+
 export class MockSettings extends EventEmitter {
   private store = new Map<string, any>();
 
@@ -18,6 +49,16 @@ export class MockSettings extends EventEmitter {
 }
 
 export class MockDevice {
+  private capabilityValues = new Map<string, any>();
+  private actualCapabilityValues = new Map<string, any>();
+  private lastRequestedCapabilityValues = new Map<string, any>();
+  private capabilityUpdatedAt = new Map<string, string>();
+  private actualCapabilityUpdatedAt = new Map<string, string>();
+  private settings: Record<string, any> = {};
+  private settingsObject: any[] | null = null;
+  private behaviorByCapability = new Map<string, MockCapabilityBehaviorConfig>();
+  private capabilityListeners = new Map<string, Set<(value: unknown) => void>>();
+
   constructor(
     private id: string,
     private name: string,
@@ -36,9 +77,6 @@ export class MockDevice {
     }
     return Array.from(normalized);
   }
-
-  private capabilityValues = new Map<string, any>();
-  private settings: Record<string, any> = {};
 
   get idValue() {
     return this.id;
@@ -69,10 +107,18 @@ export class MockDevice {
   }
 
   async setCapabilityValue(capabilityId: string, value: any): Promise<void> {
-    this.capabilityValues.set(capabilityId, value);
+    this.lastRequestedCapabilityValues.set(capabilityId, value);
+    const behavior = this.resolveApiWriteBehavior(capabilityId);
+    if (!behavior.accept) {
+      throw new Error(`Mock capability write rejected for ${this.name}:${capabilityId}`);
+    }
+    this.applyCapabilityMutation(capabilityId, value, behavior);
   }
 
   getSetCapabilityValue(capabilityId: string) {
+    if (this.lastRequestedCapabilityValues.has(capabilityId)) {
+      return this.lastRequestedCapabilityValues.get(capabilityId);
+    }
     return this.capabilityValues.get(capabilityId);
   }
 
@@ -82,6 +128,173 @@ export class MockDevice {
 
   setSettings(settings: Record<string, any>): void {
     this.settings = settings;
+  }
+
+  async getSettingsObject(): Promise<any[] | null> {
+    return this.settingsObject;
+  }
+
+  setSettingsObject(settingsObject: any[] | null): void {
+    this.settingsObject = settingsObject;
+  }
+
+  getActualCapabilityValue(capabilityId: string): any {
+    return this.actualCapabilityValues.get(capabilityId);
+  }
+
+  getCapabilityLastUpdated(capabilityId: string): string | undefined {
+    return this.capabilityUpdatedAt.get(capabilityId);
+  }
+
+  getActualCapabilityLastUpdated(capabilityId: string): string | undefined {
+    return this.actualCapabilityUpdatedAt.get(capabilityId);
+  }
+
+  setApiCapabilityValue(
+    capabilityId: string,
+    value: unknown,
+    behavior: MockCapabilityMutationBehavior = {},
+  ): void {
+    this.applyCapabilityMutation(capabilityId, value, {
+      updateActual: false,
+      updateApi: true,
+      emitCapabilityEvent: false,
+      emitDeviceUpdate: false,
+      ...behavior,
+    });
+  }
+
+  setActualCapabilityValue(
+    capabilityId: string,
+    value: unknown,
+    behavior: MockCapabilityMutationBehavior = {},
+  ): void {
+    const resolvedBehavior = this.resolveExternalChangeBehavior(capabilityId, behavior);
+    this.applyCapabilityMutation(capabilityId, value, resolvedBehavior);
+  }
+
+  syncActualToApi(capabilityId?: string, behavior: MockCapabilityMutationBehavior = {}): void {
+    const capabilityIds = capabilityId ? [capabilityId] : Array.from(this.actualCapabilityValues.keys());
+    for (const nextCapabilityId of capabilityIds) {
+      if (!this.actualCapabilityValues.has(nextCapabilityId)) continue;
+      this.applyCapabilityMutation(nextCapabilityId, this.actualCapabilityValues.get(nextCapabilityId), {
+        updateActual: false,
+        updateApi: true,
+        emitCapabilityEvent: false,
+        emitDeviceUpdate: false,
+        ...behavior,
+      });
+    }
+  }
+
+  tapTile(behavior: MockCapabilityMutationBehavior = {}): void {
+    const nextValue = this.actualCapabilityValues.get('onoff') !== true;
+    this.setActualCapabilityValue('onoff', nextValue, behavior);
+  }
+
+  configureCapabilityBehavior(capabilityId: string, config: MockCapabilityBehaviorConfig): void {
+    this.behaviorByCapability.set(capabilityId, config);
+  }
+
+  clearCapabilityBehavior(capabilityId: string): void {
+    this.behaviorByCapability.delete(capabilityId);
+  }
+
+  makeCapabilityInstance(
+    capabilityId: string,
+    listener: (value: unknown) => void,
+  ): { destroy: () => void } {
+    let listeners = this.capabilityListeners.get(capabilityId);
+    if (!listeners) {
+      listeners = new Set<(value: unknown) => void>();
+      this.capabilityListeners.set(capabilityId, listeners);
+    }
+    listeners.add(listener);
+    return {
+      destroy: () => {
+        listeners?.delete(listener);
+        if (listeners && listeners.size === 0) {
+          this.capabilityListeners.delete(capabilityId);
+        }
+      },
+    };
+  }
+
+  emitCapabilityValue(capabilityId: string, value?: unknown): void {
+    const listeners = this.capabilityListeners.get(capabilityId);
+    if (!listeners || listeners.size === 0) return;
+    const nextValue = arguments.length >= 2 ? value : this.capabilityValues.get(capabilityId);
+    for (const listener of Array.from(listeners)) {
+      listener(nextValue);
+    }
+  }
+
+  emitDeviceUpdate(): void {
+    emitMockHomeyApiDeviceUpdate(this.toHomeyApiDevice());
+  }
+
+  toHomeyApiDevice(): Record<string, any> {
+    const caps = this.getCapabilities();
+    const capabilitiesObj: Record<string, any> = {};
+    for (const cap of caps) {
+      const nextValue = this.capabilityValues.get(cap);
+      const entry: Record<string, any> = { id: cap, value: nextValue };
+      const lastUpdated = this.capabilityUpdatedAt.get(cap);
+      if (lastUpdated) entry.lastUpdated = lastUpdated;
+      capabilitiesObj[cap] = entry;
+    }
+    return {
+      id: this.idValue,
+      data: { id: this.idValue },
+      name: this.getName(),
+      class: this.getDeviceClass(),
+      capabilities: caps,
+      capabilitiesObj,
+      settings: this.settings,
+      makeCapabilityInstance: this.makeCapabilityInstance.bind(this),
+      available: true,
+      ready: true,
+    };
+  }
+
+  private resolveApiWriteBehavior(capabilityId: string): Required<MockApiWriteBehavior> {
+    return {
+      ...DEFAULT_API_WRITE_BEHAVIOR,
+      ...(this.behaviorByCapability.get(capabilityId)?.onApiWrite ?? {}),
+    };
+  }
+
+  private resolveExternalChangeBehavior(
+    capabilityId: string,
+    overrides: MockCapabilityMutationBehavior,
+  ): Required<MockCapabilityMutationBehavior> {
+    return {
+      ...DEFAULT_EXTERNAL_CHANGE_BEHAVIOR,
+      ...(this.behaviorByCapability.get(capabilityId)?.onExternalChange ?? {}),
+      ...overrides,
+    };
+  }
+
+  private applyCapabilityMutation(
+    capabilityId: string,
+    value: unknown,
+    behavior: MockCapabilityMutationBehavior,
+  ): void {
+    const nowIso = new Date().toISOString();
+    if (behavior.updateActual !== false) {
+      this.actualCapabilityValues.set(capabilityId, value);
+      this.actualCapabilityUpdatedAt.set(capabilityId, nowIso);
+    }
+    if (behavior.updateApi !== false) {
+      this.capabilityValues.set(capabilityId, value);
+      this.capabilityUpdatedAt.set(capabilityId, nowIso);
+    }
+    if (behavior.emitCapabilityEvent) {
+      this.emitCapabilityValue(capabilityId, value);
+    }
+    if (behavior.emitDeviceUpdate) {
+      this.emitDeviceUpdate();
+    }
   }
 }
 
@@ -139,6 +352,8 @@ const findMockDeviceById = (deviceId: string): MockDevice | null => {
   }
   return null;
 };
+
+export const getMockDeviceById = (deviceId: string): MockDevice | null => findMockDeviceById(deviceId);
 
 export const mockHomeyInstance = {
   on(event: string, listener: (...args: any[]) => void) {
@@ -213,19 +428,7 @@ export const mockHomeyInstance = {
         const devices: Record<string, any> = {};
         for (const driver of Object.values(drivers)) {
           for (const device of driver.getDevices()) {
-            const caps = device.getCapabilities();
-            const capabilitiesObj: Record<string, any> = {};
-            for (const cap of caps) {
-              capabilitiesObj[cap] = { id: cap, value: await device.getCapabilityValue(cap) };
-            }
-            devices[device.idValue] = {
-              id: device.idValue,
-              name: device.getName(),
-              class: device.getDeviceClass(),
-              capabilities: caps,
-              capabilitiesObj,
-              settings: await device.getSettings(),
-            };
+            devices[device.idValue] = device.toHomeyApiDevice();
           }
         }
         return devices;
@@ -364,24 +567,22 @@ export const mockHomeyApiInstance = {
     getDevices: async () => {
       const drivers = mockHomeyInstance.drivers.getDrivers();
       const devices: Record<string, any> = {};
-        for (const driver of Object.values(drivers)) {
-          for (const device of driver.getDevices()) {
-            const caps = device.getCapabilities();
-            const capabilitiesObj: Record<string, any> = {};
-          for (const cap of caps) {
-            capabilitiesObj[cap] = { id: cap, value: await device.getCapabilityValue(cap) };
-          }
-          devices[device.idValue] = {
-            id: device.idValue,
-            name: device.getName(),
-            class: device.getDeviceClass(),
-            capabilities: caps,
-            capabilitiesObj,
-            settings: await device.getSettings(),
-          };
+      for (const driver of Object.values(drivers)) {
+        for (const device of driver.getDevices()) {
+          devices[device.idValue] = device.toHomeyApiDevice();
         }
       }
       return devices;
+    },
+    getDevice: async ({ id }: { id: string }) => {
+      const device = findMockDeviceById(id);
+      if (!device) throw new Error(`Unknown mock device: ${id}`);
+      return device.toHomeyApiDevice();
+    },
+    getDeviceSettingsObj: async ({ id }: { id: string }) => {
+      const device = findMockDeviceById(id);
+      if (!device) throw new Error(`Unknown mock device: ${id}`);
+      return device.getSettingsObject();
     },
     setCapabilityValue: async ({ deviceId, capabilityId, value }: { deviceId: string; capabilityId: string; value: any }) => {
       const device = findMockDeviceById(deviceId);

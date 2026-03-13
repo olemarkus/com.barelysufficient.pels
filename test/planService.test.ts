@@ -417,6 +417,167 @@ describe('PlanService', () => {
     expect(realtime).not.toHaveBeenCalled();
   });
 
+  it('keeps the observed target stale while exposing pending confirmation state', async () => {
+    const settingsSet = jest.fn();
+    const realtime = jest.fn().mockResolvedValue(undefined);
+    const decoratePlanWithPendingTargetCommands = jest.fn((plan: DevicePlan) => ({
+      ...plan,
+      devices: plan.devices.map((device) => ({
+        ...device,
+        pendingTargetCommand: {
+          desired: 20,
+          retryCount: 0,
+          nextRetryAtMs: Date.now() + 30_000,
+          lastObservedValue: 18,
+          lastObservedSource: 'snapshot_refresh' as const,
+        },
+      })),
+    }));
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn(),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        hasPendingTargetCommands: jest.fn(() => true),
+        syncPendingTargetCommands: jest.fn(() => true),
+        decoratePlanWithPendingTargetCommands,
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn: true,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    (service as any).latestPlanSnapshot = buildPlan(18, 'stable');
+
+    await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
+    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentTarget: 18,
+          plannedTarget: 20,
+          pendingTargetCommand: expect.objectContaining({
+            desired: 20,
+            retryCount: 0,
+            lastObservedValue: 18,
+            lastObservedSource: 'snapshot_refresh',
+          }),
+        }),
+      ],
+    }));
+    expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentTarget: 18,
+        }),
+      ],
+    }));
+  });
+
+  it('refreshes the stored current target when a pending target command is confirmed', async () => {
+    const settingsSet = jest.fn();
+    const realtime = jest.fn().mockResolvedValue(undefined);
+    let hasPendingTargetCommands = true;
+    const decoratePlanWithPendingTargetCommands = jest.fn((plan: DevicePlan) => ({
+      ...plan,
+      devices: plan.devices.map((device) => ({
+        ...device,
+        pendingTargetCommand: hasPendingTargetCommands
+          ? {
+            desired: 20,
+            retryCount: 0,
+            nextRetryAtMs: Date.now() + 30_000,
+            lastObservedValue: 18,
+            lastObservedSource: 'rebuild' as const,
+          }
+          : undefined,
+      })),
+    }));
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn(),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        hasPendingTargetCommands: jest.fn(() => hasPendingTargetCommands),
+        syncPendingTargetCommands: jest.fn(() => {
+          hasPendingTargetCommands = false;
+          return true;
+        }),
+        decoratePlanWithPendingTargetCommands,
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn: true,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    (service as any).latestPlanSnapshot = decoratePlanWithPendingTargetCommands(buildPlan(18, 'stable'));
+
+    await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
+    expect(service.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
+      id: 'dev-1',
+      currentTarget: 20,
+      plannedTarget: 20,
+    });
+    expect(service.getLatestPlanSnapshot()?.devices[0].pendingTargetCommand).toBeUndefined();
+    expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentTarget: 20,
+        }),
+      ],
+    }));
+  });
+
   it('skips plan reconcile for power-only drift', async () => {
     const applyPlanActions = jest.fn().mockResolvedValue(undefined);
     const service = new PlanService({
@@ -468,6 +629,119 @@ describe('PlanService', () => {
 
     await expect(service.reconcileLatestPlanState()).resolves.toBe(false);
     expect(applyPlanActions).not.toHaveBeenCalled();
+  });
+
+  it('skips plan reconcile for target-only drift while a shed device is already off', async () => {
+    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn(),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 23.5, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn: false,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    (service as any).latestPlanSnapshot = buildPlan(21, 'shed', {}, {
+      currentState: 'off',
+      plannedState: 'shed',
+      currentTarget: 21,
+      plannedTarget: 21,
+      shedAction: 'turn_off',
+    });
+
+    await expect(service.reconcileLatestPlanState()).resolves.toBe(false);
+    expect(applyPlanActions).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the stored plan snapshot when a pending binary command is confirmed by live state', async () => {
+    let hasPendingBinaryCommands = true;
+    const realtime = jest.fn().mockResolvedValue(undefined);
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn(),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        hasPendingBinaryCommands: jest.fn(() => hasPendingBinaryCommands),
+        syncPendingBinaryCommands: jest.fn(() => {
+          hasPendingBinaryCommands = false;
+          return true;
+        }),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn: false,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    (service as any).latestPlanSnapshot = buildPlan(20, 'cooldown', {}, {
+      currentState: 'on',
+      plannedState: 'shed',
+      currentTarget: 20,
+      plannedTarget: 20,
+    });
+
+    await expect(service.syncLivePlanState('device_update')).resolves.toBe(true);
+    expect(service.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
+      id: 'dev-1',
+      currentState: 'off',
+      plannedState: 'shed',
+    });
+    expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'off',
+        }),
+      ],
+    }));
   });
 
   it('does not replace the stored plan snapshot with drifted live state before reconcile actuation completes', async () => {
@@ -1298,6 +1572,124 @@ describe('PlanService', () => {
     );
   });
 
+  it('queues external live plan sync behind an in-flight rebuild', async () => {
+    let resolveBuild: (() => void) | undefined;
+    const syncPendingTargetCommands = jest.fn(() => true);
+    const planEngine = {
+      buildDevicePlanSnapshot: jest.fn().mockImplementation(
+        async () => new Promise<DevicePlan>((resolve) => {
+          resolveBuild = () => resolve(buildPlan(20, 'stable'));
+        }),
+      ),
+      computeDynamicSoftLimit: jest.fn(() => 0),
+      computeShortfallThreshold: jest.fn(() => 0),
+      handleShortfall: jest.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+      applyPlanActions: jest.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      hasPendingTargetCommands: jest.fn(() => true),
+      syncPendingTargetCommands,
+      decoratePlanWithPendingTargetCommands: jest.fn((plan: DevicePlan) => plan),
+    };
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn: true,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const syncPromise = service.syncLivePlanState('snapshot_refresh');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(syncPendingTargetCommands.mock.calls.map(([, source]) => source)).not.toContain('snapshot_refresh');
+
+    resolveBuild?.();
+    await rebuildPromise;
+    await expect(syncPromise).resolves.toBe(false);
+    expect(syncPendingTargetCommands).toHaveBeenCalledWith(expect.any(Array), 'snapshot_refresh');
+  });
+
+  it('captures live devices once per rebuild before syncing and building the plan', async () => {
+    const firstLiveDevices = [{
+      id: 'dev-1',
+      name: 'Heater',
+      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+      deviceType: 'temperature',
+      hasBinaryControl: true,
+      currentOn: true,
+      currentTemperature: 21,
+    }];
+    const getPlanDevices = jest.fn()
+      .mockReturnValueOnce(firstLiveDevices)
+      .mockReturnValueOnce([{
+        ...firstLiveDevices[0],
+        targets: [{ id: 'target_temperature', value: 26, unit: '°C' }],
+      }]);
+    const syncPendingTargetCommands = jest.fn(() => false);
+    const syncPendingBinaryCommands = jest.fn(() => false);
+    const buildDevicePlanSnapshot = jest.fn().mockResolvedValue(buildPlan(20, 'stable'));
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot,
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        syncPendingTargetCommands,
+        syncPendingBinaryCommands,
+        prunePendingTargetCommands: jest.fn(() => false),
+        decoratePlanWithPendingTargetCommands: jest.fn((plan: DevicePlan) => plan),
+      } as any,
+      getPlanDevices,
+      getCapacityDryRun: () => true,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    await service.rebuildPlanFromCache('capture_live_devices_once');
+
+    expect(getPlanDevices).toHaveBeenCalledTimes(1);
+    expect(syncPendingTargetCommands).toHaveBeenCalledWith(firstLiveDevices, 'rebuild');
+    expect(syncPendingBinaryCommands).toHaveBeenCalledWith(firstLiveDevices, 'rebuild');
+    expect(buildDevicePlanSnapshot).toHaveBeenCalledWith(firstLiveDevices);
+  });
+
   it('clears pending throttled snapshot timer on destroy', async () => {
     const settingsSet = jest.fn();
     const planEngine = {
@@ -1348,7 +1740,7 @@ describe('PlanService', () => {
     expect(snapshotWritesAfterDestroy).toHaveLength(1);
   });
 
-  it('still runs applyPlanActions on identical rebuilds', async () => {
+  it('skips applyPlanActions on identical rebuilds', async () => {
     const settingsSet = jest.fn();
     const applyPlanActions = jest.fn().mockResolvedValue(undefined);
     const planEngine = {
@@ -1384,7 +1776,87 @@ describe('PlanService', () => {
     await service.rebuildPlanFromCache('test_identical.first');
     await service.rebuildPlanFromCache('test_identical.second');
 
-    expect(applyPlanActions).toHaveBeenCalledTimes(2);
+    expect(applyPlanActions).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves reconcile drift across detail-only rebuilds', async () => {
+    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const liveDeviceBase = {
+      id: 'dev-1',
+      name: 'Heater',
+      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+      deviceType: 'temperature',
+      hasBinaryControl: true,
+      currentTemperature: 21,
+    };
+    let liveDevices = [{
+      ...liveDeviceBase,
+      currentOn: true,
+    }];
+
+    const planEngine = {
+      buildDevicePlanSnapshot: jest
+        .fn()
+        .mockResolvedValueOnce(buildPlan(20, 'stable', {}, {
+          currentState: 'on',
+          plannedState: 'keep',
+          plannedTarget: 20,
+        }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', {}, {
+          currentState: 'off',
+          plannedState: 'keep',
+          plannedTarget: 20,
+        })),
+      computeDynamicSoftLimit: jest.fn(() => 0),
+      computeShortfallThreshold: jest.fn(() => 0),
+      handleShortfall: jest.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+      applyPlanActions,
+      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => liveDevices,
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    await service.rebuildPlanFromCache('seed_expected_on_state');
+    expect(applyPlanActions).toHaveBeenCalledTimes(1);
+    applyPlanActions.mockClear();
+
+    liveDevices = [{
+      ...liveDeviceBase,
+      currentOn: false,
+    }];
+
+    await service.rebuildPlanFromCache('detail_only_live_off');
+    expect(applyPlanActions).not.toHaveBeenCalled();
+
+    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
+    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'off',
+          currentTarget: 20,
+          plannedState: 'keep',
+          plannedTarget: 20,
+        }),
+      ],
+    }), 'reconcile');
   });
 
   it('reuses cached pels status computation when inputs are unchanged', () => {

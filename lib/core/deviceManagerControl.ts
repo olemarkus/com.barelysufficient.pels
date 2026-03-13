@@ -4,6 +4,7 @@ export type DeviceCapabilityValue = {
   value?: unknown;
   units?: string;
   setable?: boolean;
+  lastUpdated?: string | number | Date | null;
 };
 
 export type DeviceCapabilityMap = Record<string, DeviceCapabilityValue>;
@@ -60,16 +61,6 @@ export function getCanSetControl(
 export function getEvChargingState(capabilityObj: DeviceCapabilityMap): string | undefined {
   const value = capabilityObj.evcharger_charging_state?.value;
   return typeof value === 'string' ? value : undefined;
-}
-
-export function buildOptimisticCapabilityUpdate(
-  capabilityId: string,
-  value: unknown,
-): { target?: number | null; on?: boolean } | null {
-  if (capabilityId.startsWith('target_temperature') && typeof value === 'number') {
-    return { target: value };
-  }
-  return null;
 }
 
 export function logEvCapabilityRequest(params: {

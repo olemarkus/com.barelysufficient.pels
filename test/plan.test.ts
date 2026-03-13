@@ -3292,22 +3292,15 @@ describe('Dry run mode', () => {
     (app as any).planEngine.state.lastOvershootMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
+    const setCapabilitySpy = jest.spyOn(mockHomeyApiInstance.devices, 'setCapabilityValue');
+
     await (app as any).recordPowerSample(1000); // 1.0 kW total -> headroom 1.25 kW
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
 
-    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: mockSetCapability,
-      },
-    };
-
-    await (app as any).applyPlanActions(plan);
-
-    expect(mockSetCapability).toHaveBeenCalledWith({
+    expect(setCapabilitySpy).toHaveBeenCalledWith({
       deviceId: 'dev-1',
       capabilityId: 'onoff',
       value: true,

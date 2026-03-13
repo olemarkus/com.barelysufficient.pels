@@ -2,6 +2,20 @@ import type { HeadroomCardCooldownSource } from './planHeadroomDevice';
 
 export type ShedAction = 'turn_off' | 'set_temperature';
 
+export type PendingTargetObservationSource =
+  | 'rebuild'
+  | 'snapshot_refresh'
+  | 'realtime_capability'
+  | 'device_update';
+
+export type PendingTargetCommandSummary = {
+  desired: number;
+  retryCount: number;
+  nextRetryAtMs: number;
+  lastObservedValue?: unknown;
+  lastObservedSource?: PendingTargetObservationSource;
+};
+
 export type ShedBehavior = {
   action: ShedAction;
   temperature?: number;
@@ -34,6 +48,7 @@ export type DevicePlanDevice = {
   headroomCardCooldownSource?: HeadroomCardCooldownSource;
   headroomCardCooldownFromKw?: number | null;
   headroomCardCooldownToKw?: number | null;
+  pendingTargetCommand?: PendingTargetCommandSummary;
 };
 
 export type DevicePlan = {
