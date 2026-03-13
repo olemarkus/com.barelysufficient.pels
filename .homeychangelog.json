@@ -202,5 +202,8 @@
   },
   "1.20.1": {
     "en": "Fixed a performance regression."
+  },
+  "1.20.2": {
+    "en": "Improved drift detection and fixed a few bugs where the app did not respond to drift."
   }
 }
