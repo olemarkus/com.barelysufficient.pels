@@ -13,3 +13,9 @@ export const RECENT_RESTORE_SHED_GRACE_MS = 3 * 60 * 1000;
 export const RECENT_RESTORE_OVERSHOOT_BYPASS_KW = 0.5; // Allow immediate re-shed if overshoot is >= 0.5 kW
 export const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 export const BINARY_COMMAND_PENDING_MS = 15000;
+export const TARGET_COMMAND_RETRY_DELAYS_MS = [
+  30 * 1000,
+  2 * 60 * 1000,
+  5 * 60 * 1000,
+  15 * 60 * 1000,
+] as const;

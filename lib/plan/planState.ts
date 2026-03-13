@@ -1,4 +1,17 @@
 import { RESTORE_COOLDOWN_MS } from './planConstants';
+import type { PendingTargetObservationSource } from './planTypes';
+
+export type PendingTargetCommandState = {
+  capabilityId: string;
+  desired: number;
+  startedMs: number;
+  lastAttemptMs: number;
+  retryCount: number;
+  nextRetryAtMs: number;
+  lastObservedValue?: unknown;
+  lastObservedSource?: PendingTargetObservationSource;
+  lastObservedAtMs?: number;
+};
 
 export type PlanEngineState = {
   lastDeviceShedMs: Record<string, number>;
@@ -19,6 +32,7 @@ export type PlanEngineState = {
     desired: boolean;
     startedMs: number;
   }>;
+  pendingTargetCommands: Record<string, PendingTargetCommandState>;
   lastSheddingMs: number | null;
   lastOvershootMs: number | null;
   lastRestoreMs: number | null;
@@ -52,6 +66,7 @@ export function createPlanEngineState(): PlanEngineState {
     pendingSheds: new Set<string>(),
     pendingRestores: new Set<string>(),
     pendingBinaryCommands: {},
+    pendingTargetCommands: {},
     lastSheddingMs: null,
     lastOvershootMs: null,
     lastRestoreMs: null,

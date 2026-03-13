@@ -8,7 +8,7 @@ import type { PriceLevel } from '../price/priceLevels';
 import type { PlanEngine } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
-import type { ShedAction } from '../plan/planTypes';
+import type { PendingTargetObservationSource, ShedAction } from '../plan/planTypes';
 import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
@@ -53,6 +53,17 @@ export type PlanEngineInitApp = {
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
   getDynamicSoftLimitOverride: () => number | null;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
+  logTargetRetryComparison?: (params: {
+    deviceId: string;
+    name: string;
+    targetCap: string;
+    desired: number;
+    observedValue?: unknown;
+    observedSource?: string;
+    retryCount: number;
+    skipContext: 'plan' | 'shedding' | 'overshoot';
+  }) => Promise<void> | void;
+  syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   log: (...args: unknown[]) => void;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
@@ -78,6 +89,8 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
     getShedBehavior: (deviceId) => app.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: () => app.getDynamicSoftLimitOverride(),
     updateLocalSnapshot: (deviceId, updates) => app.updateLocalSnapshot(deviceId, updates),
+    logTargetRetryComparison: (params) => app.logTargetRetryComparison?.(params),
+    syncLivePlanStateAfterTargetActuation: (source) => app.syncLivePlanStateAfterTargetActuation?.(source),
     deviceDiagnostics: app.deviceDiagnostics,
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug('plan', ...args),

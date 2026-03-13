@@ -3,6 +3,8 @@ import type { PowerMeasurementUpdates } from './powerMeasurement';
 import {
   formatBinaryState,
   formatTargetValue,
+  getRecentLocalCapabilityWrite,
+  type RecentLocalCapabilityWrites,
 } from './deviceManagerRealtimeSupport';
 import { logDeviceManagerRuntimeError } from './deviceManagerHomeyApi';
 
@@ -225,8 +227,14 @@ export function reconcileRealtimeDeviceUpdate(params: {
   latestSnapshot: TargetDeviceSnapshot[];
   device: HomeyDeviceLike;
   parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+  recentLocalCapabilityWrites?: RecentLocalCapabilityWrites;
 }): RealtimeReconcileResult {
-  const { latestSnapshot, device, parseDevice } = params;
+  const {
+    latestSnapshot,
+    device,
+    parseDevice,
+    recentLocalCapabilityWrites,
+  } = params;
   const deviceId = device.id || device.data?.id;
   if (!deviceId) return { shouldReconcilePlan: false, changes: [] };
 
@@ -241,6 +249,13 @@ export function reconcileRealtimeDeviceUpdate(params: {
     return { shouldReconcilePlan: false, changes: [] };
   }
 
+  preserveRecentLocalBinaryState({
+    previous,
+    parsed,
+    deviceId,
+    recentLocalCapabilityWrites,
+  });
+
   if (snapshotIndex >= 0) {
     latestSnapshot[snapshotIndex] = parsed;
   } else {
@@ -252,6 +267,33 @@ export function reconcileRealtimeDeviceUpdate(params: {
     shouldReconcilePlan: changes.length > 0,
     changes,
   };
+}
+
+function preserveRecentLocalBinaryState(params: {
+  previous: TargetDeviceSnapshot | null;
+  parsed: TargetDeviceSnapshot;
+  deviceId: string;
+  recentLocalCapabilityWrites?: RecentLocalCapabilityWrites;
+}): void {
+  const {
+    previous,
+    parsed,
+    deviceId,
+    recentLocalCapabilityWrites,
+  } = params;
+  if (!previous || !recentLocalCapabilityWrites) return;
+  const capabilityId = parsed.controlCapabilityId ?? previous.controlCapabilityId;
+  if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return;
+  const localWrite = getRecentLocalCapabilityWrite({
+    recentLocalCapabilityWrites,
+    deviceId,
+    capabilityId,
+  });
+  if (!localWrite || typeof localWrite.value !== 'boolean') return;
+  if (typeof parsed.currentOn !== 'boolean') return;
+  if (parsed.currentOn === localWrite.value) return;
+  if (previous.currentOn !== localWrite.value) return;
+  parsed.currentOn = previous.currentOn;
 }
 
 export function getRealtimeCapabilityIds(device: HomeyDeviceLike): string[] {

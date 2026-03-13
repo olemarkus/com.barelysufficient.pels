@@ -25,6 +25,12 @@ const getStateText = () => {
   return stateLine?.querySelector('span:last-child')?.textContent?.trim();
 };
 
+const getTemperatureText = () => {
+  const lines = Array.from(document.querySelectorAll('.plan-meta-line'));
+  const temperatureLine = lines.find((line) => line.querySelector('.plan-label')?.textContent === 'Temperature');
+  return temperatureLine?.querySelector('span:last-child')?.textContent?.trim();
+};
+
 const getPowerText = () => {
   const lines = Array.from(document.querySelectorAll('.plan-meta-line'));
   const powerLine = lines.find((line) => line.querySelector('.plan-label')?.textContent === 'Power');
@@ -248,6 +254,29 @@ describe('plan device state', () => {
 
     const chip = document.querySelector('[data-device-id="dev-budget"] .plan-row__chip') as HTMLElement | null;
     expect(chip?.textContent?.trim()).toBe('Budget exempt');
+  });
+
+  it('shows pending confirmation text while a target write is still unconfirmed', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-temp-pending',
+          name: 'Pending Heater',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTemperature: 21,
+          currentTarget: 18,
+          plannedTarget: 23,
+          pendingTargetCommand: {
+            desired: 23,
+            retryCount: 0,
+            nextRetryAtMs: Date.now() + 30_000,
+          },
+        },
+      ],
+    });
+
+    expect(getTemperatureText()).toBe('21.0° / target 18° → 23° (waiting for confirmation)');
   });
 
   it('renders inactive EV state without a fake restore power transition', () => {

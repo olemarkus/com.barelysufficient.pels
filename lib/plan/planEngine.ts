@@ -2,7 +2,7 @@ import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
 import type { PowerTrackerState } from '../core/powerTracker';
-import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
+import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
 import { PlanActuationMode, PlanExecutor, PlanExecutorDeps } from './planExecutor';
 import { createPlanEngineState, PlanEngineState } from './planState';
@@ -15,6 +15,12 @@ import {
 } from './planHeadroomDevice';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import {
+  decoratePlanWithPendingTargetCommands,
+  prunePendingTargetCommandsForPlan,
+  syncPendingTargetCommands,
+} from './planTargetControl';
+import { syncPendingBinaryCommands } from './planBinaryControl';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -33,6 +39,17 @@ export type PlanEngineDeps = {
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
   getPriorityForDevice: (deviceId: string) => number;
   getDynamicSoftLimitOverride?: () => number | null;
+  logTargetRetryComparison?: (params: {
+    deviceId: string;
+    name: string;
+    targetCap: string;
+    desired: number;
+    observedValue?: unknown;
+    observedSource?: string;
+    retryCount: number;
+    skipContext: 'plan' | 'shedding' | 'overshoot';
+  }) => Promise<void> | void;
+  syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   log: (...args: unknown[]) => void;
@@ -46,10 +63,14 @@ export class PlanEngine {
   private builder: PlanBuilder;
   private executor: PlanExecutor;
   private readonly deviceDiagnostics?: DeviceDiagnosticsRecorder;
+  private readonly logFn: (...args: unknown[]) => void;
+  private readonly logDebugFn: (...args: unknown[]) => void;
 
   constructor(deps: PlanEngineDeps) {
     this.state = createPlanEngineState();
     this.deviceDiagnostics = deps.deviceDiagnostics;
+    this.logFn = deps.log;
+    this.logDebugFn = deps.logDebug;
 
     const builderDeps: PlanBuilderDeps = {
       homey: deps.homey,
@@ -80,6 +101,8 @@ export class PlanEngine {
       getOperatingMode: deps.getOperatingMode,
       getShedBehavior: deps.getShedBehavior,
       updateLocalSnapshot: deps.updateLocalSnapshot,
+      logTargetRetryComparison: deps.logTargetRetryComparison,
+      syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
       deviceDiagnostics: deps.deviceDiagnostics,
       log: deps.log,
       logDebug: deps.logDebug,
@@ -112,6 +135,55 @@ export class PlanEngine {
 
   public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<void> {
     return this.executor.applyPlanActions(plan, mode);
+  }
+
+  public shouldApplyStablePlanActions(plan: DevicePlan): boolean {
+    return this.executor.hasStablePlanActuation(plan);
+  }
+
+  public syncPendingTargetCommands(
+    devices: PlanInputDevice[],
+    source: PendingTargetObservationSource,
+  ): boolean {
+    return syncPendingTargetCommands({
+      state: this.state,
+      liveDevices: devices,
+      source,
+      log: (message) => this.logFn(message),
+      logDebug: (message) => this.logDebugFn(message),
+    });
+  }
+
+  public prunePendingTargetCommands(plan: DevicePlan): boolean {
+    return prunePendingTargetCommandsForPlan({
+      state: this.state,
+      plan,
+      logDebug: (message) => this.logDebugFn(message),
+    });
+  }
+
+  public syncPendingBinaryCommands(
+    devices: PlanInputDevice[],
+    source: PendingTargetObservationSource,
+  ): boolean {
+    return syncPendingBinaryCommands({
+      state: this.state,
+      liveDevices: devices,
+      source,
+      logDebug: (message) => this.logDebugFn(message),
+    });
+  }
+
+  public decoratePlanWithPendingTargetCommands(plan: DevicePlan): DevicePlan {
+    return decoratePlanWithPendingTargetCommands(this.state, plan);
+  }
+
+  public hasPendingTargetCommands(): boolean {
+    return Object.keys(this.state.pendingTargetCommands).length > 0;
+  }
+
+  public hasPendingBinaryCommands(): boolean {
+    return Object.keys(this.state.pendingBinaryCommands).length > 0;
   }
 
   public evaluateHeadroomForDevice(params: {

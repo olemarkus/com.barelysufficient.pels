@@ -55,7 +55,7 @@ const shouldSkipShedTemperature = (params: {
   if (capacityDryRun) {
     log(
       `Capacity (dry run): would set ${targetCap || 'target'} `
-      + `for ${dev.name || dev.id} to ${dev.plannedTarget ?? '–'}°C (overshoot)`,
+      + `for ${dev.name || dev.id} to ${dev.plannedTarget ?? '–'}°C (shedding)`,
     );
     return true;
   }

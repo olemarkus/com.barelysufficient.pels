@@ -29,6 +29,22 @@ export function clearLocalCapabilityWrite(params: {
   recentLocalCapabilityWrites.delete(buildCapabilityWriteKey(deviceId, capabilityId));
 }
 
+export function getRecentLocalCapabilityWrite(params: {
+  recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
+  deviceId: string;
+  capabilityId: string;
+}): RecentLocalCapabilityWrite | undefined {
+  const { recentLocalCapabilityWrites, deviceId, capabilityId } = params;
+  const key = buildCapabilityWriteKey(deviceId, capabilityId);
+  const entry = recentLocalCapabilityWrites.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    recentLocalCapabilityWrites.delete(key);
+    return undefined;
+  }
+  return entry;
+}
+
 export function consumeMatchingLocalCapabilityWrite(params: {
   recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   deviceId: string;

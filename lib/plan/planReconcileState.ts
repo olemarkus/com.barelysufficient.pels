@@ -32,8 +32,8 @@ export function hasPlanExecutionDrift(previousPlan: DevicePlan, livePlan: Device
     const previous = previousPlan.devices[index];
     const live = livePlan.devices[index];
     if (previous.id !== live.id) return true;
-    if (previous.currentState !== live.currentState) return true;
-    if (previous.currentTarget !== live.currentTarget) return true;
+    if (hasRelevantBinaryExecutionDrift(previous, live)) return true;
+    if (hasRelevantTargetExecutionDrift(previous, live)) return true;
   }
   return false;
 }
@@ -69,7 +69,13 @@ export function hasPlanExecutionDriftForDevice(
     ? live.targets[0].value ?? null
     : null;
 
-  return previous.currentState !== liveCurrentState || previous.currentTarget !== liveCurrentTarget;
+  return hasRelevantBinaryExecutionDrift(previous, {
+    ...previous,
+    currentState: liveCurrentState,
+  }) || hasRelevantTargetExecutionDrift(previous, {
+    ...previous,
+    currentTarget: liveCurrentTarget,
+  });
 }
 
 function resolveCurrentStateFromPlanInput(currentOn?: boolean, hasBinaryControl?: boolean): string {
@@ -106,4 +112,26 @@ function requiresTargetUpdate(device: DevicePlan['devices'][number]): boolean {
     return false;
   }
   return typeof device.plannedTarget === 'number' && device.plannedTarget !== device.currentTarget;
+}
+
+function hasRelevantBinaryExecutionDrift(
+  previousDevice: DevicePlan['devices'][number],
+  liveDevice: DevicePlan['devices'][number],
+): boolean {
+  return previousDevice.currentState !== liveDevice.currentState;
+}
+
+function hasRelevantTargetExecutionDrift(
+  previousDevice: DevicePlan['devices'][number],
+  liveDevice: DevicePlan['devices'][number],
+): boolean {
+  if (!tracksTargetForExecution(previousDevice)) return false;
+  return previousDevice.currentTarget !== liveDevice.currentTarget;
+}
+
+function tracksTargetForExecution(device: DevicePlan['devices'][number]): boolean {
+  if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
+    return false;
+  }
+  return typeof device.plannedTarget === 'number';
 }

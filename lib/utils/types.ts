@@ -67,6 +67,7 @@ export type CapabilityValue<T> = {
     value?: T;
     units?: string;
     setable?: boolean;
+    lastUpdated?: string | number | Date | null;
 };
 
 export type HomeyDeviceLike = {
