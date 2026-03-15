@@ -208,5 +208,8 @@
   },
   "1.20.3": {
     "en": "Improved settlements where PELS state and device state may be out of sync due to e.g cloud API latency."
+  },
+  "1.20.4": {
+    "en": "Reduce image rendering memory footprint by replacing resvg with canvas."
   }
 }
