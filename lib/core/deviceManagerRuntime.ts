@@ -515,7 +515,7 @@ export function isRealtimePowerCapability(capabilityId: string): boolean {
     || capabilityId.startsWith(`${REALTIME_POWER_CAPABILITY_PREFIX}.`);
 }
 
-function isRealtimeControlCapability(
+export function isRealtimeControlCapability(
   capabilityId: string,
 ): capabilityId is (typeof REALTIME_CONTROL_CAPABILITY_IDS)[number] {
   return REALTIME_CONTROL_CAPABILITY_IDS.includes(

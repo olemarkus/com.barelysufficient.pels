@@ -38,12 +38,23 @@ export type HandleRealtimeCapabilityUpdateResult = {
   changes: RealtimeDeviceReconcileChange[];
 };
 
+type PendingBinarySettleObservationRecorder = (
+  deviceId: string,
+  capabilityId: string,
+  value: boolean,
+) => boolean;
+
 export function handleRealtimeDeviceUpdate(params: {
   device: HomeyDeviceLike;
   latestSnapshot: TargetDeviceSnapshot[];
   recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   shouldTrackRealtimeDevice: (deviceId: string) => boolean;
   parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+  notePendingBinarySettleObservation?: (
+    deviceId: string,
+    capabilityId: string,
+    value: boolean,
+  ) => boolean;
   logDebug: (message: string) => void;
   emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
   emitObservedState: (event: ObservedDeviceStateEvent) => void;
@@ -54,6 +65,7 @@ export function handleRealtimeDeviceUpdate(params: {
     recentLocalCapabilityWrites,
     shouldTrackRealtimeDevice,
     parseDevice,
+    notePendingBinarySettleObservation,
     logDebug,
     emitPlanReconcile,
     emitObservedState,
@@ -73,7 +85,20 @@ export function handleRealtimeDeviceUpdate(params: {
     recentLocalCapabilityWrites,
     parseDevice: (nextDevice, nowTs) => parseDevice(nextDevice, nowTs),
   });
-  const reconcileSuffix = result.shouldReconcilePlan ? ' [drift detected]' : '';
+  const settleResult = applyPendingBinarySettleToDeviceUpdate({
+    latestSnapshot,
+    deviceId,
+    changes: result.changes,
+    notePendingBinarySettleObservation,
+  });
+  const filteredChanges = settleResult.changes;
+  const shouldReconcilePlan = filteredChanges.length > 0;
+  let reconcileSuffix = '';
+  if (settleResult.binaryChangeDeferred) {
+    reconcileSuffix = ' [binary settling]';
+  } else if (shouldReconcilePlan) {
+    reconcileSuffix = ' [drift detected]';
+  }
   logDebug(`Realtime device.update received for ${label} (${deviceId})${reconcileSuffix}`);
   if (result.changes.length > 0) {
     emitObservedState({
@@ -81,22 +106,22 @@ export function handleRealtimeDeviceUpdate(params: {
       deviceId,
     });
   }
-  if (!result.shouldReconcilePlan) {
+  if (!shouldReconcilePlan) {
     return {
-      hadChanges: result.changes.length > 0,
+      hadChanges: filteredChanges.length > 0,
       shouldReconcilePlan: false,
-      changes: result.changes,
+      changes: filteredChanges,
     };
   }
   emitPlanReconcile({
     deviceId,
     name: label,
-    changes: result.changes,
+    changes: filteredChanges,
   });
   return {
-    hadChanges: result.changes.length > 0,
+    hadChanges: filteredChanges.length > 0,
     shouldReconcilePlan: true,
-    changes: result.changes,
+    changes: filteredChanges,
   };
 }
 
@@ -109,6 +134,11 @@ export function handleRealtimeCapabilityUpdate(params: {
   recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   shouldTrackRealtimeDevice: (deviceId: string) => boolean;
   handlePowerUpdate: (deviceId: string, label: string, value: number | null) => void;
+  notePendingBinarySettleObservation?: (
+    deviceId: string,
+    capabilityId: string,
+    value: boolean,
+  ) => boolean;
   logDebug: (message: string) => void;
   emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
   emitObservedState: (event: ObservedDeviceStateEvent) => void;
@@ -122,6 +152,7 @@ export function handleRealtimeCapabilityUpdate(params: {
     recentLocalCapabilityWrites,
     shouldTrackRealtimeDevice,
     handlePowerUpdate,
+    notePendingBinarySettleObservation,
     logDebug,
     emitPlanReconcile,
     emitObservedState,
@@ -160,12 +191,17 @@ export function handleRealtimeCapabilityUpdate(params: {
     capabilityId,
     value,
   });
-  let reconcileSuffix = '';
-  if (isLocalEcho) {
-    reconcileSuffix = ' [local echo]';
-  } else if (result.shouldReconcilePlan) {
-    reconcileSuffix = ' [drift detected]';
-  }
+  const deferredBinarySettle = shouldDeferBinarySettleObservation({
+    deviceId,
+    capabilityId,
+    value,
+    notePendingBinarySettleObservation,
+  });
+  const reconcileSuffix = resolveCapabilityReconcileSuffix({
+    isLocalEcho,
+    deferredBinarySettle,
+    shouldReconcilePlan: result.shouldReconcilePlan,
+  });
   logDebug(
     `Realtime capability update for ${label} (${deviceId}) `
     + `via ${capabilityId}: ${formattedValue}${reconcileSuffix}`,
@@ -177,7 +213,7 @@ export function handleRealtimeCapabilityUpdate(params: {
       capabilityId,
     });
   }
-  if (!result.shouldReconcilePlan || isLocalEcho) {
+  if (!result.shouldReconcilePlan || isLocalEcho || deferredBinarySettle) {
     return {
       isPower: false,
       isLocalEcho,
@@ -199,4 +235,76 @@ export function handleRealtimeCapabilityUpdate(params: {
     shouldReconcilePlan: true,
     changes: result.changes,
   };
+}
+
+function applyPendingBinarySettleToDeviceUpdate(params: {
+  latestSnapshot: TargetDeviceSnapshot[];
+  deviceId: string;
+  changes: RealtimeDeviceReconcileChange[];
+  notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
+}): {
+  changes: RealtimeDeviceReconcileChange[];
+  binaryChangeDeferred: boolean;
+} {
+  const {
+    latestSnapshot,
+    deviceId,
+    changes,
+    notePendingBinarySettleObservation,
+  } = params;
+  const currentSnapshot = latestSnapshot.find((entry) => entry.id === deviceId);
+  const binaryCapabilityId = currentSnapshot?.controlCapabilityId;
+  const shouldDefer = (
+    typeof currentSnapshot?.currentOn === 'boolean'
+    && typeof binaryCapabilityId === 'string'
+    && notePendingBinarySettleObservation?.(
+      deviceId,
+      binaryCapabilityId,
+      currentSnapshot.currentOn,
+    ) === true
+  );
+  if (!shouldDefer) {
+    return {
+      changes,
+      binaryChangeDeferred: false,
+    };
+  }
+
+  const filteredChanges = changes.filter((change) => change.capabilityId !== binaryCapabilityId);
+  return {
+    changes: filteredChanges,
+    binaryChangeDeferred: filteredChanges.length !== changes.length,
+  };
+}
+
+function shouldDeferBinarySettleObservation(params: {
+  deviceId: string;
+  capabilityId: string;
+  value: unknown;
+  notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
+}): boolean {
+  const {
+    deviceId,
+    capabilityId,
+    value,
+    notePendingBinarySettleObservation,
+  } = params;
+  return typeof value === 'boolean'
+    && notePendingBinarySettleObservation?.(deviceId, capabilityId, value) === true;
+}
+
+function resolveCapabilityReconcileSuffix(params: {
+  isLocalEcho: boolean;
+  deferredBinarySettle: boolean;
+  shouldReconcilePlan: boolean;
+}): string {
+  const {
+    isLocalEcho,
+    deferredBinarySettle,
+    shouldReconcilePlan,
+  } = params;
+  if (isLocalEcho) return ' [local echo]';
+  if (deferredBinarySettle) return ' [binary settling]';
+  if (shouldReconcilePlan) return ' [drift detected]';
+  return '';
 }
