@@ -960,6 +960,182 @@ describe('DeviceManager', () => {
             await setCapabilityPromise;
         });
 
+        it('waits for the binary settle window before reconciling contradictory onoff callbacks', async () => {
+            jest.useFakeTimers();
+            try {
+                mockGetDevices.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'onoff'],
+                        makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                            makeCapabilityInstanceImpl(destroyInstanceMock),
+                        ),
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = jest.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+
+                const onOffCallback = getCapabilityCallback(makeInstanceMock, 'onoff');
+                onOffCallback(true);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(loggerMock.debug).toHaveBeenCalledWith(
+                    'Realtime capability update for Heater (dev1) via onoff: true [binary settling]',
+                );
+
+                await jest.advanceTimersByTimeAsync(4999);
+                expect(realtimeListener).not.toHaveBeenCalled();
+
+                await jest.advanceTimersByTimeAsync(1);
+                expect(realtimeListener).toHaveBeenCalledWith({
+                    deviceId: 'dev1',
+                    name: 'Heater',
+                    capabilityId: 'onoff',
+                    changes: [{
+                        capabilityId: 'onoff',
+                        previousValue: 'off',
+                        nextValue: 'on',
+                    }],
+                });
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('uses the latest onoff observation before the settle deadline as the source of truth', async () => {
+            jest.useFakeTimers();
+            try {
+                mockGetDevices.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'onoff'],
+                        makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                            makeCapabilityInstanceImpl(destroyInstanceMock),
+                        ),
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = jest.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+
+                const onOffCallback = getCapabilityCallback(makeInstanceMock, 'onoff');
+                onOffCallback(false);
+                onOffCallback(true);
+
+                await jest.advanceTimersByTimeAsync(5000);
+
+                expect(realtimeListener).toHaveBeenCalledWith({
+                    deviceId: 'dev1',
+                    name: 'Heater',
+                    capabilityId: 'onoff',
+                    changes: [{
+                        capabilityId: 'onoff',
+                        previousValue: 'off',
+                        nextValue: 'on',
+                    }],
+                });
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    currentOn: true,
+                }));
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('confirms the local off write when the latest onoff observation before deadline is off', async () => {
+            jest.useFakeTimers();
+            try {
+                mockGetDevices.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'onoff'],
+                        makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                            makeCapabilityInstanceImpl(destroyInstanceMock),
+                        ),
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = jest.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+
+                const onOffCallback = getCapabilityCallback(makeInstanceMock, 'onoff');
+                onOffCallback(true);
+                onOffCallback(true);
+                onOffCallback(false);
+
+                await jest.advanceTimersByTimeAsync(5000);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    currentOn: false,
+                }));
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('drops a pending binary settle window when the device disappears before expiry', async () => {
+            jest.useFakeTimers();
+            try {
+                mockGetDevices.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'onoff'],
+                        makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                            makeCapabilityInstanceImpl(destroyInstanceMock),
+                        ),
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = jest.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+                deviceManager.setSnapshotForTests([]);
+
+                await jest.advanceTimersByTimeAsync(5000);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
         it('preserves local onoff state after a successful binary write when no realtime capability listener is available', async () => {
             mockGetDevices.mockResolvedValue({
                 dev1: {
@@ -1255,6 +1431,53 @@ describe('DeviceManager', () => {
                 currentOn: false,
             }));
             expect(realtimeListener).not.toHaveBeenCalled();
+        });
+
+        it('suppresses device.update binary drift while a local off write is still settling', async () => {
+            jest.useFakeTimers();
+            try {
+                mockGetDevices.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'onoff'],
+                        makeCapabilityInstance: makeInstanceMock.mockImplementation(
+                            makeCapabilityInstanceImpl(destroyInstanceMock),
+                        ),
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = jest.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+
+                mockDevicesEmitter.emit('device.update', {
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: false, id: 'onoff' },
+                    },
+                });
+
+                await jest.advanceTimersByTimeAsync(5000);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    currentOn: false,
+                }));
+            } finally {
+                jest.useRealTimers();
+            }
         });
 
         it('ignores generic device.update events for unmanaged devices', async () => {

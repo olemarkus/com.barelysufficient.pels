@@ -42,12 +42,14 @@ import {
     type CapabilityInstance,
     detachRealtimeDeviceUpdateListener,
     hasRealtimeCapabilityListener,
+    isRealtimeControlCapability,
     handlePowerUpdate as applyRealtimePowerUpdate,
     syncRealtimeCapabilityListeners,
     updateLastKnownPower,
 } from './deviceManagerRuntime';
 import {
     clearLocalCapabilityWrite,
+    formatBinaryState,
     recordLocalCapabilityWrite,
     type RecentLocalCapabilityWrites,
 } from './deviceManagerRealtimeSupport';
@@ -64,9 +66,19 @@ import { shouldPromoteHomeyApiDebug } from './deviceManagerDebug';
 import type { DeviceFetchSource } from './deviceManagerFetch';
 const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
 const MIN_SIGNIFICANT_POWER_W = 5;
+const LOCAL_BINARY_SETTLE_WINDOW_MS = 5 * 1000;
 export const HOMEY_DEVICE_UPDATE_EVENT = 'device.update';
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
+
+type PendingBinarySettleWindow = {
+    deviceId: string;
+    capabilityId: string;
+    name: string;
+    desired: boolean;
+    latestObserved?: boolean;
+    timer: ReturnType<typeof setTimeout>;
+};
 
 export type DeviceDebugObservedSource = {
     observedAt: number;
@@ -125,6 +137,7 @@ export class DeviceManager extends EventEmitter {
     private capabilityInstances: Map<string, CapabilityInstance> = new Map();
     private hasRealtimeDeviceUpdateListener = false;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
+    private pendingBinarySettleWindows: Map<string, PendingBinarySettleWindow> = new Map();
     private debugObservedSourcesByDeviceId: Map<string, DeviceDebugObservedSources> = new Map();
     private providers: {
         getPriority?: (deviceId: string) => number;
@@ -141,6 +154,9 @@ export class DeviceManager extends EventEmitter {
             recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
             shouldTrackRealtimeDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
             parseDevice: (nextDevice, nowTs) => this.parseDevice(nextDevice, nowTs, {}),
+            notePendingBinarySettleObservation: (nextDeviceId, capabilityId, value) => (
+                this.notePendingBinarySettleObservation(nextDeviceId, capabilityId, value)
+            ),
             logDebug: (message) => this.logger.debug(message),
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
@@ -166,6 +182,9 @@ export class DeviceManager extends EventEmitter {
             shouldTrackRealtimeDevice: (nextDeviceId) => this.shouldTrackRealtimeDevice(nextDeviceId),
             handlePowerUpdate: (nextDeviceId, nextLabel, nextValue) => (
                 this.handlePowerUpdate(nextDeviceId, nextLabel, nextValue)
+            ),
+            notePendingBinarySettleObservation: (nextDeviceId, capabilityId, nextValue) => (
+                this.notePendingBinarySettleObservation(nextDeviceId, capabilityId, nextValue)
             ),
             logDebug: (message) => this.logger.debug(message),
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
@@ -318,6 +337,7 @@ export class DeviceManager extends EventEmitter {
             capabilityId,
             value,
         });
+        this.startPendingBinarySettleWindow(deviceId, capabilityId, value, snapshotBefore?.name);
         try {
             await setCapabilityValue({
                 deviceId,
@@ -330,6 +350,7 @@ export class DeviceManager extends EventEmitter {
                 deviceId,
                 capabilityId,
             });
+            this.clearPendingBinarySettleWindow(deviceId, capabilityId);
             throw error;
         }
 
@@ -357,7 +378,7 @@ export class DeviceManager extends EventEmitter {
         value: unknown,
     ): value is boolean {
         if (typeof value !== 'boolean') return false;
-        if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return false;
+        if (!isRealtimeControlCapability(capabilityId)) return false;
         return !hasRealtimeCapabilityListener({
             capabilityInstances: this.capabilityInstances,
             deviceId,
@@ -483,7 +504,103 @@ export class DeviceManager extends EventEmitter {
             } catch (_) { /* ignore */ }
         }
         this.capabilityInstances.clear();
+        for (const pending of this.pendingBinarySettleWindows.values()) {
+            clearTimeout(pending.timer);
+        }
+        this.pendingBinarySettleWindows.clear();
         this.removeAllListeners();
+    }
+
+    private startPendingBinarySettleWindow(
+        deviceId: string,
+        capabilityId: string,
+        value: unknown,
+        deviceName?: string,
+    ): void {
+        if (typeof value !== 'boolean') return;
+        if (!isRealtimeControlCapability(capabilityId)) return;
+        if (!hasRealtimeCapabilityListener({
+            capabilityInstances: this.capabilityInstances,
+            deviceId,
+            capabilityId,
+        })) {
+            return;
+        }
+
+        this.clearPendingBinarySettleWindow(deviceId, capabilityId);
+        const key = this.buildPendingBinarySettleKey(deviceId, capabilityId);
+        const timer = setTimeout(() => {
+            this.finalizePendingBinarySettleWindow(key);
+        }, LOCAL_BINARY_SETTLE_WINDOW_MS);
+        this.pendingBinarySettleWindows.set(key, {
+            deviceId,
+            capabilityId,
+            name: deviceName || deviceId,
+            desired: value,
+            timer,
+        });
+    }
+
+    private clearPendingBinarySettleWindow(deviceId: string, capabilityId: string): void {
+        const key = this.buildPendingBinarySettleKey(deviceId, capabilityId);
+        const pending = this.pendingBinarySettleWindows.get(key);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        this.pendingBinarySettleWindows.delete(key);
+    }
+
+    private notePendingBinarySettleObservation(
+        deviceId: string,
+        capabilityId: string,
+        value: boolean,
+    ): boolean {
+        const key = this.buildPendingBinarySettleKey(deviceId, capabilityId);
+        const pending = this.pendingBinarySettleWindows.get(key);
+        if (!pending) return false;
+        pending.latestObserved = value;
+        return true;
+    }
+
+    private finalizePendingBinarySettleWindow(key: string): void {
+        const pending = this.pendingBinarySettleWindows.get(key);
+        if (!pending) return;
+        this.pendingBinarySettleWindows.delete(key);
+        if (!this.shouldTrackRealtimeDevice(pending.deviceId)) return;
+
+        const snapshot = this.latestSnapshot.find((device) => device.id === pending.deviceId);
+        if (!snapshot) return;
+        const observed = typeof snapshot?.currentOn === 'boolean'
+            ? snapshot.currentOn
+            : pending.latestObserved;
+        if (observed === pending.desired) {
+            this.logger.debug(
+                `Binary settle confirmed for ${pending.name} (${pending.deviceId}) via ${pending.capabilityId}: `
+                + `${formatBinaryState(observed)}`,
+            );
+            return;
+        }
+
+        const changes = typeof observed === 'boolean'
+            ? [{
+                capabilityId: pending.capabilityId,
+                previousValue: formatBinaryState(pending.desired),
+                nextValue: formatBinaryState(observed),
+            }]
+            : undefined;
+        this.logger.debug(
+            `Binary settle expired for ${pending.name} (${pending.deviceId}) via ${pending.capabilityId}: `
+            + `expected ${formatBinaryState(pending.desired)}, observed ${formatBinaryState(observed)}`,
+        );
+        this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+            deviceId: pending.deviceId,
+            name: snapshot?.name || pending.name,
+            capabilityId: pending.capabilityId,
+            changes,
+        });
+    }
+
+    private buildPendingBinarySettleKey(deviceId: string, capabilityId: string): string {
+        return `${deviceId}:${capabilityId}`;
     }
 
     private parseDeviceList(
