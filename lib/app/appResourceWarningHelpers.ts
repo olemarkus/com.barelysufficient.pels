@@ -1,3 +1,4 @@
+import v8 from 'node:v8';
 import type Homey from 'homey';
 import { getPerfSnapshot } from '../utils/perfCounters';
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from '../utils/planRebuildTrace';
@@ -30,9 +31,27 @@ const summarizeDuration = (
   };
 };
 
+const MB = 1024 * 1024;
+
+const resolveMemoryMb = (): Record<string, number | string> => {
+  try {
+    const heap = v8.getHeapStatistics();
+    return {
+      heapUsedMb: Math.round(heap.used_heap_size / MB * 10) / 10,
+      heapTotalMb: Math.round(heap.total_heap_size / MB * 10) / 10,
+      heapLimitMb: Math.round(heap.heap_size_limit / MB * 10) / 10,
+      externalMb: Math.round(heap.external_memory / MB * 10) / 10,
+      mallocMb: Math.round(heap.malloced_memory / MB * 10) / 10,
+    };
+  } catch {
+    return { source: 'unavailable' };
+  }
+};
+
 const buildWarningPerfPayload = (nowMs: number) => {
   const snapshot = getPerfSnapshot();
   return {
+    memory: resolveMemoryMb(),
     uptimeSec: Math.round((nowMs - snapshot.startedAt) / 1000),
     counts: {
       planRebuildRequested: snapshot.counts.plan_rebuild_requested_total || 0,

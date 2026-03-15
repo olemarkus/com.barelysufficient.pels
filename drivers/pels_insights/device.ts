@@ -94,7 +94,7 @@ const PLAN_IMAGE_SETTINGS_KEYS = new Set([
 ]);
 
 const HOUR_MS = 60 * 60 * 1000;
-const PLAN_IMAGE_STREAM_REFRESH_MIN_MS = 2 * 60 * 1000;
+const PLAN_IMAGE_STREAM_REFRESH_MIN_MS = 3 * 60 * 1000;
 const PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS = 30 * 60 * 1000;
 const PLAN_IMAGE_SETTINGS_REFRESH_DEBOUNCE_MS = 500;
 const EMPTY_PNG = Buffer.from(
@@ -135,6 +135,7 @@ class PelsInsightsDevice extends Homey.Device {
   private planImageInterval?: ReturnType<typeof setInterval>;
   private planImageSettingsRefreshScheduler?: DebouncedPlanImageRefreshScheduler;
   private planImageRenderCounter = 0;
+  private lastAnyRenderAtMs = 0;
 
   private updatePlanImageSlot(index: number, patch: Partial<PlanImageState>): PlanImageState {
     const current = this.planImages[index];
@@ -295,7 +296,9 @@ class PelsInsightsDevice extends Homey.Device {
     const indices = Array.isArray(options.indices)
       ? options.indices.filter((index) => index >= 0 && index < this.planImages.length)
       : this.planImages.map((_slot, index) => index);
-    for (const index of indices) {
+    // Only render one image per refresh cycle to limit rasterizer native memory pressure.
+    const index = indices[0];
+    if (index !== undefined) {
       await this.refreshPlanImage(index, options);
     }
   }
@@ -339,6 +342,7 @@ class PelsInsightsDevice extends Homey.Device {
         const renderStartedAtMs = Date.now();
         const payload = await this.generatePlanImagePayload(snapshot, dayKey, combinedPrices, slot.filename);
         const renderDurationMs = Date.now() - renderStartedAtMs;
+        this.lastAnyRenderAtMs = Date.now();
         this.updatePlanImageSlot(index, {
           buffer: payload.buffer,
           contentType: payload.contentType,
@@ -476,15 +480,29 @@ class PelsInsightsDevice extends Homey.Device {
   private shouldRefreshPlanImageForStream(params: {
     slot: PlanImageState;
     nowMs: number;
-    key: string;
   }): boolean {
-    const { slot, nowMs, key } = params;
+    const { slot, nowMs } = params;
     const hasCachedImage = slot.buffer.length > EMPTY_PNG.length;
     if (!hasCachedImage) return true;
-    if (slot.lastKey === key) return false;
-    const isCoolingDown = typeof slot.lastRenderedAtMs === 'number'
+    // Per-slot cooldown (3 min)
+    const isSlotCoolingDown = typeof slot.lastRenderedAtMs === 'number'
       && (nowMs - slot.lastRenderedAtMs) < PLAN_IMAGE_STREAM_REFRESH_MIN_MS;
-    return !isCoolingDown;
+    if (isSlotCoolingDown) {
+      const elapsed = Math.round((nowMs - slot.lastRenderedAtMs!) / 1000);
+      this.log(`[plan-image] ${slot.cameraId}: skipping render`
+        + ` (slot cooldown, ${elapsed}s elapsed)`);
+      return false;
+    }
+    // Global cooldown: avoid back-to-back renders across different slots
+    // to limit rasterizer native memory pressure.
+    const isGlobalCoolingDown = this.lastAnyRenderAtMs > 0
+      && (nowMs - this.lastAnyRenderAtMs) < PLAN_IMAGE_STREAM_REFRESH_MIN_MS;
+    if (isGlobalCoolingDown) {
+      const elapsed = Math.round((nowMs - this.lastAnyRenderAtMs) / 1000);
+      this.log(`[plan-image] ${slot.cameraId}: skipping render`
+        + ` (global cooldown, ${elapsed}s elapsed)`);
+    }
+    return !isGlobalCoolingDown;
   }
 
   private async getPlanImageForStream(index: number): Promise<ImageBuffer> {
@@ -499,11 +517,19 @@ class PelsInsightsDevice extends Homey.Device {
 
     // Reuse in-flight render work to avoid concurrent stream stampedes for the same slot.
     if (current?.generation) {
+      this.log(`[plan-image] ${slot.cameraId}: stream joining in-flight render`);
       await current.generation;
       return this.planImages[index]?.buffer ?? current.buffer ?? slot.buffer ?? EMPTY_PNG;
     }
 
-    if (this.shouldRefreshPlanImageForStream({ slot, nowMs, key })) {
+    const shouldRefresh = this.shouldRefreshPlanImageForStream({ slot, nowMs });
+    this.log(
+      `[plan-image] ${slot.cameraId}: stream request`
+      + ` shouldRefresh=${shouldRefresh}`
+      + ` cached=${slot.buffer.length > EMPTY_PNG.length}`
+      + ` keyMatch=${slot.lastKey === key}`,
+    );
+    if (shouldRefresh) {
       await this.refreshPlanImage(index);
     }
 

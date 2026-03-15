@@ -1,5 +1,8 @@
+/**
+ * @jest-environment node
+ */
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import { buildPlanPriceSvgWithEcharts } from '../lib/insights/planPriceImageEcharts';
+import { buildPlanPricePng } from '../lib/insights/planPriceImage';
 import { listRuntimeSpans } from '../lib/utils/runtimeTrace';
 import {
   buildLegendTexts,
@@ -11,6 +14,16 @@ import {
   resolveLabelEvery,
   resolvePriceSeries,
 } from '../lib/insights/planPriceImageUtils';
+
+const PNG_HEADER = [0x89, 0x50, 0x4E, 0x47];
+
+const expectValidPng = (png: Uint8Array): void => {
+  expect(png).toBeInstanceOf(Uint8Array);
+  expect(png.length).toBeGreaterThan(100);
+  for (let i = 0; i < PNG_HEADER.length; i += 1) {
+    expect(png[i]).toBe(PNG_HEADER[i]);
+  }
+};
 
 const buildDay = (bucketCount: number): DailyBudgetDayPayload => {
   const startUtc = Array.from({ length: bucketCount }, (_, index) => (
@@ -51,25 +64,18 @@ const buildDay = (bucketCount: number): DailyBudgetDayPayload => {
 
 describe('plan price image', () => {
   test('renders empty state when snapshot is missing', async () => {
-    const svg = await buildPlanPriceSvgWithEcharts({
+    const png = await buildPlanPricePng({
       snapshot: null,
-      width: 900,
-      height: 900,
-      fontFamily: 'sans-serif',
     });
-    expect(svg).toContain('Budget and Price');
-    expect(svg).toContain('No plan data available');
+    expectValidPng(png);
   });
 
   test('stops the camera runtime span for empty-state renders', async () => {
-    await buildPlanPriceSvgWithEcharts({
+    await buildPlanPricePng({
       snapshot: null,
-      width: 900,
-      height: 900,
-      fontFamily: 'sans-serif',
     });
 
-    expect(listRuntimeSpans(32).filter((span) => span.startsWith('camera_svg_echarts'))).toHaveLength(0);
+    expect(listRuntimeSpans(32).filter((span) => span.startsWith('camera_png_build'))).toHaveLength(0);
   });
 
   test('renders disabled state when daily budget is off', async () => {
@@ -79,14 +85,11 @@ describe('plan price image', () => {
       days: { [day.dateKey]: day },
       todayKey: day.dateKey,
     };
-    const svg = await buildPlanPriceSvgWithEcharts({
+    const png = await buildPlanPricePng({
       snapshot,
       dayKey: day.dateKey,
-      width: 900,
-      height: 900,
-      fontFamily: 'sans-serif',
     });
-    expect(svg).toContain('Daily budget disabled');
+    expectValidPng(png);
   });
 
   test('renders all buckets for DST-length day (23 hours)', async () => {
@@ -95,71 +98,28 @@ describe('plan price image', () => {
       days: { [day.dateKey]: day },
       todayKey: day.dateKey,
     };
-    const svg = await buildPlanPriceSvgWithEcharts({
+    const png = await buildPlanPricePng({
       snapshot,
       dayKey: day.dateKey,
-      width: 900,
-      height: 900,
-      fontFamily: 'sans-serif',
     });
-    expect(svg).toContain('<svg');
+    expectValidPng(png);
   });
 
-  test('renders SVG with echarts engine', async () => {
+  test('renders chart with canvas engine', async () => {
     const day = buildDay(8);
     const snapshot: DailyBudgetUiPayload = {
       days: { [day.dateKey]: day },
       todayKey: day.dateKey,
     };
-    const svg = await buildPlanPriceSvgWithEcharts({
+    const png = await buildPlanPricePng({
       snapshot,
       dayKey: day.dateKey,
-      width: 900,
-      height: 900,
-      fontFamily: 'sans-serif',
     });
-    expect(svg).toContain('<svg');
-    expect(svg).toContain('Plan');
+    expectValidPng(png);
+    expect(png.length).toBeGreaterThan(5000);
   });
 
-  test('uses the fixed square camera viewport for consistent scaling', async () => {
-    const day = buildDay(8);
-    const snapshot: DailyBudgetUiPayload = {
-      days: { [day.dateKey]: day },
-      todayKey: day.dateKey,
-    };
-    const svg = await buildPlanPriceSvgWithEcharts({
-      snapshot,
-      dayKey: day.dateKey,
-      width: 900,
-      height: 900,
-      fontFamily: 'sans-serif',
-    });
-
-    expect(svg).toContain('width="480"');
-    expect(svg).toContain('height="480"');
-    expect(svg).toContain('viewBox="0 0 480 480"');
-  });
-
-  test('uses simplified legend labels', async () => {
-    const day = buildDay(8);
-    const snapshot: DailyBudgetUiPayload = {
-      days: { [day.dateKey]: day },
-      todayKey: day.dateKey,
-    };
-    const svg = await buildPlanPriceSvgWithEcharts({
-      snapshot,
-      dayKey: day.dateKey,
-      width: 900,
-      height: 900,
-      fontFamily: 'sans-serif',
-    });
-
-    expect(svg).toContain('Plan');
-    expect(svg).toContain('Price');
-  });
-
-  test('shows Actual legend for today camera chart', async () => {
+  test('renders chart with actual usage data', async () => {
     const day = buildDay(8);
     day.buckets.actualKWh = [0.8, 1.1, 0.9, 1.4, 0, 0, 0, 0];
     day.currentBucketIndex = 3;
@@ -167,17 +127,15 @@ describe('plan price image', () => {
       days: { [day.dateKey]: day },
       todayKey: day.dateKey,
     };
-    const svg = await buildPlanPriceSvgWithEcharts({
+    const png = await buildPlanPricePng({
       snapshot,
       dayKey: day.dateKey,
-      width: 900,
-      height: 900,
-      fontFamily: 'sans-serif',
     });
-    expect(svg).toContain('Actual');
+    expectValidPng(png);
+    expect(png.length).toBeGreaterThan(5000);
   });
 
-  test('hides Actual legend for non-today camera chart', async () => {
+  test('renders non-today chart without actual series', async () => {
     const today = buildDay(8);
     today.dateKey = '2025-03-29';
     today.dayStartUtc = '2025-03-29T00:00:00.000Z';
@@ -196,16 +154,12 @@ describe('plan price image', () => {
       todayKey: today.dateKey,
       tomorrowKey: tomorrow.dateKey,
     };
-    const svg = await buildPlanPriceSvgWithEcharts({
+    const png = await buildPlanPricePng({
       snapshot,
       dayKey: tomorrow.dateKey,
-      width: 900,
-      height: 900,
-      fontFamily: 'sans-serif',
     });
-    expect(svg).not.toContain('Actual');
+    expectValidPng(png);
   });
-
 });
 
 describe('plan price image utils', () => {

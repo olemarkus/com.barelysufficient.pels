@@ -4,26 +4,29 @@ import os from 'node:os';
 import path from 'node:path';
 
 const ROOT = process.cwd();
-const RESVG_PKG = '@resvg/resvg-js-linux-arm64-gnu';
-const RESVG_DIR = path.join(ROOT, 'node_modules', '@resvg', 'resvg-js');
-const TARGET_DIR = path.join(ROOT, 'node_modules', '@resvg', 'resvg-js-linux-arm64-gnu');
+const CANVAS_PKG = '@napi-rs/canvas-linux-arm64-gnu';
+const CANVAS_DIR = path.join(ROOT, 'node_modules', '@napi-rs', 'canvas');
+const TARGET_DIR = path.join(ROOT, 'node_modules', '@napi-rs', 'canvas-linux-arm64-gnu');
 
 if (fs.existsSync(TARGET_DIR)) {
   process.exit(0);
 }
 
-if (!fs.existsSync(RESVG_DIR)) {
-  console.warn('[resvg] @resvg/resvg-js is not installed; skipping arm64 fetch.');
+if (!fs.existsSync(CANVAS_DIR)) {
+  console.warn('[canvas] @napi-rs/canvas is not installed; skipping arm64 fetch.');
   process.exit(0);
 }
 
-const resvgVersion = JSON.parse(fs.readFileSync(path.join(RESVG_DIR, 'package.json'), 'utf8')).version;
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resvg-arm64-'));
+const canvasPkg = JSON.parse(fs.readFileSync(path.join(CANVAS_DIR, 'package.json'), 'utf8'));
+const optDeps = canvasPkg.optionalDependencies || {};
+const version = (optDeps[CANVAS_PKG] || '').replace(/^\^|~/, '') || canvasPkg.version;
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-arm64-'));
 
 try {
   const packOutput = execFileSync(
     'npm',
-    ['pack', `${RESVG_PKG}@${resvgVersion}`],
+    ['pack', `${CANVAS_PKG}@${version}`],
     { cwd: tempDir, encoding: 'utf8' },
   ).trim();
   const tarball = packOutput.split('\n').pop();
@@ -33,11 +36,11 @@ try {
   execFileSync('tar', ['-xzf', tarball], { cwd: tempDir, stdio: 'inherit' });
   const extracted = path.join(tempDir, 'package');
   if (!fs.existsSync(extracted)) {
-    throw new Error('Failed to extract resvg arm64 package.');
+    throw new Error('Failed to extract canvas arm64 package.');
   }
   fs.mkdirSync(path.dirname(TARGET_DIR), { recursive: true });
   fs.cpSync(extracted, TARGET_DIR, { recursive: true });
-  console.log(`[resvg] Installed ${RESVG_PKG}@${resvgVersion} into node_modules.`);
+  console.log(`[canvas] Installed ${CANVAS_PKG}@${version} into node_modules.`);
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

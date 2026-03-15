@@ -198,15 +198,6 @@ export function formatNumber(value: number, digits: number): string {
   return value.toFixed(digits);
 }
 
-export function escapeText(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function pad2(value: number): string {
   return value < 10 ? `0${value}` : String(value);
 }

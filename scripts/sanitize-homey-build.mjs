@@ -15,6 +15,19 @@ await removePath(path.join(homeyBuildDir, 'node_modules', '.bin'));
 await removePath(path.join(homeyBuildDir, 'packages'));
 await removePath(path.join(homeyBuildDir, 'package-lock.json'));
 
+// Remove non-ARM64 @napi-rs/canvas platform binaries (host-only, not needed on Homey).
+const napiRsDir = path.join(homeyBuildDir, 'node_modules', '@napi-rs');
+try {
+  const entries = await fs.readdir(napiRsDir);
+  for (const entry of entries) {
+    if (entry.startsWith('canvas-') && !entry.includes('linux-arm64')) {
+      await removePath(path.join(napiRsDir, entry));
+    }
+  }
+} catch {
+  // @napi-rs dir may not exist in .homeybuild
+}
+
 try {
   const packageJson = JSON.parse(await fs.readFile(homeyBuildPackageJsonPath, 'utf8'));
   delete packageJson.workspaces;
