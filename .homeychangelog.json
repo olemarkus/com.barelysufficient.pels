@@ -205,5 +205,8 @@
   },
   "1.20.2": {
     "en": "Improved drift detection and fixed a few bugs where the app did not respond to drift."
+  },
+  "1.20.3": {
+    "en": "Improved settlements where PELS state and device state may be out of sync due to e.g cloud API latency."
   }
 }
