@@ -10,14 +10,14 @@
     "npm": "10.9.4"
   },
   "scripts": {
-    "build": "npm run ensure:resvg-arm64 && npm run build:echarts-runtime && tsc && npm run build:settings && npm run sanitize:homey-build",
+    "build": "npm run ensure:canvas-arm64 && npm run build:echarts-runtime && tsc && npm run build:settings && npm run sanitize:homey-build",
     "build:echarts-runtime": "node scripts/build-echarts-runtime-bundle.mjs",
     "build:settings": "npm --workspace @pels/settings-ui run build && node scripts/sync-settings-ui.mjs",
     "bench:settings-ui:boot": "node scripts/benchmark-settings-ui-boot.mjs",
     "watch:settings": "npm run build:settings && esbuild packages/settings-ui/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
     "measure:settings-ui:homey": "node scripts/measure-settings-ui-homey.mjs",
-    "start": "npm run build:echarts-runtime && npm run build:settings && homey app run --remote",
-    "install-app": "npm run ensure:resvg-arm64 && npm run build:echarts-runtime && npm run build:settings && homey app install",
+    "start": "npm run ensure:canvas-arm64 && npm run build:echarts-runtime && npm run build:settings && homey app run --remote",
+    "install-app": "npm run ensure:canvas-arm64 && npm run build:echarts-runtime && npm run build:settings && homey app install",
     "lint": "eslint . --max-warnings=0",
     "lint:runtime": "eslint \"app.ts\" \"api.ts\" \"flowCards/**/*.ts\" \"drivers/**/*.ts\" \"lib/**/*.ts\" --max-warnings=0",
     "lint:css": "stylelint \"packages/settings-ui/public/**/*.css\" --max-warnings=0",
@@ -30,7 +30,7 @@
     "test:unit": "jest --config jest.config.fast.cjs",
     "test:unit:ci": "jest --config jest.config.cjs",
     "test:unit:tz": "node scripts/run-timezone-tests.mjs",
-    "test:perf": "jest --config jest.config.perf.cjs",
+    "test:perf": "node --expose-gc ./node_modules/.bin/jest --config jest.config.perf.cjs",
     "ci:checks": "npm run build && npm run lint:css && npm run lint:html && npm run lint:runtime && npm run arch:check && npm run deadcode:check && npm run typecheck:unused && npm run lint",
     "ci:test:runtime": "npm run test:unit:ci && npm run test:unit:tz",
     "ci:test:settings-ui": "npm run test:ui",
@@ -44,7 +44,7 @@
     "test:all": "npm run ci",
     "validate": "homey app validate && npm run package:check",
     "check": "npm run ci",
-    "ensure:resvg-arm64": "node scripts/ensure-resvg-arm64.mjs",
+    "ensure:canvas-arm64": "node scripts/ensure-canvas-arm64.mjs",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -65,7 +65,7 @@
     }
   },
   "dependencies": {
-    "@resvg/resvg-js": "^2.6.2",
+    "@napi-rs/canvas": "^0.1.96",
     "homey-api": "^3.16.0"
   },
   "devDependencies": {

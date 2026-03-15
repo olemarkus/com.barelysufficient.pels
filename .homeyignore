@@ -16,6 +16,11 @@ blob-report/
 .playwright-mcp/
 node_modules/.bin/
 node_modules/@pels/
+node_modules/@napi-rs/canvas-linux-x64-gnu/
+node_modules/@napi-rs/canvas-linux-x64-musl/
+node_modules/@napi-rs/canvas-darwin-x64/
+node_modules/@napi-rs/canvas-darwin-arm64/
+node_modules/@napi-rs/canvas-win32-x64-msvc/
 
 .github/
 .githooks/

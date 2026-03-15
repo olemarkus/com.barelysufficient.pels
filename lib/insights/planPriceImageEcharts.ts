@@ -4,7 +4,6 @@ import {
   buildLegendTexts,
   buildMetaLines,
   buildPriceStats,
-  escapeText,
   formatNumber,
   normalizeSeriesLength,
   resolvePlanIsToday,
@@ -22,6 +21,11 @@ import {
   PLAN_PRICE_VIEWPORT,
 } from './planPriceImageTheme';
 import { buildActualSeries, buildLegendOption } from './planPriceImageEchartsSeries';
+import {
+  createMockDomContainer,
+  initCanvasRuntime as initCanvasRuntimeWithEcharts,
+  renderEmptyPng,
+} from './planPriceImageCanvas';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 
 type BarSeriesOption = Record<string, unknown>;
@@ -29,8 +33,14 @@ type LineSeriesOption = Record<string, unknown>;
 type EChartsOption = Record<string, unknown>;
 type EChartsType = {
   setOption: (option: EChartsOption, opts?: Record<string, unknown>) => void;
-  renderToSVGString: (opts?: { useViewBox?: boolean }) => string;
+  getZr: () => { painter: { getLayers: () => Record<string, { dom: CanvasLike }> } };
   dispose: () => void;
+};
+
+type CanvasLike = {
+  width: number;
+  height: number;
+  toBuffer: (mimeType: 'image/png') => Buffer;
 };
 
 type PlanPriceEchartsParams = {
@@ -42,12 +52,19 @@ type PlanPriceEchartsParams = {
   fontFamily: string;
 };
 
+type EchartsInitOpts = {
+  renderer: 'canvas';
+  width: number;
+  height: number;
+};
+
 type EchartsRuntime = {
   init: (
     dom: HTMLElement | null,
     theme: string | object | null | undefined,
-    opts: { renderer: 'svg'; ssr: true; width: number; height: number },
+    opts: EchartsInitOpts,
   ) => EChartsType;
+  setPlatformAPI: (api: { createCanvas: (w: number, h: number) => unknown }) => void;
 };
 
 let echartsRuntime: EchartsRuntime | null = null;
@@ -88,72 +105,6 @@ const BAR_RADIUS = PLAN_PRICE_LAYOUT.barRadius;
 const DOT_RADIUS = PLAN_PRICE_LAYOUT.dotRadius;
 const Y_AXIS_FONT_SIZE = Math.max(12, FONT_SIZES.axis - 2);
 const TOP_BAR_RADIUS = [BAR_RADIUS, BAR_RADIUS, 0, 0] as [number, number, number, number];
-
-const buildTextMarkup = (params: {
-  x: number;
-  y: number;
-  text: string;
-  size: number;
-  fontFamily: string;
-  weight?: number;
-  fill?: string;
-}) => {
-  const {
-    x,
-    y,
-    text,
-    size,
-    fontFamily,
-    weight = 500,
-    fill = COLORS.text,
-  } = params;
-  return [
-    `<text x="${x}" y="${y}"`,
-    ` font-family="${fontFamily}" font-size="${size}" font-weight="${weight}"`,
-    ` fill="${fill}">`,
-    `${escapeText(text)}</text>`,
-  ].join('');
-};
-
-const buildEmptySvg = (params: {
-  width: number;
-  height: number;
-  fontFamily: string;
-  title: string;
-  subtitle: string;
-}) => {
-  const {
-    width,
-    height,
-    fontFamily,
-    title,
-    subtitle,
-  } = params;
-  return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" `
-      + `viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeText(title)}">`,
-    `<rect width="${width}" height="${height}" fill="${COLORS.background}"/>`,
-    buildTextMarkup({
-      x: PADDING,
-      y: PADDING + 46,
-      text: title,
-      size: FONT_SIZES.title,
-      fontFamily,
-      weight: 600,
-      fill: COLORS.text,
-    }),
-    buildTextMarkup({
-      x: PADDING,
-      y: PADDING + 86,
-      text: subtitle,
-      size: FONT_SIZES.meta,
-      fontFamily,
-      weight: 500,
-      fill: COLORS.muted,
-    }),
-    '</svg>',
-  ].join('');
-};
 
 const buildContext = (params: {
   day: DailyBudgetDayPayload | null;
@@ -466,8 +417,8 @@ const buildChartOption = (params: {
   };
 };
 
-export async function buildPlanPriceSvgWithEcharts(params: PlanPriceEchartsParams): Promise<string> {
-  const stopSpan = startRuntimeSpan('camera_svg_echarts');
+export async function buildPlanPricePngWithCanvas(params: PlanPriceEchartsParams): Promise<Uint8Array> {
+  const stopSpan = startRuntimeSpan('camera_canvas_echarts');
   try {
     const {
       snapshot,
@@ -487,12 +438,17 @@ export async function buildPlanPriceSvgWithEcharts(params: PlanPriceEchartsParam
       const subtitle = day?.budget?.enabled === false
         ? 'Daily budget disabled'
         : 'No plan data available';
-      return buildEmptySvg({
+      return renderEmptyPng({
         width,
         height,
-        fontFamily,
+        background: COLORS.background,
+        textColor: COLORS.text,
+        mutedColor: COLORS.muted,
         title: 'Budget and Price',
         subtitle,
+        titleSize: FONT_SIZES.title,
+        subtitleSize: FONT_SIZES.meta,
+        padding: PADDING,
       });
     }
 
@@ -503,12 +459,14 @@ export async function buildPlanPriceSvgWithEcharts(params: PlanPriceEchartsParam
       plannedKWh,
       bucketCount,
     });
-    const chart = getEchartsRuntime().init(null, null, {
-      renderer: 'svg',
-      ssr: true,
-      width,
-      height,
-    });
+
+    const runtime = getEchartsRuntime();
+    const container = createMockDomContainer(width, height);
+    const chart = runtime.init(
+      container as unknown as HTMLElement,
+      null,
+      { renderer: 'canvas', width, height },
+    );
     try {
       chart.setOption(buildChartOption({
         width,
@@ -519,7 +477,14 @@ export async function buildPlanPriceSvgWithEcharts(params: PlanPriceEchartsParam
         notMerge: true,
         lazyUpdate: false,
       });
-      return chart.renderToSVGString({ useViewBox: true });
+      const layers = chart.getZr().painter.getLayers();
+      const layerKeys = Object.keys(layers);
+      const layer = layers[layerKeys[0]];
+      if (!layer?.dom?.toBuffer) {
+        throw new Error('Canvas layer not available');
+      }
+      const buf = layer.dom.toBuffer('image/png');
+      return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
     } finally {
       chart.dispose();
     }
@@ -527,3 +492,7 @@ export async function buildPlanPriceSvgWithEcharts(params: PlanPriceEchartsParam
     stopSpan();
   }
 }
+
+export const initCanvasRuntime = (): void => {
+  initCanvasRuntimeWithEcharts(getEchartsRuntime());
+};

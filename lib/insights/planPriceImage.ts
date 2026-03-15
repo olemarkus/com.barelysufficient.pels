@@ -1,10 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
+import v8 from 'node:v8';
 import type { CombinedPriceData } from '../dailyBudget/dailyBudgetMath';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import { buildPlanPriceSvgWithEcharts } from './planPriceImageEcharts';
-import { PLAN_PRICE_VIEWPORT } from './planPriceImageTheme';
+import { buildPlanPricePngWithCanvas, initCanvasRuntime } from './planPriceImageEcharts';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 
 type PlanPriceImageParams = {
@@ -15,64 +12,56 @@ type PlanPriceImageParams = {
   height?: number;
 };
 
-const DEFAULT_WIDTH = PLAN_PRICE_VIEWPORT.width;
-const DEFAULT_HEIGHT = PLAN_PRICE_VIEWPORT.height;
+const FONT_FAMILY = 'IBMPlexSans';
 
-const FONT_FILES = resolveFontFiles();
-const DEFAULT_FONT_FAMILY = FONT_FILES.length > 0 ? 'IBM Plex Sans' : 'sans-serif';
-let resvgPromise: Promise<typeof import('@resvg/resvg-js')> | null = null;
+const MB = 1024 * 1024;
 
-export async function buildPlanPricePng(params: PlanPriceImageParams): Promise<Uint8Array> {
-  const stopSpan = startRuntimeSpan('camera_png_build');
-  const width = params.width ?? DEFAULT_WIDTH;
-  const height = params.height ?? DEFAULT_HEIGHT;
+let canvasInitialized = false;
+let renderCount = 0;
+
+const ensureCanvasRuntime = (): void => {
+  if (canvasInitialized) return;
+  initCanvasRuntime();
+  canvasInitialized = true;
+};
+
+const getHeapMb = (): { heapUsed: number; external: number; malloc: number } => {
   try {
-    const svg = await buildPlanPriceSvgWithEcharts({
-      ...params,
-      width,
-      height,
-      fontFamily: DEFAULT_FONT_FAMILY,
-    });
-    return renderSvgToPng(svg, width);
-  } finally {
-    stopSpan();
-  }
-}
-
-const loadResvg = async (): Promise<typeof import('@resvg/resvg-js')> => (
-  resvgPromise ??= import('@resvg/resvg-js')
-);
-
-const renderSvgToPng = async (svg: string, width: number): Promise<Uint8Array> => {
-  const stopSpan = startRuntimeSpan('camera_png_resvg');
-  const { renderAsync } = await loadResvg();
-  const baseOptions = { fitTo: { mode: 'width', value: width } } as const;
-  const fontOptions = {
-    font: {
-      loadSystemFonts: FONT_FILES.length === 0,
-      defaultFontFamily: DEFAULT_FONT_FAMILY,
-      sansSerifFamily: DEFAULT_FONT_FAMILY,
-      ...(FONT_FILES.length > 0 ? { fontFiles: FONT_FILES } : {}),
-    },
-  };
-
-  try {
-    const rendered = await renderAsync(svg, { ...baseOptions, ...fontOptions });
-    return rendered.asPng();
-  } catch (error) {
-    console.warn('Plan image: failed to render with custom fonts, falling back', error);
-    const rendered = await renderAsync(svg, baseOptions);
-    return rendered.asPng();
-  } finally {
-    stopSpan();
+    const h = v8.getHeapStatistics();
+    return {
+      heapUsed: Math.round(h.used_heap_size / MB * 10) / 10,
+      external: Math.round(h.external_memory / MB * 10) / 10,
+      malloc: Math.round(h.malloced_memory / MB * 10) / 10,
+    };
+  } catch {
+    return { heapUsed: -1, external: -1, malloc: -1 };
   }
 };
 
-function resolveFontFiles(): string[] {
-  const baseDir = path.resolve(__dirname, '../../assets/fonts');
-  const fontFiles = [
-    path.join(baseDir, 'IBMPlexSans-Regular.ttf'),
-    path.join(baseDir, 'IBMPlexSans-SemiBold.ttf'),
-  ];
-  return fontFiles.filter((file) => fs.existsSync(file));
+export async function buildPlanPricePng(
+  params: PlanPriceImageParams,
+): Promise<Uint8Array> {
+  const stopSpan = startRuntimeSpan('camera_png_build');
+  const before = getHeapMb();
+  const id = ++renderCount;
+  try {
+    ensureCanvasRuntime();
+    const png = await buildPlanPricePngWithCanvas({
+      ...params,
+      width: params.width ?? 480,
+      height: params.height ?? 480,
+      fontFamily: FONT_FAMILY,
+    });
+    const after = getHeapMb();
+    console.log(
+      `[plan-image] canvas render #${id}`
+      + ` heapUsed=${before.heapUsed}->${after.heapUsed}MB`
+      + ` external=${before.external}->${after.external}MB`
+      + ` malloc=${before.malloc}->${after.malloc}MB`
+      + ` png=${png.length}bytes`,
+    );
+    return png;
+  } finally {
+    stopSpan();
+  }
 }
