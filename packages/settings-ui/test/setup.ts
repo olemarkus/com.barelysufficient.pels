@@ -2,9 +2,10 @@ import https from 'https';
 import { EventEmitter } from 'events';
 
 jest.mock('homey-api', () => ({
-  HomeyAPI: {
-    createAppAPI: jest.fn().mockResolvedValue(null),
-  },
+  HomeyAPI: { createAppAPI: jest.fn().mockResolvedValue(null) },
+}));
+jest.mock('homey-api/lib/HomeyAPI/HomeyAPI', () => ({
+  createAppAPI: jest.fn().mockResolvedValue(null),
 }));
 
 let allowConsoleError = false;

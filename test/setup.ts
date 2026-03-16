@@ -9,6 +9,9 @@ jest.mock('homey-api', () => ({
     createAppAPI: jest.fn().mockResolvedValue(require('./mocks/homey').mockHomeyApiInstance),
   },
 }));
+jest.mock('homey-api/lib/HomeyAPI/HomeyAPI', () => ({
+  createAppAPI: jest.fn().mockResolvedValue(require('./mocks/homey').mockHomeyApiInstance),
+}));
 
 // Flag to temporarily allow console.error in tests that intentionally trigger errors
 let allowConsoleError = false;

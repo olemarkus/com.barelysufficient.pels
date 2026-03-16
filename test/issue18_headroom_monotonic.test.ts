@@ -16,6 +16,14 @@ jest.mock('homey-api', () => ({
         })),
     },
 }));
+jest.mock('homey-api/lib/HomeyAPI/HomeyAPI', () => ({
+    createAppAPI: jest.fn().mockImplementation(() => Promise.resolve({
+        devices: {
+            getDevices: mockGetDevices,
+            setCapabilityValue: mockSetCapabilityValue,
+        },
+    })),
+}));
 
 describe('Issue #18 Reproduction: Expected Power Overlap', () => {
     let deviceManager: DeviceManager;

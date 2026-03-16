@@ -64,7 +64,7 @@ import {
 import type { HomeyApiClient, HomeyApiConstructor } from './deviceManagerApiTypes';
 import { shouldPromoteHomeyApiDebug } from './deviceManagerDebug';
 import type { DeviceFetchSource } from './deviceManagerFetch';
-const { HomeyAPI } = require('homey-api') as { HomeyAPI: HomeyApiConstructor };
+const HomeyAPI = require('homey-api/lib/HomeyAPI/HomeyAPI') as HomeyApiConstructor;
 const MIN_SIGNIFICANT_POWER_W = 5;
 const LOCAL_BINARY_SETTLE_WINDOW_MS = 5 * 1000;
 export const HOMEY_DEVICE_UPDATE_EVENT = 'device.update';
