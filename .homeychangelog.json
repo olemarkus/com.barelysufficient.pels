@@ -211,5 +211,8 @@
   },
   "1.20.4": {
     "en": "Reduce image rendering memory footprint by replacing resvg with canvas."
+  },
+  "1.20.5": {
+    "en": "Reduce memory footprint by imoprting only what we need from Homey SDK"
   }
 }
