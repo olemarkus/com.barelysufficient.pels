@@ -48,10 +48,43 @@ const resolveMemoryMb = (): Record<string, number | string> => {
   }
 };
 
+const resolveHeapSpaces = (): Record<string, string> => {
+  try {
+    return Object.fromEntries(
+      v8.getHeapSpaceStatistics()
+        .filter((s) => s.space_used_size > 0)
+        .map((s) => [s.space_name, `${Math.round(s.space_used_size / 1024)}KB/${Math.round(s.space_size / 1024)}KB`]),
+    );
+  } catch {
+    return {};
+  }
+};
+
+const resolveSmapsSummary = (): Record<string, number> | null => {
+  try {
+    const fs = require('node:fs') as typeof import('node:fs');
+    const rollup = fs.readFileSync('/proc/self/smaps_rollup', 'utf8');
+    const extract = (key: string): number => {
+      const match = rollup.match(new RegExp(`${key}:\\s+(\\d+)`));
+      return match ? Math.round(parseInt(match[1], 10) / 1024) : -1;
+    };
+    return {
+      rssMb: extract('Rss'),
+      pssMb: extract('Pss'),
+      pssAnonMb: extract('Pss_Anon'),
+      pssFileMb: extract('Pss_File'),
+    };
+  } catch {
+    return null;
+  }
+};
+
 const buildWarningPerfPayload = (nowMs: number) => {
   const snapshot = getPerfSnapshot();
   return {
     memory: resolveMemoryMb(),
+    heapSpaces: resolveHeapSpaces(),
+    smaps: resolveSmapsSummary(),
     uptimeSec: Math.round((nowMs - snapshot.startedAt) / 1000),
     counts: {
       planRebuildRequested: snapshot.counts.plan_rebuild_requested_total || 0,

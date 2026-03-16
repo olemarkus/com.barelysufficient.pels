@@ -29,6 +29,21 @@ jest.mock('homey-api', () => ({
         })),
     },
 }));
+jest.mock('homey-api/lib/HomeyAPI/HomeyAPI', () => ({
+    createAppAPI: jest.fn().mockImplementation(() => Promise.resolve({
+        devices: {
+            getDevices: mockGetDevices,
+            setCapabilityValue: mockSetCapabilityValue,
+            connect: mockDevicesConnect,
+            disconnect: mockDevicesDisconnect,
+            on: mockDevicesEmitter.on.bind(mockDevicesEmitter),
+            off: mockDevicesEmitter.off.bind(mockDevicesEmitter),
+        },
+        energy: {
+            getLiveReport: mockGetLiveReport,
+        },
+    })),
+}));
 
 const findSnapshotDevice = <T extends { id: string }>(
     snapshot: T[],
@@ -107,7 +122,7 @@ describe('DeviceManager', () => {
     describe('init', () => {
         it('initializes HomeyAPI when checks pass', async () => {
             await deviceManager.init();
-            expect(require('homey-api').HomeyAPI.createAppAPI).toHaveBeenCalledWith(expect.objectContaining({
+            expect(require('homey-api/lib/HomeyAPI/HomeyAPI').createAppAPI).toHaveBeenCalledWith(expect.objectContaining({
                 homey: homeyMock,
                 debug: expect.any(Function),
             }));
@@ -116,7 +131,7 @@ describe('DeviceManager', () => {
 
         it('promotes error-like HomeyAPI debug entries to error logs', async () => {
             await deviceManager.init();
-            const createAppApiCall = require('homey-api').HomeyAPI.createAppAPI.mock.calls[0]?.[0];
+            const createAppApiCall = require('homey-api/lib/HomeyAPI/HomeyAPI').createAppAPI.mock.calls[0]?.[0];
             const debug = createAppApiCall?.debug as ((...args: unknown[]) => void) | undefined;
 
             debug?.('[HomeyAPIV3Local]', 'SocketIOClient.Namespace[/manager/devices].onConnectError', 'parseuri is not a function');
@@ -131,7 +146,7 @@ describe('DeviceManager', () => {
 
         it('does not promote routine HomeyAPI debug entries', async () => {
             await deviceManager.init();
-            const createAppApiCall = require('homey-api').HomeyAPI.createAppAPI.mock.calls[0]?.[0];
+            const createAppApiCall = require('homey-api/lib/HomeyAPI/HomeyAPI').createAppAPI.mock.calls[0]?.[0];
             const debug = createAppApiCall?.debug as ((...args: unknown[]) => void) | undefined;
 
             debug?.('[HomeyAPIV3Local]', 'SocketIOClient.onConnect');
@@ -146,7 +161,7 @@ describe('DeviceManager', () => {
         it('skips initialization if checks fail', async () => {
             (homeyMock as any).api = undefined;
             await deviceManager.init();
-            expect(require('homey-api').HomeyAPI.createAppAPI).not.toHaveBeenCalled();
+            expect(require('homey-api/lib/HomeyAPI/HomeyAPI').createAppAPI).not.toHaveBeenCalled();
         });
     });
 

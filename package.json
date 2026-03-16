@@ -45,6 +45,8 @@
     "validate": "homey app validate && npm run package:check",
     "check": "npm run ci",
     "ensure:canvas-arm64": "node scripts/ensure-canvas-arm64.mjs",
+    "ensure:canvas-local": "node scripts/ensure-canvas-local.mjs",
+    "start:local": "npm run ensure:canvas-local && npm run build:echarts-runtime && npm run build:settings && homey app run",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -66,6 +68,7 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.96",
+    "@napi-rs/canvas-linux-x64-gnu": "^0.1.96",
     "homey-api": "^3.16.0"
   },
   "devDependencies": {
