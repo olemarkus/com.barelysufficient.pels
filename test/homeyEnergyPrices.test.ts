@@ -7,7 +7,6 @@ import { buildFlowDaySlots } from '../lib/price/flowPriceUtils';
 import {
   isHomeyEnergyApi,
   resolveCurrencyLabel,
-  resolveHomeyEnergyApiFromHomeyApi,
   resolveHomeyEnergyApiFromSdk,
   type HomeyEnergyApi,
   type HomeyEnergyPriceInterval,
@@ -88,9 +87,7 @@ describe('Homey energy price fetch', () => {
     expect(isHomeyEnergyApi(api)).toBe(true);
     expect(isHomeyEnergyApi({})).toBe(false);
     expect(resolveHomeyEnergyApiFromSdk(homey)).toBe(api);
-    expect(resolveHomeyEnergyApiFromHomeyApi({ energy: api })).toBe(api);
     expect(resolveHomeyEnergyApiFromSdk({} as Homey.App['homey'])).toBeNull();
-    expect(resolveHomeyEnergyApiFromHomeyApi(null)).toBeNull();
   });
 
   it('normalizes currency labels', () => {

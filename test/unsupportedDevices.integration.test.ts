@@ -44,6 +44,7 @@ describe('Unsupported device handling', () => {
 
     afterEach(async () => {
         await cleanupApps();
+        jest.restoreAllMocks();
         jest.clearAllTimers();
     });
 
@@ -58,13 +59,9 @@ describe('Unsupported device handling', () => {
         const app = createApp();
         await app.onInit();
 
-        (app as any).deviceManager.homeyApi = {
-            devices: {
-                getDevices: async () => ({
-                    'vent-1': buildVentilationApiDevice(),
-                }),
-            },
-        };
+        jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+            'vent-1': buildVentilationApiDevice(),
+        });
 
         await (app as any).refreshTargetDevicesSnapshot();
 
@@ -93,20 +90,16 @@ describe('Unsupported device handling', () => {
         const app = createApp();
         await app.onInit();
 
-        (app as any).deviceManager.homeyApi = {
-            devices: {
-                getDevices: async () => ({
-                    'vent-1': buildVentilationApiDevice({
-                        energyObj: {
-                            approximation: {
-                                usageOn: 110,
-                                usageOff: 10,
-                            },
-                        },
-                    }),
-                }),
-            },
-        };
+        jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+            'vent-1': buildVentilationApiDevice({
+                energyObj: {
+                    approximation: {
+                        usageOn: 110,
+                        usageOff: 10,
+                    },
+                },
+            }),
+        });
 
         await (app as any).refreshTargetDevicesSnapshot();
 

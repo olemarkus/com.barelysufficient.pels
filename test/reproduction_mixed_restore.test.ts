@@ -1,13 +1,6 @@
 
-import { mockHomeyInstance, mockHomeyApiInstance, setMockDrivers, MockDriver, MockDevice } from './mocks/homey';
-const PelsApp = require('../app');
-
-const createApp = () => {
-    const app = new PelsApp();
-    (app as any).homey = mockHomeyInstance;
-    (app as any).homeyApi = mockHomeyApiInstance;
-    return app;
-};
+import { mockHomeyInstance, setMockDrivers, MockDriver, MockDevice } from './mocks/homey';
+import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Mock Date.now to control time
 const originalDateNow = Date.now;
@@ -90,9 +83,7 @@ describe('Mixed Type Restoration Throttling', () => {
     });
 
     afterEach(async () => {
-        if (app && typeof app.onUninit === 'function') {
-            await app.onUninit();
-        }
+        await cleanupApps();
         app = undefined;
     });
 

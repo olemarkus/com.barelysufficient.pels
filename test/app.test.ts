@@ -2,7 +2,6 @@ import {
   clearMockHomeyApiDeviceListeners,
   emitMockHomeyApiDeviceUpdate,
   mockHomeyInstance,
-  mockHomeyApiInstance,
   setMockDrivers,
   MockDevice,
   MockDriver,
@@ -91,6 +90,7 @@ describe('MyApp initialization', () => {
   afterEach(async () => {
     await cleanupApps();
     jest.clearAllTimers();
+    jest.restoreAllMocks();
   });
 
   it('initializes and creates device snapshot', async () => {
@@ -743,17 +743,24 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const setCapabilitySpy = jest.spyOn(mockHomeyApiInstance.devices, 'setCapabilityValue');
+    const setCapabilitySpy = jest.spyOn(mockHomeyInstance.api, 'put');
     const logSpy = jest.spyOn(app, 'log');
 
+    let fightBackTimer: ReturnType<typeof setTimeout> | null = null;
     const onoffFlow = heater.makeCapabilityInstance('onoff', (value: unknown) => {
       if (value !== false) return;
-      heater.setActualCapabilityValue('onoff', true, {
-        updateActual: true,
-        updateApi: true,
-        emitCapabilityEvent: true,
-        emitDeviceUpdate: false,
-      });
+      // Async fight-back: device resists being turned off, but the response
+      // arrives after the DeviceManager's setCapability returns so the
+      // device.update realtime event can overwrite the local snapshot.
+      fightBackTimer = setTimeout(() => {
+        heater.setActualCapabilityValue('onoff', true, {
+          updateActual: true,
+          updateApi: true,
+          emitCapabilityEvent: true,
+          emitDeviceUpdate: true,
+        });
+        fightBackTimer = null;
+      }, 10);
     });
 
     try {
@@ -771,10 +778,9 @@ describe('MyApp initialization', () => {
       });
       await new Promise((resolve) => setTimeout(resolve, REALTIME_DEVICE_RECONCILE_SETTLE_WAIT_MS));
 
-      const targetWritesBeforeShedding = setCapabilitySpy.mock.calls.filter(([args]) => (
-        args?.deviceId === 'dev-1'
-        && args?.capabilityId === 'target_temperature'
-        && args?.value === 23
+      const targetWritesBeforeShedding = setCapabilitySpy.mock.calls.filter(([path, body]) => (
+        path === 'manager/devices/device/dev-1/capability/target_temperature'
+        && body?.value === 23
       )).length;
       expect(targetWritesBeforeShedding).toBe(0);
       expect(logSpy.mock.calls.some(
@@ -788,20 +794,14 @@ describe('MyApp initialization', () => {
       }
 
       await (app as any).recordPowerSample(1000);
-      await waitFor(() => setCapabilitySpy.mock.calls.filter(([args]) => (
-        args?.deviceId === 'dev-1'
-        && args?.capabilityId === 'onoff'
-        && args?.value === false
+      await waitFor(() => setCapabilitySpy.mock.calls.filter(([path, body]) => (
+        path === 'manager/devices/device/dev-1/capability/onoff'
+        && body?.value === false
       )).length >= 1, 5000);
-      await waitFor(() => (
-        (app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')
-          ?.currentOn === true
-      ), 5000);
 
-      const targetWritesAfterShedding = setCapabilitySpy.mock.calls.filter(([args]) => (
-        args?.deviceId === 'dev-1'
-        && args?.capabilityId === 'target_temperature'
-        && args?.value === 23
+      const targetWritesAfterShedding = setCapabilitySpy.mock.calls.filter(([path, body]) => (
+        path === 'manager/devices/device/dev-1/capability/target_temperature'
+        && body?.value === 23
       )).length;
       expect(targetWritesAfterShedding).toBe(targetWritesBeforeShedding);
       expect((app as any).planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
@@ -812,6 +812,7 @@ describe('MyApp initialization', () => {
     } finally {
       setCapabilitySpy.mockRestore();
       logSpy.mockRestore();
+      if (fightBackTimer) clearTimeout(fightBackTimer);
       onoffFlow.destroy();
     }
   });
@@ -953,41 +954,17 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    // Inject mock homeyApi (override both app and device manager instances)
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'dev-1': {
-            id: 'dev-1',
-            name: 'Heater',
-            class: 'heater',
-            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-            capabilitiesObj: {
-              measure_power: { value: 1200, id: 'measure_power' },
-              measure_temperature: { value: 21, id: 'measure_temperature' },
-              target_temperature: { value: 20, id: 'target_temperature' },
-              onoff: { value: true, id: 'onoff' },
-            },
-            settings: {},
-          },
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
-    await waitFor(() => setCapSpy.mock.calls.length > 0);
+    await waitFor(() => putSpy.mock.calls.length > 0);
 
     // Verify setCapabilityValue was called to apply the target
-    expect(setCapSpy).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'target_temperature',
-      value: 16,
-    });
+    expect(putSpy).toHaveBeenCalledWith(
+      'manager/devices/device/dev-1/capability/target_temperature',
+      { value: 16 },
+    );
   });
 
   it('does not apply device targets when operating_mode changes in dry run', async () => {
@@ -1003,36 +980,13 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    // Inject mock homeyApi to observe any attempts to set capability
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'dev-1': {
-            id: 'dev-1',
-            name: 'Heater',
-            class: 'heater',
-            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-            capabilitiesObj: {
-              measure_power: { value: 1200, id: 'measure_power' },
-              measure_temperature: { value: 21, id: 'measure_temperature' },
-              target_temperature: { value: 20, id: 'target_temperature' },
-              onoff: { value: true, id: 'onoff' },
-            },
-            settings: {},
-          },
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     // Changing the operating_mode setting should not apply targets in dry run
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Away');
     await flushPromises();
 
-    expect(setCapSpy).not.toHaveBeenCalled();
+    expect(putSpy).not.toHaveBeenCalled();
   });
 
   it('does not reapply mode target when device is already at target', async () => {
@@ -1049,30 +1003,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const setCapSpy = jest.fn().mockImplementation(async (args) => {
-      if (args.deviceId === 'dev-1' && args.capabilityId === 'target_temperature') {
-        await heater.setCapabilityValue('target_temperature', args.value);
-      }
-    });
-    (app as any).homeyApi = {
-      devices: {
-        setCapabilityValue: setCapSpy,
-        getDevices: async () => ({
-          'dev-1': {
-            id: 'dev-1',
-            name: 'Heater',
-            class: 'heater',
-            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-            capabilitiesObj: {
-              measure_power: { value: 1200, id: 'measure_power' },
-              measure_temperature: { value: 21, id: 'measure_temperature' },
-              target_temperature: { value: await heater.getCapabilityValue('target_temperature') },
-              onoff: { value: await heater.getCapabilityValue('onoff') },
-            },
-          },
-        }),
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([
       {
@@ -1088,7 +1019,7 @@ describe('MyApp initialization', () => {
     (app as any).planService.rebuildPlanFromCache();
     await flushPromises();
 
-    expect(setCapSpy).not.toHaveBeenCalled();
+    expect(putSpy).not.toHaveBeenCalled();
   });
 
   it('does not spam target writes when the device accepts the write but Homey snapshot data stays stale', async () => {
@@ -1109,35 +1040,11 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    let staleHomeyTarget = 18;
-    const setCapSpy = jest.fn().mockImplementation(async (args) => {
-      if (args.deviceId === 'dev-1' && args.capabilityId === 'target_temperature') {
-        await heater.setCapabilityValue('target_temperature', args.value);
-      }
+    // Configure target_temperature to accept API writes but keep API-visible value stale
+    heater.configureCapabilityBehavior('target_temperature', {
+      onApiWrite: { accept: true, updateActual: true, updateApi: false },
     });
-    const getDeviceRecord = async () => ({
-      id: 'dev-1',
-      name: 'Heater',
-      class: 'heater',
-      capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-      capabilitiesObj: {
-        measure_power: { value: 1200, id: 'measure_power' },
-        measure_temperature: { value: 21, id: 'measure_temperature' },
-        target_temperature: { value: staleHomeyTarget, id: 'target_temperature' },
-        onoff: { value: true, id: 'onoff' },
-      },
-      settings: {},
-    });
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'dev-1': await getDeviceRecord(),
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
     (app as any).modeDeviceTargets = { Home: { 'dev-1': 20 } };
 
     const nowSpy = jest.spyOn(Date, 'now');
@@ -1146,19 +1053,18 @@ describe('MyApp initialization', () => {
       nowSpy.mockReturnValue(baseNow);
 
       await (app as any).planService.rebuildPlanFromCache();
-      expect(setCapSpy).toHaveBeenCalledTimes(1);
-      expect(setCapSpy).toHaveBeenLastCalledWith({
-        deviceId: 'dev-1',
-        capabilityId: 'target_temperature',
-        value: 20,
-      });
-      expect(await heater.getCapabilityValue('target_temperature')).toBe(20);
+      expect(putSpy).toHaveBeenCalledTimes(1);
+      expect(putSpy).toHaveBeenLastCalledWith(
+        'manager/devices/device/dev-1/capability/target_temperature',
+        { value: 20 },
+      );
+      expect(heater.getActualCapabilityValue('target_temperature')).toBe(20);
 
       nowSpy.mockReturnValue(baseNow + 1_000);
       await (app as any).refreshTargetDevicesSnapshot();
       await (app as any).planService.rebuildPlanFromCache();
 
-      expect(setCapSpy).toHaveBeenCalledTimes(1);
+      expect(putSpy).toHaveBeenCalledTimes(1);
       expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
         targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
       });
@@ -1175,14 +1081,15 @@ describe('MyApp initialization', () => {
       nowSpy.mockReturnValue(baseNow + TARGET_COMMAND_RETRY_DELAYS_MS[0] + 5);
       await (app as any).refreshTargetDevicesSnapshot();
       await (app as any).planService.rebuildPlanFromCache();
-      expect(setCapSpy).toHaveBeenCalledTimes(1);
+      expect(putSpy).toHaveBeenCalledTimes(1);
 
-      staleHomeyTarget = 20;
+      // Simulate the API snapshot catching up to the actual value
+      heater.syncActualToApi('target_temperature');
       nowSpy.mockReturnValue(baseNow + TARGET_COMMAND_RETRY_DELAYS_MS[0] + 10);
       await (app as any).refreshTargetDevicesSnapshot();
       await (app as any).planService.rebuildPlanFromCache();
 
-      expect(setCapSpy).toHaveBeenCalledTimes(1);
+      expect(putSpy).toHaveBeenCalledTimes(1);
       expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
         targets: [expect.objectContaining({ id: 'target_temperature', value: 20 })],
       });
@@ -1227,12 +1134,8 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    (app as any).deviceManager.handleRealtimeCapabilityUpdate(
-      'dev-1',
-      'Heater',
-      'target_temperature',
-      26.5,
-    );
+    heater.setApiCapabilityValue('target_temperature', 26.5);
+    heater.emitDeviceUpdate();
     await waitFor(() => (
       (app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')
         ?.targets?.[0]?.value === 26.5
@@ -1270,29 +1173,7 @@ describe('MyApp initialization', () => {
     // Simulate drift away from the target
     await heater.setCapabilityValue('target_temperature', 21);
 
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'dev-1': {
-            id: 'dev-1',
-            name: 'Heater',
-            class: 'heater',
-            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
-            capabilitiesObj: {
-              measure_power: { value: 1200, id: 'measure_power' },
-              measure_temperature: { value: 21, id: 'measure_temperature' },
-              target_temperature: { value: await heater.getCapabilityValue('target_temperature'), id: 'target_temperature' },
-              onoff: { value: await heater.getCapabilityValue('onoff'), id: 'onoff' },
-            },
-            settings: {},
-          },
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Home' });
@@ -1300,7 +1181,7 @@ describe('MyApp initialization', () => {
     jest.runOnlyPendingTimers();
     await flushPromises();
 
-    expect(setCapSpy).not.toHaveBeenCalled();
+    expect(putSpy).not.toHaveBeenCalled();
   });
 
   it('handles mode rename without losing settings or leaving dangling entries', async () => {

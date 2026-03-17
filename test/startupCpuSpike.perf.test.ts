@@ -3,7 +3,6 @@ import { getPerfSnapshot, type PerfSnapshot } from '../lib/utils/perfCounters';
 import {
   MockDevice,
   MockDriver,
-  mockHomeyApiInstance,
   mockHomeyInstance,
   setMockDrivers,
 } from './mocks/homey';
@@ -196,7 +195,7 @@ describe('startup cpu spike perf reproduction', () => {
   }, 60_000);
 
   it('skips live power fetch during startup bootstrap snapshot', async () => {
-    const energyApi = mockHomeyApiInstance.energy as {
+    const energyApi = mockHomeyInstance.api.energy as {
       getLiveReport?: (args: unknown) => Promise<unknown>;
     };
     const originalGetLiveReport = energyApi.getLiveReport;

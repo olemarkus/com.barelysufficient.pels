@@ -64,12 +64,6 @@ export const resolveHomeyEnergyApiFromSdk = (homey: Homey.App['homey']): HomeyEn
   return isHomeyEnergyApi(energyApi) ? energyApi : null;
 };
 
-export const resolveHomeyEnergyApiFromHomeyApi = (client: unknown): HomeyEnergyApi | null => {
-  if (!isRecord(client)) return null;
-  const energyApi = client.energy;
-  return isHomeyEnergyApi(energyApi) ? energyApi : null;
-};
-
 export const resolveCurrencyLabel = (value: unknown): string | null => {
   if (typeof value === 'string') {
     const trimmed = value.trim();

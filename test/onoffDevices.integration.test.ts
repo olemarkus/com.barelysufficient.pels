@@ -65,11 +65,13 @@ describe('On/off device integration', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+    delete (mockHomeyInstance.api.energy as any).getLiveReport;
     jest.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
+    jest.restoreAllMocks();
     jest.clearAllTimers();
   });
 
@@ -113,17 +115,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({ onoff: true, measurePower: 0 }),
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
+    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Home' });
@@ -137,15 +129,11 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-          }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+      }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -160,21 +148,17 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-            energyObj: {
-              approximation: {
-                usageOn: 110,
-                usageOff: 10,
-              },
-            },
-          }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+        energyObj: {
+          approximation: {
+            usageOn: 110,
+            usageOff: 10,
+          },
+        },
+      }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -200,24 +184,20 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-            onoff: false,
-            settings: {
-              energy_value_on: 12.5,
-              energy_value_off: 0,
-            },
-            energyObj: {
-              W: 0,
-              approximation: null,
-            },
-          }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+        onoff: false,
+        settings: {
+          energy_value_on: 12.5,
+          energy_value_off: 0,
+        },
+        energyObj: {
+          W: 0,
+          approximation: null,
+        },
+      }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -243,26 +223,20 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-          }),
-        }),
-      },
-      energy: {
-        getLiveReport: async () => ({
-          items: [
-            {
-              type: 'device',
-              id: 'device-a',
-              values: { W: 125 },
-            },
-          ],
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+      }),
+    });
+    (mockHomeyInstance.api.energy as any).getLiveReport = async () => ({
+      items: [
+        {
+          type: 'device',
+          id: 'device-a',
+          values: { W: 125 },
+        },
+      ],
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -288,20 +262,16 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-            onoff: true,
-            energyObj: {
-              W: 0.125,
-              approximation: null,
-            },
-          }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+        onoff: true,
+        energyObj: {
+          W: 0.125,
+          approximation: null,
+        },
+      }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -327,20 +297,16 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-            onoff: false,
-            energyObj: {
-              W: 0.125,
-              approximation: null,
-            },
-          }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+        onoff: false,
+        energyObj: {
+          W: 0.125,
+          approximation: null,
+        },
+      }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -362,21 +328,17 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-            onoff: true,
-            energyObj: {
-              approximation: {
-                usageConstant: 350,
-              },
-            },
-          }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+        onoff: true,
+        energyObj: {
+          approximation: {
+            usageConstant: 350,
+          },
+        },
+      }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -401,20 +363,16 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-            onoff: false,
-            energyObj: {
-              W: 0,
-              approximation: null,
-            },
-          }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+        onoff: false,
+        energyObj: {
+          W: 0,
+          approximation: null,
+        },
+      }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -442,36 +400,28 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-            onoff: false,
-            energyObj: {
-              W: 0,
-              approximation: null,
-            },
-          }),
-        }),
-      },
-    };
+    const apiGetSpy = jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+        onoff: false,
+        energyObj: {
+          W: 0,
+          approximation: null,
+        },
+      }),
+    });
     await (app as any).refreshTargetDevicesSnapshot();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['onoff'],
-            onoff: true,
-            energyObj: {
-              W: 0.125,
-              approximation: null,
-            },
-          }),
-        }),
-      },
-    };
+    apiGetSpy.mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+        onoff: true,
+        energyObj: {
+          W: 0.125,
+          approximation: null,
+        },
+      }),
+    });
     await (app as any).refreshTargetDevicesSnapshot();
     await flushPromises();
     await flushPromises();
@@ -502,42 +452,36 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': {
-            ...buildOnOffApiDevice({
-              class: 'socket',
-              virtualClass: 'light',
-              capabilities: ['onoff', 'dim', 'light_temperature', 'light_hue', 'light_saturation', 'light_mode'],
-              onoff: false,
-            }),
-            capabilitiesObj: {
-              onoff: { id: 'onoff', value: false },
-              dim: { id: 'dim', value: 0.01 },
-              light_temperature: { id: 'light_temperature', value: 1 },
-              light_hue: { id: 'light_hue', value: 0.14 },
-              light_saturation: { id: 'light_saturation', value: 0.68 },
-              light_mode: { id: 'light_mode', value: 'temperature' },
-            },
-            energy: null,
-            energyObj: {
-              W: 0,
-              approximation: null,
-            },
-          },
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': {
+        ...buildOnOffApiDevice({
+          class: 'socket',
+          virtualClass: 'light',
+          capabilities: ['onoff', 'dim', 'light_temperature', 'light_hue', 'light_saturation', 'light_mode'],
+          onoff: false,
         }),
+        capabilitiesObj: {
+          onoff: { id: 'onoff', value: false },
+          dim: { id: 'dim', value: 0.01 },
+          light_temperature: { id: 'light_temperature', value: 1 },
+          light_hue: { id: 'light_hue', value: 0.14 },
+          light_saturation: { id: 'light_saturation', value: 0.68 },
+          light_mode: { id: 'light_mode', value: 'temperature' },
+        },
+        energy: null,
+        energyObj: {
+          W: 0,
+          approximation: null,
+        },
       },
-      energy: {
-        getLiveReport: async () => ({
-          zoneId: 'zone-1',
-          items: [
-            { type: 'zone', id: 'z1', values: { W: 10 } },
-            { type: 'device', id: 'some-other-device', values: { W: 0 } },
-          ],
-        }),
-      },
-    };
+    });
+    (mockHomeyInstance.api.energy as any).getLiveReport = async () => ({
+      zoneId: 'zone-1',
+      items: [
+        { type: 'zone', id: 'z1', values: { W: 10 } },
+        { type: 'device', id: 'some-other-device', values: { W: 0 } },
+      ],
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
     await flushPromises();
@@ -568,15 +512,11 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            capabilities: ['measure_power'],
-          }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['measure_power'],
+      }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -589,15 +529,11 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': buildOnOffApiDevice({
-            class: 'light',
-          }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        class: 'light',
+      }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -610,19 +546,15 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'device-a': {
-            ...buildOnOffApiDevice({
-              class: '',
-              virtualClass: 'socket',
-            }),
-            class: undefined,
-          },
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': {
+        ...buildOnOffApiDevice({
+          class: '',
+          virtualClass: 'socket',
         }),
+        class: undefined,
       },
-    };
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -645,12 +577,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: setCapSpy,
-      },
-    };
+    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).computeDynamicSoftLimit = () => 1;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
@@ -661,11 +588,10 @@ describe('On/off device integration', () => {
     jest.advanceTimersByTime(100);
     await flushPromises();
 
-    expect(setCapSpy).toHaveBeenCalledWith({
-      deviceId: 'device-a',
-      capabilityId: 'onoff',
-      value: false,
-    });
+    expect(setCapSpy).toHaveBeenCalledWith(
+      'manager/devices/device/device-a/capability/onoff',
+      { value: false },
+    );
   });
 
   it('never uses set_temperature shed action without target_temperature', async () => {

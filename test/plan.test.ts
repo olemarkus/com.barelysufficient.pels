@@ -7,7 +7,6 @@ import {
   MockDevice,
   MockDriver,
   setAutoEnableMockDevices,
-  mockHomeyApiInstance,
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
@@ -568,7 +567,6 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).deviceManager.homeyApi = mockHomeyApiInstance;
     (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
 
     (app as any).deviceManager.setSnapshotForTests([
@@ -604,7 +602,6 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).deviceManager.homeyApi = mockHomeyApiInstance;
 
     (app as any).deviceManager.setSnapshotForTests([
       {
@@ -639,7 +636,6 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).deviceManager.homeyApi = mockHomeyApiInstance;
     (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
 
     (app as any).deviceManager.setSnapshotForTests([
@@ -1082,19 +1078,13 @@ describe('Device plan snapshot', () => {
       ],
     };
 
-    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: mockSetCapability,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).applyPlanActions(plan);
-    expect(mockSetCapability).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-    });
+    expect(putSpy).toHaveBeenCalledWith(
+      'manager/devices/device/dev-1/capability/onoff',
+      { value: true },
+    );
   });
 
   it('keeps planned state as shed when headroom is below device need even after turn-off', async () => {
@@ -1378,13 +1368,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Inject mock homeyApi for the test
-    const mockHomeyApi = {
-      devices: {
-        setCapabilityValue: jest.fn().mockResolvedValue(undefined),
-      },
-    };
-    (app as any).deviceManager.homeyApi = mockHomeyApi;
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     // Keep an onoff-capable snapshot entry so turn_off is attempted, then force a second attempt.
     (app as any).deviceManager.setSnapshotForTests([{
@@ -1408,7 +1392,7 @@ describe('Device plan snapshot', () => {
     }]);
     await (app as any).applySheddingToDevice('dev-1', 'Heater A');
 
-    expect(mockHomeyApi.devices.setCapabilityValue).toHaveBeenCalledTimes(1);
+    expect(putSpy).toHaveBeenCalledTimes(1);
   });
 
   it('records shed timestamp and skips turn_off for devices without onoff and temperature target', async () => {
@@ -1418,12 +1402,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const mockHomeyApi = {
-      devices: {
-        setCapabilityValue: jest.fn().mockResolvedValue(undefined),
-      },
-    };
-    (app as any).deviceManager.homeyApi = mockHomeyApi;
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-1',
@@ -1437,7 +1416,7 @@ describe('Device plan snapshot', () => {
     const before = (app as any).planEngine.state.lastDeviceShedMs['dev-1'];
     await (app as any).applySheddingToDevice('dev-1', 'No On/Off Device');
 
-    expect(mockHomeyApi.devices.setCapabilityValue).not.toHaveBeenCalled();
+    expect(putSpy).not.toHaveBeenCalled();
     const after = (app as any).planEngine.state.lastDeviceShedMs['dev-1'];
     expect(typeof after).toBe('number');
     if (typeof before === 'number') {
@@ -1488,13 +1467,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Inject mock homeyApi for the test
-    const mockHomeyApi = {
-      devices: {
-        setCapabilityValue: jest.fn().mockResolvedValue(undefined),
-      },
-    };
-    (app as any).deviceManager.homeyApi = mockHomeyApi;
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     // Force a low soft limit so the device must be shed.
     (app as any).computeDynamicSoftLimit = () => 1;
@@ -1510,7 +1483,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(5000);
     await flushPromises();
 
-    expect(mockHomeyApi.devices.setCapabilityValue).toHaveBeenCalledTimes(1);
+    expect(putSpy).toHaveBeenCalledTimes(1);
   });
 
   it('uses settings.load as power when measure_power is zero', async () => {
@@ -1778,12 +1751,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.isSheddingActive = () => false;
     }
 
-    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: mockSetCapability,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     const plan = {
       devices: [
@@ -1802,11 +1770,10 @@ describe('Device plan snapshot', () => {
 
     await (app as any).applyPlanActions(plan);
 
-    expect(mockSetCapability).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-    });
+    expect(putSpy).toHaveBeenCalledWith(
+      'manager/devices/device/dev-1/capability/onoff',
+      { value: true },
+    );
   });
 
   it('restores when plan says keep even while in shortfall state', async () => {
@@ -1833,12 +1800,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.isInShortfall = () => true; // still in shortfall, waiting for sustained period
     }
 
-    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: mockSetCapability,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     const plan = {
       devices: [
@@ -1857,11 +1819,10 @@ describe('Device plan snapshot', () => {
 
     await (app as any).applyPlanActions(plan);
 
-    expect(mockSetCapability).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-    });
+    expect(putSpy).toHaveBeenCalledWith(
+      'manager/devices/device/dev-1/capability/onoff',
+      { value: true },
+    );
   });
 
   it('uses settings.load as fallback power when device is off', async () => {
@@ -1924,13 +1885,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Inject mock homeyApi
-    const setSpy = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: setSpy,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     // Force very low soft limit
     (app as any).computeDynamicSoftLimit = () => 1;
@@ -1943,11 +1898,10 @@ describe('Device plan snapshot', () => {
     await flushPromises();
 
     // Verify the device was turned off
-    expect(setSpy).toHaveBeenCalledWith({
-      deviceId: 'hoiax-1',
-      capabilityId: 'onoff',
-      value: false,
-    });
+    expect(putSpy).toHaveBeenCalledWith(
+      'manager/devices/device/hoiax-1/capability/onoff',
+      { value: false },
+    );
   });
 
   it('applies mode target temperature to Hoiax water heater', async () => {
@@ -1968,28 +1922,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Inject mock homeyApi
-    const setSpy = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'hoiax-1': {
-            id: 'hoiax-1',
-            name: 'Connected 300',
-            class: 'heater',
-            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff', 'max_power_3000'],
-            capabilitiesObj: {
-              measure_power: { value: 3000, id: 'measure_power' },
-              measure_temperature: { value: 55, id: 'measure_temperature' },
-              target_temperature: { value: 65, id: 'target_temperature' },
-              onoff: { value: true, id: 'onoff' },
-            },
-            settings: {},
-          },
-        }),
-        setCapabilityValue: setSpy,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     // Trigger mode change via flow card
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
@@ -2010,11 +1943,10 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'hoiax-1');
     expect(devPlan?.plannedTarget).toBe(45);
 
-    expect(setSpy).toHaveBeenCalledWith({
-      deviceId: 'hoiax-1',
-      capabilityId: 'target_temperature',
-      value: 45,
-    });
+    expect(putSpy).toHaveBeenCalledWith(
+      'manager/devices/device/hoiax-1/capability/target_temperature',
+      { value: 45 },
+    );
   });
 
   it('swaps low-priority ON device with high-priority OFF device when headroom is insufficient', async () => {
@@ -2493,12 +2425,8 @@ describe('Device plan snapshot', () => {
 
     const errorSpy = jest.spyOn(Object.getPrototypeOf(app), 'error').mockImplementation(() => { });
 
-    // Mock HomeyAPI to simulate timeout (shedding fails)
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: jest.fn().mockRejectedValue(new Error('Timeout after 10000ms')),
-      },
-    };
+    // Mock api.put to simulate timeout (shedding fails)
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put').mockRejectedValue(new Error('Timeout after 10000ms'));
 
     // Capture log calls
     const logCalls: string[] = [];
@@ -2529,6 +2457,7 @@ describe('Device plan snapshot', () => {
     // BUG: Without the fix, this would be 1 (re-planning the same swap)
     // With the fix, this should be 0 (swap already pending)
     expect(swapApprovedAfterSecond).toBe(0);
+    putSpy.mockRestore();
     errorSpy.mockRestore();
   });
 
@@ -3181,16 +3110,11 @@ describe('Dry run mode', () => {
     expect(dev1Plan.plannedState).toBe('shed');
     expect(dev1Plan.reason).toContain('shortfall');
 
-    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: mockSetCapability,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).applyPlanActions(plan);
 
-    expect(mockSetCapability).not.toHaveBeenCalled();
+    expect(putSpy).not.toHaveBeenCalled();
   });
 
   it('should restore device when headroom is sufficient even if device power exceeds 50% of headroom', async () => {
@@ -3243,12 +3167,7 @@ describe('Dry run mode', () => {
     expect(dev1Plan.reason).toContain('restore'); // Plan says "restore"
 
     // Now try to apply the plan
-    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: mockSetCapability,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).applyPlanActions(plan);
 
@@ -3257,8 +3176,8 @@ describe('Dry run mode', () => {
     // - Device needs: 1.3 kW (+ buffers ~1.6 kW)
     // - 2.2 > 1.6, so there's enough headroom
     // But the 50% budget (1.1 kW) blocks it because 1.3 > 1.1
-    const restoreCall = mockSetCapability.mock.calls.find(
-      (call: any) => call[0].deviceId === 'dev-1' && call[0].capabilityId === 'onoff' && call[0].value === true,
+    const restoreCall = putSpy.mock.calls.find(
+      (call: any) => call[0] === 'manager/devices/device/dev-1/capability/onoff' && call[1]?.value === true,
     );
 
     // This SHOULD pass but will FAIL due to the 50% budget bug
@@ -3292,7 +3211,7 @@ describe('Dry run mode', () => {
     (app as any).planEngine.state.lastOvershootMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
-    const setCapabilitySpy = jest.spyOn(mockHomeyApiInstance.devices, 'setCapabilityValue');
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).recordPowerSample(1000); // 1.0 kW total -> headroom 1.25 kW
 
@@ -3300,11 +3219,10 @@ describe('Dry run mode', () => {
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
 
-    expect(setCapabilitySpy).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-    });
+    expect(putSpy).toHaveBeenCalledWith(
+      'manager/devices/device/dev-1/capability/onoff',
+      { value: true },
+    );
   });
 
 
@@ -3551,12 +3469,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: mockSetCapability,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-1',
@@ -3585,7 +3498,7 @@ describe('Dry run mode', () => {
 
     await (app as any).applyPlanActions(plan);
 
-    expect(mockSetCapability).not.toHaveBeenCalled();
+    expect(putSpy).not.toHaveBeenCalled();
   });
 
   it('skips target updates for unavailable devices and continues with available devices', async () => {
@@ -3595,12 +3508,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: mockSetCapability,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-unavailable',
@@ -3645,12 +3553,11 @@ describe('Dry run mode', () => {
 
     await (app as any).applyPlanActions(plan);
 
-    expect(mockSetCapability).toHaveBeenCalledTimes(1);
-    expect(mockSetCapability).toHaveBeenCalledWith({
-      deviceId: 'dev-available',
-      capabilityId: 'target_temperature',
-      value: 20,
-    });
+    expect(putSpy).toHaveBeenCalledTimes(1);
+    expect(putSpy).toHaveBeenCalledWith(
+      'manager/devices/device/dev-available/capability/target_temperature',
+      { value: 20 },
+    );
   });
 
   it('skips shed-temperature actions for unavailable devices and continues with available devices', async () => {
@@ -3660,12 +3567,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    const mockSetCapability = jest.fn().mockResolvedValue(undefined);
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        setCapabilityValue: mockSetCapability,
-      },
-    };
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-unavailable',
@@ -3712,12 +3614,11 @@ describe('Dry run mode', () => {
 
     await (app as any).applyPlanActions(plan);
 
-    expect(mockSetCapability).toHaveBeenCalledTimes(1);
-    expect(mockSetCapability).toHaveBeenCalledWith({
-      deviceId: 'dev-available',
-      capabilityId: 'target_temperature',
-      value: 12,
-    });
+    expect(putSpy).toHaveBeenCalledTimes(1);
+    expect(putSpy).toHaveBeenCalledWith(
+      'manager/devices/device/dev-available/capability/target_temperature',
+      { value: 12 },
+    );
   });
 
   it('continues applying actions after a shed callback throws a 500 error', async () => {

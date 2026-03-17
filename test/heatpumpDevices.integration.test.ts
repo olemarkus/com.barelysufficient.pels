@@ -1,6 +1,5 @@
 import {
     mockHomeyInstance,
-    mockHomeyApiInstance,
     setMockDrivers,
     MockDevice,
     MockDriver,
@@ -148,23 +147,16 @@ describe('Heatpump device integration', () => {
         mockHomeyInstance.settings.set('controllable_devices', { 'heatpump-a': true });
         mockHomeyInstance.settings.set('managed_devices', { 'heatpump-a': true });
 
-        const originalSetCapabilityValue = mockHomeyApiInstance.devices.setCapabilityValue;
         const app = createApp();
-        const setCapSpy = jest
-            .spyOn(mockHomeyApiInstance.devices, 'setCapabilityValue')
-            .mockImplementation(async (args) => originalSetCapabilityValue(args));
-        try {
-            await app.onInit();
-            await flushPromises();
+        const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+        await app.onInit();
+        await flushPromises();
 
-            expect(setCapSpy).toHaveBeenCalledWith({
-                deviceId: 'heatpump-a',
-                capabilityId: 'target_temperature',
-                value: 20,
-            });
-        } finally {
-            setCapSpy.mockRestore();
-        }
+        expect(setCapSpy).toHaveBeenCalledWith(
+            'manager/devices/device/heatpump-a/capability/target_temperature',
+            { value: 20 },
+        );
+        setCapSpy.mockRestore();
     });
 
     it('sheds a heatpump device by adjusting target_temperature when headroom is insufficient', async () => {
@@ -185,12 +177,7 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        const setCapSpy = jest.fn().mockResolvedValue(undefined);
-        (app as any).deviceManager.homeyApi = {
-            devices: {
-                setCapabilityValue: setCapSpy,
-            },
-        };
+        const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
         (app as any).computeDynamicSoftLimit = () => 1;
         if ((app as any).capacityGuard?.setSoftLimitProvider) {
@@ -201,11 +188,10 @@ describe('Heatpump device integration', () => {
         jest.advanceTimersByTime(100);
         await flushPromises();
 
-        expect(setCapSpy).toHaveBeenCalledWith({
-            deviceId: 'heatpump-a',
-            capabilityId: 'target_temperature',
-            value: 15,
-        });
+        expect(setCapSpy).toHaveBeenCalledWith(
+            'manager/devices/device/heatpump-a/capability/target_temperature',
+            { value: 15 },
+        );
     });
 
     it('uses set_temperature shed action for heatpump with target_temperature', async () => {
@@ -251,15 +237,11 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        (app as any).deviceManager.homeyApi = {
-            devices: {
-                getDevices: async () => ({
-                    'heatpump-a': buildHeatpumpApiDevice({
-                        capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
-                    }),
-                }),
-            },
-        };
+        jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+            'heatpump-a': buildHeatpumpApiDevice({
+                capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
+            }),
+        });
 
         await (app as any).refreshTargetDevicesSnapshot();
 

@@ -27,7 +27,7 @@ import { OPERATING_MODE_SETTING } from './lib/utils/settingsKeys';
 import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
 import {
-  resolveHomeyEnergyApiFromHomeyApi, resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi,
+  resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi,
 } from './lib/utils/homeyEnergy';
 import {
   persistPowerTrackerStateForApp,
@@ -131,8 +131,7 @@ class PelsApp extends Homey.App {
     return true;
   }
   private getHomeyEnergyApi(): HomeyEnergyApi | null {
-    return resolveHomeyEnergyApiFromSdk(this.homey)
-      ?? resolveHomeyEnergyApiFromHomeyApi(this.deviceManager?.getHomeyApi?.());
+    return resolveHomeyEnergyApiFromSdk(this.homey);
   }
   async onInit() {
     const deferStartupBootstrap = process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1';
@@ -735,8 +734,6 @@ class PelsApp extends Homey.App {
     return getDeviceLoadSetting({
       deviceId,
       snapshot: this.latestTargetSnapshot,
-      getHomeyApi: () => this.deviceManager.getHomeyApi(),
-      initHomeyApi: () => this.deviceManager.init(),
       error: (...args: unknown[]) => this.error(...args),
     });
   }

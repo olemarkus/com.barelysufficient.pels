@@ -9,8 +9,6 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('@playwright/test');
-const { AthomCloudAPI, HomeyAPI } = require('homey-api');
 const { SETTINGS_UI_BOOTSTRAP_KEYS } = require('./lib/settingsUiBootstrapKeys.cjs');
 const { readOptionValue } = require('./lib/settingsUiScriptUtils.cjs');
 
@@ -164,6 +162,16 @@ const recordCount = (map, key, value = 1) => {
 };
 
 const createHomeyContext = async ({ appId, homeyId }) => {
+  let homeyApiModule;
+  try {
+    homeyApiModule = require('homey-api');
+  } catch {
+    throw new Error(
+      'homey-api is required for this benchmarking script but is not installed. '
+      + 'Install it with: npm install --no-save homey-api',
+    );
+  }
+  const { AthomCloudAPI, HomeyAPI } = homeyApiModule;
   const cliSettings = JSON.parse(await fs.readFile(ATHOM_CLI_SETTINGS_PATH, 'utf8'));
   const selectedHomeyId = homeyId || cliSettings.activeHomey?.id;
   if (!selectedHomeyId) {
@@ -678,6 +686,7 @@ const main = async () => {
     initialBuildDir: baselineBuildDir,
   });
   const baseUrl = await server.listen();
+  const { chromium } = require('@playwright/test');
   const browser = await chromium.launch({
     headless: !args.headed,
   });

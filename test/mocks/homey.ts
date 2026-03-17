@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { setRestClient } from '../../lib/core/deviceManagerHomeyApi';
 
 type MockCapabilityMutationBehavior = {
   updateActual?: boolean;
@@ -315,20 +316,24 @@ export class MockDriver {
 
 let autoEnableMockDevices = false;
 const mockHomeyEmitter = new EventEmitter();
-const mockHomeyApiDevicesEmitter = new EventEmitter();
-mockHomeyApiDevicesEmitter.setMaxListeners(0);
+const mockSdkDevicesApiEmitter = new EventEmitter();
+mockSdkDevicesApiEmitter.setMaxListeners(0);
 
 export const setAutoEnableMockDevices = (enabled: boolean): void => {
   autoEnableMockDevices = enabled;
 };
 
-export const emitMockHomeyApiDeviceUpdate = (device: Record<string, any>): void => {
-  mockHomeyApiDevicesEmitter.emit('device.update', device);
+export const emitMockSdkDeviceUpdate = (device: Record<string, any>): void => {
+  mockSdkDevicesApiEmitter.emit('realtime', 'device.update', device);
 };
 
-export const clearMockHomeyApiDeviceListeners = (): void => {
-  mockHomeyApiDevicesEmitter.removeAllListeners();
+export const clearMockSdkDeviceListeners = (): void => {
+  mockSdkDevicesApiEmitter.removeAllListeners();
 };
+
+// Legacy aliases
+export const emitMockHomeyApiDeviceUpdate = emitMockSdkDeviceUpdate;
+export const clearMockHomeyApiDeviceListeners = clearMockSdkDeviceListeners;
 
 const buildControllableDevices = (drivers: Record<string, MockDriver>): Record<string, boolean> => {
   const controllable: Record<string, boolean> = {};
@@ -423,7 +428,7 @@ export const mockHomeyInstance = {
     },
     get: async (path: string) => {
       // Return devices from mock drivers when API is called
-      if (path === 'manager/devices' || path === 'devices') {
+      if (path === 'manager/devices/device' || path === 'manager/devices' || path === 'devices') {
         const drivers = mockHomeyInstance.drivers.getDrivers();
         const devices: Record<string, any> = {};
         for (const driver of Object.values(drivers)) {
@@ -433,15 +438,26 @@ export const mockHomeyInstance = {
         }
         return devices;
       }
-      throw new Error('not implemented');
+      throw new Error(`Mock API GET not implemented for: ${path}`);
     },
-    devices: {
-      setCapabilityValue: async ({ deviceId, capabilityId, value }: { deviceId: string; capabilityId: string; value: any }) => {
+    put: async (path: string, body?: any) => {
+      // Handle capability value setting: manager/devices/device/{id}/capability/{capId}
+      const capMatch = path.match(/^manager\/devices\/device\/(.+?)\/capability\/(.+)$/);
+      if (capMatch) {
+        const [, deviceId, capabilityId] = capMatch;
         const device = findMockDeviceById(deviceId);
         if (device) {
-          await device.setCapabilityValue(capabilityId, value);
+          await device.setCapabilityValue(capabilityId, body?.value);
         }
-      },
+        return;
+      }
+      throw new Error(`Mock API PUT not implemented for: ${path}`);
+    },
+    getApi: (uri: string) => {
+      if (uri === 'homey:manager:devices') {
+        return mockSdkDevicesApiEmitter;
+      }
+      throw new Error(`Mock getApi not implemented for: ${uri}`);
     },
   },
   flow: {
@@ -541,6 +557,13 @@ class MockApp {
   }
 }
 
+// Set the REST client so production code uses the mock API methods
+// instead of trying real HTTP requests during tests.
+setRestClient({
+  get: (path: string) => mockHomeyInstance.api.get(path),
+  put: (path: string, body: unknown) => mockHomeyInstance.api.put(path, body),
+});
+
 const homeyModule = {
   App: MockApp,
   __mock: {
@@ -549,47 +572,6 @@ const homeyModule = {
     MockDriver,
     setMockDrivers,
     setAutoEnableMockDevices,
-  },
-};
-
-// Mock for homey-api module - HomeyAPI.createAppAPI
-export const mockHomeyApiInstance = {
-  energy: {
-    fetchDynamicElectricityPrices: async () => ([]),
-    getCurrency: async () => ({ currency: 'NOK' }),
-  },
-  devices: {
-    connect: async () => undefined,
-    disconnect: async () => undefined,
-    on: mockHomeyApiDevicesEmitter.on.bind(mockHomeyApiDevicesEmitter),
-    off: mockHomeyApiDevicesEmitter.off.bind(mockHomeyApiDevicesEmitter),
-    // Mirror Homey's device API using the in-memory mock drivers
-    getDevices: async () => {
-      const drivers = mockHomeyInstance.drivers.getDrivers();
-      const devices: Record<string, any> = {};
-      for (const driver of Object.values(drivers)) {
-        for (const device of driver.getDevices()) {
-          devices[device.idValue] = device.toHomeyApiDevice();
-        }
-      }
-      return devices;
-    },
-    getDevice: async ({ id }: { id: string }) => {
-      const device = findMockDeviceById(id);
-      if (!device) throw new Error(`Unknown mock device: ${id}`);
-      return device.toHomeyApiDevice();
-    },
-    getDeviceSettingsObj: async ({ id }: { id: string }) => {
-      const device = findMockDeviceById(id);
-      if (!device) throw new Error(`Unknown mock device: ${id}`);
-      return device.getSettingsObject();
-    },
-    setCapabilityValue: async ({ deviceId, capabilityId, value }: { deviceId: string; capabilityId: string; value: any }) => {
-      const device = findMockDeviceById(deviceId);
-      if (device) {
-        await device.setCapabilityValue(capabilityId, value);
-      }
-    },
   },
 };
 

@@ -26,15 +26,6 @@ jest.mock('https', () => ({
   get: jest.fn(),
 }));
 
-// Mock the homey-api module
-jest.mock('homey-api', () => ({
-  HomeyAPI: {
-    createAppAPI: jest.fn().mockResolvedValue(require('./mocks/homey').mockHomeyApiInstance),
-  },
-}));
-jest.mock('homey-api/lib/HomeyAPI/HomeyAPI', () => ({
-  createAppAPI: jest.fn().mockResolvedValue(require('./mocks/homey').mockHomeyApiInstance),
-}));
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date', 'nextTick'] });

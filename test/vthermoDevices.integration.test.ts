@@ -63,6 +63,7 @@ describe('VThermo device integration', () => {
 
   afterEach(async () => {
     await cleanupApps();
+    jest.restoreAllMocks();
     jest.clearAllTimers();
   });
 
@@ -77,13 +78,9 @@ describe('VThermo device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'vthermo-1': buildVThermoApiDevice(),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'vthermo-1': buildVThermoApiDevice(),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -114,17 +111,10 @@ describe('VThermo device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'vthermo-1': buildVThermoApiDevice({ targetTemperature: 22 }),
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'vthermo-1': buildVThermoApiDevice({ targetTemperature: 22 }),
+    });
+    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -133,11 +123,9 @@ describe('VThermo device integration', () => {
 
     await (app as any).planService.rebuildPlanFromCache();
     await flushPromises();
-
-    expect(setCapSpy).toHaveBeenCalledWith({
-      deviceId: 'vthermo-1',
-      capabilityId: 'target_temperature',
-      value: 19,
-    });
+    expect(setCapSpy).toHaveBeenCalledWith(
+      'manager/devices/device/vthermo-1/capability/target_temperature',
+      { value: 19 },
+    );
   });
 });

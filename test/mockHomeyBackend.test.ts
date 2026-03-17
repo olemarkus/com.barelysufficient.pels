@@ -1,14 +1,14 @@
 import {
-  clearMockHomeyApiDeviceListeners,
+  clearMockSdkDeviceListeners,
   MockDevice,
   MockDriver,
-  mockHomeyApiInstance,
+  mockHomeyInstance,
   setMockDrivers,
 } from './mocks/homey';
 
 describe('mock Homey backend', () => {
   beforeEach(() => {
-    clearMockHomeyApiDeviceListeners();
+    clearMockSdkDeviceListeners();
     setMockDrivers({});
   });
 
@@ -27,11 +27,10 @@ describe('mock Homey backend', () => {
       driverA: new MockDriver('driverA', [device]),
     });
 
-    await mockHomeyApiInstance.devices.setCapabilityValue({
-      deviceId: 'dev-1',
-      capabilityId: 'onoff',
-      value: true,
-    });
+    await mockHomeyInstance.api.put(
+      'manager/devices/device/dev-1/capability/onoff',
+      { value: true },
+    );
 
     expect(device.getSetCapabilityValue('onoff')).toBe(true);
     expect(device.getActualCapabilityValue('onoff')).toBe(true);
@@ -52,17 +51,19 @@ describe('mock Homey backend', () => {
       driverA: new MockDriver('driverA', [device]),
     });
 
-    const devices = await mockHomeyApiInstance.devices.getDevices();
-    const payload = (devices as Record<string, any>)['dev-1'];
+    const devices = await mockHomeyInstance.api.get('manager/devices') as Record<string, any>;
+    const payload = devices['dev-1'];
     const capabilityListener = jest.fn();
     const capabilityInstance = payload.makeCapabilityInstance('onoff', capabilityListener);
-    const deviceUpdateListener = jest.fn();
-    mockHomeyApiInstance.devices.on?.('device.update', deviceUpdateListener);
+
+    const sdkDevicesApi = mockHomeyInstance.api.getApi('homey:manager:devices');
+    const realtimeListener = jest.fn();
+    sdkDevicesApi.on('realtime', realtimeListener);
 
     device.tapTile();
 
     expect(capabilityListener).toHaveBeenCalledWith(false);
-    expect(deviceUpdateListener).toHaveBeenCalledWith(expect.objectContaining({
+    expect(realtimeListener).toHaveBeenCalledWith('device.update', expect.objectContaining({
       id: 'dev-1',
       capabilitiesObj: expect.objectContaining({
         onoff: expect.objectContaining({ value: false }),
@@ -72,6 +73,6 @@ describe('mock Homey backend', () => {
     await expect(device.getCapabilityValue('onoff')).resolves.toBe(false);
 
     capabilityInstance.destroy();
-    mockHomeyApiInstance.devices.off?.('device.update', deviceUpdateListener);
+    sdkDevicesApi.off('realtime', realtimeListener);
   });
 });
