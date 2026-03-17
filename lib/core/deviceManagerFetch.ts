@@ -52,19 +52,26 @@ export async function fetchDevicesByIds(params: {
     deviceIds.map((id) => getRawDevice(id)),
   );
   const devices: HomeyDeviceLike[] = [];
-  let failCount = 0;
+  const failedIds: string[] = [];
   for (let i = 0; i < results.length; i += 1) {
     const result = results[i];
     if (result.status === 'fulfilled') {
       devices.push(result.value);
     } else {
-      failCount += 1;
+      failedIds.push(deviceIds[i]);
       const err = result.reason as Error | undefined;
-      logger.debug(`Targeted device fetch failed for ${deviceIds[i]}: ${err?.message || 'unknown error'}`);
+      logger.debug(
+        `Targeted device fetch failed for ${deviceIds[i]}: `
+        + `${err?.message || 'unknown error'}`,
+      );
     }
   }
-  if (failCount > 0) {
-    logger.debug(`Targeted fetch: ${devices.length}/${deviceIds.length} devices retrieved (${failCount} failed)`);
+  if (failedIds.length > 0) {
+    logger.debug(
+      `Targeted fetch had ${failedIds.length} failures, `
+      + 'falling back to full device fetch',
+    );
+    return fetchDevicesWithFallback({ logger });
   }
   return { devices, fetchSource: 'targeted_by_id' };
 }
