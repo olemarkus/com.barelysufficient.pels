@@ -19,6 +19,7 @@ import {
   updateLastKnownPower,
 } from '../lib/core/deviceManagerRuntime';
 import {
+  getRawDevice,
   getRawDevices,
   hasRestClient,
   logDeviceManagerRuntimeError,
@@ -27,6 +28,7 @@ import {
   setRestClient,
   writeErrorToStderr,
 } from '../lib/core/deviceManagerHomeyApi';
+import { fetchDevicesByIds } from '../lib/core/deviceManagerFetch';
 
 const createLogger = () => ({
   log: jest.fn(),
@@ -238,5 +240,86 @@ describe('device manager support helpers', () => {
     resetRestClient();
     await expect(setRawCapabilityValue('dev-1', 'onoff', true))
       .rejects.toThrow('REST client not initialized');
+  });
+
+  it('getRawDevice returns a single device by ID', async () => {
+    const device = { id: 'dev-1', name: 'Heater' };
+    const mockGet = jest.fn().mockResolvedValue(device);
+    setRestClient({ get: mockGet, put: jest.fn() });
+
+    const result = await getRawDevice('dev-1');
+    expect(result).toEqual(device);
+    expect(mockGet).toHaveBeenCalledWith('manager/devices/device/dev-1');
+  });
+
+  it('getRawDevice throws on invalid response', async () => {
+    const mockGet = jest.fn().mockResolvedValue(undefined);
+    setRestClient({ get: mockGet, put: jest.fn() });
+
+    await expect(getRawDevice('dev-1')).rejects.toThrow('Invalid response for device dev-1');
+  });
+
+  it('getRawDevice throws when REST client is not initialized', async () => {
+    resetRestClient();
+    await expect(getRawDevice('dev-1'))
+      .rejects.toThrow('REST client not initialized');
+  });
+
+  it('fetchDevicesByIds returns all devices on success', async () => {
+    const devices = [
+      { id: 'a', name: 'A' },
+      { id: 'b', name: 'B' },
+    ];
+    const mockGet = jest.fn()
+      .mockResolvedValueOnce(devices[0])
+      .mockResolvedValueOnce(devices[1]);
+    setRestClient({ get: mockGet, put: jest.fn() });
+    const logger = createLogger();
+
+    const result = await fetchDevicesByIds({
+      deviceIds: ['a', 'b'],
+      logger,
+    });
+
+    expect(result.fetchSource).toBe('targeted_by_id');
+    expect(result.devices).toEqual(devices);
+  });
+
+  it('fetchDevicesByIds returns empty list for empty IDs', async () => {
+    const logger = createLogger();
+    const result = await fetchDevicesByIds({
+      deviceIds: [],
+      logger,
+    });
+    expect(result.devices).toEqual([]);
+    expect(result.fetchSource).toBe('targeted_by_id');
+  });
+
+  it('fetchDevicesByIds falls back to full fetch on any failure', async () => {
+    const allDevices = [
+      { id: 'a', name: 'A' },
+      { id: 'b', name: 'B' },
+      { id: 'c', name: 'C' },
+    ];
+    const mockGet = jest.fn()
+      .mockResolvedValueOnce(allDevices[0])
+      .mockRejectedValueOnce(new Error('not found'))
+      // Full fetch fallback returns all devices as object
+      .mockResolvedValueOnce(
+        Object.fromEntries(allDevices.map((d) => [d.id, d])),
+      );
+    setRestClient({ get: mockGet, put: jest.fn() });
+    const logger = createLogger();
+
+    const result = await fetchDevicesByIds({
+      deviceIds: ['a', 'b'],
+      logger,
+    });
+
+    expect(result.fetchSource).toBe('raw_manager_devices');
+    expect(result.devices).toHaveLength(3);
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.stringContaining('falling back to full device fetch'),
+    );
   });
 });

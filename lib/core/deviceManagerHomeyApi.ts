@@ -81,6 +81,9 @@ export async function getRawDevice(
 ): Promise<HomeyDeviceLike> {
   if (!restClient) throw new Error('REST client not initialized — call initHomeyHttpClient first');
   const data = await restClient.get(`${DEVICES_API_PATH}/${deviceId}`);
+  if (!data || typeof data !== 'object') {
+    throw new Error(`Invalid response for device ${deviceId}`);
+  }
   return data as HomeyDeviceLike;
 }
 
