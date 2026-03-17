@@ -1,9 +1,9 @@
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { extractLivePowerWattsByDeviceId, type LiveDevicePowerWatts } from './deviceManagerEnergy';
-import { DEVICES_API_PATH, getRawDevices, logDeviceManagerRuntimeError } from './deviceManagerHomeyApi';
+import { DEVICES_API_PATH, getRawDevice, getRawDevices, logDeviceManagerRuntimeError } from './deviceManagerHomeyApi';
 
-export type DeviceFetchSource = 'raw_manager_devices';
+export type DeviceFetchSource = 'raw_manager_devices' | 'targeted_by_id';
 
 const DEVICE_FETCH_RETRY_DELAYS_MS = [2000, 4000, 8000, 16000];
 
@@ -35,6 +35,38 @@ export async function fetchDevicesWithFallback(params: {
   }
   logDeviceManagerRuntimeError(logger, 'Device fetch failed after all retries', lastError);
   throw lastError;
+}
+
+export async function fetchDevicesByIds(params: {
+  deviceIds: string[];
+  logger: Logger;
+}): Promise<{
+  devices: HomeyDeviceLike[];
+  fetchSource: DeviceFetchSource;
+}> {
+  const { deviceIds, logger } = params;
+  if (deviceIds.length === 0) {
+    return { devices: [], fetchSource: 'targeted_by_id' };
+  }
+  const results = await Promise.allSettled(
+    deviceIds.map((id) => getRawDevice(id)),
+  );
+  const devices: HomeyDeviceLike[] = [];
+  let failCount = 0;
+  for (let i = 0; i < results.length; i += 1) {
+    const result = results[i];
+    if (result.status === 'fulfilled') {
+      devices.push(result.value);
+    } else {
+      failCount += 1;
+      const err = result.reason as Error | undefined;
+      logger.debug(`Targeted device fetch failed for ${deviceIds[i]}: ${err?.message || 'unknown error'}`);
+    }
+  }
+  if (failCount > 0) {
+    logger.debug(`Targeted fetch: ${devices.length}/${deviceIds.length} devices retrieved (${failCount} failed)`);
+  }
+  return { devices, fetchSource: 'targeted_by_id' };
 }
 
 export async function fetchLivePowerWattsByDeviceId(params: {

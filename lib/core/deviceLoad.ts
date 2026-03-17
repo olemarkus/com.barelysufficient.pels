@@ -1,5 +1,5 @@
 import type { TargetDeviceSnapshot } from '../utils/types';
-import { DEVICES_API_PATH, getRawDevices } from './deviceManagerHomeyApi';
+import { getRawDevice } from './deviceManagerHomeyApi';
 
 type DeviceInfo = {
   id?: string;
@@ -32,9 +32,7 @@ async function getApiLoad(params: {
 }): Promise<number | null> {
   const { deviceId, error } = params;
   try {
-    const devices = await getRawDevices(DEVICES_API_PATH);
-    const list = normalizeDeviceList(devices);
-    const device = list.find((d) => d.id === deviceId || d.data?.id === deviceId);
+    const device = await getRawDevice(deviceId) as DeviceInfo;
     if (device && typeof device.settings?.load === 'number') {
       return device.settings.load;
     }
@@ -48,12 +46,4 @@ async function getApiLoad(params: {
     );
   }
   return null;
-}
-
-function normalizeDeviceList(devices: unknown): DeviceInfo[] {
-  if (Array.isArray(devices)) return devices as DeviceInfo[];
-  if (devices && typeof devices === 'object') {
-    return Object.values(devices as Record<string, DeviceInfo>);
-  }
-  return [];
 }
