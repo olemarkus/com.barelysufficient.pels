@@ -36,7 +36,7 @@ import {
     resolvePreferredPowerRaw,
     type LiveDevicePowerWatts,
 } from './deviceManagerEnergy';
-import { fetchDevicesWithFallback, fetchLivePowerWattsByDeviceId } from './deviceManagerFetch';
+import { fetchDevicesByIds, fetchDevicesWithFallback, fetchLivePowerWattsByDeviceId } from './deviceManagerFetch';
 import {
     applyMeasurementUpdates,
     isRealtimeControlCapability,
@@ -242,14 +242,16 @@ export class DeviceManager extends EventEmitter {
         this.logger.log('Device API initialized from SDK');
     }
 
-    async refreshSnapshot(options: { includeLivePower?: boolean } = {}): Promise<void> {
+    async refreshSnapshot(options: { includeLivePower?: boolean; targetedRefresh?: boolean } = {}): Promise<void> {
         const stopSpan = startRuntimeSpan('device_snapshot_refresh');
         const start = Date.now();
         try {
             const previousSnapshot = this.latestSnapshot;
             let fetchResult: Awaited<ReturnType<typeof fetchDevicesWithFallback>>;
             try {
-                fetchResult = await this.fetchDevicesForSnapshot();
+                fetchResult = options.targetedRefresh && this.latestSnapshot.length > 0
+                    ? await this.fetchDevicesByKnownIds()
+                    : await this.fetchDevicesForSnapshot();
             } catch (error) {
                 this.logger.error('Device snapshot refresh failed, keeping previous snapshot', error);
                 return;
@@ -392,6 +394,22 @@ export class DeviceManager extends EventEmitter {
         const start = Date.now();
         try {
             return await fetchDevicesWithFallback({
+                logger: this.logger,
+            });
+        } finally {
+            addPerfDuration('device_fetch_ms', Date.now() - start);
+        }
+    }
+
+    private async fetchDevicesByKnownIds(): Promise<{
+        devices: HomeyDeviceLike[];
+        fetchSource: DeviceFetchSource;
+    }> {
+        const start = Date.now();
+        try {
+            const deviceIds = this.latestSnapshot.map((d) => d.id);
+            return await fetchDevicesByIds({
+                deviceIds,
                 logger: this.logger,
             });
         } finally {

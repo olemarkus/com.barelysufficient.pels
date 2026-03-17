@@ -657,7 +657,8 @@ class PelsApp extends Homey.App {
   private startPeriodicSnapshotRefresh(): void {
     if (this.snapshotRefreshInterval) clearInterval(this.snapshotRefreshInterval);
     this.snapshotRefreshInterval = setInterval(() => {
-      this.refreshTargetDevicesSnapshot().catch((e) => this.error('Periodic snapshot refresh failed', e));
+      this.refreshTargetDevicesSnapshot({ targeted: true })
+        .catch((e) => this.error('Periodic snapshot refresh failed', e));
       this.logPeriodicStatus();
     }, SNAPSHOT_REFRESH_INTERVAL_MS);
   }
@@ -678,7 +679,7 @@ class PelsApp extends Homey.App {
   parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
     return this.deviceManager.parseDeviceListForTests(list);
   }
-  private async refreshTargetDevicesSnapshot(options: { fast?: boolean } = {}): Promise<void> {
+  private async refreshTargetDevicesSnapshot(options: { fast?: boolean; targeted?: boolean } = {}): Promise<void> {
     if (this.isSnapshotRefreshing) {
       this.snapshotRefreshPending = true;
       this.logDebug('devices', 'Snapshot refresh already in progress, queued another refresh');
@@ -689,7 +690,10 @@ class PelsApp extends Homey.App {
       do {
         this.snapshotRefreshPending = false;
         this.logDebug('devices', 'Refreshing target devices snapshot');
-        await this.deviceManager.refreshSnapshot({ includeLivePower: options.fast !== true });
+        await this.deviceManager.refreshSnapshot({
+          includeLivePower: options.fast !== true,
+          targetedRefresh: options.targeted,
+        });
         const snapshot = this.deviceManager.getSnapshot();
         await this.planService?.syncLivePlanState('snapshot_refresh');
         this.planService?.syncHeadroomCardState({
