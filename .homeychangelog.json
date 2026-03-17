@@ -214,5 +214,8 @@
   },
   "1.20.5": {
     "en": "Reduce memory footprint by imoprting only what we need from Homey SDK"
+  },
+  "1.20.6": {
+    "en": "Simplified device fetching/updating, resulting in reduced memory footprint."
   }
 }
