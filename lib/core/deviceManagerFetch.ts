@@ -1,121 +1,44 @@
-import type Homey from 'homey';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { extractLivePowerWattsByDeviceId, type LiveDevicePowerWatts } from './deviceManagerEnergy';
-import { getRawDevices, logDeviceManagerRuntimeError } from './deviceManagerHomeyApi';
-import { syncRealtimeDeviceUpdateListener } from './deviceManagerRuntime';
+import { DEVICES_API_PATH, getRawDevices, logDeviceManagerRuntimeError } from './deviceManagerHomeyApi';
 
-type DevicesApiLike = {
-  getDevices?: () => Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]>;
-  connect?: () => Promise<void>;
-  disconnect?: () => Promise<void>;
-  on?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
-  off?: (event: string, listener: (payload: HomeyDeviceLike) => void) => unknown;
-};
+export type DeviceFetchSource = 'raw_manager_devices';
 
-type EnergyApiLike = Pick<HomeyEnergyApi, 'getLiveReport'>;
-export type DeviceFetchSource = 'homey_api_getDevices' | 'raw_manager_devices' | 'raw_devices';
+const DEVICE_FETCH_RETRY_DELAYS_MS = [2000, 4000, 8000, 16000];
 
 export async function fetchDevicesWithFallback(params: {
-  devicesApi?: DevicesApiLike;
-  homey: Homey.App;
   logger: Logger;
-  hasRealtimeDeviceUpdateListener: boolean;
-  shouldTrackRealtimeDevice: (deviceId: string) => boolean;
-  realtimeDeviceUpdateListener: (device: HomeyDeviceLike) => void;
-  realtimeDeviceUpdateEventName: string;
-  initRealtimeListeners: (devices: HomeyDeviceLike[]) => Promise<void>;
 }): Promise<{
   devices: HomeyDeviceLike[];
-  hasRealtimeDeviceUpdateListener: boolean;
   fetchSource: DeviceFetchSource;
 }> {
-  const {
-    devicesApi,
-    homey,
-    logger,
-    hasRealtimeDeviceUpdateListener,
-    shouldTrackRealtimeDevice,
-    realtimeDeviceUpdateListener,
-    realtimeDeviceUpdateEventName,
-    initRealtimeListeners,
-  } = params;
-  if (devicesApi?.getDevices) {
+  const { logger } = params;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= DEVICE_FETCH_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      const devicesObj = await devicesApi.getDevices();
-      const devices = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj || {});
-      logger.debug(`HomeyAPI returned ${devices.length} devices`);
-      const attachedRealtimeDeviceUpdateListener = await syncRealtimeDeviceUpdateListener({
-        devicesApi,
-        attached: hasRealtimeDeviceUpdateListener,
-        devices,
-        shouldTrackRealtimeDevice,
-        listener: realtimeDeviceUpdateListener,
-        eventName: realtimeDeviceUpdateEventName,
-        logger,
-      });
-      await initRealtimeListeners(devices);
+      const devices = await getRawDevices(DEVICES_API_PATH);
+      const list = Array.isArray(devices) ? devices : Object.values(devices || {});
+      logger.debug(`Manager API returned ${list.length} devices`);
       return {
-        devices,
-        hasRealtimeDeviceUpdateListener: attachedRealtimeDeviceUpdateListener,
-        fetchSource: 'homey_api_getDevices',
+        devices: list,
+        fetchSource: 'raw_manager_devices',
       };
     } catch (error) {
-      const message = 'HomeyAPI.getDevices failed, falling back to raw API';
-      logDeviceManagerRuntimeError(logger, message, error);
+      lastError = error;
+      if (attempt < DEVICE_FETCH_RETRY_DELAYS_MS.length) {
+        const delay = DEVICE_FETCH_RETRY_DELAYS_MS[attempt];
+        logger.debug(`Device fetch attempt ${attempt + 1} failed, retrying in ${delay}ms`);
+        await new Promise((resolve) => { setTimeout(resolve, delay); });
+      }
     }
   }
-
-  const managerDevices = await tryGetRawDevices({
-    homey,
-    logger,
-    path: 'manager/devices',
-    label: 'Manager API returned',
-    errorLabel: 'Manager API manager/devices failed, retrying devices',
-  });
-  if (managerDevices) {
-    return {
-      devices: managerDevices,
-      hasRealtimeDeviceUpdateListener,
-      fetchSource: 'raw_manager_devices',
-    };
-  }
-
-  const devices = await tryGetRawDevices({
-    homey,
-    logger,
-    path: 'devices',
-    label: 'Manager API devices returned',
-    errorLabel: 'Manager API devices failed as well',
-  });
-  return {
-    devices: devices ?? [],
-    hasRealtimeDeviceUpdateListener,
-    fetchSource: 'raw_devices',
-  };
-}
-
-async function tryGetRawDevices(params: {
-  homey: Homey.App;
-  logger: Logger;
-  path: string;
-  label: string;
-  errorLabel: string;
-}): Promise<HomeyDeviceLike[] | null> {
-  const { homey, logger, path, label, errorLabel } = params;
-  try {
-    const devices = await getRawDevices(homey, path);
-    const list = Array.isArray(devices) ? devices : Object.values(devices || {});
-    logger.debug(`${label} ${list.length} devices`);
-    return list;
-  } catch (error) {
-    logDeviceManagerRuntimeError(logger, errorLabel, error);
-    return null;
-  }
+  logDeviceManagerRuntimeError(logger, 'Device fetch failed after all retries', lastError);
+  throw lastError;
 }
 
 export async function fetchLivePowerWattsByDeviceId(params: {
-  energyApi?: EnergyApiLike;
+  energyApi?: Pick<HomeyEnergyApi, 'getLiveReport'>;
   logger: Logger;
 }): Promise<LiveDevicePowerWatts> {
   const { energyApi, logger } = params;

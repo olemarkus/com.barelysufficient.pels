@@ -91,13 +91,9 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'airtreatment-1': buildTemperatureApiDevice(),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'airtreatment-1': buildTemperatureApiDevice(),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -121,13 +117,9 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).deviceManager.homeyApi = {
-      devices: {
-        getDevices: async () => ({
-          'airtreatment-1': buildTemperatureApiDevice({ targetTemperature: 19 }),
-        }),
-      },
-    };
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'airtreatment-1': buildTemperatureApiDevice({ targetTemperature: 19 }),
+    });
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -149,17 +141,10 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'airtreatment-1': buildTemperatureApiDevice({ targetTemperature: 19, measurePower: 245.73 }),
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'airtreatment-1': buildTemperatureApiDevice({ targetTemperature: 19, measurePower: 245.73 }),
+    });
+    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -172,14 +157,13 @@ describe('Airtreatment device integration', () => {
     jest.advanceTimersByTime(100);
     await flushPromises();
 
-    expect(setCapSpy).toHaveBeenCalledWith({
-      deviceId: 'airtreatment-1',
-      capabilityId: 'target_temperature',
-      value: 16,
-    });
+    expect(setCapSpy).toHaveBeenCalledWith(
+      'manager/devices/device/airtreatment-1/capability/target_temperature',
+      { value: 16 },
+    );
 
     const onoffCalls = setCapSpy.mock.calls.filter(
-      (call: Array<{ capabilityId?: string; value?: unknown }>) => call[0]?.capabilityId === 'onoff' && call[0]?.value === false,
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].endsWith('/capability/onoff'),
     );
     expect(onoffCalls).toHaveLength(0);
   });
@@ -198,24 +182,17 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'thermostat-1': buildTemperatureApiDevice({
-            id: 'thermostat-1',
-            name: 'Hall Thermostat',
-            class: 'thermostat',
-            capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-            targetTemperature: 12,
-            measurePower: 245.73,
-          }),
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'thermostat-1': buildTemperatureApiDevice({
+        id: 'thermostat-1',
+        name: 'Hall Thermostat',
+        class: 'thermostat',
+        capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
+        targetTemperature: 12,
+        measurePower: 245.73,
+      }),
+    });
+    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -228,14 +205,13 @@ describe('Airtreatment device integration', () => {
     jest.advanceTimersByTime(100);
     await flushPromises();
 
-    expect(setCapSpy).toHaveBeenCalledWith({
-      deviceId: 'thermostat-1',
-      capabilityId: 'target_temperature',
-      value: 10,
-    });
+    expect(setCapSpy).toHaveBeenCalledWith(
+      'manager/devices/device/thermostat-1/capability/target_temperature',
+      { value: 10 },
+    );
 
     const onoffCalls = setCapSpy.mock.calls.filter(
-      (call: Array<{ capabilityId?: string; value?: unknown }>) => call[0]?.capabilityId === 'onoff' && call[0]?.value === false,
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].endsWith('/capability/onoff'),
     );
     expect(onoffCalls).toHaveLength(0);
   });
@@ -260,38 +236,33 @@ describe('Airtreatment device integration', () => {
 
     const reportedTargets: Record<string, number> = { 'flexit-1': 19, 'flexit-2': 19 };
     const samplePowerW = 2500;
-    const setCapSpy = jest.fn().mockImplementation(async ({ deviceId, capabilityId, value }: {
-      deviceId: string;
-      capabilityId: string;
-      value: unknown;
-    }) => {
+
+    jest.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async () => ({
+      'flexit-1': buildTemperatureApiDevice({
+        id: 'flexit-1',
+        name: 'Nordic S4 REL A',
+        targetTemperature: reportedTargets['flexit-1'],
+        measurePower: 1000,
+      }),
+      'flexit-2': buildTemperatureApiDevice({
+        id: 'flexit-2',
+        name: 'Nordic S4 REL B',
+        targetTemperature: reportedTargets['flexit-2'],
+        measurePower: 1000,
+      }),
+    }));
+
+    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path: string, body?: any) => {
       // Simulate Flexit accepting shed-temp writes but not persisting restore writes.
-      if (capabilityId === 'target_temperature' && typeof value === 'number' && value <= 16) {
-        reportedTargets[deviceId] = value;
+      const capMatch = path.match(/^manager\/devices\/device\/(.+?)\/capability\/(.+)$/);
+      if (capMatch) {
+        const [, deviceId, capabilityId] = capMatch;
+        const value = body?.value;
+        if (capabilityId === 'target_temperature' && typeof value === 'number' && value <= 16) {
+          reportedTargets[deviceId] = value;
+        }
       }
     });
-
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'flexit-1': buildTemperatureApiDevice({
-            id: 'flexit-1',
-            name: 'Nordic S4 REL A',
-            targetTemperature: reportedTargets['flexit-1'],
-            measurePower: 1000,
-          }),
-          'flexit-2': buildTemperatureApiDevice({
-            id: 'flexit-2',
-            name: 'Nordic S4 REL B',
-            targetTemperature: reportedTargets['flexit-2'],
-            measurePower: 1000,
-          }),
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
 
     const runCycle = async () => {
       await (app as any).recordPowerSample(samplePowerW);
@@ -322,8 +293,9 @@ describe('Airtreatment device integration', () => {
     await (app as any).refreshTargetDevicesSnapshot();
     await runCycle();
     const restoreCallsAfterFirstWindow = setCapSpy.mock.calls.filter(
-      (call: Array<{ capabilityId?: string; value?: unknown }>) => (
-        call[0]?.capabilityId === 'target_temperature' && call[0]?.value === 19
+      (call: unknown[]) => (
+        typeof call[0] === 'string' && call[0].includes('/capability/target_temperature')
+        && (call[1] as any)?.value === 19
       ),
     );
     expect(restoreCallsAfterFirstWindow).toHaveLength(1);
@@ -331,8 +303,9 @@ describe('Airtreatment device integration', () => {
     await (app as any).refreshTargetDevicesSnapshot();
     await runCycle();
     const restoreCallsAfterCooldownWindow = setCapSpy.mock.calls.filter(
-      (call: Array<{ capabilityId?: string; value?: unknown }>) => (
-        call[0]?.capabilityId === 'target_temperature' && call[0]?.value === 19
+      (call: unknown[]) => (
+        typeof call[0] === 'string' && call[0].includes('/capability/target_temperature')
+        && (call[1] as any)?.value === 19
       ),
     );
     expect(restoreCallsAfterCooldownWindow).toHaveLength(1);
@@ -345,8 +318,9 @@ describe('Airtreatment device integration', () => {
     await runCycle();
 
     const restoreCalls = setCapSpy.mock.calls.filter(
-      (call: Array<{ capabilityId?: string; value?: unknown }>) => (
-        call[0]?.capabilityId === 'target_temperature' && call[0]?.value === 19
+      (call: unknown[]) => (
+        typeof call[0] === 'string' && call[0].includes('/capability/target_temperature')
+        && (call[1] as any)?.value === 19
       ),
     );
 
@@ -368,24 +342,17 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const setCapSpy = jest.fn().mockResolvedValue(undefined);
-    const homeyApiStub = {
-      devices: {
-        getDevices: async () => ({
-          'airtreatment-onoff-1': buildTemperatureApiDevice({
-            id: 'airtreatment-onoff-1',
-            class: 'airtreatment',
-            capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature', 'fan_mode'],
-            onoff: true,
-            targetTemperature: 19,
-            measurePower: 245.73,
-          }),
-        }),
-        setCapabilityValue: setCapSpy,
-      },
-    };
-    (app as any).homeyApi = homeyApiStub;
-    (app as any).deviceManager.homeyApi = homeyApiStub;
+    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'airtreatment-onoff-1': buildTemperatureApiDevice({
+        id: 'airtreatment-onoff-1',
+        class: 'airtreatment',
+        capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature', 'fan_mode'],
+        onoff: true,
+        targetTemperature: 19,
+        measurePower: 245.73,
+      }),
+    });
+    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -403,14 +370,13 @@ describe('Airtreatment device integration', () => {
     jest.advanceTimersByTime(100);
     await flushPromises();
 
-    expect(setCapSpy).toHaveBeenCalledWith({
-      deviceId: 'airtreatment-onoff-1',
-      capabilityId: 'onoff',
-      value: false,
-    });
+    expect(setCapSpy).toHaveBeenCalledWith(
+      'manager/devices/device/airtreatment-onoff-1/capability/onoff',
+      { value: false },
+    );
 
     const setTempCalls = setCapSpy.mock.calls.filter(
-      (call: Array<{ capabilityId?: string }>) => call[0]?.capabilityId === 'target_temperature',
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('/capability/target_temperature'),
     );
     expect(setTempCalls).toHaveLength(0);
   });

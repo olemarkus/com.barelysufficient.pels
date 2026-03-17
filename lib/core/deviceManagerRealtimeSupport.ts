@@ -45,38 +45,6 @@ export function getRecentLocalCapabilityWrite(params: {
   return entry;
 }
 
-export function consumeMatchingLocalCapabilityWrite(params: {
-  recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
-  deviceId: string;
-  capabilityId: string;
-  value: unknown;
-}): boolean {
-  const { recentLocalCapabilityWrites, deviceId, capabilityId, value } = params;
-  const key = buildCapabilityWriteKey(deviceId, capabilityId);
-  const entry = recentLocalCapabilityWrites.get(key);
-  if (!entry) return false;
-  if (entry.expiresAt <= Date.now()) {
-    recentLocalCapabilityWrites.delete(key);
-    return false;
-  }
-  if (!Object.is(entry.value, value)) {
-    return false;
-  }
-  recentLocalCapabilityWrites.delete(key);
-  return true;
-}
-
-export function formatRealtimeCapabilityValue(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (value === null || value === undefined) return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '[unserializable]';
-  }
-}
-
 export function formatBinaryState(value: boolean | undefined): string {
   if (value === true) return 'on';
   if (value === false) return 'off';

@@ -3,28 +3,6 @@ import { DeviceManager } from '../lib/core/deviceManager';
 import { mockHomeyInstance } from './mocks/homey';
 import Homey from 'homey';
 
-const mockSetCapabilityValue = jest.fn();
-const mockGetDevices = jest.fn();
-
-jest.mock('homey-api', () => ({
-    HomeyAPI: {
-        createAppAPI: jest.fn().mockImplementation(() => Promise.resolve({
-            devices: {
-                getDevices: mockGetDevices,
-                setCapabilityValue: mockSetCapabilityValue,
-            },
-        })),
-    },
-}));
-jest.mock('homey-api/lib/HomeyAPI/HomeyAPI', () => ({
-    createAppAPI: jest.fn().mockImplementation(() => Promise.resolve({
-        devices: {
-            getDevices: mockGetDevices,
-            setCapabilityValue: mockSetCapabilityValue,
-        },
-    })),
-}));
-
 describe('Issue #18 Reproduction: Expected Power Overlap', () => {
     let deviceManager: DeviceManager;
     let homeyMock: Homey.App;
@@ -33,19 +11,11 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
     let expectedPowerKwOverrides: Record<string, { kw: number; ts: number }>;
     let lastKnownPowerKw: Record<string, number>;
     let lastMeasuredPowerKw: Record<string, { kw: number; ts: number }>;
+    let apiGetSpy: jest.SpyInstance;
 
     beforeEach(() => {
         jest.clearAllMocks();
         homeyMock = mockHomeyInstance as unknown as Homey.App;
-        (homeyMock as any).api = {
-            getOwnerApiToken: jest.fn().mockReturnValue('mock-token'),
-            getLocalUrl: jest.fn().mockReturnValue('http://localhost'),
-        };
-        (homeyMock as any).cloud = {
-            getHomeyId: jest.fn().mockReturnValue('mock-id'),
-        };
-        (homeyMock as any).platform = 'local';
-        (homeyMock as any).platformVersion = '2.0.0';
 
         loggerMock = {
             log: jest.fn(),
@@ -63,6 +33,13 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             lastKnownPowerKw,
             lastMeasuredPowerKw,
         });
+
+        apiGetSpy = jest.spyOn(mockHomeyInstance.api, 'get');
+    });
+
+    afterEach(() => {
+        apiGetSpy.mockRestore();
+        deviceManager.destroy();
     });
 
     it('should reproduce issue where measured power overwrites expected power', async () => {
@@ -71,7 +48,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         const deviceId = 'dev1';
 
         // 1. Initial state: Device is drawing 1.67 kW
-        mockGetDevices.mockResolvedValue({
+        apiGetSpy.mockResolvedValue({
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',
@@ -95,13 +72,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         const overrideTs = Date.now() - 10;
         expectedPowerKwOverrides[deviceId] = { kw: 3.0, ts: overrideTs };
 
-        // Refresh again (simulating next tick or manual refresh)
-        // Measured power is still 1.67 kW, but timestamp is now (simulated)
-        // In real app, measured power updates come in asynchronously or are fetched.
-        // DeviceManager uses Date.now() in parseDeviceList for *newly fetched* data.
-
-        // Mock getDevices again with new timestamp implicit (DeviceManager calls Date.now())
-        mockGetDevices.mockResolvedValue({
+        apiGetSpy.mockResolvedValue({
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',
@@ -118,14 +89,6 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         await deviceManager.refreshSnapshot();
         snapshot = deviceManager.getSnapshot();
 
-        // FAIL CONDITION (Current Bug):
-        // measured.ts > override.ts => output is measured (1.67)
-        // Desired behavior: output is expected (3.0)
-
-        // For reproduction, we assert the WRONG behavior to confirm it fails when fixed,
-        // OR we assert the RIGHT behavior and expect this test to fail now.
-        // I will assert the RIGHT behavior.
-
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
     });
 
@@ -138,7 +101,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         expectedPowerKwOverrides[deviceId] = { kw: 3.0, ts: overrideTs };
 
         // Measured power jumps to 3.5 kW
-        mockGetDevices.mockResolvedValue({
+        apiGetSpy.mockResolvedValue({
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',
@@ -164,7 +127,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         const deviceId = 'dev1';
 
         // Initial measured power is 3.0 kW.
-        mockGetDevices.mockResolvedValue({
+        apiGetSpy.mockResolvedValue({
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',
@@ -189,7 +152,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
 
         // Measured power settles to 2.0 kW.
-        mockGetDevices.mockResolvedValue({
+        apiGetSpy.mockResolvedValue({
             [deviceId]: {
                 id: deviceId,
                 name: 'Heater',

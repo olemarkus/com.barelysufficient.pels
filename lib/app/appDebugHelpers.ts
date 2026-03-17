@@ -6,7 +6,7 @@ import type {
   DeviceDebugObservedSources,
   DeviceManager,
 } from '../core/deviceManager';
-import { getRawDevices } from '../core/deviceManagerHomeyApi';
+import { DEVICES_API_PATH, getRawDevices } from '../core/deviceManagerHomeyApi';
 import type { DevicePlan } from '../plan/planTypes';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { TargetDeviceSnapshot } from '../utils/types';
@@ -123,7 +123,6 @@ type DeviceDebugDump = {
   homey: {
     summary: DebugSection<HomeyDeviceSummary>;
     settings: DebugSection<unknown>;
-    settingsObject: DebugSection<unknown>;
     energyApproximation: DebugSection<EnergyDebugPayload>;
     comparison: DebugSection<DeviceStateComparison>;
   };
@@ -141,8 +140,6 @@ type DeviceStateComparisonSource = {
 };
 
 type DeviceStateComparison = {
-  getDevice: DeviceStateComparisonSource | null;
-  getDevices: DeviceStateComparisonSource | null;
   managerDevices: DeviceStateComparisonSource | null;
   pelsSnapshot: DeviceStateComparisonSource | null;
   pelsPlan: {
@@ -447,101 +444,12 @@ const compactPelsPlanDevice = (
   };
 };
 
-const getHomeyDeviceDetailSections = async (params: {
-  deviceId: string;
-  deviceManager: DeviceManager;
-}): Promise<{
-  device: HomeyDeviceLike | null;
-  summary: DebugSection<HomeyDeviceSummary>;
-  settings: DebugSection<unknown>;
-}> => {
-  const {
-    deviceId,
-    deviceManager,
-  } = params;
-  const getDevice = deviceManager.getHomeyApi?.()?.devices?.getDevice;
-  if (typeof getDevice !== 'function') {
-    return {
-      device: null,
-      summary: buildUnavailableSection(),
-      settings: buildUnavailableSection(),
-    };
-  }
-  try {
-    const deviceDetail = await getDevice({ id: deviceId });
-    const rawDevice = deviceDetail as HomeyDeviceLike;
-    const summary = buildAvailableSection(compactHomeyDevice(deviceDetail as HomeyDeviceLike));
-    const filteredSettings = isRecord(deviceDetail) && 'settings' in deviceDetail
-      ? filterRelevantSettings(deviceDetail.settings)
-      : null;
-    if (!filteredSettings) {
-      return {
-        device: rawDevice,
-        summary: { ...summary, source: 'getDevice' },
-        settings: buildUnavailableSection(),
-      };
-    }
-    return {
-      device: rawDevice,
-      summary: { ...summary, source: 'getDevice' },
-      settings: {
-        ...buildAvailableSection(filteredSettings),
-        source: 'getDevice',
-      },
-    };
-  } catch (err) {
-    const message = normalizeError(err).message;
-    return {
-      device: null,
-      summary: buildUnavailableSection(message),
-      settings: buildUnavailableSection(message),
-    };
-  }
-};
-
-const getHomeyDeviceSettingsObjSection = async (params: {
-  deviceId: string;
-  deviceManager: DeviceManager;
-}): Promise<DebugSection<unknown>> => {
-  const {
-    deviceId,
-    deviceManager,
-  } = params;
-  const getDeviceSettingsObj = deviceManager.getHomeyApi?.()?.devices?.getDeviceSettingsObj;
-  if (typeof getDeviceSettingsObj !== 'function') {
-    return buildUnavailableSection();
-  }
-  try {
-    const settingsObj = await getDeviceSettingsObj({ id: deviceId });
-    return buildAvailableSection(settingsObj);
-  } catch (err) {
-    return buildUnavailableSection(normalizeError(err).message);
-  }
-};
-
-const getHomeyApiDeviceEntry = async (params: {
-  deviceId: string;
-  deviceManager: DeviceManager;
-}): Promise<HomeyDeviceLike | null> => {
-  const getDevices = params.deviceManager.getHomeyApi?.()?.devices?.getDevices;
-  if (typeof getDevices !== 'function') return null;
-  try {
-    const devicesObj = await getDevices();
-    const devices = Array.isArray(devicesObj) ? devicesObj : Object.values(devicesObj || {});
-    return (devices.find((entry) => entry?.id === params.deviceId) as HomeyDeviceLike | undefined) ?? null;
-  } catch {
-    return null;
-  }
-};
-
 const getRawManagerDeviceEntry = async (params: {
   deviceId: string;
-  homey?: Homey.App;
 }): Promise<HomeyDeviceLike | null> => {
-  const { deviceId, homey } = params;
-  if (!homey) return null;
+  const { deviceId } = params;
   try {
-    const devices = await getRawDevices(homey, 'manager/devices');
+    const devices = await getRawDevices(DEVICES_API_PATH);
     const list = Array.isArray(devices) ? devices : Object.values(devices || {});
     return (list.find((entry) => entry?.id === deviceId) as HomeyDeviceLike | undefined) ?? null;
   } catch {
@@ -566,11 +474,10 @@ export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<Ho
   });
 }
 
-// eslint-disable-next-line max-lines-per-function, max-statements, complexity
+// eslint-disable-next-line complexity
 export async function logHomeyDeviceForDebug(params: {
   deviceId: string;
   deviceManager: DeviceManager;
-  homey?: Homey.App;
   getPelsDeviceState?: (deviceId: string) => PelsDeviceDebugState | null;
   log: (msg: string, metadata?: unknown) => void;
   error: (msg: string, err: Error) => void;
@@ -578,7 +485,6 @@ export async function logHomeyDeviceForDebug(params: {
   const {
     deviceId,
     deviceManager,
-    homey,
     getPelsDeviceState,
     log,
     error,
@@ -616,7 +522,6 @@ export async function logHomeyDeviceForDebug(params: {
           source: 'listEntry',
         }
         : buildUnavailableSection(),
-      settingsObject: buildUnavailableSection(),
       energyApproximation: buildUnavailableSection(),
       comparison: buildUnavailableSection(),
     },
@@ -631,36 +536,7 @@ export async function logHomeyDeviceForDebug(params: {
     dump.homey.energyApproximation = buildUnavailableSection(normalizeError(err).message);
   }
 
-  const detailSections = await getHomeyDeviceDetailSections({
-    deviceId,
-    deviceManager,
-  });
-  if (detailSections.summary.available) {
-    dump.homey.summary = detailSections.summary;
-  } else if (detailSections.summary.error) {
-    dump.homey.summary = {
-      ...dump.homey.summary,
-      error: detailSections.summary.error,
-    };
-  }
-  if (detailSections.settings.available) {
-    dump.homey.settings = detailSections.settings;
-  } else if (detailSections.settings.error && !dump.homey.settings.available) {
-    dump.homey.settings = {
-      ...dump.homey.settings,
-      error: detailSections.settings.error,
-    };
-  }
-
-  dump.homey.settingsObject = await getHomeyDeviceSettingsObjSection({
-    deviceId,
-    deviceManager,
-  });
-
-  const [homeyGetDevicesEntry, rawManagerEntry] = await Promise.all([
-    getHomeyApiDeviceEntry({ deviceId, deviceManager }),
-    getRawManagerDeviceEntry({ deviceId, homey }),
-  ]);
+  const rawManagerEntry = await getRawManagerDeviceEntry({ deviceId });
 
   if (typeof getPelsDeviceState === 'function') {
     try {
@@ -680,8 +556,6 @@ export async function logHomeyDeviceForDebug(params: {
   }
 
   const comparisonPayload: DeviceStateComparison = {
-    getDevice: buildHomeyStateComparisonSource(detailSections.device),
-    getDevices: buildHomeyStateComparisonSource(homeyGetDevicesEntry),
     managerDevices: buildHomeyStateComparisonSource(rawManagerEntry),
     pelsSnapshot: buildPelsSnapshotComparisonSource(dump.pels?.targetSnapshot ?? null),
     pelsPlan: buildPelsPlanComparisonSource(dump.pels?.planDevice ?? null),
@@ -708,7 +582,6 @@ export async function logHomeyDeviceComparisonForDebug(params: {
   observedTarget?: unknown;
   observedSource?: string;
   deviceManager: DeviceManager;
-  homey?: Homey.App;
   getPelsDeviceState?: (deviceId: string) => PelsDeviceDebugState | null;
   log: (msg: string, metadata?: unknown) => void;
   error: (msg: string, err: Error) => void;
@@ -720,7 +593,6 @@ export async function logHomeyDeviceComparisonForDebug(params: {
     observedTarget,
     observedSource,
     deviceManager,
-    homey,
     getPelsDeviceState,
     log,
     error,
@@ -744,21 +616,12 @@ export async function logHomeyDeviceComparisonForDebug(params: {
 
   const label = device.name || deviceId;
   const safeLabel = sanitizeLogValue(label) || safeDeviceId;
-  const detailSections = await getHomeyDeviceDetailSections({
-    deviceId,
-    deviceManager,
-  });
-  const [homeyGetDevicesEntry, rawManagerEntry] = await Promise.all([
-    getHomeyApiDeviceEntry({ deviceId, deviceManager }),
-    getRawManagerDeviceEntry({ deviceId, homey }),
-  ]);
+  const rawManagerEntry = await getRawManagerDeviceEntry({ deviceId });
   const pelsState = typeof getPelsDeviceState === 'function'
     ? getPelsDeviceState(deviceId)
     : null;
 
   const comparisonPayload: DeviceStateComparison = {
-    getDevice: buildHomeyStateComparisonSource(detailSections.device),
-    getDevices: buildHomeyStateComparisonSource(homeyGetDevicesEntry),
     managerDevices: buildHomeyStateComparisonSource(rawManagerEntry),
     pelsSnapshot: buildPelsSnapshotComparisonSource(pelsState?.targetSnapshot ?? null),
     pelsPlan: buildPelsPlanComparisonSource(pelsState?.planDevice ?? null),
@@ -794,7 +657,6 @@ export async function logHomeyDeviceForDebugFromApp(params: {
   return logHomeyDeviceForDebug({
     deviceId,
     deviceManager: runtimeApp.deviceManager,
-    homey: runtimeApp,
     getPelsDeviceState: (targetDeviceId) => {
       const targetSnapshot = compactPelsTargetSnapshot(
         runtimeApp.deviceManager?.getSnapshot?.()
@@ -846,7 +708,6 @@ export async function logHomeyDeviceComparisonForDebugFromApp(params: {
     observedTarget,
     observedSource,
     deviceManager: runtimeApp.deviceManager,
-    homey: runtimeApp,
     getPelsDeviceState: (targetDeviceId) => {
       const targetSnapshot = compactPelsTargetSnapshot(
         runtimeApp.deviceManager?.getSnapshot?.()

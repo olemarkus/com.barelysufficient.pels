@@ -49,6 +49,8 @@ const allowedUnusedExportPatterns = [
   /^lib\/utils\/dateUtils\.ts:\d+ - formatTimeInTimeZone$/,
   /^lib\/utils\/settingsKeys\.ts:\d+ - DAILY_BUDGET_BREAKDOWN_ENABLED$/,
   /^lib\/utils\/planRebuildTrace\.ts:\d+ - clearPlanRebuildTracesForTests$/,
+  /^lib\/core\/deviceManagerHomeyApi\.ts:\d+ - setRestClient$/,
+  /^lib\/core\/deviceManagerHomeyApi\.ts:\d+ - resetRestClient$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_BOOTSTRAP_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_DEVICES_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_PLAN_PATH$/,

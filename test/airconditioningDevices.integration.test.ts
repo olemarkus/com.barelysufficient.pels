@@ -65,13 +65,9 @@ describe('Airconditioning device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        (app as any).deviceManager.homeyApi = {
-            devices: {
-                getDevices: async () => ({
-                    'aircon-a': buildAirconApiDevice(),
-                }),
-            },
-        };
+        jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+            'aircon-a': buildAirconApiDevice(),
+        });
 
         await (app as any).refreshTargetDevicesSnapshot();
 

@@ -3,16 +3,6 @@ import https from 'https';
 import { EventEmitter } from 'events';
 import { clearPlanRebuildTracesForTests } from '../lib/utils/planRebuildTrace';
 
-// Mock the homey-api module globally to route device actions to the in-memory mock.
-jest.mock('homey-api', () => ({
-  HomeyAPI: {
-    createAppAPI: jest.fn().mockResolvedValue(require('./mocks/homey').mockHomeyApiInstance),
-  },
-}));
-jest.mock('homey-api/lib/HomeyAPI/HomeyAPI', () => ({
-  createAppAPI: jest.fn().mockResolvedValue(require('./mocks/homey').mockHomeyApiInstance),
-}));
-
 // Flag to temporarily allow console.error in tests that intentionally trigger errors
 let allowConsoleError = false;
 export const setAllowConsoleError = (allow: boolean): void => {

@@ -1,12 +1,6 @@
 import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../utils/types';
+import type { RecentLocalCapabilityWrites } from './deviceManagerRealtimeSupport';
 import {
-  consumeMatchingLocalCapabilityWrite,
-  formatRealtimeCapabilityValue,
-  type RecentLocalCapabilityWrites,
-} from './deviceManagerRealtimeSupport';
-import {
-  isRealtimePowerCapability,
-  reconcileRealtimeCapabilityValue,
   reconcileRealtimeDeviceUpdate,
   type RealtimeDeviceReconcileChange,
 } from './deviceManagerRuntime';
@@ -25,14 +19,6 @@ export type ObservedDeviceStateEvent = {
 };
 
 export type HandleRealtimeDeviceUpdateResult = {
-  hadChanges: boolean;
-  shouldReconcilePlan: boolean;
-  changes: RealtimeDeviceReconcileChange[];
-};
-
-export type HandleRealtimeCapabilityUpdateResult = {
-  isPower: boolean;
-  isLocalEcho: boolean;
   hadChanges: boolean;
   shouldReconcilePlan: boolean;
   changes: RealtimeDeviceReconcileChange[];
@@ -125,118 +111,6 @@ export function handleRealtimeDeviceUpdate(params: {
   };
 }
 
-export function handleRealtimeCapabilityUpdate(params: {
-  deviceId: string;
-  label: string;
-  capabilityId: string;
-  value: unknown;
-  latestSnapshot: TargetDeviceSnapshot[];
-  recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
-  shouldTrackRealtimeDevice: (deviceId: string) => boolean;
-  handlePowerUpdate: (deviceId: string, label: string, value: number | null) => void;
-  notePendingBinarySettleObservation?: (
-    deviceId: string,
-    capabilityId: string,
-    value: boolean,
-  ) => boolean;
-  logDebug: (message: string) => void;
-  emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
-  emitObservedState: (event: ObservedDeviceStateEvent) => void;
-}): HandleRealtimeCapabilityUpdateResult {
-  const {
-    deviceId,
-    label,
-    capabilityId,
-    value,
-    latestSnapshot,
-    recentLocalCapabilityWrites,
-    shouldTrackRealtimeDevice,
-    handlePowerUpdate,
-    notePendingBinarySettleObservation,
-    logDebug,
-    emitPlanReconcile,
-    emitObservedState,
-  } = params;
-  if (!shouldTrackRealtimeDevice(deviceId)) {
-    return {
-      isPower: false,
-      isLocalEcho: false,
-      hadChanges: false,
-      shouldReconcilePlan: false,
-      changes: [],
-    };
-  }
-  const formattedValue = formatRealtimeCapabilityValue(value);
-  if (isRealtimePowerCapability(capabilityId)) {
-    logDebug(`Realtime capability update for ${label} (${deviceId}) via ${capabilityId}: ${formattedValue}`);
-    handlePowerUpdate(deviceId, label, typeof value === 'number' ? value : null);
-    return {
-      isPower: true,
-      isLocalEcho: false,
-      hadChanges: true,
-      shouldReconcilePlan: false,
-      changes: [],
-    };
-  }
-
-  const result = reconcileRealtimeCapabilityValue({
-    latestSnapshot,
-    deviceId,
-    capabilityId,
-    value,
-  });
-  const isLocalEcho = consumeMatchingLocalCapabilityWrite({
-    recentLocalCapabilityWrites,
-    deviceId,
-    capabilityId,
-    value,
-  });
-  const deferredBinarySettle = shouldDeferBinarySettleObservation({
-    deviceId,
-    capabilityId,
-    value,
-    notePendingBinarySettleObservation,
-  });
-  const reconcileSuffix = resolveCapabilityReconcileSuffix({
-    isLocalEcho,
-    deferredBinarySettle,
-    shouldReconcilePlan: result.shouldReconcilePlan,
-  });
-  logDebug(
-    `Realtime capability update for ${label} (${deviceId}) `
-    + `via ${capabilityId}: ${formattedValue}${reconcileSuffix}`,
-  );
-  if (isLocalEcho || result.changes.length > 0) {
-    emitObservedState({
-      source: 'realtime_capability',
-      deviceId,
-      capabilityId,
-    });
-  }
-  if (!result.shouldReconcilePlan || isLocalEcho || deferredBinarySettle) {
-    return {
-      isPower: false,
-      isLocalEcho,
-      hadChanges: isLocalEcho || result.changes.length > 0,
-      shouldReconcilePlan: false,
-      changes: result.changes,
-    };
-  }
-  emitPlanReconcile({
-    deviceId,
-    name: label,
-    capabilityId,
-    changes: result.changes,
-  });
-  return {
-    isPower: false,
-    isLocalEcho: false,
-    hadChanges: result.changes.length > 0,
-    shouldReconcilePlan: true,
-    changes: result.changes,
-  };
-}
-
 function applyPendingBinarySettleToDeviceUpdate(params: {
   latestSnapshot: TargetDeviceSnapshot[];
   deviceId: string;
@@ -277,34 +151,3 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   };
 }
 
-function shouldDeferBinarySettleObservation(params: {
-  deviceId: string;
-  capabilityId: string;
-  value: unknown;
-  notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
-}): boolean {
-  const {
-    deviceId,
-    capabilityId,
-    value,
-    notePendingBinarySettleObservation,
-  } = params;
-  return typeof value === 'boolean'
-    && notePendingBinarySettleObservation?.(deviceId, capabilityId, value) === true;
-}
-
-function resolveCapabilityReconcileSuffix(params: {
-  isLocalEcho: boolean;
-  deferredBinarySettle: boolean;
-  shouldReconcilePlan: boolean;
-}): string {
-  const {
-    isLocalEcho,
-    deferredBinarySettle,
-    shouldReconcilePlan,
-  } = params;
-  if (isLocalEcho) return ' [local echo]';
-  if (deferredBinarySettle) return ' [binary settling]';
-  if (shouldReconcilePlan) return ' [drift detected]';
-  return '';
-}

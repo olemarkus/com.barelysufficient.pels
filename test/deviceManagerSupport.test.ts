@@ -16,12 +16,15 @@ import {
 } from '../lib/core/deviceManagerParse';
 import {
   applyMeasurementUpdates,
-  handlePowerUpdate,
   updateLastKnownPower,
 } from '../lib/core/deviceManagerRuntime';
 import {
   getRawDevices,
+  hasRestClient,
   logDeviceManagerRuntimeError,
+  resetRestClient,
+  setRawCapabilityValue,
+  setRestClient,
   writeErrorToStderr,
 } from '../lib/core/deviceManagerHomeyApi';
 
@@ -35,9 +38,18 @@ const createLogger = () => ({
   error: jest.Mock;
 };
 
+const mockRestClient = { get: jest.fn(), put: jest.fn() };
+
 describe('device manager support helpers', () => {
+  beforeEach(() => {
+    mockRestClient.get.mockClear();
+    mockRestClient.put.mockClear();
+    setRestClient(mockRestClient);
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
+    resetRestClient();
   });
 
   it('resolves EV control capability and charging state helpers', () => {
@@ -149,8 +161,6 @@ describe('device manager support helpers', () => {
       lastMeasuredPowerKw: {} as Record<string, { kw: number; ts: number }>,
       lastMeterEnergyKwh: {} as Record<string, { kwh: number; ts: number }>,
     };
-    const latestSnapshot: TargetDeviceSnapshot[] = [{ id: 'dev1', name: 'Device 1' }];
-
     updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.2, deviceLabel: 'Device 1' });
     expect(state.lastKnownPowerKw.dev1).toBe(1.2);
 
@@ -168,22 +178,15 @@ describe('device manager support helpers', () => {
     expect(state.lastMeasuredPowerKw.dev1).toEqual({ kw: 1.4, ts: 2 });
     expect(state.lastKnownPowerKw.dev1).toBe(1.4);
 
-    handlePowerUpdate({ state, logger, latestSnapshot, deviceId: 'dev1', label: 'Device 1', value: 1800 });
-    expect(latestSnapshot[0].powerKw).toBe(1.8);
-    handlePowerUpdate({ state, logger, latestSnapshot, deviceId: 'dev1', label: 'Device 1', value: null });
-    expect(latestSnapshot[0].powerKw).toBe(1.8);
+    const mockGet = jest.fn().mockResolvedValue([{ id: 'direct' }]);
+    setRestClient({ get: mockGet, put: jest.fn() });
+    await expect(getRawDevices('devices')).resolves.toEqual([{ id: 'direct' }]);
 
-    const directHomey = {
-      api: { get: jest.fn().mockResolvedValue([{ id: 'direct' }]) },
-    };
-    const wrappedHomey = {
-      homey: {
-        api: { get: jest.fn().mockResolvedValue({ wrapped: { id: 'wrapped' } }) },
-      },
-    };
-    await expect(getRawDevices(directHomey as never, 'devices')).resolves.toEqual([{ id: 'direct' }]);
-    await expect(getRawDevices(wrappedHomey as never, 'devices')).resolves.toEqual({ wrapped: { id: 'wrapped' } });
-    await expect(getRawDevices({} as never, 'devices')).rejects.toThrow('Homey API client not available');
+    mockGet.mockResolvedValue({ wrapped: { id: 'wrapped' } });
+    await expect(getRawDevices('devices')).resolves.toEqual({ wrapped: { id: 'wrapped' } });
+
+    resetRestClient();
+    await expect(getRawDevices('devices')).rejects.toThrow('REST client not initialized');
 
     const stderrWrite = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
     writeErrorToStderr('device manager failed', new Error('boom'));
@@ -197,5 +200,43 @@ describe('device manager support helpers', () => {
     const normalizedError = logger.error.mock.calls.find(([message]) => message === 'device manager string failure')?.[1];
     expect(normalizedError).toBeInstanceOf(Error);
     expect((normalizedError as Error).message).toBe('string boom');
+  });
+
+  it('hasRestClient reflects current state', () => {
+    resetRestClient();
+    expect(hasRestClient()).toBe(false);
+    setRestClient({ get: jest.fn(), put: jest.fn() });
+    expect(hasRestClient()).toBe(true);
+    resetRestClient();
+    expect(hasRestClient()).toBe(false);
+  });
+
+  it('setRawCapabilityValue calls PUT with correct path and payload', async () => {
+    const mockPut = jest.fn().mockResolvedValue(undefined);
+    setRestClient({ get: jest.fn(), put: mockPut });
+
+    await setRawCapabilityValue('dev-1', 'target_temperature', 22);
+
+    expect(mockPut).toHaveBeenCalledWith(
+      'manager/devices/device/dev-1/capability/target_temperature',
+      { value: 22 },
+    );
+  });
+
+  it('setRawCapabilityValue throws and logs on PUT failure', async () => {
+    const mockPut = jest.fn().mockRejectedValue(new Error('network error'));
+    setRestClient({ get: jest.fn(), put: mockPut });
+    const stderrWrite = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await expect(setRawCapabilityValue('dev-1', 'onoff', true)).rejects.toThrow('network error');
+    expect(stderrWrite).toHaveBeenCalledWith(
+      expect.stringContaining('setRawCapabilityValue PUT'),
+    );
+  });
+
+  it('setRawCapabilityValue throws when REST client is not initialized', async () => {
+    resetRestClient();
+    await expect(setRawCapabilityValue('dev-1', 'onoff', true))
+      .rejects.toThrow('REST client not initialized');
   });
 });

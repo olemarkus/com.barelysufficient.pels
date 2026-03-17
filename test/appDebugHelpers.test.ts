@@ -6,22 +6,20 @@ import {
   logHomeyDeviceForDebug,
   logHomeyDeviceForDebugFromApp,
 } from '../lib/app/appDebugHelpers';
+import { resetRestClient, setRestClient } from '../lib/core/deviceManagerHomeyApi';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];
-  homeyApi?: unknown;
   snapshot?: unknown[];
   observedSources?: unknown;
 } = {}): DeviceManager => {
   const {
     devices = [],
-    homeyApi = {},
     snapshot = [],
     observedSources = null,
   } = params;
   return {
     getDevicesForDebug: jest.fn().mockResolvedValue(devices),
-    getHomeyApi: jest.fn().mockReturnValue(homeyApi),
     getSnapshot: jest.fn().mockReturnValue(snapshot),
     getDebugObservedSources: jest.fn().mockReturnValue(observedSources),
   } as unknown as DeviceManager;
@@ -39,6 +37,10 @@ const parseDumpPayload = (logger: jest.Mock): Record<string, any> => {
 };
 
 describe('appDebugHelpers', () => {
+  afterEach(() => {
+    resetRestClient();
+  });
+
   it('routes debug device fetch failures to app error', async () => {
     const app = {
       deviceManager: {
@@ -63,86 +65,46 @@ describe('appDebugHelpers', () => {
       settings: { load: 12.5 },
       energyObj: null,
     };
-    const getDevice = jest.fn().mockResolvedValue({
-      id: 'dev-1',
-      lastSeenAt: new Date('2026-03-12T10:01:00.000Z'),
-      capabilities: ['onoff'],
-      capabilitiesObj: {
-        onoff: {
-          value: false,
-          lastUpdated: new Date('2026-03-12T10:00:00.000Z'),
-        },
-      },
-      settings: {
-        energy_value_on: 12.5,
-        energy_value_off: 0,
-      },
-      energyObj: { W: 0 },
-    });
-    const getDeviceSettingsObj = jest.fn().mockResolvedValue({
-      usageOn: 12.5,
-      usageOff: 0,
-    });
-    const getDevices = jest.fn().mockResolvedValue({
-      'dev-1': {
-        id: 'dev-1',
-        name: 'Kitchen Socket',
-        capabilities: ['onoff'],
-        capabilitiesObj: {
-          onoff: {
-            value: false,
-            lastUpdated: new Date('2026-03-12T10:00:30.000Z'),
-          },
-        },
-        lastSeenAt: new Date('2026-03-12T10:01:30.000Z'),
-      },
-    });
     const deviceManager = buildDeviceManager({
       devices: [device],
-      homeyApi: { devices: { getDevice, getDeviceSettingsObj, getDevices } },
     });
     const log = jest.fn();
     const error = jest.fn();
-    const homey = {
-      api: {
-        get: jest.fn().mockResolvedValue({
-          'dev-1': {
-            id: 'dev-1',
-            name: 'Kitchen Socket',
-            capabilities: ['onoff'],
-            capabilitiesObj: {
-              onoff: {
-                value: true,
-                lastUpdated: new Date('2026-03-12T10:02:00.000Z'),
-              },
+    setRestClient({
+      get: jest.fn().mockResolvedValue({
+        'dev-1': {
+          id: 'dev-1',
+          name: 'Kitchen Socket',
+          capabilities: ['onoff'],
+          capabilitiesObj: {
+            onoff: {
+              value: true,
+              lastUpdated: new Date('2026-03-12T10:02:00.000Z'),
             },
-            lastSeenAt: new Date('2026-03-12T10:02:30.000Z'),
           },
-        }),
-      },
-    };
+          lastSeenAt: new Date('2026-03-12T10:02:30.000Z'),
+        },
+      }),
+      put: jest.fn(),
+    });
 
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
       deviceManager,
-      homey: homey as never,
       log,
       error,
     });
 
     expect(ok).toBe(true);
-    expect(getDevice).toHaveBeenCalledWith({ id: 'dev-1' });
-    expect(getDeviceSettingsObj).toHaveBeenCalledWith({ id: 'dev-1' });
     expect(error).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledTimes(1);
 
     const dumpPayload = parseDumpPayload(log);
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
       available: true,
-      source: 'getDevice',
+      source: 'listEntry',
       payload: expect.objectContaining({
         id: 'dev-1',
-        lastSeenAt: '2026-03-12T10:01:00.000Z',
         capabilityValues: {
           onoff: {
             value: false,
@@ -153,33 +115,15 @@ describe('appDebugHelpers', () => {
     }));
     expect(dumpPayload.homey.settings).toEqual({
       available: true,
-      source: 'getDevice',
+      source: 'listEntry',
       payload: {
-        energy_value_on: 12.5,
-        energy_value_off: 0,
-      },
-    });
-    expect(dumpPayload.homey.settingsObject).toEqual({
-      available: true,
-      payload: {
-        usageOn: 12.5,
-        usageOff: 0,
+        load: 12.5,
       },
     });
     expect(dumpPayload.homey.comparison).toEqual({
       available: true,
       source: 'side_by_side',
       payload: {
-        getDevice: {
-          sourceState: 'off',
-          lastSeenAt: '2026-03-12T10:01:00.000Z',
-          onoffLastUpdated: '2026-03-12T10:00:00.000Z',
-        },
-        getDevices: {
-          sourceState: 'off',
-          lastSeenAt: '2026-03-12T10:01:30.000Z',
-          onoffLastUpdated: '2026-03-12T10:00:30.000Z',
-        },
         managerDevices: {
           sourceState: 'on',
           lastSeenAt: '2026-03-12T10:02:30.000Z',
@@ -191,7 +135,7 @@ describe('appDebugHelpers', () => {
     });
   });
 
-  it('logs settings object as unavailable when getDeviceSettingsObj is missing', async () => {
+  it('logs settings as unavailable when device has no settings', async () => {
     const device: HomeyDeviceLike = {
       id: 'dev-1',
       name: 'Kitchen Socket',
@@ -201,7 +145,6 @@ describe('appDebugHelpers', () => {
     };
     const deviceManager = buildDeviceManager({
       devices: [device],
-      homeyApi: { devices: {} },
     });
     const log = jest.fn();
     const error = jest.fn();
@@ -230,24 +173,19 @@ describe('appDebugHelpers', () => {
       available: false,
       payload: null,
     });
-    expect(dumpPayload.homey.settingsObject).toEqual({
-      available: false,
-      payload: null,
-    });
   });
 
-  it('captures settings object failures inside the nested device dump and continues', async () => {
+  it('includes settings from device list entry when present', async () => {
     const device: HomeyDeviceLike = {
       id: 'dev-1',
       name: 'Kitchen Socket',
       capabilities: ['onoff'],
       capabilitiesObj: { onoff: { value: false } },
+      settings: { load: 12.5 },
       energyObj: null,
     };
-    const getDeviceSettingsObj = jest.fn().mockRejectedValue(new Error('boom'));
     const deviceManager = buildDeviceManager({
       devices: [device],
-      homeyApi: { devices: { getDeviceSettingsObj } },
     });
     const log = jest.fn();
     const error = jest.fn();
@@ -267,14 +205,14 @@ describe('appDebugHelpers', () => {
       available: true,
       source: 'listEntry',
     }));
-    expect(dumpPayload.homey.settingsObject).toEqual({
-      available: false,
-      payload: null,
-      error: 'boom',
+    expect(dumpPayload.homey.settings).toEqual({
+      available: true,
+      source: 'listEntry',
+      payload: { load: 12.5 },
     });
   });
 
-  it('captures getDevice failures and still includes other nested sections', async () => {
+  it('uses listEntry source when device is found in the device list', async () => {
     const device: HomeyDeviceLike = {
       id: 'dev-1',
       name: 'Kitchen Socket',
@@ -282,14 +220,8 @@ describe('appDebugHelpers', () => {
       capabilitiesObj: { onoff: { value: false } },
       energyObj: null,
     };
-    const getDevice = jest.fn().mockRejectedValue(new Error('detail boom'));
-    const getDeviceSettingsObj = jest.fn().mockResolvedValue({
-      usageOn: 12.5,
-      usageOff: 0,
-    });
     const deviceManager = buildDeviceManager({
       devices: [device],
-      homeyApi: { devices: { getDevice, getDeviceSettingsObj } },
     });
     const log = jest.fn();
     const error = jest.fn();
@@ -308,15 +240,7 @@ describe('appDebugHelpers', () => {
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
       available: true,
       source: 'listEntry',
-      error: 'detail boom',
     }));
-    expect(dumpPayload.homey.settingsObject).toEqual({
-      available: true,
-      payload: {
-        usageOn: 12.5,
-        usageOff: 0,
-      },
-    });
   });
 
   it('includes PELS live snapshot and plan state when logging from the app wrapper', async () => {
@@ -532,29 +456,6 @@ describe('appDebugHelpers', () => {
   });
 
   it('logs a compact side-by-side comparison from the app wrapper', async () => {
-    const getDevice = jest.fn().mockResolvedValue({
-      id: 'dev-1',
-      name: 'Kitchen Socket',
-      capabilities: ['onoff', 'target_temperature', 'measure_power'],
-      capabilitiesObj: {
-        onoff: { value: false, lastUpdated: new Date('2026-03-12T10:00:00.000Z') },
-        target_temperature: { value: 21, lastUpdated: new Date('2026-03-12T10:00:10.000Z') },
-        measure_power: { value: 100, lastUpdated: new Date('2026-03-12T10:00:20.000Z') },
-      },
-      lastSeenAt: new Date('2026-03-12T10:01:00.000Z'),
-    });
-    const getDevices = jest.fn().mockResolvedValue({
-      'dev-1': {
-        id: 'dev-1',
-        name: 'Kitchen Socket',
-        capabilities: ['onoff', 'target_temperature'],
-        capabilitiesObj: {
-          onoff: { value: true, lastUpdated: new Date('2026-03-12T10:01:10.000Z') },
-          target_temperature: { value: 23, lastUpdated: new Date('2026-03-12T10:01:20.000Z') },
-        },
-        lastSeenAt: new Date('2026-03-12T10:01:30.000Z'),
-      },
-    });
     const app = {
       deviceManager: buildDeviceManager({
         devices: [{
@@ -563,7 +464,6 @@ describe('appDebugHelpers', () => {
           capabilities: ['onoff'],
           capabilitiesObj: { onoff: { value: false } },
         }],
-        homeyApi: { devices: { getDevice, getDevices } },
         snapshot: [{
           id: 'dev-1',
           name: 'Kitchen Socket',
@@ -586,25 +486,24 @@ describe('appDebugHelpers', () => {
           }],
         }),
       },
-      homey: {
-        api: {
-          get: jest.fn().mockResolvedValue({
-            'dev-1': {
-              id: 'dev-1',
-              name: 'Kitchen Socket',
-              capabilities: ['onoff', 'target_temperature'],
-              capabilitiesObj: {
-                onoff: { value: true, lastUpdated: new Date('2026-03-12T10:02:00.000Z') },
-                target_temperature: { value: 23, lastUpdated: new Date('2026-03-12T10:02:10.000Z') },
-              },
-              lastSeenAt: new Date('2026-03-12T10:02:30.000Z'),
-            },
-          }),
-        },
-      },
       log: jest.fn(),
       error: jest.fn(),
     };
+    setRestClient({
+      get: jest.fn().mockResolvedValue({
+        'dev-1': {
+          id: 'dev-1',
+          name: 'Kitchen Socket',
+          capabilities: ['onoff', 'target_temperature'],
+          capabilitiesObj: {
+            onoff: { value: true, lastUpdated: new Date('2026-03-12T10:02:00.000Z') },
+            target_temperature: { value: 23, lastUpdated: new Date('2026-03-12T10:02:10.000Z') },
+          },
+          lastSeenAt: new Date('2026-03-12T10:02:30.000Z'),
+        },
+      }),
+      put: jest.fn(),
+    });
 
     const ok = await logHomeyDeviceComparisonForDebugFromApp({
       app: app as never,
@@ -624,22 +523,6 @@ describe('appDebugHelpers', () => {
       observedTarget: 20.5,
       observedSource: 'rebuild',
       comparison: {
-        getDevice: {
-          sourceState: 'off',
-          target: 21,
-          powerW: 100,
-          lastSeenAt: '2026-03-12T10:01:00.000Z',
-          onoffLastUpdated: '2026-03-12T10:00:00.000Z',
-          targetLastUpdated: '2026-03-12T10:00:10.000Z',
-          powerLastUpdated: '2026-03-12T10:00:20.000Z',
-        },
-        getDevices: {
-          sourceState: 'on',
-          target: 23,
-          lastSeenAt: '2026-03-12T10:01:30.000Z',
-          onoffLastUpdated: '2026-03-12T10:01:10.000Z',
-          targetLastUpdated: '2026-03-12T10:01:20.000Z',
-        },
         managerDevices: {
           sourceState: 'on',
           target: 23,

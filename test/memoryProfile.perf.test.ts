@@ -72,7 +72,6 @@ describe('memory profile', () => {
     profileRequire('core/deviceManagerHomeyApi', '../lib/core/deviceManagerHomeyApi', baseline);
     profileRequire('core/deviceManagerRealtimeHandlers', '../lib/core/deviceManagerRealtimeHandlers', baseline);
     profileRequire('core/deviceManagerRealtimeSupport', '../lib/core/deviceManagerRealtimeSupport', baseline);
-    profileRequire('core/deviceManagerDebug', '../lib/core/deviceManagerDebug', baseline);
     profileRequire('core/deviceLoad', '../lib/core/deviceLoad', baseline);
     profileRequire('core/capacityGuard', '../lib/core/capacityGuard', baseline);
     profileRequire('core/powerTracker', '../lib/core/powerTracker', baseline);
@@ -89,8 +88,6 @@ describe('memory profile', () => {
 
     // External modules
     profileRequire('@napi-rs/canvas', '@napi-rs/canvas', baseline);
-    profileRequire('homey-api', 'homey-api', baseline);
-
     const final = rss();
     log(`\n[Memory Profile] final RSS=${(final / MB).toFixed(1)} MB  total delta=${((final - baseline) / MB).toFixed(1)} MB\n`);
 
