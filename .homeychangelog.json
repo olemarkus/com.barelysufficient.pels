@@ -217,5 +217,8 @@
   },
   "1.20.6": {
     "en": "Simplified device fetching/updating, resulting in reduced memory footprint."
+  },
+  "1.20.7": {
+    "en": "Remove unused files from app archive."
   }
 }
