@@ -1,3 +1,8 @@
+---
+title: Architecture Contract
+description: Dependency boundaries that keep runtime code, settings UI code, and shared modules from bleeding into each other.
+---
+
 # PELS Architecture Contract
 
 This document defines dependency boundaries to keep changes local and reduce coupling.

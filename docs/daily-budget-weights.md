@@ -1,3 +1,8 @@
+---
+title: Daily Budget Weighting Math
+description: Exact formulas for controlled usage weight, price flex share, confidence, and observed hourly caps in the daily-budget planner.
+---
+
 # Daily Budget Weighting Math (Advanced)
 
 This document explains the exact math behind:

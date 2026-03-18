@@ -9,4 +9,4 @@ These files contain the original flow screenshots used by the how-to.
 
 They are referenced by:
 
-- `docs/howto_headroom_expected_power_flow_control.md`
+- `docs/how-to-headroom-expected-power-flow-control.md`

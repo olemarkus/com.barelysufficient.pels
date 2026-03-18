@@ -1,3 +1,8 @@
+---
+title: Plan States and Status Lines
+description: How the Overview tab derives device state and status text from the planner output.
+---
+
 # Plan States and Status Lines
 
 This document describes how the Overview tab derives device state and the status text shown per device.
