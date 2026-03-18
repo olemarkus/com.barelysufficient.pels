@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="70 80 860 860">
+  <defs>
+    <mask id="leaf-mask">
+      <rect x="0" y="0" width="1000" height="1000" fill="white" />
+
+      <g transform="rotate(5 510 545)"
+         fill="none"
+         stroke="black"
+         stroke-width="40"
+         stroke-linecap="round"
+         stroke-linejoin="round">
+        <path d="M 373.8,594.2
+                 C 340,550 390,440 460.4,381.8
+                 C 530,330 600,315 645.0,310.0
+                 C 670,360 650,450 630.0,530.0
+                 C 610,610 550,690 456.7,678.9" />
+
+        <path d="M 552.4,444.4
+                 C 480,510 410,590 405.0,670.0
+                 C 400,750 440,780 478.8,784.4" />
+      </g>
+    </mask>
+  </defs>
+
+  <path fill="currentColor"
+        stroke="currentColor"
+        stroke-width="116"
+        stroke-linejoin="round"
+        mask="url(#leaf-mask)"
+        d="M 140,828
+           L 140,360
+           L 580,150
+           L 860,360
+           L 860,828 Z" />
+</svg>

@@ -1,3 +1,8 @@
+---
+title: Daily Energy Budget
+description: How PELS paces whole-day energy use without turning daily misses into emergency alarms.
+---
+
 # Daily Energy Budget
 
 The Daily Energy Budget is a **soft constraint** – a kWh/day guide that helps pace your energy use. It does not override the hourly capacity system. Instead, it produces a **daily soft limit** for the current hour, and the planner uses the smaller of that and the **hourly capacity soft limit**.
@@ -21,7 +26,7 @@ This means a budget-exempt device can leave the household over the daily budget 
 
 Shared capacity terminology and units are defined in:
 
-- [User Guide: Terminology and Units](README.md#terminology-and-units)
+- [Getting Started: Terminology and Units](getting-started.md#terminology-and-units)
 
 Daily-budget-specific terms:
 
@@ -86,7 +91,7 @@ The **Advanced** tab includes two daily-budget tuning controls:
 
 **Warning:** these controls can significantly change pacing behavior, shed order timing, and restore timing. Keep defaults unless you are deliberately tuning behavior. If you change them, adjust one parameter at a time and observe at least a full day.
 
-For exact formulas and worked examples, see [Daily Budget Weighting Math (Advanced)](daily_budget_weights.md).
+For exact formulas and worked examples, see [Daily Budget Weighting Math (Advanced)](daily-budget-weights.md).
 
 ## Today Plan View
 

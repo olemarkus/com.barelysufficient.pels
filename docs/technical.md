@@ -1,3 +1,8 @@
+---
+title: Technical Reference
+description: Internal planner behavior, budget logic, cooldowns, estimation rules, and system assumptions used by PELS.
+---
+
 # PELS - Technical Documentation
 
 This document explains the internal logic and assumptions PELS uses to manage your devices.
@@ -40,7 +45,7 @@ PELS uses an **hourly energy budget** model based on the Norwegian grid tariff s
 
 Canonical terminology and unit definitions are maintained in the user guide:
 
-- [User Guide: Terminology and Units](README.md#terminology-and-units)
+- [Getting Started: Terminology and Units](getting-started.md#terminology-and-units)
 
 This technical document uses those same definitions.
 
@@ -95,13 +100,13 @@ The daily energy budget is a **soft constraint** that helps pace energy use thro
 - **Combined with hourly**: The planner uses the smaller of the hourly soft limit and daily soft limit for shedding decisions.
 - **Budget exemption is control-only**: Budget-exempt devices are ignored by daily soft-limit control, but their real usage still appears in reporting and they still count for hourly capacity protection.
 
-See [Daily Energy Budget](daily_budget.md) for detailed documentation.
+See [Daily Energy Budget](daily-budget.md) for detailed documentation.
 
 ## Daily Budget Weighting Math
 
 Advanced daily-budget tuning (controlled usage weight, price flex share, and confidence blending) is documented in:
 
-- [Daily Budget Weighting Math (Advanced)](daily_budget_weights.md)
+- [Daily Budget Weighting Math (Advanced)](daily-budget-weights.md)
 
 That document includes the exact formulas used in code and numeric examples for how each parameter changes the plan.
 

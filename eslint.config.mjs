@@ -22,6 +22,9 @@ export default tseslint.config(
       '.playwright/**',
       '.playwright-cli/**',
       '.playwright-mcp/**',
+      'docs/.vitepress/.temp/**',
+      'docs/.vitepress/dist/**',
+      'docs/.vitepress/cache/**',
       'packages/settings-ui/dist/**',
       'packages/settings-ui/playwright-report/**',
       'packages/settings-ui/test-results/**',
@@ -167,6 +170,27 @@ export default tseslint.config(
         ignores: ['fetch'],
       }],
       'n/no-unsupported-features/es-syntax': ['error', { version: '>=18.0.0', ignores: ['modules'] }],
+    },
+  },
+  {
+    files: ['docs/.vitepress/**/*.ts', 'docs/.vitepress/**/*.mts'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+      parserOptions: {
+        project: false,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      'no-console': 'off',
+      'max-len': ['warn', { code: 120 }],
     },
   },
   // Runtime hot paths - stricter perf-oriented iteration rules

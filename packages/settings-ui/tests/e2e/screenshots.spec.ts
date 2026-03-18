@@ -14,14 +14,14 @@ const TABS = ['Devices', 'Modes', 'Budget', 'Usage', 'Price', 'Advanced'];
 test.use({ viewport: { width: 480, height: 900 } });
 
 test('overview tab', async ({ page }) => {
-  await page.goto('/settings/index.html');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(800);
   await page.screenshot({ path: 'test-results/screenshots/01-overview.png' });
 });
 
 for (const [i, tab] of TABS.entries()) {
   test(`tab: ${tab.toLowerCase()}`, async ({ page }) => {
-    await page.goto('/settings/index.html');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(600);
     await page.getByRole('tab', { name: tab }).click();
     await page.waitForTimeout(800);
@@ -32,7 +32,7 @@ for (const [i, tab] of TABS.entries()) {
 }
 
 test('budget tab - scroll through expanded', async ({ page }) => {
-  await page.goto('/settings/index.html');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(600);
   await page.getByRole('tab', { name: 'Budget' }).click();
   await page.waitForTimeout(600);
@@ -53,7 +53,7 @@ test('budget tab - scroll through expanded', async ({ page }) => {
 });
 
 test('price tab - scroll through expanded', async ({ page }) => {
-  await page.goto('/settings/index.html');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(600);
   await page.getByRole('tab', { name: 'Price' }).click();
   await page.waitForTimeout(600);
@@ -73,7 +73,7 @@ test('price tab - scroll through expanded', async ({ page }) => {
 });
 
 test('advanced tab - scroll through expanded', async ({ page }) => {
-  await page.goto('/settings/index.html');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(600);
   await page.getByRole('tab', { name: 'Advanced' }).click();
   await page.waitForTimeout(600);
@@ -93,7 +93,7 @@ test('advanced tab - scroll through expanded', async ({ page }) => {
 });
 
 test('usage tab - scroll through', async ({ page }) => {
-  await page.goto('/settings/index.html');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(600);
   await page.getByRole('tab', { name: 'Usage' }).click();
   await page.waitForTimeout(800);
@@ -107,7 +107,7 @@ test('usage tab - scroll through', async ({ page }) => {
 });
 
 test('devices tab - try open device detail', async ({ page }) => {
-  await page.goto('/settings/index.html');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(600);
   await page.getByRole('tab', { name: 'Devices' }).click();
   await page.waitForTimeout(800);

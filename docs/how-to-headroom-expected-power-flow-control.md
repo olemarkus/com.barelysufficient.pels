@@ -1,3 +1,8 @@
+---
+title: Manage Stepped Device Power
+description: Use headroom checks and expected-power sync to let PELS steer stepped loads such as EV chargers and water heaters.
+---
+
 # How-To: Let PELS Manage Device Power Usage
 
 Use this pattern when a device can run at different power levels, and you want PELS to select the best level automatically based on available headroom.
