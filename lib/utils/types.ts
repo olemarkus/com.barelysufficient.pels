@@ -1,7 +1,11 @@
+import type { TargetCapabilitySnapshot } from '../../packages/contracts/src/types';
+
+export type { TargetCapabilitySnapshot } from '../../packages/contracts/src/types';
+
 export type TargetDeviceSnapshot = {
     id: string;
     name: string;
-    targets: Array<{ id: string; value: unknown; unit: string }>;
+    targets: TargetCapabilitySnapshot[];
     deviceClass?: string;
     deviceType?: 'temperature' | 'onoff';
     controlCapabilityId?: 'onoff' | 'evcharger_charging';
@@ -66,6 +70,9 @@ export type FlowHomeyLike = {
 export type CapabilityValue<T> = {
     value?: T;
     units?: string;
+    min?: number;
+    max?: number;
+    step?: number;
     setable?: boolean;
     lastUpdated?: string | number | Date | null;
 };

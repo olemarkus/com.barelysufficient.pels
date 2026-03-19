@@ -32,6 +32,9 @@ import {
     resolveDeviceCapabilities,
 } from './deviceManagerParse';
 import {
+    normalizeTargetCapabilityValue,
+} from '../../packages/contracts/src/targetCapabilities';
+import {
     hasPotentialHomeyEnergyEstimate,
     resolvePreferredPowerRaw,
     type LiveDevicePowerWatts,
@@ -294,15 +297,16 @@ export class DeviceManager extends EventEmitter {
         }
     }
 
-    async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<void> {
+    async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
         if (!hasRestClient()) throw new Error('REST client not ready');
+        const normalizedValue = this.normalizeCapabilityValue(deviceId, capabilityId, value);
         const snapshotBefore = this.latestSnapshot.find((device) => device.id === deviceId);
         logEvCapabilityRequest({
             logger: this.logger,
             snapshotBefore,
             deviceId,
             capabilityId,
-            value,
+            value: normalizedValue,
         });
 
         incPerfCounter('device_action_total');
@@ -311,11 +315,11 @@ export class DeviceManager extends EventEmitter {
             recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
             deviceId,
             capabilityId,
-            value,
+            value: normalizedValue,
         });
-        this.startPendingBinarySettleWindow(deviceId, capabilityId, value, snapshotBefore?.name);
+        this.startPendingBinarySettleWindow(deviceId, capabilityId, normalizedValue, snapshotBefore?.name);
         try {
-            await setRawCapabilityValue(deviceId, capabilityId, value);
+            await setRawCapabilityValue(deviceId, capabilityId, normalizedValue);
         } catch (error) {
             clearLocalCapabilityWrite({
                 recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
@@ -327,12 +331,12 @@ export class DeviceManager extends EventEmitter {
         }
 
         // Without per-capability realtime listeners, always preserve local binary state
-        const preservedLocalState = typeof value === 'boolean'
+        const preservedLocalState = typeof normalizedValue === 'boolean'
             && isRealtimeControlCapability(capabilityId);
         if (preservedLocalState) {
-            this.updateLocalSnapshot(deviceId, { on: value });
+            this.updateLocalSnapshot(deviceId, { on: normalizedValue });
         }
-        this.recordLocalWriteObservation(deviceId, capabilityId, value, {
+        this.recordLocalWriteObservation(deviceId, capabilityId, normalizedValue, {
             preservedLocalState,
         });
 
@@ -342,8 +346,9 @@ export class DeviceManager extends EventEmitter {
             snapshotAfter,
             deviceId,
             capabilityId,
-            value,
+            value: normalizedValue,
         });
+        return normalizedValue;
     }
 
     async applyDeviceTargets(targets: Record<string, number>, contextInfo = ''): Promise<void> {
@@ -360,8 +365,8 @@ export class DeviceManager extends EventEmitter {
             if (!targetCap) continue;
 
             try {
-                await this.setCapability(device.id, targetCap, targetValue);
-                this.logger.log(`Set ${targetCap} for ${device.name} to ${targetValue} (${contextInfo})`);
+                const appliedValue = await this.setCapability(device.id, targetCap, targetValue);
+                this.logger.log(`Set ${targetCap} for ${device.name} to ${String(appliedValue)} (${contextInfo})`);
             } catch (error) {
                 this.logger.error(`Failed to set ${targetCap} for ${device.name}`, error);
             }
@@ -378,8 +383,23 @@ export class DeviceManager extends EventEmitter {
             const targetCap = device.targets?.[0]?.id;
             if (!targetCap) continue;
 
-            this.logger.log(`Dry-run: would set ${targetCap} for ${device.name} to ${targetValue}°C (${contextInfo})`);
+            const target = device.targets.find((entry) => entry.id === targetCap);
+            const normalizedValue = typeof targetValue === 'number'
+                ? normalizeTargetCapabilityValue({ target, value: targetValue })
+                : targetValue;
+            this.logger.log(
+                `Dry-run: would set ${targetCap} for ${device.name} `
+                + `to ${normalizedValue}°C (${contextInfo})`,
+            );
         }
+    }
+
+    private normalizeCapabilityValue(deviceId: string, capabilityId: string, value: unknown): unknown {
+        if (typeof value !== 'number' || !Number.isFinite(value)) return value;
+        const snapshot = this.latestSnapshot.find((device) => device.id === deviceId);
+        const target = snapshot?.targets.find((entry) => entry.id === capabilityId);
+        if (!target) return value;
+        return normalizeTargetCapabilityValue({ target, value });
     }
 
     private async fetchDevices(): Promise<HomeyDeviceLike[]> {

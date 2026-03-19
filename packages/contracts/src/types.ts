@@ -1,7 +1,15 @@
+export type TargetCapabilitySnapshot = {
+  id: string;
+  value: unknown;
+  unit: string;
+  min?: number;
+  max?: number;
+  step?: number;
+};
 export type TargetDeviceSnapshot = {
     id: string;
     name: string;
-    targets: Array<{ id: string; value: unknown; unit: string }>;
+    targets: TargetCapabilitySnapshot[];
     deviceClass?: string;
     deviceType?: 'temperature' | 'onoff';
     controlCapabilityId?: 'onoff' | 'evcharger_charging';

@@ -1,4 +1,5 @@
 import type { HeadroomCardCooldownSource } from './planHeadroomDevice';
+import type { TargetCapabilitySnapshot } from '../utils/types';
 
 export type ShedAction = 'turn_off' | 'set_temperature';
 
@@ -77,7 +78,7 @@ export type DevicePlan = {
 export type PlanInputDevice = {
   id: string;
   name: string;
-  targets: Array<{ id: string; value: unknown; unit: string }>;
+  targets: TargetCapabilitySnapshot[];
   deviceType?: 'temperature' | 'onoff';
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';

@@ -3,6 +3,10 @@ import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
+import {
+  getPrimaryTargetCapability,
+  normalizeTargetCapabilityValue,
+} from '../../packages/contracts/src/targetCapabilities';
 import { getInactiveReason } from './planRestoreDevices';
 
 export type PlanDevicesDeps = {
@@ -82,11 +86,15 @@ function resolvePlannedTarget(params: {
 }): number | null {
   const { dev, desiredForMode, supportsTemperature, deps } = params;
   if (!supportsTemperature) return null;
+  const target = getPrimaryTargetCapability(dev.targets);
   const desired = desiredForMode[dev.id];
   let plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
   const priceOptConfig = deps.getPriceOptimizationSettings()[dev.id];
   if (deps.getPriceOptimizationEnabled() && plannedTarget !== null && priceOptConfig?.enabled) {
     plannedTarget = applyPriceOptimizationDelta(plannedTarget, priceOptConfig, deps);
+  }
+  if (plannedTarget !== null) {
+    plannedTarget = normalizeTargetCapabilityValue({ target, value: plannedTarget });
   }
   return plannedTarget;
 }
@@ -143,6 +151,7 @@ function buildBasePlanDevice(params: {
     ? shedReasons.get(dev.id) || (recentlyRestored ? 'keep (recently restored)' : 'keep')
     : 'capacity control off';
   const { shedAction, shedTemperature } = resolveShedAction(
+    dev,
     controllable,
     shedSet.has(dev.id),
     shedBehavior,
@@ -188,11 +197,13 @@ function resolvePlannedState(controllable: boolean, shouldShed: boolean): 'shed'
 }
 
 function resolveShedAction(
+  dev: PlanInputDevice,
   controllable: boolean,
   shouldShed: boolean,
   shedBehavior: { action: ShedAction; temperature: number | null },
   supportsTemperature: boolean,
 ): { shedAction: ShedAction; shedTemperature: number | null } {
+  const target = getPrimaryTargetCapability(dev.targets);
   if (
     supportsTemperature
     && controllable
@@ -200,7 +211,10 @@ function resolveShedAction(
     && shedBehavior.action === 'set_temperature'
     && shedBehavior.temperature !== null
   ) {
-    return { shedAction: 'set_temperature', shedTemperature: shedBehavior.temperature };
+    return {
+      shedAction: 'set_temperature',
+      shedTemperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
+    };
   }
   return { shedAction: 'turn_off', shedTemperature: null };
 }

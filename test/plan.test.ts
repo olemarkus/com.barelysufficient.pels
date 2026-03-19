@@ -38,6 +38,12 @@ function createHoiaxWaterHeater(id: string, name: string = 'Connected 300') {
     'onoff',
     'max_power_3000',
   ]);
+  device.setCapabilityMetadata('target_temperature', {
+    units: '°C',
+    min: 35,
+    max: 75,
+    step: 5,
+  });
   // Set realistic default values
   device.setCapabilityValue('measure_power', 0);
   device.setCapabilityValue('target_temperature', 65);
@@ -1867,6 +1873,7 @@ describe('Device plan snapshot', () => {
     expect(snapshot[0].targets[0]).toMatchObject({
       id: 'target_temperature',
       value: 65,
+      step: 5,
     });
   });
 
@@ -1914,7 +1921,7 @@ describe('Device plan snapshot', () => {
 
     // Configure Away mode with lower temp for water heater
     mockHomeyInstance.settings.set('mode_device_targets', {
-      Away: { 'hoiax-1': 45 },
+      Away: { 'hoiax-1': 46 },
       Home: { 'hoiax-1': 65 },
     });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
@@ -1931,7 +1938,7 @@ describe('Device plan snapshot', () => {
       {
         id: 'hoiax-1',
         name: 'Connected 300',
-        targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
         powerKw: 3,
         currentOn: true,
         controllable: true,

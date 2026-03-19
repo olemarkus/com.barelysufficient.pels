@@ -70,11 +70,17 @@ export function buildTargets(
   targetCaps: string[],
   capabilityObj: DeviceCapabilityMap,
 ): TargetDeviceSnapshot['targets'] {
-  return targetCaps.map((capId) => ({
-    id: capId,
-    value: capabilityObj[capId]?.value ?? null,
-    unit: capabilityObj[capId]?.units || '°C',
-  }));
+  return targetCaps.map((capId) => {
+    const capability = capabilityObj[capId];
+    return {
+      id: capId,
+      value: capability?.value ?? null,
+      unit: capability?.units || '°C',
+      ...(typeof capability?.min === 'number' && Number.isFinite(capability.min) ? { min: capability.min } : {}),
+      ...(typeof capability?.max === 'number' && Number.isFinite(capability.max) ? { max: capability.max } : {}),
+      ...(typeof capability?.step === 'number' && Number.isFinite(capability.step) ? { step: capability.step } : {}),
+    };
+  });
 }
 
 function hasPowerCapability(capabilities: string[]): boolean {

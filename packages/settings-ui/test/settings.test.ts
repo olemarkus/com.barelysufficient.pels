@@ -1822,4 +1822,49 @@ describe('Plan sorting', () => {
     expect(priorities['dev-2']).toBe(2);
     expect(priorities['dev-3']).toBe(3); // BOTTOM = least important = priority 3
   });
+
+  it('uses the device target step for mode inputs and saves normalized values', async () => {
+    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    // @ts-ignore mutate mock
+    global.Homey.set = setSpy;
+    // @ts-ignore mutate mock
+    global.Homey.get = jest.fn((key, cb) => {
+      if (key === 'target_devices_snapshot') {
+        return cb(null, [
+          {
+            id: 'dev-1',
+            name: 'Connected 300',
+            deviceType: 'temperature',
+            targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
+          },
+        ]);
+      }
+      if (key === 'operating_mode') return cb(null, 'Home');
+      if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
+      if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 46 } });
+      if (key === 'managed_devices') return cb(null, { 'dev-1': true });
+      if (key === 'controllable_devices') return cb(null, { 'dev-1': true });
+      if (key === 'price_optimization_settings') return cb(null, {});
+      return cb(null, null);
+    });
+
+    await loadSettingsScript();
+
+    const input = document.querySelector('.mode-target-input') as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+    expect(input?.step).toBe('5');
+    expect(input?.value).toBe('45');
+
+    if (!input) throw new Error('Expected mode target input');
+    input.value = '46';
+    input.dispatchEvent(new Event('change'));
+
+    await waitFor(() => {
+      const calls = setSpy.mock.calls.filter((call) => call[0] === 'mode_device_targets');
+      return calls.length > 0;
+    }, 1500);
+
+    const calls = setSpy.mock.calls.filter((call) => call[0] === 'mode_device_targets');
+    expect(calls[calls.length - 1]?.[1]).toEqual({ Home: { 'dev-1': 45 } });
+  });
 });

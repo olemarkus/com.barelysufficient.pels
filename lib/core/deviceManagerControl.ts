@@ -3,6 +3,9 @@ import type { Logger, TargetDeviceSnapshot } from '../utils/types';
 export type DeviceCapabilityValue = {
   value?: unknown;
   units?: string;
+  min?: number;
+  max?: number;
+  step?: number;
   setable?: boolean;
   lastUpdated?: string | number | Date | null;
 };

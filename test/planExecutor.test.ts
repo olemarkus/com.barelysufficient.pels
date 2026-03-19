@@ -212,6 +212,30 @@ describe('PlanExecutor pending target commands', () => {
     );
   });
 
+  it('normalizes target writes to the device target step before tracking pending retries', async () => {
+    const state = createPlanEngineState();
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Connected 300',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 40, unit: '°C', min: 35, max: 75, step: 5 }],
+      },
+    ]);
+
+    await executor.applyPlanActions(buildTargetPlan(40, 46));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 45);
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      capabilityId: 'target_temperature',
+      desired: 45,
+      retryCount: 0,
+    });
+  });
+
   it('logs shed-temperature target updates as shedding work instead of overshoot', async () => {
     const state = createPlanEngineState();
     const { executor, deps, deviceManager } = buildExecutor(state, [
