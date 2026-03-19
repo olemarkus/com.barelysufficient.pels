@@ -1,5 +1,8 @@
 /* eslint-disable max-lines -- executor keeps the plan actuation paths together for traceability. */
 import Homey from 'homey';
+import {
+  normalizeTargetCapabilityValue,
+} from '../../packages/contracts/src/targetCapabilities';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
 import type { DevicePlan, ShedAction } from './planTypes';
@@ -468,12 +471,14 @@ export class PlanExecutor {
       deviceId,
       name,
       targetCap,
-      desired,
+      desired: rawDesired,
       observedValue,
       skipContext,
       actuationMode,
     } = params;
     const latestObservedSnapshot = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
+    const target = latestObservedSnapshot?.targets?.find((entry) => entry.id === targetCap);
+    const desired = normalizeTargetCapabilityValue({ target, value: rawDesired });
     const latestObservedValue = latestObservedSnapshot?.targets?.find((entry) => entry.id === targetCap)?.value;
     if (Object.is(latestObservedValue, desired)) {
       this.logDebug(`Capacity: skip ${targetCap} for ${name}, already ${desired}°C in current snapshot`);

@@ -177,6 +177,73 @@ describe('device detail diagnostics', () => {
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
   });
 
+  it('uses the device target step in the device detail modal and saves normalized values', async () => {
+    buildDom();
+    jest.doMock('../src/ui/devices', () => ({
+      renderDevices: jest.fn(),
+    }));
+    jest.doMock('../src/ui/modes', () => ({
+      renderPriorities: jest.fn(),
+    }));
+    jest.doMock('../src/ui/priceOptimization', () => ({
+      renderPriceOptimization: jest.fn(),
+      savePriceOptimizationSettings: jest.fn().mockResolvedValue(undefined),
+    }));
+    jest.doMock('../src/ui/toast', () => ({
+      showToastError: jest.fn().mockResolvedValue(undefined),
+    }));
+    jest.doMock('../src/ui/logging', () => ({
+      logSettingsError: jest.fn().mockResolvedValue(undefined),
+    }));
+
+    let initDeviceDetailHandlers!: typeof import('../src/ui/deviceDetail').initDeviceDetailHandlers;
+    let openDeviceDetail!: typeof import('../src/ui/deviceDetail').openDeviceDetail;
+    let state!: typeof import('../src/ui/state').state;
+    let homey!: MockHomeyClient;
+
+    jest.isolateModules(() => {
+      const homeyModule = require('../src/ui/homey') as typeof import('../src/ui/homey');
+      homey = createHomeyMock();
+      homeyModule.setHomeyClient(homey);
+      ({ initDeviceDetailHandlers } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
+      ({ openDeviceDetail } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
+      ({ state } = require('../src/ui/state') as typeof import('../src/ui/state'));
+    });
+
+    state.latestDevices = [buildDevice({
+      name: 'Connected 300',
+      targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
+    })];
+    state.managedMap = { 'heater-1': true };
+    state.controllableMap = { 'heater-1': true };
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'heater-1': 1 } };
+    state.modeTargets = { Home: { 'heater-1': 64.5 } };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('heater-1');
+    await flushPromises();
+
+    const input = document.querySelector('.detail-mode-temp') as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+    expect(input?.step).toBe('5');
+    expect(input?.value).toBe('65');
+
+    if (!input) throw new Error('Expected detail mode input');
+    input.value = '64.5';
+    input.dispatchEvent(new Event('change'));
+    await flushPromises();
+
+    expect(input.value).toBe('65');
+    expect(homey.set).toHaveBeenCalledWith(
+      'mode_device_targets',
+      { Home: { 'heater-1': 65 } },
+      expect.any(Function),
+    );
+  });
+
   it('shows an empty diagnostics state when the device has no recorded diagnostics yet', async () => {
     buildDom();
     const diagnosticsPayload = {

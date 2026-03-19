@@ -17,6 +17,14 @@ type MockCapabilityBehaviorConfig = {
   onExternalChange?: MockCapabilityMutationBehavior;
 };
 
+type MockCapabilityMetadata = {
+  units?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  setable?: boolean;
+};
+
 const DEFAULT_API_WRITE_BEHAVIOR: Required<MockApiWriteBehavior> = {
   accept: true,
   updateActual: true,
@@ -58,6 +66,7 @@ export class MockDevice {
   private settings: Record<string, any> = {};
   private settingsObject: any[] | null = null;
   private behaviorByCapability = new Map<string, MockCapabilityBehaviorConfig>();
+  private capabilityMetadata = new Map<string, MockCapabilityMetadata>();
   private capabilityListeners = new Map<string, Set<(value: unknown) => void>>();
 
   constructor(
@@ -197,6 +206,10 @@ export class MockDevice {
     this.behaviorByCapability.set(capabilityId, config);
   }
 
+  setCapabilityMetadata(capabilityId: string, metadata: MockCapabilityMetadata): void {
+    this.capabilityMetadata.set(capabilityId, { ...metadata });
+  }
+
   clearCapabilityBehavior(capabilityId: string): void {
     this.behaviorByCapability.delete(capabilityId);
   }
@@ -240,7 +253,13 @@ export class MockDevice {
     for (const cap of caps) {
       const nextValue = this.capabilityValues.get(cap);
       const entry: Record<string, any> = { id: cap, value: nextValue };
+      const metadata = this.capabilityMetadata.get(cap);
       const lastUpdated = this.capabilityUpdatedAt.get(cap);
+      if (metadata?.units) entry.units = metadata.units;
+      if (typeof metadata?.min === 'number') entry.min = metadata.min;
+      if (typeof metadata?.max === 'number') entry.max = metadata.max;
+      if (typeof metadata?.step === 'number') entry.step = metadata.step;
+      if (typeof metadata?.setable === 'boolean') entry.setable = metadata.setable;
       if (lastUpdated) entry.lastUpdated = lastUpdated;
       capabilitiesObj[cap] = entry;
     }

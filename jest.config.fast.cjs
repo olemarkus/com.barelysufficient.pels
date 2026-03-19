@@ -5,6 +5,7 @@ module.exports = {
   moduleFileExtensions: ['ts', 'js', 'json'],
   moduleNameMapper: {
     '^homey$': '<rootDir>/test/mocks/homey.ts',
+    '^\\.\\.\\/\\.\\.\\/packages\\/contracts\\/src\\/targetCapabilities$': '<rootDir>/test/mocks/contracts-targetCapabilities.ts',
     '^echarts/core(\\.js)?$': '<rootDir>/test/mocks/echarts-subpath-shim.ts',
     '^echarts/charts(\\.js)?$': '<rootDir>/test/mocks/echarts-subpath-shim.ts',
     '^echarts/components(\\.js)?$': '<rootDir>/test/mocks/echarts-subpath-shim.ts',

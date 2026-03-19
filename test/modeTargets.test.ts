@@ -161,4 +161,31 @@ describe('Mode device targets', () => {
 
     expect(heater.getSetCapabilityValue('target_temperature')).toBe(21.5);
   });
+
+  it('never sends an illegal target value when the device json includes a target step', async () => {
+    const heater = new MockDevice('dev-1', 'Connected 300', ['target_temperature']);
+    heater.setCapabilityMetadata('target_temperature', {
+      units: '°C',
+      min: 35,
+      max: 75,
+      step: 5,
+    });
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 64.5 } });
+
+    await waitFor(() => heater.getSetCapabilityValue('target_temperature') === 65);
+
+    expect(heater.getSetCapabilityValue('target_temperature')).toBe(65);
+  });
 });

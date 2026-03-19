@@ -60,7 +60,7 @@ describe('device manager support helpers', () => {
       evcharger_charging_state: { value: 'plugged_in_paused' },
       onoff: { value: true, setable: false },
       measure_temperature: { value: 21 },
-      target_temperature: { value: 22, units: 'C' },
+      target_temperature: { value: 22, units: 'C', min: 35, max: 75, step: 5 },
     };
 
     expect(getControlCapabilityId({ deviceClassKey: 'evcharger', capabilities: ['onoff', 'evcharger_charging'] })).toBe('evcharger_charging');
@@ -80,7 +80,14 @@ describe('device manager support helpers', () => {
     expect(getCanSetControl('onoff', capabilityObj)).toBe(false);
     expect(getEvChargingState(capabilityObj)).toBe('plugged_in_paused');
     expect(getCurrentTemperature(capabilityObj)).toBe(21);
-    expect(buildTargets(['target_temperature'], capabilityObj)).toEqual([{ id: 'target_temperature', value: 22, unit: 'C' }]);
+    expect(buildTargets(['target_temperature'], capabilityObj)).toEqual([{
+      id: 'target_temperature',
+      value: 22,
+      unit: 'C',
+      min: 35,
+      max: 75,
+      step: 5,
+    }]);
   });
 
   it('logs EV command and snapshot changes', () => {

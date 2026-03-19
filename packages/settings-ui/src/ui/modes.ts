@@ -1,6 +1,11 @@
 import Sortable from 'sortablejs';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types';
 import {
+  getPrimaryTargetCapability,
+  getTargetCapabilityStep,
+  normalizeTargetCapabilityValue,
+} from '../../../contracts/src/targetCapabilities';
+import {
   modeSelect,
   activeModeSelect,
   priorityList,
@@ -20,6 +25,16 @@ import { logSettingsError } from './logging';
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
 );
+
+const getPrimaryTemperatureTarget = (device: TargetDeviceSnapshot) => getPrimaryTargetCapability(device.targets);
+
+const normalizeDeviceTargetValue = (
+  device: TargetDeviceSnapshot,
+  value: number,
+): number => normalizeTargetCapabilityValue({
+  target: getPrimaryTemperatureTarget(device),
+  value,
+});
 
 export const loadModeAndPriorities = async () => {
   const mode = await getSetting(OPERATING_MODE_SETTING);
@@ -104,9 +119,11 @@ export const getDesiredTarget = (device: TargetDeviceSnapshot) => {
   if (!supportsTemperatureDevice(device)) return null;
   const mode = state.editingMode || 'Home';
   const value = state.modeTargets[mode]?.[device.id];
-  if (typeof value === 'number') return value;
+  if (typeof value === 'number') return normalizeDeviceTargetValue(device, value);
   const firstTarget = device.targets?.find?.(() => true);
-  if (firstTarget && typeof firstTarget.value === 'number') return firstTarget.value;
+  if (firstTarget && typeof firstTarget.value === 'number') {
+    return normalizeDeviceTargetValue(device, firstTarget.value);
+  }
   return null;
 };
 
@@ -119,15 +136,26 @@ const buildOnOffPlaceholder = (): HTMLElement => {
 
 const buildModeTargetInput = (device: TargetDeviceSnapshot, desired: number | null): HTMLElement => {
   if (!supportsTemperatureDevice(device)) return buildOnOffPlaceholder();
+  const target = getPrimaryTemperatureTarget(device);
   const tempInput = document.createElement('input');
   tempInput.type = 'number';
-  tempInput.step = '0.5';
+  tempInput.step = getTargetCapabilityStep(target).toString();
+  if (typeof target?.min === 'number' && Number.isFinite(target.min)) {
+    tempInput.min = target.min.toString();
+  }
+  if (typeof target?.max === 'number' && Number.isFinite(target.max)) {
+    tempInput.max = target.max.toString();
+  }
   tempInput.inputMode = 'decimal';
   tempInput.placeholder = 'Desired °C';
   tempInput.value = desired === null ? '' : desired.toString();
   tempInput.dataset.deviceId = device.id;
   tempInput.className = 'mode-target-input';
   tempInput.addEventListener('change', () => {
+    const value = parseFloat(tempInput.value);
+    if (Number.isFinite(value)) {
+      tempInput.value = normalizeDeviceTargetValue(device, value).toString();
+    }
     applyTargetChange(device.id, tempInput.value);
   });
   return tempInput;
@@ -288,8 +316,10 @@ export const applyTargetChange = async (deviceId: string, rawValue: string) => {
     state.editingMode = mode;
     const val = parseFloat(rawValue);
     if (!Number.isFinite(val)) return;
+    const device = state.latestDevices.find((entry) => entry.id === deviceId);
+    const normalizedValue = device ? normalizeDeviceTargetValue(device, val) : val;
     if (!state.modeTargets[mode]) state.modeTargets[mode] = {};
-    state.modeTargets[mode][deviceId] = val;
+    state.modeTargets[mode][deviceId] = normalizedValue;
     await setSetting('mode_device_targets', state.modeTargets);
   } catch (error) {
     await logSettingsError('Failed to update mode target', error, 'applyTargetChange');
