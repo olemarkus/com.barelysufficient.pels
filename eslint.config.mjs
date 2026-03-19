@@ -33,7 +33,6 @@ export default tseslint.config(
       'settings/*.js',
       'test/screenshots/**',
       'packages/settings-ui/test/screenshots/**',
-      'lib/insights/echartsRuntimeBundle.cjs',
       'echarts-modules.d.ts',
       'playwright.config.ts',
       'tmp/**',
@@ -403,12 +402,6 @@ export default tseslint.config(
     ],
     rules: {
       'max-lines': ['warn', { max: 575, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    files: ['lib/insights/planPriceImageEcharts.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 550, skipBlankLines: true, skipComments: true }],
     },
   },
   {

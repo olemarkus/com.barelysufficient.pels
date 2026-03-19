@@ -850,6 +850,45 @@
       ]
     }
   ],
+  "widgets": {
+    "plan_budget": {
+      "name": {
+        "en": "Budget and Price"
+      },
+      "height": "100%",
+      "settings": [
+        {
+          "id": "day",
+          "type": "dropdown",
+          "title": {
+            "en": "Day"
+          },
+          "value": "today",
+          "values": [
+            {
+              "id": "today",
+              "title": {
+                "en": "Today"
+              }
+            },
+            {
+              "id": "tomorrow",
+              "title": {
+                "en": "Tomorrow"
+              }
+            }
+          ]
+        }
+      ],
+      "api": {
+        "getChart": {
+          "method": "GET",
+          "path": "/chart"
+        }
+      },
+      "id": "plan_budget"
+    }
+  },
   "capabilities": {
     "mode_indicator": {
       "title": {

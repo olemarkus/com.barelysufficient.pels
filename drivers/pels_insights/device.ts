@@ -1,25 +1,5 @@
 import Homey from 'homey';
-import type { CombinedPriceData } from '../../lib/dailyBudget/dailyBudgetMath';
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { buildPlanPricePng } from '../../lib/insights/planPriceImage';
-import { startRuntimeSpan } from '../../lib/utils/runtimeTrace';
-import { normalizeDebugLoggingTopics } from '../../lib/utils/debugLogging';
-import { getDateKeyInTimeZone, getZonedParts } from '../../lib/utils/dateUtils';
-import {
-  createDebouncedPlanImageRefreshScheduler,
-  getActivePlanImageIndices,
-  type DebouncedPlanImageRefreshScheduler,
-} from './planImageRefreshScheduler';
-import {
-  COMBINED_PRICES,
-  DAILY_BUDGET_ENABLED,
-  DAILY_BUDGET_KWH,
-  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-  DAILY_BUDGET_RESET,
-  DEBUG_LOGGING_TOPICS,
-  OPERATING_MODE_SETTING,
-  PRICE_OPTIMIZATION_ENABLED,
-} from '../../lib/utils/settingsKeys';
+import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 
 type StatusData = {
   headroomKw?: number;
@@ -33,35 +13,6 @@ type StatusData = {
   priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';
   devicesOn?: number;
   devicesOff?: number;
-};
-
-type DailyBudgetApp = Homey.App & {
-  getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
-};
-
-type ImageBuffer = Buffer;
-type ImageStreamMetadata = {
-  contentType: string;
-  filename: string;
-  contentLength?: number;
-};
-
-type PlanImageTarget = 'today' | 'tomorrow';
-
-type PlanImageState = {
-  target: PlanImageTarget;
-  cameraId: string;
-  cameraName: string;
-  filename: string;
-  contentType: string;
-  dayOffset: number;
-  resolveDayKey: (snapshot: DailyBudgetUiPayload | null) => string | null;
-  image?: Homey.Image;
-  buffer: ImageBuffer;
-  generation?: Promise<ImageBuffer>;
-  lastKey?: string;
-  lastRenderedAtMs?: number;
-  lastStreamedAtMs?: number;
 };
 
 type CapabilityEntry = {
@@ -84,23 +35,33 @@ const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
   { key: 'devicesOff', id: 'pels_devices_off', type: 'number' },
 ];
 
-const PLAN_IMAGE_SETTINGS_KEYS = new Set([
-  DAILY_BUDGET_ENABLED,
-  DAILY_BUDGET_KWH,
-  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-  DAILY_BUDGET_RESET,
-  COMBINED_PRICES,
-  PRICE_OPTIMIZATION_ENABLED,
-]);
+const REQUIRED_CAPABILITIES = [
+  'pels_shortfall',
+  'pels_headroom',
+  'pels_hourly_limit_kw',
+  'pels_hourly_usage',
+  'pels_daily_budget_remaining_kwh',
+  'pels_daily_budget_exceeded',
+  'pels_limit_reason',
+  'pels_controlled_power',
+  'pels_uncontrolled_power',
+  'pels_price_level',
+  'pels_devices_on',
+  'pels_devices_off',
+];
 
-const HOUR_MS = 60 * 60 * 1000;
-const PLAN_IMAGE_STREAM_REFRESH_MIN_MS = 3 * 60 * 1000;
-const PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS = 30 * 60 * 1000;
-const PLAN_IMAGE_SETTINGS_REFRESH_DEBOUNCE_MS = 500;
-const EMPTY_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=',
-  'base64',
-);
+const RETIRED_CAPABILITIES = [
+  'alarm_generic',
+  'pels_shedding',
+  'pels_daily_budget_pressure',
+  'pels_daily_budget_used_kwh',
+  'pels_daily_budget_allowed_kwh_now',
+];
+
+const RETIRED_PLAN_IMAGE_IDS = [
+  'plan_budget',
+  'plan_budget_tomorrow',
+];
 
 const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
   if (type === 'string') return typeof value === 'string' && value.length > 0;
@@ -108,43 +69,16 @@ const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
   return typeof value === 'boolean';
 };
 
-class PelsInsightsDevice extends Homey.Device {
-  private planImages: PlanImageState[] = [
-    {
-      target: 'today',
-      cameraId: 'plan_budget',
-      cameraName: 'Budget and Price',
-      filename: 'pels-plan.png',
-      contentType: 'image/png',
-      dayOffset: 0,
-      resolveDayKey: (snapshot) => snapshot?.todayKey ?? null,
-      buffer: EMPTY_PNG,
-    },
-    {
-      target: 'tomorrow',
-      cameraId: 'plan_budget_tomorrow',
-      cameraName: 'Budget and Price (Tomorrow)',
-      filename: 'pels-plan-tomorrow.png',
-      contentType: 'image/png',
-      dayOffset: 1,
-      resolveDayKey: (snapshot) => snapshot?.tomorrowKey ?? null,
-      buffer: EMPTY_PNG,
-    },
-  ];
-  private planImageTimer?: ReturnType<typeof setTimeout>;
-  private planImageInterval?: ReturnType<typeof setInterval>;
-  private planImageSettingsRefreshScheduler?: DebouncedPlanImageRefreshScheduler;
-  private planImageRenderCounter = 0;
-  private lastAnyRenderAtMs = 0;
+const isMissingRetiredPlanImageError = (error: unknown): boolean => (
+  error instanceof Error && /not found|invalid image/i.test(error.message)
+);
 
-  private updatePlanImageSlot(index: number, patch: Partial<PlanImageState>): PlanImageState {
-    const current = this.planImages[index];
-    if (!current) {
-      throw new Error(`Plan image slot ${index} missing`);
+class PelsInsightsDevice extends Homey.Device {
+  private async ensureRequiredCapabilities(): Promise<void> {
+    for (const capability of REQUIRED_CAPABILITIES) {
+      if (this.hasCapability(capability)) continue;
+      await this.addCapability(capability);
     }
-    const next = { ...current, ...patch };
-    this.planImages[index] = next;
-    return next;
   }
 
   private async removeDeprecatedCapability(capability: string): Promise<void> {
@@ -156,64 +90,47 @@ class PelsInsightsDevice extends Homey.Device {
     }
   }
 
-  async onInit(): Promise<void> {
-    // Add capabilities if missing (for devices created before these were added)
-    const requiredCapabilities = [
-      'pels_shortfall',
-      'pels_headroom',
-      'pels_hourly_limit_kw',
-      'pels_hourly_usage',
-      'pels_daily_budget_remaining_kwh',
-      'pels_daily_budget_exceeded',
-      'pels_limit_reason',
-      'pels_controlled_power',
-      'pels_uncontrolled_power',
-      'pels_price_level',
-      'pels_devices_on',
-      'pels_devices_off',
-    ];
+  private async removeRetiredPlanImagesFromDevice(): Promise<void> {
+    if (!this.homey.images?.getImage) return;
 
-    for (const cap of requiredCapabilities) {
-      if (!this.hasCapability(cap)) {
-        await this.addCapability(cap);
+    for (const imageId of RETIRED_PLAN_IMAGE_IDS) {
+      try {
+        const image = this.homey.images.getImage(imageId);
+        await image.unregister();
+      } catch (error) {
+        if (isMissingRetiredPlanImageError(error)) continue;
+        this.error(`Failed to remove retired plan image ${imageId} from device`, error);
       }
     }
+  }
 
-    // Remove deprecated alarm_generic if present (replaced by pels_shortfall)
-    await this.removeDeprecatedCapability('alarm_generic');
-    await this.removeDeprecatedCapability('pels_shedding');
-    await this.removeDeprecatedCapability('pels_daily_budget_pressure');
-    await this.removeDeprecatedCapability('pels_daily_budget_used_kwh');
-    await this.removeDeprecatedCapability('pels_daily_budget_allowed_kwh_now');
+  async onInit(): Promise<void> {
+    await this.ensureRequiredCapabilities();
 
-    // Initialize from current settings
+    for (const capability of RETIRED_CAPABILITIES) {
+      await this.removeDeprecatedCapability(capability);
+    }
+
     const initialMode = (this.homey.settings.get(OPERATING_MODE_SETTING) as string) || 'home';
     await this.updateMode(initialMode);
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
     await this.updateFromStatus();
-    await this.initPlanImages();
+    await this.removeRetiredPlanImagesFromDevice();
 
-    // Listen for settings changes
     this.homey.settings.on('set', async (key: string) => {
       if (key === OPERATING_MODE_SETTING) {
         const mode = (this.homey.settings.get(OPERATING_MODE_SETTING) as string) || 'home';
         await this.updateMode(mode);
       }
+
       if (key === 'capacity_in_shortfall') {
         await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
       }
+
       if (key === 'pels_status') {
         await this.updateFromStatus();
       }
-      if (PLAN_IMAGE_SETTINGS_KEYS.has(key)) {
-        this.schedulePlanImageSettingsRefresh();
-      }
     });
-  }
-
-  async onUninit(): Promise<void> {
-    this.clearPlanImageTimers();
-    await this.unregisterPlanImages();
   }
 
   async updateMode(mode: string): Promise<void> {
@@ -235,7 +152,6 @@ class PelsInsightsDevice extends Homey.Device {
 
   async updateFromStatus(): Promise<void> {
     const status = this.homey.settings.get('pels_status') as StatusData | null;
-
     if (!status) return;
 
     try {
@@ -248,370 +164,6 @@ class PelsInsightsDevice extends Homey.Device {
     } catch (error) {
       this.error('Failed to update status capabilities', error);
     }
-  }
-
-  private async initPlanImages(): Promise<void> {
-    if (!this.homey.images?.createImage) return;
-    for (const [index, slot] of this.planImages.entries()) {
-      if (slot.image) continue;
-      try {
-        const image = await this.homey.images.createImage();
-        this.updatePlanImageSlot(index, { image });
-        image.setStream((stream: NodeJS.WritableStream) => this.writePlanImageToStream(index, stream));
-        await this.setCameraImage(slot.cameraId, slot.cameraName, image);
-      } catch (error) {
-        this.error(`Failed to initialize plan image ${slot.cameraId}`, error);
-      }
-    }
-    if (!this.planImages.some((slot) => slot.image)) return;
-    this.planImageSettingsRefreshScheduler ??= createDebouncedPlanImageRefreshScheduler({
-      debounceMs: PLAN_IMAGE_SETTINGS_REFRESH_DEBOUNCE_MS,
-      getActiveIndices: () => this.getActivePlanImageIndices(),
-      invalidateCache: () => this.invalidatePlanImageCache(),
-      refreshIndices: (indices) => this.refreshPlanImages({ indices }),
-      onError: (error) => this.error('Failed to refresh active plan images after settings change', error as Error),
-    });
-    this.schedulePlanImageRefresh();
-  }
-
-  private schedulePlanImageRefresh(): void {
-    if (this.planImageTimer || this.planImageInterval) return;
-    const now = new Date();
-    const next = new Date(now.getTime());
-    next.setMinutes(0, 0, 0);
-    next.setHours(now.getHours() + 1);
-    const delay = Math.max(1000, next.getTime() - now.getTime());
-    this.planImageTimer = setTimeout(() => {
-      this.planImageTimer = undefined;
-      const activeIndices = this.getActivePlanImageIndices();
-      if (activeIndices.length > 0) void this.refreshPlanImages({ indices: activeIndices });
-      this.planImageInterval = setInterval(() => {
-        const nextActiveIndices = this.getActivePlanImageIndices();
-        if (nextActiveIndices.length > 0) void this.refreshPlanImages({ indices: nextActiveIndices });
-      }, HOUR_MS);
-    }, delay);
-  }
-
-  private async refreshPlanImages(options: { force?: boolean; indices?: number[] } = {}): Promise<void> {
-    const indices = Array.isArray(options.indices)
-      ? options.indices.filter((index) => index >= 0 && index < this.planImages.length)
-      : this.planImages.map((_slot, index) => index);
-    // Only render one image per refresh cycle to limit rasterizer native memory pressure.
-    const index = indices[0];
-    if (index !== undefined) {
-      await this.refreshPlanImage(index, options);
-    }
-  }
-
-  private async refreshPlanImage(
-    index: number,
-    options: { force?: boolean } = {},
-  ): Promise<void> {
-    const slot = this.planImages[index];
-    if (!slot) return;
-    const image = slot.image;
-    if (!image) return;
-    if (slot.generation) {
-      try {
-        await slot.generation;
-      } catch (error) {
-        this.error(`Failed to refresh plan image ${slot.cameraId} (in-flight generation)`, error);
-      }
-      return;
-    }
-    const renderPromise = (async (): Promise<ImageBuffer> => {
-      const stopSpan = startRuntimeSpan(`camera_chart_render(${slot.cameraId})`);
-      const nowMs = Date.now();
-      try {
-        const snapshot = this.getDailyBudgetSnapshot();
-        const dayKey = slot.resolveDayKey(snapshot);
-        const combinedPrices = this.getCombinedPrices();
-        const key = this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices);
-        const current = this.planImages[index];
-        if (!options.force && current?.lastKey === key) {
-          this.logPlanImageDebug(`${slot.cameraId}: Refresh skipped: cached key ${key}`);
-          return current?.buffer ?? slot.buffer;
-        }
-        const renderId = ++this.planImageRenderCounter;
-        const forceStr = `force=${options.force === true}`;
-        this.log(
-          `[plan-image] ${slot.cameraId}: render start id=${renderId} `
-          + `${forceStr} key=${key}`,
-        );
-        this.logPlanImageDebug(`${slot.cameraId}: Refreshing image (force=${options.force === true}) key=${key}`);
-        const renderStartedAtMs = Date.now();
-        const payload = await this.generatePlanImagePayload(snapshot, dayKey, combinedPrices, slot.filename);
-        const renderDurationMs = Date.now() - renderStartedAtMs;
-        this.lastAnyRenderAtMs = Date.now();
-        this.updatePlanImageSlot(index, {
-          buffer: payload.buffer,
-          contentType: payload.contentType,
-          filename: payload.filename,
-          lastKey: key,
-          lastRenderedAtMs: nowMs,
-        });
-        await image.update();
-        this.log(
-          `[plan-image] ${slot.cameraId}: render done id=${renderId} `
-          + `ms=${renderDurationMs} bytes=${payload.buffer.length}`,
-        );
-        this.logPlanImageDebug(
-          `${slot.cameraId}: Image updated `
-          + `(${payload.buffer.length} bytes, ${renderDurationMs}ms)`,
-        );
-        return payload.buffer;
-      } finally {
-        stopSpan();
-      }
-    })();
-    this.updatePlanImageSlot(index, { generation: renderPromise });
-    try {
-      await renderPromise;
-    } catch (error) {
-      this.error(`Failed to refresh plan image ${slot.cameraId}`, error);
-    } finally {
-      const current = this.planImages[index];
-      if (current?.generation === renderPromise) {
-        this.updatePlanImageSlot(index, { generation: undefined });
-      }
-    }
-  }
-
-  private resolvePlanImageKey(
-    snapshot: DailyBudgetUiPayload | null,
-    nowMs: number,
-    dayKey: string | null,
-    dayOffset: number,
-    combinedPrices?: CombinedPriceData | null,
-  ): string {
-    const resolvedDayKey = dayKey && dayKey.trim().length > 0 ? dayKey : null;
-    const day = resolvedDayKey ? snapshot?.days?.[resolvedDayKey] ?? null : null;
-    const timeZone = this.homey.clock.getTimezone();
-    const dateKey = day?.dateKey
-      ?? resolvedDayKey
-      ?? this.resolveFallbackDateKey(nowMs, dayOffset, timeZone);
-    const currentIndex = dayOffset === 0
-      ? this.resolveFallbackIndex(day?.currentBucketIndex, nowMs, timeZone)
-      : 'na';
-    const budgetKey = this.buildBudgetKey(day);
-    const priceKey = this.buildPriceKey(combinedPrices);
-    return `${dateKey}-${currentIndex}-${budgetKey}-${priceKey}`;
-  }
-
-  private resolveFallbackDateKey(nowMs: number, dayOffset: number, timeZone: string): string {
-    const fallbackDate = new Date(nowMs);
-    if (dayOffset !== 0) {
-      fallbackDate.setDate(fallbackDate.getDate() + dayOffset);
-    }
-    return getDateKeyInTimeZone(fallbackDate, timeZone);
-  }
-
-  private resolveFallbackIndex(rawIndex: number | null | undefined, nowMs: number, timeZone: string): number {
-    if (typeof rawIndex === 'number' && Number.isFinite(rawIndex)) {
-      return Math.max(0, rawIndex);
-    }
-    return getZonedParts(new Date(nowMs), timeZone).hour;
-  }
-
-  private buildBudgetKey(day: DailyBudgetDayPayload | null): string {
-    if (!day) return 'budget-na';
-    return `${day.budget.enabled ? 1 : 0}-${day.budget.dailyBudgetKWh}-${day.budget.priceShapingEnabled ? 1 : 0}`;
-  }
-
-  private buildPriceKey(combinedPrices?: CombinedPriceData | null): string {
-    const prices = combinedPrices?.prices ?? [];
-    const firstStartsAt = prices[0]?.startsAt ?? '';
-    const lastStartsAt = prices[prices.length - 1]?.startsAt ?? '';
-    const totalChecksum = prices.reduce(
-      (sum, entry) => sum + (Number.isFinite(entry.total) ? Math.round(entry.total * 100) : 0),
-      0,
-    );
-    const priceKey = `${prices.length}-${firstStartsAt}-${lastStartsAt}-${totalChecksum}`;
-    const unitKey = combinedPrices?.priceUnit ?? '';
-    return `${priceKey}-${unitKey}`;
-  }
-
-  private clearPlanImageTimers(): void {
-    if (this.planImageTimer) {
-      clearTimeout(this.planImageTimer);
-      this.planImageTimer = undefined;
-    }
-    if (this.planImageInterval) {
-      clearInterval(this.planImageInterval);
-      this.planImageInterval = undefined;
-    }
-    this.planImageSettingsRefreshScheduler?.stop();
-  }
-
-  private async unregisterPlanImages(): Promise<void> {
-    for (const [index, slot] of this.planImages.entries()) {
-      if (!slot.image) continue;
-      try {
-        await slot.image.unregister();
-      } catch (error) {
-        this.error(`Failed to unregister plan image ${slot.cameraId}`, error);
-      } finally {
-        this.updatePlanImageSlot(index, { image: undefined });
-      }
-    }
-  }
-
-  private getDailyBudgetSnapshot(): DailyBudgetUiPayload | null {
-    const app = this.homey.app as DailyBudgetApp;
-    if (app?.getDailyBudgetUiPayload) {
-      return app.getDailyBudgetUiPayload();
-    }
-    return null;
-  }
-
-  private getActivePlanImageIndices(nowMs: number = Date.now()): number[] {
-    return getActivePlanImageIndices(this.planImages, {
-      nowMs,
-      activityWindowMs: PLAN_IMAGE_STREAM_ACTIVITY_WINDOW_MS,
-    });
-  }
-
-  private invalidatePlanImageCache(): void {
-    for (const [index] of this.planImages.entries()) {
-      this.updatePlanImageSlot(index, { lastKey: undefined });
-    }
-  }
-
-  private shouldRefreshPlanImageForStream(params: {
-    slot: PlanImageState;
-    nowMs: number;
-  }): boolean {
-    const { slot, nowMs } = params;
-    const hasCachedImage = slot.buffer.length > EMPTY_PNG.length;
-    if (!hasCachedImage) return true;
-    // Per-slot cooldown (3 min)
-    const isSlotCoolingDown = typeof slot.lastRenderedAtMs === 'number'
-      && (nowMs - slot.lastRenderedAtMs) < PLAN_IMAGE_STREAM_REFRESH_MIN_MS;
-    if (isSlotCoolingDown) {
-      const elapsed = Math.round((nowMs - slot.lastRenderedAtMs!) / 1000);
-      this.log(`[plan-image] ${slot.cameraId}: skipping render`
-        + ` (slot cooldown, ${elapsed}s elapsed)`);
-      return false;
-    }
-    // Global cooldown: avoid back-to-back renders across different slots
-    // to limit rasterizer native memory pressure.
-    const isGlobalCoolingDown = this.lastAnyRenderAtMs > 0
-      && (nowMs - this.lastAnyRenderAtMs) < PLAN_IMAGE_STREAM_REFRESH_MIN_MS;
-    if (isGlobalCoolingDown) {
-      const elapsed = Math.round((nowMs - this.lastAnyRenderAtMs) / 1000);
-      this.log(`[plan-image] ${slot.cameraId}: skipping render`
-        + ` (global cooldown, ${elapsed}s elapsed)`);
-    }
-    return !isGlobalCoolingDown;
-  }
-
-  private async getPlanImageForStream(index: number): Promise<ImageBuffer> {
-    const slot = this.planImages[index];
-    if (!slot) return EMPTY_PNG;
-    const nowMs = Date.now();
-    const snapshot = this.getDailyBudgetSnapshot();
-    const dayKey = slot.resolveDayKey(snapshot);
-    const combinedPrices = this.getCombinedPrices();
-    const key = this.resolvePlanImageKey(snapshot, nowMs, dayKey, slot.dayOffset, combinedPrices);
-    const current = this.planImages[index];
-
-    // Reuse in-flight render work to avoid concurrent stream stampedes for the same slot.
-    if (current?.generation) {
-      this.log(`[plan-image] ${slot.cameraId}: stream joining in-flight render`);
-      await current.generation;
-      return this.planImages[index]?.buffer ?? current.buffer ?? slot.buffer ?? EMPTY_PNG;
-    }
-
-    const shouldRefresh = this.shouldRefreshPlanImageForStream({ slot, nowMs });
-    this.log(
-      `[plan-image] ${slot.cameraId}: stream request`
-      + ` shouldRefresh=${shouldRefresh}`
-      + ` cached=${slot.buffer.length > EMPTY_PNG.length}`
-      + ` keyMatch=${slot.lastKey === key}`,
-    );
-    if (shouldRefresh) {
-      await this.refreshPlanImage(index);
-    }
-
-    return this.planImages[index]?.buffer ?? slot.buffer ?? EMPTY_PNG;
-  }
-
-  private async generatePlanImagePayload(
-    snapshot: DailyBudgetUiPayload | null,
-    dayKey: string | null,
-    combinedPrices?: CombinedPriceData | null,
-    filename?: string,
-  ): Promise<{ buffer: ImageBuffer; contentType: string; filename: string }> {
-    const png = await buildPlanPricePng({ snapshot, combinedPrices, dayKey });
-    return {
-      buffer: Buffer.from(png),
-      contentType: 'image/png',
-      filename: filename ?? 'pels-plan.png',
-    };
-  }
-
-  private getCombinedPrices(): CombinedPriceData | null {
-    return this.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
-  }
-
-  private schedulePlanImageSettingsRefresh(): void {
-    this.planImageSettingsRefreshScheduler?.schedule();
-  }
-
-  private async writePlanImageToStream(
-    index: number,
-    stream: NodeJS.WritableStream,
-  ): Promise<ImageStreamMetadata> {
-    const slot = this.planImages[index];
-    if (!slot) {
-      stream.end(EMPTY_PNG);
-      return {
-        contentType: 'image/png',
-        filename: 'pels-plan-missing.png',
-        contentLength: EMPTY_PNG.length,
-      };
-    }
-    const imageStream = stream as NodeJS.WritableStream & {
-      contentType?: string;
-      filename?: string;
-      contentLength?: number;
-    };
-    try {
-      const png = await this.getPlanImageForStream(index);
-      const meta = {
-        contentType: slot.contentType || 'image/png',
-        filename: slot.filename,
-        contentLength: png.length,
-      };
-      this.updatePlanImageSlot(index, { lastStreamedAtMs: Date.now() });
-      imageStream.contentType = meta.contentType;
-      imageStream.filename = meta.filename;
-      imageStream.contentLength = meta.contentLength;
-      stream.end(png);
-      return meta;
-    } catch (error) {
-      this.error(`Failed to stream plan image ${slot.cameraId}`, error);
-      const fallback = slot.buffer ?? EMPTY_PNG;
-      const meta = {
-        contentType: slot.contentType || 'image/png',
-        filename: slot.filename,
-        contentLength: fallback.length,
-      };
-      this.updatePlanImageSlot(index, { lastStreamedAtMs: Date.now() });
-      imageStream.contentType = meta.contentType;
-      imageStream.filename = meta.filename;
-      imageStream.contentLength = meta.contentLength;
-      stream.end(fallback);
-      this.logPlanImageDebug(`${slot.cameraId}: Stream fallback: using cached image`);
-      return meta;
-    }
-  }
-
-  private logPlanImageDebug(message: string): void {
-    const rawTopics = this.homey.settings.get(DEBUG_LOGGING_TOPICS) as unknown;
-    const topics = normalizeDebugLoggingTopics(rawTopics);
-    if (!topics.includes('daily_budget')) return;
-    this.log(`[plan-image] ${message}`);
   }
 }
 
