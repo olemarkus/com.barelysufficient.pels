@@ -77,17 +77,9 @@ describe('memory profile', () => {
     profileRequire('core/powerTracker', '../lib/core/powerTracker', baseline);
     profileRequire('core/deviceManager', '../lib/core/deviceManager', baseline);
 
-    // Insights / charts
-    profileRequire('insights/planPriceImageTheme', '../lib/insights/planPriceImageTheme', baseline);
-    profileRequire('insights/planPriceImageEcharts', '../lib/insights/planPriceImageEcharts', baseline);
-    profileRequire('insights/planPriceImage', '../lib/insights/planPriceImage', baseline);
-
     // App-level
     profileRequire('app/appResourceWarningHelpers', '../lib/app/appResourceWarningHelpers', baseline);
     profileRequire('app/perfLogging', '../lib/app/perfLogging', baseline);
-
-    // External modules
-    profileRequire('@napi-rs/canvas', '@napi-rs/canvas', baseline);
     const final = rss();
     log(`\n[Memory Profile] final RSS=${(final / MB).toFixed(1)} MB  total delta=${((final - baseline) / MB).toFixed(1)} MB\n`);
 

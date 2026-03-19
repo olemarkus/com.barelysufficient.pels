@@ -10,8 +10,7 @@
     "npm": "10.9.4"
   },
   "scripts": {
-    "build": "npm run ensure:canvas-arm64 && npm run build:echarts-runtime && tsc && npm run build:settings && npm run sanitize:homey-build",
-    "build:echarts-runtime": "node scripts/build-echarts-runtime-bundle.mjs",
+    "build": "tsc && npm run build:settings && npm run sanitize:homey-build",
     "build:settings": "npm --workspace @pels/settings-ui run build && node scripts/sync-settings-ui.mjs",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
@@ -19,8 +18,8 @@
     "bench:settings-ui:boot": "node scripts/benchmark-settings-ui-boot.mjs",
     "watch:settings": "npm run build:settings && esbuild packages/settings-ui/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
     "measure:settings-ui:homey": "node scripts/measure-settings-ui-homey.mjs",
-    "start": "npm run ensure:canvas-arm64 && npm run build:echarts-runtime && npm run build:settings && homey app run --remote",
-    "install-app": "npm run ensure:canvas-arm64 && npm run build:echarts-runtime && npm run build:settings && homey app install",
+    "start": "npm run build:settings && homey app run --remote",
+    "install-app": "npm run build:settings && homey app install",
     "lint": "eslint . --max-warnings=0",
     "lint:runtime": "eslint \"app.ts\" \"api.ts\" \"flowCards/**/*.ts\" \"drivers/**/*.ts\" \"lib/**/*.ts\" --max-warnings=0",
     "lint:css": "stylelint \"packages/settings-ui/public/**/*.css\" --max-warnings=0",
@@ -47,9 +46,7 @@
     "test:all": "npm run ci",
     "validate": "homey app validate && npm run package:check",
     "check": "npm run ci",
-    "ensure:canvas-arm64": "node scripts/ensure-canvas-arm64.mjs",
-    "ensure:canvas-local": "node scripts/ensure-canvas-local.mjs",
-    "start:local": "npm run ensure:canvas-local && npm run build:echarts-runtime && npm run build:settings && homey app run",
+    "start:local": "npm run build:settings && homey app run",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -69,10 +66,7 @@
       "minimatch": "10.2.4"
     }
   },
-  "dependencies": {
-    "@napi-rs/canvas": "^0.1.96",
-    "@napi-rs/canvas-linux-x64-gnu": "^0.1.96"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^9.39.3",
     "@playwright/test": "^1.58.2",

@@ -1,0 +1,145 @@
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--pels-background);
+  color: var(--pels-text);
+}
+
+body,
+.widget-root {
+  --pels-background: var(--homey-background-color, #ffffff);
+  --pels-panel: var(--homey-color-mono-050, #f3f5f7);
+  --pels-panel-border: var(--homey-line-color, rgba(15, 23, 28, 0.12));
+  --pels-grid: var(--homey-line-color-light, rgba(15, 23, 28, 0.08));
+  --pels-text: var(--homey-text-color, #1f252a);
+  --pels-muted: var(--homey-text-color-light, #6d7680);
+  --pels-plan: var(--homey-color-green, #58c56a);
+  --pels-actual: var(--homey-color-blue, #3f9fff);
+  --pels-price: var(--homey-color-red, #f0696c);
+  --pels-now: var(--homey-color-blue, #3f9fff);
+}
+
+.widget-root {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+}
+
+.homey-dark-mode,
+body.homey-dark-mode,
+.homey-dark-mode .widget-root {
+  --pels-background: var(--homey-background-color, #161b21);
+  --pels-panel: var(--homey-color-mono-100, #1f262d);
+  --pels-panel-border: var(--homey-line-color, rgba(255, 255, 255, 0.14));
+  --pels-grid: var(--homey-line-color-light, rgba(255, 255, 255, 0.09));
+  --pels-text: var(--homey-text-color, #edf1f4);
+  --pels-muted: var(--homey-text-color-light, #97a2ab);
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+  font-family: inherit;
+}
+
+.chart__panel {
+  fill: var(--pels-panel);
+  stroke: var(--pels-panel-border);
+  stroke-width: 1;
+}
+
+.chart__grid {
+  stroke: var(--pels-grid);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart__axis-label,
+.chart__legend-text,
+.chart__badge {
+  fill: var(--pels-muted);
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  font-weight: var(--homey-font-weight-regular, 400);
+}
+
+.chart__badge {
+  font-size: 13px;
+}
+
+.chart__legend-text {
+  dominant-baseline: middle;
+}
+
+.chart__bar {
+  fill: var(--pels-plan);
+}
+
+.chart__actual {
+  fill: var(--pels-actual);
+  stroke: var(--pels-background);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart__price {
+  fill: none;
+  stroke: var(--pels-price);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart__price-dot {
+  fill: var(--pels-price);
+  stroke: var(--pels-background);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart__now {
+  stroke: var(--pels-now);
+  stroke-width: 2;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart__legend-plan {
+  fill: var(--pels-plan);
+}
+
+.chart__legend-actual {
+  fill: var(--pels-actual);
+  stroke: var(--pels-background);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart__legend-price {
+  stroke: var(--pels-price);
+  stroke-width: 4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart__empty-title {
+  fill: var(--pels-text);
+  font-size: var(--homey-font-size-default, 17px);
+  line-height: var(--homey-line-height-default, 24px);
+  font-weight: var(--homey-font-weight-bold, 700);
+}
+
+.chart__empty-subtitle {
+  fill: var(--pels-muted);
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  font-weight: var(--homey-font-weight-regular, 400);
+}
