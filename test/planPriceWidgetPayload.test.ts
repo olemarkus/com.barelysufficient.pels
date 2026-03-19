@@ -162,6 +162,7 @@ describe('plan price widget payload', () => {
 
   test('resolves labels and intervals consistently', () => {
     expect(resolveLabel(['06:00', ''], ['2026-03-19T06:00:00.000Z', '2026-03-19T07:00:00.000Z'], 0)).toBe('06');
+    expect(resolveLabel([':00'], [], 0)).toBe('');
     expect(resolveLabelEvery(24)).toBe(4);
     expect(resolveWidgetTarget('tomorrow')).toBe('tomorrow');
     expect(resolveWidgetTarget('unexpected')).toBe('today');

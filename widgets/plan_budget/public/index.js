@@ -17,7 +17,6 @@
   const PREVIEW_TODAY_PAYLOAD = {
     state: 'ready',
     target: 'today',
-    dateKey: '2026-03-19',
     bucketLabels: Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0')),
     plannedKwh: [
       0.42, 0.38, 0.36, 0.35, 0.34, 0.38, 0.45, 0.58, 0.7, 0.82, 0.9, 0.94,
@@ -44,7 +43,6 @@
   const PREVIEW_TOMORROW_PAYLOAD = {
     state: 'ready',
     target: 'tomorrow',
-    dateKey: '2026-03-20',
     bucketLabels: Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0')),
     plannedKwh: [
       0.36, 0.34, 0.33, 0.31, 0.3, 0.32, 0.4, 0.54, 0.68, 0.75, 0.78, 0.8,
