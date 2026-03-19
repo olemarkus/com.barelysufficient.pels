@@ -22,7 +22,7 @@ const resolveLabel = (labels, startUtc, index) => {
   const label = labels[index];
   if (typeof label === 'string' && label.trim()) {
     const separatorIndex = label.indexOf(':');
-    return separatorIndex > 0 ? label.slice(0, separatorIndex).trim() : label.trim();
+    return separatorIndex >= 0 ? label.slice(0, separatorIndex).trim() : label.trim();
   }
   const iso = startUtc[index];
   if (!iso) return '';
