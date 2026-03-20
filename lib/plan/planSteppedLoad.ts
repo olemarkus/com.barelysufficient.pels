@@ -1,18 +1,29 @@
 import {
   getSteppedLoadHighestStep,
+  getSteppedLoadNextLowerStep,
   getSteppedLoadNextHigherStep,
   getSteppedLoadOffStep,
+  getSteppedLoadRestoreStep,
   getSteppedLoadStep,
   getSteppedLoadLowestStep,
   isSteppedLoadOffStep,
   resolveSteppedLoadPlanningPowerKw,
 } from '../utils/deviceControlProfiles';
-import type { SteppedLoadProfile } from '../utils/types';
+import type { SteppedLoadProfile, SteppedLoadStep } from '../utils/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 
 type StepCapableDevice = Pick<
   PlanInputDevice | DevicePlanDevice,
   'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'desiredStepId' | 'measuredPowerKw'
+>;
+type StepSheddingCapableDevice = Pick<
+  PlanInputDevice,
+  | 'controlModel'
+  | 'steppedLoadProfile'
+  | 'selectedStepId'
+  | 'desiredStepId'
+  | 'stepCommandPending'
+  | 'stepCommandStatus'
 >;
 
 export const isSteppedLoadDevice = (
@@ -77,7 +88,42 @@ export const getSteppedLoadShedTargetStep = (params: {
     : getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile);
   if (!targetStep) return null;
 
+  const lowestActiveStep = getSteppedLoadRestoreStep(profile);
+  const nextLowerStep = lowestActiveStep
+    ? getSteppedLoadNextLowerStep({
+      profile,
+      stepId: currentStep.id,
+      floorStepId: lowestActiveStep.id,
+    })
+    : null;
+  if (nextLowerStep) return nextLowerStep;
+
   return currentStep.planningPowerW <= targetStep.planningPowerW ? currentStep : targetStep;
+};
+
+export const resolveSteppedLoadSheddingTarget = (params: {
+  device: StepSheddingCapableDevice;
+  targetStep: SteppedLoadStep | null;
+}): {
+  steppedProfile: SteppedLoadProfile;
+  selectedStep: SteppedLoadStep;
+  clampedTargetStep: SteppedLoadStep;
+  hasUnconfirmedLowerDesiredStep: boolean;
+} | null => {
+  const { device, targetStep } = params;
+  const steppedProfile = getSteppedLoadProfileForDevice(device);
+  if (!steppedProfile) return null;
+  const selectedStep = getSteppedLoadStep(steppedProfile, device.selectedStepId);
+  if (!selectedStep) return null;
+  const desiredStep = resolveUnconfirmedLowerDesiredStep({ device, steppedProfile, selectedStep });
+  const clampedTargetStep = clampSteppedShedTarget(targetStep, desiredStep);
+  if (!clampedTargetStep || clampedTargetStep.id === selectedStep.id) return null;
+  return {
+    steppedProfile,
+    selectedStep,
+    clampedTargetStep,
+    hasUnconfirmedLowerDesiredStep: desiredStep !== null,
+  };
 };
 
 export const resolveSteppedLoadPlanningKw = (
@@ -115,3 +161,26 @@ export const resolveSteppedLoadRestoreDeltaKw = (params: {
   const nextPlanningKw = resolveSteppedLoadPlanningKw(device, toStepId);
   return Math.max(0, nextPlanningKw - currentPlanningKw);
 };
+
+function resolveUnconfirmedLowerDesiredStep(params: {
+  device: StepSheddingCapableDevice;
+  steppedProfile: SteppedLoadProfile;
+  selectedStep: SteppedLoadStep;
+}): SteppedLoadStep | null {
+  const { device, steppedProfile, selectedStep } = params;
+  const desiredStep = getSteppedLoadStep(steppedProfile, device.desiredStepId);
+  if (!desiredStep) return null;
+  if (desiredStep.id === selectedStep.id) return null;
+  if (desiredStep.planningPowerW >= selectedStep.planningPowerW) return null;
+  if (!device.stepCommandPending && device.stepCommandStatus !== 'stale') return null;
+  return desiredStep;
+}
+
+function clampSteppedShedTarget(
+  targetStep: SteppedLoadStep | null,
+  desiredStep: SteppedLoadStep | null,
+): SteppedLoadStep | null {
+  if (!targetStep) return null;
+  if (!desiredStep) return targetStep;
+  return desiredStep.planningPowerW <= targetStep.planningPowerW ? desiredStep : targetStep;
+}

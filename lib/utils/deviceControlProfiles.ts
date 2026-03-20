@@ -76,6 +76,29 @@ export const getSteppedLoadNextHigherStep = (params: {
   return null;
 };
 
+export const getSteppedLoadNextLowerStep = (params: {
+  profile: SteppedLoadProfile;
+  stepId?: string;
+  floorStepId?: string;
+}): SteppedLoadStep | null => {
+  const { profile, stepId, floorStepId } = params;
+  const sortedSteps = sortSteppedLoadSteps(profile.steps);
+  const currentStep = getSteppedLoadStep(profile, stepId)
+    ?? getSteppedLoadRestoreStep(profile)
+    ?? sortedSteps[0]
+    ?? null;
+  if (!currentStep) return null;
+  const currentIndex = sortedSteps.findIndex((step) => step.id === currentStep.id);
+  if (currentIndex < 0) return null;
+  const floorIndex = floorStepId ? sortedSteps.findIndex((step) => step.id === floorStepId) : Number.NEGATIVE_INFINITY;
+  if (floorStepId && floorIndex < 0) return null;
+  for (let index = currentIndex - 1; index >= 0; index -= 1) {
+    if (index < floorIndex) break;
+    return sortedSteps[index] ?? null;
+  }
+  return null;
+};
+
 export const resolveSteppedLoadPowerHeuristicStepId = (
   profile: SteppedLoadProfile,
   measuredPowerKw?: number,

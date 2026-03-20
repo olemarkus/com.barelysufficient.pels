@@ -125,8 +125,8 @@ describe('appDeviceControlHelpers', () => {
       nowMs: 1500,
     });
     expect(pendingDecorated.desiredStepId).toBe('low');
-    expect(pendingDecorated.selectedStepId).toBe('low');
-    expect(pendingDecorated.assumedStepId).toBe('low');
+    expect(pendingDecorated.selectedStepId).toBe('max');
+    expect(pendingDecorated.assumedStepId).toBe('max');
     expect(pendingDecorated.stepCommandPending).toBe(true);
     expect(pendingDecorated.stepCommandStatus).toBe('pending');
 
