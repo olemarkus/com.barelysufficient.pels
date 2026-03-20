@@ -14,6 +14,7 @@ const steppedProfile = {
   steps: [
     { id: 'off', planningPowerW: 0 },
     { id: 'low', planningPowerW: 1250 },
+    { id: 'mid', planningPowerW: 2000 },
     { id: 'max', planningPowerW: 3000 },
   ],
 };
@@ -53,7 +54,8 @@ describe('planSteppedLoad', () => {
     })).toBeUndefined();
 
     expect(getSteppedLoadNextRestoreStep(steppedDevice({ selectedStepId: 'off' }))?.id).toBe('low');
-    expect(getSteppedLoadNextRestoreStep(steppedDevice({ selectedStepId: 'low' }))?.id).toBe('max');
+    expect(getSteppedLoadNextRestoreStep(steppedDevice({ selectedStepId: 'low' }))?.id).toBe('mid');
+    expect(getSteppedLoadNextRestoreStep(steppedDevice({ selectedStepId: 'mid' }))?.id).toBe('max');
     expect(getSteppedLoadNextRestoreStep(steppedDevice({ selectedStepId: 'max' }))).toBeNull();
     expect(getSteppedLoadNextRestoreStep({
       controlModel: 'binary_power',
@@ -67,6 +69,12 @@ describe('planSteppedLoad', () => {
       device: steppedDevice({ selectedStepId: 'max' }),
       shedAction: 'set_step',
       shedStepId: 'low',
+    })?.id).toBe('mid');
+
+    expect(getSteppedLoadShedTargetStep({
+      device: steppedDevice({ selectedStepId: 'mid' }),
+      shedAction: 'set_step',
+      shedStepId: 'low',
     })?.id).toBe('low');
 
     expect(getSteppedLoadShedTargetStep({
@@ -77,6 +85,11 @@ describe('planSteppedLoad', () => {
 
     expect(getSteppedLoadShedTargetStep({
       device: steppedDevice({ selectedStepId: 'max' }),
+      shedAction: 'turn_off',
+    })?.id).toBe('mid');
+
+    expect(getSteppedLoadShedTargetStep({
+      device: steppedDevice({ selectedStepId: 'low' }),
       shedAction: 'turn_off',
     })?.id).toBe('off');
 
@@ -122,8 +135,8 @@ describe('planSteppedLoad', () => {
     expect(resolveSteppedLoadImmediateReliefKw({
       device: steppedDevice({ measuredPowerKw: 2.4 }),
       fromStepId: 'max',
-      toStepId: 'low',
-    })).toBeCloseTo(1.15, 6);
+      toStepId: 'mid',
+    })).toBeCloseTo(0.4, 6);
     expect(resolveSteppedLoadImmediateReliefKw({
       device: steppedDevice({ measuredPowerKw: undefined }),
       fromStepId: 'max',

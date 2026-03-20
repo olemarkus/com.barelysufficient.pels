@@ -2,6 +2,7 @@ import {
   getSteppedLoadHighestStep,
   getSteppedLoadLowestStep,
   getSteppedLoadNextHigherStep,
+  getSteppedLoadNextLowerStep,
   getSteppedLoadOffStep,
   getSteppedLoadRestoreStep,
   getSteppedLoadStep,
@@ -63,6 +64,21 @@ describe('deviceControlProfiles', () => {
     expect(getSteppedLoadHighestStep(emptyProfile)).toBeNull();
     expect(getSteppedLoadLowestStep(emptyProfile)).toBeNull();
     expect(getSteppedLoadNextHigherStep({ profile: emptyProfile, stepId: undefined })).toBeNull();
+  });
+
+  it('resolves the next lower step using fallback start points and respects a valid floor', () => {
+    const profile = buildProfile();
+    const offOnlyProfile: SteppedLoadProfile = {
+      model: 'stepped_load',
+      steps: [{ id: 'idle', planningPowerW: 0 }],
+    };
+
+    expect(getSteppedLoadNextLowerStep({ profile, stepId: 'max' })?.id).toBe('low');
+    expect(getSteppedLoadNextLowerStep({ profile, stepId: 'max', floorStepId: 'low' })?.id).toBe('low');
+    expect(getSteppedLoadNextLowerStep({ profile, stepId: 'low', floorStepId: 'low' })).toBeNull();
+    expect(getSteppedLoadNextLowerStep({ profile, stepId: undefined })?.id).toBe('off');
+    expect(getSteppedLoadNextLowerStep({ profile, stepId: 'max', floorStepId: 'missing' })).toBeNull();
+    expect(getSteppedLoadNextLowerStep({ profile: offOnlyProfile, stepId: undefined })).toBeNull();
   });
 
   it('uses the power heuristic only for positive measured values within tolerance', () => {
