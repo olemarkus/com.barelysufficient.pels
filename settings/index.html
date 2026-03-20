@@ -701,71 +701,157 @@
 
       <div class="slide-panel__content">
         <section class="detail-section">
-          <h3>Controls</h3>
-          <div class="detail-controls">
-            <label class="checkbox-field">
-              <input type="checkbox" id="device-detail-managed">
-              <span>Managed by PELS</span>
-            </label>
-            <p class="muted">Include this device in modes and optimization plans.</p>
+          <details class="settings-collapse detail-collapse" open>
+            <summary>
+              <h3 class="section-title">Controls</h3>
+              <span class="section-hint">Management, shedding, and control model</span>
+            </summary>
+            <div class="collapse-content">
+              <div class="detail-control-list">
+                <div class="device-row device-detail-row device-detail-row--toggle">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-managed">Managed by PELS</label>
+                    <small class="device-detail-row__hint">Include this device in modes and optimization plans.</small>
+                  </div>
+                  <input type="checkbox" id="device-detail-managed">
+                </div>
 
-            <label class="checkbox-field">
-              <input type="checkbox" id="device-detail-controllable">
-              <span>Capacity-based control</span>
-            </label>
-            <p class="muted">Allow PELS to adjust this device based on power capacity limits.</p>
+                <div class="device-row device-detail-row device-detail-row--toggle">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-controllable">Capacity-based control</label>
+                    <small class="device-detail-row__hint">Allow PELS to adjust this device based on power capacity limits.</small>
+                  </div>
+                  <input type="checkbox" id="device-detail-controllable">
+                </div>
 
-            <label class="checkbox-field">
-              <input type="checkbox" id="device-detail-price-opt">
-              <span>Price-based control</span>
-            </label>
-            <p class="muted">Adjust temperature based on electricity price fluctuations.</p>
+                <div class="device-row device-detail-row device-detail-row--toggle">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-price-opt">Price-based control</label>
+                    <small class="device-detail-row__hint">Adjust temperature based on electricity price fluctuations.</small>
+                  </div>
+                  <input type="checkbox" id="device-detail-price-opt">
+                </div>
 
-            <label class="field">
-              <span class="field__label">When shedding</span>
-              <select id="device-detail-overshoot">
-                <option value="turn_off">Turn off</option>
-                <option value="set_temperature">Set to temperature</option>
-              </select>
-              <small class="field__hint">Choose how PELS reacts when capacity is exceeded.</small>
-            </label>
-            <label class="field" id="device-detail-overshoot-temp-row" hidden>
-              <span class="field__label">Minimum temperature (°C)</span>
-              <input type="number" id="device-detail-overshoot-temp" step="0.5" min="-20" max="40">
-              <small class="field__hint">Set this instead of turning off when shedding.</small>
-            </label>
-          </div>
+                <div class="device-row device-detail-row" id="device-detail-control-model-row">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-control-model">Control model</label>
+                    <small class="device-detail-row__hint">Use stepped load for devices with discrete power levels such as off/low/max.</small>
+                  </div>
+                  <select id="device-detail-control-model">
+                    <option value="temperature_target">Temperature target / default</option>
+                    <option value="stepped_load">Stepped load</option>
+                  </select>
+                </div>
+
+                <div class="device-row device-detail-row">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-overshoot">When shedding</label>
+                    <small class="device-detail-row__hint">Choose how PELS reacts when capacity is exceeded.</small>
+                  </div>
+                  <select id="device-detail-overshoot">
+                    <option value="turn_off">Turn off</option>
+                    <option value="set_temperature">Set to temperature</option>
+                    <option value="set_step">Set to step</option>
+                  </select>
+                </div>
+                <div class="device-row device-detail-row" id="device-detail-overshoot-temp-row" hidden>
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-overshoot-temp">Shed temperature (°C)</label>
+                    <small class="device-detail-row__hint">Set this instead of turning off when shedding.</small>
+                  </div>
+                  <input type="number" id="device-detail-overshoot-temp" step="0.5" min="-20" max="40">
+                </div>
+                <div class="device-row device-detail-row" id="device-detail-overshoot-step-row" hidden>
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-overshoot-step">Shed step</label>
+                    <small class="device-detail-row__hint">For stepped loads, PELS will step down to this level or lower when shedding.</small>
+                  </div>
+                  <select id="device-detail-overshoot-step"></select>
+                </div>
+              </div>
+            </div>
+          </details>
         </section>
 
         <section class="detail-section">
-          <h3>Temperature per mode</h3>
-          <p class="muted">Set the target temperature for each mode. PELS will set this when the mode is active.</p>
-          <div id="device-detail-modes" class="detail-mode-list"></div>
+          <details class="settings-collapse detail-collapse" open>
+            <summary>
+              <h3 class="section-title">Temperature per mode</h3>
+              <span class="section-hint">Per-mode target temperatures</span>
+            </summary>
+            <div class="collapse-content">
+              <p class="muted">Set the target temperature for each mode. PELS will set this when the mode is active.</p>
+              <div id="device-detail-modes" class="detail-mode-list"></div>
+            </div>
+          </details>
+        </section>
+
+        <section class="detail-section" id="device-detail-stepped-section" hidden>
+          <details class="settings-collapse detail-collapse" open>
+            <summary>
+              <h3 class="section-title">Stepped load profile</h3>
+              <span class="section-hint">Steps and planning power</span>
+            </summary>
+            <div class="collapse-content">
+              <p class="muted">Selected step, measured power, and planning power are treated separately. Planning power reserves future heating capacity; it does not need to match live draw exactly.</p>
+
+              <div class="detail-stepped-actions">
+                <button type="button" class="btn secondary" id="device-detail-stepped-add-step">Add step</button>
+                <button type="button" class="btn ghost" id="device-detail-stepped-reset">Reset draft</button>
+                <button type="button" class="btn primary" id="device-detail-stepped-save">Save profile</button>
+              </div>
+
+              <div class="detail-stepped-header" aria-hidden="true">
+                <span>Step</span>
+                <span>Planning W</span>
+                <span></span>
+              </div>
+              <div class="detail-stepped-list" id="device-detail-stepped-steps"></div>
+
+              <p class="muted">When a shed stepped-load device is restored, PELS starts from the lowest active step and only climbs higher when there is room for it.</p>
+            </div>
+          </details>
         </section>
 
         <section class="detail-section" id="device-detail-delta-section">
-          <h3>Price optimization deltas</h3>
-          <p class="muted">Temperature adjustments applied during cheap/expensive electricity hours.</p>
-          <div class="detail-deltas">
-            <label class="field">
-              <span class="field__label">🟢 Cheap hours delta (°C)</span>
-              <input type="number" id="device-detail-cheap-delta" step="0.5" value="5">
-              <small class="field__hint">Added to target during cheap hours (e.g. +5)</small>
-            </label>
-            <label class="field">
-              <span class="field__label">🔴 Expensive hours delta (°C)</span>
-              <input type="number" id="device-detail-expensive-delta" step="0.5" value="-5">
-              <small class="field__hint">Added to target during expensive hours (e.g. -5)</small>
-            </label>
-          </div>
+          <details class="settings-collapse detail-collapse" open>
+            <summary>
+              <h3 class="section-title">Price optimization deltas</h3>
+              <span class="section-hint">Cheap and expensive hour offsets</span>
+            </summary>
+            <div class="collapse-content">
+              <p class="muted">Temperature adjustments applied during cheap and expensive electricity hours.</p>
+              <div class="detail-deltas">
+                <div class="device-row device-detail-row">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-cheap-delta">🟢 Cheap hours delta (°C)</label>
+                    <small class="device-detail-row__hint">Added to target during cheap hours, for example +5.</small>
+                  </div>
+                  <input type="number" id="device-detail-cheap-delta" step="0.5" value="5">
+                </div>
+                <div class="device-row device-detail-row">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-expensive-delta">🔴 Expensive hours delta (°C)</label>
+                    <small class="device-detail-row__hint">Added to target during expensive hours, for example -5.</small>
+                  </div>
+                  <input type="number" id="device-detail-expensive-delta" step="0.5" value="-5">
+                </div>
+              </div>
+            </div>
+          </details>
         </section>
 
         <section class="detail-section" id="device-detail-diagnostics-section">
-          <details id="device-detail-diagnostics-disclosure" class="detail-disclosure">
-            <summary class="detail-disclosure__summary">Advanced diagnostics</summary>
-            <p class="muted">Read-only blocked time, activation instability, and penalty history over the last 21 days.</p>
-            <div id="device-detail-diagnostics-status" class="detail-diagnostics-status"></div>
-            <div id="device-detail-diagnostics-cards" class="detail-diagnostics-grid"></div>
+          <details id="device-detail-diagnostics-disclosure" class="settings-collapse detail-collapse">
+            <summary>
+              <h3 class="section-title">Advanced diagnostics</h3>
+              <span class="section-hint">21-day read-only history</span>
+            </summary>
+            <div class="collapse-content">
+              <p class="muted">Read-only blocked time, activation instability, and penalty history over the last 21 days.</p>
+              <div id="device-detail-diagnostics-status" class="detail-diagnostics-status"></div>
+              <div id="device-detail-diagnostics-cards" class="detail-diagnostics-grid"></div>
+            </div>
           </details>
         </section>
       </div>

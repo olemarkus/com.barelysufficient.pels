@@ -29,6 +29,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     setCapacityLimit: jest.fn(),
     getSnapshot: jest.fn().mockResolvedValue([]),
     refreshSnapshot: jest.fn().mockResolvedValue(undefined),
+    reportSteppedLoadActualStep: jest.fn(() => 'changed'),
     getDeviceLoadSetting: jest.fn().mockResolvedValue(null),
     setExpectedOverride: jest.fn(() => false),
     storeFlowPriceData: jest.fn(),
@@ -105,5 +106,97 @@ describe('registerFlowCards', () => {
     expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('reports stepped-load actual step and requests a snapshot refresh plus plan rebuild', async () => {
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: jest.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'max',
+    })).resolves.toBe(true);
+
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'max');
+    expect(deps.refreshSnapshot).toHaveBeenCalled();
+    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_stepped_load_actual_step');
+  });
+
+  it('treats an echoed stepped-load step report as a successful no-op', async () => {
+    const { deps, actionListeners } = buildDeps({
+      reportSteppedLoadActualStep: jest.fn(() => 'unchanged'),
+      getSnapshot: jest.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'max',
+    })).resolves.toBe(true);
+
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'max');
+    expect(deps.refreshSnapshot).not.toHaveBeenCalled();
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('maps stepped-load power text to a configured step and strips a trailing W', async () => {
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: jest.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1750 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '1750 W',
+    })).resolves.toBe(true);
+
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'low');
+    expect(deps.refreshSnapshot).toHaveBeenCalled();
+    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_stepped_load_power');
   });
 });

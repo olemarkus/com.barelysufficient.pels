@@ -110,6 +110,49 @@ describe('plan usage line', () => {
 
     expect(getUsageText()).toBe('current usage: 0.00 kW / expected 1.00 kW');
   });
+
+  it('shows stepped-load planning and live usage in the overview row', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-step-1',
+          name: 'Water heater',
+          controlModel: 'stepped_load',
+          currentState: 'on',
+          plannedState: 'keep',
+          selectedStepId: 'max',
+          desiredStepId: 'max',
+          planningPowerKw: 3,
+          measuredPowerKw: 0,
+        },
+      ],
+    });
+
+    expect(getPowerText()).toBeUndefined();
+    expect(getUsageText()).toBe('current usage: 0.00 kW / expected 3.00 kW (max)');
+  });
+
+  it('shows stepped-load usage without extra assumption labels', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-step-assumed',
+          name: 'Water heater',
+          controlModel: 'stepped_load',
+          currentState: 'on',
+          plannedState: 'keep',
+          selectedStepId: 'max',
+          assumedStepId: 'max',
+          desiredStepId: 'max',
+          planningPowerKw: 3,
+          measuredPowerKw: 0,
+        },
+      ],
+    });
+
+    expect(getPowerText()).toBeUndefined();
+    expect(getUsageText()).toBe('current usage: 0.00 kW / expected 3.00 kW (max)');
+  });
 });
 
 describe('plan meta usage summary', () => {
@@ -279,6 +322,55 @@ describe('plan device state', () => {
     expect(getTemperatureText()).toBe('21.0° / target 18° → 23° (waiting for confirmation)');
   });
 
+  it('shows stepped-load restore state and step transition in the overview row', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-step-restore',
+          name: 'Water heater',
+          controlModel: 'stepped_load',
+          currentState: 'on',
+          plannedState: 'keep',
+          selectedStepId: 'low',
+          desiredStepId: 'max',
+          planningPowerKw: 3,
+          measuredPowerKw: 0.6,
+          controllable: true,
+        },
+      ],
+    });
+
+    expect(getPowerText()).toBeUndefined();
+    expect(getStateText()).toBe('Restoring');
+    expect(getUsageText()).toBe('current usage: 0.60 kW / expected 3.00 kW (low → max)');
+    expect(getBadgeClassList('dev-step-restore')?.contains('neutral')).toBe(true);
+  });
+
+  it('shows the shed target step for stepped-load devices', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-step-shed',
+          name: 'Water heater',
+          controlModel: 'stepped_load',
+          currentState: 'on',
+          plannedState: 'shed',
+          selectedStepId: 'max',
+          desiredStepId: 'low',
+          planningPowerKw: 1.25,
+          measuredPowerKw: 1.1,
+          controllable: true,
+          shedAction: 'set_step',
+        },
+      ],
+    });
+
+    expect(getPowerText()).toBeUndefined();
+    expect(getStateText()).toBe('Shed to low');
+    expect(getUsageText()).toBe('current usage: 1.10 kW / expected 1.25 kW (max → low)');
+    expect(getBadgeClassList('dev-step-shed')?.contains('expensive')).toBe(true);
+  });
+
   it('renders inactive EV state without a fake restore power transition', () => {
     renderPlanSnapshot({
       devices: [
@@ -337,7 +429,7 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-restore-on')?.contains('cheap')).toBe(true);
   });
 
-  it('renders temperature-managed state for devices without onoff power state', () => {
+  it('renders temperature-managed state without a misleading power row for devices without onoff power state', () => {
     renderPlanSnapshot({
       devices: [
         {
@@ -351,7 +443,7 @@ describe('plan device state', () => {
     });
 
     expect(getStateText()).toBe('Active (temperature-managed)');
-    expect(getPowerText()).toBe('N/A');
+    expect(getPowerText()).toBeUndefined();
     expect(getBadgeClassList('dev-temp-only')?.contains('cheap')).toBe(true);
   });
 

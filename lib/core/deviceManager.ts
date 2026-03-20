@@ -33,7 +33,7 @@ import {
 } from './deviceManagerParse';
 import {
     normalizeTargetCapabilityValue,
-} from '../../packages/contracts/src/targetCapabilities';
+} from '../utils/targetCapabilities';
 import {
     hasPotentialHomeyEnergyEstimate,
     resolvePreferredPowerRaw,
@@ -805,27 +805,96 @@ export class DeviceManager extends EventEmitter {
         const sources = this.debugObservedSourcesByDeviceId.get(deviceId);
         const realtimeSource = sources?.realtimeCapabilities[capabilityId];
         if (!realtimeSource?.snapshot) return;
+        const localWriteSource = sources?.localWrites[capabilityId];
 
         const fetchedLastUpdatedMs = this.getCapabilityLastUpdatedMs(sourceDevice, capabilityId);
         if (typeof fetchedLastUpdatedMs !== 'number' || !Number.isFinite(fetchedLastUpdatedMs)) return;
         if (fetchedLastUpdatedMs >= realtimeSource.observedAt) return;
 
         if (capabilityId === nextSnapshot.controlCapabilityId) {
-            if (typeof realtimeSource.snapshot.currentOn !== 'boolean') return;
-            if (nextSnapshot.currentOn === realtimeSource.snapshot.currentOn) return;
-            nextSnapshot.currentOn = realtimeSource.snapshot.currentOn;
-            this.logger.debug(
-                `Device snapshot refresh preserved newer realtime ${capabilityId} for ${deviceName} (${deviceId}); `
-                + `fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}, `
-                + `realtime observedAt=${new Date(realtimeSource.observedAt).toISOString()}`,
-            );
+            this.preserveFresherRealtimeControlObservation({
+                deviceId,
+                deviceName,
+                capabilityId,
+                nextSnapshot,
+                realtimeSource,
+                fetchedLastUpdatedMs,
+            });
             return;
         }
 
+        this.preserveFresherRealtimeTargetObservation({
+            deviceId,
+            deviceName,
+            capabilityId,
+            previousSnapshot,
+            nextSnapshot,
+            realtimeSource,
+            localWriteSource,
+            fetchedLastUpdatedMs,
+        });
+    }
+
+    private preserveFresherRealtimeControlObservation(params: {
+        deviceId: string;
+        deviceName: string;
+        capabilityId: string;
+        nextSnapshot: TargetDeviceSnapshot;
+        realtimeSource: DeviceDebugObservedSource;
+        fetchedLastUpdatedMs: number;
+    }): void {
+        const {
+            deviceId,
+            deviceName,
+            capabilityId,
+            nextSnapshot,
+            realtimeSource,
+            fetchedLastUpdatedMs,
+        } = params;
+        const realtimeSnapshot = realtimeSource.snapshot;
+        if (!realtimeSnapshot || typeof realtimeSnapshot.currentOn !== 'boolean') return;
+        if (nextSnapshot.currentOn === realtimeSnapshot.currentOn) return;
+        nextSnapshot.currentOn = realtimeSnapshot.currentOn;
+        this.logger.debug(
+            `Device snapshot refresh preserved newer realtime ${capabilityId} for ${deviceName} (${deviceId}); `
+            + `fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}, `
+            + `realtime observedAt=${new Date(realtimeSource.observedAt).toISOString()}`,
+        );
+    }
+
+    private preserveFresherRealtimeTargetObservation(params: {
+        deviceId: string;
+        deviceName: string;
+        capabilityId: string;
+        previousSnapshot: TargetDeviceSnapshot;
+        nextSnapshot: TargetDeviceSnapshot;
+        realtimeSource: DeviceDebugObservedSource;
+        localWriteSource?: DeviceDebugObservedSource;
+        fetchedLastUpdatedMs: number;
+    }): void {
+        const {
+            deviceId,
+            deviceName,
+            capabilityId,
+            previousSnapshot,
+            nextSnapshot,
+            realtimeSource,
+            localWriteSource,
+            fetchedLastUpdatedMs,
+        } = params;
+        const realtimeSnapshot = realtimeSource.snapshot;
+        if (!realtimeSnapshot) return;
         const nextTarget = nextSnapshot.targets.find((target) => target.id === capabilityId);
         const previousTarget = previousSnapshot.targets.find((target) => target.id === capabilityId);
-        const realtimeTarget = realtimeSource.snapshot.targets.find((target) => target.id === capabilityId);
+        const realtimeTarget = realtimeSnapshot.targets.find((target) => target.id === capabilityId);
         if (!nextTarget || !previousTarget || !realtimeTarget) return;
+        if (this.shouldKeepFetchedTargetAfterNewerLocalWrite(localWriteSource, realtimeSource, nextTarget.value)) {
+            this.logger.debug(
+                `Device snapshot refresh kept fetched ${capabilityId} for ${deviceName} (${deviceId}); `
+                + 'fetched value matches a newer local write',
+            );
+            return;
+        }
         if (!Object.is(previousTarget.value, realtimeTarget.value)) return;
         if (Object.is(nextTarget.value, realtimeTarget.value)) return;
         nextTarget.value = realtimeTarget.value;
@@ -833,6 +902,18 @@ export class DeviceManager extends EventEmitter {
             `Device snapshot refresh preserved newer realtime ${capabilityId} for ${deviceName} (${deviceId}); `
             + `fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}, `
             + `realtime observedAt=${new Date(realtimeSource.observedAt).toISOString()}`,
+        );
+    }
+
+    private shouldKeepFetchedTargetAfterNewerLocalWrite(
+        localWriteSource: DeviceDebugObservedSource | undefined,
+        realtimeSource: DeviceDebugObservedSource,
+        fetchedValue: unknown,
+    ): boolean {
+        return Boolean(
+            localWriteSource
+            && localWriteSource.observedAt > realtimeSource.observedAt
+            && Object.is(fetchedValue, localWriteSource.value),
         );
     }
 

@@ -47,7 +47,7 @@ describe('restore cooldown backoff', () => {
 
     const deps = {
       powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
+      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
       log: jest.fn(),
       logDebug: jest.fn(),
     };
@@ -83,7 +83,7 @@ describe('restore cooldown backoff', () => {
 
     const deps = {
       powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
+      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
       log: jest.fn(),
       logDebug: jest.fn(),
     };
@@ -131,7 +131,7 @@ describe('restore cooldown backoff', () => {
 
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
-      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
+      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
       log: jest.fn(),
       logDebug: jest.fn(),
     };
@@ -154,5 +154,181 @@ describe('restore cooldown backoff', () => {
     expect(onDevice?.reason).toBe('swapped out for Off');
     expect(result.stateUpdates.pendingSwapTargets.has('stale-target')).toBe(false);
     expect(result.stateUpdates.swappedOutFor['dev-on']).toBe('dev-off');
+  });
+
+  it('blocks stepped-load step-up while another device is still waiting to recover', () => {
+    const state = createPlanEngineState();
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Critical heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+        buildPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          plannedState: 'keep',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'medium', planningPowerW: 1750 },
+            ],
+          },
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 0,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 1.0,
+        headroom: 1.0,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(binaryDevice?.plannedState).toBe('shed');
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+  });
+
+  it('blocks stepped-load step-up while another previously shed device is still restoring', () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-off'] = Date.now() - 30_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Critical heater',
+          currentState: 'unknown',
+          plannedState: 'keep',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+        buildPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          plannedState: 'keep',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'medium', planningPowerW: 1750 },
+            ],
+          },
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 0,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(binaryDevice?.plannedState).toBe('keep');
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+  });
+
+  it('blocks stepped-load step-up while a shed-temperature device is still awaiting restore confirmation', () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-temp'] = Date.now() - 30_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-temp',
+          name: 'Hall thermostat',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTarget: 16,
+          plannedTarget: 23,
+          shedAction: 'set_temperature',
+          pendingTargetCommand: {
+            desired: 23,
+            retryCount: 0,
+            nextRetryAtMs: Date.now() + 30_000,
+          },
+          expectedPowerKw: 1.5,
+          measuredPowerKw: 0,
+          powerKw: 1.5,
+        }),
+        buildPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          plannedState: 'keep',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'medium', planningPowerW: 1750 },
+            ],
+          },
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 0,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const tempDevice = result.planDevices.find((device) => device.id === 'dev-temp');
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(tempDevice?.plannedState).toBe('keep');
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
   });
 });

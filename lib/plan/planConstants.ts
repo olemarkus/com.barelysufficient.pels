@@ -19,3 +19,5 @@ export const TARGET_COMMAND_RETRY_DELAYS_MS = [
   5 * 60 * 1000,
   15 * 60 * 1000,
 ] as const;
+export const TARGET_CONFIRMATION_STUCK_POLL_MS = 60 * 1000;
+export const TARGET_WAITING_LOG_REPEAT_MS = 60 * 1000;

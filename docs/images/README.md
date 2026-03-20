@@ -1,12 +1,9 @@
 # Documentation Images
 
-The generic headroom/expected-power how-to expects these image files in this folder:
+The stepped-load wiring how-to expects this image file in this folder:
 
-- `howto_headroom_control_flow_example.png`
-- `howto_expected_power_sync_flow_example.png`
+- `howto_hoiax_stepped_load_flow_example.png`
 
-These files contain the original flow screenshots used by the how-to.
-
-They are referenced by:
+It is referenced by:
 
 - `docs/how-to-headroom-expected-power-flow-control.md`

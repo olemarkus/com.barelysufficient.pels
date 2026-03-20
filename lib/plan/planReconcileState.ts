@@ -4,6 +4,8 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   return {
     ...plan,
+    // Keeping the live-plan merge in one place makes reconciliation easier to audit.
+    // eslint-disable-next-line complexity
     devices: plan.devices.map((device) => {
       const live = liveById.get(device.id);
       if (!live) return device;
@@ -11,9 +13,17 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         ...device,
         currentState: resolveCurrentStateFromPlanInput(live.currentOn, live.hasBinaryControl),
         currentTarget: Array.isArray(live.targets) && live.targets.length > 0 ? live.targets[0].value ?? null : null,
+        controlModel: live.controlModel ?? device.controlModel,
+        steppedLoadProfile: live.steppedLoadProfile ?? device.steppedLoadProfile,
+        selectedStepId: live.selectedStepId ?? device.selectedStepId,
+        lastDesiredStepId: live.desiredStepId ?? device.lastDesiredStepId,
+        actualStepId: live.actualStepId ?? device.actualStepId,
+        assumedStepId: live.assumedStepId ?? device.assumedStepId,
+        actualStepSource: live.actualStepSource ?? device.actualStepSource,
         currentTemperature: live.currentTemperature,
         powerKw: live.powerKw,
         expectedPowerKw: live.expectedPowerKw,
+        planningPowerKw: live.planningPowerKw,
         expectedPowerSource: live.expectedPowerSource,
         measuredPowerKw: live.measuredPowerKw,
         controlCapabilityId: live.controlCapabilityId,
@@ -21,6 +31,8 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         available: live.available,
         zone: live.zone ?? device.zone,
         controllable: live.controllable ?? device.controllable,
+        stepCommandPending: live.stepCommandPending ?? device.stepCommandPending,
+        stepCommandStatus: live.stepCommandStatus ?? device.stepCommandStatus,
       };
     }),
   };
@@ -72,6 +84,7 @@ export function hasPlanExecutionDriftForDevice(
   return hasRelevantBinaryExecutionDrift(previous, {
     ...previous,
     currentState: liveCurrentState,
+    selectedStepId: live.selectedStepId ?? previous.selectedStepId,
   }) || hasRelevantTargetExecutionDrift(previous, {
     ...previous,
     currentTarget: liveCurrentTarget,
@@ -89,6 +102,13 @@ function hasSettledPostActuationState(
   liveDevice: DevicePlan['devices'][number],
 ): boolean {
   if (baseDevice.available === false || liveDevice.available === false) return true;
+  if (
+    baseDevice.controlModel === 'stepped_load'
+    && baseDevice.desiredStepId
+    && liveDevice.selectedStepId !== baseDevice.desiredStepId
+  ) {
+    return false;
+  }
   if (requiresBinaryRestore(baseDevice) && liveDevice.currentState !== 'on') return false;
   if (requiresBinaryShed(baseDevice) && liveDevice.currentState !== 'off') return false;
   if (requiresTargetUpdate(baseDevice) && liveDevice.currentTarget !== baseDevice.plannedTarget) return false;
@@ -118,6 +138,9 @@ function hasRelevantBinaryExecutionDrift(
   previousDevice: DevicePlan['devices'][number],
   liveDevice: DevicePlan['devices'][number],
 ): boolean {
+  if (previousDevice.controlModel === 'stepped_load') {
+    return previousDevice.selectedStepId !== liveDevice.selectedStepId;
+  }
   return previousDevice.currentState !== liveDevice.currentState;
 }
 

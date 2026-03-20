@@ -12,6 +12,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
+  DEVICE_CONTROL_PROFILES,
   DAILY_BUDGET_BREAKDOWN_ENABLED,
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
@@ -45,6 +46,7 @@ import {
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning';
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
 import { loadShedBehaviors } from './deviceDetail';
+import { loadDeviceControlProfiles } from './deviceControlProfiles';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
 import { state } from './state';
 import { logSettingsError } from './logging';
@@ -93,7 +95,7 @@ const PRICE_REFRESH_KEYS = new Set([
   'nettleie_data',
 ]);
 
-const DEVICE_CONTROL_KEYS = new Set(['managed_devices', 'controllable_devices']);
+const DEVICE_CONTROL_KEYS = new Set(['managed_devices', 'controllable_devices', DEVICE_CONTROL_PROFILES]);
 const PLAN_REFRESH_KEYS = new Set(['capacity_priorities', 'mode_device_targets', OPERATING_MODE_SETTING]);
 
 const runLoggedTask = (task: Promise<unknown>, message: string, context: string) => {
@@ -226,6 +228,9 @@ const createSettingsSetHandler = () => (key: string) => {
   }
   if (key === OVERSHOOT_BEHAVIORS) {
     runLoggedTask(loadShedBehaviors(), 'Failed to load shed behaviors', 'settings.set');
+  }
+  if (key === DEVICE_CONTROL_PROFILES) {
+    runLoggedTask(loadDeviceControlProfiles(), 'Failed to load device control profiles', 'settings.set');
   }
   if (DEVICE_CONTROL_KEYS.has(key)) {
     refreshModeAndDeviceControls();

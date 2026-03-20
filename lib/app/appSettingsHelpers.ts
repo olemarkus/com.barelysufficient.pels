@@ -1,11 +1,13 @@
 import type Homey from 'homey';
 import type { ShedBehavior } from '../plan/planTypes';
+import type { DeviceControlProfiles } from '../utils/types';
 import {
   normalizeShedBehaviors as normalizeShedBehaviorsHelper,
   resolveModeName as resolveModeNameHelper,
 } from '../utils/capacityHelpers';
 import { createSettingsHandler } from '../utils/settingsHandlers';
 import {
+  isDeviceControlProfiles,
   isBooleanMap,
   isFiniteNumber,
   isModeDeviceTargets,
@@ -17,6 +19,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  DEVICE_CONTROL_PROFILES,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
@@ -37,6 +40,7 @@ export type CapacitySettingsSnapshot = {
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
   budgetExemptDevices: Record<string, boolean>;
+  deviceControlProfiles: DeviceControlProfiles;
   experimentalEvSupportEnabled: boolean;
   shedBehaviors: Record<string, ShedBehavior>;
 };
@@ -56,6 +60,7 @@ export function buildCapacitySettingsSnapshot(params: {
   const controllables = settings.get(CONTROLLABLE_DEVICES) as unknown;
   const managed = settings.get(MANAGED_DEVICES) as unknown;
   const budgetExempt = settings.get(BUDGET_EXEMPT_DEVICES) as unknown;
+  const deviceControlProfiles = settings.get(DEVICE_CONTROL_PROFILES) as unknown;
   const experimentalEvSupportEnabled = settings.get(EXPERIMENTAL_EV_SUPPORT_ENABLED) as unknown;
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
 
@@ -80,6 +85,9 @@ export function buildCapacitySettingsSnapshot(params: {
   const nextControllables = isBooleanMap(controllables) ? controllables : current.controllableDevices;
   const nextManaged = isBooleanMap(managed) ? managed : current.managedDevices;
   const nextBudgetExempt = isBooleanMap(budgetExempt) ? budgetExempt : current.budgetExemptDevices;
+  const nextDeviceControlProfiles = isDeviceControlProfiles(deviceControlProfiles)
+    ? deviceControlProfiles
+    : current.deviceControlProfiles;
   const nextExperimentalEvSupportEnabled = typeof experimentalEvSupportEnabled === 'boolean'
     ? experimentalEvSupportEnabled
     : current.experimentalEvSupportEnabled;
@@ -95,6 +103,7 @@ export function buildCapacitySettingsSnapshot(params: {
     controllableDevices: nextControllables,
     managedDevices: nextManaged,
     budgetExemptDevices: nextBudgetExempt,
+    deviceControlProfiles: nextDeviceControlProfiles,
     experimentalEvSupportEnabled: nextExperimentalEvSupportEnabled,
     shedBehaviors: nextBehaviors,
   };

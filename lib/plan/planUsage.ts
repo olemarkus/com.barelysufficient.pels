@@ -3,6 +3,7 @@ type UsageDevice = {
   budgetExempt?: boolean;
   measuredPowerKw?: number;
   expectedPowerKw?: number;
+  planningPowerKw?: number;
 };
 
 const resolveUsageKw = (
@@ -17,7 +18,11 @@ const resolveUsageKw = (
   const expected = typeof dev.expectedPowerKw === 'number' && Number.isFinite(dev.expectedPowerKw)
     ? dev.expectedPowerKw
     : null;
-  return expected;
+  if (expected !== null) return expected;
+  const planning = typeof dev.planningPowerKw === 'number' && Number.isFinite(dev.planningPowerKw)
+    ? dev.planningPowerKw
+    : null;
+  return planning;
 };
 
 export const sumControlledUsageKw = (devices: UsageDevice[]): number | null => {

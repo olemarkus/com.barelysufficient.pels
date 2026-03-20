@@ -25,10 +25,19 @@ function parseExpectedPowerW(payload: { power_w?: number } | null): number {
 
 async function assertNoConfiguredLoad(
   deps: {
+    getSnapshot: () => Promise<TargetDeviceSnapshot[]>;
     getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   },
   deviceId: string,
 ): Promise<void> {
+  const snapshot = await deps.getSnapshot();
+  const device = snapshot.find((entry) => entry.id === deviceId);
+  if (device?.controlModel === 'stepped_load') {
+    throw new Error(
+      'Stepped load devices use configured planning power per step; '
+      + 'expected power override is not supported.',
+    );
+  }
   const configuredLoad = await deps.getDeviceLoadSetting(deviceId);
   if (configuredLoad !== null && configuredLoad > 0) {
     throw new Error('Device already has load configured in settings; remove it before overriding expected power.');
@@ -75,6 +84,7 @@ export function registerExpectedPowerCard(
     const q = (query || '').toLowerCase();
     const snapshot = await deps.getSnapshot();
     return snapshot
+      .filter((d) => d.controlModel !== 'stepped_load')
       .filter((d) => !d.loadKw || d.loadKw <= 0)
       .map((d) => ({ id: d.id, name: d.name || d.id }))
       .filter((d) => !q || d.name.toLowerCase().includes(q))

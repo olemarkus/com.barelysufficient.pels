@@ -93,6 +93,7 @@ export function computeRestoreBufferKw(devPower: number): number {
 }
 
 export function estimateRestorePower(dev: DevicePlanDevice): number {
+  if (typeof dev.planningPowerKw === 'number') return dev.planningPowerKw;
   if (typeof dev.expectedPowerKw === 'number') return dev.expectedPowerKw;
   if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
   return dev.powerKw ?? 1;

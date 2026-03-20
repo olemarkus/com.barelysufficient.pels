@@ -194,7 +194,26 @@ describe('advanced device cleanup', () => {
     ];
     state.controllableMap = { 'dev-1': true, 'dev-2': true };
     state.managedMap = { 'dev-1': true, 'dev-2': true };
-    state.shedBehaviors = { 'dev-1': { action: 'turn_off' }, 'dev-2': { action: 'turn_off' } };
+    state.deviceControlProfiles = {
+      'dev-1': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+        ],
+      },
+      'dev-2': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    };
+    state.shedBehaviors = {
+      'dev-1': { action: 'set_step', stepId: 'low' },
+      'dev-2': { action: 'turn_off' },
+    };
     state.priceOptimizationSettings = { 'dev-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 } };
     state.capacityPriorities = { Home: { 'dev-1': 1, 'dev-2': 2 } };
     state.modeTargets = { Home: { 'dev-1': 21, 'dev-2': 19 } };
@@ -222,6 +241,15 @@ describe('advanced device cleanup', () => {
 
     expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-2': true });
     expect(homey.setSetting).toHaveBeenCalledWith('managed_devices', { 'dev-2': true });
+    expect(homey.setSetting).toHaveBeenCalledWith('device_control_profiles', {
+      'dev-2': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    });
     expect(homey.setSetting).toHaveBeenCalledWith('overshoot_behaviors', { 'dev-2': { action: 'turn_off' } });
   });
 
@@ -243,5 +271,17 @@ describe('advanced device cleanup', () => {
 
     expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-1': true });
     expect(homey.setSetting).toHaveBeenCalledWith('managed_devices', { 'dev-1': true });
+    expect(homey.setSetting).toHaveBeenCalledWith('device_control_profiles', {
+      'dev-1': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+        ],
+      },
+    });
+    expect(homey.setSetting).toHaveBeenCalledWith('overshoot_behaviors', {
+      'dev-1': { action: 'set_step', stepId: 'low' },
+    });
   });
 });

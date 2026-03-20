@@ -131,6 +131,53 @@
       },
       {
         "title": {
+          "en": "Desired stepped load changed for"
+        },
+        "titleFormatted": {
+          "en": "Desired stepped load changed for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when PELS wants a stepped-load device to move to another configured step."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select stepped-load device"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "name": "step_id",
+            "type": "string",
+            "title": {
+              "en": "Step"
+            }
+          },
+          {
+            "name": "planning_power_w",
+            "type": "number",
+            "title": {
+              "en": "Planning power (W)"
+            }
+          },
+          {
+            "name": "previous_step_id",
+            "type": "string",
+            "title": {
+              "en": "Previous step"
+            }
+          }
+        ],
+        "id": "desired_stepped_load_changed"
+      },
+      {
+        "title": {
           "en": "Operating mode changed to"
         },
         "titleFormatted": {
@@ -652,6 +699,74 @@
       },
       {
         "title": {
+          "en": "Report stepped load"
+        },
+        "titleFormatted": {
+          "en": "Report stepped load for [[device]] as [[step]]"
+        },
+        "hint": {
+          "en": "Use this after a vendor-specific action card, or when the device changes step outside PELS, so PELS knows which configured step is currently selected."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select stepped-load device"
+            }
+          },
+          {
+            "name": "step",
+            "type": "autocomplete",
+            "title": {
+              "en": "Step"
+            },
+            "placeholder": {
+              "en": "Select step"
+            }
+          }
+        ],
+        "id": "report_stepped_load_actual_step"
+      },
+      {
+        "title": {
+          "en": "Report stepped load"
+        },
+        "titleFormatted": {
+          "en": "Report stepped load for [[device]] matching [[power_w]]"
+        },
+        "hint": {
+          "en": "Use this when a device app gives you a power value instead of a step name. PELS matches the configured step by planning power. Accepts values like 1750 or 1750 W."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select stepped-load device"
+            }
+          },
+          {
+            "name": "power_w",
+            "type": "text",
+            "title": {
+              "en": "Power"
+            },
+            "placeholder": {
+              "en": "1750 or 1750 W"
+            }
+          }
+        ],
+        "id": "report_stepped_load_power"
+      },
+      {
+        "title": {
           "en": "Set capacity limit"
         },
         "titleFormatted": {
@@ -725,6 +840,7 @@
         "id": "set_daily_budget_kwh"
       },
       {
+        "deprecated": true,
         "title": {
           "en": "Set expected power for device"
         },
@@ -732,7 +848,7 @@
           "en": "Set expected power for [[device]] to [[power_w]] W"
         },
         "hint": {
-          "en": "Override a device's expected power usage until it reports a new meter reading. Fails if the device already has load configured in settings."
+          "en": "Legacy/manual override of a device's expected power usage until it reports a new meter reading. Fails if the device already has load configured in settings."
         },
         "args": [
           {

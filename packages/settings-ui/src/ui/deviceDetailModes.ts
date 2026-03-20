@@ -97,22 +97,27 @@ const bindDeviceDetailModeInput = (
 
 const buildDeviceDetailModeRow = (mode: string, device: TargetDeviceSnapshot) => {
   const row = document.createElement('div');
-  row.className = 'detail-mode-row';
+  row.className = 'device-row detail-mode-row';
   row.dataset.mode = mode;
 
   const nameWrap = document.createElement('div');
-  nameWrap.className = 'detail-mode-row__name';
+  nameWrap.className = 'device-row__name detail-mode-row__name';
+
+  const header = document.createElement('div');
+  header.className = 'detail-mode-row__header';
 
   const nameSpan = document.createElement('span');
+  nameSpan.className = 'device-row__title';
   nameSpan.textContent = mode;
-  nameWrap.appendChild(nameSpan);
+  header.appendChild(nameSpan);
 
   if (mode === state.activeMode) {
     const badge = document.createElement('span');
     badge.className = 'active-badge';
     badge.textContent = 'Active';
-    nameWrap.appendChild(badge);
+    header.appendChild(badge);
   }
+  nameWrap.appendChild(header);
 
   const prioritySpan = document.createElement('div');
   prioritySpan.className = 'detail-mode-row__priority';

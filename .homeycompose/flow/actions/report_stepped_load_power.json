@@ -1,0 +1,33 @@
+{
+  "title": {
+    "en": "Report stepped load"
+  },
+  "titleFormatted": {
+    "en": "Report stepped load for [[device]] matching [[power_w]]"
+  },
+  "hint": {
+    "en": "Use this when a device app gives you a power value instead of a step name. PELS matches the configured step by planning power. Accepts values like 1750 or 1750 W."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select stepped-load device"
+      }
+    },
+    {
+      "name": "power_w",
+      "type": "text",
+      "title": {
+        "en": "Power"
+      },
+      "placeholder": {
+        "en": "1750 or 1750 W"
+      }
+    }
+  ]
+}

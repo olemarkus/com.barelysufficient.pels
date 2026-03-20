@@ -1,9 +1,10 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types';
+import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../../contracts/src/types';
 
-export type ShedAction = 'turn_off' | 'set_temperature';
+export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 export type ShedBehavior = {
   action: ShedAction;
   temperature?: number;
+  stepId?: string;
 };
 
 export type PriceOptimizationConfig = {
@@ -22,6 +23,7 @@ export type UiState = {
   modeTargets: Record<string, Record<string, number>>;
   controllableMap: Record<string, boolean>;
   managedMap: Record<string, boolean>;
+  deviceControlProfiles: DeviceControlProfiles;
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ShedBehavior>;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
@@ -43,6 +45,7 @@ export const state: UiState = {
   modeTargets: {},
   controllableMap: {},
   managedMap: {},
+  deviceControlProfiles: {},
   modeAliases: {},
   shedBehaviors: {},
   priceOptimizationSettings: {},

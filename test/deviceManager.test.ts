@@ -1294,6 +1294,78 @@ describe('DeviceManager', () => {
             }));
         });
 
+        it('keeps a newer fetched target when it matches a later local write even if an older realtime target exists', async () => {
+            jest.useFakeTimers();
+            try {
+                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            target_temperature: {
+                                value: 23,
+                                id: 'target_temperature',
+                                units: '°C',
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+
+                emitMockSdkDeviceUpdate({
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                        target_temperature: { value: 23, id: 'target_temperature', units: '°C' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                });
+
+                jest.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                await deviceManager.setCapability('dev1', 'target_temperature', 16);
+
+                mockApiGet.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: { value: 0, id: 'measure_power' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            target_temperature: {
+                                value: 16,
+                                id: 'target_temperature',
+                                units: '°C',
+                                lastUpdated: '2026-03-20T05:59:30.000Z',
+                            },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    targets: [expect.objectContaining({ id: 'target_temperature', value: 16 })],
+                }));
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
         it('applies target temperature change from device.update and emits reconcile', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: {

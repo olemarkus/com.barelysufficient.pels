@@ -27,15 +27,26 @@ export function normalizeShedBehaviors(input: unknown): Record<string, ShedBehav
   if (!isRecord(input)) return {};
   const entries = Object.entries(input).flatMap(([deviceId, raw]) => {
     if (!raw || typeof raw !== 'object') return [];
-    const candidate = raw as { action?: unknown; temperature?: unknown };
-    const action: ShedAction = candidate.action === 'set_temperature' ? 'set_temperature' : 'turn_off';
+    const candidate = raw as { action?: unknown; temperature?: unknown; stepId?: unknown };
+    let action: ShedAction = 'turn_off';
+    if (candidate.action === 'set_temperature') {
+      action = 'set_temperature';
+    } else if (candidate.action === 'set_step') {
+      action = 'set_step';
+    }
     const tempRaw = candidate.temperature;
     const temperature = typeof tempRaw === 'number' && Number.isFinite(tempRaw)
       ? Math.max(-50, Math.min(50, tempRaw))
       : undefined;
-    const behavior = action === 'set_temperature' && typeof temperature === 'number'
-      ? { action, temperature }
-      : { action };
+    const stepId = typeof candidate.stepId === 'string' && candidate.stepId.trim()
+      ? candidate.stepId.trim()
+      : undefined;
+    let behavior: ShedBehavior = { action: 'turn_off' };
+    if (action === 'set_temperature' && typeof temperature === 'number') {
+      behavior = { action, temperature };
+    } else if (action === 'set_step' && stepId) {
+      behavior = { action, stepId };
+    }
     return [[deviceId, behavior]];
   });
   return Object.fromEntries(entries);
@@ -44,12 +55,18 @@ export function normalizeShedBehaviors(input: unknown): Record<string, ShedBehav
 export function getShedBehavior(
   deviceId: string,
   shedBehaviors: Record<string, ShedBehavior>,
-): { action: ShedAction; temperature: number | null } {
+): { action: ShedAction; temperature: number | null; stepId: string | null } {
   const behavior = shedBehaviors[deviceId];
-  const action: ShedAction = behavior?.action === 'set_temperature' ? 'set_temperature' : 'turn_off';
+  let action: ShedAction = 'turn_off';
+  if (behavior?.action === 'set_temperature') {
+    action = 'set_temperature';
+  } else if (behavior?.action === 'set_step') {
+    action = 'set_step';
+  }
   const temp = behavior?.temperature;
   const temperature = Number.isFinite(temp) ? Math.max(-50, Math.min(50, Number(temp))) : null;
-  return { action, temperature };
+  const stepId = typeof behavior?.stepId === 'string' && behavior.stepId.trim() ? behavior.stepId.trim() : null;
+  return { action, temperature, stepId };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

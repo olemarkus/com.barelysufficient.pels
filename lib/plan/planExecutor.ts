@@ -1,8 +1,18 @@
-/* eslint-disable max-lines -- executor keeps the plan actuation paths together for traceability. */
+/* eslint-disable
+  max-lines,
+  complexity,
+  sonarjs/cognitive-complexity,
+  max-statements,
+  no-nested-ternary
+-- executor keeps the plan actuation paths together for traceability. */
 import Homey from 'homey';
 import {
   normalizeTargetCapabilityValue,
-} from '../../packages/contracts/src/targetCapabilities';
+} from '../utils/targetCapabilities';
+import {
+  getSteppedLoadStep,
+  sortSteppedLoadSteps,
+} from '../utils/deviceControlProfiles';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
 import type { DevicePlan, ShedAction } from './planTypes';
@@ -31,6 +41,7 @@ import {
   shouldSkipShedding,
   shouldSkipUnavailable,
 } from './planExecutorSupport';
+import { isSteppedLoadDevice } from './planSteppedLoad';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -39,8 +50,14 @@ export type PlanExecutorDeps = {
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
+  markSteppedLoadDesiredStepIssued: (params: {
+    deviceId: string;
+    desiredStepId: string;
+    previousStepId?: string;
+    issuedAtMs?: number;
+  }) => void;
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
@@ -112,7 +129,16 @@ export class PlanExecutor {
     this.deps.updateLocalSnapshot(deviceId, updates);
   }
 
-  private getShedBehavior(deviceId: string): { action: ShedAction; temperature: number | null } {
+  private markSteppedLoadDesiredStepIssued(params: {
+    deviceId: string;
+    desiredStepId: string;
+    previousStepId?: string;
+    issuedAtMs?: number;
+  }): void {
+    this.deps.markSteppedLoadDesiredStepIssued(params);
+  }
+
+  private getShedBehavior(deviceId: string): { action: ShedAction; temperature: number | null; stepId: string | null } {
     return this.deps.getShedBehavior(deviceId);
   }
 
@@ -193,6 +219,7 @@ export class PlanExecutor {
     dev: DevicePlan['devices'][number],
     mode: PlanActuationMode,
   ): Promise<void> {
+    if (isSteppedLoadDevice(dev)) return;
     if (dev.plannedState !== 'keep' || dev.currentState !== 'off') return;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (snapshot?.deviceClass === 'evcharger') {
@@ -345,13 +372,18 @@ export class PlanExecutor {
       const fromStr = dev.currentTarget === undefined || dev.currentTarget === null
         ? ''
         : `from ${dev.currentTarget} `;
-      let actuationSuffix = ` (mode: ${this.operatingMode})`;
-      if (mode === 'reconcile') {
-        actuationSuffix = ` (reconcile after drift; mode: ${this.operatingMode})`;
-      } else if (result.attemptType === 'retry') {
-        actuationSuffix = ` (retry pending confirmation; mode: ${this.operatingMode})`;
+      const name = dev.name || dev.id;
+      if (mode === 'plan' && isRestoring && result.attemptType !== 'retry') {
+        this.log(`Capacity: set ${targetCap} for ${name} to ${dev.plannedTarget}°C (restoring from shed state)`);
+      } else {
+        let actuationSuffix = ` (mode: ${this.operatingMode})`;
+        if (mode === 'reconcile') {
+          actuationSuffix = ` (reconcile after drift; mode: ${this.operatingMode})`;
+        } else if (result.attemptType === 'retry') {
+          actuationSuffix = ` (retry pending confirmation; mode: ${this.operatingMode})`;
+        }
+        this.log(`Set ${targetCap} for ${name} ${fromStr}to ${dev.plannedTarget}${actuationSuffix}`);
       }
-      this.log(`Set ${targetCap} for ${dev.name || dev.id} ${fromStr}to ${dev.plannedTarget}${actuationSuffix}`);
 
       // If this was a restoration from shed temperature, update lastRestoreMs
       // This ensures cooldown applies between restoring different devices
@@ -374,6 +406,117 @@ export class PlanExecutor {
       }
     } catch (error) {
       this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via DeviceManager`, error);
+    }
+  }
+
+  private async applySteppedLoadCommand(
+    dev: DevicePlan['devices'][number],
+    mode: PlanActuationMode,
+  ): Promise<void> {
+    if (!isSteppedLoadDevice(dev)) return;
+    if (!dev.desiredStepId || dev.desiredStepId === dev.selectedStepId) return;
+
+    const profile = dev.steppedLoadProfile;
+    if (!profile) return;
+    const desiredStep = getSteppedLoadStep(profile, dev.desiredStepId);
+    if (!desiredStep) {
+      this.logDebug(
+        `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
+        + `desired step ${dev.desiredStepId} is not in profile`,
+      );
+      return;
+    }
+
+    const previousStepId = dev.selectedStepId ?? dev.lastDesiredStepId;
+    if (dev.stepCommandPending && dev.lastDesiredStepId === dev.desiredStepId) {
+      this.logDebug(
+        `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
+        + `awaiting confirmation of ${dev.desiredStepId}`,
+      );
+      return;
+    }
+
+    const triggerCard = this.deps.homey.flow?.getTriggerCard?.('desired_stepped_load_changed');
+    if (!triggerCard?.trigger) {
+      this.logDebug('Capacity: desired_stepped_load_changed trigger is unavailable; cannot issue stepped-load command');
+      return;
+    }
+
+    const now = Date.now();
+    const planningPowerW = desiredStep.planningPowerW;
+    try {
+      await triggerCard.trigger({
+        step_id: desiredStep.id,
+        planning_power_w: planningPowerW,
+        previous_step_id: previousStepId ?? '',
+      }, {
+        deviceId: dev.id,
+      });
+      this.markSteppedLoadDesiredStepIssued({
+        deviceId: dev.id,
+        desiredStepId: desiredStep.id,
+        previousStepId,
+        issuedAtMs: now,
+      });
+
+      const previousStep = previousStepId ? getSteppedLoadStep(profile, previousStepId) : undefined;
+      const sortedStepIds = sortSteppedLoadSteps(profile.steps).map((step) => step.id);
+      const desiredIndex = sortedStepIds.indexOf(desiredStep.id);
+      const previousIndex = previousStep ? sortedStepIds.indexOf(previousStep.id) : -1;
+      const nextDirection = previousStep && desiredIndex > previousIndex
+        ? 'restore'
+        : previousStep && desiredIndex < previousIndex
+          ? 'shed'
+          : dev.plannedState === 'shed'
+            ? 'shed'
+            : 'restore';
+      const actuationSuffix = mode === 'reconcile' ? ' (reconcile after drift)' : '';
+      this.log(
+        `Capacity: requested stepped load ${dev.name || dev.id} `
+        + `${previousStepId ?? 'unknown'} -> ${desiredStep.id}${actuationSuffix}`,
+      );
+      if (mode !== 'plan') return;
+      if (nextDirection === 'shed') {
+        this.state.lastSheddingMs = now;
+        this.state.lastDeviceShedMs[dev.id] = now;
+        recordDiagnosticsShed({
+          diagnostics: this.deps.deviceDiagnostics,
+          deviceId: dev.id,
+          name: dev.name,
+          nowTs: now,
+        });
+        recordActivationSetbackForDevice({
+          state: this.state,
+          diagnostics: this.deps.deviceDiagnostics,
+          deviceId: dev.id,
+          name: dev.name,
+          nowTs: now,
+        });
+        const guardShedding = this.capacityGuard?.isSheddingActive?.() === true;
+        const guardHeadroom = this.capacityGuard?.getHeadroom?.();
+        if (guardShedding || (typeof guardHeadroom === 'number' && guardHeadroom < 0)) {
+          this.state.lastOvershootMs = now;
+        }
+        return;
+      }
+      this.state.lastRestoreMs = now;
+      this.state.lastDeviceRestoreMs[dev.id] = now;
+      recordDiagnosticsRestore({
+        diagnostics: this.deps.deviceDiagnostics,
+        deviceId: dev.id,
+        name: dev.name,
+        nowTs: now,
+      });
+      recordActivationAttemptStarted({
+        state: this.state,
+        diagnostics: this.deps.deviceDiagnostics,
+        deviceId: dev.id,
+        name: dev.name,
+        nowTs: now,
+        source: 'tracked_step_up',
+      });
+    } catch (error) {
+      this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
     }
   }
 
@@ -734,7 +877,13 @@ export class PlanExecutor {
           continue;
         }
         if (dev.controllable === false) {
+          await this.applySteppedLoadCommand(dev, mode);
           await this.applyUncontrolledRestore(dev, snapshot);
+          await this.applyTargetUpdate(dev, snapshot, mode);
+          continue;
+        }
+        await this.applySteppedLoadCommand(dev, mode);
+        if (isSteppedLoadDevice(dev)) {
           await this.applyTargetUpdate(dev, snapshot, mode);
           continue;
         }

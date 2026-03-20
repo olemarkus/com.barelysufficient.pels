@@ -13,7 +13,7 @@ import { renderPriceOptimization } from './priceOptimization';
 import { showToast, showToastError } from './toast';
 import { logSettingsError } from './logging';
 import { state } from './state';
-import { OVERSHOOT_BEHAVIORS } from '../../../contracts/src/settingsKeys';
+import { DEVICE_CONTROL_PROFILES, OVERSHOOT_BEHAVIORS } from '../../../contracts/src/settingsKeys';
 
 type HomeyApiDevice = {
   id: string;
@@ -30,6 +30,7 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
   const simpleSettingIds = [
     ...Object.keys(state.controllableMap),
     ...Object.keys(state.managedMap),
+    ...Object.keys(state.deviceControlProfiles),
     ...Object.keys(state.shedBehaviors),
     ...Object.keys(state.priceOptimizationSettings),
   ];
@@ -126,10 +127,12 @@ const removeDeviceIdsFromModeMap = (
 const clearDeviceSettings = async (deviceId: string) => {
   const nextControllableMap = { ...state.controllableMap };
   const nextManagedMap = { ...state.managedMap };
+  const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
   const nextShedBehaviors = { ...state.shedBehaviors };
   const nextPriceOptimization = { ...state.priceOptimizationSettings };
   delete nextControllableMap[deviceId];
   delete nextManagedMap[deviceId];
+  delete nextDeviceControlProfiles[deviceId];
   delete nextShedBehaviors[deviceId];
   delete nextPriceOptimization[deviceId];
   const nextCapacityPriorities = removeDeviceFromModeMap(state.capacityPriorities, deviceId);
@@ -138,6 +141,7 @@ const clearDeviceSettings = async (deviceId: string) => {
   await Promise.all([
     setSetting('controllable_devices', nextControllableMap),
     setSetting('managed_devices', nextManagedMap),
+    setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
     setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
     setSetting('price_optimization_settings', nextPriceOptimization),
     setSetting('capacity_priorities', nextCapacityPriorities),
@@ -146,6 +150,7 @@ const clearDeviceSettings = async (deviceId: string) => {
 
   state.controllableMap = nextControllableMap;
   state.managedMap = nextManagedMap;
+  state.deviceControlProfiles = nextDeviceControlProfiles;
   state.shedBehaviors = nextShedBehaviors;
   state.priceOptimizationSettings = nextPriceOptimization;
   state.capacityPriorities = nextCapacityPriorities;
@@ -156,11 +161,13 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
   const ids = new Set(deviceIds);
   const nextControllableMap = { ...state.controllableMap };
   const nextManagedMap = { ...state.managedMap };
+  const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
   const nextShedBehaviors = { ...state.shedBehaviors };
   const nextPriceOptimization = { ...state.priceOptimizationSettings };
   deviceIds.forEach((deviceId) => {
     delete nextControllableMap[deviceId];
     delete nextManagedMap[deviceId];
+    delete nextDeviceControlProfiles[deviceId];
     delete nextShedBehaviors[deviceId];
     delete nextPriceOptimization[deviceId];
   });
@@ -170,6 +177,7 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
   await Promise.all([
     setSetting('controllable_devices', nextControllableMap),
     setSetting('managed_devices', nextManagedMap),
+    setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
     setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
     setSetting('price_optimization_settings', nextPriceOptimization),
     setSetting('capacity_priorities', nextCapacityPriorities),
@@ -178,6 +186,7 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
 
   state.controllableMap = nextControllableMap;
   state.managedMap = nextManagedMap;
+  state.deviceControlProfiles = nextDeviceControlProfiles;
   state.shedBehaviors = nextShedBehaviors;
   state.priceOptimizationSettings = nextPriceOptimization;
   state.capacityPriorities = nextCapacityPriorities;

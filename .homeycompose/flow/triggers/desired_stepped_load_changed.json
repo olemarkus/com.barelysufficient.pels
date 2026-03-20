@@ -1,0 +1,46 @@
+{
+  "title": {
+    "en": "Desired stepped load changed for"
+  },
+  "titleFormatted": {
+    "en": "Desired stepped load changed for [[device]]"
+  },
+  "hint": {
+    "en": "Triggers when PELS wants a stepped-load device to move to another configured step."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select stepped-load device"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "step_id",
+      "type": "string",
+      "title": {
+        "en": "Step"
+      }
+    },
+    {
+      "name": "planning_power_w",
+      "type": "number",
+      "title": {
+        "en": "Planning power (W)"
+      }
+    },
+    {
+      "name": "previous_step_id",
+      "type": "string",
+      "title": {
+        "en": "Previous step"
+      }
+    }
+  ]
+}

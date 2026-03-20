@@ -16,7 +16,7 @@ import {
 
 type BooleanMap = Record<string, boolean>;
 type PriceSettings = Record<string, { enabled?: boolean }>;
-type OvershootBehaviorEntry = { action?: string; temperature?: number };
+type OvershootBehaviorEntry = { action?: string; temperature?: number; stepId?: string };
 
 function supportsTemperatureControl(device: TargetDeviceSnapshot): boolean {
   return device.deviceType === 'temperature';

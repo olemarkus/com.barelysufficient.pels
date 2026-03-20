@@ -4,8 +4,10 @@ export function buildPlanSignature(plan: DevicePlan): string {
   return JSON.stringify(
     plan.devices.map((d) => ({
       id: d.id,
+      controlModel: d.controlModel,
       plannedState: d.plannedState,
       plannedTarget: d.plannedTarget,
+      desiredStepId: d.desiredStepId,
       shedAction: d.shedAction,
       controllable: d.controllable,
     })),
@@ -17,13 +19,20 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
     plan.devices.map((d) => ({
       id: d.id,
       priority: d.priority,
+      controlModel: d.controlModel,
       plannedState: d.plannedState,
       plannedTarget: d.plannedTarget,
+      selectedStepId: d.selectedStepId,
+      desiredStepId: d.desiredStepId,
+      lastDesiredStepId: d.lastDesiredStepId,
       currentState: d.currentState,
       currentTarget: d.currentTarget,
       reason: d.reason,
+      planningPowerKw: d.planningPowerKw,
       shedAction: d.shedAction,
       controllable: d.controllable,
+      stepCommandPending: d.stepCommandPending ?? null,
+      stepCommandStatus: d.stepCommandStatus ?? null,
       pendingTargetDesired: d.pendingTargetCommand?.desired ?? null,
       pendingTargetRetryCount: d.pendingTargetCommand?.retryCount ?? null,
       pendingTargetNextRetryAtMs: d.pendingTargetCommand?.nextRetryAtMs ?? null,
@@ -41,6 +50,9 @@ export function buildPlanChangeLines(plan: DevicePlan): string[] {
 }
 
 function isChange(device: DevicePlanDevice): boolean {
+  if (device.controlModel === 'stepped_load') {
+    return device.desiredStepId !== device.selectedStepId;
+  }
   const sameTarget = normalizeTarget(device.plannedTarget) === normalizeTarget(device.currentTarget);
   if (device.controllable === false) return !sameTarget;
   const desiredPower = getDesiredPower(device);
@@ -65,6 +77,15 @@ function normalizeTarget(value: unknown): number | string | null {
 }
 
 function formatPlanChange(device: DevicePlanDevice, headroom: number | null): string {
+  if (device.controlModel === 'stepped_load') {
+    const headroomInfo = typeof headroom === 'number' ? `, headroom ${headroom.toFixed(2)}kW` : '';
+    const planningInfo = typeof device.planningPowerKw === 'number'
+      ? `, planning ${device.planningPowerKw.toFixed(2)}kW`
+      : '';
+    const reason = device.reason ?? 'n/a';
+    return `${device.name}: step ${device.selectedStepId ?? 'unknown'} -> ${device.desiredStepId ?? 'unknown'}`
+      + `${planningInfo}${headroomInfo}, reason: ${reason}`;
+  }
   const temp = `${formatTarget(device.currentTarget)}° -> ${formatTarget(device.plannedTarget)}°`;
   const nextPower = getPlannedPowerLabel(device);
   const power = `${formatPowerState(device.currentState)} -> ${formatPowerState(nextPower)}`;
