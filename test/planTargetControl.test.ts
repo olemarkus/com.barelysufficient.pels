@@ -5,6 +5,7 @@ import {
   syncPendingTargetCommands,
 } from '../lib/plan/planTargetControl';
 import type { DevicePlan, PlanInputDevice } from '../lib/plan/planTypes';
+import { TARGET_WAITING_LOG_REPEAT_MS } from '../lib/plan/planConstants';
 
 const buildLiveDevice = (deviceId: string, name: string, target: number): PlanInputDevice => ({
   id: deviceId,
@@ -114,6 +115,44 @@ describe('syncPendingTargetCommands', () => {
 
     expect(changed).toBe(true);
     expect(log).not.toHaveBeenCalled();
+  });
+
+  it('repeats the user-visible waiting log after the repeat interval even when the observation is unchanged', () => {
+    jest.useFakeTimers();
+    try {
+      const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
+      jest.setSystemTime(nowMs);
+      const state = createPlanEngineState();
+      state.pendingTargetCommands['dev-1'] = {
+        capabilityId: 'target_temperature',
+        desired: 23,
+        startedMs: nowMs - 90_000,
+        lastAttemptMs: nowMs - 90_000,
+        retryCount: 0,
+        nextRetryAtMs: nowMs + 30_000,
+        lastObservedValue: 27,
+        lastObservedSource: 'snapshot_refresh',
+        lastObservedAtMs: nowMs - 70_000,
+        lastWaitingLogAtMs: nowMs - TARGET_WAITING_LOG_REPEAT_MS - 1,
+      };
+      const log = jest.fn();
+      const logDebug = jest.fn();
+
+      const changed = syncPendingTargetCommands({
+        state,
+        liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
+        source: 'snapshot_refresh',
+        log,
+        logDebug,
+      });
+
+      expect(changed).toBe(false);
+      expect(log).toHaveBeenCalledWith(
+        'Target still waiting for target_temperature confirmation for Heater: observed 27°C via snapshot_refresh; expected 23°C',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('tracks confirmations independently across multiple devices', () => {

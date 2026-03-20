@@ -200,6 +200,14 @@ PELS needs to estimate how much power a device will draw when turned on:
    - Fallback to `W` when the device is not explicitly off
 6. **Fallback**: Assume 1 kW if no better estimate is available
 
+For devices configured with the built-in **stepped load** control model, restore planning uses the configured per-step **planning power** instead of this generic estimator. In that mode:
+- The selected step, measured power, and planning power are intentionally separate values.
+- `measure_power = 0` does **not** imply the device is set to `off`; it only means the device is not drawing right now.
+- The **Set expected power for device** Flow action is rejected for stepped-load devices.
+- Capacity shedding uses the device’s normal **When shedding** behavior: either `Turn off` or `Set to step`.
+- Step restore starts at the lowest active step and only climbs toward the highest step when headroom and budget allow it.
+- PELS expects vendor-specific flows to report the selected step back through **Report stepped load for [device] as [step]** or **Report stepped load for [device] matching [power]** unless the device exposes that state generically.
+
 Official EV chargers are supported only when they expose both `evcharger_charging` and `evcharger_charging_state`. PELS uses `evcharger_charging` for pause/resume control and never falls back to generic `onoff` for EV actuation.
 
 This estimation is inherently imperfect, which is why PELS:
@@ -208,6 +216,8 @@ This estimation is inherently imperfect, which is why PELS:
 - Uses a hysteresis buffer for safety
 
 For shedding decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
+
+For stepped-load devices, shedding relief is computed conservatively from **live measured power**, while restore/step-up budgeting uses the configured **planning power** of the target step. PELS also blocks stepped step-up while any other managed device is still shed or still waiting to recover.
 
 For `meter_power`, PELS computes an average kW from the change in kWh over time and updates the peak. If the counter decreases (reset/rollover), the delta is ignored and the baseline is reset.
 

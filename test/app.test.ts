@@ -13,9 +13,13 @@ import {
   CAPACITY_MARGIN_KW,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
+  DEVICE_CONTROL_PROFILES,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
-import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
+import {
+  TARGET_COMMAND_RETRY_DELAYS_MS,
+  TARGET_CONFIRMATION_STUCK_POLL_MS,
+} from '../lib/plan/planConstants';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
@@ -41,6 +45,17 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
 const waitForSnapshot = async (timeoutMs = 1000) => {
   await waitFor(() => Array.isArray(mockHomeyInstance.settings.get('target_devices_snapshot')), timeoutMs);
 };
+
+const buildSteppedLoadProfiles = (deviceId: string) => ({
+  [deviceId]: {
+    model: 'stepped_load',
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: 1250 },
+      { id: 'max', planningPowerW: 3000 },
+    ],
+  },
+});
 
 const getPlanDeviceState = (plan: any, deviceId: string): string | undefined => {
   if (!plan || !Array.isArray(plan.devices)) return undefined;
@@ -148,6 +163,110 @@ describe('MyApp initialization', () => {
 
     expect(entry?.managed).toBe(false);
     expect(entry?.controllable).toBe(false);
+  });
+
+  it('logs generic stepped-load feedback for the first reported step', async () => {
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    const logSpy = jest.spyOn(app, 'log');
+
+    expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    expect(logSpy).toHaveBeenCalledWith('Stepped load feedback: Water heater (dev-1) reported step low');
+    expect(logSpy.mock.calls.some(
+      (call) => typeof call[0] === 'string' && call[0].includes('outside PELS'),
+    )).toBe(false);
+  });
+
+  it('logs stepped-load confirmation when reported feedback matches a pending desired step', async () => {
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    const logSpy = jest.spyOn(app, 'log');
+
+    (app as any).markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      previousStepId: 'max',
+    });
+
+    expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    expect(logSpy).toHaveBeenCalledWith('Stepped load feedback: Water heater (dev-1) confirmed desired step low');
+  });
+
+  it('logs delayed stepped-load feedback as matching the desired step instead of outside PELS drift', async () => {
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    const logSpy = jest.spyOn(app, 'log');
+
+    (app as any).markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+    });
+    (app as any).deviceControlRuntimeState.steppedLoadDesiredByDeviceId['dev-1'] = {
+      ...(app as any).deviceControlRuntimeState.steppedLoadDesiredByDeviceId['dev-1'],
+      pending: false,
+      status: 'stale',
+    };
+    (app as any).deviceControlRuntimeState.steppedLoadReportedByDeviceId['dev-1'] = {
+      stepId: 'low',
+      updatedAtMs: Date.now() - 1000,
+    };
+
+    expect((app as any).reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+    expect(logSpy).toHaveBeenCalledWith(
+      'Stepped load feedback: Water heater (dev-1) reported desired step max after delayed feedback',
+    );
+    expect(logSpy.mock.calls.some(
+      (call) => typeof call[0] === 'string' && call[0].includes('outside PELS'),
+    )).toBe(false);
+  });
+
+  it('logs stepped-load drift when the reported step changes outside PELS', async () => {
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    const logSpy = jest.spyOn(app, 'log');
+
+    expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    logSpy.mockClear();
+
+    expect((app as any).reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+    expect(logSpy).toHaveBeenCalledWith('Stepped load feedback: Water heater (dev-1) changed step low -> max outside PELS');
   });
 
   it('set_capacity_mode flow card changes mode and persists to settings', async () => {
@@ -656,9 +775,7 @@ describe('MyApp initialization', () => {
     const reconcileSpy = jest
       .spyOn((app as any).planService, 'reconcileLatestPlanState')
       .mockImplementation(async () => {
-        const snapshot = (app as any).latestTargetSnapshot;
-        const heaterSnapshot = snapshot.find((device: { id: string }) => device.id === 'dev-1');
-        if (heaterSnapshot) heaterSnapshot.currentOn = true;
+        (app as any).updateLocalSnapshot('dev-1', { on: true });
         return true;
       });
     const logSpy = jest.spyOn(app, 'log');
@@ -1151,6 +1268,42 @@ describe('MyApp initialization', () => {
         targets: [expect.objectContaining({ id: 'target_temperature', value: 26.5 })],
       }),
     }));
+  });
+
+  it('polls device state when a target confirmation has been pending for more than one minute', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('measure_temperature', 21);
+    await heater.setCapabilityValue('measure_power', 360);
+    await heater.setCapabilityValue('target_temperature', 23);
+    await heater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
+    (app as any).planEngine.state.pendingTargetCommands['dev-1'] = {
+      capabilityId: 'target_temperature',
+      desired: 16,
+      startedMs: nowMs - TARGET_CONFIRMATION_STUCK_POLL_MS - 1,
+      lastAttemptMs: nowMs - 5_000,
+      retryCount: 0,
+      nextRetryAtMs: nowMs + 30_000,
+      lastObservedValue: 23,
+      lastObservedSource: 'snapshot_refresh',
+    };
+    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+    try {
+      await (app as any).pollStuckTargetConfirmations();
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(refreshSpy).toHaveBeenCalledWith({ targeted: true });
   });
 
   it('does not reapply targets when set_capacity_mode is invoked with the current mode (not dry-run)', async () => {

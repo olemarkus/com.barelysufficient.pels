@@ -191,9 +191,12 @@ const buildDom = () => {
         <select id="device-detail-overshoot">
           <option value="turn_off">Turn off</option>
           <option value="set_temperature">Set to temperature</option>
+          <option value="set_step">Set to step</option>
         </select>
         <div id="device-detail-overshoot-temp-row"></div>
         <input id="device-detail-overshoot-temp">
+        <div id="device-detail-overshoot-step-row"></div>
+        <select id="device-detail-overshoot-step"></select>
         <details id="device-detail-diagnostics-disclosure">
           <summary>Advanced diagnostics</summary>
           <div id="device-detail-diagnostics-status"></div>
@@ -251,6 +254,234 @@ describe('settings script', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].querySelector('.device-row__name')?.textContent).toContain('Heater');
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(true);
+  });
+
+  it('shows only the minimum temperature setting for temperature-target shed mode', async () => {
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power'],
+          targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        },
+      ],
+    });
+    await loadSettingsScript();
+
+    (document.querySelector('#device-list .device-row') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+
+    const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+    shedAction.value = 'set_temperature';
+    shedAction.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
+    const stepRow = document.querySelector('#device-detail-overshoot-step-row') as HTMLElement;
+    const stepOption = shedAction.querySelector('option[value="set_step"]') as HTMLOptionElement;
+
+    expect(stepOption.hidden).toBe(true);
+    expect(tempRow.hidden).toBe(false);
+    expect(stepRow.hidden).toBe(true);
+  });
+
+  it('shows only the shed step setting for stepped-load shed mode', async () => {
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      device_control_profiles: {
+        'dev-1': {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+      },
+      overshoot_behaviors: {
+        'dev-1': { action: 'set_step', stepId: 'low' },
+      },
+    });
+    await loadSettingsScript();
+
+    (document.querySelector('#device-list .device-row') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+    await flushPromises();
+
+    const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+    const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
+    const stepRow = document.querySelector('#device-detail-overshoot-step-row') as HTMLElement;
+    const tempOption = shedAction.querySelector('option[value="set_temperature"]') as HTMLOptionElement;
+
+    expect(shedAction.value).toBe('set_step');
+    expect(tempOption.hidden).toBe(false);
+    expect(tempRow.hidden).toBe(true);
+    expect(stepRow.hidden).toBe(false);
+  });
+
+  it('shows the min temperature setting for stepped loads when temperature shed mode is selected', async () => {
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      device_control_profiles: {
+        'dev-1': {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+      },
+      overshoot_behaviors: {
+        'dev-1': { action: 'set_temperature', temperature: 55 },
+      },
+    });
+    await loadSettingsScript();
+
+    (document.querySelector('#device-list .device-row') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+    await flushPromises();
+
+    const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+    const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
+    const stepRow = document.querySelector('#device-detail-overshoot-step-row') as HTMLElement;
+    const tempInput = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
+    const tempOption = shedAction.querySelector('option[value="set_temperature"]') as HTMLOptionElement;
+    const stepOption = shedAction.querySelector('option[value="set_step"]') as HTMLOptionElement;
+
+    expect(tempOption.hidden).toBe(false);
+    expect(stepOption.hidden).toBe(false);
+    expect(shedAction.value).toBe('set_temperature');
+    expect(tempRow.hidden).toBe(false);
+    expect(stepRow.hidden).toBe(true);
+    expect(tempInput.value).toBe('55');
+  });
+
+  it('switches between shed modes with only the relevant shed field visible', async () => {
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      device_control_profiles: {
+        'dev-1': {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+      },
+      overshoot_behaviors: {
+        'dev-1': { action: 'set_step', stepId: 'low' },
+      },
+    });
+    await loadSettingsScript();
+
+    (document.querySelector('#device-list .device-row') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+    await flushPromises();
+
+    const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+    const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
+    const stepRow = document.querySelector('#device-detail-overshoot-step-row') as HTMLElement;
+    const tempInput = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
+    const stepInput = document.querySelector('#device-detail-overshoot-step') as HTMLSelectElement;
+
+    expect(tempRow.hidden).toBe(true);
+    expect(stepRow.hidden).toBe(false);
+    expect(tempInput.disabled).toBe(true);
+    expect(stepInput.disabled).toBe(false);
+
+    shedAction.value = 'set_temperature';
+    shedAction.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(tempRow.hidden).toBe(false);
+    expect(stepRow.hidden).toBe(true);
+    expect(tempInput.disabled).toBe(false);
+    expect(stepInput.disabled).toBe(true);
+
+    shedAction.value = 'turn_off';
+    shedAction.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(tempRow.hidden).toBe(true);
+    expect(stepRow.hidden).toBe(true);
+    expect(tempInput.disabled).toBe(true);
+    expect(stepInput.disabled).toBe(true);
+  });
+
+  it('hides both shed temperature and shed step rows when shed mode is turn off', async () => {
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      device_control_profiles: {
+        'dev-1': {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+      },
+      overshoot_behaviors: {
+        'dev-1': { action: 'set_step', stepId: 'low' },
+      },
+    });
+    await loadSettingsScript();
+
+    (document.querySelector('#device-list .device-row') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+    await flushPromises();
+
+    const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+    const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
+    const stepRow = document.querySelector('#device-detail-overshoot-step-row') as HTMLElement;
+
+    shedAction.value = 'turn_off';
+    shedAction.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(tempRow.hidden).toBe(true);
+    expect(stepRow.hidden).toBe(true);
   });
 
   it('shows empty state when no devices support target temperature', async () => {

@@ -6,6 +6,7 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const homeyBuildDir = path.join(rootDir, '.homeybuild');
 const homeyBuildPackageJsonPath = path.join(homeyBuildDir, 'package.json');
 const homeyBuildPackageLockJsonPath = path.join(homeyBuildDir, 'package-lock.json');
+const homeyBuildNapiRsDir = path.join(homeyBuildDir, 'node_modules', '@napi-rs');
 
 const failures = [];
 const isNotFoundError = (error) => error instanceof Error && 'code' in error && error.code === 'ENOENT';
@@ -55,6 +56,15 @@ try {
 } catch (error) {
   if (!isNotFoundError(error)) {
     failures.push(`package-lock.json could not be inspected: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+try {
+  await fs.access(homeyBuildNapiRsDir);
+  failures.push('node_modules/@napi-rs is still present.');
+} catch (error) {
+  if (!isNotFoundError(error)) {
+    failures.push(`node_modules/@napi-rs could not be inspected: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

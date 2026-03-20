@@ -1,4 +1,10 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types';
+/* eslint-disable max-lines */
+import {
+  getSteppedLoadRestoreStep,
+  normalizeSteppedLoadProfile,
+  sortSteppedLoadSteps,
+} from '../../../contracts/src/deviceControlProfiles';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../../contracts/src/types';
 import {
   deviceDetailDiagnosticsDisclosure,
   deviceDetailOverlay,
@@ -7,12 +13,21 @@ import {
   deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
+  deviceDetailControlModelRow,
+  deviceDetailControlModel,
   deviceDetailDeltaSection,
   deviceDetailCheapDelta,
   deviceDetailExpensiveDelta,
   deviceDetailShedAction,
   deviceDetailShedTempRow,
   deviceDetailShedTemp,
+  deviceDetailShedStepRow,
+  deviceDetailShedStep,
+  deviceDetailSteppedSection,
+  deviceDetailSteppedSteps,
+  deviceDetailSteppedAddStep,
+  deviceDetailSteppedSave,
+  deviceDetailSteppedReset,
 } from './dom';
 import { getSetting, setSetting } from './homey';
 import { resolveManagedState, state, defaultPriceOptimizationConfig } from './state';
@@ -22,6 +37,13 @@ import { renderPriceOptimization, savePriceOptimizationSettings } from './priceO
 import { showToastError } from './toast';
 import { logSettingsError } from './logging';
 import { renderDeviceDetailModes } from './deviceDetailModes';
+import {
+  applyLocalDeviceControlProfile,
+  createDefaultSteppedLoadProfile,
+  getEffectiveControlModel,
+  getStoredDeviceControlProfile,
+  saveDeviceControlProfiles,
+} from './deviceControlProfiles';
 import {
   supportsManagedDevice,
   supportsPowerDevice,
@@ -47,10 +69,21 @@ import {
 } from './deviceDetailDiagnostics';
 
 let currentDetailDeviceId: string | null = null;
+let currentSteppedLoadDraft: SteppedLoadProfile | null = null;
 
-type ShedAction = 'turn_off' | 'set_temperature';
+type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
 const getDeviceById = (deviceId: string) => state.latestDevices.find((device) => device.id === deviceId) || null;
+
+const isSteppedLoadControlModel = (device: TargetDeviceSnapshot | null): boolean => (
+  Boolean(device && getEffectiveControlModel(device) === 'stepped_load')
+);
+
+const resolveSavedSteppedLoadProfile = (device: TargetDeviceSnapshot): SteppedLoadProfile | null => {
+  const stored = getStoredDeviceControlProfile(device.id);
+  if (stored?.model === 'stepped_load') return stored;
+  return device.steppedLoadProfile?.model === 'stepped_load' ? device.steppedLoadProfile : null;
+};
 
 const isTemperatureDeviceWithoutOnOff = (device: TargetDeviceSnapshot | null): boolean => (
   Boolean(
@@ -69,11 +102,18 @@ const updateShedActionOptions = (params: {
   canConfigure: boolean;
   forceTemperatureOnly: boolean;
   supportsTemperature: boolean;
+  supportsStep: boolean;
 }): void => {
   if (!deviceDetailShedAction) return;
-  const { canConfigure, forceTemperatureOnly, supportsTemperature } = params;
+  const {
+    canConfigure,
+    forceTemperatureOnly,
+    supportsTemperature,
+    supportsStep,
+  } = params;
   const turnOffOption = deviceDetailShedAction.querySelector<HTMLOptionElement>('option[value="turn_off"]');
   const setTempOption = deviceDetailShedAction.querySelector<HTMLOptionElement>('option[value="set_temperature"]');
+  const setStepOption = deviceDetailShedAction.querySelector<HTMLOptionElement>('option[value="set_step"]');
   if (turnOffOption) {
     turnOffOption.disabled = !canConfigure || forceTemperatureOnly;
     turnOffOption.hidden = forceTemperatureOnly;
@@ -82,7 +122,17 @@ const updateShedActionOptions = (params: {
     setTempOption.disabled = !canConfigure;
     setTempOption.hidden = !supportsTemperature;
   }
+  if (setStepOption) {
+    setStepOption.disabled = !canConfigure || !supportsStep;
+    setStepOption.hidden = !supportsStep;
+  }
   deviceDetailShedAction.disabled = !canConfigure || forceTemperatureOnly;
+};
+
+const isShedActionOptionVisible = (action: ShedAction): boolean => {
+  if (!deviceDetailShedAction) return false;
+  const option = deviceDetailShedAction.querySelector<HTMLOptionElement>(`option[value="${action}"]`);
+  return Boolean(option && !option.hidden);
 };
 
 const resolveShedActionValue = (params: {
@@ -93,6 +143,7 @@ const resolveShedActionValue = (params: {
   const { canConfigure, forceTemperatureOnly, configuredAction } = params;
   if (!canConfigure) return 'turn_off';
   if (forceTemperatureOnly) return 'set_temperature';
+  if (configuredAction === 'set_step') return 'set_step';
   return configuredAction || 'turn_off';
 };
 
@@ -111,6 +162,161 @@ const resolveShedTemperatureValue = (params: {
 
 const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = name;
+};
+
+const attachDraftSyncOnChange = (...inputs: HTMLInputElement[]) => {
+  inputs.forEach((input) => {
+    input.addEventListener('change', () => {
+      syncSteppedLoadDraftState();
+    });
+  });
+};
+
+const renderSteppedLoadSelect = (
+  select: HTMLSelectElement | null,
+  profile: SteppedLoadProfile,
+  selectedStepId?: string,
+  options?: {
+    includeBlank?: boolean;
+    includeOffSteps?: boolean;
+  },
+) => {
+  if (!select) return;
+  const selectElement = select;
+  const includeBlank = options?.includeBlank === true;
+  const includeOffSteps = options?.includeOffSteps !== false;
+  const selectableSteps = sortSteppedLoadSteps(profile.steps)
+    .filter((step) => includeOffSteps || step.planningPowerW > 0);
+  const fallbackStepId = getSteppedLoadRestoreStep(profile)?.id;
+  let nextSelected = fallbackStepId;
+  if (selectedStepId && selectableSteps.some((step) => step.id === selectedStepId)) {
+    nextSelected = selectedStepId;
+  } else if (includeBlank) {
+    nextSelected = '';
+  }
+  selectElement.innerHTML = '';
+  if (includeBlank) {
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'Not set';
+    selectElement.appendChild(blank);
+  }
+  selectableSteps.forEach((step) => {
+    const option = document.createElement('option');
+    option.value = step.id;
+    option.textContent = `${step.id} (${step.planningPowerW} W)`;
+    option.selected = step.id === nextSelected;
+    selectElement.appendChild(option);
+  });
+};
+
+const resolveSteppedShedStepId = (device: TargetDeviceSnapshot): string => {
+  const profile = resolveSavedSteppedLoadProfile(device);
+  return getSteppedLoadRestoreStep(profile ?? getDraftProfileFromCurrentDevice(device))?.id ?? '';
+};
+
+const renderSteppedLoadShedStepSelect = (device: TargetDeviceSnapshot): void => {
+  if (!deviceDetailShedStep) return;
+  const profile = resolveSavedSteppedLoadProfile(device);
+  if (!profile) {
+    deviceDetailShedStep.innerHTML = '';
+    deviceDetailShedStep.disabled = true;
+    return;
+  }
+  const configuredStepId = state.shedBehaviors[device.id]?.stepId;
+  renderSteppedLoadSelect(deviceDetailShedStep, profile, configuredStepId, {
+    includeOffSteps: false,
+  });
+  deviceDetailShedStep.disabled = profile.steps.every((step) => step.planningPowerW <= 0);
+};
+
+const getDraftProfileFromCurrentDevice = (device: TargetDeviceSnapshot): SteppedLoadProfile => (
+  currentSteppedLoadDraft
+  ?? resolveSavedSteppedLoadProfile(device)
+  ?? createDefaultSteppedLoadProfile(device)
+);
+
+const syncSteppedLoadDraftState = () => {
+  const deviceId = currentDetailDeviceId;
+  if (!deviceId) return;
+  const device = getDeviceById(deviceId);
+  if (!device) return;
+  const profile = collectSteppedLoadDraftFromDom()
+    ?? currentSteppedLoadDraft
+    ?? getDraftProfileFromCurrentDevice(device);
+  currentSteppedLoadDraft = profile;
+};
+
+const buildSteppedLoadStepRow = (step: SteppedLoadProfile['steps'][number]): HTMLElement => {
+  const row = document.createElement('div');
+  row.className = 'device-row detail-stepped-row';
+  row.dataset.stepRow = 'true';
+
+  const idInput = document.createElement('input');
+  idInput.type = 'text';
+  idInput.value = step.id;
+  idInput.dataset.stepField = 'id';
+  idInput.placeholder = 'step';
+  idInput.setAttribute('aria-label', 'Step id');
+
+  const planningInput = document.createElement('input');
+  planningInput.type = 'number';
+  planningInput.step = '50';
+  planningInput.min = '0';
+  planningInput.value = String(step.planningPowerW);
+  planningInput.dataset.stepField = 'planningPowerW';
+  planningInput.placeholder = '0';
+  planningInput.setAttribute('aria-label', 'Planning power in watts');
+
+  attachDraftSyncOnChange(idInput, planningInput);
+
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'btn ghost';
+  removeButton.textContent = 'Remove';
+  removeButton.setAttribute('aria-label', `Remove step ${step.id}`);
+  removeButton.addEventListener('click', () => {
+    row.remove();
+    syncSteppedLoadDraftState();
+  });
+
+  row.append(idInput, planningInput, removeButton);
+  return row;
+};
+
+function collectSteppedLoadDraftFromDom(): SteppedLoadProfile | null {
+  if (!deviceDetailSteppedSteps) return null;
+  const rows = Array.from(deviceDetailSteppedSteps.querySelectorAll<HTMLElement>('[data-step-row="true"]'));
+  const steps = rows.map((row) => {
+    const readValue = (field: string) => (
+      row.querySelector<HTMLInputElement>(`[data-step-field="${field}"]`)?.value?.trim() ?? ''
+    );
+    return {
+      id: readValue('id'),
+      planningPowerW: Number.parseFloat(readValue('planningPowerW')),
+    };
+  });
+
+  return normalizeSteppedLoadProfile({
+    model: 'stepped_load',
+    steps,
+  }) ?? null;
+}
+
+const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
+  if (!deviceDetailSteppedSection || !deviceDetailSteppedSteps) return;
+  const steppedEnabled = isSteppedLoadControlModel(device);
+  deviceDetailSteppedSection.hidden = !steppedEnabled;
+  if (!steppedEnabled) {
+    currentSteppedLoadDraft = null;
+    deviceDetailSteppedSteps.replaceChildren();
+    return;
+  }
+
+  const profile = getDraftProfileFromCurrentDevice(device);
+  currentSteppedLoadDraft = profile;
+  const rows = sortSteppedLoadSteps(profile.steps).map((step) => buildSteppedLoadStepRow(step));
+  deviceDetailSteppedSteps.replaceChildren(...rows);
 };
 
 const setDeviceDetailControlStates = (deviceId: string) => {
@@ -133,23 +339,40 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     deviceDetailPriceOpt.checked = supportsTemperature && isManaged && priceConfig?.enabled === true;
     deviceDetailPriceOpt.disabled = !supportsTemperature || !isManaged;
   }
+  if (deviceDetailControlModel && deviceDetailControlModelRow) {
+    const effectiveControlModel = device ? getEffectiveControlModel(device) : 'temperature_target';
+    deviceDetailControlModel.value = effectiveControlModel === 'stepped_load' ? 'stepped_load' : 'temperature_target';
+    deviceDetailControlModel.disabled = !supportsManage;
+    deviceDetailControlModelRow.hidden = !supportsManage;
+  }
 };
 
+// eslint-disable-next-line complexity
 const setDeviceDetailShedBehavior = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
-  const canConfigure = supportsTemperature && supportsPower;
-  const forceTemperatureOnly = canConfigure && isTemperatureDeviceWithoutOnOff(device);
+  const supportsStep = isSteppedLoadControlModel(device);
+  const canConfigure = supportsPower && (supportsTemperature || supportsStep);
+  const forceTemperatureOnly = canConfigure && !supportsStep && isTemperatureDeviceWithoutOnOff(device);
   const shedConfig = state.shedBehaviors[deviceId];
-  updateShedActionOptions({ canConfigure, forceTemperatureOnly, supportsTemperature });
+  updateShedActionOptions({ canConfigure, forceTemperatureOnly, supportsTemperature, supportsStep });
   if (deviceDetailShedAction) {
     const nextAction = resolveShedActionValue({
       canConfigure,
       forceTemperatureOnly,
       configuredAction: shedConfig?.action,
     });
-    deviceDetailShedAction.value = nextAction;
+    deviceDetailShedAction.value = nextAction === 'set_step' && !supportsStep ? 'turn_off' : nextAction;
+  }
+  if (supportsStep && device) {
+    renderSteppedLoadShedStepSelect(device);
+    if (deviceDetailShedStep && !deviceDetailShedStep.value) {
+      deviceDetailShedStep.value = resolveSteppedShedStepId(device);
+    }
+  } else if (deviceDetailShedStep) {
+    deviceDetailShedStep.innerHTML = '';
+    deviceDetailShedStep.disabled = true;
   }
   if (deviceDetailShedTemp) {
     const fallback = getShedDefaultTemp(deviceId);
@@ -245,32 +468,112 @@ const resolveTemperatureShedBehavior = (deviceId: string): {
   };
 };
 
+const resolveSteppedLoadShedBehavior = (deviceId: string): {
+  behavior: { action: ShedAction; stepId?: string };
+  updateStepInput?: string;
+} => {
+  const device = getDeviceById(deviceId);
+  if (!device || !isSteppedLoadControlModel(device)) {
+    return { behavior: { action: 'turn_off' } };
+  }
+  const action: ShedAction = deviceDetailShedAction?.value === 'set_step' ? 'set_step' : 'turn_off';
+  if (action === 'turn_off') {
+    return { behavior: { action: 'turn_off' } };
+  }
+  const stepId = deviceDetailShedStep?.value
+    || state.shedBehaviors[deviceId]?.stepId
+    || resolveSteppedShedStepId(device);
+  return {
+    behavior: stepId ? { action: 'set_step', stepId } : { action: 'turn_off' },
+    updateStepInput: stepId || undefined,
+  };
+};
+
 const updateShedTempVisibility = () => {
   if (!deviceDetailShedAction || !deviceDetailShedTempRow) return;
   const device = currentDetailDeviceId ? getDeviceById(currentDetailDeviceId) : null;
-  if (!supportsTemperatureDevice(device) || !supportsPowerDevice(device)) {
+  const selectedAction = resolveVisibleShedAction(device);
+  if (selectedAction !== 'set_temperature') {
     deviceDetailShedTempRow.hidden = true;
     if (deviceDetailShedTemp) {
       deviceDetailShedTemp.disabled = true;
     }
     return;
   }
-  const isTemp = isTemperatureDeviceWithoutOnOff(device) || deviceDetailShedAction.value === 'set_temperature';
-  deviceDetailShedTempRow.hidden = !isTemp;
+  deviceDetailShedTempRow.hidden = false;
   if (deviceDetailShedTemp) {
-    deviceDetailShedTemp.disabled = !isTemp;
-    if (isTemp && !deviceDetailShedTemp.value) {
+    deviceDetailShedTemp.disabled = false;
+    if (!deviceDetailShedTemp.value) {
       const fallback = getShedDefaultTemp(currentDetailDeviceId);
       deviceDetailShedTemp.value = fallback.toString();
     }
   }
 };
 
+const updateShedStepVisibility = () => {
+  if (!deviceDetailShedAction || !deviceDetailShedStepRow) return;
+  const device = currentDetailDeviceId ? getDeviceById(currentDetailDeviceId) : null;
+  const showStepRow = resolveVisibleShedAction(device) === 'set_step';
+  deviceDetailShedStepRow.hidden = !showStepRow;
+  if (deviceDetailShedStep) {
+    deviceDetailShedStep.disabled = !showStepRow;
+    if (showStepRow && device && !deviceDetailShedStep.value) {
+      deviceDetailShedStep.value = resolveSteppedShedStepId(device);
+    }
+  }
+};
+
+const resolveVisibleShedAction = (
+  device: TargetDeviceSnapshot | null,
+): ShedAction | null => {
+  if (!deviceDetailShedAction || !device || !supportsPowerDevice(device)) return null;
+  if (
+    isTemperatureDeviceWithoutOnOff(device)
+    && isShedActionOptionVisible('set_temperature')
+  ) {
+    return 'set_temperature';
+  }
+  if (
+    deviceDetailShedAction.value === 'set_step'
+    && isSteppedLoadControlModel(device)
+    && isShedActionOptionVisible('set_step')
+  ) {
+    return 'set_step';
+  }
+  if (
+    deviceDetailShedAction.value === 'set_temperature'
+    && supportsTemperatureDevice(device)
+    && isShedActionOptionVisible('set_temperature')
+  ) {
+    return 'set_temperature';
+  }
+  return null;
+};
+
+const updateShedFieldVisibility = () => {
+  updateShedTempVisibility();
+  updateShedStepVisibility();
+};
+
 const saveShedBehavior = async () => {
   const deviceId = currentDetailDeviceId;
   if (!deviceId) return;
   const device = getDeviceById(deviceId);
-  if (!supportsTemperatureDevice(device) || !supportsPowerDevice(device)) {
+  if (!supportsPowerDevice(device)) {
+    state.shedBehaviors[deviceId] = { action: 'turn_off' };
+    await setSetting(OVERSHOOT_BEHAVIORS, state.shedBehaviors);
+    return;
+  }
+  if (isSteppedLoadControlModel(device) && deviceDetailShedAction?.value === 'set_step') {
+    const { behavior, updateStepInput } = resolveSteppedLoadShedBehavior(deviceId);
+    state.shedBehaviors[deviceId] = behavior;
+    if (updateStepInput && deviceDetailShedStep) {
+      deviceDetailShedStep.value = updateStepInput;
+    }
+    await setSetting(OVERSHOOT_BEHAVIORS, state.shedBehaviors);
+    return;
+  }
+  if (!supportsTemperatureDevice(device)) {
     state.shedBehaviors[deviceId] = { action: 'turn_off' };
     await setSetting(OVERSHOOT_BEHAVIORS, state.shedBehaviors);
     return;
@@ -283,11 +586,94 @@ const saveShedBehavior = async () => {
   await setSetting(OVERSHOOT_BEHAVIORS, state.shedBehaviors);
 };
 
+const notifyDevicesUpdated = () => {
+  document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices: state.latestDevices } }));
+};
+
+const persistDeviceControlProfile = async (deviceId: string, profile: SteppedLoadProfile | null) => {
+  if (profile) {
+    state.deviceControlProfiles[deviceId] = profile;
+  } else {
+    delete state.deviceControlProfiles[deviceId];
+  }
+  await saveDeviceControlProfiles();
+  applyLocalDeviceControlProfile(deviceId, profile);
+  renderDevices(state.latestDevices);
+  renderPriorities(state.latestDevices);
+  renderPriceOptimization(state.latestDevices);
+  notifyDevicesUpdated();
+};
+
+const saveSteppedLoadProfile = async () => {
+  const deviceId = currentDetailDeviceId;
+  if (!deviceId) return;
+  const device = getDeviceById(deviceId);
+  if (!device) return;
+  const profile = collectSteppedLoadDraftFromDom();
+  if (!profile) {
+    throw new Error(
+      'Complete the stepped-load profile before saving. '
+      + 'Each step needs a unique id and valid planning power.',
+    );
+  }
+  currentSteppedLoadDraft = profile;
+  const existingShedBehavior = state.shedBehaviors[deviceId];
+  if (existingShedBehavior?.action === 'set_step') {
+    const validStep = profile.steps.find((step) => step.id === existingShedBehavior.stepId && step.planningPowerW > 0);
+    const fallbackStepId = getSteppedLoadRestoreStep(profile)?.id;
+    if (validStep) {
+      state.shedBehaviors[deviceId] = existingShedBehavior;
+    } else if (fallbackStepId) {
+      state.shedBehaviors[deviceId] = { action: 'set_step', stepId: fallbackStepId };
+    } else {
+      state.shedBehaviors[deviceId] = { action: 'turn_off' };
+    }
+    await setSetting(OVERSHOOT_BEHAVIORS, state.shedBehaviors);
+  }
+  await persistDeviceControlProfile(deviceId, profile);
+  refreshOpenDeviceDetail();
+};
+
+const appendDraftSteppedLoadStep = () => {
+  const deviceId = currentDetailDeviceId;
+  if (!deviceId) return;
+  const device = getDeviceById(deviceId);
+  if (!device) return;
+  const profile = collectSteppedLoadDraftFromDom()
+    ?? currentSteppedLoadDraft
+    ?? getDraftProfileFromCurrentDevice(device);
+  const existingIds = new Set(profile.steps.map((step) => step.id));
+  let nextIndex = profile.steps.length + 1;
+  let nextId = `step_${nextIndex}`;
+  while (existingIds.has(nextId)) {
+    nextIndex += 1;
+    nextId = `step_${nextIndex}`;
+  }
+  const lastPower = profile.steps[profile.steps.length - 1]?.planningPowerW ?? 0;
+  currentSteppedLoadDraft = {
+    ...profile,
+    steps: [...profile.steps, {
+      id: nextId,
+      planningPowerW: lastPower,
+    }],
+  };
+  renderSteppedLoadDraft(device);
+};
+
+const resetSteppedLoadDraft = () => {
+  const deviceId = currentDetailDeviceId;
+  if (!deviceId) return;
+  const device = getDeviceById(deviceId);
+  if (!device) return;
+  currentSteppedLoadDraft = resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device);
+  renderSteppedLoadDraft(device);
+};
+
 export const loadShedBehaviors = async () => {
   try {
     const behaviors = await getSetting(OVERSHOOT_BEHAVIORS);
     state.shedBehaviors = behaviors && typeof behaviors === 'object'
-      ? behaviors as Record<string, { action: ShedAction; temperature?: number }>
+      ? behaviors as Record<string, { action: ShedAction; temperature?: number; stepId?: string }>
       : {};
   } catch (error) {
     await logSettingsError('Failed to load shed behaviors', error, 'loadShedBehaviors');
@@ -300,17 +686,19 @@ export const openDeviceDetail = (deviceId: string) => {
 
   resetDeviceDetailDiagnosticsRequests();
   currentDetailDeviceId = deviceId;
+  currentSteppedLoadDraft = null;
 
   setDeviceDetailTitle(device.name);
   setDeviceDetailControlStates(deviceId);
   setDeviceDetailShedBehavior(deviceId);
+  renderSteppedLoadDraft(device);
 
   renderDeviceDetailModes(device);
 
   setDeviceDetailDeltaValues(deviceId);
 
   updateDeltaSectionVisibility();
-  updateShedTempVisibility();
+  updateShedFieldVisibility();
 
   resetDeviceDetailDiagnosticsView();
   showDeviceDetailOverlay();
@@ -320,6 +708,7 @@ const closeDeviceDetail = () => {
   resetDeviceDetailDiagnosticsRequests();
   resetDeviceDetailDiagnosticsView();
   currentDetailDeviceId = null;
+  currentSteppedLoadDraft = null;
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = true;
   }
@@ -362,6 +751,29 @@ const initDeviceDetailManagedHandler = () => {
     } catch (error) {
       await logSettingsError('Failed to update managed device', error, 'device detail');
       await showToastError(error, 'Failed to update managed device.');
+    }
+  });
+};
+
+const initDeviceDetailControlModelHandler = () => {
+  deviceDetailControlModel?.addEventListener('change', async () => {
+    const deviceId = currentDetailDeviceId;
+    if (!deviceId) return;
+    const device = getDeviceById(deviceId);
+    if (!device) return;
+    try {
+      if (deviceDetailControlModel.value === 'stepped_load') {
+        const profile = resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device);
+        currentSteppedLoadDraft = profile;
+        await persistDeviceControlProfile(deviceId, profile);
+      } else {
+        currentSteppedLoadDraft = null;
+        await persistDeviceControlProfile(deviceId, null);
+      }
+      refreshOpenDeviceDetail();
+    } catch (error) {
+      await logSettingsError('Failed to update control model', error, 'device detail');
+      await showToastError(error, 'Failed to update control model.');
     }
   });
 };
@@ -415,7 +827,7 @@ const initDeviceDetailPriceOptHandlers = () => {
 
 const initDeviceDetailShedHandlers = () => {
   const autoSaveShedBehavior = async () => {
-    updateShedTempVisibility();
+    updateShedFieldVisibility();
     try {
       await saveShedBehavior();
     } catch (error) {
@@ -425,6 +837,24 @@ const initDeviceDetailShedHandlers = () => {
   };
   deviceDetailShedAction?.addEventListener('change', autoSaveShedBehavior);
   deviceDetailShedTemp?.addEventListener('change', autoSaveShedBehavior);
+  deviceDetailShedStep?.addEventListener('change', autoSaveShedBehavior);
+};
+
+const initDeviceDetailSteppedHandlers = () => {
+  deviceDetailSteppedAddStep?.addEventListener('click', () => {
+    appendDraftSteppedLoadStep();
+  });
+  deviceDetailSteppedReset?.addEventListener('click', () => {
+    resetSteppedLoadDraft();
+  });
+  deviceDetailSteppedSave?.addEventListener('click', async () => {
+    try {
+      await saveSteppedLoadProfile();
+    } catch (error) {
+      await logSettingsError('Failed to save stepped-load profile', error, 'device detail');
+      await showToastError(error, 'Failed to save stepped-load profile.');
+    }
+  });
 };
 
 const initDeviceDetailEscapeHandler = () => {
@@ -470,10 +900,11 @@ const refreshOpenDeviceDetail = () => {
   setDeviceDetailTitle(device.name);
   setDeviceDetailControlStates(currentDetailDeviceId);
   setDeviceDetailShedBehavior(currentDetailDeviceId);
+  renderSteppedLoadDraft(device);
   setDeviceDetailDeltaValues(currentDetailDeviceId);
   renderDeviceDetailModes(device);
   updateDeltaSectionVisibility();
-  updateShedTempVisibility();
+  updateShedFieldVisibility();
 };
 
 const initDeviceDetailRefreshHandlers = () => {
@@ -502,8 +933,10 @@ export const initDeviceDetailHandlers = () => {
   initDeviceDetailCloseHandlers();
   initDeviceDetailManagedHandler();
   initDeviceDetailControllableHandler();
+  initDeviceDetailControlModelHandler();
   initDeviceDetailPriceOptHandlers();
   initDeviceDetailShedHandlers();
+  initDeviceDetailSteppedHandlers();
   initDeviceDetailDiagnosticsHandler();
   initDeviceDetailEscapeHandler();
   initDeviceDetailOpenHandler();

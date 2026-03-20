@@ -1,32 +1,25 @@
-import type { TargetCapabilitySnapshot } from '../../packages/contracts/src/types';
+import type {
+    DeviceControlModel,
+    DeviceControlProfile,
+    DeviceControlProfiles,
+    SteppedLoadActualStepSource,
+    SteppedLoadCommandStatus,
+    SteppedLoadProfile,
+    SteppedLoadStep,
+    TargetCapabilitySnapshot,
+    TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 
-export type { TargetCapabilitySnapshot } from '../../packages/contracts/src/types';
-
-export type TargetDeviceSnapshot = {
-    id: string;
-    name: string;
-    targets: TargetCapabilitySnapshot[];
-    deviceClass?: string;
-    deviceType?: 'temperature' | 'onoff';
-    controlCapabilityId?: 'onoff' | 'evcharger_charging';
-    powerKw?: number;
-    expectedPowerKw?: number;
-    expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
-    loadKw?: number;
-    priority?: number;
-    currentOn?: boolean;
-    evChargingState?: string;
-    currentTemperature?: number;
-    measuredPowerKw?: number;
-    powerCapable?: boolean;
-    zone?: string;
-    controllable?: boolean;
-    managed?: boolean;
-    budgetExempt?: boolean;
-    capabilities?: string[];
-    canSetControl?: boolean;
-    available?: boolean;
-    lastUpdated?: number;
+export type {
+    DeviceControlModel,
+    DeviceControlProfile,
+    DeviceControlProfiles,
+    SteppedLoadActualStepSource,
+    SteppedLoadCommandStatus,
+    SteppedLoadProfile,
+    SteppedLoadStep,
+    TargetCapabilitySnapshot,
+    TargetDeviceSnapshot,
 };
 
 export type Logger = {
@@ -51,7 +44,10 @@ export type FlowCard = {
     registerRunListener: (fn: (args: unknown, state?: unknown) => Promise<boolean> | boolean | void) => void;
     registerArgumentAutocompleteListener: (
         arg: string,
-        fn: (query: string) => Promise<FlowAutocompleteResult[]> | FlowAutocompleteResult[],
+        fn: (
+            query: string,
+            args?: Record<string, unknown>,
+        ) => Promise<FlowAutocompleteResult[]> | FlowAutocompleteResult[],
     ) => void;
     trigger?: (tokens?: Record<string, unknown>, state?: Record<string, unknown>) => Promise<void>;
 };

@@ -243,7 +243,7 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
     onChange: buildPriceToggleHandler(device.id),
   });
 
-  return createDeviceRow({
+  const row = createDeviceRow({
     id: device.id,
     name: device.name,
     className: 'control-row',
@@ -253,6 +253,15 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
       document.dispatchEvent(openEvent);
     },
   });
+
+  const nameWrap = row.querySelector<HTMLElement>('.device-row__name');
+  if (!nameWrap) return row;
+  const nameText = document.createElement('span');
+  nameText.className = 'device-row__title';
+  nameText.textContent = device.name;
+
+  nameWrap.replaceChildren(nameText);
+  return row;
 };
 
 export const renderDevices = (devices: TargetDeviceSnapshot[]) => {

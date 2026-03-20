@@ -11,6 +11,7 @@ import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import type { PendingTargetObservationSource, ShedAction } from '../plan/planTypes';
 import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
+import type { ReportSteppedLoadActualStepResult } from './appDeviceControlHelpers';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { COMBINED_PRICES } from '../utils/settingsKeys';
@@ -50,9 +51,15 @@ export type PlanEngineInitApp = {
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   getPriorityForDevice: (deviceId: string) => number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getDynamicSoftLimitOverride: () => number | null;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
+  markSteppedLoadDesiredStepIssued: (params: {
+    deviceId: string;
+    desiredStepId: string;
+    previousStepId?: string;
+    issuedAtMs?: number;
+  }) => void;
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
@@ -89,6 +96,7 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
     getShedBehavior: (deviceId) => app.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: () => app.getDynamicSoftLimitOverride(),
     updateLocalSnapshot: (deviceId, updates) => app.updateLocalSnapshot(deviceId, updates),
+    markSteppedLoadDesiredStepIssued: (params) => app.markSteppedLoadDesiredStepIssued(params),
     logTargetRetryComparison: (params) => app.logTargetRetryComparison?.(params),
     syncLivePlanStateAfterTargetActuation: (source) => app.syncLivePlanStateAfterTargetActuation?.(source),
     deviceDiagnostics: app.deviceDiagnostics,
@@ -153,6 +161,10 @@ export type FlowCardInitApp = {
   capacityGuard?: CapacityGuard;
   getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
+  reportSteppedLoadActualStep: (
+    deviceId: string,
+    stepId: string,
+  ) => Promise<ReportSteppedLoadActualStepResult> | ReportSteppedLoadActualStepResult;
   getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   setExpectedOverride: (deviceId: string, kw: number) => boolean;
   storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
@@ -193,6 +205,7 @@ export function registerAppFlowCards(app: FlowCardInitApp): void {
     setCapacityLimit: (kw) => app.capacityGuard?.setLimit(kw),
     getSnapshot: () => app.getFlowSnapshot(),
     refreshSnapshot: () => app.refreshTargetDevicesSnapshot(),
+    reportSteppedLoadActualStep: (deviceId, stepId) => app.reportSteppedLoadActualStep(deviceId, stepId),
     getDeviceLoadSetting: (deviceId) => app.getDeviceLoadSetting(deviceId),
     setExpectedOverride: (deviceId, kw) => app.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => app.storeFlowPriceData(kind, raw),

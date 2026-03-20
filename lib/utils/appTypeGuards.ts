@@ -1,4 +1,6 @@
 import type { PowerTrackerState } from '../core/powerTracker';
+import type { DeviceControlProfiles } from '../../packages/contracts/src/types';
+import { normalizeDeviceControlProfiles } from './deviceControlProfiles';
 
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -24,6 +26,13 @@ export function isPrioritySettings(value: unknown): value is Record<string, Reco
 
 export function isModeDeviceTargets(value: unknown): value is Record<string, Record<string, number>> {
   return isPrioritySettings(value);
+}
+
+export function isDeviceControlProfiles(value: unknown): value is DeviceControlProfiles {
+  if (!value || typeof value !== 'object') return false;
+  const normalized = normalizeDeviceControlProfiles(value);
+  if (!normalized) return false;
+  return Object.keys(normalized).length === Object.keys(value as Record<string, unknown>).length;
 }
 
 export function isPowerTrackerState(value: unknown): value is PowerTrackerState {

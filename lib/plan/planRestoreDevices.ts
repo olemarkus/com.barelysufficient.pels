@@ -1,21 +1,42 @@
+import { getSteppedLoadHighestStep } from '../utils/deviceControlProfiles';
 import type { DevicePlanDevice } from './planTypes';
 import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
+import { isSteppedLoadDevice } from './planSteppedLoad';
 
 export function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
   const filtered = planDevices
     .filter((device) => (
-      device.controllable !== false
+      !isSteppedLoadDevice(device)
+      && device.controllable !== false
       && device.currentState === 'off'
       && device.plannedState !== 'shed'
     ));
   return sortByPriorityAsc(filtered);
 }
 
+export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
+  const filtered = planDevices
+    .filter((device) => (
+      isSteppedLoadDevice(device)
+      && device.controllable !== false
+      && device.plannedState !== 'shed'
+      && device.selectedStepId !== undefined
+      && device.steppedLoadProfile?.model === 'stepped_load'
+      && device.selectedStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id
+    ));
+  return sortByPriorityAsc(filtered);
+}
+
 export function getOnDevices(
   planDevices: DevicePlanDevice[],
-  getShedBehavior: (deviceId: string) => { action: 'turn_off' | 'set_temperature'; temperature: number | null },
+  getShedBehavior: (deviceId: string) => {
+    action: 'turn_off' | 'set_temperature' | 'set_step';
+    temperature: number | null;
+    stepId: string | null;
+  },
 ): DevicePlanDevice[] {
   const filtered = planDevices
+    .filter((device) => !isSteppedLoadDevice(device))
     .filter((device) => device.controllable !== false && device.plannedState !== 'shed')
     .filter((device) => device.currentState === 'on' || device.currentState === 'not_applicable')
     .filter((device) => canSwapOutDevice(device, getShedBehavior(device.id)));
@@ -101,7 +122,7 @@ export function markOffDevicesStayOff(params: {
 
 function canSwapOutDevice(
   dev: DevicePlanDevice,
-  behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null },
+  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null },
 ): boolean {
   if (behavior.action !== 'set_temperature' || behavior.temperature === null) return true;
   let currentTarget: number | null = null;

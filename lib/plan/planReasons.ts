@@ -16,7 +16,11 @@ export type ShedHoldParams = {
   restoredThisCycle: Set<string>;
   shedCooldownRemainingSec: number | null;
   holdDuringRestoreCooldown: boolean;
-  getShedBehavior: (deviceId: string) => { action: 'turn_off' | 'set_temperature'; temperature: number | null };
+  getShedBehavior: (deviceId: string) => {
+    action: 'turn_off' | 'set_temperature' | 'set_step';
+    temperature: number | null;
+    stepId: string | null;
+  };
 };
 
 export function applyShedTemperatureHold(params: ShedHoldParams): {
@@ -190,7 +194,7 @@ function resolveRestoreDecision(params: {
 
 function resolveHoldDecision(params: {
   dev: DevicePlanDevice;
-  behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null };
+  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
   state: PlanEngineState;
   shedReasons: Map<string, string>;
   inShedWindow: boolean;
@@ -282,7 +286,7 @@ function resolvePostHoldRestoreDecision(params: {
 
 function applyHoldToDevice(params: {
   dev: DevicePlanDevice;
-  behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null };
+  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
   state: PlanEngineState;
   shedReasons: Map<string, string>;
   inShedWindow: boolean;
@@ -343,7 +347,11 @@ function applyHoldToDevice(params: {
 function getPendingRestoreDelaySeconds(
   planDevices: DevicePlanDevice[],
   state: PlanEngineState,
-  getShedBehavior: (deviceId: string) => { action: 'turn_off' | 'set_temperature'; temperature: number | null },
+  getShedBehavior: (deviceId: string) => {
+    action: 'turn_off' | 'set_temperature' | 'set_step';
+    temperature: number | null;
+    stepId: string | null;
+  },
 ): number | null {
   let maxRemainingMs = 0;
   const nowMs = Date.now();
@@ -420,7 +428,7 @@ function normalizeDeviceReason(params: {
 
 function applyHoldUpdate(
   dev: DevicePlanDevice,
-  behavior: { action: 'turn_off' | 'set_temperature'; temperature: number | null },
+  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null },
   reason: string,
   availableHeadroom: number,
   restoredOneThisCycle: boolean,

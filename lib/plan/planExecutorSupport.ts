@@ -7,6 +7,7 @@ import {
   getEvRestoreBlockReason,
 } from './planBinaryControl';
 import {
+  type ActivationAttemptSource,
   recordActivationAttemptStart,
   recordActivationSetback,
 } from './planActivationBackoff';
@@ -208,11 +209,12 @@ export const recordActivationAttemptStarted = (params: {
   deviceId: string;
   name: string | undefined;
   nowTs: number;
+  source?: ActivationAttemptSource;
 }): void => {
   const result = recordActivationAttemptStart({
     state: params.state,
     deviceId: params.deviceId,
-    source: 'pels_restore',
+    source: params.source ?? 'pels_restore',
     nowTs: params.nowTs,
   });
   if (result.transition) {

@@ -56,6 +56,7 @@ const buildExecutor = (
   ],
   overrides: Partial<PlanExecutorDeps> = {},
 ) => {
+  const desiredSteppedTrigger = { trigger: jest.fn().mockResolvedValue(true) };
   const deviceManager = {
     getSnapshot: jest.fn().mockReturnValue(snapshot),
     setCapability: jest.fn().mockResolvedValue(undefined),
@@ -63,22 +64,23 @@ const buildExecutor = (
   const deps: PlanExecutorDeps = {
     homey: {
       settings: { set: jest.fn() },
-      flow: { getTriggerCard: jest.fn() },
+      flow: { getTriggerCard: jest.fn(() => desiredSteppedTrigger) },
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
     getCapacityGuard: () => undefined,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
-    getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
+    getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
     updateLocalSnapshot: jest.fn(),
+    markSteppedLoadDesiredStepIssued: jest.fn(),
     logTargetRetryComparison: jest.fn(),
     log: jest.fn(),
     logDebug: jest.fn(),
     error: jest.fn(),
     ...overrides,
   };
-  return { executor: new PlanExecutor(deps, state), deps, deviceManager, state };
+  return { executor: new PlanExecutor(deps, state), deps, deviceManager, state, desiredSteppedTrigger };
 };
 
 describe('PlanExecutor restore logging', () => {
@@ -120,6 +122,33 @@ describe('PlanExecutor restore logging', () => {
     expect(nextState.lastRestoreMs).toBe(previousLastRestoreMs);
     expect(nextState.lastDeviceRestoreMs['dev-1']).toBe(previousDeviceRestoreMs);
     expect(nextState.activationAttemptStartedMsByDevice['dev-1']).toBeUndefined();
+  });
+
+  it('logs restore from shed temperature as explicit capacity work', async () => {
+    const state = createPlanEngineState();
+    const { executor, deps, deviceManager } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
+      },
+    ], {
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 16, stepId: null }),
+    });
+
+    await executor.applyPlanActions(buildTargetPlan(16, 23));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
+    expect(deps.log).toHaveBeenCalledWith(
+      'Capacity: set target_temperature for Heater to 23°C (restoring from shed state)',
+    );
+    expect(deps.log).not.toHaveBeenCalledWith(
+      'Set target_temperature for Heater from 16 to 23 (mode: Home)',
+    );
   });
 });
 
@@ -404,5 +433,75 @@ describe('PlanExecutor pending target commands', () => {
       retryCount: 1,
       lastObservedValue: 25,
     });
+  });
+});
+
+describe('PlanExecutor stepped loads', () => {
+  const steppedProfile = {
+    model: 'stepped_load' as const,
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: 1250 },
+      { id: 'max', planningPowerW: 3000 },
+    ],
+  };
+
+  const steppedPlan = (overrides: Record<string, unknown> = {}): DevicePlan => ({
+    meta: {
+      totalKw: 1,
+      softLimitKw: 5,
+      headroomKw: 4,
+    },
+    devices: [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        currentState: 'on',
+        plannedState: 'keep',
+        currentTarget: 68,
+        plannedTarget: 68,
+        controllable: true,
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+        selectedStepId: 'low',
+        desiredStepId: 'max',
+        ...overrides,
+      },
+    ],
+  });
+
+  it('triggers desired stepped-load change and records the issued command', async () => {
+    const { executor, deps, deviceManager, desiredSteppedTrigger, state } = buildExecutor();
+
+    await executor.applyPlanActions(steppedPlan());
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+      step_id: 'max',
+      planning_power_w: 3000,
+      previous_step_id: 'low',
+    }, {
+      deviceId: 'dev-1',
+    });
+    expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: expect.any(Number),
+    });
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(state.lastRestoreMs).toEqual(expect.any(Number));
+  });
+
+  it('does not re-trigger a stepped-load command while the same desired step is pending', async () => {
+    const { executor, deps, desiredSteppedTrigger } = buildExecutor();
+
+    await executor.applyPlanActions(steppedPlan({
+      lastDesiredStepId: 'max',
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
   });
 });

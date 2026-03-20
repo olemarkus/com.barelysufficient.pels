@@ -38,7 +38,7 @@ export type PlanBuilderDeps = {
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   getPriorityForDevice: (deviceId: string) => number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getDynamicSoftLimitOverride?: () => number | null;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   log: (...args: unknown[]) => void;
@@ -273,6 +273,7 @@ export class PlanBuilder {
       state: this.state,
       shedSet: sheddingPlan.shedSet,
       shedReasons: sheddingPlan.shedReasons,
+      steppedDesiredStepByDeviceId: sheddingPlan.steppedDesiredStepByDeviceId,
       guardInShortfall: sheddingPlan.guardInShortfall,
       deps: {
         getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),

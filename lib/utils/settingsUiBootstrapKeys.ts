@@ -7,6 +7,7 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'operating_mode',
   'controllable_devices',
   'managed_devices',
+  'device_control_profiles',
   'budget_exempt_devices',
   'experimental_ev_support_enabled',
   'mode_aliases',

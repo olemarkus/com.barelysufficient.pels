@@ -1,6 +1,8 @@
+/* eslint-disable max-lines -- Flow card registration remains centralized for the Homey app surface. */
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import CapacityGuard from '../lib/core/capacityGuard';
 import { FlowHomeyLike, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceControlHelpers';
 import { registerExpectedPowerCard } from './expectedPower';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import {
@@ -36,6 +38,10 @@ export type FlowCardDeps = {
   setCapacityLimit: (kw: number) => void;
   getSnapshot: () => Promise<TargetDeviceSnapshot[]>;
   refreshSnapshot: () => Promise<void>;
+  reportSteppedLoadActualStep: (
+    deviceId: string,
+    stepId: string,
+  ) => Promise<ReportSteppedLoadActualStepResult> | ReportSteppedLoadActualStepResult;
   getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   setExpectedOverride: (deviceId: string, kw: number) => boolean;
   storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
@@ -130,6 +136,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
     registerHeadroomForDeviceCard(deps);
     registerCapacityAndModeCards(deps);
+    registerSteppedLoadCards(deps);
     registerDeviceCapacityControlCards(deps);
     registerBudgetExemptionCards(deps);
     registerManagedDeviceCondition(deps);
@@ -140,6 +147,128 @@ export function registerFlowCards(deps: FlowCardDeps): void {
   } finally {
     stopSpan();
   }
+}
+
+function registerSteppedLoadCards(deps: FlowCardDeps): void {
+  const desiredChangedTrigger = deps.homey.flow.getTriggerCard('desired_stepped_load_changed');
+  desiredChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
+    const payload = args as { device?: DeviceArg } | null;
+    const statePayload = state as { deviceId?: string } | null;
+    const chosenDeviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+    if (!chosenDeviceId || !statePayload?.deviceId) return false;
+    return chosenDeviceId === statePayload.deviceId;
+  });
+  desiredChangedTrigger.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getSteppedLoadDeviceOptions(deps, query)
+  ));
+
+  const reportActualStepCard = deps.homey.flow.getActionCard('report_stepped_load_actual_step');
+  reportActualStepCard.registerRunListener(async (args: unknown) => {
+    const payload = args as { device?: DeviceArg; step?: string | { id?: string; name?: string } } | null;
+    const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+    const stepValue = typeof payload?.step === 'object' && payload?.step !== null
+      ? payload.step.id
+      : payload?.step;
+    const stepId = (stepValue || '').trim();
+    if (!deviceId) throw new Error('Device must be provided.');
+    if (!stepId) throw new Error('Step must be provided.');
+    const result = await deps.reportSteppedLoadActualStep(deviceId, stepId);
+    await handleSteppedLoadReportResult({
+      deps,
+      result,
+      source: 'report_stepped_load_actual_step',
+    });
+    return true;
+  });
+  reportActualStepCard.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getSteppedLoadDeviceOptions(deps, query)
+  ));
+  reportActualStepCard.registerArgumentAutocompleteListener(
+    'step',
+    async (query: string, args?: Record<string, unknown>) => {
+      const deviceId = getDeviceIdFromArg(args?.device as DeviceArg);
+      if (!deviceId) return [];
+      const snapshot = await deps.getSnapshot();
+      const device = snapshot.find((entry) => entry.id === deviceId && entry.controlModel === 'stepped_load');
+      const steps = device?.steppedLoadProfile?.steps ?? [];
+      const q = (query || '').toLowerCase();
+      return steps
+        .filter((step) => !q || step.id.toLowerCase().includes(q))
+        .map((step) => ({ id: step.id, name: `${step.id} (${step.planningPowerW} W)` }));
+    },
+  );
+
+  const reportActualPowerCard = deps.homey.flow.getActionCard('report_stepped_load_power');
+  reportActualPowerCard.registerRunListener(async (args: unknown) => {
+    const payload = args as { device?: DeviceArg; power_w?: unknown } | null;
+    const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+    if (!deviceId) throw new Error('Device must be provided.');
+    const stepId = await resolveSteppedLoadStepIdFromPowerInput({
+      deps,
+      deviceId,
+      rawPower: payload?.power_w,
+    });
+    const result = await deps.reportSteppedLoadActualStep(deviceId, stepId);
+    await handleSteppedLoadReportResult({
+      deps,
+      result,
+      source: 'report_stepped_load_power',
+    });
+    return true;
+  });
+  reportActualPowerCard.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getSteppedLoadDeviceOptions(deps, query)
+  ));
+}
+
+async function handleSteppedLoadReportResult(params: {
+  deps: FlowCardDeps;
+  result: ReportSteppedLoadActualStepResult;
+  source: string;
+}): Promise<void> {
+  const { deps, result, source } = params;
+  if (result === 'invalid') {
+    throw new Error('Device is not configured as a stepped load, or the reported step is invalid.');
+  }
+  if (result === 'unchanged') return;
+  await deps.refreshSnapshot();
+  requestPlanRebuildFromFlow(deps, source);
+}
+
+async function resolveSteppedLoadStepIdFromPowerInput(params: {
+  deps: FlowCardDeps;
+  deviceId: string;
+  rawPower: unknown;
+}): Promise<string> {
+  const { deps, deviceId, rawPower } = params;
+  const powerW = parseFlowPowerInput(rawPower);
+  if (powerW === null) {
+    throw new Error('Power must be provided as a number or text like "1750 W".');
+  }
+  const snapshot = await deps.getSnapshot();
+  const device = snapshot.find((entry) => entry.id === deviceId && entry.controlModel === 'stepped_load');
+  const steps = device?.steppedLoadProfile?.steps ?? [];
+  const matches = steps.filter((step) => Math.round(step.planningPowerW) === powerW);
+  if (matches.length === 0) {
+    throw new Error(`No configured stepped-load step matches ${powerW} W.`);
+  }
+  if (matches.length > 1) {
+    throw new Error(`Multiple configured stepped-load steps match ${powerW} W. Report the step directly instead.`);
+  }
+  return matches[0].id;
+}
+
+function parseFlowPowerInput(rawPower: unknown): number | null {
+  if (typeof rawPower === 'number' && Number.isFinite(rawPower)) {
+    return Math.round(rawPower);
+  }
+  const normalized = String(rawPower ?? '').trim();
+  if (!normalized) return null;
+  const match = normalized.match(/^(-?\d+(?:[.,]\d+)?)\s*[Ww]?$/);
+  if (!match) return null;
+  const parsed = Number.parseFloat(match[1].replace(',', '.'));
+  if (!Number.isFinite(parsed)) return null;
+  return Math.round(parsed);
 }
 
 function registerFlowPriceCards(deps: FlowCardDeps): void {
@@ -365,6 +494,19 @@ function getPriceLevelOptions(query: string): Array<{ id: string; name: string }
   return PRICE_LEVEL_OPTIONS
     .filter((opt: PriceLevelOption) => !q || opt.name.toLowerCase().includes(q))
     .map((opt: PriceLevelOption) => ({ id: opt.id, name: opt.name }));
+}
+
+async function getSteppedLoadDeviceOptions(
+  deps: FlowCardDeps,
+  query: string,
+): Promise<Array<{ id: string; name: string }>> {
+  const q = (query || '').toLowerCase();
+  const snapshot = await deps.getSnapshot();
+  return snapshot
+    .filter((device) => device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load')
+    .map((device) => ({ id: device.id, name: device.name || device.id }))
+    .filter((device) => !q || device.name.toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function getDeviceIdFromArg(arg: DeviceArg): string {

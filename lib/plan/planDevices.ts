@@ -6,12 +6,18 @@ import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import {
   getPrimaryTargetCapability,
   normalizeTargetCapabilityValue,
-} from '../../packages/contracts/src/targetCapabilities';
+} from '../utils/targetCapabilities';
 import { getInactiveReason } from './planRestoreDevices';
+import {
+  isSteppedLoadDevice,
+  resolveSteppedLoadCurrentState,
+  resolveSteppedLoadInitialDesiredStepId,
+  getSteppedLoadShedTargetStep,
+} from './planSteppedLoad';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   getPriceOptimizationEnabled: () => boolean;
@@ -31,10 +37,19 @@ export function buildInitialPlanDevices(params: {
   state: PlanEngineState;
   shedSet: Set<string>;
   shedReasons: Map<string, string>;
+  steppedDesiredStepByDeviceId: Map<string, string>;
   guardInShortfall: boolean;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
-  const { context, state, shedSet, shedReasons, guardInShortfall, deps } = params;
+  const {
+    context,
+    state,
+    shedSet,
+    shedReasons,
+    steppedDesiredStepByDeviceId,
+    guardInShortfall,
+    deps,
+  } = params;
   return context.devices.map((dev) => {
     const supportsTemperature = supportsTemperatureDevice(dev);
     const priority = deps.getPriorityForDevice(dev.id);
@@ -45,11 +60,13 @@ export function buildInitialPlanDevices(params: {
       deps,
     });
     const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
-    const currentState = resolveCurrentState(dev.currentOn, dev.hasBinaryControl);
+    const currentState = resolveCurrentState(dev);
     const controllable = dev.controllable !== false;
-    const shedBehavior: { action: ShedAction; temperature: number | null } = supportsTemperature
+    const shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null } = (
+      isSteppedLoadDevice(dev) || supportsTemperature
+    )
       ? deps.getShedBehavior(dev.id)
-      : { action: 'turn_off', temperature: null };
+      : { action: 'turn_off', temperature: null, stepId: null };
 
     const base = buildBasePlanDevice({
       dev,
@@ -63,13 +80,16 @@ export function buildInitialPlanDevices(params: {
       shedBehavior,
       shedSet,
       shedReasons,
+      steppedDesiredStepByDeviceId,
     });
 
-    const withOffStateReason = applyOffStateReason({
-      planDevice: base,
-      headroomRaw: context.headroomRaw,
-      guardInShortfall,
-    });
+    const withOffStateReason = isSteppedLoadDevice(base)
+      ? base
+      : applyOffStateReason({
+        planDevice: base,
+        headroomRaw: context.headroomRaw,
+        guardInShortfall,
+      });
 
     return applyHourlyBudgetShed({
       planDevice: withOffStateReason,
@@ -113,9 +133,11 @@ function applyPriceOptimizationDelta(
   return target;
 }
 
-function resolveCurrentState(currentOn?: boolean, hasBinaryControl?: boolean): string {
-  if (typeof currentOn === 'boolean') return currentOn ? 'on' : 'off';
-  if (hasBinaryControl === false) return 'not_applicable';
+function resolveCurrentState(device: PlanInputDevice): string {
+  const steppedState = resolveSteppedLoadCurrentState(device);
+  if (steppedState) return steppedState;
+  if (typeof device.currentOn === 'boolean') return device.currentOn ? 'on' : 'off';
+  if (device.hasBinaryControl === false) return 'not_applicable';
   return 'unknown';
 }
 
@@ -128,9 +150,10 @@ function buildBasePlanDevice(params: {
   plannedTarget: number | null;
   controllable: boolean;
   supportsTemperature: boolean;
-  shedBehavior: { action: ShedAction; temperature: number | null };
+  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
   shedSet: Set<string>;
   shedReasons: Map<string, string>;
+  steppedDesiredStepByDeviceId: Map<string, string>;
 }): DevicePlanDevice {
   const {
     dev,
@@ -144,13 +167,25 @@ function buildBasePlanDevice(params: {
     shedBehavior,
     shedSet,
     shedReasons,
+    steppedDesiredStepByDeviceId,
   } = params;
 
-  const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id));
+  const initialDesiredStepId = resolveSteppedLoadInitialDesiredStepId(dev);
+  const directShedStepId = resolveSteppedLoadDirectShedStepId({
+    dev,
+    shedBehavior,
+    shouldShed: shedSet.has(dev.id),
+    currentDesiredStepId: steppedDesiredStepByDeviceId.get(dev.id) ?? initialDesiredStepId,
+  });
+  const desiredStepId = directShedStepId ?? steppedDesiredStepByDeviceId.get(dev.id) ?? initialDesiredStepId;
+  const isSteppedShed = isSteppedLoadDevice(dev)
+    && desiredStepId !== undefined
+    && desiredStepId !== dev.selectedStepId;
+  const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id) || isSteppedShed);
   const baseReason = controllable
     ? shedReasons.get(dev.id) || (recentlyRestored ? 'keep (recently restored)' : 'keep')
     : 'capacity control off';
-  const { shedAction, shedTemperature } = resolveShedAction(
+  const { shedAction, shedTemperature, shedStepId } = resolveShedAction(
     dev,
     controllable,
     shedSet.has(dev.id),
@@ -168,9 +203,18 @@ function buildBasePlanDevice(params: {
     plannedState,
     currentTarget,
     plannedTarget: resolvedPlannedTarget,
+    controlModel: dev.controlModel,
+    steppedLoadProfile: dev.steppedLoadProfile,
+    selectedStepId: dev.selectedStepId,
+    desiredStepId,
+    lastDesiredStepId: dev.desiredStepId,
+    actualStepId: dev.actualStepId,
+    assumedStepId: dev.assumedStepId,
+    actualStepSource: dev.actualStepSource,
     priority,
     powerKw: dev.powerKw,
     expectedPowerKw: dev.expectedPowerKw,
+    planningPowerKw: dev.planningPowerKw,
     expectedPowerSource: dev.expectedPowerSource,
     measuredPowerKw: dev.measuredPowerKw,
     controlCapabilityId: dev.controlCapabilityId,
@@ -181,8 +225,11 @@ function buildBasePlanDevice(params: {
     budgetExempt: dev.budgetExempt,
     available: dev.available,
     currentTemperature: dev.currentTemperature,
+    stepCommandPending: dev.stepCommandPending,
+    stepCommandStatus: dev.stepCommandStatus,
     shedAction,
     shedTemperature,
+    shedStepId,
   };
 }
 
@@ -200,10 +247,29 @@ function resolveShedAction(
   dev: PlanInputDevice,
   controllable: boolean,
   shouldShed: boolean,
-  shedBehavior: { action: ShedAction; temperature: number | null },
+  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null },
   supportsTemperature: boolean,
-): { shedAction: ShedAction; shedTemperature: number | null } {
+) : { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
   const target = getPrimaryTargetCapability(dev.targets);
+  if (isSteppedLoadDevice(dev)) {
+    if (
+      supportsTemperature
+      && controllable
+      && shouldShed
+      && shedBehavior.action === 'set_temperature'
+      && shedBehavior.temperature !== null
+    ) {
+      return {
+        shedAction: 'set_temperature',
+        shedTemperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
+        shedStepId: null,
+      };
+    }
+    if (controllable && shedBehavior.action === 'set_step' && typeof shedBehavior.stepId === 'string') {
+      return { shedAction: 'set_step', shedTemperature: null, shedStepId: shedBehavior.stepId };
+    }
+    return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
+  }
   if (
     supportsTemperature
     && controllable
@@ -214,9 +280,32 @@ function resolveShedAction(
     return {
       shedAction: 'set_temperature',
       shedTemperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
+      shedStepId: null,
     };
   }
-  return { shedAction: 'turn_off', shedTemperature: null };
+  return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
+}
+
+function resolveSteppedLoadDirectShedStepId(params: {
+  dev: PlanInputDevice;
+  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
+  shouldShed: boolean;
+  currentDesiredStepId?: string;
+}): string | undefined {
+  const {
+    dev,
+    shedBehavior,
+    shouldShed,
+    currentDesiredStepId,
+  } = params;
+  if (!shouldShed || !isSteppedLoadDevice(dev) || shedBehavior.action !== 'set_step') return undefined;
+  const targetStep = getSteppedLoadShedTargetStep({
+    device: dev,
+    shedAction: 'set_step',
+    shedStepId: shedBehavior.stepId,
+    currentDesiredStepId,
+  });
+  return targetStep?.id;
 }
 
 function applyOffStateReason(params: {
@@ -266,9 +355,18 @@ function applyHourlyBudgetShed(params: {
     && planDevice.currentState !== 'unknown'
     && planDevice.currentState !== 'not_applicable'
   ) return planDevice;
+  const desiredStepId = isSteppedLoadDevice(planDevice)
+    ? getSteppedLoadShedTargetStep({
+      device: planDevice,
+      shedAction: planDevice.shedAction === 'set_step' ? 'set_step' : 'turn_off',
+      shedStepId: planDevice.shedStepId,
+      currentDesiredStepId: planDevice.desiredStepId,
+    })?.id ?? planDevice.desiredStepId
+    : planDevice.desiredStepId;
   return {
     ...planDevice,
     plannedState: 'shed',
+    desiredStepId,
     reason: 'shed due to hourly budget',
   };
 }

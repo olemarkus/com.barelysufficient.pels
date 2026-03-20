@@ -8,6 +8,7 @@ import {
   CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
+  DEVICE_CONTROL_PROFILES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -68,6 +69,7 @@ const DEDUPED_CAPACITY_KEYS = [
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   BUDGET_EXEMPT_DEVICES,
+  DEVICE_CONTROL_PROFILES,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -354,6 +356,11 @@ function buildSettingsHandlers(
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after managed change');
       await rebuildPlanFromSettings(deps, 'managed_devices');
+    },
+    [DEVICE_CONTROL_PROFILES]: async () => {
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after control profile change');
+      await rebuildPlanFromSettings(deps, DEVICE_CONTROL_PROFILES);
     },
     [BUDGET_EXEMPT_DEVICES]: async () => {
       deps.loadCapacitySettings();

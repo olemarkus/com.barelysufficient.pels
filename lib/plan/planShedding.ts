@@ -5,6 +5,11 @@ import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { resolveCandidatePower } from './planCandidatePower';
 import {
+  getSteppedLoadShedTargetStep,
+  isSteppedLoadDevice,
+  resolveSteppedLoadImmediateReliefKw,
+} from './planSteppedLoad';
+import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
   RECENT_RESTORE_SHED_GRACE_MS,
 } from './planConstants';
@@ -12,6 +17,7 @@ import {
 export type SheddingPlan = {
   shedSet: Set<string>;
   shedReasons: Map<string, string>;
+  steppedDesiredStepByDeviceId: Map<string, string>;
   sheddingActive: boolean;
   guardInShortfall: boolean;
   updates: {
@@ -28,14 +34,24 @@ export type SheddingPlan = {
 export type SheddingDeps = {
   capacityGuard: CapacityGuard | undefined;
   powerTracker: PowerTrackerState;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getPriorityForDevice: (deviceId: string) => number;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
 
-type BaseShedCandidate = PlanInputDevice & { priority: number; effectivePower: number };
-type ShedCandidate = BaseShedCandidate & { recentlyRestored: boolean };
+type BaseShedCandidate = PlanInputDevice & {
+  priority: number;
+  effectivePower: number;
+  recentlyRestored: boolean;
+};
+type BinaryShedCandidate = BaseShedCandidate & { kind: 'binary' };
+type SteppedShedCandidate = BaseShedCandidate & {
+  kind: 'stepped';
+  fromStepId: string;
+  toStepId: string;
+};
+type ShedCandidate = BinaryShedCandidate | SteppedShedCandidate;
 
 type ShedCandidateParams = {
   devices: PlanInputDevice[];
@@ -52,7 +68,13 @@ export async function buildSheddingPlan(
   state: PlanEngineState,
   deps: SheddingDeps,
 ): Promise<SheddingPlan> {
-  const { shedSet, shedReasons, updates, overshootStats } = planShedding(context, state, deps);
+  const {
+    shedSet,
+    shedReasons,
+    steppedDesiredStepByDeviceId,
+    updates,
+    overshootStats,
+  } = planShedding(context, state, deps);
   const guardResult = await updateGuardState({
     headroom: context.headroom,
     capacitySoftLimit: context.capacitySoftLimit,
@@ -60,12 +82,14 @@ export async function buildSheddingPlan(
     devices: context.devices,
     shedSet,
     softLimitSource: context.softLimitSource,
+    getShedBehavior: deps.getShedBehavior,
     capacityGuard: deps.capacityGuard,
   });
   const guardInShortfall = deps.capacityGuard?.isInShortfall() ?? false;
   return {
     shedSet,
     shedReasons,
+    steppedDesiredStepByDeviceId,
     sheddingActive: guardResult.sheddingActive,
     guardInShortfall,
     updates,
@@ -84,25 +108,27 @@ function planShedding(
 ): {
   shedSet: Set<string>;
   shedReasons: Map<string, string>;
+  steppedDesiredStepByDeviceId: Map<string, string>;
   updates: { lastOvershootMs?: number; lastShedPlanMeasurementTs?: number };
   overshootStats: SheddingPlan['overshootStats'];
 } {
   const shedSet = new Set<string>();
   const shedReasons = new Map<string, string>();
+  const steppedDesiredStepByDeviceId = new Map<string, string>();
   if (!shouldPlanShedding(context.headroom)) {
-    return { shedSet, shedReasons, updates: {}, overshootStats: null };
+    return { shedSet, shedReasons, steppedDesiredStepByDeviceId, updates: {}, overshootStats: null };
   }
 
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const alreadyShedThisSample = measurementTs !== null && measurementTs === state.lastShedPlanMeasurementTs;
   if (alreadyShedThisSample) {
     deps.logDebug('Plan: skipping additional shedding until a new power measurement arrives');
-    return { shedSet, shedReasons, updates: {}, overshootStats: null };
+    return { shedSet, shedReasons, steppedDesiredStepByDeviceId, updates: {}, overshootStats: null };
   }
 
   // Type narrowing: headroom is guaranteed to be non-null here due to shouldPlanShedding check
   if (context.headroom === null) {
-    return { shedSet, shedReasons, updates: {}, overshootStats: null };
+    return { shedSet, shedReasons, steppedDesiredStepByDeviceId, updates: {}, overshootStats: null };
   }
   const needed = -context.headroom;
   deps.logDebug(
@@ -120,16 +146,24 @@ function planShedding(
     state,
     deps,
   });
-  const result = selectShedDevices(candidates, needed, shedReason);
+  const result = selectShedDevices({
+    candidates,
+    needed,
+    reason: shedReason,
+    deps,
+  });
   for (const id of result.shedSet) {
     shedSet.add(id);
   }
   for (const [id, reason] of result.shedReasons) {
     shedReasons.set(id, reason);
   }
+  for (const [id, stepId] of result.steppedDesiredStepByDeviceId) {
+    steppedDesiredStepByDeviceId.set(id, stepId);
+  }
 
   if (shedSet.size === 0) {
-    return { shedSet, shedReasons, updates: {}, overshootStats: null };
+    return { shedSet, shedReasons, steppedDesiredStepByDeviceId, updates: {}, overshootStats: null };
   }
   const updates = {
     lastOvershootMs: Date.now(),
@@ -140,6 +174,7 @@ function planShedding(
   return {
     shedSet,
     shedReasons,
+    steppedDesiredStepByDeviceId,
     updates,
     overshootStats: {
       needed,
@@ -166,42 +201,88 @@ function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
     // Budget exemption only bypasses daily soft-limit control. Capacity shedding
     // still considers the device because hard-cap protection remains in force.
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
-    .map((d) => addCandidatePower(d, deps.getPriorityForDevice))
-    .filter((candidate): candidate is BaseShedCandidate => candidate !== null)
-    .map((candidate) => addRecentRestoreState(candidate, state, nowTs, needed, deps.logDebug))
+    .map((d) => addCandidatePower(d, state, nowTs, needed, deps))
+    .filter((candidate): candidate is ShedCandidate => candidate !== null)
     .filter((d) => isNotAtShedTemperature(d, deps.getShedBehavior))
     .sort(sortCandidates);
 }
 
 function addCandidatePower(
   device: PlanInputDevice,
-  getPriority: (deviceId: string) => number,
-): BaseShedCandidate | null {
+  state: PlanEngineState,
+  nowTs: number,
+  needed: number,
+  deps: Pick<SheddingDeps, 'getPriorityForDevice' | 'getShedBehavior' | 'logDebug'>,
+): ShedCandidate | null {
+  const priority = deps.getPriorityForDevice(device.id);
+  const recentlyRestored = resolveRecentRestoreState(device, state, nowTs, needed, deps.logDebug);
+  if (isSteppedLoadDevice(device)) {
+    const shedBehavior = deps.getShedBehavior(device.id);
+    if (shedBehavior.action !== 'set_step') {
+      const power = resolveCandidatePower(device);
+      if (power === null || power <= 0) return null;
+      return {
+        ...device,
+        kind: 'binary',
+        priority,
+        recentlyRestored,
+        effectivePower: power,
+      };
+    }
+    const targetStep = getSteppedLoadShedTargetStep({
+      device,
+      shedAction: 'set_step',
+      shedStepId: shedBehavior.stepId,
+      currentDesiredStepId: device.selectedStepId,
+    });
+    if (!targetStep || !device.selectedStepId || targetStep.id === device.selectedStepId) return null;
+    const effectivePower = resolveSteppedLoadImmediateReliefKw({
+      device,
+      fromStepId: device.selectedStepId,
+      toStepId: targetStep.id,
+    });
+    if (effectivePower <= 0) return null;
+    return {
+      ...device,
+      kind: 'stepped',
+      priority,
+      recentlyRestored,
+      effectivePower,
+      fromStepId: device.selectedStepId,
+      toStepId: targetStep.id,
+    };
+  }
   const power = resolveCandidatePower(device);
   if (power === null || power <= 0) return null;
-  const priority = getPriority(device.id);
-  return { ...device, priority, effectivePower: power };
+  return {
+    ...device,
+    kind: 'binary',
+    priority,
+    recentlyRestored,
+    effectivePower: power,
+  };
 }
 
 function isNotAtShedTemperature(
   device: ShedCandidate,
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null },
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null },
 ): boolean {
+  if (device.kind === 'stepped') return true;
   const shedBehavior = getShedBehavior(device.id);
   if (shedBehavior.action !== 'set_temperature' || shedBehavior.temperature === null) return true;
   const currentTarget = device.targets?.[0]?.value;
   return !(typeof currentTarget === 'number' && currentTarget === shedBehavior.temperature);
 }
 
-function addRecentRestoreState(
-  device: BaseShedCandidate,
+function resolveRecentRestoreState(
+  device: Pick<PlanInputDevice, 'id' | 'name'>,
   state: PlanEngineState,
   nowTs: number,
   needed: number,
   logDebug: (...args: unknown[]) => void,
-): ShedCandidate {
+): boolean {
   const lastRestore = state.lastDeviceRestoreMs[device.id];
-  if (!lastRestore) return { ...device, recentlyRestored: false };
+  if (!lastRestore) return false;
   const sinceRestoreMs = nowTs - lastRestore;
   const recentlyRestored = sinceRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
   const overshootSevere = needed > RECENT_RESTORE_OVERSHOOT_BYPASS_KW;
@@ -211,9 +292,9 @@ function addRecentRestoreState(
       + `(recently restored ${Math.round(sinceRestoreMs / 1000)}s ago, `
       + `overshoot ${needed.toFixed(2)}kW)`,
     );
-    return { ...device, recentlyRestored: true };
+    return true;
   }
-  return { ...device, recentlyRestored: false };
+  return false;
 }
 
 function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
@@ -226,22 +307,41 @@ function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
   return b.effectivePower - a.effectivePower;
 }
 
-function selectShedDevices(
-  candidates: ShedCandidate[],
-  needed: number,
-  reason: string,
-): { shedSet: Set<string>; shedReasons: Map<string, string> } {
+function selectShedDevices(params: {
+  candidates: ShedCandidate[];
+  needed: number;
+  reason: string;
+  deps: SheddingDeps;
+}): {
+  shedSet: Set<string>;
+  shedReasons: Map<string, string>;
+  steppedDesiredStepByDeviceId: Map<string, string>;
+} {
+  const {
+    candidates,
+    needed,
+    reason,
+    deps,
+  } = params;
   const shedSet = new Set<string>();
   const shedReasons = new Map<string, string>();
+  const steppedDesiredStepByDeviceId = new Map<string, string>();
   let remaining = needed;
-  for (const candidate of candidates) {
-    if (candidate.effectivePower <= 0) continue;
+  for (const nextCandidate of candidates) {
     if (remaining <= 0) break;
-    shedSet.add(candidate.id);
-    shedReasons.set(candidate.id, reason);
-    remaining -= candidate.effectivePower;
+    if (nextCandidate.effectivePower <= 0) continue;
+    shedSet.add(nextCandidate.id);
+    shedReasons.set(nextCandidate.id, reason);
+    if (nextCandidate.kind === 'stepped') {
+      steppedDesiredStepByDeviceId.set(nextCandidate.id, nextCandidate.toStepId);
+      deps.logDebug(
+        `Plan: stepping down ${nextCandidate.name} ${nextCandidate.fromStepId} -> ${nextCandidate.toStepId} `
+        + `(~${nextCandidate.effectivePower.toFixed(2)}kW relief)`,
+      );
+    }
+    remaining -= nextCandidate.effectivePower;
   }
-  return { shedSet, shedReasons };
+  return { shedSet, shedReasons, steppedDesiredStepByDeviceId };
 }
 
 async function handleShortfallCheck(
@@ -267,6 +367,7 @@ async function updateGuardState(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
   softLimitSource: PlanContext['softLimitSource'];
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   capacityGuard: CapacityGuard | undefined;
 }): Promise<{ sheddingActive: boolean }> {
   const {
@@ -276,6 +377,7 @@ async function updateGuardState(params: {
     devices,
     shedSet,
     softLimitSource,
+    getShedBehavior,
     capacityGuard,
   } = params;
   if (shouldActivateShedding(headroom, shedSet)) {
@@ -286,6 +388,7 @@ async function updateGuardState(params: {
       limitSource: softLimitSource,
       total,
       capacitySoftLimit,
+      getShedBehavior,
     });
     const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
     const deficitKw = computeShortfallDeficitKw(total, shortfallThreshold);
@@ -326,6 +429,7 @@ function countRemainingCandidates(params: {
   limitSource: PlanContext['softLimitSource'];
   total: number | null;
   capacitySoftLimit: number;
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): number {
   const {
     devices,
@@ -334,6 +438,7 @@ function countRemainingCandidates(params: {
     limitSource,
     total,
     capacitySoftLimit,
+    getShedBehavior,
   } = params;
   if (headroom === null || headroom >= 0) return 0;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
@@ -341,6 +446,20 @@ function countRemainingCandidates(params: {
     .filter((d) => d.controllable !== false && d.currentOn !== false && !shedSet.has(d.id))
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
     .filter((d) => {
+      if (isSteppedLoadDevice(d)) {
+        const shedBehavior = getShedBehavior(d.id);
+        if (shedBehavior.action !== 'set_step') {
+          const power = resolveCandidatePower(d);
+          return power !== null && power > 0;
+        }
+        const targetStep = getSteppedLoadShedTargetStep({
+          device: d,
+          shedAction: 'set_step',
+          shedStepId: shedBehavior.stepId,
+          currentDesiredStepId: d.selectedStepId,
+        });
+        return Boolean(targetStep && targetStep.id !== d.selectedStepId);
+      }
       const power = resolveCandidatePower(d);
       return power !== null && power > 0;
     })

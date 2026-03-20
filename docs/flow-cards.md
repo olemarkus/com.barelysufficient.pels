@@ -62,13 +62,13 @@ Use **Set operating mode** from schedules or presence events to move between com
 
 ### Stepped load control
 
-For EV chargers, water heaters, and similar devices:
+For EV chargers, water heaters, and similar devices using the built-in stepped-load model:
 
-1. Test for headroom from highest level to lowest level.
-2. Set the device to the strongest level that fits.
-3. Immediately update expected power so PELS knows the new draw.
+1. Configure the step list in the PELS device settings.
+2. Use **Desired stepped load changed for [device]** to map PELS intent to vendor actions.
+3. Report the resulting step back through one of the stepped-load feedback cards.
 
-The full worked example lives in [Manage stepped device power](/how-to-headroom-expected-power-flow-control).
+The full worked example lives in [Wire a stepped load device](/how-to-headroom-expected-power-flow-control).
 
 ### Price feed import
 

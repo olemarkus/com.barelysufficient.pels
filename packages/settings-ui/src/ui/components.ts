@@ -342,6 +342,16 @@ export type CheckboxFieldResult = {
     input: HTMLInputElement;
 };
 
+export type FieldOptions = {
+    label: string;
+    control: HTMLElement;
+    hint?: string;
+    className?: string;
+    element?: 'div' | 'label';
+    id?: string;
+    hidden?: boolean;
+};
+
 /**
  * Creates a labeled checkbox with optional hint text (.field.checkbox-field pattern).
  * Returns the wrapper element and the input so callers can read/set .checked directly.
@@ -376,6 +386,41 @@ export const createCheckboxField = (options: CheckboxFieldOptions): CheckboxFiel
     wrapper.appendChild(content);
 
     return { element: wrapper, input };
+};
+
+/**
+ * Creates a standard labeled field wrapper with optional hint text.
+ */
+export const createField = (options: FieldOptions): HTMLElement => {
+    const {
+        label,
+        control,
+        hint,
+        className = '',
+        element = 'label',
+        id,
+        hidden = false,
+    } = options;
+
+    const wrapper = document.createElement(element);
+    wrapper.className = ['field', className].filter(Boolean).join(' ');
+    if (id) wrapper.id = id;
+    wrapper.hidden = hidden;
+
+    const labelEl = document.createElement('span');
+    labelEl.className = 'field__label';
+    labelEl.textContent = label;
+    wrapper.appendChild(labelEl);
+    wrapper.appendChild(control);
+
+    if (hint) {
+        const hintEl = document.createElement('small');
+        hintEl.className = 'field__hint';
+        hintEl.textContent = hint;
+        wrapper.appendChild(hintEl);
+    }
+
+    return wrapper;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

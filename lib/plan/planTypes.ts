@@ -1,7 +1,13 @@
 import type { HeadroomCardCooldownSource } from './planHeadroomDevice';
-import type { TargetCapabilitySnapshot } from '../utils/types';
+import type {
+  DeviceControlModel,
+  SteppedLoadActualStepSource,
+  SteppedLoadCommandStatus,
+  SteppedLoadProfile,
+  TargetCapabilitySnapshot,
+} from '../utils/types';
 
-export type ShedAction = 'turn_off' | 'set_temperature';
+export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
 export type PendingTargetObservationSource =
   | 'rebuild'
@@ -20,6 +26,7 @@ export type PendingTargetCommandSummary = {
 export type ShedBehavior = {
   action: ShedAction;
   temperature?: number;
+  stepId?: string;
 };
 
 export type DevicePlanDevice = {
@@ -29,20 +36,32 @@ export type DevicePlanDevice = {
   plannedState: string;
   currentTarget: unknown;
   plannedTarget: number | null;
+  controlModel?: DeviceControlModel;
+  steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
+  desiredStepId?: string;
+  lastDesiredStepId?: string;
+  actualStepId?: string;
+  assumedStepId?: string;
+  actualStepSource?: SteppedLoadActualStepSource;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   evChargingState?: string;
   priority?: number;
   powerKw?: number;
   expectedPowerKw?: number;
-  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
+  planningPowerKw?: number;
+  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default' | 'step-planning';
   measuredPowerKw?: number;
   reason?: string;
   zone?: string;
   controllable?: boolean;
   budgetExempt?: boolean;
   currentTemperature?: number;
+  stepCommandPending?: boolean;
+  stepCommandStatus?: SteppedLoadCommandStatus;
   shedAction?: ShedAction;
   shedTemperature?: number | null;
+  shedStepId?: string | null;
   available?: boolean;
   headroomCardBlocked?: boolean;
   headroomCardCooldownSec?: number | null;
@@ -80,6 +99,13 @@ export type PlanInputDevice = {
   name: string;
   targets: TargetCapabilitySnapshot[];
   deviceType?: 'temperature' | 'onoff';
+  controlModel?: DeviceControlModel;
+  steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
+  desiredStepId?: string;
+  actualStepId?: string;
+  assumedStepId?: string;
+  actualStepSource?: SteppedLoadActualStepSource;
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   priority?: number;
@@ -87,7 +113,8 @@ export type PlanInputDevice = {
   evChargingState?: string;
   powerKw?: number;
   expectedPowerKw?: number;
-  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
+  planningPowerKw?: number;
+  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default' | 'step-planning';
   measuredPowerKw?: number;
   currentTemperature?: number;
   controllable?: boolean;
@@ -95,4 +122,6 @@ export type PlanInputDevice = {
   budgetExempt?: boolean;
   available?: boolean;
   zone?: string;
+  stepCommandPending?: boolean;
+  stepCommandStatus?: SteppedLoadCommandStatus;
 };

@@ -14,17 +14,31 @@ import {
   computeRestoreBufferKw,
   estimateRestorePower,
 } from './planRestoreSwap';
-import { getInactiveReason, getOffDevices, getOnDevices, markOffDevicesStayOff } from './planRestoreDevices';
+import {
+  getInactiveReason,
+  getOffDevices,
+  getOnDevices,
+  getSteppedRestoreCandidates,
+  markOffDevicesStayOff,
+} from './planRestoreDevices';
 import {
   applyActivationPenalty,
   syncActivationPenaltyState,
 } from './planActivationBackoff';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { buildRestoreTiming, shouldPlanRestores, type RestoreTiming } from './planRestoreTiming';
+import {
+  getSteppedLoadNextRestoreStep,
+  resolveSteppedLoadRestoreDeltaKw,
+} from './planSteppedLoad';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
-  getShedBehavior: (deviceId: string) => { action: 'turn_off' | 'set_temperature'; temperature: number | null };
+  getShedBehavior: (deviceId: string) => {
+    action: 'turn_off' | 'set_temperature' | 'set_step';
+    temperature: number | null;
+    stepId: string | null;
+  };
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
@@ -86,6 +100,20 @@ export function applyRestorePlan(params: {
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
     }
+
+    const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
+    for (const dev of steppedDevices) {
+      const result = planRestoreForSteppedDevice({
+        dev,
+        deviceMap,
+        state,
+        timing,
+        availableHeadroom,
+        restoredOneThisCycle,
+      });
+      availableHeadroom = result.availableHeadroom;
+      restoredOneThisCycle = result.restoredOneThisCycle;
+    }
   } else if (context.headroomRaw === null) {
     markOffDevicesStayOff({
       deviceMap,
@@ -115,6 +143,70 @@ export function applyRestorePlan(params: {
     availableHeadroom,
     restoredOneThisCycle,
     ...timing,
+  };
+}
+
+function planRestoreForSteppedDevice(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  state: PlanEngineState;
+  timing: Pick<RestoreTiming, 'restoreCooldownSeconds'>;
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const {
+    dev,
+    deviceMap,
+    state,
+    timing,
+    availableHeadroom,
+    restoredOneThisCycle,
+  } = params;
+
+  if (restoredOneThisCycle) {
+    setDevice(deviceMap, dev.id, {
+      reason: `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`,
+    });
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  if (hasOtherDevicesPendingRecovery(deviceMap, dev.id, state)) {
+    setDevice(deviceMap, dev.id, {
+      reason: 'waiting for other devices to recover',
+    });
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  const nextStep = getSteppedLoadNextRestoreStep(dev);
+  if (!nextStep || !dev.selectedStepId) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  const deltaKw = resolveSteppedLoadRestoreDeltaKw({
+    device: dev,
+    fromStepId: dev.selectedStepId,
+    toStepId: nextStep.id,
+  });
+  if (deltaKw <= 0) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  const restoreBuffer = computeRestoreBufferKw(deltaKw);
+  const needed = deltaKw + restoreBuffer;
+  if (availableHeadroom < needed) {
+    setDevice(deviceMap, dev.id, {
+      reason: `insufficient headroom (need ${needed.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`,
+    });
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  setDevice(deviceMap, dev.id, {
+    desiredStepId: nextStep.id,
+    reason: `restore ${dev.selectedStepId} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
+  });
+  return {
+    availableHeadroom: availableHeadroom - needed,
+    restoredOneThisCycle: true,
   };
 }
 
@@ -394,4 +486,43 @@ function setDevice(
   const current = deviceMap.get(id);
   if (!current) return;
   deviceMap.set(id, { ...current, ...updates });
+}
+
+function hasOtherDevicesPendingRecovery(
+  deviceMap: Map<string, DevicePlanDevice>,
+  steppedDeviceId: string,
+  state: Pick<PlanEngineState, 'lastDeviceShedMs'>,
+): boolean {
+  for (const device of deviceMap.values()) {
+    if (!shouldBlockSteppedRestoreForDevice(device, steppedDeviceId)) continue;
+    if (isDevicePendingRecovery(device, state)) return true;
+  }
+  return false;
+}
+
+function shouldBlockSteppedRestoreForDevice(
+  device: DevicePlanDevice,
+  steppedDeviceId: string,
+): boolean {
+  return device.id !== steppedDeviceId
+    && device.controllable !== false
+    && !getInactiveReason(device);
+}
+
+function isDevicePendingRecovery(
+  device: DevicePlanDevice,
+  state: Pick<PlanEngineState, 'lastDeviceShedMs'>,
+): boolean {
+  if (device.plannedState === 'shed') return true;
+  if (!state.lastDeviceShedMs[device.id] || device.plannedState !== 'keep') return false;
+  return device.currentState === 'off'
+    || device.currentState === 'unknown'
+    || isTargetRestorePending(device);
+}
+
+function isTargetRestorePending(device: DevicePlanDevice): boolean {
+  return device.shedAction === 'set_temperature'
+    && typeof device.plannedTarget === 'number'
+    && device.currentTarget !== device.plannedTarget
+    && device.pendingTargetCommand?.desired === device.plannedTarget;
 }

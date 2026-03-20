@@ -132,6 +132,8 @@ export const deviceDetailClose = qs('#device-detail-close') as HTMLButtonElement
 export const deviceDetailManaged = document.querySelector('#device-detail-managed') as HTMLInputElement;
 export const deviceDetailControllable = document.querySelector('#device-detail-controllable') as HTMLInputElement;
 export const deviceDetailPriceOpt = document.querySelector('#device-detail-price-opt') as HTMLInputElement;
+export const deviceDetailControlModelRow = qs('#device-detail-control-model-row');
+export const deviceDetailControlModel = document.querySelector('#device-detail-control-model') as HTMLSelectElement;
 export const deviceDetailModes = qs('#device-detail-modes');
 export const deviceDetailDeltaSection = qs('#device-detail-delta-section');
 export const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement;
@@ -139,6 +141,19 @@ export const deviceDetailExpensiveDelta = document.querySelector('#device-detail
 export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
 export const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
 export const deviceDetailShedTemp = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
+export const deviceDetailShedStepRow = qs('#device-detail-overshoot-step-row');
+export const deviceDetailShedStep = document.querySelector('#device-detail-overshoot-step') as HTMLSelectElement;
+export const deviceDetailSteppedSection = qs('#device-detail-stepped-section');
+export const deviceDetailSteppedSteps = qs('#device-detail-stepped-steps');
+export const deviceDetailSteppedAddStep = document.querySelector(
+  '#device-detail-stepped-add-step',
+) as HTMLButtonElement;
+export const deviceDetailSteppedSave = document.querySelector(
+  '#device-detail-stepped-save',
+) as HTMLButtonElement;
+export const deviceDetailSteppedReset = document.querySelector(
+  '#device-detail-stepped-reset',
+) as HTMLButtonElement;
 export const deviceDetailDiagnosticsDisclosure = document.querySelector(
   '#device-detail-diagnostics-disclosure',
 ) as HTMLDetailsElement | null;

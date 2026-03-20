@@ -218,6 +218,63 @@ describe('buildSheddingPlan', () => {
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 2);
   });
 
+  it('treats stepped loads with temperature shedding like target-based shed devices instead of stepping them down', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'dev-stepped',
+        name: 'Stepped Heater',
+        deviceType: 'temperature',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'max',
+        targets: [{ id: 'target_temperature', value: 65, unit: 'C' }],
+        expectedPowerKw: 3,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 3,
+        softLimit: 2.4,
+        capacitySoftLimit: 2.4,
+        headroomRaw: -0.6,
+        headroom: -0.6,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: 55, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('dev-stepped')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.size).toBe(0);
+  });
+
   it('checks shortfall in daily mode when hard-cap deficit exists and no candidates remain', async () => {
     const state = createPlanEngineState();
 

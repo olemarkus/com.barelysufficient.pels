@@ -36,7 +36,7 @@ export type PlanEngineDeps = {
   isCurrentHourExpensive: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null };
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getPriorityForDevice: (deviceId: string) => number;
   getDynamicSoftLimitOverride?: () => number | null;
   logTargetRetryComparison?: (params: {
@@ -52,6 +52,12 @@ export type PlanEngineDeps = {
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
+  markSteppedLoadDesiredStepIssued: (params: {
+    deviceId: string;
+    desiredStepId: string;
+    previousStepId?: string;
+    issuedAtMs?: number;
+  }) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -101,6 +107,7 @@ export class PlanEngine {
       getOperatingMode: deps.getOperatingMode,
       getShedBehavior: deps.getShedBehavior,
       updateLocalSnapshot: deps.updateLocalSnapshot,
+      markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
       logTargetRetryComparison: deps.logTargetRetryComparison,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
       deviceDiagnostics: deps.deviceDiagnostics,
@@ -180,6 +187,12 @@ export class PlanEngine {
 
   public hasPendingTargetCommands(): boolean {
     return Object.keys(this.state.pendingTargetCommands).length > 0;
+  }
+
+  public hasPendingTargetCommandsOlderThan(thresholdMs: number): boolean {
+    const nowMs = Date.now();
+    return Object.values(this.state.pendingTargetCommands)
+      .some((pending) => (nowMs - pending.startedMs) >= thresholdMs);
   }
 
   public hasPendingBinaryCommands(): boolean {

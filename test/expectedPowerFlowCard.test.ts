@@ -99,6 +99,40 @@ describe('Expected power flow card', () => {
     await expect(runAction({ device: { id: 'dev-2' }, power_w: 1200 })).rejects.toThrow('Device already has load configured in settings');
   });
 
+  it('rejects invalid payloads and stepped-load devices', async () => {
+    const steppedDevice = new MockDevice('dev-step', 'Stepped Heater', ['onoff', 'measure_power']);
+    const plainDevice = new MockDevice('dev-plain', 'Plain Heater', ['onoff', 'measure_power']);
+
+    setMockDrivers({ driverA: new MockDriver('driverA', [steppedDevice, plainDevice]) });
+    mockHomeyInstance.settings.set('device_control_profiles', {
+      'dev-step': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-step': true, 'dev-plain': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-step': true, 'dev-plain': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
+    await expect(runAction({ power_w: 1000 })).rejects.toThrow('Device must be provided');
+    await expect(runAction({ device: { id: 'dev-plain' }, power_w: 0 })).rejects.toThrow(
+      'Expected power must be a positive number',
+    );
+    await expect(runAction({ device: { id: 'dev-step' }, power_w: 1000 })).rejects.toThrow(
+      'Stepped load devices use configured planning power per step',
+    );
+
+    const actionAutocomplete = mockHomeyInstance.flow._actionCardAutocompleteListeners.set_expected_power_usage?.device;
+    await expect(actionAutocomplete?.('plain')).resolves.toEqual([{ id: 'dev-plain', name: 'Plain Heater' }]);
+    await expect(actionAutocomplete?.('missing')).resolves.toEqual([]);
+  });
+
   it('uses settings.load before overrides or measurements, then newest override/measurement, else 1kW', async () => {
     const device = new MockDevice('dev-3', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     device.setSettings({ load: 700 });

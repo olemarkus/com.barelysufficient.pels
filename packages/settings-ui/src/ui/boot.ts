@@ -78,6 +78,7 @@ import {
   loadDailyBudgetTuningSettings,
 } from './dailyBudgetTuning';
 import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail';
+import { loadDeviceControlProfiles } from './deviceControlProfiles';
 import {
   initAdvancedDeviceCleanupHandlers,
   initAdvancedDeviceLoggerHandlers,
@@ -320,6 +321,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadDailyBudgetSettings(),
     loadDailyBudgetTuningSettings(),
     loadStaleDataStatus(),
+    loadDeviceControlProfiles(),
     loadShedBehaviors(),
     loadPriceOptimizationSettings(),
     loadPriceSettings(),

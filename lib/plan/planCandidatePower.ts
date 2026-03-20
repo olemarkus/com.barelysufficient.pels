@@ -1,6 +1,7 @@
 type PowerCandidate = {
   measuredPowerKw?: number;
   expectedPowerKw?: number;
+  planningPowerKw?: number;
   powerKw?: number;
 };
 
@@ -12,6 +13,8 @@ export function resolveCandidatePower(device: PowerCandidate): number | null {
   }
   const expectedPower = resolveExpectedOrConfiguredPower(device.expectedPowerKw);
   if (expectedPower !== null) return expectedPower;
+  const planningPower = resolveExpectedOrConfiguredPower(device.planningPowerKw);
+  if (planningPower !== null) return planningPower;
   const configuredPower = resolveExpectedOrConfiguredPower(device.powerKw);
   if (configuredPower !== null) return configuredPower;
   return DEFAULT_FALLBACK_POWER_KW;

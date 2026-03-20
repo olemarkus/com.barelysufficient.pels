@@ -11,6 +11,7 @@ export type PendingTargetCommandState = {
   lastObservedValue?: unknown;
   lastObservedSource?: PendingTargetObservationSource;
   lastObservedAtMs?: number;
+  lastWaitingLogAtMs?: number;
 };
 
 export type PlanEngineState = {

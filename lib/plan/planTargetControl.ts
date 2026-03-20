@@ -1,4 +1,7 @@
-import { TARGET_COMMAND_RETRY_DELAYS_MS } from './planConstants';
+import {
+  TARGET_COMMAND_RETRY_DELAYS_MS,
+  TARGET_WAITING_LOG_REPEAT_MS,
+} from './planConstants';
 import type { PendingTargetCommandState, PlanEngineState } from './planState';
 import type {
   DevicePlan,
@@ -67,6 +70,7 @@ export function recordPendingTargetCommandAttempt(params: {
     }),
     lastObservedSource: isRetry ? previous?.lastObservedSource : undefined,
     lastObservedAtMs: isRetry ? previous?.lastObservedAtMs : undefined,
+    lastWaitingLogAtMs: isRetry ? previous?.lastWaitingLogAtMs : undefined,
   };
   state.pendingTargetCommands[deviceId] = entry;
   return entry;
@@ -146,6 +150,13 @@ export function syncPendingTargetCommands(params: {
       Object.is(pending.lastObservedValue, observedValue)
       && pending.lastObservedSource === source
     ) {
+      maybeLogRepeatedPendingConfirmation({
+        pending,
+        name: liveDevice.name || deviceId,
+        log,
+        source,
+        observedValue,
+      });
       continue;
     }
 
@@ -170,6 +181,7 @@ export function syncPendingTargetCommands(params: {
       observedValue,
     });
     if (log && waitingLog) {
+      pending.lastWaitingLogAtMs = Date.now();
       log(waitingLog);
     }
   }
@@ -291,4 +303,34 @@ function buildPendingConfirmationLogMessage(params: {
   return `Target still waiting for ${capabilityId} confirmation for ${name}: `
     + `observed ${formatObservedTarget(observedValue)} via ${source}; `
     + `expected ${desired}°C`;
+}
+
+function maybeLogRepeatedPendingConfirmation(params: {
+  pending: PendingTargetCommandState;
+  name: string;
+  log?: (message: string) => void;
+  source: PendingTargetObservationSource;
+  observedValue: unknown;
+}): void {
+  const {
+    pending,
+    name,
+    log,
+    source,
+    observedValue,
+  } = params;
+  if (!log) return;
+  const nowMs = Date.now();
+  if (
+    typeof pending.lastWaitingLogAtMs === 'number'
+    && (nowMs - pending.lastWaitingLogAtMs) < TARGET_WAITING_LOG_REPEAT_MS
+  ) {
+    return;
+  }
+  pending.lastWaitingLogAtMs = nowMs;
+  log(
+    `Target still waiting for ${pending.capabilityId} confirmation for ${name}: `
+    + `observed ${formatObservedTarget(observedValue)} via ${source}; `
+    + `expected ${pending.desired}°C`,
+  );
 }

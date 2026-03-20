@@ -68,7 +68,7 @@ export default defineConfig({
         text: 'Advanced Usage',
         items: [
           {
-            text: 'Manage Stepped Device Power',
+            text: 'Wire a Stepped Load Device',
             link: '/how-to-headroom-expected-power-flow-control',
           },
           { text: 'Daily Energy Budget', link: '/daily-budget' },
