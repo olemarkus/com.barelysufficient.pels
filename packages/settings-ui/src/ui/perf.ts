@@ -16,11 +16,9 @@ export type SettingsUiPerfSnapshot = {
   ready: boolean;
 };
 
-declare global {
-  interface Window {
-    __PELS_SETTINGS_UI_PERF__?: SettingsUiPerfSnapshot;
-  }
-}
+type SettingsUiPerfWindow = Window & {
+  __PELS_SETTINGS_UI_PERF__?: SettingsUiPerfSnapshot;
+};
 
 const createSnapshot = (): SettingsUiPerfSnapshot => ({
   homey: {
@@ -50,16 +48,17 @@ export const getSettingsUiPerfSnapshot = (): SettingsUiPerfSnapshot => {
   if (typeof window === 'undefined') {
     return fallbackSnapshot;
   }
-  if (!window.__PELS_SETTINGS_UI_PERF__) {
-    window.__PELS_SETTINGS_UI_PERF__ = createSnapshot();
+  const perfWindow = window as SettingsUiPerfWindow;
+  if (!perfWindow.__PELS_SETTINGS_UI_PERF__) {
+    perfWindow.__PELS_SETTINGS_UI_PERF__ = createSnapshot();
   }
-  return window.__PELS_SETTINGS_UI_PERF__;
+  return perfWindow.__PELS_SETTINGS_UI_PERF__;
 };
 
 export const resetSettingsUiPerf = () => {
   fallbackSnapshot = createSnapshot();
   if (typeof window !== 'undefined') {
-    window.__PELS_SETTINGS_UI_PERF__ = createSnapshot();
+    (window as SettingsUiPerfWindow).__PELS_SETTINGS_UI_PERF__ = createSnapshot();
   }
   if (typeof document !== 'undefined') {
     document.documentElement.dataset.settingsUiReady = 'false';

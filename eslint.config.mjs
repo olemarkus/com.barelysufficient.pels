@@ -6,6 +6,78 @@ import sonarjs from 'eslint-plugin-sonarjs';
 import unicorn from 'eslint-plugin-unicorn';
 import globals from 'globals';
 
+const sharedTypeScriptRules = {
+  '@typescript-eslint/no-explicit-any': 'error',
+  '@typescript-eslint/no-unsafe-assignment': 'warn',
+  '@typescript-eslint/no-unsafe-member-access': 'warn',
+  '@typescript-eslint/no-unsafe-call': 'warn',
+  '@typescript-eslint/consistent-type-definitions': ['warn', 'type'],
+  '@typescript-eslint/no-restricted-types': ['warn'],
+  '@typescript-eslint/no-unused-vars': ['error', {
+    argsIgnorePattern: '^_',
+    varsIgnorePattern: '^_',
+    caughtErrorsIgnorePattern: '^_',
+  }],
+  '@typescript-eslint/explicit-function-return-type': 'off',
+  '@typescript-eslint/no-floating-promises': 'error',
+  '@typescript-eslint/no-require-imports': 'off',
+};
+
+const sharedGeneralRules = {
+  'no-console': 'off',
+  'no-trailing-spaces': 'error',
+  'max-len': ['warn', { code: 120 }],
+  'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
+  'max-lines-per-function': ['warn', { max: 120, skipBlankLines: true, skipComments: true }],
+  'max-depth': ['warn', 4],
+  'max-nested-callbacks': ['warn', 3],
+  'max-params': ['warn', 5],
+  'max-statements': ['warn', 30],
+  'complexity': ['warn', 15],
+  'comma-dangle': ['error', 'always-multiline'],
+  'operator-linebreak': ['error', 'before'],
+  'no-else-return': 'warn',
+  'no-implicit-coercion': 'warn',
+  'no-multi-assign': 'warn',
+  'no-nested-ternary': 'warn',
+  'no-param-reassign': ['warn', { props: true }],
+  'prefer-const': 'warn',
+  'consistent-return': 'warn',
+};
+
+const sharedSonarRules = {
+  'sonarjs/cognitive-complexity': ['warn', 15],
+  'sonarjs/no-duplicated-branches': 'warn',
+  'sonarjs/no-identical-functions': 'warn',
+  'sonarjs/no-inverted-boolean-check': 'warn',
+  'sonarjs/no-redundant-boolean': 'warn',
+  'sonarjs/no-small-switch': 'warn',
+};
+
+const nodeTypeScriptRules = {
+  ...sharedTypeScriptRules,
+  ...sharedGeneralRules,
+  ...sharedSonarRules,
+  'functional/immutable-data': ['warn', {
+    ignoreClasses: true,
+    ignoreMapsAndSets: true,
+  }],
+  'n/no-unsupported-features/node-builtins': ['error', {
+    version: '>=18.0.0',
+    ignores: ['fetch'],
+  }],
+  'n/no-unsupported-features/es-syntax': ['error', { version: '>=18.0.0', ignores: ['modules'] }],
+};
+
+const browserTypeScriptRules = {
+  ...sharedTypeScriptRules,
+  ...sharedGeneralRules,
+  ...sharedSonarRules,
+  'functional/immutable-data': 'off',
+  'n/no-unsupported-features/node-builtins': 'off',
+  'n/no-unsupported-features/es-syntax': 'off',
+};
+
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -31,6 +103,7 @@ export default tseslint.config(
       'packages/settings-ui/blob-report/**',
       '*.js',
       'settings/*.js',
+      'widgets/**/*.js',
       'test/screenshots/**',
       'packages/settings-ui/test/screenshots/**',
       'echarts-modules.d.ts',
@@ -91,7 +164,7 @@ export default tseslint.config(
   },
   {
     files: ['**/*.ts'],
-    ignores: ['packages/**/*.ts'],
+    ignores: ['packages/**/*.ts', 'widgets/**/*.ts'],
     plugins: {
       functional,
       n: nodePlugin,
@@ -111,65 +184,31 @@ export default tseslint.config(
     linterOptions: {
       reportUnusedDisableDirectives: 'warn',
     },
-    rules: {
-      // TypeScript rules
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unsafe-assignment': 'warn',
-      '@typescript-eslint/no-unsafe-member-access': 'warn',
-      '@typescript-eslint/no-unsafe-call': 'warn',
-      '@typescript-eslint/consistent-type-definitions': ['warn', 'type'],
-      '@typescript-eslint/no-restricted-types': ['warn'],
-      '@typescript-eslint/no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_',
-        caughtErrorsIgnorePattern: '^_',
-      }],
-      '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/no-require-imports': 'off',
-
-      // General rules
-      'no-console': 'off',
-      'no-trailing-spaces': 'error',
-      'max-len': ['warn', { code: 120 }],
-      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
-      'max-lines-per-function': ['warn', { max: 120, skipBlankLines: true, skipComments: true }],
-      'max-depth': ['warn', 4],
-      'max-nested-callbacks': ['warn', 3],
-      'max-params': ['warn', 5],
-      'max-statements': ['warn', 30],
-      'complexity': ['warn', 15],
-      'comma-dangle': ['error', 'always-multiline'],
-      'operator-linebreak': ['error', 'before'],
-      'no-else-return': 'warn',
-      'no-implicit-coercion': 'warn',
-      'no-multi-assign': 'warn',
-      'no-nested-ternary': 'warn',
-      'no-param-reassign': ['warn', { props: true }],
-      'prefer-const': 'warn',
-      'consistent-return': 'warn',
-
-      // SonarJS - code smells and duplication risks
-      'sonarjs/cognitive-complexity': ['warn', 15],
-      'sonarjs/no-duplicated-branches': 'warn',
-      'sonarjs/no-identical-functions': 'warn',
-      'sonarjs/no-inverted-boolean-check': 'warn',
-      'sonarjs/no-redundant-boolean': 'warn',
-      'sonarjs/no-small-switch': 'warn',
-
-      // Functional - discourage mutation in calculation-heavy code
-      'functional/immutable-data': ['warn', {
-        ignoreClasses: true,
-        ignoreMapsAndSets: true,
-      }],
-
-      // Node rules - allow fetch which is stable in Node 18 (behind --experimental-fetch in older)
-      'n/no-unsupported-features/node-builtins': ['error', {
-        version: '>=18.0.0',
-        ignores: ['fetch'],
-      }],
-      'n/no-unsupported-features/es-syntax': ['error', { version: '>=18.0.0', ignores: ['modules'] }],
+    rules: nodeTypeScriptRules,
+  },
+  {
+    files: ['widgets/*/src/**/*.ts'],
+    ignores: ['widgets/*/src/public/**/*.ts'],
+    plugins: {
+      functional,
+      n: nodePlugin,
+      sonarjs,
+      unicorn,
     },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+      parserOptions: {
+        project: './tsconfig.widgets.json',
+      },
+    },
+    linterOptions: {
+      reportUnusedDisableDirectives: 'warn',
+    },
+    rules: nodeTypeScriptRules,
   },
   {
     files: ['docs/.vitepress/**/*.ts', 'docs/.vitepress/**/*.mts'],
@@ -296,53 +335,33 @@ export default tseslint.config(
       unicorn,
     },
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 2022,
       sourceType: 'module',
       parserOptions: {
         project: './packages/settings-ui/tsconfig.json',
       },
     },
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unsafe-assignment': 'warn',
-      '@typescript-eslint/no-unsafe-member-access': 'warn',
-      '@typescript-eslint/no-unsafe-call': 'warn',
-      '@typescript-eslint/no-floating-promises': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_',
-      }],
-      'no-trailing-spaces': 'error',
-      'max-len': ['warn', { code: 120 }],
-      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
-      'max-lines-per-function': ['warn', { max: 120, skipBlankLines: true, skipComments: true }],
-      'max-depth': ['warn', 4],
-      'max-nested-callbacks': ['warn', 3],
-      'max-params': ['warn', 5],
-      'max-statements': ['warn', 30],
-      'complexity': ['warn', 15],
-      'comma-dangle': ['error', 'always-multiline'],
-      'no-else-return': 'warn',
-      'no-implicit-coercion': 'warn',
-      'no-multi-assign': 'warn',
-      'no-nested-ternary': 'warn',
-      'no-param-reassign': ['warn', { props: true }],
-      'prefer-const': 'warn',
-      'consistent-return': 'warn',
-      'sonarjs/cognitive-complexity': ['warn', 15],
-      'sonarjs/no-duplicated-branches': 'warn',
-      'sonarjs/no-identical-functions': 'warn',
-      'sonarjs/no-inverted-boolean-check': 'warn',
-      'sonarjs/no-redundant-boolean': 'warn',
-      'sonarjs/no-small-switch': 'warn',
-      'functional/immutable-data': 'off',
-      // Disable Node.js specific rules for browser code
-      'n/no-unsupported-features/node-builtins': 'off',
-      'n/no-unsupported-features/es-syntax': 'off',
-    },
+    rules: browserTypeScriptRules,
   },
   {
-    files: ['packages/settings-ui/src/**/*.ts'],
+    files: ['widgets/*/src/public/**/*.ts'],
+    plugins: {
+      functional,
+      n: nodePlugin,
+      sonarjs,
+      unicorn,
+    },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      parserOptions: {
+        project: './tsconfig.widgets.json',
+      },
+    },
+    rules: browserTypeScriptRules,
+  },
+  {
+    files: ['packages/settings-ui/src/**/*.ts', 'widgets/*/src/public/**/*.ts'],
     languageOptions: {
       globals: {
         ...globals.browser,

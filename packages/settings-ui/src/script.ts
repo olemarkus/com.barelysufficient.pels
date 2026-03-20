@@ -1,3 +1,3 @@
 import { boot } from './ui/boot';
 
-boot();
+void boot();
