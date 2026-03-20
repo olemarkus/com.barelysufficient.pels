@@ -2,14 +2,13 @@
  * @jest-environment node
  */
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-
-const {
+import {
   buildPlanPriceWidgetPayload,
   resolveLabel,
   resolveLabelEvery,
   resolvePriceSeries,
   resolveWidgetTarget,
-} = require('../widgets/plan_budget/planPriceWidgetPayload.js');
+} from '../widgets/plan_budget/src/planPriceWidgetPayload';
 
 const buildDay = (bucketCount: number): DailyBudgetDayPayload => {
   const startUtc = Array.from({ length: bucketCount }, (_value, index) => (
@@ -160,11 +159,51 @@ describe('plan price widget payload', () => {
     expect(series).toEqual([null, 123]);
   });
 
+  test('handles empty price sources and invalid labels safely', () => {
+    expect(resolvePriceSeries({
+      bucketStartUtc: [],
+      bucketPrices: [],
+      combinedPrices: { prices: [{ startsAt: '2026-03-19T00:00:00.000Z', total: 123 }] },
+    })).toEqual([]);
+
+    expect(resolveLabel([], ['invalid-date'], 0)).toBe('');
+    expect(resolveLabel([], [], 0)).toBe('');
+  });
+
   test('resolves labels and intervals consistently', () => {
     expect(resolveLabel(['06:00', ''], ['2026-03-19T06:00:00.000Z', '2026-03-19T07:00:00.000Z'], 0)).toBe('06');
     expect(resolveLabel([':00'], [], 0)).toBe('');
     expect(resolveLabelEvery(24)).toBe(4);
     expect(resolveWidgetTarget('tomorrow')).toBe('tomorrow');
     expect(resolveWidgetTarget('unexpected')).toBe('today');
+  });
+
+  test('returns tomorrow pending when tomorrow exists but has no generated buckets yet', () => {
+    const today = buildDay(24);
+    const tomorrow = buildDay(0);
+    tomorrow.dateKey = '2026-03-20';
+    tomorrow.budget.enabled = true;
+
+    const snapshot: DailyBudgetUiPayload = {
+      days: {
+        [today.dateKey]: today,
+        [tomorrow.dateKey]: tomorrow,
+      },
+      todayKey: today.dateKey,
+      tomorrowKey: tomorrow.dateKey,
+    };
+
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot,
+      combinedPrices: null,
+      target: 'tomorrow',
+    });
+
+    expect(payload).toEqual({
+      state: 'empty',
+      target: 'tomorrow',
+      title: 'Budget and Price',
+      subtitle: 'Tomorrow plan not available yet',
+    });
   });
 });

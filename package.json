@@ -10,20 +10,21 @@
     "npm": "10.9.4"
   },
   "scripts": {
-    "build": "tsc && npm run build:settings && npm run sanitize:homey-build",
+    "build": "tsc && npm run build:settings && npm run build:widgets && npm run sanitize:homey-build",
     "build:settings": "npm --workspace @pels/settings-ui run build && node scripts/sync-settings-ui.mjs",
+    "build:widgets": "node scripts/build-widgets.mjs",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "bench:settings-ui:boot": "node scripts/benchmark-settings-ui-boot.mjs",
     "watch:settings": "npm run build:settings && esbuild packages/settings-ui/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
     "measure:settings-ui:homey": "node scripts/measure-settings-ui-homey.mjs",
-    "start": "npm run build:settings && homey app run --remote",
-    "install-app": "npm run build:settings && homey app install",
+    "start": "npm run build:settings && npm run build:widgets && homey app run --remote",
+    "install-app": "npm run build:settings && npm run build:widgets && homey app install",
     "lint": "eslint . --max-warnings=0",
     "lint:runtime": "eslint \"app.ts\" \"api.ts\" \"flowCards/**/*.ts\" \"drivers/**/*.ts\" \"lib/**/*.ts\" --max-warnings=0",
-    "lint:css": "stylelint \"packages/settings-ui/public/**/*.css\" --max-warnings=0",
-    "lint:html": "html-validate \"packages/settings-ui/public/**/*.html\" --max-warnings=0",
+    "lint:css": "stylelint \"packages/settings-ui/public/**/*.css\" \"widgets/**/*.css\" --max-warnings=0",
+    "lint:html": "html-validate \"packages/settings-ui/public/**/*.html\" \"widgets/**/*.html\" --max-warnings=0",
     "arch:check": "dependency-cruiser --config .dependency-cruiser.cjs app.ts flowCards drivers lib packages/settings-ui/src packages/contracts/src packages/shared-domain/src",
     "deadcode:check": "node scripts/check-dead-code.mjs",
     "sanitize:homey-build": "node scripts/sanitize-homey-build.mjs",
@@ -46,13 +47,13 @@
     "test:all": "npm run ci",
     "validate": "homey app validate && npm run package:check",
     "check": "npm run ci",
-    "start:local": "npm run build:settings && homey app run",
+    "start:local": "npm run build:settings && npm run build:widgets && homey app run",
     "prepare": "husky"
   },
   "lint-staged": {
     "**/*.ts": [
       "eslint --max-warnings=0 --no-warn-ignored",
-      "bash -c 'tsc --noEmit && tsc -p packages/settings-ui/tsconfig.json --noEmit'"
+      "bash -c 'tsc --noEmit && tsc -p packages/settings-ui/tsconfig.json --noEmit && tsc -p tsconfig.widgets.json --noEmit'"
     ],
     "**/*.css": [
       "stylelint --max-warnings=0"

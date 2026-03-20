@@ -156,7 +156,7 @@ const buildModeTargetInput = (device: TargetDeviceSnapshot, desired: number | nu
     if (Number.isFinite(value)) {
       tempInput.value = normalizeDeviceTargetValue(device, value).toString();
     }
-    applyTargetChange(device.id, tempInput.value);
+    void applyTargetChange(device.id, tempInput.value);
   });
   return tempInput;
 };
