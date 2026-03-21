@@ -1844,3 +1844,88 @@ describe('computeDynamicSoftLimit', () => {
     expect(mockHomeyInstance.settings.get('controllable_devices')).toEqual({ 'dev-1': true });
   });
 });
+
+describe('periodic snapshot refresh scheduling', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'clearImmediate', 'setInterval', 'clearInterval'] });
+    clearMockHomeyApiDeviceListeners();
+    mockHomeyInstance.settings.removeAllListeners();
+    mockHomeyInstance.settings.clear();
+    mockHomeyInstance.settings.set('price_scheme', 'flow');
+    mockHomeyInstance.api.clearRealtimeEvents();
+    mockHomeyInstance.flow._actionCardListeners = {};
+    mockHomeyInstance.flow._conditionCardListeners = {};
+    mockHomeyInstance.flow._triggerCardRunListeners = {};
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
+  });
+
+  afterEach(async () => {
+    await cleanupApps();
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('fires refresh at minute :25 and :55', async () => {
+    jest.setSystemTime(new Date('2026-03-21T10:00:00Z'));
+
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+
+    const app = createApp();
+    await initApp(app);
+    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const logSpy = jest.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
+
+    (app as any).startPeriodicSnapshotRefresh();
+
+    // Advance to :25 — should fire
+    jest.advanceTimersByTime(25 * 60 * 1000);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+
+    // Advance to :55 — should fire again
+    jest.advanceTimersByTime(30 * 60 * 1000);
+    expect(refreshSpy).toHaveBeenCalledTimes(2);
+    expect(logSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not fire at other minutes', async () => {
+    jest.setSystemTime(new Date('2026-03-21T10:00:00Z'));
+
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+
+    const app = createApp();
+    await initApp(app);
+    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+
+    (app as any).startPeriodicSnapshotRefresh();
+
+    // Advance 10 minutes — no scheduled refresh
+    jest.advanceTimersByTime(10 * 60 * 1000);
+    expect(refreshSpy).not.toHaveBeenCalled();
+  });
+
+  it('wraps to next hour when past :55', async () => {
+    jest.setSystemTime(new Date('2026-03-21T10:56:00Z'));
+
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+
+    const app = createApp();
+    await initApp(app);
+    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+
+    (app as any).startPeriodicSnapshotRefresh();
+
+    // Should not fire during remaining 4 minutes of the hour
+    jest.advanceTimersByTime(4 * 60 * 1000);
+    expect(refreshSpy).not.toHaveBeenCalled();
+
+    // Advance to next hour :25 (29 minutes from :56)
+    jest.advanceTimersByTime(25 * 60 * 1000);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+  });
+});

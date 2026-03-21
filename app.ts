@@ -85,7 +85,7 @@ import { emitSettingsUiPowerUpdatedForApp } from './lib/app/settingsUiAppRuntime
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
 import type { DeviceControlProfiles, SteppedLoadProfile } from './lib/utils/types';
-const SNAPSHOT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
@@ -118,7 +118,7 @@ class PelsApp extends Homey.App {
   private planEngine!: PlanEngine;
   private planService!: PlanService;
   private defaultComputeDynamicSoftLimit?: () => number;
-  private snapshotRefreshInterval?: ReturnType<typeof setInterval>;
+  private snapshotRefreshTimer?: ReturnType<typeof setTimeout>;
   private targetConfirmationPollInterval?: ReturnType<typeof setInterval>;
   private isSnapshotRefreshing = false;
   private snapshotRefreshPending = false;
@@ -492,7 +492,7 @@ class PelsApp extends Homey.App {
     if (this.powerTrackerSaveTimer) this.persistPowerTrackerState();
     if (this.powerTrackerPruneTimer) clearTimeout(this.powerTrackerPruneTimer);
     if (this.powerTrackerPruneInterval) clearInterval(this.powerTrackerPruneInterval);
-    if (this.snapshotRefreshInterval) clearInterval(this.snapshotRefreshInterval);
+    if (this.snapshotRefreshTimer) clearTimeout(this.snapshotRefreshTimer);
     if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
     if (this.powerSampleRebuildState.timer) clearTimeout(this.powerSampleRebuildState.timer);
     if (this.realtimeDeviceReconcileTimer) clearTimeout(this.realtimeDeviceReconcileTimer);
@@ -792,17 +792,34 @@ class PelsApp extends Homey.App {
     return (status?.priceLevel || this.planService?.getLastNotifiedPriceLevel() || PriceLevel.UNKNOWN) as PriceLevel;
   }
   private startPeriodicSnapshotRefresh(): void {
-    if (this.snapshotRefreshInterval) clearInterval(this.snapshotRefreshInterval);
-    this.snapshotRefreshInterval = setInterval(() => {
-      this.refreshTargetDevicesSnapshot({ targeted: true })
-        .catch((e) => this.error('Periodic snapshot refresh failed', e));
-      this.logPeriodicStatus();
-    }, SNAPSHOT_REFRESH_INTERVAL_MS);
+    if (this.snapshotRefreshTimer) clearTimeout(this.snapshotRefreshTimer);
+    this.scheduleNextSnapshotRefresh();
+
     if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
     this.targetConfirmationPollInterval = setInterval(() => {
       this.pollStuckTargetConfirmations()
         .catch((e) => this.error('Pending target confirmation poll failed', e));
     }, TARGET_CONFIRMATION_POLL_INTERVAL_MS);
+  }
+
+  private scheduleNextSnapshotRefresh(): void {
+    const now = this.getNow();
+    const currentMinute = now.getMinutes();
+    const nextMinute = SNAPSHOT_REFRESH_MINUTE_INTERVALS.find((m) => m > currentMinute);
+
+    const next = new Date(now);
+    if (nextMinute !== undefined) {
+      next.setMinutes(nextMinute, 0, 0);
+    } else {
+      next.setHours(now.getHours() + 1, SNAPSHOT_REFRESH_MINUTE_INTERVALS[0], 0, 0);
+    }
+
+    this.snapshotRefreshTimer = setTimeout(() => {
+      this.refreshTargetDevicesSnapshot({ targeted: true })
+        .catch((e) => this.error('Periodic snapshot refresh failed', e));
+      this.logPeriodicStatus();
+      this.scheduleNextSnapshotRefresh();
+    }, next.getTime() - now.getTime());
   }
 
   private async pollStuckTargetConfirmations(): Promise<void> {
