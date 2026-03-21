@@ -8,7 +8,9 @@ import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
   resolveSteppedLoadImmediateReliefKw,
+  resolveSteppedLoadSheddingTarget,
 } from './planSteppedLoad';
+import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
 import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
   RECENT_RESTORE_SHED_GRACE_MS,
@@ -44,12 +46,14 @@ type BaseShedCandidate = PlanInputDevice & {
   priority: number;
   effectivePower: number;
   recentlyRestored: boolean;
+  unconfirmedRelief: boolean;
 };
 type BinaryShedCandidate = BaseShedCandidate & { kind: 'binary' };
 type SteppedShedCandidate = BaseShedCandidate & {
   kind: 'stepped';
   fromStepId: string;
   toStepId: string;
+  preemptiveStepDown: boolean;
 };
 type ShedCandidate = BinaryShedCandidate | SteppedShedCandidate;
 
@@ -217,49 +221,84 @@ function addCandidatePower(
   const priority = deps.getPriorityForDevice(device.id);
   const recentlyRestored = resolveRecentRestoreState(device, state, nowTs, needed, deps.logDebug);
   if (isSteppedLoadDevice(device)) {
-    const shedBehavior = deps.getShedBehavior(device.id);
-    if (shedBehavior.action !== 'set_step') {
-      const power = resolveCandidatePower(device);
-      if (power === null || power <= 0) return null;
-      return {
-        ...device,
-        kind: 'binary',
-        priority,
-        recentlyRestored,
-        effectivePower: power,
-      };
-    }
-    const targetStep = getSteppedLoadShedTargetStep({
+    return buildSteppedCandidate({
       device,
-      shedAction: 'set_step',
-      shedStepId: shedBehavior.stepId,
-      currentDesiredStepId: device.selectedStepId,
-    });
-    if (!targetStep || !device.selectedStepId || targetStep.id === device.selectedStepId) return null;
-    const effectivePower = resolveSteppedLoadImmediateReliefKw({
-      device,
-      fromStepId: device.selectedStepId,
-      toStepId: targetStep.id,
-    });
-    if (effectivePower <= 0) return null;
-    return {
-      ...device,
-      kind: 'stepped',
       priority,
       recentlyRestored,
-      effectivePower,
-      fromStepId: device.selectedStepId,
-      toStepId: targetStep.id,
-    };
+      getShedBehavior: deps.getShedBehavior,
+    });
   }
   const power = resolveCandidatePower(device);
   if (power === null || power <= 0) return null;
+  const pendingBinary = state.pendingBinaryCommands[device.id];
   return {
     ...device,
     kind: 'binary',
     priority,
     recentlyRestored,
     effectivePower: power,
+    unconfirmedRelief: pendingBinary?.desired === false,
+  };
+}
+
+function buildSteppedCandidate(params: {
+  device: PlanInputDevice;
+  priority: number;
+  recentlyRestored: boolean;
+  getShedBehavior: SheddingDeps['getShedBehavior'];
+}): ShedCandidate | null {
+  const {
+    device,
+    priority,
+    recentlyRestored,
+    getShedBehavior,
+  } = params;
+  const shedBehavior = getShedBehavior(device.id);
+  if (shedBehavior.action !== 'set_step') {
+    const power = resolveCandidatePower(device);
+    if (power === null || power <= 0) return null;
+    return {
+      ...device,
+      kind: 'binary',
+      priority,
+      recentlyRestored,
+      effectivePower: power,
+      unconfirmedRelief: false,
+    };
+  }
+  const targetStep = getSteppedLoadShedTargetStep({
+    device,
+    shedAction: 'set_step',
+    shedStepId: shedBehavior.stepId,
+    currentDesiredStepId: device.selectedStepId,
+  });
+  const steppedTarget = resolveSteppedLoadSheddingTarget({
+    device,
+    targetStep,
+  });
+  if (!steppedTarget) return null;
+  const { steppedProfile, selectedStep, clampedTargetStep, hasUnconfirmedLowerDesiredStep } = steppedTarget;
+  const lowestActiveStep = getSteppedLoadRestoreStep(steppedProfile);
+  const effectivePower = resolveSteppedLoadImmediateReliefKw({
+    device,
+    fromStepId: selectedStep.id,
+    toStepId: clampedTargetStep.id,
+  });
+  if (effectivePower <= 0) return null;
+  return {
+    ...device,
+    kind: 'stepped',
+    priority,
+    recentlyRestored,
+    unconfirmedRelief: hasUnconfirmedLowerDesiredStep,
+    effectivePower,
+    fromStepId: selectedStep.id,
+    toStepId: clampedTargetStep.id,
+    preemptiveStepDown: Boolean(
+      lowestActiveStep
+      && selectedStep.id !== lowestActiveStep.id
+      && clampedTargetStep.planningPowerW >= lowestActiveStep.planningPowerW,
+    ),
   };
 }
 
@@ -298,6 +337,9 @@ function resolveRecentRestoreState(
 }
 
 function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
+  const aPreemptive = a.kind === 'stepped' && a.preemptiveStepDown;
+  const bPreemptive = b.kind === 'stepped' && b.preemptiveStepDown;
+  if (aPreemptive !== bPreemptive) return Number(bPreemptive) - Number(aPreemptive);
   const pa = a.priority ?? 100;
   const pb = b.priority ?? 100;
   if (pa !== pb) return pb - pa; // Higher number sheds first
@@ -338,7 +380,9 @@ function selectShedDevices(params: {
         `Plan: stepping down ${nextCandidate.name} ${nextCandidate.fromStepId} -> ${nextCandidate.toStepId} `
         + `(~${nextCandidate.effectivePower.toFixed(2)}kW relief)`,
       );
+      if (nextCandidate.preemptiveStepDown && !nextCandidate.unconfirmedRelief) break;
     }
+    if (nextCandidate.unconfirmedRelief) continue;
     remaining -= nextCandidate.effectivePower;
   }
   return { shedSet, shedReasons, steppedDesiredStepByDeviceId };
