@@ -275,7 +275,7 @@ describe('buildSheddingPlan', () => {
     expect(result.steppedDesiredStepByDeviceId.size).toBe(0);
   });
 
-  it('steps down a stepped load before shedding any other device', async () => {
+  it('steps down a stepped load with turn_off behavior before shedding any other device', async () => {
     const state = createPlanEngineState();
 
     const devices = [
@@ -327,6 +327,263 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 111 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // Preemptive step-down should happen even with turn_off behavior
+    expect(result.shedSet.has('connected-300')).toBe(true);
+    expect(result.shedSet.has('bath')).toBe(false);
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('mid');
+  });
+
+  it('steps down a stepped load without measured power using planning power fallback', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'mid', planningPowerW: 2000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'max',
+        measuredPowerKw: undefined,
+        expectedPowerKw: 3,
+        currentOn: true,
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'bath',
+        name: 'Bathroom thermostat',
+        measuredPowerKw: 1.2,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 4.1,
+        softLimit: 3,
+        capacitySoftLimit: 3,
+        headroomRaw: -1.1,
+        headroom: -1.1,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 113 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // Should use planning power fallback and still get preemptive step-down
+    expect(result.shedSet.has('connected-300')).toBe(true);
+    expect(result.shedSet.has('bath')).toBe(false);
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('mid');
+  });
+
+  it('does not use planning power fallback when measured power is a valid zero', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'max',
+        measuredPowerKw: 0,
+        expectedPowerKw: 3,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 4.1,
+        softLimit: 3,
+        capacitySoftLimit: 3,
+        headroomRaw: -1.1,
+        headroom: -1.1,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 115 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 1,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // measuredPowerKw=0 is a valid reading indicating no draw — should not
+    // fall back to planning power and should not produce a stepped candidate.
+    expect(result.shedSet.has('connected-300')).toBe(false);
+  });
+
+  it('advances to the next step-down when a previous step command is still pending', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'mid', planningPowerW: 2000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        // selectedStepId stuck at 'max' because device has no reported step or power meter
+        selectedStepId: 'max',
+        // Previous cycle already commanded step-down to 'mid'
+        desiredStepId: 'mid',
+        stepCommandPending: true,
+        measuredPowerKw: undefined,
+        expectedPowerKw: 3,
+        currentOn: true,
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'bath',
+        name: 'Bathroom thermostat',
+        measuredPowerKw: 1.2,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 4.1,
+        softLimit: 3,
+        capacitySoftLimit: 3,
+        headroomRaw: -1.1,
+        headroom: -1.1,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 114 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // Should advance to 'low' (next step below pending 'mid'), not re-issue 'mid'
+    expect(result.shedSet.has('connected-300')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
+  });
+
+  it('steps down a stepped load with set_step behavior before shedding any other device', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'mid', planningPowerW: 2000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'max',
+        measuredPowerKw: 2.8,
+        currentOn: true,
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'bath',
+        name: 'Bathroom thermostat',
+        measuredPowerKw: 1.2,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 4.1,
+        softLimit: 3,
+        capacitySoftLimit: 3,
+        headroomRaw: -1.1,
+        headroom: -1.1,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 112 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -478,6 +735,63 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('connected-300')).toBe(false);
   });
 
+  it('steps a turn_off device at lowest active step to the off step via stepped path', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+        measuredPowerKw: 0.9,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 1.5,
+        softLimit: 0.8,
+        capacitySoftLimit: 0.8,
+        headroomRaw: -0.7,
+        headroom: -0.7,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 334 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // Stepped-load devices must use the stepped path (executor skips applyShedAction
+    // for them), so turn_off at lowest active step should step to 'off', not binary.
+    expect(result.shedSet.has('connected-300')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('off');
+  });
+
   it('keeps shedding other devices when a lower stepped-load target is already pending but unconfirmed', async () => {
     const state = createPlanEngineState();
 
@@ -544,9 +858,10 @@ describe('buildSheddingPlan', () => {
       },
     );
 
+    // The system should advance past the pending 'mid' to 'low'
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('mid');
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
   it('does not raise a stepped-load shed target above a deeper pending unconfirmed step', async () => {
@@ -615,9 +930,11 @@ describe('buildSheddingPlan', () => {
       },
     );
 
+    // With pending desired='low', the system advances to 'off' and keeps
+    // preemptive priority since selectedStep 'max' is still above lowestActive.
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('off');
   });
 
   it('keeps shedding other devices when a previous stepped-load shed command went stale', async () => {
@@ -1028,5 +1345,123 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('exempt')).toBe(true);
+  });
+
+  it('does not use a pending step-up as the effective current step for shedding', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'mid', planningPowerW: 2000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        // Device is at 'low', but a restore to 'max' is pending
+        selectedStepId: 'low',
+        desiredStepId: 'max',
+        stepCommandPending: true,
+        measuredPowerKw: 0.9,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 1.5,
+        softLimit: 0.8,
+        capacitySoftLimit: 0.8,
+        headroomRaw: -0.7,
+        headroom: -0.7,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 1,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // Should shed from 'low' (current), not from 'max' (pending restore)
+    expect(result.shedSet.has('connected-300')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('off');
+  });
+
+  it('counts remaining stepped-load turn_off candidates using stepped targets', async () => {
+    const state = createPlanEngineState();
+
+    // Device already at off step — no further step-down possible.
+    // countRemainingCandidates should NOT count it even though expectedPowerKw > 0,
+    // because the stepped target equals selectedStepId (no further step to shed to).
+    const devices = [
+      buildDevice({
+        id: 'stepped-at-off',
+        name: 'Stepped at off',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'off',
+        expectedPowerKw: 1,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(2),
+    } as unknown as CapacityGuard;
+
+    await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 2.5,
+        softLimit: 2,
+        capacitySoftLimit: 2,
+        headroomRaw: -0.5,
+        headroom: -0.5,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 1,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // With no remaining candidates, shortfall check should report remaining=0
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 0.5);
   });
 });
