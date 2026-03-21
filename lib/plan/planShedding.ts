@@ -8,6 +8,7 @@ import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
   resolveSteppedLoadImmediateReliefKw,
+  resolveSteppedLoadPlanningKw,
   resolveSteppedLoadSheddingTarget,
 } from './planSteppedLoad';
 import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
@@ -228,6 +229,15 @@ function addCandidatePower(
       getShedBehavior: deps.getShedBehavior,
     });
   }
+  return buildBinaryCandidate(device, priority, recentlyRestored, state);
+}
+
+function buildBinaryCandidate(
+  device: PlanInputDevice,
+  priority: number,
+  recentlyRestored: boolean,
+  state: PlanEngineState,
+): BinaryShedCandidate | null {
   const power = resolveCandidatePower(device);
   if (power === null || power <= 0) return null;
   const pendingBinary = state.pendingBinaryCommands[device.id];
@@ -241,49 +251,70 @@ function addCandidatePower(
   };
 }
 
+function buildTemperatureCandidate(
+  device: PlanInputDevice,
+  priority: number,
+  recentlyRestored: boolean,
+): BinaryShedCandidate | null {
+  const power = resolveCandidatePower(device);
+  if (power === null || power <= 0) return null;
+  return {
+    ...device,
+    kind: 'binary',
+    priority,
+    recentlyRestored,
+    effectivePower: power,
+    unconfirmedRelief: false,
+  };
+}
+
 function buildSteppedCandidate(params: {
   device: PlanInputDevice;
   priority: number;
   recentlyRestored: boolean;
   getShedBehavior: SheddingDeps['getShedBehavior'];
 }): ShedCandidate | null {
-  const {
-    device,
-    priority,
-    recentlyRestored,
-    getShedBehavior,
-  } = params;
+  const { device, priority, recentlyRestored, getShedBehavior } = params;
   const shedBehavior = getShedBehavior(device.id);
-  if (shedBehavior.action !== 'set_step') {
-    const power = resolveCandidatePower(device);
-    if (power === null || power <= 0) return null;
-    return {
-      ...device,
-      kind: 'binary',
-      priority,
-      recentlyRestored,
-      effectivePower: power,
-      unconfirmedRelief: false,
-    };
+  if (shedBehavior.action === 'set_temperature') {
+    return buildTemperatureCandidate(device, priority, recentlyRestored);
   }
+  // Advance past a pending step-down rather than re-issuing the same command.
+  // Only use the pending step when it is lower (a shed, not a restore).
+  const pendingIsLower = device.stepCommandPending
+    && device.desiredStepId
+    && device.desiredStepId !== device.selectedStepId
+    && resolveSteppedLoadPlanningKw(device, device.desiredStepId)
+      < resolveSteppedLoadPlanningKw(device, device.selectedStepId);
+  const effectiveCurrentStepId = pendingIsLower
+    ? device.desiredStepId : device.selectedStepId;
   const targetStep = getSteppedLoadShedTargetStep({
     device,
-    shedAction: 'set_step',
+    shedAction: shedBehavior.action,
     shedStepId: shedBehavior.stepId,
-    currentDesiredStepId: device.selectedStepId,
+    currentDesiredStepId: effectiveCurrentStepId,
   });
-  const steppedTarget = resolveSteppedLoadSheddingTarget({
-    device,
-    targetStep,
-  });
+  const steppedTarget = resolveSteppedLoadSheddingTarget({ device, targetStep });
   if (!steppedTarget) return null;
   const { steppedProfile, selectedStep, clampedTargetStep, hasUnconfirmedLowerDesiredStep } = steppedTarget;
   const lowestActiveStep = getSteppedLoadRestoreStep(steppedProfile);
-  const effectivePower = resolveSteppedLoadImmediateReliefKw({
+  // Preemptive when the confirmed position is above the lowest active step,
+  // regardless of where the computed target lands.
+  const preemptiveStepDown = Boolean(
+    lowestActiveStep
+    && selectedStep.id !== lowestActiveStep.id
+    && selectedStep.planningPowerW > lowestActiveStep.planningPowerW,
+  );
+  // Measured relief preferred; planning power fallback for devices without metering.
+  let effectivePower = resolveSteppedLoadImmediateReliefKw({
     device,
     fromStepId: selectedStep.id,
     toStepId: clampedTargetStep.id,
   });
+  const hasMeasuredPower = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw);
+  if (effectivePower <= 0 && !hasMeasuredPower) {
+    effectivePower = Math.max(0, (selectedStep.planningPowerW - clampedTargetStep.planningPowerW) / 1000);
+  }
   if (effectivePower <= 0) return null;
   return {
     ...device,
@@ -294,11 +325,7 @@ function buildSteppedCandidate(params: {
     effectivePower,
     fromStepId: selectedStep.id,
     toStepId: clampedTargetStep.id,
-    preemptiveStepDown: Boolean(
-      lowestActiveStep
-      && selectedStep.id !== lowestActiveStep.id
-      && clampedTargetStep.planningPowerW >= lowestActiveStep.planningPowerW,
-    ),
+    preemptiveStepDown,
   };
 }
 
@@ -388,20 +415,12 @@ function selectShedDevices(params: {
   return { shedSet, shedReasons, steppedDesiredStepByDeviceId };
 }
 
-async function handleShortfallCheck(
-  capacityGuard: CapacityGuard | undefined,
-  remainingCandidates: number,
-  deficitKw: number,
+function handleShortfallCheck(
+  capacityGuard: CapacityGuard | undefined, remaining: number, deficitKw: number,
 ): Promise<void> {
-  // Shortfall (panic mode) should only trigger when projected hourly hard-cap
-  // budget breach is detected (deficitKw > 0). This keeps daily-budget-only
-  // pressure from triggering panic while still allowing shortfall during daily
-  // hours if the hard-cap threshold is actually exceeded.
-  if (deficitKw > 0) {
-    await capacityGuard?.checkShortfall(remainingCandidates > 0, deficitKw);
-    return;
-  }
-  await capacityGuard?.checkShortfall(true, 0);
+  return deficitKw > 0
+    ? (capacityGuard?.checkShortfall(remaining > 0, deficitKw) ?? Promise.resolve())
+    : (capacityGuard?.checkShortfall(true, 0) ?? Promise.resolve());
 }
 
 async function updateGuardState(params: {
@@ -475,15 +494,7 @@ function countRemainingCandidates(params: {
   capacitySoftLimit: number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): number {
-  const {
-    devices,
-    shedSet,
-    headroom,
-    limitSource,
-    total,
-    capacitySoftLimit,
-    getShedBehavior,
-  } = params;
+  const { devices, shedSet, headroom, limitSource, total, capacitySoftLimit, getShedBehavior } = params;
   if (headroom === null || headroom >= 0) return 0;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return devices
@@ -492,13 +503,13 @@ function countRemainingCandidates(params: {
     .filter((d) => {
       if (isSteppedLoadDevice(d)) {
         const shedBehavior = getShedBehavior(d.id);
-        if (shedBehavior.action !== 'set_step') {
+        if (shedBehavior.action === 'set_temperature') {
           const power = resolveCandidatePower(d);
           return power !== null && power > 0;
         }
         const targetStep = getSteppedLoadShedTargetStep({
           device: d,
-          shedAction: 'set_step',
+          shedAction: shedBehavior.action,
           shedStepId: shedBehavior.stepId,
           currentDesiredStepId: d.selectedStepId,
         });
