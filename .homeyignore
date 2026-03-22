@@ -22,6 +22,7 @@ node_modules/@napi-rs/canvas-darwin-x64/
 node_modules/@napi-rs/canvas-darwin-arm64/
 node_modules/@napi-rs/canvas-win32-x64-msvc/
 
+.claude/
 .github/
 .githooks/
 .husky/
