@@ -56,7 +56,7 @@ describe('restore cooldown backoff', () => {
       now += advanceMs;
       jest.setSystemTime(now);
       state.lastRestoreMs = now - 2 * 60 * 1000;
-      state.lastOvershootMs = now - 1000;
+      state.lastInstabilityMs = now - 1000;
 
       const result = applyRestorePlan({
         planDevices: [],
@@ -90,7 +90,7 @@ describe('restore cooldown backoff', () => {
 
     const triggerInstability = (): void => {
       state.lastRestoreMs = now - 2 * 60 * 1000;
-      state.lastOvershootMs = now - 1000;
+      state.lastInstabilityMs = now - 1000;
     };
 
     triggerInstability();
@@ -108,7 +108,7 @@ describe('restore cooldown backoff', () => {
     expect(result.restoreCooldownMs).toBe(120000);
 
     now += 6 * 60 * 1000;
-    state.lastOvershootMs = now - 6 * 60 * 1000;
+    state.lastInstabilityMs = now - 6 * 60 * 1000;
     jest.setSystemTime(now);
     result = applyRestorePlan({
       planDevices: [],

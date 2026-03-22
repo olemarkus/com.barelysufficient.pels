@@ -125,6 +125,35 @@ export class PlanExecutor {
     this.deps.error(...args);
   }
 
+  private recordShedActuation(deviceId: string, name: string, now: number): void {
+    this.state.lastInstabilityMs = now;
+    this.state.lastDeviceShedMs[deviceId] = now;
+    recordDiagnosticsShed({
+      diagnostics: this.deps.deviceDiagnostics,
+      deviceId,
+      name,
+      nowTs: now,
+    });
+    recordActivationSetbackForDevice({
+      state: this.state,
+      diagnostics: this.deps.deviceDiagnostics,
+      deviceId,
+      name,
+      nowTs: now,
+    });
+  }
+
+  private recordRestoreActuation(deviceId: string, name: string, now: number): void {
+    this.state.lastRestoreMs = now;
+    this.state.lastDeviceRestoreMs[deviceId] = now;
+    recordDiagnosticsRestore({
+      diagnostics: this.deps.deviceDiagnostics,
+      deviceId,
+      name,
+      nowTs: now,
+    });
+  }
+
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
     this.deps.updateLocalSnapshot(deviceId, updates);
   }
@@ -188,21 +217,7 @@ export class PlanExecutor {
       if (!result.applied) return;
       this.log(`Capacity: set ${targetCap} for ${dev.name || dev.id} to ${plannedTarget}°C (shedding)`);
       const now = Date.now();
-      this.state.lastDeviceShedMs[dev.id] = now;
-      recordDiagnosticsShed({ diagnostics: this.deps.deviceDiagnostics, deviceId: dev.id, name: dev.name, nowTs: now });
-      recordActivationSetbackForDevice({
-        state: this.state,
-        diagnostics: this.deps.deviceDiagnostics,
-        deviceId: dev.id,
-        name: dev.name,
-        nowTs: now,
-      });
-      const guardShedding = this.capacityGuard?.isSheddingActive?.() === true;
-      const guardHeadroom = this.capacityGuard?.getHeadroom?.();
-      if (guardShedding || (typeof guardHeadroom === 'number' && guardHeadroom < 0)) {
-        this.state.lastSheddingMs = now;
-        this.state.lastOvershootMs = now;
-      }
+      this.recordShedActuation(dev.id, dev.name, now);
     } catch (error) {
       this.error(`Failed to set shed temperature for ${dev.name || dev.id} via DeviceManager`, error);
     }
@@ -258,20 +273,14 @@ export class PlanExecutor {
         });
         if (!applied) return;
         if (mode === 'plan') {
-          this.state.lastRestoreMs = Date.now(); // Track when we restored so we can wait for power to stabilize
-          this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
-          recordDiagnosticsRestore({
-            diagnostics: this.deps.deviceDiagnostics,
-            deviceId: dev.id,
-            name,
-            nowTs: this.state.lastRestoreMs,
-          });
+          const now = Date.now();
+          this.recordRestoreActuation(dev.id, name, now);
           recordActivationAttemptStarted({
             state: this.state,
             diagnostics: this.deps.deviceDiagnostics,
             deviceId: dev.id,
             name,
-            nowTs: this.state.lastRestoreMs,
+            nowTs: now,
           });
         }
         // Clear this device from pending swap targets if it was one
@@ -388,20 +397,14 @@ export class PlanExecutor {
       // If this was a restoration from shed temperature, update lastRestoreMs
       // This ensures cooldown applies between restoring different devices
       if (isRestoring && mode === 'plan') {
-        this.state.lastRestoreMs = Date.now();
-        this.state.lastDeviceRestoreMs[dev.id] = this.state.lastRestoreMs;
-        recordDiagnosticsRestore({
-          diagnostics: this.deps.deviceDiagnostics,
-          deviceId: dev.id,
-          name: dev.name,
-          nowTs: this.state.lastRestoreMs,
-        });
+        const now = Date.now();
+        this.recordRestoreActuation(dev.id, dev.name, now);
         recordActivationAttemptStarted({
           state: this.state,
           diagnostics: this.deps.deviceDiagnostics,
           deviceId: dev.id,
           name: dev.name,
-          nowTs: this.state.lastRestoreMs,
+          nowTs: now,
         });
       }
     } catch (error) {
@@ -477,36 +480,10 @@ export class PlanExecutor {
       );
       if (mode !== 'plan') return;
       if (nextDirection === 'shed') {
-        this.state.lastSheddingMs = now;
-        this.state.lastDeviceShedMs[dev.id] = now;
-        recordDiagnosticsShed({
-          diagnostics: this.deps.deviceDiagnostics,
-          deviceId: dev.id,
-          name: dev.name,
-          nowTs: now,
-        });
-        recordActivationSetbackForDevice({
-          state: this.state,
-          diagnostics: this.deps.deviceDiagnostics,
-          deviceId: dev.id,
-          name: dev.name,
-          nowTs: now,
-        });
-        const guardShedding = this.capacityGuard?.isSheddingActive?.() === true;
-        const guardHeadroom = this.capacityGuard?.getHeadroom?.();
-        if (guardShedding || (typeof guardHeadroom === 'number' && guardHeadroom < 0)) {
-          this.state.lastOvershootMs = now;
-        }
+        this.recordShedActuation(dev.id, dev.name, now);
         return;
       }
-      this.state.lastRestoreMs = now;
-      this.state.lastDeviceRestoreMs[dev.id] = now;
-      recordDiagnosticsRestore({
-        diagnostics: this.deps.deviceDiagnostics,
-        deviceId: dev.id,
-        name: dev.name,
-        nowTs: now,
-      });
+      this.recordRestoreActuation(dev.id, dev.name, now);
       recordActivationAttemptStarted({
         state: this.state,
         diagnostics: this.deps.deviceDiagnostics,
@@ -583,17 +560,7 @@ export class PlanExecutor {
       });
       if (!result.applied) return true;
       this.log(`Capacity: set ${targetCap} for ${name} to ${shedTemp}°C (shedding)`);
-      this.state.lastSheddingMs = now;
-      this.state.lastOvershootMs = now;
-      this.state.lastDeviceShedMs[deviceId] = now;
-      recordDiagnosticsShed({ diagnostics: this.deps.deviceDiagnostics, deviceId, name, nowTs: now });
-      recordActivationSetbackForDevice({
-        state: this.state,
-        diagnostics: this.deps.deviceDiagnostics,
-        deviceId,
-        name,
-        nowTs: now,
-      });
+      this.recordShedActuation(deviceId, name, now);
       return true;
     } catch (error) {
       this.error(`Failed to set shed temperature for ${name} via DeviceManager`, error);
@@ -807,16 +774,7 @@ export class PlanExecutor {
         actuationMode: 'plan',
       });
       if (!applied) return;
-      this.state.lastSheddingMs = now;
-      this.state.lastDeviceShedMs[deviceId] = now;
-      recordDiagnosticsShed({ diagnostics: this.deps.deviceDiagnostics, deviceId, name, nowTs: now });
-      recordActivationSetbackForDevice({
-        state: this.state,
-        diagnostics: this.deps.deviceDiagnostics,
-        deviceId,
-        name,
-        nowTs: now,
-      });
+      this.recordShedActuation(deviceId, name, now);
     } catch (error) {
       this.error(`Failed to turn off ${name} via DeviceManager`, error);
     }

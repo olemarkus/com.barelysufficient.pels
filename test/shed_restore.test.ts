@@ -171,8 +171,7 @@ describe('Shed vs Restore Logic', () => {
         };
         (app as any).capacityGuard = mockGuard;
         // Mock timing so cooldowns don't block
-        (app as any).planEngine.state.lastSheddingMs = 0;
-        (app as any).planEngine.state.lastOvershootMs = 0;
+        (app as any).planEngine.state.lastInstabilityMs = 0;
         (app as any).planEngine.state.lastRestoreMs = 0;
 
         const devices = (app as any).targetDevices;

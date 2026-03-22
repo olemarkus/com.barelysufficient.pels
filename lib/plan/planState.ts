@@ -34,8 +34,7 @@ export type PlanEngineState = {
     startedMs: number;
   }>;
   pendingTargetCommands: Record<string, PendingTargetCommandState>;
-  lastSheddingMs: number | null;
-  lastOvershootMs: number | null;
+  lastInstabilityMs: number | null;
   lastRecoveryMs: number | null;
   lastRestoreMs: number | null;
   lastPlannedShedIds: Set<string>;
@@ -69,8 +68,7 @@ export function createPlanEngineState(): PlanEngineState {
     pendingRestores: new Set<string>(),
     pendingBinaryCommands: {},
     pendingTargetCommands: {},
-    lastSheddingMs: null,
-    lastOvershootMs: null,
+    lastInstabilityMs: null,
     lastRecoveryMs: null,
     lastRestoreMs: null,
     lastPlannedShedIds: new Set<string>(),

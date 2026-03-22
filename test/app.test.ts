@@ -534,8 +534,7 @@ describe('MyApp initialization', () => {
     devPlanState = getPlanDeviceState(plan, 'dev-1');
     expect(devPlanState).toBe('shed');
 
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
