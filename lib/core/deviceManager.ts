@@ -336,6 +336,12 @@ export class DeviceManager extends EventEmitter {
         if (preservedLocalState) {
             this.updateLocalSnapshot(deviceId, { on: normalizedValue });
         }
+
+        // Update local snapshot for target/temperature writes so pending-command
+        // confirmation checks see the written value instead of a stale snapshot.
+        if (typeof normalizedValue === 'number' && capabilityId.startsWith('target_temperature')) {
+            this.updateLocalSnapshot(deviceId, { target: normalizedValue });
+        }
         this.recordLocalWriteObservation(deviceId, capabilityId, normalizedValue, {
             preservedLocalState,
         });

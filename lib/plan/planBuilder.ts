@@ -471,6 +471,9 @@ export class PlanBuilder {
     if (sheddingPlan.updates.lastOvershootMs !== undefined) {
       this.state.lastOvershootMs = sheddingPlan.updates.lastOvershootMs;
     }
+    if (sheddingPlan.updates.lastRecoveryMs !== undefined) {
+      this.state.lastRecoveryMs = sheddingPlan.updates.lastRecoveryMs;
+    }
     if (sheddingPlan.updates.lastShedPlanMeasurementTs !== undefined) {
       this.state.lastShedPlanMeasurementTs = sheddingPlan.updates.lastShedPlanMeasurementTs;
     }

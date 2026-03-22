@@ -17,6 +17,7 @@ import {
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
 import {
+  SHED_COOLDOWN_MS,
   TARGET_COMMAND_RETRY_DELAYS_MS,
   TARGET_CONFIRMATION_STUCK_POLL_MS,
 } from '../lib/plan/planConstants';
@@ -1181,20 +1182,19 @@ describe('MyApp initialization', () => {
       await (app as any).refreshTargetDevicesSnapshot();
       await (app as any).planService.rebuildPlanFromCache();
 
+      // The local snapshot is updated immediately after the write, so the
+      // pending target command is confirmed right away — no stale-snapshot
+      // retry timer is needed.
       expect(putSpy).toHaveBeenCalledTimes(1);
-      expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
-        targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
-      });
       expect((app as any).planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
         id: 'dev-1',
-        currentTarget: 18,
         plannedTarget: 20,
-        pendingTargetCommand: expect.objectContaining({
-          desired: 20,
-          lastObservedValue: 18,
-        }),
       });
+      expect((app as any).planService.getLatestPlanSnapshot()?.devices[0].pendingTargetCommand).toBeUndefined();
 
+      // After API refresh returns the stale value, the confirmed local
+      // snapshot update prevents retry because the executor sees no mismatch
+      // in the live snapshot at dispatch time.
       nowSpy.mockReturnValue(baseNow + TARGET_COMMAND_RETRY_DELAYS_MS[0] + 5);
       await (app as any).refreshTargetDevicesSnapshot();
       await (app as any).planService.rebuildPlanFromCache();
@@ -1446,6 +1446,98 @@ describe('MyApp initialization', () => {
     await expect(isModeListener({ mode: 'Home' })).resolves.toBe(true); // Home -> Work (active)
 
     expect(app).toBeDefined();
+  });
+
+  it('does not restore shed devices immediately after recovering from a prolonged overshoot', async () => {
+    // Regression: when overshoot lasted longer than SHED_COOLDOWN_MS, the
+    // cooldown (computed from overshoot-detection time) had already expired
+    // at recovery, so devices were restored immediately — causing another
+    // overshoot within seconds.  The fix records lastRecoveryMs so the
+    // cooldown window starts from the moment of recovery.
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
+    await heater.setCapabilityValue('measure_power', 3000);
+    await heater.setCapabilityValue('target_temperature', 23);
+    await heater.setCapabilityValue('onoff', true);
+    heater.configureCapabilityBehavior('onoff', {
+      onApiWrite: {
+        accept: true,
+        updateActual: true,
+        updateApi: true,
+        emitCapabilityEvent: true,
+        emitDeviceUpdate: false,
+      },
+    });
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 5);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 23 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'turn_off' } });
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    const nowSpy = jest.spyOn(Date, 'now');
+    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    try {
+      const baseNow = Date.now();
+
+      // --- Phase 1: trigger overshoot and shed the device ---
+      nowSpy.mockReturnValue(baseNow);
+      (app as any).computeDynamicSoftLimit = () => 2;
+      if ((app as any).capacityGuard?.setSoftLimitProvider) {
+        (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+      }
+      await (app as any).recordPowerSample(3000, baseNow);
+      await waitFor(() => (
+        getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1') === 'shed'
+      ));
+      expect(heater.getActualCapabilityValue('onoff')).toBe(false);
+
+      // --- Phase 2: overshoot persists for longer than SHED_COOLDOWN_MS ---
+      // (simulates the prolonged shedding observed in production logs)
+      const afterLongOvershoot = baseNow + SHED_COOLDOWN_MS + 30_000;
+      nowSpy.mockReturnValue(afterLongOvershoot);
+
+      // --- Phase 3: power drops, system recovers ---
+      (app as any).computeDynamicSoftLimit = () => 5;
+      if ((app as any).capacityGuard?.setSoftLimitProvider) {
+        (app as any).capacityGuard.setSoftLimitProvider(() => 5);
+      }
+      await heater.setCapabilityValue('measure_power', 0);
+      await (app as any).refreshTargetDevicesSnapshot();
+      await (app as any).recordPowerSample(500, afterLongOvershoot);
+      await (app as any).planService.rebuildPlanFromCache();
+
+      // The device should still be planned as 'shed' because the recovery
+      // cooldown (lastRecoveryMs) has just started.
+      expect(
+        getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1'),
+      ).toBe('shed');
+
+      // --- Phase 4: after cooldown expires, the device is restored ---
+      const afterCooldown = afterLongOvershoot + SHED_COOLDOWN_MS + 1000;
+      nowSpy.mockReturnValue(afterCooldown);
+      await (app as any).recordPowerSample(500, afterCooldown);
+      await waitFor(() => (
+        getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1') !== 'shed'
+      ), 3000);
+
+      expect(
+        getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1'),
+      ).toBe('keep');
+    } finally {
+      nowSpy.mockRestore();
+      putSpy.mockRestore();
+    }
   });
 });
 
