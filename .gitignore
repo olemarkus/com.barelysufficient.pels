@@ -28,6 +28,9 @@ node_modules/
 /teste/
 /tmp/
 
+# Claude Code
+/.claude/
+
 # VitePress docs build output
 /docs/.vitepress/dist/
 /docs/.vitepress/.temp/
