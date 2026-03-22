@@ -24,7 +24,7 @@ export type SheddingPlan = {
   sheddingActive: boolean;
   guardInShortfall: boolean;
   updates: {
-    lastOvershootMs?: number;
+    lastInstabilityMs?: number;
     lastRecoveryMs?: number;
     lastShedPlanMeasurementTs?: number;
   };
@@ -120,7 +120,7 @@ function planShedding(
   shedSet: Set<string>;
   shedReasons: Map<string, string>;
   steppedDesiredStepByDeviceId: Map<string, string>;
-  updates: { lastOvershootMs?: number; lastRecoveryMs?: number; lastShedPlanMeasurementTs?: number };
+  updates: { lastInstabilityMs?: number; lastRecoveryMs?: number; lastShedPlanMeasurementTs?: number };
   overshootStats: SheddingPlan['overshootStats'];
 } {
   const shedSet = new Set<string>();
@@ -177,7 +177,7 @@ function planShedding(
     return { shedSet, shedReasons, steppedDesiredStepByDeviceId, updates: {}, overshootStats: null };
   }
   const updates = {
-    lastOvershootMs: Date.now(),
+    lastInstabilityMs: Date.now(),
     ...(measurementTs !== null ? { lastShedPlanMeasurementTs: measurementTs } : {}),
   };
   const candidateCount = candidates.length;

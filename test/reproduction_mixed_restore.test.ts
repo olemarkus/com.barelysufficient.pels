@@ -76,8 +76,7 @@ describe('Mixed Type Restoration Throttling', () => {
         await app.onInit();
 
         // Reset timers
-        (app as any).planEngine.state.lastSheddingMs = 0;
-        (app as any).planEngine.state.lastOvershootMs = 0;
+        (app as any).planEngine.state.lastInstabilityMs = 0;
         (app as any).planEngine.state.lastRestoreMs = 0;
         (app as any).planEngine.state.lastDeviceShedMs = {};
     });
