@@ -285,6 +285,8 @@ describe('Airtreatment device integration', () => {
     setCapSpy.mockClear();
     (app as any).planEngine.state.lastSheddingMs = Date.now() - 180000;
     (app as any).planEngine.state.lastOvershootMs = Date.now() - 180000;
+    (app as any).planEngine.state.lastRecoveryMs = Date.now() - 180000;
+    await (app as any).capacityGuard?.setSheddingActive(false);
     (app as any).computeDynamicSoftLimit = () => 10;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 10);

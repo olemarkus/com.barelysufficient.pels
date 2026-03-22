@@ -113,6 +113,11 @@ describe('Mixed Type Restoration Throttling', () => {
         // Advance time past Shed Cooldown (60s)
         currentTime += 61000;
 
+        // Deactivate the guard so the next cycle doesn't trigger a fresh
+        // recovery transition (which would restart the cooldown window).
+        await (app as any).capacityGuard?.setSheddingActive(false);
+        (app as any).planEngine.state.lastRecoveryMs = currentTime - 61000;
+
         // 2. Headroom returns - enough for BOTH
         (app as any).computeDynamicSoftLimit = () => 10.0;
         // Headroom = 10 - 5 = 5kW. Needs 2kW.

@@ -69,6 +69,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -133,6 +134,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -186,6 +188,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -244,6 +247,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -307,6 +311,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -373,6 +378,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -431,6 +437,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -500,6 +507,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -564,6 +572,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -632,6 +641,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -700,6 +710,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -759,6 +770,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -827,6 +839,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -899,6 +912,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -972,6 +986,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1034,6 +1049,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1069,6 +1085,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1104,6 +1121,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1147,6 +1165,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1198,6 +1217,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1250,6 +1270,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1301,6 +1322,7 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1375,6 +1397,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1434,6 +1457,7 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
       setSheddingActive: jest.fn().mockResolvedValue(undefined),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
@@ -1463,5 +1487,77 @@ describe('buildSheddingPlan', () => {
 
     // With no remaining candidates, shortfall check should report remaining=0
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 0.5);
+  });
+
+  it('emits lastRecoveryMs when guard transitions from active to inactive', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(true),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getRestoreMargin: jest.fn().mockReturnValue(0.2),
+      getShortfallThreshold: jest.fn().mockReturnValue(5),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [],
+        total: 1,
+        softLimit: 5,
+        capacitySoftLimit: 5,
+        headroomRaw: 1,
+        headroom: 1,
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.sheddingActive).toBe(false);
+    expect(result.updates.lastRecoveryMs).toBeGreaterThan(0);
+  });
+
+  it('does not emit lastRecoveryMs when guard stays inactive', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getRestoreMargin: jest.fn().mockReturnValue(0.2),
+      getShortfallThreshold: jest.fn().mockReturnValue(5),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [],
+        total: 1,
+        softLimit: 5,
+        capacitySoftLimit: 5,
+        headroomRaw: 1,
+        headroom: 1,
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.sheddingActive).toBe(false);
+    expect(result.updates.lastRecoveryMs).toBeUndefined();
   });
 });

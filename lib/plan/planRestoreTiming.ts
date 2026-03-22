@@ -40,6 +40,7 @@ export const buildRestoreTiming = (
   const cooldown = getShedCooldownState({
     lastSheddingMs: state.lastSheddingMs,
     lastOvershootMs: state.lastOvershootMs,
+    lastRecoveryMs: state.lastRecoveryMs,
     nowTs,
     cooldownMs: SHED_COOLDOWN_MS,
   });
