@@ -81,7 +81,7 @@ module.exports = {
     doNotFollow: {
       path: '^node_modules',
     },
-    exclude: '(^node_modules/|^\\.homeybuild/|^coverage/|^output/|^playwright-report/|^test-results/|^packages/settings-ui/dist/)',
+    exclude: '(^node_modules/|^\\.claude/|^\\.homeybuild/|^coverage/|^output/|^playwright-report/|^test-results/|^packages/settings-ui/dist/)',
     combinedDependencies: true,
     enhancedResolveOptions: {
       extensions: ['.ts', '.js', '.json'],
