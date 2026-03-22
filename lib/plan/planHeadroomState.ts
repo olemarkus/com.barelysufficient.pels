@@ -1,5 +1,5 @@
 import { RESTORE_COOLDOWN_MS, SHED_COOLDOWN_MS } from './planConstants';
-import type { PlanEngineState } from './planState';
+import type { HeadroomCardState, PlanEngineState } from './planState';
 import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   closeActivationAttemptForDevice,
@@ -32,71 +32,60 @@ export type HeadroomCooldownCandidate = {
   dropToKw: number | null;
 };
 
-type HeadroomCardStateMaps = {
-  lastObservedKw: Record<string, number>;
-  lastStepDownMs: Record<string, number>;
-  cooldownUntilMs: Record<string, number>;
-  cooldownFromKw: Record<string, number>;
-  cooldownToKw: Record<string, number>;
-};
-
 const HEADROOM_STEP_DOWN_THRESHOLD_KW = 0.15;
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
 );
 
-const getHeadroomCardStateMaps = (state: PlanEngineState): HeadroomCardStateMaps => ({
-  lastObservedKw: state.headroomCardLastObservedKw,
-  lastStepDownMs: state.headroomCardLastStepDownMs,
-  cooldownUntilMs: state.headroomCardCooldownUntilMs,
-  cooldownFromKw: state.headroomCardCooldownFromKw,
-  cooldownToKw: state.headroomCardCooldownToKw,
-});
+const ensureHeadroomEntry = (state: PlanEngineState, deviceId: string): HeadroomCardState => {
+  const cards = state.headroomCardByDevice;
+  if (!cards[deviceId]) {
+    cards[deviceId] = {};
+  }
+  return cards[deviceId];
+};
 
-const removeStepDownCooldown = (maps: HeadroomCardStateMaps, deviceId: string): void => {
-  const {
-    cooldownUntilMs,
-    cooldownFromKw,
-    cooldownToKw,
-  } = maps;
-  delete cooldownUntilMs[deviceId];
-  delete cooldownFromKw[deviceId];
-  delete cooldownToKw[deviceId];
+const removeStepDownCooldown = (cards: Record<string, HeadroomCardState>, deviceId: string): void => {
+  const entry = cards[deviceId];
+  if (!entry) return;
+  delete entry.cooldownUntilMs;
+  delete entry.cooldownFromKw;
+  delete entry.cooldownToKw;
 };
 
 const removeHeadroomCardStateForDevice = (
-  maps: HeadroomCardStateMaps,
+  state: PlanEngineState,
   deviceId: string,
   options: { keepLastObserved?: boolean } = {},
 ): void => {
-  const { lastObservedKw, lastStepDownMs } = maps;
+  const cards = state.headroomCardByDevice;
+  const entry = cards[deviceId];
+  if (!entry) return;
   if (!options.keepLastObserved) {
-    delete lastObservedKw[deviceId];
+    delete entry.lastObservedKw;
   }
-  delete lastStepDownMs[deviceId];
-  removeStepDownCooldown(maps, deviceId);
+  delete entry.lastStepDownMs;
+  removeStepDownCooldown(cards, deviceId);
+  if (Object.keys(entry).length === 0) {
+    delete cards[deviceId];
+  }
 };
 
-const collectTrackedDeviceIds = (maps: HeadroomCardStateMaps): Set<string> => new Set([
-  ...Object.keys(maps.lastObservedKw),
-  ...Object.keys(maps.lastStepDownMs),
-  ...Object.keys(maps.cooldownUntilMs),
-  ...Object.keys(maps.cooldownFromKw),
-  ...Object.keys(maps.cooldownToKw),
-]);
+const collectTrackedDeviceIds = (state: PlanEngineState): Set<string> => (
+  new Set(Object.keys(state.headroomCardByDevice))
+);
 
 const cleanupMissingHeadroomDevices = (
   state: PlanEngineState,
-  maps: HeadroomCardStateMaps,
   devices: HeadroomCardDeviceLike[],
 ): boolean => {
   let stateChanged = false;
   const activeIds = new Set(devices.map((device) => device.id));
-  const trackedIds = collectTrackedDeviceIds(maps);
+  const trackedIds = collectTrackedDeviceIds(state);
   for (const deviceId of trackedIds) {
     if (activeIds.has(deviceId)) continue;
-    removeHeadroomCardStateForDevice(maps, deviceId);
+    removeHeadroomCardStateForDevice(state, deviceId);
     // A missing snapshot should close any open attempt, but it must not forgive prior failed activations.
     stateChanged = closeActivationAttemptForDevice(state, deviceId) || stateChanged;
     stateChanged = true;
@@ -105,37 +94,40 @@ const cleanupMissingHeadroomDevices = (
 };
 
 const clearExpiredStepDownCooldown = (
-  maps: HeadroomCardStateMaps,
+  state: PlanEngineState,
   deviceId: string,
   nowTs: number,
 ): boolean => {
-  const expiresAtMs = maps.cooldownUntilMs[deviceId];
+  const cards = state.headroomCardByDevice;
+  const entry = cards[deviceId];
+  if (!entry) return false;
+  const expiresAtMs = entry.cooldownUntilMs;
   if (!isFiniteNumber(expiresAtMs) || expiresAtMs > nowTs) return false;
-  removeStepDownCooldown(maps, deviceId);
+  removeStepDownCooldown(cards, deviceId);
   return true;
 };
 
 const updateHeadroomCardLastObserved = (
-  maps: HeadroomCardStateMaps,
+  state: PlanEngineState,
   deviceId: string,
   trackedKw: number,
 ): void => {
-  const { lastObservedKw } = maps;
-  lastObservedKw[deviceId] = trackedKw;
+  const entry = ensureHeadroomEntry(state, deviceId);
+  entry.lastObservedKw = trackedKw;
 };
 
 const wasRecentlySteppedDown = (
-  maps: HeadroomCardStateMaps,
+  state: PlanEngineState,
   deviceId: string,
   nowTs: number,
 ): boolean => {
-  const lastStepDownMs = maps.lastStepDownMs[deviceId];
+  const lastStepDownMs = state.headroomCardByDevice[deviceId]?.lastStepDownMs;
   if (!isFiniteNumber(lastStepDownMs)) return false;
   return nowTs - lastStepDownMs < ACTIVATION_BACKOFF_CLEAR_WINDOW_MS;
 };
 
 const shouldStartTrackedActivationAttempt = (params: {
-  maps: HeadroomCardStateMaps;
+  state: PlanEngineState;
   deviceId: string;
   previousTrackedKw: number;
   trackedKw: number;
@@ -144,7 +136,7 @@ const shouldStartTrackedActivationAttempt = (params: {
   attemptOpen: boolean;
 }): boolean => {
   const {
-    maps,
+    state,
     deviceId,
     previousTrackedKw,
     trackedKw,
@@ -156,7 +148,7 @@ const shouldStartTrackedActivationAttempt = (params: {
   if (attemptOpen) return false;
   if (!isActivationObservationActiveNow(device)) return false;
   if (previousTrackedKw <= HEADROOM_STEP_DOWN_THRESHOLD_KW) return true;
-  return wasRecentlySteppedDown(maps, deviceId, nowTs);
+  return wasRecentlySteppedDown(state, deviceId, nowTs);
 };
 
 export const emitActivationTransitions = (
@@ -171,14 +163,14 @@ export const emitActivationTransitions = (
 };
 
 const maybeStartStepDownCooldown = (params: {
-  maps: HeadroomCardStateMaps;
+  state: PlanEngineState;
   deviceId: string;
   previousTrackedKw: number;
   trackedKw: number;
   nowTs: number;
 }): { stateChanged: boolean; started: boolean } => {
   const {
-    maps,
+    state,
     deviceId,
     previousTrackedKw,
     trackedKw,
@@ -188,29 +180,24 @@ const maybeStartStepDownCooldown = (params: {
     return { stateChanged: false, started: false };
   }
 
+  const entry = ensureHeadroomEntry(state, deviceId);
   const nextUntilMs = nowTs + SHED_COOLDOWN_MS;
   if (
-    maps.cooldownUntilMs[deviceId] === nextUntilMs
-    && maps.cooldownFromKw[deviceId] === previousTrackedKw
-    && maps.cooldownToKw[deviceId] === trackedKw
+    entry.cooldownUntilMs === nextUntilMs
+    && entry.cooldownFromKw === previousTrackedKw
+    && entry.cooldownToKw === trackedKw
   ) {
     return { stateChanged: false, started: false };
   }
 
-  const {
-    cooldownUntilMs,
-    cooldownFromKw,
-    cooldownToKw,
-  } = maps;
-  cooldownUntilMs[deviceId] = nextUntilMs;
-  cooldownFromKw[deviceId] = previousTrackedKw;
-  cooldownToKw[deviceId] = trackedKw;
+  entry.cooldownUntilMs = nextUntilMs;
+  entry.cooldownFromKw = previousTrackedKw;
+  entry.cooldownToKw = trackedKw;
   return { stateChanged: true, started: true };
 };
 
 const maybeStartTrackedActivationAttempt = (params: {
   state: PlanEngineState;
-  maps: HeadroomCardStateMaps;
   deviceId: string;
   previousTrackedKw: number;
   trackedKw: number;
@@ -221,7 +208,6 @@ const maybeStartTrackedActivationAttempt = (params: {
 }): boolean => {
   const {
     state,
-    maps,
     deviceId,
     previousTrackedKw,
     trackedKw,
@@ -231,7 +217,7 @@ const maybeStartTrackedActivationAttempt = (params: {
     diagnostics,
   } = params;
   if (!shouldStartTrackedActivationAttempt({
-    maps,
+    state,
     deviceId,
     previousTrackedKw,
     trackedKw,
@@ -265,7 +251,6 @@ const maybeStartTrackedActivationAttempt = (params: {
 
 const maybeRecordTrackedStepDown = (params: {
   state: PlanEngineState;
-  maps: HeadroomCardStateMaps;
   deviceId: string;
   previousTrackedKw: number;
   trackedKw: number;
@@ -275,7 +260,6 @@ const maybeRecordTrackedStepDown = (params: {
 }): boolean => {
   const {
     state,
-    maps,
     deviceId,
     previousTrackedKw,
     trackedKw,
@@ -284,7 +268,7 @@ const maybeRecordTrackedStepDown = (params: {
     diagnostics,
   } = params;
   const stepDownResult = maybeStartStepDownCooldown({
-    maps,
+    state,
     deviceId,
     previousTrackedKw,
     trackedKw,
@@ -294,8 +278,8 @@ const maybeRecordTrackedStepDown = (params: {
     return stepDownResult.stateChanged;
   }
 
-  const { lastStepDownMs } = maps;
-  lastStepDownMs[deviceId] = nowTs;
+  const entry = ensureHeadroomEntry(state, deviceId);
+  entry.lastStepDownMs = nowTs;
   diagnostics?.recordControlEvent({
     kind: 'shed',
     origin: 'tracked',
@@ -346,7 +330,6 @@ const syncHeadroomCardTrackedKw = (params: {
     device,
     diagnostics,
   } = params;
-  const maps = getHeadroomCardStateMaps(state);
   const penaltyInfo = syncActivationPenaltyState({
     state,
     deviceId,
@@ -354,18 +337,17 @@ const syncHeadroomCardTrackedKw = (params: {
     observation: device,
   });
   emitActivationTransitions(diagnostics, device?.name, penaltyInfo.transitions);
-  const previousTrackedKw = maps.lastObservedKw[deviceId];
-  const expiredChanged = clearExpiredStepDownCooldown(maps, deviceId, nowTs);
+  const previousTrackedKw = state.headroomCardByDevice[deviceId]?.lastObservedKw;
+  const expiredChanged = clearExpiredStepDownCooldown(state, deviceId, nowTs);
   let stateChanged = expiredChanged || penaltyInfo.stateChanged;
 
   if (!isFiniteNumber(previousTrackedKw)) {
-    updateHeadroomCardLastObserved(maps, deviceId, trackedKw);
+    updateHeadroomCardLastObserved(state, deviceId, trackedKw);
     return stateChanged;
   }
 
   stateChanged = maybeStartTrackedActivationAttempt({
     state,
-    maps,
     deviceId,
     previousTrackedKw,
     trackedKw,
@@ -377,7 +359,6 @@ const syncHeadroomCardTrackedKw = (params: {
 
   stateChanged = maybeRecordTrackedStepDown({
     state,
-    maps,
     deviceId,
     previousTrackedKw,
     trackedKw,
@@ -386,7 +367,7 @@ const syncHeadroomCardTrackedKw = (params: {
     diagnostics,
   }) || stateChanged;
 
-  updateHeadroomCardLastObserved(maps, deviceId, trackedKw);
+  updateHeadroomCardLastObserved(state, deviceId, trackedKw);
   return stateChanged;
 };
 
@@ -409,16 +390,17 @@ const getStepDownCooldown = (
   deviceId: string,
   nowTs: number,
 ): HeadroomCooldownCandidate | null => {
-  const maps = getHeadroomCardStateMaps(state);
-  const expiresAtMs = maps.cooldownUntilMs[deviceId];
+  const entry = state.headroomCardByDevice[deviceId];
+  if (!entry) return null;
+  const expiresAtMs = entry.cooldownUntilMs;
   if (!isFiniteNumber(expiresAtMs) || expiresAtMs <= nowTs) return null;
   return {
     source: 'step_down',
     remainingSec: Math.max(0, Math.ceil((expiresAtMs - nowTs) / 1000)),
     expiresAtMs,
     startMs: expiresAtMs - SHED_COOLDOWN_MS,
-    dropFromKw: maps.cooldownFromKw[deviceId] ?? null,
-    dropToKw: maps.cooldownToKw[deviceId] ?? null,
+    dropFromKw: entry.cooldownFromKw ?? null,
+    dropToKw: entry.cooldownToKw ?? null,
   };
 };
 
@@ -480,11 +462,10 @@ export const syncHeadroomCardState = (params: {
     diagnostics,
   } = params;
   const nowTs = params.nowTs ?? Date.now();
-  const maps = getHeadroomCardStateMaps(state);
   let stateChanged = false;
 
   if (cleanupMissingDevices) {
-    stateChanged = cleanupMissingHeadroomDevices(state, maps, devices);
+    stateChanged = cleanupMissingHeadroomDevices(state, devices);
   }
 
   for (const device of devices) {

@@ -1,6 +1,8 @@
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type { PendingTargetObservationSource } from './planTypes';
 
+export type ActivationAttemptSource = 'pels_restore' | 'tracked_step_up';
+
 export type PendingTargetCommandState = {
   capabilityId: string;
   desired: number;
@@ -14,18 +16,26 @@ export type PendingTargetCommandState = {
   lastWaitingLogAtMs?: number;
 };
 
+export type ActivationAttemptState = {
+  penaltyLevel?: number;
+  startedMs?: number;
+  source?: ActivationAttemptSource;
+  stickReached?: boolean;
+};
+
+export type HeadroomCardState = {
+  lastObservedKw?: number;
+  lastStepDownMs?: number;
+  cooldownUntilMs?: number;
+  cooldownFromKw?: number;
+  cooldownToKw?: number;
+};
+
 export type PlanEngineState = {
   lastDeviceShedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
-  activationPenaltyLevelByDevice: Record<string, number>;
-  activationAttemptStartedMsByDevice: Record<string, number>;
-  activationAttemptSourceByDevice: Record<string, 'pels_restore' | 'tracked_step_up'>;
-  activationAttemptStickReachedByDevice: Record<string, boolean>;
-  headroomCardLastObservedKw: Record<string, number>;
-  headroomCardLastStepDownMs: Record<string, number>;
-  headroomCardCooldownUntilMs: Record<string, number>;
-  headroomCardCooldownFromKw: Record<string, number>;
-  headroomCardCooldownToKw: Record<string, number>;
+  activationAttemptByDevice: Record<string, ActivationAttemptState>;
+  headroomCardByDevice: Record<string, HeadroomCardState>;
   pendingSheds: Set<string>;
   pendingRestores: Set<string>;
   pendingBinaryCommands: Record<string, {
@@ -55,15 +65,8 @@ export function createPlanEngineState(): PlanEngineState {
   return {
     lastDeviceShedMs: {},
     lastDeviceRestoreMs: {},
-    activationPenaltyLevelByDevice: {},
-    activationAttemptStartedMsByDevice: {},
-    activationAttemptSourceByDevice: {},
-    activationAttemptStickReachedByDevice: {},
-    headroomCardLastObservedKw: {},
-    headroomCardLastStepDownMs: {},
-    headroomCardCooldownUntilMs: {},
-    headroomCardCooldownFromKw: {},
-    headroomCardCooldownToKw: {},
+    activationAttemptByDevice: {},
+    headroomCardByDevice: {},
     pendingSheds: new Set<string>(),
     pendingRestores: new Set<string>(),
     pendingBinaryCommands: {},
