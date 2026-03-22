@@ -156,11 +156,13 @@ describe('activation backoff', () => {
   it('preserves penalty when a tracked device disappears from snapshot cleanup', () => {
     const state = createPlanEngineState();
     const now = Date.now();
-    state.activationPenaltyLevelByDevice['dev-1'] = 2;
-    state.activationAttemptStartedMsByDevice['dev-1'] = now;
-    state.activationAttemptSourceByDevice['dev-1'] = 'tracked_step_up';
-    state.activationAttemptStickReachedByDevice['dev-1'] = false;
-    state.headroomCardLastObservedKw['dev-1'] = 1.8;
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 2,
+      startedMs: now,
+      source: 'tracked_step_up',
+      stickReached: false,
+    };
+    state.headroomCardByDevice['dev-1'] = { lastObservedKw: 1.8 };
 
     expect(syncHeadroomCardState({
       state,
@@ -169,15 +171,12 @@ describe('activation backoff', () => {
       cleanupMissingDevices: true,
     })).toBe(true);
 
-    expect(state.activationPenaltyLevelByDevice['dev-1']).toBe(2);
-    expect(state.activationAttemptStartedMsByDevice['dev-1']).toBeUndefined();
-    expect(state.activationAttemptSourceByDevice['dev-1']).toBeUndefined();
-    expect(state.activationAttemptStickReachedByDevice['dev-1']).toBeUndefined();
+    expect(state.activationAttemptByDevice['dev-1']).toEqual({ penaltyLevel: 2 });
   });
 
   it('uses penalty level in restore decisions', () => {
     const state = createPlanEngineState();
-    state.activationPenaltyLevelByDevice['dev-1'] = 2;
+    state.activationAttemptByDevice['dev-1'] = { penaltyLevel: 2 };
 
     const result = applyRestorePlan({
       planDevices: [
@@ -265,7 +264,7 @@ describe('activation backoff', () => {
       nowTs: start + 2 * 60 * 1000,
     });
     expect(setbackDecision?.cooldownSource).toBe('step_down');
-    expect(state.activationPenaltyLevelByDevice['dev-1']).toBe(1);
+    expect(state.activationAttemptByDevice['dev-1']?.penaltyLevel).toBe(1);
 
     const recoveredDevice = {
       ...steppedUpDevice,

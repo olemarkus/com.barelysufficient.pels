@@ -121,7 +121,7 @@ describe('PlanExecutor restore logging', () => {
     expect(deps.log).toHaveBeenCalledWith('Capacity: turning on Heater (reconcile after drift)');
     expect(nextState.lastRestoreMs).toBe(previousLastRestoreMs);
     expect(nextState.lastDeviceRestoreMs['dev-1']).toBe(previousDeviceRestoreMs);
-    expect(nextState.activationAttemptStartedMsByDevice['dev-1']).toBeUndefined();
+    expect(nextState.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
 
   it('logs restore from shed temperature as explicit capacity work', async () => {
