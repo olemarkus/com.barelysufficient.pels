@@ -11,6 +11,7 @@ import {
 } from '../utils/targetCapabilities';
 import {
   getSteppedLoadStep,
+  isSteppedLoadOffStep,
   sortSteppedLoadSteps,
 } from '../utils/deviceControlProfiles';
 import CapacityGuard from '../core/capacityGuard';
@@ -503,6 +504,73 @@ export class PlanExecutor {
     }
   }
 
+  /**
+   * Reconcile a stepped device back to on when it has `keep` intent but is
+   * currently off.  This covers the dual-control case where the step is at a
+   * non-zero level but the binary `onoff` capability is false.
+   */
+  private async applySteppedLoadRestore(
+    dev: DevicePlan['devices'][number],
+    snapshot: TargetDeviceSnapshot | undefined,
+    mode: PlanActuationMode,
+  ): Promise<void> {
+    if (dev.plannedState !== 'keep') return;
+    if (dev.currentState !== 'off') return;
+    // Only restore when the device is at a non-off step but has onoff=false
+    // (dual-control inconsistency). If the selected step IS the off-step, the
+    // device is genuinely off and should not be turned on via binary control.
+    if (dev.steppedLoadProfile && dev.selectedStepId
+      && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)) {
+      return;
+    }
+    if (!snapshot) return;
+    if (!canTurnOnDevice(snapshot)) {
+      this.logDebug(
+        `Capacity: skip stepped-load restore for ${dev.name || dev.id}, cannot turn on from current snapshot`,
+      );
+      return;
+    }
+    const name = dev.name || dev.id;
+    if (this.state.pendingRestores.has(dev.id)) {
+      this.logDebug(`Capacity: skip stepped-load restore for ${name}, already in progress`);
+      return;
+    }
+    this.state.pendingRestores.add(dev.id);
+    try {
+      const applied = await setBinaryControl({
+        state: this.state,
+        deviceManager: this.deviceManager,
+        updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+        log: (...args: unknown[]) => this.log(...args),
+        logDebug: (...args: unknown[]) => this.logDebug(...args),
+        error: (...args: unknown[]) => this.error(...args),
+        deviceId: dev.id,
+        name,
+        desired: true,
+        snapshot,
+        logContext: 'capacity',
+        restoreSource: this.getRestoreLogSource(dev.id),
+        actuationMode: mode,
+      });
+      if (!applied) return;
+      if (mode === 'plan') {
+        const now = Date.now();
+        this.recordRestoreActuation(dev.id, name, now);
+        recordActivationAttemptStarted({
+          state: this.state,
+          diagnostics: this.deps.deviceDiagnostics,
+          deviceId: dev.id,
+          name,
+          nowTs: now,
+        });
+      }
+    } catch (error) {
+      this.error(`Failed to restore stepped-load device ${name} via binary control`, error);
+    } finally {
+      this.state.pendingRestores.delete(dev.id);
+    }
+  }
+
   public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
     if (this.capacityDryRun) return;
     const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
@@ -848,6 +916,7 @@ export class PlanExecutor {
         }
         await this.applySteppedLoadCommand(dev, mode);
         if (isSteppedLoadDevice(dev)) {
+          await this.applySteppedLoadRestore(dev, snapshot, mode);
           await this.applyTargetUpdate(dev, snapshot, mode);
           continue;
         }

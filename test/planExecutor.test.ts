@@ -504,4 +504,104 @@ describe('PlanExecutor stepped loads', () => {
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
   });
+
+  it('restores a stepped device to on when it has keep intent but currentOn is false', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager, deps } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low', // no step change needed
+    }));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('turning on Tank'));
+  });
+
+  it('does not restore a stepped device when planned state is shed', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not restore a stepped device when it is already on', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not restore a stepped device at its off-step even with keep intent', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low', // step change will be issued, but no binary restore
+    }));
+
+    // The step command should be issued to move from off -> low
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    // But onoff should NOT be set — the device is at its off-step, so it's
+    // genuinely off, not a dual-control inconsistency.
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
 });

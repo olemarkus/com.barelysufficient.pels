@@ -47,11 +47,10 @@ non-zero step.
   use the lowest non-zero step for conservative planning.
   Files: `planRestoreSwap.ts` (`estimateRestorePower`).
 
-- [ ] **`keep` intent requires `onoff=true` for stepped devices.**
-  The executor skips binary control for stepped devices (`if (isSteppedLoadDevice(dev)) return;`
-  in `applyRestorePower`). If a stepped device is `onoff=false` with `keep` intent, nothing
-  reconciles it back on. Same for `step=0` (off-step) — no reconciliation to a non-zero step.
-  Files: `planExecutor.ts` (`applyRestorePower`), `planReconcileState.ts`.
+- [x] **`keep` intent requires `onoff=true` for stepped devices.**
+  `applySteppedLoadRestore` in the executor reconciles stepped devices back to on when they have
+  `keep` intent and `currentState === 'off'`, using the standard `setBinaryControl` path.
+  Files: `planExecutor.ts` (`applySteppedLoadRestore`).
 
 - [ ] **`shed(turn_off)` should set `onoff=false` in addition to off-step.**
   Currently the executor only issues step commands via flow cards for stepped devices. When a
@@ -76,7 +75,7 @@ non-zero step.
   non-zero step power, not 0 or fallback 1.
 - [ ] Stepped device with `set_temperature` shed behavior. Verify expected power uses lowest
   non-zero step for planning.
-- [ ] Stepped device with `keep` intent and `onoff=false`. Verify reconciliation turns it on.
+- [x] Stepped device with `keep` intent and `onoff=false`. Verify reconciliation turns it on.
 - [ ] Stepped device with `keep` intent and `step=0`. Verify reconciliation sets non-zero step.
 - [ ] Both `onoff=false` and `step=0` with `keep` intent. Verify both are fixed.
 - [ ] Stepped device at lowest active step with `turn_off`. Verify device ends up at off-step
