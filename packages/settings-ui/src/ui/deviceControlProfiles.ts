@@ -84,6 +84,9 @@ export const applyLocalDeviceControlProfile = (
     delete device.selectedStepId;
     delete device.actualStepSource;
     delete device.planningPowerKw;
+    if ((device.expectedPowerSource as string) === 'step-planning') {
+      delete device.expectedPowerSource;
+    }
     return;
   }
 
