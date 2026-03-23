@@ -2,15 +2,12 @@
 
 ## Backlog
 
-- [ ] Use Homey Energy live reporting (`ManagerEnergy.getLiveReport`) as source for whole-home metering instead of relying on Flow-reported total power.
 - [ ] Architecture tightening: remove remaining `lib/utils/** -> lib/{core,plan}` imports by moving those helpers to a better-owned module (current checks warn, not fail).
 - [ ] Dead-code tightening: expand the dead-code export check to include `packages/contracts/**` and `packages/shared-domain/**` so temporary allowlisted runtime exports can be removed.
 - [ ] Perf lint tightening: change `unicorn/no-array-reduce` in hot-path runtime code from `allowSimpleOperations: true` to `false` after remaining reducers are migrated.
 - [ ] Perf lint tightening: expand hot-path iteration rules (`no-array-for-each`, `no-array-reduce`, loop allocation bans) from `lib/{core,plan,dailyBudget}` to the rest of runtime (`app.ts`, `flowCards/**`, `drivers/**`) once violations are cleaned.
 - [ ] Perf lint tightening: re-enable `functional/immutable-data` for hot-path overrides once intentional mutable fast-paths are isolated behind explicit, well-scoped exceptions.
 - [ ] Perf lint tightening: enable targeted `no-await-in-loop` in safe non-actuation loops after documenting approved sequential-actuation patterns.
-- [ ] Investigate and reduce top-of-hour CPU/PSS spikes (observed after chart/camera-image changes): profile hour rollover work, isolate expensive render paths, and cap/schedule heavy jobs so Homey stays within practical memory/CPU limits.
-- [ ] Verify resvg font caching: `renderAsync` receives `fontFiles` paths on every call — confirm resvg-js caches parsed font data internally, or pre-load font buffers once to avoid re-reading ~400 KB from disk per render.
 - [ ] Gate `logNextDayPlanDebug` behind debug flag early: the call at `dailyBudgetManager.ts:183` runs a full `buildPlan` for tomorrow on every plan rebuild; ensure `shouldLog` is reliably false in production so the extra plan build is skipped.
 - [ ] Reduce `getZonedParts` calls in plan rebuild: `resolveRemainingCaps`, `resolveRemainingFloors`, and `buildControlledMinFloors` each call `getZonedParts` per bucket (~72 calls total); pre-compute a `bucketHour[]` map once and share it.
 
