@@ -38,6 +38,9 @@ describe('planSteppedLoad', () => {
     expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: undefined }))).toBe('unknown');
     expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'off' }))).toBe('off');
     expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'low' }))).toBe('on');
+    expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'max', currentOn: false }))).toBe('off');
+    expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'low', currentOn: false }))).toBe('off');
+    expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'max', currentOn: true }))).toBe('on');
   });
 
   it('resolves initial desired step and next restore step', () => {

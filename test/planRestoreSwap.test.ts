@@ -135,6 +135,39 @@ describe('restore swap helpers', () => {
     expect(estimateRestorePower(baseDevice())).toBe(1);
   });
 
+  it('uses lowest non-zero step for stepped devices at off-step', () => {
+    const steppedProfile = {
+      model: 'stepped_load' as const,
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1250 },
+        { id: 'mid', planningPowerW: 2000 },
+        { id: 'max', planningPowerW: 3000 },
+      ],
+    };
+    // At off-step: planningPowerKw=0, measuredPowerKw=0 — should use lowest non-zero step (1.25kW)
+    expect(estimateRestorePower(baseDevice({
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'off',
+      planningPowerKw: 0,
+      measuredPowerKw: 0,
+    }))).toBe(1.25);
+    // At active step with positive planningPowerKw — should use planningPowerKw directly
+    expect(estimateRestorePower(baseDevice({
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'mid',
+      planningPowerKw: 2,
+    }))).toBe(2);
+    // No planningPowerKw set, no measuredPower — should still use lowest non-zero step
+    expect(estimateRestorePower(baseDevice({
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'off',
+    }))).toBe(1.25);
+  });
+
   it('computes restore buffer with bounds and scaling', () => {
     expect(computeRestoreBufferKw(-2)).toBeCloseTo(0.2, 5);
     expect(computeRestoreBufferKw(0)).toBeCloseTo(0.2, 5);
