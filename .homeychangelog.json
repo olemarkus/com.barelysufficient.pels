@@ -223,5 +223,8 @@
   },
   "2.0.0": {
     "en": "The PELS Insights device no longer provides generated plan and price camera images. If you used those images in dashboards or flows, the budget widget is now the intended replacement, and the related image-based Flow card has been deprecated.\n\nThis release also moves stepped-load devices closer to becoming first-class citizens in PELS. Support for stepped-load control has been expanded and refined so these devices fit better into planning and control, along with a number of smaller stability and UI improvements."
+  },
+  "2.1.0": {
+    "en": "Add support for fetching whole-home power usage through Homey Energy."
   }
 }
