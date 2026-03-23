@@ -297,5 +297,8 @@ export const startStaleDataRefreshInterval = () => {
   setInterval(() => {
     invalidateApiCache(SETTINGS_UI_POWER_PATH);
     refreshStaleDataStatus('staleDataInterval');
+    if (isPanelVisible('#overview-panel')) {
+      refreshPlanForUi('periodicRefresh');
+    }
   }, 30 * 1000);
 };

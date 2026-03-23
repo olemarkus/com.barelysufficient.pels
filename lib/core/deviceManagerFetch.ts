@@ -1,7 +1,16 @@
-import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
-import { extractLivePowerWattsByDeviceId, type LiveDevicePowerWatts } from './deviceManagerEnergy';
-import { DEVICES_API_PATH, getRawDevice, getRawDevices, logDeviceManagerRuntimeError } from './deviceManagerHomeyApi';
+import {
+  extractLiveHomePowerWatts,
+  extractLivePowerWattsByDeviceId,
+  type LiveDevicePowerWatts,
+} from './deviceManagerEnergy';
+import {
+  DEVICES_API_PATH,
+  getEnergyLiveReport,
+  getRawDevice,
+  getRawDevices,
+  logDeviceManagerRuntimeError,
+} from './deviceManagerHomeyApi';
 
 export type DeviceFetchSource = 'raw_manager_devices' | 'targeted_by_id';
 
@@ -76,18 +85,27 @@ export async function fetchDevicesByIds(params: {
   return { devices, fetchSource: 'targeted_by_id' };
 }
 
-export async function fetchLivePowerWattsByDeviceId(params: {
-  energyApi?: Pick<HomeyEnergyApi, 'getLiveReport'>;
+export type LivePowerReport = {
+  byDeviceId: LiveDevicePowerWatts;
+  homePowerW: number | null;
+};
+
+export async function fetchLivePowerReport(params: {
   logger: Logger;
-}): Promise<LiveDevicePowerWatts> {
-  const { energyApi, logger } = params;
-  if (typeof energyApi?.getLiveReport !== 'function') return {};
+}): Promise<LivePowerReport> {
+  const { logger } = params;
   try {
-    const liveReport = await energyApi.getLiveReport({});
-    return extractLivePowerWattsByDeviceId(liveReport);
+    const report = await getEnergyLiveReport();
+    if (report === null) {
+      logger.error('Energy live report unavailable: REST client not initialized');
+      return { byDeviceId: {}, homePowerW: null };
+    }
+    const byDeviceId = extractLivePowerWattsByDeviceId(report);
+    const homePowerW = extractLiveHomePowerWatts(report);
+    logger.debug(`Energy live report: homePowerW=${homePowerW}, devices=${Object.keys(byDeviceId).length}`);
+    return { byDeviceId, homePowerW };
   } catch (error) {
-    const message = 'Homey energy live report unavailable for device snapshot';
-    logDeviceManagerRuntimeError(logger, message, error);
-    return {};
+    logDeviceManagerRuntimeError(logger, 'Energy live report fetch failed', error);
+    return { byDeviceId: {}, homePowerW: null };
   }
 }

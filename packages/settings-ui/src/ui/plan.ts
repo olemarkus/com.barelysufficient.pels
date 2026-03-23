@@ -56,6 +56,7 @@ type PlanSnapshot = {
     hourControlledKWh?: number;
     hourUncontrolledKWh?: number;
     dailyBudgetHourKWh?: number;
+    lastPowerUpdateMs?: number;
   };
   devices?: PlanDeviceSnapshot[];
 };
@@ -93,13 +94,24 @@ type ValidatedMeta = {
   headroomKw: number;
   controlledKw?: number;
   uncontrolledKw?: number;
+  lastPowerUpdateMs?: number;
+};
+
+const formatRelativeTime = (timestampMs: number): string => {
+  const seconds = Math.round((Date.now() - timestampMs) / 1000);
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.round(minutes / 60)}h ago`;
 };
 
 const buildNowLines = (meta: ValidatedMeta): string[] => {
-  const { totalKw, softLimitKw, headroomKw, controlledKw, uncontrolledKw } = meta;
+  const { totalKw, softLimitKw, headroomKw, controlledKw, uncontrolledKw, lastPowerUpdateMs } = meta;
   const headroomAbs = Math.abs(headroomKw).toFixed(1);
   const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over soft limit`;
-  const powerText = `Now ${totalKw.toFixed(1)}kW (soft limit ${softLimitKw.toFixed(1)}kW)`;
+  const ageText = typeof lastPowerUpdateMs === 'number' ? ` (${formatRelativeTime(lastPowerUpdateMs)})` : '';
+  const powerText = `Now ${totalKw.toFixed(1)}kW${ageText} (soft limit ${softLimitKw.toFixed(1)}kW)`;
   const lines = [powerText, headroomText];
   if (typeof controlledKw === 'number' && typeof uncontrolledKw === 'number') {
     lines.push(`Capacity-controlled ${controlledKw.toFixed(2)}kW / Other load ${uncontrolledKw.toFixed(2)}kW`);
@@ -140,6 +152,7 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
     headroomKw,
     controlledKw: meta.controlledKw,
     uncontrolledKw: meta.uncontrolledKw,
+    lastPowerUpdateMs: meta.lastPowerUpdateMs as number | undefined,
   };
   return { now: buildNowLines(validated), hour: buildHourLines(meta) };
 };

@@ -35,6 +35,7 @@ export const capacityForm = document.querySelector('#capacity-form') as HTMLForm
 export const capacityLimitInput = document.querySelector('#capacity-limit') as HTMLInputElement;
 export const capacityMarginInput = document.querySelector('#capacity-margin') as HTMLInputElement;
 export const capacityDryRunInput = document.querySelector('#capacity-dry-run') as HTMLInputElement;
+export const powerSourceSelect = document.querySelector('#power-source') as HTMLSelectElement;
 export const dailyBudgetForm = document.querySelector('#daily-budget-form') as HTMLFormElement;
 export const dailyBudgetEnabledInput = document.querySelector('#daily-budget-enabled') as HTMLInputElement;
 export const dailyBudgetKwhInput = document.querySelector('#daily-budget-kwh') as HTMLInputElement;

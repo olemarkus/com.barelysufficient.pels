@@ -12,6 +12,19 @@ const toFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
+export const extractLiveHomePowerWatts = (liveReport: unknown): number | null => {
+  const report = asRecord(liveReport);
+  if (!report || !Array.isArray(report.items)) return null;
+  for (const rawItem of report.items) {
+    const item = asRecord(rawItem);
+    if (!item || item.type !== 'cumulative') continue;
+    const values = asRecord(item.values);
+    const watts = toFiniteNumber(values?.W);
+    if (watts !== null) return watts;
+  }
+  return null;
+};
+
 export const extractLivePowerWattsByDeviceId = (liveReport: unknown): LiveDevicePowerWatts => {
   const report = asRecord(liveReport);
   if (!report || !Array.isArray(report.items)) return {};

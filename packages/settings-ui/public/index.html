@@ -47,6 +47,16 @@
         </label>
         <small class="field__hint">PELS will only monitor devices while this is enabled.</small>
       </div>
+      <form class="form-grid">
+        <label class="field">
+          <span class="field__label">Power source</span>
+          <select id="power-source" name="power_source">
+            <option value="flow">Flow card</option>
+            <option value="homey_energy">Homey Energy</option>
+          </select>
+          <small class="field__hint">Where whole-home power readings come from.</small>
+        </label>
+      </form>
       <div class="device-table-header">
         <span>Device</span>
         <span data-tooltip="Managed by PELS">Managed</span>

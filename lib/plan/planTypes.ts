@@ -90,6 +90,7 @@ export type DevicePlan = {
     dailyBudgetRemainingKWh?: number;
     dailyBudgetExceeded?: boolean;
     dailyBudgetHourKWh?: number;
+    lastPowerUpdateMs?: number;
   };
   devices: DevicePlanDevice[];
 };

@@ -26,6 +26,7 @@ import {
   MANAGED_DEVICES,
   OVERSHOOT_BEHAVIORS,
   OPERATING_MODE_SETTING,
+  POWER_SOURCE,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_SCHEME,
@@ -57,6 +58,7 @@ export type SettingsHandlerDeps = {
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   getExperimentalEvSupportEnabled: () => boolean;
   disableManagedEvDevices: () => void;
+  restartHomeyEnergyPoll?: () => void;
   log: (message: string) => void;
   errorLog: (message: string, error: unknown) => void;
 };
@@ -436,6 +438,7 @@ function buildSettingsHandlers(
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after overshoot behavior change');
       await rebuildPlanFromSettings(deps, OVERSHOOT_BEHAVIORS);
     },
+    [POWER_SOURCE]: async () => handlePowerSourceChange(deps),
     [PRICE_OPTIMIZATION_ENABLED]: async () => {
       deps.updatePriceOptimizationEnabled(true);
       deps.updateDailyBudgetState({ forcePlanRebuild: true });
@@ -502,6 +505,13 @@ async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<voi
 async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.updateDailyBudgetState({ forcePlanRebuild: true });
   await rebuildPlanFromSettings(deps, 'daily_budget_price');
+}
+
+async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void> {
+  deps.log('Power source changed, refreshing snapshot');
+  deps.restartHomeyEnergyPoll?.();
+  await refreshSnapshotWithLog(deps, 'Failed to refresh after power source change');
+  await rebuildPlanFromSettings(deps, 'power_source');
 }
 
 function recordSettingsRebuildRequest(source: string): void {
