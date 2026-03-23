@@ -84,9 +84,9 @@ non-zero step.
 - [ ] Both `onoff=false` and `step=0` with `keep` intent. Verify both are fixed.
 - [x] Stepped device at lowest active step with `turn_off`. Verify device ends up at off-step
   AND `onoff=false`.
-- [ ] Intent `keep`, external actor sets `onoff=false`. Verify PELS turns it back on.
-- [ ] Intent `keep`, external actor sets `step=0`. Verify PELS sets a non-zero step.
-- [ ] Intent `shed(set_step)`, external actor raises step. Verify PELS re-issues the shed step.
+- [x] Intent `keep`, external actor sets `onoff=false`. Verify PELS turns it back on.
+- [x] Intent `keep`, external actor sets `step=0`. Verify PELS sets a non-zero step.
+- [x] Intent `shed(set_step)`, external actor raises step. Verify PELS re-issues the shed step.
 
 ## Plan UI: restore-cooldown badge inconsistency
 

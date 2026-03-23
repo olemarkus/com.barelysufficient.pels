@@ -2,7 +2,12 @@ import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../lib/plan/planExecutor';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
-import type { DevicePlan } from '../lib/plan/planTypes';
+import type {
+  DevicePlan,
+  DevicePlanDevice,
+  PlanInputDevice,
+} from '../lib/plan/planTypes';
+import { buildLiveStatePlan, hasPlanExecutionDrift } from '../lib/plan/planReconcileState';
 
 const buildPlan = (): DevicePlan => ({
   meta: {
@@ -707,5 +712,115 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlanExecutor stepped load reconciliation loop', () => {
+  const steppedProfile = {
+    model: 'stepped_load' as const,
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: 1250 },
+      { id: 'max', planningPowerW: 3000 },
+    ],
+  };
+
+  const steppedPlan = (overrides: Partial<DevicePlanDevice> = {}): DevicePlan => ({
+    meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+    devices: [{
+      id: 'dev-1',
+      name: 'Tank',
+      currentState: 'on',
+      plannedState: 'keep',
+      currentTarget: null,
+      plannedTarget: null,
+      controllable: true,
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      ...overrides,
+    }],
+  });
+
+  const buildLiveDevices = (
+    overrides: Partial<Pick<PlanInputDevice, 'currentOn' | 'selectedStepId'>> = {},
+  ): PlanInputDevice[] => [{
+    id: 'dev-1',
+    name: 'Tank',
+    targets: [],
+    controlModel: 'stepped_load',
+    steppedLoadProfile: steppedProfile,
+    hasBinaryControl: true,
+    ...overrides,
+  }];
+
+  const buildSnapshot = (overrides: { currentOn?: boolean } = {}) => [{
+    id: 'dev-1',
+    name: 'Tank',
+    controlCapabilityId: 'onoff' as const,
+    canSetControl: true,
+    available: true,
+    currentOn: false,
+    ...overrides,
+  }];
+
+  it('detects onoff drift and restores a keep device turned off externally', async () => {
+    const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
+    const liveDevices = buildLiveDevices({ currentOn: false, selectedStepId: 'low' });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+    expect(livePlan.devices[0].currentState).toBe('off');
+
+    const { executor, deviceManager } = buildExecutor(undefined, buildSnapshot({ currentOn: false }));
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('detects step drift and re-issues step command for a keep device at off-step', async () => {
+    const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
+    const liveDevices = buildLiveDevices({ currentOn: false, selectedStepId: 'off' });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+
+    const { executor, desiredSteppedTrigger, deps } = buildExecutor(undefined, buildSnapshot({ currentOn: false }));
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deps.log).toHaveBeenCalledWith(
+      expect.stringContaining('reconcile after drift'),
+    );
+  });
+
+  it('detects step drift and re-issues shed step when external actor raises step', async () => {
+    const appliedPlan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      shedStepId: 'low',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    });
+    const liveDevices = buildLiveDevices({ currentOn: true, selectedStepId: 'max' });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+
+    const { executor, desiredSteppedTrigger, deps } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deps.log).toHaveBeenCalledWith(
+      expect.stringContaining('reconcile after drift'),
+    );
   });
 });
