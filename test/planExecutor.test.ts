@@ -852,7 +852,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.stringContaining('violates keep invariant: onoff='),
     );
     expect(deps.logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('violates keep invariant: step=off'),
+      expect.stringContaining('violates keep invariant: step=off (off-step)'),
     );
   });
 

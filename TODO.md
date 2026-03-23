@@ -72,7 +72,8 @@ non-zero step.
 - [x] Preemptive stepped device sorts before higher-priority binary device.
 - [x] Stepped device above lowest-active steps down before one at lowest-active transitions to off.
 - [x] Two stepped devices + one binary device, overshoot requires multiple cycles. Verify both
-  stepped devices reach lowest active step before the binary device turns off.
+  stepped devices reach lowest active step before the binary device turns off. Test uses distinct
+  stepped priorities to exercise priority ordering among preemptive candidates.
 - [x] `currentOn=false` on a stepped device at a non-off step: plan sees device as off, not
   consuming power.
   Covered by `appDeviceControlHelpers.test.ts` (`decorateSnapshotWithDeviceControl`).
