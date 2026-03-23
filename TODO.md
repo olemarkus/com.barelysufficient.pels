@@ -10,6 +10,11 @@
 - [ ] Perf lint tightening: enable targeted `no-await-in-loop` in safe non-actuation loops after documenting approved sequential-actuation patterns.
 - [ ] Gate `logNextDayPlanDebug` behind debug flag early: the call at `dailyBudgetManager.ts:183` runs a full `buildPlan` for tomorrow on every plan rebuild; ensure `shouldLog` is reliably false in production so the extra plan build is skipped.
 - [ ] Reduce `getZonedParts` calls in plan rebuild: `resolveRemainingCaps`, `resolveRemainingFloors`, and `buildControlledMinFloors` each call `getZonedParts` per bucket (~72 calls total); pre-compute a `bucketHour[]` map once and share it.
+- [ ] Extract `setBinaryControl` boilerplate into a private `PlanExecutor` helper. The dependency
+  bag (`state`, `deviceManager`, `updateLocalSnapshot`, `log`, `logDebug`, `error`) is duplicated
+  across `applySteppedLoadShedOff`, `applySteppedLoadRestore`, `applyRestorePower`,
+  `applyUncontrolledRestore`, and `turnOffDevice`.
+  Files: `planExecutor.ts`.
 
 ## Dual-control stepped device intent model
 
