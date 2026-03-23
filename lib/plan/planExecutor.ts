@@ -118,11 +118,10 @@ export class PlanExecutor {
     return {
       state: this.state,
       deviceManager: this.deviceManager,
-      updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) =>
-        this.updateLocalSnapshot(deviceId, updates),
-      log: (...args: unknown[]) => this.log(...args),
-      logDebug: (...args: unknown[]) => this.logDebug(...args),
-      error: (...args: unknown[]) => this.error(...args),
+      updateLocalSnapshot: this.updateLocalSnapshot.bind(this),
+      log: this.log.bind(this),
+      logDebug: this.logDebug.bind(this),
+      error: this.error.bind(this),
     };
   }
 
@@ -270,12 +269,7 @@ export class PlanExecutor {
     try {
       try {
         const applied = await setBinaryControl({
-          state: this.state,
-          deviceManager: this.deviceManager,
-          updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
-          log: (...args: unknown[]) => this.log(...args),
-          logDebug: (...args: unknown[]) => this.logDebug(...args),
-          error: (...args: unknown[]) => this.error(...args),
+          ...this.buildBinaryControlDeps(),
           deviceId: dev.id,
           name,
           desired: true,
