@@ -28,15 +28,19 @@ non-zero step.
 
 ### Implementation gaps
 
-- [ ] **Shedding order: step down ALL stepped devices before ANY turn-off.**
-  `sortCandidates` puts preemptive step-down first, but once a stepped device reaches its lowest
-  active step it becomes a regular candidate sorted by priority. A binary device could be turned
-  off while another stepped device is still above lowest active.
-  Files: `planShedding.ts` (`sortCandidates`, `selectShedDevices`).
+- [x] **`currentOn` override.**
+  `appDeviceControlHelpers.ts` decorator preserves raw `onoff=false` for stepped devices instead
+  of deriving from step state. `resolveSteppedLoadCurrentState` checks `currentOn === false`
+  before step-based inference.
+
+- [x] **Shedding order: step down ALL stepped devices before ANY turn-off.**
+  Preemptive step-down candidates sort before binary turn-off candidates regardless of priority.
+  Files: `planShedding.ts` (`sortCandidates`).
 
 - [x] **Expected power for `shed(turn_off)` stepped devices.**
   `estimateRestorePower` now uses the lowest non-zero step for stepped devices at zero planning
-  power, instead of falling through to `powerKw ?? 1`.
+  power, instead of falling through to `powerKw ?? 1`. `computeBaseRestoreNeed` simplified to
+  `computeRestoreNeeded`.
 
 - [x] **Expected power for `shed(set_temperature)` stepped devices.**
   Covered by the same `estimateRestorePower` change — stepped devices at zero planning power
@@ -62,10 +66,12 @@ non-zero step.
 
 ### Missing tests
 
+- [x] Preemptive stepped device sorts before higher-priority binary device.
+- [x] Stepped device above lowest-active steps down before one at lowest-active transitions to off.
 - [ ] Two stepped devices at different priorities + one binary device, overshoot requires multiple
-  sheds. Verify both stepped devices reach lowest active step before the binary device turns off.
-- [ ] Stepped device at lowest active step + another still above. Verify the higher one steps
-  down before the lowest-active one transitions to off.
+  cycles. Verify both stepped devices reach lowest active step before the binary device turns off.
+- [ ] `currentOn=false` on a stepped device at a non-off step: plan sees device as off, not
+  consuming power.
 - [ ] Stepped device at off-step with `turn_off` intent. Verify restore headroom uses lowest
   non-zero step power, not 0 or fallback 1.
 - [ ] Stepped device with `set_temperature` shed behavior. Verify expected power uses lowest

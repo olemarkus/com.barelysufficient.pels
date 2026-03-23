@@ -1167,6 +1167,155 @@ describe('buildSheddingPlan', () => {
     expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('mid');
   });
 
+  it('preemptively steps down a stepped device before turning off a higher-priority binary device', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'heater',
+        name: 'Heater at max',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'max',
+        measuredPowerKw: 2.8,
+        currentOn: true,
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'binary-dev',
+        name: 'Binary device',
+        measuredPowerKw: 0.8,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(10),
+    } as unknown as CapacityGuard;
+
+    // Need 0.5kW of relief. The binary device has higher priority (sheds first
+    // normally), but the stepped device is above its lowest active step so its
+    // preemptive step-down sorts first.
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 4,
+        softLimit: 3.5,
+        capacitySoftLimit: 3.5,
+        headroomRaw: -0.5,
+        headroom: -0.5,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 700 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        // Binary device has higher priority (10 > 1) so would normally shed first
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'heater' ? 1 : 10),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // Preemptive step-down of the stepped device should happen first
+    expect(result.shedSet.has('heater')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.get('heater')).toBe('low');
+    // Binary device should NOT be shed — preemptive break stops the loop
+    expect(result.shedSet.has('binary-dev')).toBe(false);
+  });
+
+  it('steps down a higher stepped device before transitioning a lowest-active one to off', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'heater-low',
+        name: 'Heater at low',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+        measuredPowerKw: 0.9,
+        currentOn: true,
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'heater-high',
+        name: 'Heater at max',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 500 },
+            { id: 'max', planningPowerW: 1500 },
+          ],
+        },
+        selectedStepId: 'max',
+        measuredPowerKw: 1.4,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(10),
+    } as unknown as CapacityGuard;
+
+    // Need 1.5kW relief. heater-high is above lowest active and should step down
+    // preemptively. heater-low is already at lowest active so it's not preemptive.
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 4,
+        softLimit: 2.5,
+        capacitySoftLimit: 2.5,
+        headroomRaw: -1.5,
+        headroom: -1.5,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 10,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // heater-high should be stepped down (preemptive, above lowest active)
+    expect(result.shedSet.has('heater-high')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.get('heater-high')).toBe('low');
+    // heater-low should NOT be shed — preemptive step-down of heater-high breaks
+    // the loop, so only one device is acted on per cycle.
+    expect(result.shedSet.has('heater-low')).toBe(false);
+  });
+
   it('keeps shedding other devices when a binary shed command is still unconfirmed', async () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands.bath = {
