@@ -98,8 +98,6 @@ export const decorateSnapshotWithDeviceControl = (params: {
     assumedStepId,
     actualStepSource,
     planningPowerKw,
-    expectedPowerKw: planningPowerKw,
-    expectedPowerSource: planningPowerKw !== undefined ? 'step-planning' : snapshot.expectedPowerSource,
     // Preserve an explicit off state from the raw onoff capability for stepped devices. A device
     // at a non-zero step but with onoff=false is genuinely off — the step is configuration, not
     // power state. An explicit on state may still be overridden by an off-step selection.

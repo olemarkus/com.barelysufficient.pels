@@ -67,8 +67,9 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.assumedStepId).toBe('max');
     expect(decorated.actualStepSource).toBeUndefined();
     expect(decorated.planningPowerKw).toBe(3);
-    expect(decorated.expectedPowerKw).toBe(3);
-    expect(decorated.expectedPowerSource).toBe('step-planning');
+    // expectedPowerKw is NOT overwritten — it retains the original snapshot value
+    // (undefined here). Step-derived power is available via planningPowerKw.
+    expect(decorated.expectedPowerKw).toBeUndefined();
     expect(decorated.currentOn).toBe(true);
   });
 
@@ -224,7 +225,6 @@ describe('appDeviceControlHelpers', () => {
     expect(offDecorated.actualStepId).toBe('off');
     expect(offDecorated.currentOn).toBe(false);
     expect(offDecorated.planningPowerKw).toBe(0);
-    expect(offDecorated.expectedPowerSource).toBe('step-planning');
 
     expect(reportSteppedLoadActualStep({
       runtimeState,

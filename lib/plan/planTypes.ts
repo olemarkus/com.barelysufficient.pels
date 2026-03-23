@@ -50,7 +50,7 @@ export type DevicePlanDevice = {
   powerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
-  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default' | 'step-planning';
+  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
   measuredPowerKw?: number;
   reason?: string;
   zone?: string;
@@ -115,7 +115,7 @@ export type PlanInputDevice = {
   powerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
-  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default' | 'step-planning';
+  expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
   measuredPowerKw?: number;
   currentTemperature?: number;
   controllable?: boolean;

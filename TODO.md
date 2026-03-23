@@ -10,11 +10,6 @@
 - [ ] Perf lint tightening: enable targeted `no-await-in-loop` in safe non-actuation loops after documenting approved sequential-actuation patterns.
 - [ ] Gate `logNextDayPlanDebug` behind debug flag early: the call at `dailyBudgetManager.ts:183` runs a full `buildPlan` for tomorrow on every plan rebuild; ensure `shouldLog` is reliably false in production so the extra plan build is skipped.
 - [ ] Reduce `getZonedParts` calls in plan rebuild: `resolveRemainingCaps`, `resolveRemainingFloors`, and `buildControlledMinFloors` each call `getZonedParts` per bucket (~72 calls total); pre-compute a `bucketHour[]` map once and share it.
-- [ ] Extract `setBinaryControl` boilerplate into a private `PlanExecutor` helper. The dependency
-  bag (`state`, `deviceManager`, `updateLocalSnapshot`, `log`, `logDebug`, `error`) is duplicated
-  across `applySteppedLoadShedOff`, `applySteppedLoadRestore`, `applyRestorePower`,
-  `applyUncontrolledRestore`, and `turnOffDevice`.
-  Files: `planExecutor.ts`.
 
 ## Dual-control stepped device intent model
 
@@ -104,48 +99,225 @@ non-zero step.
   that no longer matches its assertion ("Shed (restore cooldown)"). Rename to match current semantics.
   Files: `packages/settings-ui/test/plan-ui.test.ts`.
 
-## Confirmation, freshness, and drift handling for dual-control stepped devices
+## State integrity: intent vs observation vs planning
 
-Two integrity problems observed in production logs: (1) optimistic restore state is
-treated as confirmed active state, and (2) stale PELS state outranks fresher observed
-state from Homey/device telemetry.
+Production logs show recurring problems where PELS internal state, planner intent, and
+observed device state are not clearly separated. The root causes fall into four areas
+with targeted fixes for each.
 
-### Phase 1: provisional restore state
+### 1. `binaryCommandPending` flag for restore lifecycle
 
+**Problem:** After a restore write, `updateLocalSnapshot` optimistically sets `currentOn=true`.
+The UI shows "Active" or "Restoring" before fresh telemetry confirms the device is actually on.
+Intent is presented as confirmed reality.
+
+**Fix:** Add a `binaryCommandPending` flag mirroring the existing `stepCommandPending` pattern.
+After a restore or shed binary write, set the flag. Clear it when fresh telemetry confirms the
+expected state, or expire it after a timeout (similar to `BINARY_COMMAND_PENDING_MS`). Stop
+setting `currentOn=true` optimistically — let the pending flag carry the "requested but
+unconfirmed" state instead.
+
+**Solves:** intent shown as reality, restore lifecycle ambiguity, overloaded state labels.
+
+- [ ] Add `binaryCommandPending` and `binaryCommandStatus` fields to snapshot/plan device types,
+  mirroring `stepCommandPending` / `stepCommandStatus`.
+  Files: `planTypes.ts`, snapshot types.
 - [ ] Stop `updateLocalSnapshot` from setting `currentOn=true` optimistically on restore writes.
-  Use a pending/confirmation model similar to `stepCommandPending` for binary control. After a
-  restore write, PELS should show "restore requested" / "pending confirmation" until fresh
-  telemetry confirms the device is actually on.
-  Files: `planBinaryControl.ts`, `planExecutor.ts`, `appDeviceControlHelpers.ts`.
+  Instead, set `binaryCommandPending=true` with a `restoreRequestedMs` timestamp.
+  Files: `planBinaryControl.ts`, `planExecutor.ts`.
+- [ ] Add confirmation logic: clear `binaryCommandPending` when fresh telemetry confirms
+  `onoff` matches the pending desired value. Add timeout expiry matching step command staleness.
+  Files: `appDeviceControlHelpers.ts`, sync logic analogous to `syncPendingBinaryCommands`.
+- [ ] Update UI to show "Restore requested" when `binaryCommandPending=true` and `desired=true`,
+  instead of "Active" or "Restoring".
+  Files: `packages/settings-ui/src/ui/plan.ts`.
 
-### Phase 2: fresher observed state wins
+### 2. Stop conflating measured, expected, and planning power
 
-- [ ] Ensure `decorateSnapshotWithDeviceControl` respects fresh Homey-reported state over stale
-  PELS-internal optimistic state. If Homey reports `onoff=false` / `measure_power=0` with a
-  newer timestamp than the PELS optimistic write, the fresher observed state must win.
+**Problem:** The decorator overwrites `expectedPowerKw` with `planningPowerKw` for stepped
+devices (`appDeviceControlHelpers.ts:101`), losing the original configured value. Downstream
+code that falls back to `expectedPowerKw` gets step planning power instead. Four different
+power resolution functions use different fallback orders, so the same device gets different
+power estimates depending on whether PELS is shedding, restoring, or reporting usage.
+
+**Power resolution inconsistency:**
+
+| Function | File | Priority order |
+|---|---|---|
+| `resolveCandidatePower` | `planCandidatePower.ts` | measured → expected → planning → configured → 1kW |
+| `estimateRestorePower` | `planRestoreSwap.ts` | planning → step-restore → expected → measured → 1kW |
+| `resolveUsageKw` | `planUsage.ts` | measured → expected (conditional) → planning → null |
+| `resolveSteppedCandidatePower` | `planSteppedLoad.ts` | measured-relief → planning delta |
+
+**Fix:** Stop overwriting `expectedPowerKw` in the decorator. Keep `planningPowerKw` as a
+separate field (it already is). Ensure `measuredPowerKw` is only ever populated from
+`measure_power` telemetry, never from configured load or step-derived values. Document which
+power field each consumer should use:
+- Shedding candidate ranking: measured (what we'd actually save)
+- Restore headroom estimation: planning (conservative, stable)
+- Usage reporting: measured (what's actually happening)
+- UI "current usage": measured only, show "unknown" if unavailable
+
+- [x] Stop overwriting `expectedPowerKw` with `planningPowerKw` in
+  `decorateSnapshotWithDeviceControl`. Keep both fields independent.
+  Also removed the same override in the settings-ui `applyLocalDeviceControlProfile`.
+  Removed `'step-planning'` from `expectedPowerSource` type union.
+  Files: `appDeviceControlHelpers.ts`, `deviceControlProfiles.ts`, `planTypes.ts`,
+  `packages/contracts/src/types.ts`.
+- [ ] Audit `measuredPowerKw` assignment — ensure it only comes from `measure_power` capability
+  telemetry, never from configured load, expected load, or step-derived nominal values.
   Files: `appDeviceControlHelpers.ts`, snapshot pipeline.
+- [ ] Document intended fallback order per consumer and align the four power resolution functions.
+  Files: `planCandidatePower.ts`, `planRestoreSwap.ts`, `planUsage.ts`, `planSteppedLoad.ts`.
 
-### Phase 3: separate drift logging
+### 3. Stale local writes: one `lastLocalWriteMs` per device
 
-- [ ] Log step drift and binary drift separately for stepped devices. Required log patterns:
-  `step drift: desired X, observed Y` and `binary drift: desired onoff=X, observed onoff=Y`.
-  Files: `planReconcileState.ts`, `planExecutor.ts`.
+**Problem:** After PELS writes a command (restore, shed, step change), the local snapshot
+preserves the written value. If Homey later reports contradictory state with a fresher
+timestamp, the stale local write can still win because the decorator has no way to compare
+freshness.
 
-### Phase 4: observed vs expected power separation
+**Fix:** Track one `lastLocalWriteMs` timestamp per device, set whenever `updateLocalSnapshot`
+writes any value. In the decorator, compare `lastLocalWriteMs` against the Homey snapshot's
+update timestamp. If the Homey snapshot is newer, stop trusting the local write and use the
+observed value instead. This is one timestamp per device, one comparison in the decorator —
+not per-field freshness tracking.
 
-- [ ] Keep `observedPower` (real telemetry only) and `expectedPower` (planning) as distinct fields.
-  Measured power must never be inferred from configured load, expected load, or step-derived
-  nominal load. Only `observedPower` may answer "what is the device drawing now?"
-  Files: snapshot types, `appDeviceControlHelpers.ts`, UI display code.
+- [ ] Add `lastLocalWriteMs` per device to runtime state. Set it in `updateLocalSnapshot`
+  on every write.
+  Files: `planState.ts` or `appDeviceControlHelpers.ts` runtime state.
+- [ ] In `decorateSnapshotWithDeviceControl`, compare `lastLocalWriteMs` against the Homey
+  snapshot timestamp. If Homey is newer, prefer observed values over preserved local writes.
+  Files: `appDeviceControlHelpers.ts`.
 
-### Phase 5: full freshness tracking and confirmation state machine
+### 4. `communicationModel` for device-class-aware timeouts
 
-- [ ] Add per-field freshness awareness (`onoff` age, measured power age, step age). PELS must not
-  let an older internal/local state outrank a fresher observed device state.
-- [ ] Introduce confirmation state vocabulary: `none`, `restore_requested`, `step_change_requested`,
-  `pending_confirmation`, `confirmed`, `contradicted`.
-- [ ] UI: show `On (pending confirmation)` or `Restore requested` instead of `Active` when restore
-  is unconfirmed. Show `On, idle` or `On (0 W)` when confirmed on but measured power is 0.
+**Problem:** Connected 300 is cloud-to-cloud with slow, out-of-order updates. Local
+thermostats update within seconds. PELS uses the same confirmation timeouts, drift detection
+thresholds, and reconciliation logic for both, causing false drift detection and unnecessary
+reconciliation re-issues for slow cloud devices.
+
+**Fix:** Add a `communicationModel: 'local' | 'cloud'` field to device config (or derive it
+from the driver). Use it to:
+- Set longer confirmation windows before treating mismatch as drift (e.g., 60s cloud vs 10s local)
+- Suppress reconciliation re-issues during the convergence window
+- Log differently: "awaiting cloud confirmation" vs "drift detected"
+
+- [ ] Add `communicationModel` field to device config / plan input types. Default to `'local'`.
+  Files: `planTypes.ts`, device config.
+- [ ] Use `communicationModel` to scale confirmation timeouts in pending command sync and
+  drift detection. Cloud devices get longer windows before triggering reconciliation.
+  Files: `planBinaryControl.ts` (`syncPendingBinaryCommands`), `appDeviceControlHelpers.ts`
+  (`pruneStaleSteppedLoadCommandStates`), `planReconcileState.ts`.
+
+## Code structure: duplication and inconsistency
+
+Patterns found during codebase audit that make planning, shedding, restore, and reconciliation
+more fragile than necessary.
+
+### `setBinaryControl` dependency bag duplication
+
+- [ ] Extract `setBinaryControl` boilerplate into a private `PlanExecutor` helper. The dependency
+  bag (`state`, `deviceManager`, `updateLocalSnapshot`, `log`, `logDebug`, `error`) is duplicated
+  across `applySteppedLoadShedOff`, `applySteppedLoadRestore`, `applyRestorePower`,
+  `applyUncontrolledRestore`, and `turnOffDevice` (5 call sites, 7 fields each).
+  Files: `planExecutor.ts`.
+
+### `setEvBinaryControl` / `setStandardBinaryControl` near-duplication
+
+- [ ] Merge `setEvBinaryControl` and `setStandardBinaryControl` into a single function. Both
+  are ~60 lines with identical control flow, pending state management, error handling, and
+  capability write. They differ only in log message construction.
+  Files: `planBinaryControl.ts`.
+
+### Repeated snapshot lookups
+
+- [ ] Cache snapshot lookup by device ID in `applyPlanActions`. The pattern
+  `this.latestTargetSnapshot.find((entry) => entry.id === dev.id)` is repeated 8+ times
+  in `planExecutor.ts` — once per device per action method. Build a `Map<string, snapshot>`
+  once at the start of the loop.
+  Files: `planExecutor.ts`.
+
+### `currentOn` vs `currentState` checked inconsistently
+
+- [ ] Align on which field to check and where. Currently:
+  - Shedding candidates filter on `currentOn !== false` (raw field, `planShedding.ts:213`)
+  - Restore candidates filter on `currentState === 'off'` (derived, `planRestoreDevices.ts:8`)
+  - Reconciliation checks `currentState` (`planReconcileState.ts:145`)
+  - Executor checks `snapshot.currentOn` (`planExecutor.ts:534`)
+  For stepped devices at off-step, `currentState='off'` (derived from step) while
+  `currentOn=true` (raw onoff capability). Code that checks one vs the other gets different
+  answers for the same device.
+  Files: `planShedding.ts`, `planRestoreDevices.ts`, `planReconcileState.ts`, `planExecutor.ts`.
+
+### `resolveSteppedLoadCurrentState` duplicates decoration logic
+
+- [ ] `planSteppedLoad.ts:39–47` re-derives current state for stepped devices from `currentOn`
+  and `selectedStepId`. The decorator in `appDeviceControlHelpers.ts` already applied this logic.
+  The plan input builder calls it again via `planDevices.ts`, meaning the derivation runs twice.
+  Remove the redundant derivation and use the already-decorated value.
+  Files: `planSteppedLoad.ts`, `planDevices.ts`.
+
+### Stepped load state in 3 layers
+
+- [ ] Stepped device state is stored in runtime state (`steppedLoadDesiredByDeviceId`,
+  `steppedLoadReportedByDeviceId`), decorated snapshot (`selectedStepId`, `desiredStepId`,
+  `actualStepId`, `assumedStepId`), and plan device (same fields copied forward, plus
+  `lastDesiredStepId` which is the *previous* desired — confusingly named). Consolidate
+  naming and reduce unnecessary copying.
+  Files: `appDeviceControlHelpers.ts`, `planDevices.ts`, `planTypes.ts`.
+
+### 4 independent pending-state systems
+
+- [ ] Binary commands (`pendingBinaryCommands` Record), target commands (`pendingTargetCommands`
+  Record), step commands (`stepCommandPending` boolean on device), and shed/restore sets
+  (`pendingSheds`/`pendingRestores` Sets) use different data structures and lifetime models
+  for conceptually similar "request sent, awaiting confirmation" state. Consider unifying
+  into a single per-device pending-action tracker with consistent timeout/confirmation semantics.
+  Files: `planState.ts`, `planBinaryControl.ts`, `planTargetControl.ts`,
+  `appDeviceControlHelpers.ts`.
+
+### Restore eligibility checked 3 different ways
+
+- [ ] Off devices for restore: `currentState === 'off' && plannedState !== 'shed'`
+  (`planRestoreDevices.ts:8`). Stepped restore candidates: `selectedStepId !== highest &&
+  plannedState !== 'shed'` — no `currentState` check (`planRestoreDevices.ts:17`). Swap
+  candidates: `plannedState !== 'shed' && not-swapped && power > 0` (`planRestoreSwap.ts:70`).
+  Different eligibility criteria for conceptually similar "is this device a candidate for
+  restore" questions.
+  Files: `planRestoreDevices.ts`, `planRestoreSwap.ts`.
+
+### Controlled vs uncontrolled power split at two levels
+
+- [ ] PowerTracker (`powerTracker.ts`) computes controlled/uncontrolled/exempt from samples.
+  Plan builder (`planBuilder.ts:518`) independently computes `controlledKw = sumControlledUsageKw()`
+  then derives `uncontrolledKw = total - controlledKw`. These can diverge if the device set
+  changes or if exemption logic differs. Choose one source of truth.
+  Files: `powerTracker.ts`, `planBuilder.ts`, `planUsage.ts`.
+
+### Shedding hysteresis gap
+
+- [ ] Shortfall has proper hysteresis: 0.2 kW clear margin + 60s sustained
+  (`capacityGuard.ts:174–203`). Shedding active state has no hysteresis — flipped directly
+  every cycle (`capacityGuard.ts:136–144`). If power oscillates near the limit, shedding
+  state can flip every few seconds, causing rapid shed/restore cycling.
+  Files: `capacityGuard.ts`, `planSheddingGuard.ts`.
+
+### Soft limit computed differently in different modules
+
+- [ ] `planBudget.ts`: dynamic soft limit based on remaining kWh / remaining time, with
+  end-of-hour capping. `capacityGuard.ts`: static margin (`limitKw - softMarginKw`).
+  `planContext.ts:70`: `headroomRaw = softLimit - total` — uses whichever was passed in.
+  The guard and the planner can see different soft limits simultaneously.
+  Files: `planBudget.ts`, `capacityGuard.ts`, `planContext.ts`.
+
+### `DevicePlanDevice` is a 30+ field bag with implicit interdependencies
+
+- [ ] Fields like `shedTemperature`, `shedStepId`, `shedAction` are independent optionals but
+  semantically coupled — `shedTemperature` is only meaningful when `shedAction === 'set_temperature'`.
+  `stepCommandPending` only applies to stepped devices but isn't gated by type. Consider
+  discriminated unions for shed behavior and control model to make invalid states unrepresentable.
+  Files: `planTypes.ts`.
 
 ## Deferred: restore-pending follow-up tests
 
