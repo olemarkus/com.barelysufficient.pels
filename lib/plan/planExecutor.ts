@@ -532,13 +532,24 @@ export class PlanExecutor {
     const isAtOffStep = dev.steppedLoadProfile && dev.selectedStepId
       && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId);
     const onoffViolated = snapshot?.currentOn === false;
-    const stepViolated = isAtOffStep;
+    // Only treat step as violated when a step-up is actually planned — i.e. the
+    // desired step differs from the selected step and targets a non-off step.
+    // Without this gate the method would repeatedly attempt binary restore
+    // without addressing the underlying step violation.
+    const desiredIsNonOff = dev.desiredStepId
+      && dev.steppedLoadProfile
+      && !isSteppedLoadOffStep(dev.steppedLoadProfile, dev.desiredStepId);
+    const stepViolated = Boolean(
+      isAtOffStep
+      && desiredIsNonOff
+      && dev.desiredStepId !== dev.selectedStepId,
+    );
 
     if (onoffViolated) {
-      this.log(`Executor: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
+      this.logDebug(`Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
     }
     if (stepViolated) {
-      this.log(`Executor: ${name} violates keep invariant: step=${dev.selectedStepId} (off-step)`);
+      this.logDebug(`Capacity: ${name} violates keep invariant: step=${dev.selectedStepId} (off-step)`);
     }
 
     if (!onoffViolated && !stepViolated) {
@@ -547,7 +558,7 @@ export class PlanExecutor {
     }
 
     if (!snapshot) {
-      this.log(`Executor: skip stepped-load restore for ${name}, no snapshot available`);
+      this.logDebug(`Capacity: skip stepped-load restore for ${name}, no snapshot available`);
       return;
     }
     if (!canTurnOnDevice(snapshot)) {
@@ -593,6 +604,52 @@ export class PlanExecutor {
       this.error(`Failed to restore stepped-load device ${name} via binary control`, error);
     } finally {
       this.state.pendingRestores.delete(dev.id);
+    }
+  }
+
+  /**
+   * For a stepped device with `shed` intent whose selected step is already the
+   * off-step, also set `onoff=false` so the device is fully turned off.  This
+   * covers the dual-control case where the step command alone leaves the binary
+   * power state on.
+   *
+   * Note: `dev.currentState` is derived from the decorated snapshot (which
+   * forces `currentOn=false` at the off-step), so it is always `'off'` here.
+   * We skip the `currentState` check and rely on `setBinaryControl`'s own
+   * "already off" guard, which operates on the raw device snapshot where
+   * `currentOn` reflects the actual `onoff` capability value.
+   */
+  private async applySteppedLoadShedOff(
+    dev: DevicePlan['devices'][number],
+    snapshot: TargetDeviceSnapshot | undefined,
+    mode: PlanActuationMode,
+  ): Promise<void> {
+    if (dev.plannedState !== 'shed') return;
+    const profile = dev.steppedLoadProfile;
+    if (!profile || !dev.selectedStepId) return;
+    if (!isSteppedLoadOffStep(profile, dev.selectedStepId)) return;
+    if (!snapshot) return;
+    const name = dev.name || dev.id;
+    try {
+      const applied = await setBinaryControl({
+        state: this.state,
+        deviceManager: this.deviceManager,
+        updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
+        log: (...args: unknown[]) => this.log(...args),
+        logDebug: (...args: unknown[]) => this.logDebug(...args),
+        error: (...args: unknown[]) => this.error(...args),
+        deviceId: dev.id,
+        name,
+        desired: false,
+        snapshot,
+        logContext: 'capacity',
+        actuationMode: mode,
+      });
+      if (applied) {
+        this.logDebug(`Capacity: set onoff=false for stepped device ${name} at off-step (shedding)`);
+      }
+    } catch (error) {
+      this.error(`Failed to turn off stepped-load device ${name} via binary control`, error);
     }
   }
 
@@ -941,6 +998,7 @@ export class PlanExecutor {
         }
         await this.applySteppedLoadCommand(dev, mode);
         if (isSteppedLoadDevice(dev)) {
+          await this.applySteppedLoadShedOff(dev, snapshot, mode);
           await this.applySteppedLoadRestore(dev, snapshot, mode);
           await this.applyTargetUpdate(dev, snapshot, mode);
           continue;

@@ -49,9 +49,10 @@ non-zero step.
   `keep` intent and `currentState === 'off'`, using the standard `setBinaryControl` path.
   Files: `planExecutor.ts` (`applySteppedLoadRestore`).
 
-- [ ] **`shed(turn_off)` should set `onoff=false` in addition to off-step.**
-  Currently the executor only issues step commands via flow cards for stepped devices. When a
-  stepped device reaches the off-step, `onoff=false` should also be set to fully turn it off.
+- [x] **`shed(turn_off)` should set `onoff=false` in addition to off-step.**
+  `applySteppedLoadShedOff` in `planExecutor.ts` sets `onoff=false` via `setBinaryControl` when
+  a stepped device is at the off-step during a shed. Covers the dual-control case where the step
+  command alone leaves the binary power state on.
   Files: `planExecutor.ts`.
 
 - [ ] **External drift reconciliation for `onoff` on stepped devices.**
@@ -75,11 +76,66 @@ non-zero step.
 - [x] Stepped device with `keep` intent and `onoff=false`. Verify reconciliation turns it on.
 - [ ] Stepped device with `keep` intent and `step=0`. Verify reconciliation sets non-zero step.
 - [ ] Both `onoff=false` and `step=0` with `keep` intent. Verify both are fixed.
-- [ ] Stepped device at lowest active step with `turn_off`. Verify device ends up at off-step
+- [x] Stepped device at lowest active step with `turn_off`. Verify device ends up at off-step
   AND `onoff=false`.
 - [ ] Intent `keep`, external actor sets `onoff=false`. Verify PELS turns it back on.
 - [ ] Intent `keep`, external actor sets `step=0`. Verify PELS sets a non-zero step.
 - [ ] Intent `shed(set_step)`, external actor raises step. Verify PELS re-issues the shed step.
+
+## Plan UI: restore-cooldown badge inconsistency
+
+- [ ] `buildPlanStateLine()` shows "Shed (restore cooldown)" for restore-cooldown shed devices that
+  are currently off/unknown, but `resolvePlanBadgeState()` / `buildPlanStateBadge()` still resolves
+  to `restoring` in the same scenario. Introduce a dedicated badge state/label for restore cooldown
+  or otherwise align the badge label with the state text.
+  Files: `packages/settings-ui/src/ui/plan.ts`.
+
+- [ ] Test `renders restore cooldown as restoring when the device is currently off` has a description
+  that no longer matches its assertion ("Shed (restore cooldown)"). Rename to match current semantics.
+  Files: `packages/settings-ui/test/plan-ui.test.ts`.
+
+## Confirmation, freshness, and drift handling for dual-control stepped devices
+
+Two integrity problems observed in production logs: (1) optimistic restore state is
+treated as confirmed active state, and (2) stale PELS state outranks fresher observed
+state from Homey/device telemetry.
+
+### Phase 1: provisional restore state
+
+- [ ] Stop `updateLocalSnapshot` from setting `currentOn=true` optimistically on restore writes.
+  Use a pending/confirmation model similar to `stepCommandPending` for binary control. After a
+  restore write, PELS should show "restore requested" / "pending confirmation" until fresh
+  telemetry confirms the device is actually on.
+  Files: `planBinaryControl.ts`, `planExecutor.ts`, `appDeviceControlHelpers.ts`.
+
+### Phase 2: fresher observed state wins
+
+- [ ] Ensure `decorateSnapshotWithDeviceControl` respects fresh Homey-reported state over stale
+  PELS-internal optimistic state. If Homey reports `onoff=false` / `measure_power=0` with a
+  newer timestamp than the PELS optimistic write, the fresher observed state must win.
+  Files: `appDeviceControlHelpers.ts`, snapshot pipeline.
+
+### Phase 3: separate drift logging
+
+- [ ] Log step drift and binary drift separately for stepped devices. Required log patterns:
+  `step drift: desired X, observed Y` and `binary drift: desired onoff=X, observed onoff=Y`.
+  Files: `planReconcileState.ts`, `planExecutor.ts`.
+
+### Phase 4: observed vs expected power separation
+
+- [ ] Keep `observedPower` (real telemetry only) and `expectedPower` (planning) as distinct fields.
+  Measured power must never be inferred from configured load, expected load, or step-derived
+  nominal load. Only `observedPower` may answer "what is the device drawing now?"
+  Files: snapshot types, `appDeviceControlHelpers.ts`, UI display code.
+
+### Phase 5: full freshness tracking and confirmation state machine
+
+- [ ] Add per-field freshness awareness (`onoff` age, measured power age, step age). PELS must not
+  let an older internal/local state outrank a fresher observed device state.
+- [ ] Introduce confirmation state vocabulary: `none`, `restore_requested`, `step_change_requested`,
+  `pending_confirmation`, `confirmed`, `contradicted`.
+- [ ] UI: show `On (pending confirmation)` or `Restore requested` instead of `Active` when restore
+  is unconfirmed. Show `On, idle` or `On (0 W)` when confirmed on but measured power is 0.
 
 ## Deferred: restore-pending follow-up tests
 
