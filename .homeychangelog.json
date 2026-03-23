@@ -229,5 +229,8 @@
   },
   "2.1.1": {
     "en": "Various bug fixes for stepped load."
+  },
+  "2.1.2": {
+    "en": "Various bug fixes for stepped load."
   }
 }
