@@ -22,10 +22,7 @@ const buildContext = (device: PlanInputDevice, desiredForMode: Record<string, nu
 const buildRestoreResult = (overrides: Partial<RestorePlanResult> = {}): RestorePlanResult => ({
   planDevices: [],
   stateUpdates: {
-    swappedOutFor: {},
-    pendingSwapTargets: new Set<string>(),
-    pendingSwapTimestamps: {},
-    lastSwapPlanMeasurementTs: {},
+    swapByDevice: {},
   },
   restoredThisCycle: new Set<string>(),
   availableHeadroom: 1,
