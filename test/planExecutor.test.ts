@@ -575,7 +575,7 @@ describe('PlanExecutor stepped loads', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
 
-  it('does not restore a stepped device at its off-step even with keep intent', async () => {
+  it('restores a stepped device at its off-step when keep intent requires onoff=true', async () => {
     const snapshot = [
       {
         id: 'dev-1',
@@ -592,7 +592,7 @@ describe('PlanExecutor stepped loads', () => {
       currentState: 'off',
       plannedState: 'keep',
       selectedStepId: 'off',
-      desiredStepId: 'low', // step change will be issued, but no binary restore
+      desiredStepId: 'low', // step change will be issued
     }));
 
     // The step command should be issued to move from off -> low
@@ -600,8 +600,8 @@ describe('PlanExecutor stepped loads', () => {
       expect.objectContaining({ step_id: 'low' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    // But onoff should NOT be set — the device is at its off-step, so it's
-    // genuinely off, not a dual-control inconsistency.
-    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    // Binary control should also be set because keep requires onoff=true
+    // The device was at off-step with onoff=false, which violates keep invariant
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 });

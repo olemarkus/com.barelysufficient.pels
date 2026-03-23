@@ -506,31 +506,56 @@ export class PlanExecutor {
 
   /**
    * Reconcile a stepped device back to on when it has `keep` intent but is
-   * currently off.  This covers the dual-control case where the step is at a
-   * non-zero level but the binary `onoff` capability is false.
+   * currently off. This covers both:
+   * 1. Dual-control inconsistency: step at non-zero but onoff=false
+   * 2. Genuinely off: step at off-step and onoff=false
+   *
+   * For `keep` intent, we always need onoff=true AND step non-zero. Any violation
+   * should trigger restore.
    */
   private async applySteppedLoadRestore(
     dev: DevicePlan['devices'][number],
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
   ): Promise<void> {
-    if (dev.plannedState !== 'keep') return;
-    if (dev.currentState !== 'off') return;
-    // Only restore when the device is at a non-off step but has onoff=false
-    // (dual-control inconsistency). If the selected step IS the off-step, the
-    // device is genuinely off and should not be turned on via binary control.
-    if (dev.steppedLoadProfile && dev.selectedStepId
-      && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)) {
+    const name = dev.name || dev.id;
+
+    if (dev.plannedState !== 'keep') {
+      this.logDebug(`Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`);
       return;
     }
-    if (!snapshot) return;
+    if (dev.currentState !== 'off') {
+      this.logDebug(`Capacity: skip stepped-load restore for ${name}, currentState is ${dev.currentState}`);
+      return;
+    }
+
+    const isAtOffStep = dev.steppedLoadProfile && dev.selectedStepId
+      && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId);
+    const onoffViolated = snapshot?.currentOn === false;
+    const stepViolated = isAtOffStep;
+
+    if (onoffViolated) {
+      this.log(`Executor: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
+    }
+    if (stepViolated) {
+      this.log(`Executor: ${name} violates keep invariant: step=${dev.selectedStepId} (off-step)`);
+    }
+
+    if (!onoffViolated && !stepViolated) {
+      this.logDebug(`Capacity: skip stepped-load restore for ${name}, no keep violations detected`);
+      return;
+    }
+
+    if (!snapshot) {
+      this.log(`Executor: skip stepped-load restore for ${name}, no snapshot available`);
+      return;
+    }
     if (!canTurnOnDevice(snapshot)) {
       this.logDebug(
-        `Capacity: skip stepped-load restore for ${dev.name || dev.id}, cannot turn on from current snapshot`,
+        `Capacity: skip stepped-load restore for ${name}, cannot turn on from current snapshot`,
       );
       return;
     }
-    const name = dev.name || dev.id;
     if (this.state.pendingRestores.has(dev.id)) {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, already in progress`);
       return;
