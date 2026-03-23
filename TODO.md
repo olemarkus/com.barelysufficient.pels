@@ -55,11 +55,12 @@ non-zero step.
   command alone leaves the binary power state on.
   Files: `planExecutor.ts`.
 
-- [ ] **External drift reconciliation for `onoff` on stepped devices.**
-  `planReconcileState.ts` detects step drift but not `onoff` drift. If an external actor turns
-  off a stepped device that should be `keep`, or raises the step on a `shed(set_step)` device,
-  the `onoff` state is not corrected.
-  Files: `planReconcileState.ts`, `planExecutor.ts`.
+- [x] **External drift reconciliation for `onoff` on stepped devices.**
+  `hasRelevantBinaryExecutionDrift` in `planReconcileState.ts` now checks both `selectedStepId`
+  and `currentState` for stepped devices, so binary (onoff) drift triggers reconciliation just
+  like step drift does. The executor's `applySteppedLoadRestore` already handles the correction
+  when reconciliation fires.
+  Files: `planReconcileState.ts`.
 
 ### Missing tests
 

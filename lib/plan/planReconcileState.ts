@@ -139,7 +139,10 @@ function hasRelevantBinaryExecutionDrift(
   liveDevice: DevicePlan['devices'][number],
 ): boolean {
   if (previousDevice.controlModel === 'stepped_load') {
-    return previousDevice.selectedStepId !== liveDevice.selectedStepId;
+    // Check both step drift and binary (onoff) drift for dual-control devices.
+    // A stepped device can drift in step alone, binary alone, or both.
+    return previousDevice.selectedStepId !== liveDevice.selectedStepId
+      || previousDevice.currentState !== liveDevice.currentState;
   }
   return previousDevice.currentState !== liveDevice.currentState;
 }
