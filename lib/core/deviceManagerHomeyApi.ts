@@ -106,6 +106,13 @@ export function hasRestClient(): boolean {
   return restClient !== null;
 }
 
+export const ENERGY_LIVE_API_PATH = 'manager/energy/live';
+
+export async function getEnergyLiveReport(): Promise<unknown> {
+  if (!restClient) return null;
+  return restClient.get(ENERGY_LIVE_API_PATH);
+}
+
 export function getSdkDevicesApi(homey: Homey.App): EventEmitter | null {
   const homeyInstance = resolveHomeyInstance(homey);
   const api = (homeyInstance as { api?: SdkApi }).api;

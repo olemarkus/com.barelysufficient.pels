@@ -6,6 +6,7 @@ import {
   mockHomeyInstance,
   setMockDrivers,
 } from './mocks/homey';
+import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
 import { cleanupApps, createApp } from './utils/appTestUtils';
 
 const wait = async (ms: number): Promise<void> => (
@@ -195,29 +196,21 @@ describe('startup cpu spike perf reproduction', () => {
   }, 60_000);
 
   it('skips live power fetch during startup bootstrap snapshot', async () => {
-    const energyApi = mockHomeyInstance.api.energy as {
-      getLiveReport?: (args: unknown) => Promise<unknown>;
-    };
-    const originalGetLiveReport = energyApi.getLiveReport;
     const liveReportSpy = jest.fn(async () => {
       await wait(250);
       return {};
     });
-    energyApi.getLiveReport = liveReportSpy;
+    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockImplementation(liveReportSpy);
 
-    try {
-      const deviceCount = 1800;
-      setMockDrivers(buildHeavyDriverFixture(deviceCount));
-      mockHomeyInstance.settings.set('price_scheme', 'flow');
-      mockHomeyInstance.settings.set('target_devices_snapshot', buildLargeCachedSnapshot(deviceCount));
+    const deviceCount = 1800;
+    setMockDrivers(buildHeavyDriverFixture(deviceCount));
+    mockHomeyInstance.settings.set('price_scheme', 'flow');
+    mockHomeyInstance.settings.set('target_devices_snapshot', buildLargeCachedSnapshot(deviceCount));
 
-      const app = createApp();
-      await app.onInit();
-      await wait(500);
+    const app = createApp();
+    await app.onInit();
+    await wait(500);
 
-      expect(liveReportSpy).not.toHaveBeenCalled();
-    } finally {
-      energyApi.getLiveReport = originalGetLiveReport;
-    }
+    expect(liveReportSpy).not.toHaveBeenCalled();
   }, 30_000);
 });

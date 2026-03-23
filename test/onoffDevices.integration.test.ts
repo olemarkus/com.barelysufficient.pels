@@ -4,6 +4,7 @@ import {
   MockDevice,
   MockDriver,
 } from './mocks/homey';
+import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
@@ -65,7 +66,7 @@ describe('On/off device integration', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    delete (mockHomeyInstance.api.energy as any).getLiveReport;
+    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
     jest.clearAllTimers();
   });
 
@@ -228,7 +229,7 @@ describe('On/off device integration', () => {
         capabilities: ['onoff'],
       }),
     });
-    (mockHomeyInstance.api.energy as any).getLiveReport = async () => ({
+    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
         {
           type: 'device',
@@ -475,7 +476,7 @@ describe('On/off device integration', () => {
         },
       },
     });
-    (mockHomeyInstance.api.energy as any).getLiveReport = async () => ({
+    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       zoneId: 'zone-1',
       items: [
         { type: 'zone', id: 'z1', values: { W: 10 } },

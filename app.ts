@@ -88,6 +88,7 @@ import type { DeviceControlProfiles, SteppedLoadProfile } from './lib/utils/type
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
+const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
 const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
@@ -131,6 +132,7 @@ class PelsApp extends Homey.App {
   private realtimeDeviceReconcileTimer?: ReturnType<typeof setTimeout>;
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private heartbeatInterval?: ReturnType<typeof setInterval>;
+  private homeyEnergyPollInterval?: ReturnType<typeof setInterval>;
   private stopPriceLowestTriggerChecker?: () => void;
   private stopPerfLogging?: () => void;
   private stopResourceWarningListeners?: () => void;
@@ -304,7 +306,7 @@ class PelsApp extends Homey.App {
       setLastNotifiedOperatingMode: (mode) => { this.lastNotifiedOperatingMode = mode; },
       getOperatingMode: () => this.operatingMode,
       registerFlowCards: () => this.registerFlowCards(),
-      startPeriodicSnapshotRefresh: () => this.startPeriodicSnapshotRefresh(),
+      startPeriodicSnapshotRefresh: () => { this.startPeriodicSnapshotRefresh(); this.startHomeyEnergyPoll(); },
       refreshSpotPrices: () => this.priceCoordinator.refreshSpotPrices(),
       refreshGridTariffData: () => this.priceCoordinator.refreshGridTariffData(),
       startPriceRefresh: () => this.priceCoordinator.startPriceRefresh(),
@@ -473,6 +475,7 @@ class PelsApp extends Homey.App {
       updateDebugLoggingEnabled: (logChange) => this.updateDebugLoggingEnabled(logChange),
       getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
       disableManagedEvDevices: () => this.disableManagedEvDevices(),
+      restartHomeyEnergyPoll: () => this.startHomeyEnergyPoll(),
       log: (message: string) => this.log(message),
       error: (message: string, error: Error) => this.error(message, error),
     });
@@ -496,6 +499,7 @@ class PelsApp extends Homey.App {
     if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
     if (this.powerSampleRebuildState.timer) clearTimeout(this.powerSampleRebuildState.timer);
     if (this.realtimeDeviceReconcileTimer) clearTimeout(this.realtimeDeviceReconcileTimer);
+    this.stopHomeyEnergyPoll();
   }
   private stopUninitServices(): void {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
@@ -745,7 +749,10 @@ class PelsApp extends Homey.App {
       getOperatingMode: () => this.operatingMode,
       handleOperatingModeChange: (rawMode) => this.handleOperatingModeChange(rawMode),
       getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
-      recordPowerSample: (powerW) => this.recordPowerSample(powerW),
+      recordPowerSample: (powerW) => {
+        if (this.homey.settings.get('power_source') === 'homey_energy') return Promise.resolve();
+        return this.recordPowerSample(powerW);
+      },
       capacityGuard: this.capacityGuard,
       getFlowSnapshot: () => this.getFlowSnapshot(),
       refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
@@ -791,6 +798,35 @@ class PelsApp extends Homey.App {
     const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
     return (status?.priceLevel || this.planService?.getLastNotifiedPriceLevel() || PriceLevel.UNKNOWN) as PriceLevel;
   }
+  private startHomeyEnergyPoll(): void {
+    if (this.homeyEnergyPollInterval) clearInterval(this.homeyEnergyPollInterval);
+    if (this.homey.settings.get('power_source') !== 'homey_energy') return;
+    // Fire immediately so the first reading doesn't wait for the interval
+    this.pollHomeyEnergyPower()
+      .catch((e) => this.error('Homey Energy initial poll failed', e));
+    this.homeyEnergyPollInterval = setInterval(() => {
+      this.pollHomeyEnergyPower()
+        .catch((e) => this.error('Homey Energy poll failed', e));
+    }, HOMEY_ENERGY_POLL_INTERVAL_MS);
+  }
+
+  private stopHomeyEnergyPoll(): void {
+    if (this.homeyEnergyPollInterval) {
+      clearInterval(this.homeyEnergyPollInterval);
+      this.homeyEnergyPollInterval = undefined;
+    }
+  }
+
+  private async pollHomeyEnergyPower(): Promise<void> {
+    const homePowerW = await this.deviceManager.pollHomePowerW();
+    if (typeof homePowerW === 'number') {
+      this.logDebug('devices', `Homey Energy poll: ${homePowerW}W`);
+      await this.recordPowerSample(homePowerW);
+    } else {
+      this.logDebug('devices', 'Homey Energy poll: no cumulative power reading available');
+    }
+  }
+
   private startPeriodicSnapshotRefresh(): void {
     if (this.snapshotRefreshTimer) clearTimeout(this.snapshotRefreshTimer);
     this.scheduleNextSnapshotRefresh();
@@ -883,6 +919,12 @@ class PelsApp extends Homey.App {
           settings: this.homey.settings,
           logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
         });
+        if (this.homey.settings.get('power_source') === 'homey_energy') {
+          const homePowerW = this.deviceManager.getHomePowerW();
+          if (typeof homePowerW === 'number') {
+            await this.recordPowerSample(homePowerW);
+          }
+        }
       } while (this.snapshotRefreshPending);
     } finally {
       this.isSnapshotRefreshing = false;

@@ -39,7 +39,12 @@ import {
     resolvePreferredPowerRaw,
     type LiveDevicePowerWatts,
 } from './deviceManagerEnergy';
-import { fetchDevicesByIds, fetchDevicesWithFallback, fetchLivePowerWattsByDeviceId } from './deviceManagerFetch';
+import {
+    fetchDevicesByIds,
+    fetchDevicesWithFallback,
+    fetchLivePowerReport,
+    type LivePowerReport,
+} from './deviceManagerFetch';
 import {
     applyMeasurementUpdates,
     isRealtimeControlCapability,
@@ -63,7 +68,6 @@ import {
     handleRealtimeDeviceUpdate,
     type ObservedDeviceStateEvent,
 } from './deviceManagerRealtimeHandlers';
-import { resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi } from '../utils/homeyEnergy';
 import type { DeviceFetchSource } from './deviceManagerFetch';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
@@ -132,10 +136,10 @@ function createEmptyObservedSources(): DeviceDebugObservedSources {
 export class DeviceManager extends EventEmitter {
     private sdkReady = false;
     private sdkDevicesApi: EventEmitter | null = null;
-    private sdkEnergyApi: HomeyEnergyApi | null = null;
     private logger: Logger;
     private homey: Homey.App;
     private latestSnapshot: TargetDeviceSnapshot[] = [];
+    private latestHomePowerW: number | null = null;
     private powerState: Required<PowerEstimateState>;
     private hasRealtimeDeviceUpdateListener = false;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
@@ -188,6 +192,12 @@ export class DeviceManager extends EventEmitter {
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
+    getHomePowerW(): number | null { return this.latestHomePowerW; }
+    async pollHomePowerW(): Promise<number | null> {
+        const report = await this.fetchLivePowerReport();
+        this.latestHomePowerW = report.homePowerW;
+        return report.homePowerW;
+    }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.setSnapshot(snapshot); }
     setSnapshot(snapshot: TargetDeviceSnapshot[]): void { this.latestSnapshot = snapshot; }
     parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] { return this.parseDeviceList(list); }
@@ -239,7 +249,6 @@ export class DeviceManager extends EventEmitter {
             return;
         }
 
-        this.sdkEnergyApi = resolveHomeyEnergyApiFromSdk(homeyInstance);
         this.sdkReady = true;
         this.attachSdkRealtimeListener();
         this.logger.log('Device API initialized from SDK');
@@ -260,10 +269,11 @@ export class DeviceManager extends EventEmitter {
                 return;
             }
             const { devices: list, fetchSource } = fetchResult;
-            const livePowerWByDeviceId = options.includeLivePower === false
-                ? {}
-                : await this.fetchLivePowerWattsByDeviceId();
-            const snapshot = this.parseDeviceList(list, livePowerWByDeviceId);
+            const livePowerReport = options.includeLivePower === false
+                ? { byDeviceId: {}, homePowerW: null as number | null }
+                : await this.fetchLivePowerReport();
+            this.latestHomePowerW = livePowerReport.homePowerW;
+            const snapshot = this.parseDeviceList(list, livePowerReport.byDeviceId);
             this.preserveFresherRealtimeCapabilityObservations({
                 previousSnapshot,
                 nextSnapshot: snapshot,
@@ -437,9 +447,8 @@ export class DeviceManager extends EventEmitter {
         }
     }
 
-    private async fetchLivePowerWattsByDeviceId(): Promise<LiveDevicePowerWatts> {
-        return fetchLivePowerWattsByDeviceId({
-            energyApi: this.sdkEnergyApi ?? undefined,
+    private async fetchLivePowerReport(): Promise<LivePowerReport> {
+        return fetchLivePowerReport({
             logger: this.logger,
         });
     }

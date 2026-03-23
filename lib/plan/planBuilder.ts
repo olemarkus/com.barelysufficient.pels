@@ -537,6 +537,8 @@ export class PlanBuilder {
       dailyBudgetRemainingKWh: today?.state.remainingKWh ?? 0,
       dailyBudgetExceeded: today?.state.exceeded ?? false,
       dailyBudgetHourKWh: this.extractDailyBudgetHourKWh(dailyBudgetSnapshot),
+      lastPowerUpdateMs: typeof this.powerTracker.lastTimestamp === 'number'
+        ? this.powerTracker.lastTimestamp : undefined,
     };
   }
 }

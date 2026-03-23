@@ -2,6 +2,7 @@ import {
   capacityLimitInput,
   capacityMarginInput,
   capacityDryRunInput,
+  powerSourceSelect,
   advancedEvSupportEnabledInput,
   dryRunBanner,
   staleDataBanner,
@@ -15,6 +16,7 @@ import {
   CAPACITY_MARGIN_KW,
   DEBUG_LOGGING_TOPICS,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
+  POWER_SOURCE,
 } from '../../../contracts/src/settingsKeys';
 import {
   ALL_DEBUG_LOGGING_TOPICS,
@@ -27,6 +29,20 @@ import { pushSettingWriteIfChanged } from './settingWrites';
 
 const STALE_DATA_THRESHOLD_MS = 60 * 1000;
 const HEARTBEAT_THRESHOLD_MS = 90 * 1000;
+
+type PowerSource = 'flow' | 'homey_energy';
+
+const normalizePowerSource = (raw: unknown): PowerSource => (
+  raw === 'homey_energy' ? 'homey_energy' : 'flow'
+);
+
+const getStaleDataHint = (): string => {
+  const source = powerSourceSelect?.value;
+  if (source === 'homey_energy') {
+    return 'Check that a device with "Tracks total home energy consumption" is enabled in Homey Energy.';
+  }
+  return 'Check your Flow that reports power usage.';
+};
 
 const isDebugLoggingTopic = (value: string): value is DebugLoggingTopic => (
   ALL_DEBUG_LOGGING_TOPICS.includes(value as DebugLoggingTopic)
@@ -49,18 +65,16 @@ const updateStaleDataBanner = (lastPowerUpdate: number | null, lastHeartbeat: nu
     return;
   }
   if (lastPowerUpdate === null) {
-    // No data ever received - show warning
     staleDataBanner.hidden = false;
     if (staleDataBannerText) {
-      staleDataBannerText.textContent = 'No power data received yet. Check your Flow that reports power usage.';
+      staleDataBannerText.textContent = `No power data received yet. ${getStaleDataHint()}`;
     }
     return;
   }
   const isStale = (now - lastPowerUpdate) > STALE_DATA_THRESHOLD_MS;
   staleDataBanner.hidden = !isStale;
   if (staleDataBannerText && isStale) {
-    staleDataBannerText.textContent = 'No power data received in the last minute. '
-      + 'Check your Flow that reports power usage.';
+    staleDataBannerText.textContent = `No power data received in the last minute. ${getStaleDataHint()}`;
   }
 };
 
@@ -82,6 +96,7 @@ export const loadCapacitySettings = async () => {
   const limit = await getSetting(CAPACITY_LIMIT_KW);
   const margin = await getSetting(CAPACITY_MARGIN_KW);
   const dryRun = await getSetting(CAPACITY_DRY_RUN);
+  const powerSource = await getSetting(POWER_SOURCE);
   const fallbackLimit = 10;
   const fallbackMargin = 0.2;
   capacityLimitInput.value = typeof limit === 'number' ? limit.toString() : fallbackLimit.toString();
@@ -90,6 +105,9 @@ export const loadCapacitySettings = async () => {
   if (capacityDryRunInput) {
     capacityDryRunInput.checked = isDryRun;
   }
+  if (powerSourceSelect) {
+    powerSourceSelect.value = normalizePowerSource(powerSource);
+  }
   updateDryRunBanner(isDryRun);
 };
 
@@ -97,6 +115,7 @@ export const saveCapacitySettings = async () => {
   const limit = parseFloat(capacityLimitInput.value);
   const margin = parseFloat(capacityMarginInput.value);
   const dryRun = capacityDryRunInput ? capacityDryRunInput.checked : true;
+  const powerSource = normalizePowerSource(powerSourceSelect?.value);
 
   // Validate limit: must be a finite positive number within reasonable bounds
   if (!Number.isFinite(limit) || limit <= 0) throw new Error('Limit must be positive.');
@@ -106,16 +125,18 @@ export const saveCapacitySettings = async () => {
   if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
   if (margin > limit) throw new Error('Margin cannot exceed the limit.');
 
-  const [currentLimit, currentMargin, currentDryRun] = await Promise.all([
+  const [currentLimit, currentMargin, currentDryRun, currentPowerSource] = await Promise.all([
     getSetting(CAPACITY_LIMIT_KW),
     getSetting(CAPACITY_MARGIN_KW),
     getSetting(CAPACITY_DRY_RUN),
+    getSetting(POWER_SOURCE),
   ]);
 
   const writes: Array<Promise<void>> = [];
   pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, currentLimit, limit);
   pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, currentMargin, margin);
   pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, currentDryRun, dryRun);
+  pushSettingWriteIfChanged(writes, POWER_SOURCE, currentPowerSource, powerSource);
   if (writes.length > 0) {
     await Promise.all(writes);
   }

@@ -5,6 +5,7 @@ import {
     emitMockSdkDeviceUpdate,
 } from './mocks/homey';
 import Homey from 'homey';
+import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
 
 const mockApiGet = jest.fn();
 const mockApiPut = jest.fn().mockResolvedValue(undefined);
@@ -40,7 +41,6 @@ describe('DeviceManager', () => {
 
     afterEach(() => {
         jest.restoreAllMocks();
-        delete (mockHomeyInstance.api.energy as any).getLiveReport;
     });
 
     beforeEach(() => {
@@ -54,7 +54,7 @@ describe('DeviceManager', () => {
         mockApiGet.mockImplementation(async (path: string) => originalGet(path));
         jest.spyOn(mockHomeyInstance.api, 'get').mockImplementation(mockApiGet);
         jest.spyOn(mockHomeyInstance.api, 'put').mockImplementation(mockApiPut);
-        (mockHomeyInstance.api.energy as any).getLiveReport = mockGetLiveReport;
+        jest.spyOn(homeyApi, 'getEnergyLiveReport').mockImplementation(() => mockGetLiveReport());
 
         loggerMock = {
             log: jest.fn(),
@@ -120,6 +120,45 @@ describe('DeviceManager', () => {
             expect(heater?.currentOn).toBe(true);
             expect(light?.deviceType).toBe('onoff');
             expect(light?.targets).toEqual([]);
+        });
+
+        it('stores cumulative home power from live report in getHomePowerW', async () => {
+            await deviceManager.init();
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: { measure_power: { value: 500, id: 'measure_power' } },
+                },
+            });
+            mockGetLiveReport.mockResolvedValue({
+                items: [
+                    { type: 'device', id: 'dev1', values: { W: 500 } },
+                    { type: 'cumulative', values: { W: 4500 } },
+                ],
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getHomePowerW()).toBe(4500);
+        });
+
+        it('returns null from getHomePowerW when no cumulative item exists', async () => {
+            await deviceManager.init();
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: { measure_power: { value: 500, id: 'measure_power' } },
+                },
+            });
+            mockGetLiveReport.mockResolvedValue({
+                items: [{ type: 'device', id: 'dev1', values: { W: 500 } }],
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getHomePowerW()).toBeNull();
         });
 
         it('includes airtreatment temperature devices in snapshot', async () => {
@@ -418,7 +457,7 @@ describe('DeviceManager', () => {
             expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.125, 6);
             expect(snapshot[0].powerKw).toBeCloseTo(0.125, 6);
             expect(snapshot[0].powerCapable).toBe(true);
-            expect(mockGetLiveReport).toHaveBeenCalledWith({});
+            expect(mockGetLiveReport).toHaveBeenCalled();
         });
 
         it('keeps off on/off devices power-capable when Homey energy W metadata exists', async () => {

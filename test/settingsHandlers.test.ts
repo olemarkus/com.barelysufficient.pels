@@ -46,6 +46,7 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     updateDebugLoggingEnabled: jest.fn(),
     getExperimentalEvSupportEnabled: jest.fn().mockReturnValue(false),
     disableManagedEvDevices: jest.fn(),
+    restartHomeyEnergyPoll: jest.fn(),
     log: jest.fn(),
     errorLog: jest.fn(),
     ...overrides,
@@ -476,6 +477,18 @@ describe('createSettingsHandler', () => {
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.updateDailyBudgetState).toHaveBeenCalledWith();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${BUDGET_EXEMPT_DEVICES}`);
+  });
+
+  it('refreshes snapshot, restarts poll, and rebuilds plan when power source changes', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler('power_source');
+
+    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('Power source changed'));
+    expect(deps.restartHomeyEnergyPoll).toHaveBeenCalled();
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:power_source');
   });
 
   it('resets daily budget learning and clears the reset flag', async () => {

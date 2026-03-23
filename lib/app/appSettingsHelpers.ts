@@ -138,6 +138,7 @@ export function initSettingsHandlerForApp(params: {
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   getExperimentalEvSupportEnabled: () => boolean;
   disableManagedEvDevices: () => void;
+  restartHomeyEnergyPoll?: () => void;
   log: (message: string) => void;
   error: (message: string, error: Error) => void;
 }): { handle: SettingsHandler; stop: () => void } {
@@ -162,6 +163,7 @@ export function initSettingsHandlerForApp(params: {
     updateDebugLoggingEnabled,
     getExperimentalEvSupportEnabled,
     disableManagedEvDevices,
+    restartHomeyEnergyPoll,
     log,
     error,
   } = params;
@@ -184,6 +186,7 @@ export function initSettingsHandlerForApp(params: {
     updateDebugLoggingEnabled,
     getExperimentalEvSupportEnabled,
     disableManagedEvDevices,
+    restartHomeyEnergyPoll,
     log,
     errorLog: (message: string, err: unknown) => error(message, err as Error),
   });

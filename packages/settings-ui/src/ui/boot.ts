@@ -22,6 +22,7 @@ import {
   capacityLimitInput,
   capacityMarginInput,
   capacityDryRunInput,
+  powerSourceSelect,
   priorityForm,
 } from './dom';
 import {
@@ -122,6 +123,7 @@ const initCapacityHandlers = () => {
   capacityLimitInput?.addEventListener('change', autoSaveCapacity);
   capacityMarginInput?.addEventListener('change', autoSaveCapacity);
   capacityDryRunInput?.addEventListener('change', autoSaveCapacity);
+  powerSourceSelect?.addEventListener('change', autoSaveCapacity);
   capacityForm.addEventListener('submit', (event) => event.preventDefault());
   priorityForm?.addEventListener('submit', (event) => {
     event.preventDefault();
