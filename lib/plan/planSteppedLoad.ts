@@ -184,3 +184,21 @@ function clampSteppedShedTarget(
   if (!desiredStep) return targetStep;
   return desiredStep.planningPowerW <= targetStep.planningPowerW ? desiredStep : targetStep;
 }
+
+export function resolveSteppedCandidatePower(
+  device: StepCapableDevice,
+  selectedStep: { id: string; planningPowerW: number },
+  targetStep: { id: string; planningPowerW: number },
+): number {
+  const measured = resolveSteppedLoadImmediateReliefKw({
+    device,
+    fromStepId: selectedStep.id,
+    toStepId: targetStep.id,
+  });
+  if (measured > 0) return measured;
+  const hasMeasuredPower = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw);
+  if (!hasMeasuredPower) {
+    return Math.max(0, (selectedStep.planningPowerW - targetStep.planningPowerW) / 1000);
+  }
+  return measured;
+}

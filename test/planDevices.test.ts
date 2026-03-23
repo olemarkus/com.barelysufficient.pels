@@ -49,6 +49,7 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'shed due to capacity']]),
       steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map([['dev-1', { temperature: 55, capabilityId: 'target_temperature' }]]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,

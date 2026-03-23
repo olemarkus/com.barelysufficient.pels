@@ -38,6 +38,7 @@ export function buildInitialPlanDevices(params: {
   shedSet: Set<string>;
   shedReasons: Map<string, string>;
   steppedDesiredStepByDeviceId: Map<string, string>;
+  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
   guardInShortfall: boolean;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
@@ -47,6 +48,7 @@ export function buildInitialPlanDevices(params: {
     shedSet,
     shedReasons,
     steppedDesiredStepByDeviceId,
+    temperatureShedTargets,
     guardInShortfall,
     deps,
   } = params;
@@ -76,11 +78,11 @@ export function buildInitialPlanDevices(params: {
       currentTarget,
       plannedTarget,
       controllable,
-      supportsTemperature,
       shedBehavior,
       shedSet,
       shedReasons,
       steppedDesiredStepByDeviceId,
+      temperatureShedTargets,
     });
 
     const withOffStateReason = isSteppedLoadDevice(base)
@@ -149,11 +151,11 @@ function buildBasePlanDevice(params: {
   currentTarget: unknown;
   plannedTarget: number | null;
   controllable: boolean;
-  supportsTemperature: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
   shedSet: Set<string>;
   shedReasons: Map<string, string>;
   steppedDesiredStepByDeviceId: Map<string, string>;
+  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
 }): DevicePlanDevice {
   const {
     dev,
@@ -163,11 +165,11 @@ function buildBasePlanDevice(params: {
     currentTarget,
     plannedTarget,
     controllable,
-    supportsTemperature,
     shedBehavior,
     shedSet,
     shedReasons,
     steppedDesiredStepByDeviceId,
+    temperatureShedTargets,
   } = params;
 
   const initialDesiredStepId = resolveSteppedLoadInitialDesiredStepId(dev);
@@ -185,13 +187,13 @@ function buildBasePlanDevice(params: {
   const baseReason = controllable
     ? shedReasons.get(dev.id) || (recentlyRestored ? 'keep (recently restored)' : 'keep')
     : 'capacity control off';
-  const { shedAction, shedTemperature, shedStepId } = resolveShedAction(
+  const { shedAction, shedTemperature, shedStepId } = resolveShedAction({
     dev,
     controllable,
-    shedSet.has(dev.id),
+    shouldShed: shedSet.has(dev.id),
     shedBehavior,
-    supportsTemperature,
-  );
+    temperatureShedTargets,
+  });
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
     : plannedTarget;
@@ -243,45 +245,49 @@ function resolvePlannedState(controllable: boolean, shouldShed: boolean): 'shed'
   return shouldShed ? 'shed' : 'keep';
 }
 
-function resolveShedAction(
-  dev: PlanInputDevice,
-  controllable: boolean,
-  shouldShed: boolean,
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null },
-  supportsTemperature: boolean,
-) : { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
-  const target = getPrimaryTargetCapability(dev.targets);
-  if (isSteppedLoadDevice(dev)) {
-    if (
-      supportsTemperature
-      && controllable
-      && shouldShed
-      && shedBehavior.action === 'set_temperature'
-      && shedBehavior.temperature !== null
-    ) {
+function resolveShedAction(params: {
+  dev: PlanInputDevice;
+  controllable: boolean;
+  shouldShed: boolean;
+  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
+  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
+}): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
+  const { dev, controllable, shouldShed, shedBehavior, temperatureShedTargets } = params;
+  // Use pre-computed temperature target from the shedding planner when available
+  if (controllable && shouldShed) {
+    const tempTarget = temperatureShedTargets.get(dev.id);
+    if (tempTarget) {
+      const target = dev.targets?.find((t) => t.id === tempTarget.capabilityId) ?? null;
       return {
         shedAction: 'set_temperature',
-        shedTemperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
+        shedTemperature: normalizeTargetCapabilityValue({ target, value: tempTarget.temperature }),
         shedStepId: null,
       };
     }
-    if (controllable && shedBehavior.action === 'set_step' && typeof shedBehavior.stepId === 'string') {
-      return { shedAction: 'set_step', shedTemperature: null, shedStepId: shedBehavior.stepId };
-    }
-    return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
   }
-  if (
-    supportsTemperature
-    && controllable
-    && shouldShed
-    && shedBehavior.action === 'set_temperature'
-    && shedBehavior.temperature !== null
-  ) {
+  if (isSteppedLoadDevice(dev)) {
+    return resolveSteppedShedAction({ controllable, shedBehavior });
+  }
+  // Non-stepped temperature devices: fall back to shedBehavior when not in temperatureShedTargets
+  if (controllable && shouldShed
+    && shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
+    const target = getPrimaryTargetCapability(dev.targets);
     return {
       shedAction: 'set_temperature',
       shedTemperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
       shedStepId: null,
     };
+  }
+  return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
+}
+
+function resolveSteppedShedAction(params: {
+  controllable: boolean;
+  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
+}): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
+  const { controllable, shedBehavior } = params;
+  if (controllable && shedBehavior.action === 'set_step' && typeof shedBehavior.stepId === 'string') {
+    return { shedAction: 'set_step', shedTemperature: null, shedStepId: shedBehavior.stepId };
   }
   return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
 }
