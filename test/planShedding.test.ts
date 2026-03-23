@@ -277,6 +277,150 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.has('dev-stepped')).toBe(true);
     expect(result.steppedDesiredStepByDeviceId.size).toBe(0);
+    expect(result.temperatureShedTargets.get('dev-stepped')).toEqual({
+      temperature: 55,
+      capabilityId: 'target_temperature',
+    });
+  });
+
+  it('marks temperature candidate with unconfirmedRelief when a pending target command matches shed temperature', async () => {
+    const state = createPlanEngineState();
+    state.pendingTargetCommands['dev-heater'] = {
+      capabilityId: 'target_temperature',
+      desired: 15,
+      startedMs: Date.now() - 5000,
+      lastAttemptMs: Date.now() - 5000,
+      retryCount: 0,
+      nextRetryAtMs: Date.now() + 30000,
+    };
+
+    const devices = [
+      buildDevice({
+        id: 'dev-heater',
+        name: 'Heater',
+        deviceType: 'temperature',
+        expectedPowerKw: 2,
+        currentOn: true,
+        controllable: true,
+        targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'max', planningPowerW: 2000 },
+          ],
+        },
+        selectedStepId: 'max',
+      }),
+      buildDevice({
+        id: 'dev-other',
+        name: 'Other',
+        expectedPowerKw: 1,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 3.5,
+        softLimit: 3,
+        capacitySoftLimit: 3,
+        headroomRaw: -0.5,
+        headroom: -0.5,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        getShedBehavior: (deviceId: string) => (
+          deviceId === 'dev-heater'
+            ? { action: 'set_temperature', temperature: 15, stepId: null }
+            : { action: 'turn_off', temperature: null, stepId: null }
+        ),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // Both devices should be shed: heater has unconfirmed relief so its power
+    // doesn't count toward the remaining deficit, causing the other device to
+    // also be selected.
+    expect(result.shedSet.has('dev-heater')).toBe(true);
+    expect(result.shedSet.has('dev-other')).toBe(true);
+  });
+
+  it('populates temperatureShedTargets in the shedding plan output', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'dev-temp',
+        name: 'Temp Device',
+        deviceType: 'temperature',
+        expectedPowerKw: 2,
+        currentOn: true,
+        controllable: true,
+        targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'max', planningPowerW: 2000 },
+          ],
+        },
+        selectedStepId: 'max',
+      }),
+    ];
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 3,
+        softLimit: 2,
+        capacitySoftLimit: 2,
+        headroomRaw: -1,
+        headroom: -1,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 600 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: 18, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('dev-temp')).toBe(true);
+    expect(result.temperatureShedTargets.size).toBe(1);
+    expect(result.temperatureShedTargets.get('dev-temp')).toEqual({
+      temperature: 18,
+      capabilityId: 'target_temperature',
+    });
   });
 
   it('steps down a stepped load with turn_off behavior before shedding any other device', async () => {
