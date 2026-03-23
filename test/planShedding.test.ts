@@ -1855,7 +1855,7 @@ describe('buildSheddingPlan', () => {
   });
 
   it('steps down both stepped devices before shedding a binary device across multiple cycles', async () => {
-    const steppedProfile3 = {
+    const steppedProfileA = {
       model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
@@ -1863,8 +1863,7 @@ describe('buildSheddingPlan', () => {
         { id: 'max', planningPowerW: 3000 },
       ],
     };
-
-    const steppedProfile2 = {
+    const steppedProfileB = {
       model: 'stepped_load' as const,
       steps: [
         { id: 'off', planningPowerW: 0 },
@@ -1873,35 +1872,30 @@ describe('buildSheddingPlan', () => {
       ],
     };
 
-    const devices = [
-      buildDevice({
-        id: 'stepped-a',
-        name: 'Stepped A',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: steppedProfile3,
-        selectedStepId: 'max',
-        measuredPowerKw: 2.8,
-        currentOn: true,
-        controllable: true,
-      }),
-      buildDevice({
-        id: 'stepped-b',
-        name: 'Stepped B',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: steppedProfile2,
-        selectedStepId: 'max',
-        measuredPowerKw: 1.4,
-        currentOn: true,
-        controllable: true,
-      }),
-      buildDevice({
-        id: 'binary-dev',
-        name: 'Binary',
-        measuredPowerKw: 0.8,
-        currentOn: true,
-        controllable: true,
-      }),
-    ];
+    // Base device definitions — only step/power state varies per cycle.
+    const steppedABase = {
+      id: 'stepped-a',
+      name: 'Stepped A',
+      controlModel: 'stepped_load' as const,
+      steppedLoadProfile: steppedProfileA,
+      currentOn: true,
+      controllable: true,
+    };
+    const steppedBBase = {
+      id: 'stepped-b',
+      name: 'Stepped B',
+      controlModel: 'stepped_load' as const,
+      steppedLoadProfile: steppedProfileB,
+      currentOn: true,
+      controllable: true,
+    };
+    const binaryBase = {
+      id: 'binary-dev',
+      name: 'Binary',
+      measuredPowerKw: 0.8,
+      currentOn: true,
+      controllable: true,
+    };
 
     const capacityGuard = {
       isSheddingActive: jest.fn().mockReturnValue(false),
@@ -1915,17 +1909,29 @@ describe('buildSheddingPlan', () => {
       capacityGuard,
       powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
       getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-      // Binary device has highest priority but stepped step-downs sort first
-      getPriorityForDevice: (deviceId: string) => (deviceId === 'binary-dev' ? 20 : 10),
+      // Distinct priorities: binary highest (20), stepped-a mid (15), stepped-b low (10).
+      // Without preemptive ordering, binary would shed first.
+      getPriorityForDevice: (deviceId: string) => {
+        if (deviceId === 'binary-dev') return 20;
+        if (deviceId === 'stepped-a') return 15;
+        return 10;
+      },
       log: jest.fn(),
       logDebug: jest.fn(),
     };
+
+    // Shared state across cycles — carries forward lastShedPlanMeasurementTs.
+    const state = createPlanEngineState();
 
     // Cycle 1: large overshoot — 5 kW needed. Preemptive step-down of stepped-a
     // breaks the loop, so only one device is acted on.
     const result1 = await buildSheddingPlan(
       buildContext({
-        devices,
+        devices: [
+          buildDevice({ ...steppedABase, selectedStepId: 'max', measuredPowerKw: 2.8 }),
+          buildDevice({ ...steppedBBase, selectedStepId: 'max', measuredPowerKw: 1.4 }),
+          buildDevice(binaryBase),
+        ],
         total: 8,
         softLimit: 3,
         capacitySoftLimit: 3,
@@ -1933,51 +1939,26 @@ describe('buildSheddingPlan', () => {
         headroom: -5,
         softLimitSource: 'capacity',
       }),
-      createPlanEngineState(),
+      state,
       { ...baseDeps, powerTracker: { lastTimestamp: 901 } as PowerTrackerState },
     );
 
-    // Only stepped-a should be stepped down (preemptive break)
     expect(result1.shedSet.has('stepped-a')).toBe(true);
     expect(result1.steppedDesiredStepByDeviceId.get('stepped-a')).toBe('low');
     expect(result1.shedSet.has('stepped-b')).toBe(false);
     expect(result1.shedSet.has('binary-dev')).toBe(false);
 
-    // Cycle 2: stepped-a is now at low, stepped-b is still at max (preemptive).
-    // New measurement timestamp so this is not a same-sample skip.
-    const devicesAfterCycle1 = [
-      buildDevice({
-        id: 'stepped-a',
-        name: 'Stepped A',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: steppedProfile3,
-        selectedStepId: 'low',
-        measuredPowerKw: 0.9,
-        currentOn: true,
-        controllable: true,
-      }),
-      buildDevice({
-        id: 'stepped-b',
-        name: 'Stepped B',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: steppedProfile2,
-        selectedStepId: 'max',
-        measuredPowerKw: 1.4,
-        currentOn: true,
-        controllable: true,
-      }),
-      buildDevice({
-        id: 'binary-dev',
-        name: 'Binary',
-        measuredPowerKw: 0.8,
-        currentOn: true,
-        controllable: true,
-      }),
-    ];
+    // Apply state updates from cycle 1 (lastShedPlanMeasurementTs, lastInstabilityMs).
+    Object.assign(state, result1.updates);
 
+    // Cycle 2: stepped-a now at low, stepped-b still at max (preemptive).
     const result2 = await buildSheddingPlan(
       buildContext({
-        devices: devicesAfterCycle1,
+        devices: [
+          buildDevice({ ...steppedABase, selectedStepId: 'low', measuredPowerKw: 0.9 }),
+          buildDevice({ ...steppedBBase, selectedStepId: 'max', measuredPowerKw: 1.4 }),
+          buildDevice(binaryBase),
+        ],
         total: 5,
         softLimit: 3,
         capacitySoftLimit: 3,
@@ -1985,50 +1966,25 @@ describe('buildSheddingPlan', () => {
         headroom: -2,
         softLimitSource: 'capacity',
       }),
-      createPlanEngineState(),
+      state,
       { ...baseDeps, powerTracker: { lastTimestamp: 902 } as PowerTrackerState },
     );
 
-    // stepped-b should be stepped down (preemptive break again)
     expect(result2.shedSet.has('stepped-b')).toBe(true);
     expect(result2.steppedDesiredStepByDeviceId.get('stepped-b')).toBe('low');
     expect(result2.shedSet.has('binary-dev')).toBe(false);
 
+    Object.assign(state, result2.updates);
+
     // Cycle 3: both stepped devices at lowest active step. No more preemptive
     // candidates, so normal priority ordering resumes and binary device sheds.
-    const devicesAfterCycle2 = [
-      buildDevice({
-        id: 'stepped-a',
-        name: 'Stepped A',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: steppedProfile3,
-        selectedStepId: 'low',
-        measuredPowerKw: 0.9,
-        currentOn: true,
-        controllable: true,
-      }),
-      buildDevice({
-        id: 'stepped-b',
-        name: 'Stepped B',
-        controlModel: 'stepped_load',
-        steppedLoadProfile: steppedProfile2,
-        selectedStepId: 'low',
-        measuredPowerKw: 0.45,
-        currentOn: true,
-        controllable: true,
-      }),
-      buildDevice({
-        id: 'binary-dev',
-        name: 'Binary',
-        measuredPowerKw: 0.8,
-        currentOn: true,
-        controllable: true,
-      }),
-    ];
-
     const result3 = await buildSheddingPlan(
       buildContext({
-        devices: devicesAfterCycle2,
+        devices: [
+          buildDevice({ ...steppedABase, selectedStepId: 'low', measuredPowerKw: 0.9 }),
+          buildDevice({ ...steppedBBase, selectedStepId: 'low', measuredPowerKw: 0.45 }),
+          buildDevice(binaryBase),
+        ],
         total: 4,
         softLimit: 3,
         capacitySoftLimit: 3,
@@ -2036,15 +1992,11 @@ describe('buildSheddingPlan', () => {
         headroom: -1,
         softLimitSource: 'capacity',
       }),
-      createPlanEngineState(),
+      state,
       { ...baseDeps, powerTracker: { lastTimestamp: 903 } as PowerTrackerState },
     );
 
-    // Binary device should now shed (highest priority among non-preemptive candidates)
+    // Binary device should now shed (highest priority among non-preemptive candidates).
     expect(result3.shedSet.has('binary-dev')).toBe(true);
-    // Stepped devices at lowest active step going to off are NOT preemptive (they
-    // are effectively turn-offs), so they follow normal priority ordering alongside
-    // the binary device. With enough remaining shortfall they may also be selected.
-    // The key assertion is that binary-dev IS shed — the cascade worked.
   });
 });
