@@ -38,8 +38,8 @@ export const buildRestoreTiming = (
   const cooldownState = resolveRestoreCooldown(state, nowTs);
   const sinceRestore = state.lastRestoreMs ? nowTs - state.lastRestoreMs : null;
   const cooldown = getShedCooldownState({
-    lastSheddingMs: state.lastSheddingMs,
-    lastOvershootMs: state.lastOvershootMs,
+    lastInstabilityMs: state.lastInstabilityMs,
+    lastRecoveryMs: state.lastRecoveryMs,
     nowTs,
     cooldownMs: SHED_COOLDOWN_MS,
   });
@@ -84,7 +84,7 @@ const resolveRestoreCooldown = (
   nowTs: number,
 ): RestoreCooldownState => {
   const lastRestoreMs = state.lastRestoreMs;
-  const lastInstabilityMs = getLastInstabilityMs(state);
+  const lastInstabilityMs = typeof state.lastInstabilityMs === 'number' ? state.lastInstabilityMs : 0;
   const instabilityAgeMs = getInstabilityAgeMs(lastInstabilityMs, nowTs);
 
   let restoreCooldownMs = state.restoreCooldownMs ?? RESTORE_COOLDOWN_MS;
@@ -109,12 +109,6 @@ const resolveRestoreCooldown = (
   }
 
   return { restoreCooldownMs, lastRestoreCooldownBumpMs };
-};
-
-const getLastInstabilityMs = (state: PlanEngineState): number => {
-  const lastSheddingMs = typeof state.lastSheddingMs === 'number' ? state.lastSheddingMs : 0;
-  const lastOvershootMs = typeof state.lastOvershootMs === 'number' ? state.lastOvershootMs : 0;
-  return Math.max(lastSheddingMs, lastOvershootMs);
 };
 
 const getInstabilityAgeMs = (lastInstabilityMs: number, nowTs: number): number | null => {

@@ -219,6 +219,10 @@ describe('EV charger integration', () => {
     }));
 
     currentTimeMs += 61_000;
+    // Deactivate the guard so the next cycle doesn't trigger a fresh
+    // recovery transition (which would restart the cooldown window).
+    await (app as any).capacityGuard?.setSheddingActive(false);
+    (app as any).planEngine.state.lastRecoveryMs = currentTimeMs - 61_000;
     plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     evPlan = getPlanEntry(plan, charger.idValue);
 

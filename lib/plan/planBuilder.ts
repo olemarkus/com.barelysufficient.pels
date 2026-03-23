@@ -468,8 +468,11 @@ export class PlanBuilder {
   }
 
   private applySheddingUpdates(sheddingPlan: SheddingPlan): void {
-    if (sheddingPlan.updates.lastOvershootMs !== undefined) {
-      this.state.lastOvershootMs = sheddingPlan.updates.lastOvershootMs;
+    if (sheddingPlan.updates.lastInstabilityMs !== undefined) {
+      this.state.lastInstabilityMs = sheddingPlan.updates.lastInstabilityMs;
+    }
+    if (sheddingPlan.updates.lastRecoveryMs !== undefined) {
+      this.state.lastRecoveryMs = sheddingPlan.updates.lastRecoveryMs;
     }
     if (sheddingPlan.updates.lastShedPlanMeasurementTs !== undefined) {
       this.state.lastShedPlanMeasurementTs = sheddingPlan.updates.lastShedPlanMeasurementTs;

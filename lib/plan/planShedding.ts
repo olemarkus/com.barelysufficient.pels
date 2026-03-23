@@ -24,7 +24,8 @@ export type SheddingPlan = {
   sheddingActive: boolean;
   guardInShortfall: boolean;
   updates: {
-    lastOvershootMs?: number;
+    lastInstabilityMs?: number;
+    lastRecoveryMs?: number;
     lastShedPlanMeasurementTs?: number;
   };
   overshootStats: {
@@ -80,6 +81,7 @@ export async function buildSheddingPlan(
     updates,
     overshootStats,
   } = planShedding(context, state, deps);
+  const wasSheddingActive = deps.capacityGuard?.isSheddingActive() ?? false;
   const guardResult = await updateGuardState({
     headroom: context.headroom,
     capacitySoftLimit: context.capacitySoftLimit,
@@ -91,13 +93,17 @@ export async function buildSheddingPlan(
     capacityGuard: deps.capacityGuard,
   });
   const guardInShortfall = deps.capacityGuard?.isInShortfall() ?? false;
+  const recoveredFromShedding = wasSheddingActive && !guardResult.sheddingActive;
+  const mergedUpdates = recoveredFromShedding
+    ? { ...updates, lastRecoveryMs: Date.now() }
+    : updates;
   return {
     shedSet,
     shedReasons,
     steppedDesiredStepByDeviceId,
     sheddingActive: guardResult.sheddingActive,
     guardInShortfall,
-    updates,
+    updates: mergedUpdates,
     overshootStats,
   };
 }
@@ -114,7 +120,7 @@ function planShedding(
   shedSet: Set<string>;
   shedReasons: Map<string, string>;
   steppedDesiredStepByDeviceId: Map<string, string>;
-  updates: { lastOvershootMs?: number; lastShedPlanMeasurementTs?: number };
+  updates: { lastInstabilityMs?: number; lastRecoveryMs?: number; lastShedPlanMeasurementTs?: number };
   overshootStats: SheddingPlan['overshootStats'];
 } {
   const shedSet = new Set<string>();
@@ -171,7 +177,7 @@ function planShedding(
     return { shedSet, shedReasons, steppedDesiredStepByDeviceId, updates: {}, overshootStats: null };
   }
   const updates = {
-    lastOvershootMs: Date.now(),
+    lastInstabilityMs: Date.now(),
     ...(measurementTs !== null ? { lastShedPlanMeasurementTs: measurementTs } : {}),
   };
   const candidateCount = candidates.length;

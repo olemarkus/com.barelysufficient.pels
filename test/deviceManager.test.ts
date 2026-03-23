@@ -1196,6 +1196,68 @@ describe('DeviceManager', () => {
             }));
         });
 
+        it('updates local target snapshot after a successful temperature write', async () => {
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '\u00B0C' },
+                        target_temperature: { value: 22, id: 'target_temperature', units: '\u00B0C' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getSnapshot()[0]?.targets[0]).toEqual(expect.objectContaining({
+                id: 'target_temperature',
+                value: 22,
+            }));
+
+            await deviceManager.setCapability('dev1', 'target_temperature', 18);
+
+            expect(deviceManager.getSnapshot()[0]?.targets[0]).toEqual(expect.objectContaining({
+                id: 'target_temperature',
+                value: 18,
+            }));
+        });
+
+        it('updates the correct target when a device has multiple target capabilities', async () => {
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Multi-zone Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'target_temperature.zone1', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        measure_temperature: { value: 21, id: 'measure_temperature', units: '\u00B0C' },
+                        target_temperature: { value: 22, id: 'target_temperature', units: '\u00B0C' },
+                        'target_temperature.zone1': { value: 20, id: 'target_temperature.zone1', units: '\u00B0C' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            const snap = deviceManager.getSnapshot()[0];
+            expect(snap?.targets).toHaveLength(2);
+            expect(snap?.targets[0]).toEqual(expect.objectContaining({ id: 'target_temperature', value: 22 }));
+            expect(snap?.targets[1]).toEqual(expect.objectContaining({ id: 'target_temperature.zone1', value: 20 }));
+
+            await deviceManager.setCapability('dev1', 'target_temperature.zone1', 18);
+
+            const updated = deviceManager.getSnapshot()[0];
+            expect(updated?.targets[0]).toEqual(expect.objectContaining({ id: 'target_temperature', value: 22 }));
+            expect(updated?.targets[1]).toEqual(expect.objectContaining({ id: 'target_temperature.zone1', value: 18 }));
+        });
+
         it('preserves local onoff state optimistically after a binary write', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: {

@@ -415,7 +415,7 @@ describe('Device plan snapshot', () => {
 
     // Force cooldown window for device by keeping lastDeviceShedMs recent.
     (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
-    (app as any).planEngine.state.lastSheddingMs = Date.now();
+    (app as any).planEngine.state.lastInstabilityMs = Date.now();
 
     // Now plan with ample headroom but still within cooldown.
     (app as any).computeDynamicSoftLimit = () => 5;
@@ -498,8 +498,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(1200);
 
     // Force cooldown window and rebuild plan with available headroom.
-    (app as any).planEngine.state.lastSheddingMs = Date.now();
-    (app as any).planEngine.state.lastOvershootMs = Date.now();
+    (app as any).planEngine.state.lastInstabilityMs = Date.now();
     (app as any).computeDynamicSoftLimit = () => 5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
@@ -545,8 +544,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    (app as any).planEngine.state.lastSheddingMs = Date.now();
-    (app as any).planEngine.state.lastOvershootMs = Date.now();
+    (app as any).planEngine.state.lastInstabilityMs = Date.now();
     (app as any).planEngine.state.lastPlannedShedIds = new Set(['dev-1']);
 
     await (app as any).planService.rebuildPlanFromCache();
@@ -696,8 +694,10 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(1200);
 
     // Move past cooldown and provide ample headroom so device should restore.
-    (app as any).planEngine.state.lastSheddingMs = Date.now() - 180000; // cooldown expired
-    (app as any).planEngine.state.lastOvershootMs = Date.now() - 180000;
+    (app as any).planEngine.state.lastInstabilityMs = Date.now() - 180000; // cooldown expired
+    (app as any).planEngine.state.lastRecoveryMs = Date.now() - 180000;
+    // Deactivate the guard so the next cycle doesn't trigger a fresh recovery transition.
+    await (app as any).capacityGuard?.setSheddingActive(false);
     (app as any).computeDynamicSoftLimit = () => 5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
@@ -776,7 +776,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
-    (app as any).planEngine.state.lastSheddingMs = Date.now(); // force cooldown window
+    (app as any).planEngine.state.lastInstabilityMs = Date.now(); // force cooldown window
     (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
 
     await (app as any).recordPowerSample(1000);
@@ -812,7 +812,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(600); // 0.6 kW total, overshoot of 0.1 kW
 
-    expect((app as any).planEngine.state.lastOvershootMs).toBeNull();
+    expect((app as any).planEngine.state.lastInstabilityMs).toBeNull();
   });
 
   it('executes shedding action when plan says shed and dry run is off', async () => {
@@ -1014,8 +1014,7 @@ describe('Device plan snapshot', () => {
     await (app as any).refreshTargetDevicesSnapshot();
 
     // Clear shedding-related cooldowns but NOT restore margin consideration
-    (app as any).planEngine.state.lastSheddingMs = 0;
-    (app as any).planEngine.state.lastOvershootMs = 0;
+    (app as any).planEngine.state.lastInstabilityMs = 0;
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
@@ -1035,8 +1034,7 @@ describe('Device plan snapshot', () => {
 
     // Step 3: Large headroom - device should restore
     // Clear all cooldowns to allow restoration
-    (app as any).planEngine.state.lastSheddingMs = 0;
-    (app as any).planEngine.state.lastOvershootMs = 0;
+    (app as any).planEngine.state.lastInstabilityMs = 0;
     (app as any).planEngine.state.lastRestoreMs = 0;
 
     // Set soft limit high enough for restoration: need > device power + margin
@@ -1751,7 +1749,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Simulate recent shedding/overshoot.
-    (app as any).planEngine.state.lastSheddingMs = Date.now();
+    (app as any).planEngine.state.lastInstabilityMs = Date.now();
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.getHeadroom = () => 5; // plenty of headroom
       (app as any).capacityGuard.isSheddingActive = () => false;
@@ -1798,8 +1796,7 @@ describe('Device plan snapshot', () => {
 
     // Simulate being in shortfall state with positive headroom (waiting for 60s sustain)
     // This happens when power drops but we haven't sustained positive headroom long enough
-    (app as any).planEngine.state.lastSheddingMs = Date.now() - 120000; // shedding was 2 minutes ago (past cooldown)
-    (app as any).planEngine.state.lastOvershootMs = Date.now() - 120000; // overshoot was 2 minutes ago
+    (app as any).planEngine.state.lastInstabilityMs = Date.now() - 120000; // shedding was 2 minutes ago (past cooldown)
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.getHeadroom = () => 2; // plenty of headroom
       (app as any).capacityGuard.isSheddingActive = () => false;
@@ -1990,8 +1987,7 @@ describe('Device plan snapshot', () => {
     }
 
     // Clear any shedding/overshoot timestamps to avoid cooldown
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     if ((app as any).capacityGuard) {
       // Ensure shedding is not active
       (app as any).capacityGuard.sheddingActive = false;
@@ -2038,8 +2034,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 3);
     }
 
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
 
     await (app as any).recordPowerSample(2500);
 
@@ -2085,8 +2080,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 3.5);
     }
 
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
 
     await (app as any).recordPowerSample(3000);
 
@@ -2137,8 +2131,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 4);
     }
 
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
 
     await (app as any).recordPowerSample(3000);
 
@@ -2198,8 +2191,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 2);
     }
 
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
     // Simulate that a swap was initiated: swap target is in pendingSwapTargets
@@ -2257,8 +2249,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 3);
     }
 
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
     // Simulate swap state: dev-swapped was shed for dev-target, but dev-target can't restore
@@ -2358,8 +2349,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 4);
     }
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
@@ -2424,8 +2414,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 4);
     }
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
@@ -2494,8 +2483,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 4);
     }
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
@@ -2541,8 +2529,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 4);
     }
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
@@ -3160,8 +3147,7 @@ describe('Dry run mode', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
     (app as any).planEngine.state.inShortfall = false;
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
     // Report 4.3 kW power - gives 2.2 kW headroom (6.5 - 4.3 = 2.2)
@@ -3214,8 +3200,7 @@ describe('Dry run mode', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 2.25);
     }
 
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
     const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
@@ -3445,9 +3430,11 @@ describe('Dry run mode', () => {
       jest.setSystemTime(new Date('2023-01-01T12:10:00Z'));
 
       // Explicitly clear cooldowns to avoid test flakiness with Date mocking
-      (app as any).planEngine.state.lastSheddingMs = 0;
-      (app as any).planEngine.state.lastOvershootMs = 0;
+      (app as any).planEngine.state.lastInstabilityMs = 0;
+      (app as any).planEngine.state.lastRecoveryMs = 0;
       (app as any).planEngine.state.lastDeviceShedMs = {};
+      // Deactivate the guard so the next cycle doesn't trigger a fresh recovery transition.
+      await (app as any).capacityGuard?.setSheddingActive(false);
 
       await (app as any).recordPowerSample(2000);
 
@@ -3727,8 +3714,7 @@ describe('Dry run mode', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.3);
     }
 
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
     (app as any).deviceManager.setSnapshotForTests([
@@ -3800,8 +3786,7 @@ describe('Dry run mode', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.3);
     }
 
-    (app as any).planEngine.state.lastSheddingMs = null;
-    (app as any).planEngine.state.lastOvershootMs = null;
+    (app as any).planEngine.state.lastInstabilityMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
     (app as any).deviceManager.setSnapshotForTests([

@@ -293,14 +293,18 @@ export class DeviceManager extends EventEmitter {
         }
     }
 
-    updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
+    updateLocalSnapshot(
+        deviceId: string,
+        updates: { target?: number | null; targetCapabilityId?: string; on?: boolean },
+    ): void {
         const snap = this.latestSnapshot.find((d) => d.id === deviceId);
         if (!snap) return;
 
-        if (typeof updates.target === 'number') {
-            if (snap.targets && snap.targets[0]) {
-                snap.targets[0].value = updates.target;
-            }
+        if (typeof updates.target === 'number' && snap.targets?.length) {
+            const entry = updates.targetCapabilityId
+                ? snap.targets.find((t) => t.id === updates.targetCapabilityId)
+                : snap.targets[0];
+            if (entry) entry.value = updates.target;
         }
         if (typeof updates.on === 'boolean') {
             snap.currentOn = updates.on;
@@ -345,6 +349,12 @@ export class DeviceManager extends EventEmitter {
             && isRealtimeControlCapability(capabilityId);
         if (preservedLocalState) {
             this.updateLocalSnapshot(deviceId, { on: normalizedValue });
+        }
+
+        // Update local snapshot for target/temperature writes so pending-command
+        // confirmation checks see the written value instead of a stale snapshot.
+        if (typeof normalizedValue === 'number' && capabilityId.startsWith('target_temperature')) {
+            this.updateLocalSnapshot(deviceId, { target: normalizedValue, targetCapabilityId: capabilityId });
         }
         this.recordLocalWriteObservation(deviceId, capabilityId, normalizedValue, {
             preservedLocalState,

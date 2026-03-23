@@ -84,6 +84,7 @@ export default tseslint.config(
   {
     ignores: [
       'node_modules/**',
+      '.claude/**',
       '.homeybuild/**',
       'coverage/**',
       'output/**',
