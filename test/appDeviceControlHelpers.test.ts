@@ -55,7 +55,7 @@ describe('appDeviceControlHelpers', () => {
   it('uses the highest configured step as the default selected step for stepped loads', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const decorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot(),
+      snapshot: baseSnapshot({ currentOn: true }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 1000,
@@ -70,6 +70,20 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.expectedPowerKw).toBe(3);
     expect(decorated.expectedPowerSource).toBe('step-planning');
     expect(decorated.currentOn).toBe(true);
+  });
+
+  it('preserves currentOn=false for stepped devices even with non-off step', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ currentOn: false }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1000,
+    });
+
+    expect(decorated.controlModel).toBe('stepped_load');
+    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.currentOn).toBe(false);
   });
 
   it('preserves snapshot power source and currentOn when a stepped profile cannot resolve any step', () => {

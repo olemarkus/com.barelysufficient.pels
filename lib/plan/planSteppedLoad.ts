@@ -37,10 +37,11 @@ const getSteppedLoadProfileForDevice = (
 ): SteppedLoadProfile | null => (isSteppedLoadDevice(device) ? (device.steppedLoadProfile ?? null) : null);
 
 export const resolveSteppedLoadCurrentState = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'>,
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'> & { currentOn?: boolean },
 ): string | null => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
+  if (device.currentOn === false) return 'off';
   if (!device.selectedStepId) return 'unknown';
   return isSteppedLoadOffStep(profile, device.selectedStepId) ? 'off' : 'on';
 };

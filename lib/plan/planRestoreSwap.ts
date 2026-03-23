@@ -1,5 +1,7 @@
 import type { DevicePlanDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
+import { isSteppedLoadDevice } from './planSteppedLoad';
+import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
 
 export function buildSwapCandidates(params: {
   dev: DevicePlanDevice;
@@ -93,7 +95,13 @@ export function computeRestoreBufferKw(devPower: number): number {
 }
 
 export function estimateRestorePower(dev: DevicePlanDevice): number {
-  if (typeof dev.planningPowerKw === 'number') return dev.planningPowerKw;
+  if (typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) return dev.planningPowerKw;
+  // For stepped devices at zero planning power (off-step or temperature-shed),
+  // use the lowest non-zero step as the conservative re-entry estimate.
+  if (isSteppedLoadDevice(dev) && dev.steppedLoadProfile) {
+    const restoreStep = getSteppedLoadRestoreStep(dev.steppedLoadProfile);
+    if (restoreStep && restoreStep.planningPowerW > 0) return restoreStep.planningPowerW / 1000;
+  }
   if (typeof dev.expectedPowerKw === 'number') return dev.expectedPowerKw;
   if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
   return dev.powerKw ?? 1;
