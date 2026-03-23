@@ -71,17 +71,20 @@ non-zero step.
 
 - [x] Preemptive stepped device sorts before higher-priority binary device.
 - [x] Stepped device above lowest-active steps down before one at lowest-active transitions to off.
-- [ ] Two stepped devices at different priorities + one binary device, overshoot requires multiple
+- [x] Two stepped devices at different priorities + one binary device, overshoot requires multiple
   cycles. Verify both stepped devices reach lowest active step before the binary device turns off.
-- [ ] `currentOn=false` on a stepped device at a non-off step: plan sees device as off, not
+- [x] `currentOn=false` on a stepped device at a non-off step: plan sees device as off, not
   consuming power.
-- [ ] Stepped device at off-step with `turn_off` intent. Verify restore headroom uses lowest
+  Covered by `appDeviceControlHelpers.test.ts` (`decorateSnapshotWithDeviceControl`).
+- [x] Stepped device at off-step with `turn_off` intent. Verify restore headroom uses lowest
   non-zero step power, not 0 or fallback 1.
-- [ ] Stepped device with `set_temperature` shed behavior. Verify expected power uses lowest
+  Covered by `planRestoreSwap.test.ts` (`estimateRestorePower`).
+- [x] Stepped device with `set_temperature` shed behavior. Verify expected power uses lowest
   non-zero step for planning.
+  Covered by `planRestoreSwap.test.ts` (`estimateRestorePower`).
 - [x] Stepped device with `keep` intent and `onoff=false`. Verify reconciliation turns it on.
-- [ ] Stepped device with `keep` intent and `step=0`. Verify reconciliation sets non-zero step.
-- [ ] Both `onoff=false` and `step=0` with `keep` intent. Verify both are fixed.
+- [x] Stepped device with `keep` intent and `step=0`. Verify reconciliation sets non-zero step.
+- [x] Both `onoff=false` and `step=0` with `keep` intent. Verify both are fixed.
 - [x] Stepped device at lowest active step with `turn_off`. Verify device ends up at off-step
   AND `onoff=false`.
 - [x] Intent `keep`, external actor sets `onoff=false`. Verify PELS turns it back on.
