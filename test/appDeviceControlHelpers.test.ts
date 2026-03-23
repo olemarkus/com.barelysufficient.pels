@@ -73,6 +73,24 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.currentOn).toBe(true);
   });
 
+  it('preserves existing expectedPowerKw and expectedPowerSource for stepped loads', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({
+        currentOn: true,
+        expectedPowerKw: 2.5,
+        expectedPowerSource: 'measured-peak',
+      }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1000,
+    });
+
+    expect(decorated.planningPowerKw).toBe(3);
+    expect(decorated.expectedPowerKw).toBe(2.5);
+    expect(decorated.expectedPowerSource).toBe('measured-peak');
+  });
+
   it('preserves currentOn=false for stepped devices even with non-off step', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const decorated = decorateSnapshotWithDeviceControl({
