@@ -134,9 +134,10 @@ unconfirmed" state instead.
 
 ### 2. Stop conflating measured, expected, and planning power
 
-**Problem:** The decorator overwrites `expectedPowerKw` with `planningPowerKw` for stepped
-devices (`appDeviceControlHelpers.ts:101`), losing the original configured value. Downstream
-code that falls back to `expectedPowerKw` gets step planning power instead. Four different
+**Problem:** The decorator previously overwrote `expectedPowerKw` with `planningPowerKw` for stepped
+devices (see historical implementation in `appDeviceControlHelpers.ts`), which lost the original
+configured value. Downstream code that falls back to `expectedPowerKw` gets step planning power
+instead. Four different
 power resolution functions use different fallback orders, so the same device gets different
 power estimates depending on whether PELS is shedding, restoring, or reporting usage.
 
@@ -145,7 +146,7 @@ power estimates depending on whether PELS is shedding, restoring, or reporting u
 | Function | File | Priority order |
 |---|---|---|
 | `resolveCandidatePower` | `planCandidatePower.ts` | measured → expected → planning → configured → 1kW |
-| `estimateRestorePower` | `planRestoreSwap.ts` | planning → step-restore → expected → measured → 1kW |
+| `estimateRestorePower` | `planRestoreSwap.ts` | planning → step-restore → expected → measured → configured → 1kW |
 | `resolveUsageKw` | `planUsage.ts` | measured → expected (conditional) → planning → null |
 | `resolveSteppedCandidatePower` | `planSteppedLoad.ts` | measured-relief → planning delta |
 
