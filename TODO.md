@@ -218,10 +218,11 @@ more fragile than necessary.
 
 ### `setBinaryControl` dependency bag duplication
 
-- [ ] Extract `setBinaryControl` boilerplate into a private `PlanExecutor` helper. The dependency
+- [x] Extract `setBinaryControl` boilerplate into a private `PlanExecutor` helper. The dependency
   bag (`state`, `deviceManager`, `updateLocalSnapshot`, `log`, `logDebug`, `error`) is duplicated
   across `applySteppedLoadShedOff`, `applySteppedLoadRestore`, `applyRestorePower`,
   `applyUncontrolledRestore`, and `turnOffDevice` (5 call sites, 7 fields each).
+  Extracted `buildBinaryControlDeps()` helper; all call sites now spread it.
   Files: `planExecutor.ts`.
 
 ### `setEvBinaryControl` / `setStandardBinaryControl` near-duplication
