@@ -60,7 +60,7 @@ const getPlanMetaText = () => {
 };
 
 describe('plan usage line', () => {
-  it('shows current usage and expected when measured matches expected', () => {
+  it('shows Measured and Expected when measured matches Expected', () => {
     renderPlanSnapshot({
       devices: [
         {
@@ -74,10 +74,10 @@ describe('plan usage line', () => {
       ],
     });
 
-    expect(getUsageText()).toBe('current usage: 1.23 kW / expected 1.23 kW');
+    expect(getUsageText()).toBe('Measured: 1.23 kW / Expected: 1.23 kW');
   });
 
-  it('shows current usage and expected when values differ', () => {
+  it('shows Measured and Expected when values differ', () => {
     renderPlanSnapshot({
       devices: [
         {
@@ -91,10 +91,10 @@ describe('plan usage line', () => {
       ],
     });
 
-    expect(getUsageText()).toBe('current usage: 0.00 kW / expected 1.20 kW');
+    expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 1.20 kW');
   });
 
-  it('shows current usage 0 when measured is zero and expected is positive', () => {
+  it('shows Measured 0 when measured is zero and Expected is positive', () => {
     renderPlanSnapshot({
       devices: [
         {
@@ -108,7 +108,7 @@ describe('plan usage line', () => {
       ],
     });
 
-    expect(getUsageText()).toBe('current usage: 0.00 kW / expected 1.00 kW');
+    expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 1.00 kW');
   });
 
   it('shows stepped-load planning and live usage in the overview row', () => {
@@ -129,7 +129,7 @@ describe('plan usage line', () => {
     });
 
     expect(getPowerText()).toBeUndefined();
-    expect(getUsageText()).toBe('current usage: 0.00 kW / expected 3.00 kW (max)');
+    expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 3.00 kW (max)');
   });
 
   it('shows stepped-load usage without extra assumption labels', () => {
@@ -151,7 +151,7 @@ describe('plan usage line', () => {
     });
 
     expect(getPowerText()).toBeUndefined();
-    expect(getUsageText()).toBe('current usage: 0.00 kW / expected 3.00 kW (max)');
+    expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 3.00 kW (max)');
   });
 });
 
@@ -342,7 +342,7 @@ describe('plan device state', () => {
 
     expect(getPowerText()).toBeUndefined();
     expect(getStateText()).toBe('Restoring');
-    expect(getUsageText()).toBe('current usage: 0.60 kW / expected 3.00 kW (low → max)');
+    expect(getUsageText()).toBe('Measured: 0.60 kW / Expected: 3.00 kW (low → max)');
     expect(getBadgeClassList('dev-step-restore')?.contains('neutral')).toBe(true);
   });
 
@@ -367,7 +367,7 @@ describe('plan device state', () => {
 
     expect(getPowerText()).toBeUndefined();
     expect(getStateText()).toBe('Shed to low');
-    expect(getUsageText()).toBe('current usage: 1.10 kW / expected 1.25 kW (max → low)');
+    expect(getUsageText()).toBe('Measured: 1.10 kW / Expected: 1.25 kW (max → low)');
     expect(getBadgeClassList('dev-step-shed')?.contains('expensive')).toBe(true);
   });
 
@@ -405,7 +405,7 @@ describe('plan device state', () => {
       ],
     });
 
-    expect(getStateText()).toBe('Restoring');
+    expect(getStateText()).toBe('Shed (restore cooldown)');
     expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
     expect(getBadgeClassList('dev-restore-off')?.contains('neutral')).toBe(true);
   });
