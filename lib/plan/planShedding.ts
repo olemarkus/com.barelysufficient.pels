@@ -400,6 +400,10 @@ function resolveRecentRestoreState(
 }
 
 function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
+  // Preemptive step-down candidates sort before everything else so that step
+  // reductions are attempted before turning off any device in this planning
+  // cycle. A stepped device already at its lowest active step (going to off)
+  // is effectively a turn-off and follows normal priority ordering.
   const aPreemptive = a.kind === 'stepped' && a.preemptiveStepDown;
   const bPreemptive = b.kind === 'stepped' && b.preemptiveStepDown;
   if (aPreemptive !== bPreemptive) return Number(bPreemptive) - Number(aPreemptive);
