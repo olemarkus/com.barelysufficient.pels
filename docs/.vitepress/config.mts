@@ -1,6 +1,6 @@
 import { defineConfig, type HeadConfig } from 'vitepress';
 
-const siteUrl = 'https://pels.barelysufficient.com';
+const siteUrl = 'https://pels.barelysufficient.org';
 const defaultDescription =
   'Homey Pro app for capacity control, price-aware load shifting, and Flow-friendly energy control.';
 
@@ -61,6 +61,7 @@ export default defineConfig({
           { text: 'Configuration', link: '/configuration' },
           { text: 'Flow Cards', link: '/flow-cards' },
           { text: 'PELS Insights', link: '/insights-device' },
+          { text: 'Using Homey Energy', link: '/homey-energy' },
           { text: 'Tips and Best Practices', link: '/tips-and-best-practices' },
         ],
       },

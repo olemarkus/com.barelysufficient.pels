@@ -23,13 +23,19 @@ Open **Apps -> PELS -> Settings** in Homey. This is where all configuration happ
 
 ## Step 1: Connect your power meter
 
-Without live power input, PELS cannot know how much power your home is using.
+Without live power input, PELS cannot know how much power your home is using. There are two ways to feed power data to PELS:
+
+**Option A: Homey Energy (recommended if your meter is already paired)**
+
+If your power meter is paired with Homey and has **Tracks total home energy consumption** enabled, go to the **Devices** tab and set **Power source** to **Homey Energy**. PELS will start polling automatically. See [Using Homey Energy](/homey-energy) for details.
+
+**Option B: Flow card**
 
 Create a Homey Flow that calls **Report power usage** whenever your meter updates. This is typically a single Flow with your power meter as the trigger and the PELS action card as the action.
 
 Common meter sources are Tibber Pulse, AMS/HAN readers, or any device that reports total household watts.
 
-Once this Flow is running, the Overview tab starts showing real data.
+Once power data is flowing, the Overview tab starts showing real data.
 
 ## Step 2: Set your capacity limit
 

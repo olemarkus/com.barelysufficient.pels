@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://pels.barelysufficient.com/sitemap.xml
+Sitemap: https://pels.barelysufficient.org/sitemap.xml
