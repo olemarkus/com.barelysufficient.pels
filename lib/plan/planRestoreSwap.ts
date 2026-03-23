@@ -98,3 +98,9 @@ export function estimateRestorePower(dev: DevicePlanDevice): number {
   if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
   return dev.powerKw ?? 1;
 }
+
+export function computeBaseRestoreNeed(dev: DevicePlanDevice): { power: number; buffer: number; needed: number } {
+  const power = estimateRestorePower(dev);
+  const buffer = computeRestoreBufferKw(power);
+  return { power, buffer, needed: power + buffer };
+}

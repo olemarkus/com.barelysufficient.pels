@@ -125,9 +125,10 @@ describe('restore cooldown backoff', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     jest.setSystemTime(now);
     const state = createPlanEngineState();
-    state.swappedOutFor = { 'dev-on': 'stale-target' };
-    state.pendingSwapTargets = new Set(['stale-target']);
-    state.pendingSwapTimestamps = { 'stale-target': now - SWAP_TIMEOUT_MS - 1000 };
+    state.swapByDevice = {
+      'dev-on': { swappedOutFor: 'stale-target' },
+      'stale-target': { pendingTarget: true, timestamp: now - SWAP_TIMEOUT_MS - 1000 },
+    };
 
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
@@ -152,8 +153,8 @@ describe('restore cooldown backoff', () => {
     expect(offDevice?.plannedState).toBe('keep');
     expect(onDevice?.plannedState).toBe('shed');
     expect(onDevice?.reason).toBe('swapped out for Off');
-    expect(result.stateUpdates.pendingSwapTargets.has('stale-target')).toBe(false);
-    expect(result.stateUpdates.swappedOutFor['dev-on']).toBe('dev-off');
+    expect(result.stateUpdates.swapByDevice['stale-target']?.pendingTarget).toBeFalsy();
+    expect(result.stateUpdates.swapByDevice['dev-on']?.swappedOutFor).toBe('dev-off');
   });
 
   it('blocks stepped-load step-up while another device is still waiting to recover', () => {

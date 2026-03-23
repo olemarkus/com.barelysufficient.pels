@@ -2196,7 +2196,7 @@ describe('Device plan snapshot', () => {
 
     // Simulate that a swap was initiated: swap target is in pendingSwapTargets
     // This mimics the state after a swap where the target hasn't been restored yet
-    (app as any).planEngine.state.pendingSwapTargets = new Set(['dev-swap-target']);
+    (app as any).planEngine.state.swapByDevice['dev-swap-target'] = { pendingTarget: true };
 
     // Record power - only 0.8 kW headroom (not enough for swap target with 1.4 kW needed)
     // But enough for lower priority (0.7 kW needed)
@@ -2255,9 +2255,10 @@ describe('Device plan snapshot', () => {
     // Simulate swap state: dev-swapped was shed for dev-target, but dev-target can't restore
     // Set timestamp to 61 seconds ago (stale)
     const staleTime = Date.now() - 61000;
-    (app as any).planEngine.state.swappedOutFor = { 'dev-swapped': 'dev-target' };
-    (app as any).planEngine.state.pendingSwapTargets = new Set(['dev-target']);
-    (app as any).planEngine.state.pendingSwapTimestamps = { 'dev-target': staleTime };
+    (app as any).planEngine.state.swapByDevice = {
+      'dev-swapped': { swappedOutFor: 'dev-target' },
+      'dev-target': { pendingTarget: true, timestamp: staleTime },
+    };
 
     // Record power - only 1.5kW headroom (not enough for swap target 2.4kW, but enough for swapped 0.9kW)
     await (app as any).recordPowerSample(1500);
@@ -2274,8 +2275,8 @@ describe('Device plan snapshot', () => {
     expect(swappedPlan?.plannedState).toBe('keep');
 
     // Verify swap tracking was cleared
-    expect((app as any).planEngine.state.pendingSwapTargets.has('dev-target')).toBe(false);
-    expect((app as any).planEngine.state.swappedOutFor['dev-swapped']).toBeUndefined();
+    expect((app as any).planEngine.state.swapByDevice['dev-target']?.pendingTarget).toBeFalsy();
+    expect((app as any).planEngine.state.swapByDevice['dev-swapped']?.swappedOutFor).toBeUndefined();
   });
 
   // Removed: 'syncs Guard controllables when updateLocalSnapshot changes on/off state'
@@ -2494,9 +2495,17 @@ describe('Device plan snapshot', () => {
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
 
     // Simulate swap state being cleared without a new measurement.
-    (app as any).planEngine.state.pendingSwapTargets.clear();
-    (app as any).planEngine.state.pendingSwapTimestamps = {};
-    (app as any).planEngine.state.swappedOutFor = {};
+    // Keep lastPlanMeasurementTs to block re-planning on the same measurement.
+    const swapByDevice = (app as any).planEngine.state.swapByDevice;
+    for (const key of Object.keys(swapByDevice)) {
+      const entry = swapByDevice[key];
+      delete entry.swappedOutFor;
+      delete entry.pendingTarget;
+      delete entry.timestamp;
+      if (entry.lastPlanMeasurementTs === undefined) {
+        delete swapByDevice[key];
+      }
+    }
 
     await (app as any).planService.rebuildPlanFromCache();
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
@@ -2537,9 +2546,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(3000, 1000);
 
     // Clear swap state without a new measurement.
-    (app as any).planEngine.state.pendingSwapTargets.clear();
-    (app as any).planEngine.state.pendingSwapTimestamps = {};
-    (app as any).planEngine.state.swappedOutFor = {};
+    (app as any).planEngine.state.swapByDevice = {};
 
     (app as any).planEngine.state.lastRestoreMs = Date.now() - 60000;
     await (app as any).recordPowerSample(3000, 2000);

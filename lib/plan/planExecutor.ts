@@ -284,8 +284,14 @@ export class PlanExecutor {
           });
         }
         // Clear this device from pending swap targets if it was one
-        this.state.pendingSwapTargets.delete(dev.id);
-        delete this.state.pendingSwapTimestamps[dev.id];
+        const swapEntry = this.state.swapByDevice[dev.id];
+        if (swapEntry) {
+          delete swapEntry.pendingTarget;
+          delete swapEntry.timestamp;
+          if (!swapEntry.swappedOutFor && swapEntry.lastPlanMeasurementTs === undefined) {
+            delete this.state.swapByDevice[dev.id];
+          }
+        }
       } catch (error) {
         this.error(`Failed to turn on ${name} via DeviceManager`, error);
       }

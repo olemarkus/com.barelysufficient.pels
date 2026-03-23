@@ -11,8 +11,8 @@ import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, export
 import {
   buildInsufficientHeadroomUpdate,
   buildSwapCandidates,
+  computeBaseRestoreNeed,
   computeRestoreBufferKw,
-  estimateRestorePower,
 } from './planRestoreSwap';
 import {
   getInactiveReason,
@@ -121,9 +121,7 @@ export function applyRestorePlan(params: {
       logDebug: deps.logDebug,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
       reasonOverride: (dev) => {
-        const plannedPower = estimateRestorePower(dev);
-        const restoreBuffer = computeRestoreBufferKw(plannedPower);
-        const needed = plannedPower + restoreBuffer;
+        const { needed } = computeBaseRestoreNeed(dev);
         return `insufficient headroom (need ${needed.toFixed(2)}kW, headroom unknown)`;
       },
     });
@@ -347,9 +345,7 @@ function getRestoreNeed(
   state: PlanEngineState,
   diagnostics?: DeviceDiagnosticsRecorder,
 ): { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number } {
-  const devPower = estimateRestorePower(dev);
-  const restoreBuffer = computeRestoreBufferKw(devPower);
-  const baseNeeded = devPower + restoreBuffer;
+  const { power: devPower, needed: baseNeeded } = computeBaseRestoreNeed(dev);
   const lastDeviceShed = state.lastDeviceShedMs[dev.id];
   const recentlyShed = Boolean(
     lastDeviceShed && Date.now() - lastDeviceShed < RECENT_SHED_RESTORE_BACKOFF_MS,

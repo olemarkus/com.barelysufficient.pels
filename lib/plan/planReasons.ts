@@ -1,6 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
-import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
+import { computeBaseRestoreNeed } from './planRestoreSwap';
 import { sortByPriorityAsc } from './planSort';
 import { RESTORE_CONFIRM_RETRY_MS } from './planConstants';
 
@@ -175,7 +175,7 @@ function resolveRestoreDecision(params: {
     restoredOneThisCycle,
     restoredThisCycle,
   } = params;
-  const restoreBuffer = computeRestoreBufferKw(estimateRestorePower(dev));
+  const { buffer: restoreBuffer } = computeBaseRestoreNeed(dev);
   if (availableHeadroom < restoreBuffer) {
     const reason = `insufficient headroom (need ${restoreBuffer.toFixed(2)}kW, `
       + `headroom ${availableHeadroom.toFixed(2)}kW)`;
@@ -482,9 +482,7 @@ function maybeApplyShortfallReason(params: {
   const { dev, guardInShortfall, reasonFlags, headroomRaw } = params;
   if (!guardInShortfall || reasonFlags.isSwapReason || reasonFlags.isBudgetReason) return null;
   if (dev.reason?.startsWith('shortfall (')) return null;
-  const estimatedPower = estimateRestorePower(dev);
-  const restoreBuffer = computeRestoreBufferKw(estimatedPower);
-  const estimatedNeed = estimatedPower + restoreBuffer;
+  const { needed: estimatedNeed } = computeBaseRestoreNeed(dev);
   return `shortfall (need ${estimatedNeed.toFixed(2)}kW, headroom `
     + `${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`;
 }

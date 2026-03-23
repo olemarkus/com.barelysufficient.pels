@@ -504,10 +504,7 @@ export class PlanBuilder {
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       },
     });
-    this.state.pendingSwapTargets = restoreResult.stateUpdates.pendingSwapTargets;
-    this.state.pendingSwapTimestamps = restoreResult.stateUpdates.pendingSwapTimestamps;
-    this.state.swappedOutFor = restoreResult.stateUpdates.swappedOutFor;
-    this.state.lastSwapPlanMeasurementTs = restoreResult.stateUpdates.lastSwapPlanMeasurementTs;
+    this.state.swapByDevice = restoreResult.stateUpdates.swapByDevice;
     this.state.restoreCooldownMs = restoreResult.restoreCooldownMs;
     this.state.lastRestoreCooldownBumpMs = restoreResult.lastRestoreCooldownBumpMs;
     return restoreResult;
