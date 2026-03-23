@@ -114,6 +114,18 @@ export class PlanExecutor {
     return this.deps.getOperatingMode();
   }
 
+  private buildBinaryControlDeps() {
+    return {
+      state: this.state,
+      deviceManager: this.deviceManager,
+      updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) =>
+        this.updateLocalSnapshot(deviceId, updates),
+      log: (...args: unknown[]) => this.log(...args),
+      logDebug: (...args: unknown[]) => this.logDebug(...args),
+      error: (...args: unknown[]) => this.error(...args),
+    };
+  }
+
   private log(...args: unknown[]): void {
     this.deps.log(...args);
   }
@@ -330,12 +342,7 @@ export class PlanExecutor {
     const name = dev.name || dev.id;
     try {
       const applied = await setBinaryControl({
-        state: this.state,
-        deviceManager: this.deviceManager,
-        updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
-        log: (...args: unknown[]) => this.log(...args),
-        logDebug: (...args: unknown[]) => this.logDebug(...args),
-        error: (...args: unknown[]) => this.error(...args),
+        ...this.buildBinaryControlDeps(),
         deviceId: dev.id,
         name,
         desired: true,
@@ -574,12 +581,7 @@ export class PlanExecutor {
     this.state.pendingRestores.add(dev.id);
     try {
       const applied = await setBinaryControl({
-        state: this.state,
-        deviceManager: this.deviceManager,
-        updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
-        log: (...args: unknown[]) => this.log(...args),
-        logDebug: (...args: unknown[]) => this.logDebug(...args),
-        error: (...args: unknown[]) => this.error(...args),
+        ...this.buildBinaryControlDeps(),
         deviceId: dev.id,
         name,
         desired: true,
@@ -632,12 +634,7 @@ export class PlanExecutor {
     const name = dev.name || dev.id;
     try {
       const applied = await setBinaryControl({
-        state: this.state,
-        deviceManager: this.deviceManager,
-        updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
-        log: (...args: unknown[]) => this.log(...args),
-        logDebug: (...args: unknown[]) => this.logDebug(...args),
-        error: (...args: unknown[]) => this.error(...args),
+        ...this.buildBinaryControlDeps(),
         deviceId: dev.id,
         name,
         desired: false,
@@ -915,12 +912,7 @@ export class PlanExecutor {
     const now = Date.now();
     try {
       const applied = await setBinaryControl({
-        state: this.state,
-        deviceManager: this.deviceManager,
-        updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
-        log: (...args: unknown[]) => this.log(...args),
-        logDebug: (...args: unknown[]) => this.logDebug(...args),
-        error: (...args: unknown[]) => this.error(...args),
+        ...this.buildBinaryControlDeps(),
         deviceId,
         name,
         desired: false,
