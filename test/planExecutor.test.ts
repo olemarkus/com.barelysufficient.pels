@@ -549,6 +549,8 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'off',
     }));
 
+    // Raw snapshot has currentOn=false, so setBinaryControl skips both shed-off
+    // and restore — no binary command issued
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
 
@@ -603,5 +605,107 @@ describe('PlanExecutor stepped loads', () => {
     // Binary control should also be set because keep requires onoff=true
     // The device was at off-step with onoff=false, which violates keep invariant
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('sets onoff=false for a shed stepped device at its off-step', async () => {
+    // The plan sees currentState='off' (from decorated snapshot), but the raw
+    // snapshot still has currentOn=true (the onoff capability hasn't been set
+    // to false yet). setBinaryControl operates on raw snapshots, so it sees
+    // the true value and issues the command.
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager, deps } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect(deps.logDebug).toHaveBeenCalledWith(
+      expect.stringContaining('set onoff=false for stepped device Tank'),
+    );
+  });
+
+  it('does not set onoff=false for a shed stepped device not at off-step', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not set onoff=false for a keep stepped device at off-step', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    }));
+
+    // setCapability should not be called with false — only step trigger fires
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
+  it('skips onoff=false when raw snapshot already shows device off', async () => {
+    // When the raw onoff capability is already false, setBinaryControl detects
+    // the device is already in the desired state and skips the command.
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
 });
