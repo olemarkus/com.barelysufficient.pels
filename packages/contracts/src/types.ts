@@ -41,7 +41,7 @@ export type TargetDeviceSnapshot = {
     powerKw?: number;
     expectedPowerKw?: number;
     planningPowerKw?: number;
-    expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default' | 'step-planning';
+    expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
     loadKw?: number;
     priority?: number;
     currentOn?: boolean;
