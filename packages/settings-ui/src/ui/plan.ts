@@ -316,7 +316,7 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
   }
   if (isRestoreCooldownState(dev)) {
     stateText = dev.currentState === 'off' || dev.currentState === 'unknown'
-      ? 'Restoring'
+      ? 'Shed (restore cooldown)'
       : 'Active';
   } else if (dev.plannedState === 'shed') {
     if (dev.shedAction === 'set_temperature') {
@@ -348,10 +348,10 @@ const formatUsageText = (params: {
   const hasMeasured = typeof measuredKw === 'number' && Number.isFinite(measuredKw);
   const hasExpected = typeof expectedKw === 'number' && Number.isFinite(expectedKw);
   if (hasExpected && hasMeasured) {
-    return `current usage: ${measuredKw.toFixed(2)} kW / expected ${expectedKw.toFixed(2)} kW`;
+    return `Measured: ${measuredKw.toFixed(2)} kW / Expected: ${expectedKw.toFixed(2)} kW`;
   }
-  if (hasExpected) return `expected ${expectedKw.toFixed(2)} kW`;
-  if (hasMeasured) return `current usage: ${measuredKw.toFixed(2)} kW`;
+  if (hasExpected) return `Expected: ${expectedKw.toFixed(2)} kW`;
+  if (hasMeasured) return `Measured: ${measuredKw.toFixed(2)} kW`;
   return 'Unknown';
 };
 
