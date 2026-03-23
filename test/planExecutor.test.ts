@@ -140,7 +140,10 @@ describe('PlanExecutor restore logging', () => {
       getShedBehavior: () => ({ action: 'set_temperature', temperature: 16, stepId: null }),
     });
 
-    await executor.applyPlanActions(buildTargetPlan(16, 23));
+    const plan = buildTargetPlan(16, 23);
+    plan.devices[0].shedAction = 'set_temperature';
+    plan.devices[0].shedTemperature = 16;
+    await executor.applyPlanActions(plan);
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
     expect(deps.log).toHaveBeenCalledWith(

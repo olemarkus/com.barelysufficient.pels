@@ -188,11 +188,11 @@ function buildBasePlanDevice(params: {
   const { shedAction, shedTemperature, shedStepId } = resolveShedAction(
     dev,
     controllable,
-    shedSet.has(dev.id),
     shedBehavior,
     supportsTemperature,
   );
-  const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
+  const isShed = shedSet.has(dev.id) || isSteppedShed;
+  const resolvedPlannedTarget = isShed && shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
     : plannedTarget;
 
@@ -246,7 +246,6 @@ function resolvePlannedState(controllable: boolean, shouldShed: boolean): 'shed'
 function resolveShedAction(
   dev: PlanInputDevice,
   controllable: boolean,
-  shouldShed: boolean,
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null },
   supportsTemperature: boolean,
 ) : { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
@@ -255,7 +254,6 @@ function resolveShedAction(
     if (
       supportsTemperature
       && controllable
-      && shouldShed
       && shedBehavior.action === 'set_temperature'
       && shedBehavior.temperature !== null
     ) {
@@ -273,7 +271,6 @@ function resolveShedAction(
   if (
     supportsTemperature
     && controllable
-    && shouldShed
     && shedBehavior.action === 'set_temperature'
     && shedBehavior.temperature !== null
   ) {

@@ -349,14 +349,15 @@ export class PlanExecutor {
   ): { targetCap: string; isRestoring: boolean } | null {
     if (typeof dev.plannedTarget !== 'number' || dev.plannedTarget === dev.currentTarget) return null;
     const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
-    const targetCap = entry?.targets?.[0]?.id;
+    const pending = this.state.pendingTargetCommands[dev.id];
+    const targetCap = pending?.capabilityId ?? entry?.targets?.[0]?.id;
     if (!targetCap) return null;
 
     // Check if this is a restoration (increasing temperature from shed state)
     const currentIsNumber = typeof dev.currentTarget === 'number';
-    const shedBehavior = this.getShedBehavior(dev.id);
-    const wasAtShedTemp = currentIsNumber && shedBehavior.action === 'set_temperature'
-      && shedBehavior.temperature !== null && dev.currentTarget === shedBehavior.temperature;
+    const shedTemp = dev.shedTemperature;
+    const wasAtShedTemp = currentIsNumber && dev.shedAction === 'set_temperature'
+      && shedTemp != null && dev.currentTarget === shedTemp;
     const isRestoring = wasAtShedTemp && dev.plannedTarget > (dev.currentTarget as number);
     return { targetCap, isRestoring };
   }
@@ -511,7 +512,8 @@ export class PlanExecutor {
     }
     const name = deviceName || deviceId;
     const shedBehavior = this.getShedBehavior(deviceId);
-    const targetCap = snapshotState?.targets?.[0]?.id;
+    const pending = this.state.pendingTargetCommands[deviceId];
+    const targetCap = pending?.capabilityId ?? snapshotState?.targets?.[0]?.id;
     const shedTemp = shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null
       ? shedBehavior.temperature
       : null;
