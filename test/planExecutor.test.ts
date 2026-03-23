@@ -798,6 +798,64 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     );
   });
 
+  it('re-issues step command when keep device has onoff=true but step is at off', async () => {
+    // Raw snapshot has currentOn=true (onoff not violated), but selectedStepId='off'
+    // with desiredStepId='low' — only stepViolated is true.
+    // The decorated snapshot derives currentState='off' from the off-step, which
+    // lets applySteppedLoadRestore enter.
+    const snapshot = buildSnapshot({ currentOn: true });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    // Step command should be issued to move from off -> low
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    // setBinaryControl is called with desired=true, but raw snapshot already
+    // has currentOn=true so it detects "already on" and skips the command.
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('fixes both onoff=false and step=off when keep intent is violated on both axes', async () => {
+    // Both violations: raw snapshot has currentOn=false AND selectedStepId='off'
+    // while desiredStepId='low'. Both onoffViolated and stepViolated should be true.
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager, desiredSteppedTrigger, deps } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    // Step command should be issued
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    // Binary restore should be issued (onoff was false)
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    // Both violations should be logged
+    expect(deps.logDebug).toHaveBeenCalledWith(
+      expect.stringContaining('violates keep invariant: onoff='),
+    );
+    expect(deps.logDebug).toHaveBeenCalledWith(
+      expect.stringContaining('violates keep invariant: step=off'),
+    );
+  });
+
   it('detects step drift and re-issues shed step when external actor raises step', async () => {
     const appliedPlan = steppedPlan({
       currentState: 'off',
