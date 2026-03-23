@@ -1,7 +1,7 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
-import { computeRestoreBufferKw, estimateRestorePower } from './planRestoreSwap';
+import { computeBaseRestoreNeed } from './planRestoreSwap';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import {
   getPrimaryTargetCapability,
@@ -331,9 +331,7 @@ function applyOffStateReason(params: {
     };
   }
   if (planDevice.plannedState === 'shed') return planDevice;
-  const estimatedPower = estimateRestorePower(planDevice);
-  const restoreBuffer = computeRestoreBufferKw(estimatedPower);
-  const need = estimatedPower + restoreBuffer;
+  const { needed: need } = computeBaseRestoreNeed(planDevice);
   if (guardInShortfall) {
     return {
       ...planDevice,

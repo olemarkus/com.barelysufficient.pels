@@ -31,6 +31,13 @@ export type HeadroomCardState = {
   cooldownToKw?: number;
 };
 
+export type SwapEntry = {
+  swappedOutFor?: string;
+  pendingTarget?: boolean;
+  timestamp?: number;
+  lastPlanMeasurementTs?: number;
+};
+
 export type PlanEngineState = {
   lastDeviceShedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
@@ -49,11 +56,8 @@ export type PlanEngineState = {
   lastRestoreMs: number | null;
   lastPlannedShedIds: Set<string>;
   lastShedPlanMeasurementTs: number | null;
-  lastSwapPlanMeasurementTs: Record<string, number>;
+  swapByDevice: Record<string, SwapEntry>;
   inShortfall: boolean;
-  swappedOutFor: Record<string, string>;
-  pendingSwapTargets: Set<string>;
-  pendingSwapTimestamps: Record<string, number>;
   restoreCooldownMs: number;
   lastRestoreCooldownBumpMs: number | null;
   hourlyBudgetExhausted: boolean;
@@ -76,11 +80,8 @@ export function createPlanEngineState(): PlanEngineState {
     lastRestoreMs: null,
     lastPlannedShedIds: new Set<string>(),
     lastShedPlanMeasurementTs: null,
-    lastSwapPlanMeasurementTs: {},
+    swapByDevice: {},
     inShortfall: false,
-    swappedOutFor: {},
-    pendingSwapTargets: new Set<string>(),
-    pendingSwapTimestamps: {},
     restoreCooldownMs: RESTORE_COOLDOWN_MS,
     lastRestoreCooldownBumpMs: null,
     hourlyBudgetExhausted: false,
