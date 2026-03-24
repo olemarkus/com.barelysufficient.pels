@@ -28,6 +28,7 @@ type PlanDeviceSnapshot = {
   desiredStepId?: string;
   actualStepId?: string;
   assumedStepId?: string;
+  binaryCommandPending?: boolean;
   headroomCardBlocked?: boolean;
   headroomCardCooldownSec?: number | null;
   headroomCardCooldownSource?: 'step_down' | 'pels_shed' | 'pels_restore';
@@ -329,7 +330,9 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
   } else if (dev.plannedState === 'inactive') {
     stateText = 'Inactive';
   } else if (dev.plannedState === 'keep') {
-    if (steppedRestorePending || dev.currentState === 'off' || dev.currentState === 'unknown') {
+    if (dev.binaryCommandPending && (dev.currentState === 'off' || dev.currentState === 'unknown')) {
+      stateText = 'Restore requested';
+    } else if (steppedRestorePending || dev.currentState === 'off' || dev.currentState === 'unknown') {
       stateText = 'Restoring';
     } else if (dev.currentState === 'not_applicable') {
       stateText = 'Active (temperature-managed)';
@@ -398,6 +401,7 @@ const resolvePlanBadgeState = (
     return 'restoring';
   }
   if (dev.plannedState === 'shed') return 'shed';
+  if (dev.binaryCommandPending && !isOnLikeState(dev.currentState)) return 'restoring';
   if (steppedRestorePending) return 'restoring';
   if (dev.currentState === 'not_applicable') return 'active';
   if (isOnLikeState(dev.currentState)) return 'active';

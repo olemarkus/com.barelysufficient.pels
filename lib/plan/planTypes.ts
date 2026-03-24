@@ -59,6 +59,7 @@ export type DevicePlanDevice = {
   currentTemperature?: number;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
+  binaryCommandPending?: boolean;
   shedAction?: ShedAction;
   shedTemperature?: number | null;
   shedStepId?: string | null;

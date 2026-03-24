@@ -74,6 +74,7 @@ export function buildInitialPlanDevices(params: {
       dev,
       priority,
       recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
+      binaryCommandPending: dev.id in state.pendingBinaryCommands,
       currentState,
       currentTarget,
       plannedTarget,
@@ -147,6 +148,7 @@ function buildBasePlanDevice(params: {
   dev: PlanInputDevice;
   priority: number;
   recentlyRestored: boolean;
+  binaryCommandPending: boolean;
   currentState: string;
   currentTarget: unknown;
   plannedTarget: number | null;
@@ -161,6 +163,7 @@ function buildBasePlanDevice(params: {
     dev,
     priority,
     recentlyRestored,
+    binaryCommandPending,
     currentState,
     currentTarget,
     plannedTarget,
@@ -229,6 +232,7 @@ function buildBasePlanDevice(params: {
     currentTemperature: dev.currentTemperature,
     stepCommandPending: dev.stepCommandPending,
     stepCommandStatus: dev.stepCommandStatus,
+    binaryCommandPending: binaryCommandPending || undefined,
     shedAction,
     shedTemperature,
     shedStepId,

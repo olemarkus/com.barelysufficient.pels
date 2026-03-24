@@ -68,4 +68,71 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.plannedTarget).toBe(55);
     expect(planDevice.desiredStepId).toBe('max');
   });
+
+  it('exposes binaryCommandPending when a pending binary command exists for the device', () => {
+    const device: PlanInputDevice = {
+      id: 'dev-1',
+      name: 'Heater',
+      targets: [],
+      currentOn: false,
+      controllable: true,
+    };
+
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands['dev-1'] = {
+      capabilityId: 'onoff',
+      desired: true,
+      startedMs: Date.now(),
+    };
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state,
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.binaryCommandPending).toBe(true);
+  });
+
+  it('omits binaryCommandPending when no pending binary command exists', () => {
+    const device: PlanInputDevice = {
+      id: 'dev-1',
+      name: 'Heater',
+      targets: [],
+      currentOn: true,
+      controllable: true,
+    };
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.binaryCommandPending).toBeUndefined();
+  });
 });
