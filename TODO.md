@@ -119,17 +119,17 @@ unconfirmed" state instead.
 
 **Solves:** intent shown as reality, restore lifecycle ambiguity, overloaded state labels.
 
-- [ ] Add `binaryCommandPending` and `binaryCommandStatus` fields to snapshot/plan device types,
-  mirroring `stepCommandPending` / `stepCommandStatus`.
-  Files: `planTypes.ts`, snapshot types.
+- [x] Add `binaryCommandPending` field to `DevicePlanDevice` and populate it from
+  `state.pendingBinaryCommands` in `buildBasePlanDevice`. Exposed to the UI via `PlanDeviceSnapshot`.
+  Files: `planTypes.ts`, `planDevices.ts`.
 - [ ] Stop `updateLocalSnapshot` from setting `currentOn=true` optimistically on restore writes.
   Instead, set `binaryCommandPending=true` with a `restoreRequestedMs` timestamp.
   Files: `planBinaryControl.ts`, `planExecutor.ts`.
 - [ ] Add confirmation logic: clear `binaryCommandPending` when fresh telemetry confirms
   `onoff` matches the pending desired value. Add timeout expiry matching step command staleness.
   Files: `appDeviceControlHelpers.ts`, sync logic analogous to `syncPendingBinaryCommands`.
-- [ ] Update UI to show "Restore requested" when `binaryCommandPending=true` and `desired=true`,
-  instead of "Active" or "Restoring".
+- [x] Update UI to show "Restore requested" when `binaryCommandPending=true` and device is off,
+  instead of "Restoring". Badge resolves to `restoring` (neutral tone).
   Files: `packages/settings-ui/src/ui/plan.ts`.
 
 ### 2. Stop conflating measured, expected, and planning power

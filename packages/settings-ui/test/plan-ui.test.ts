@@ -429,6 +429,42 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-restore-on')?.contains('cheap')).toBe(true);
   });
 
+  it('shows restore requested when binary command is pending and device is off', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-pending',
+          name: 'Pending restore device',
+          currentState: 'off',
+          plannedState: 'keep',
+          controllable: true,
+          binaryCommandPending: true,
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Restore requested');
+    expect(getBadgeClassList('dev-pending')?.contains('neutral')).toBe(true);
+  });
+
+  it('shows active when binary command is pending but device is already on', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-confirmed',
+          name: 'Confirmed restore device',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          binaryCommandPending: true,
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Active');
+    expect(getBadgeClassList('dev-confirmed')?.contains('cheap')).toBe(true);
+  });
+
   it('renders temperature-managed state without a misleading power row for devices without onoff power state', () => {
     renderPlanSnapshot({
       devices: [
