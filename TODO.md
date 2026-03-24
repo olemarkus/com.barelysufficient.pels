@@ -227,9 +227,10 @@ more fragile than necessary.
 
 ### `setEvBinaryControl` / `setStandardBinaryControl` near-duplication
 
-- [ ] Merge `setEvBinaryControl` and `setStandardBinaryControl` into a single function. Both
-  are ~60 lines with identical control flow, pending state management, error handling, and
-  capability write. They differ only in log message construction.
+- [x] Merge `setEvBinaryControl` and `setStandardBinaryControl` into a single function. Both
+  were ~60 lines with identical control flow, pending state management, error handling, and
+  capability write. They differed only in log message construction. Inlined into `setBinaryControl`
+  with EV-specific logging guarded by `controlPlan.isEv`.
   Files: `planBinaryControl.ts`.
 
 ### Repeated snapshot lookups

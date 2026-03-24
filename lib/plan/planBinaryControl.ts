@@ -77,58 +77,36 @@ export async function setBinaryControl(params: BinaryControlDeps & {
   actuationMode?: BinaryControlActuationMode;
 }): Promise<boolean> {
   const {
-    deviceId,
-    name,
-    desired,
-    snapshot,
-    logContext,
-    restoreSource,
-    reason,
+    state, deviceManager, log, logDebug, error,
+    deviceId, name, desired, snapshot, logContext, restoreSource, reason,
     actuationMode = 'plan',
   } = params;
   const controlPlan = getBinaryControlPlan(snapshot);
   if (!controlPlan) {
-    logMissingBinaryControlPlan(params.logDebug, snapshot, name);
+    logMissingBinaryControlPlan(logDebug, snapshot, name);
     return false;
   }
   if (!controlPlan.canSet) {
-    logNonSetableBinaryControl(params.logDebug, controlPlan, snapshot, name);
+    logNonSetableBinaryControl(logDebug, controlPlan, snapshot, name);
     return false;
   }
-  const latestObservedSnapshot = params.deviceManager.getSnapshot().find((entry) => entry.id === deviceId) ?? snapshot;
-  if (
-    !controlPlan.isEv
-    && typeof latestObservedSnapshot?.currentOn === 'boolean'
-    && latestObservedSnapshot.currentOn === desired
-  ) {
-    params.logDebug(
-      `Capacity: skip binary command for ${name}, already ${desired ? 'on' : 'off'} in current snapshot`,
-    );
+  if (shouldSkipAlreadyMatched({ deviceManager, controlPlan, deviceId, name, desired, snapshot, logDebug })) {
     return false;
   }
+  if (hasPendingMatchingBinaryCommand({ state, deviceId, controlPlan, desired, logDebug, name })) {
+    return false;
+  }
+
   if (controlPlan.isEv) {
-    return setEvBinaryControl({
-      ...params,
-      controlPlan,
-      deviceId,
-      name,
-      desired,
-      snapshot,
-      logContext,
-      reason,
-      actuationMode,
-    });
+    logDebug(
+      `Capacity: EV action requested for ${name}: ${controlPlan.capabilityId}=${desired} `
+      + `(${formatEvSnapshot(snapshot)}${reason ? `, reason=${reason}` : ''})`,
+    );
   }
-  return setStandardBinaryControl({
-    ...params,
-    controlPlan,
-    deviceId,
-    name,
-    desired,
-    reason,
-    logContext,
-    restoreSource,
-    actuationMode,
+
+  return executeBinaryCommand({
+    state, deviceManager, log, logDebug, error,
+    controlPlan, deviceId, name, desired, logContext, reason, restoreSource, actuationMode,
   });
 }
 
@@ -169,104 +147,43 @@ function logNonSetableBinaryControl(
   logDebug(`Capacity: cannot control EV ${name}, capability not setable (${formatEvSnapshot(snapshot)})`);
 }
 
-async function setEvBinaryControl(params: BinaryControlDeps & {
+function shouldSkipAlreadyMatched(params: {
+  deviceManager: DeviceManager;
   controlPlan: BinaryControlPlan;
   deviceId: string;
   name: string;
   desired: boolean;
   snapshot?: TargetDeviceSnapshot;
-  logContext: BinaryControlLogContext;
-  reason?: string;
-  actuationMode?: BinaryControlActuationMode;
-}): Promise<boolean> {
-  const {
-    state,
-    deviceManager,
-    updateLocalSnapshot: _updateLocalSnapshot,
-    log,
-    logDebug,
-    error,
-    controlPlan,
-    deviceId,
-    name,
-    desired,
-    snapshot,
-    logContext,
-    reason,
-    actuationMode = 'plan',
-  } = params;
-  logDebug(
-    `Capacity: EV action requested for ${name}: ${controlPlan.capabilityId}=${desired} `
-    + `(${formatEvSnapshot(snapshot)}${reason ? `, reason=${reason}` : ''})`,
-  );
-  if (hasPendingMatchingBinaryCommand({
-    state,
-    deviceId,
-    controlPlan,
-    desired,
-    logDebug,
-    name,
-  })) {
-    return false;
-  }
-
-  state.pendingBinaryCommands[deviceId] = {
-    capabilityId: controlPlan.capabilityId,
-    desired,
-    startedMs: Date.now(),
-  };
-
-  try {
-    await deviceManager.setCapability(deviceId, controlPlan.capabilityId, desired);
-    log(buildEvBinaryControlLogMessage(logContext, desired, name, reason, actuationMode));
-    logDebug(
-      `Capacity: EV action completed for ${name}: ${controlPlan.capabilityId}=${desired} `
-      + `(${formatEvSnapshot(deviceManager.getSnapshot().find((entry) => entry.id === deviceId))})`,
-    );
-    return true;
-  } catch (caughtError) {
-    delete state.pendingBinaryCommands[deviceId];
-    error(`Failed to ${desired ? 'resume' : 'pause'} EV charging for ${name} via DeviceManager`, caughtError);
-    return false;
-  }
+  logDebug: (...args: unknown[]) => void;
+}): boolean {
+  const { deviceManager, controlPlan, deviceId, name, desired, snapshot, logDebug } = params;
+  if (controlPlan.isEv) return false;
+  const latestObservedSnapshot = deviceManager.getSnapshot().find((entry) => entry.id === deviceId) ?? snapshot;
+  if (typeof latestObservedSnapshot?.currentOn !== 'boolean') return false;
+  if (latestObservedSnapshot.currentOn !== desired) return false;
+  logDebug(`Capacity: skip binary command for ${name}, already ${desired ? 'on' : 'off'} in current snapshot`);
+  return true;
 }
 
-async function setStandardBinaryControl(params: BinaryControlDeps & {
+async function executeBinaryCommand(params: {
+  state: PlanEngineState;
+  deviceManager: DeviceManager;
+  log: (...args: unknown[]) => void;
+  logDebug: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
   controlPlan: BinaryControlPlan;
   deviceId: string;
   name: string;
   desired: boolean;
-  reason?: string;
   logContext: BinaryControlLogContext;
+  reason?: string;
   restoreSource?: BinaryControlRestoreSource;
-  actuationMode?: BinaryControlActuationMode;
+  actuationMode: BinaryControlActuationMode;
 }): Promise<boolean> {
   const {
-    state,
-    deviceManager,
-    updateLocalSnapshot: _updateLocalSnapshot,
-    log,
-    logDebug,
-    error,
-    controlPlan,
-    deviceId,
-    name,
-    desired,
-    reason,
-    logContext,
-    restoreSource,
-    actuationMode = 'plan',
+    state, deviceManager, log, logDebug, error,
+    controlPlan, deviceId, name, desired, logContext, reason, restoreSource, actuationMode,
   } = params;
-  if (hasPendingMatchingBinaryCommand({
-    state,
-    deviceId,
-    controlPlan,
-    desired,
-    logDebug,
-    name,
-  })) {
-    return false;
-  }
 
   state.pendingBinaryCommands[deviceId] = {
     capabilityId: controlPlan.capabilityId,
@@ -276,22 +193,26 @@ async function setStandardBinaryControl(params: BinaryControlDeps & {
 
   try {
     await deviceManager.setCapability(deviceId, controlPlan.capabilityId, desired);
-    log(buildBinaryControlLogMessage({
-      logContext,
-      desired,
-      name,
-      reason,
-      restoreSource,
-      actuationMode,
-    }));
+    const logMessage = controlPlan.isEv
+      ? buildEvBinaryControlLogMessage(logContext, desired, name, reason, actuationMode)
+      : buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource, actuationMode });
+    log(logMessage);
+    if (controlPlan.isEv) {
+      logDebug(
+        `Capacity: EV action completed for ${name}: ${controlPlan.capabilityId}=${desired} `
+        + `(${formatEvSnapshot(deviceManager.getSnapshot().find((entry) => entry.id === deviceId))})`,
+      );
+    }
     return true;
   } catch (caughtError) {
     delete state.pendingBinaryCommands[deviceId];
-    error(`Failed to ${desired ? 'turn on' : 'turn off'} ${name} via DeviceManager`, caughtError);
+    const verb = controlPlan.isEv
+      ? `${desired ? 'resume' : 'pause'} EV charging for`
+      : `${desired ? 'turn on' : 'turn off'}`;
+    error(`Failed to ${verb} ${name} via DeviceManager`, caughtError);
     return false;
   }
 }
-
 function hasPendingMatchingBinaryCommand(params: {
   state: PlanEngineState;
   deviceId: string;
