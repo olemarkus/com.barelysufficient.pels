@@ -74,7 +74,7 @@ export function buildInitialPlanDevices(params: {
       dev,
       priority,
       recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
-      binaryCommandPending: dev.id in state.pendingBinaryCommands,
+      binaryCommandPending: state.pendingBinaryCommands[dev.id]?.desired === true,
       currentState,
       currentTarget,
       plannedTarget,

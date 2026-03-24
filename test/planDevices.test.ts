@@ -135,4 +135,41 @@ describe('buildInitialPlanDevices', () => {
 
     expect(planDevice.binaryCommandPending).toBeUndefined();
   });
+
+  it('omits binaryCommandPending when pending command is a shed (desired=false)', () => {
+    const device: PlanInputDevice = {
+      id: 'dev-1',
+      name: 'Heater',
+      targets: [],
+      currentOn: true,
+      controllable: true,
+    };
+
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands['dev-1'] = {
+      capabilityId: 'onoff',
+      desired: false,
+      startedMs: Date.now(),
+    };
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state,
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.binaryCommandPending).toBeUndefined();
+  });
 });

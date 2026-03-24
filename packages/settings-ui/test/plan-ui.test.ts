@@ -465,6 +465,24 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-confirmed')?.contains('cheap')).toBe(true);
   });
 
+  it('shows active when binary command is pending for a temperature-managed device with not_applicable state', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-temp-pending',
+          name: 'Pending Temp Device',
+          currentState: 'not_applicable',
+          plannedState: 'keep',
+          controllable: true,
+          binaryCommandPending: true,
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Active (temperature-managed)');
+    expect(getBadgeClassList('dev-temp-pending')?.contains('cheap')).toBe(true);
+  });
+
   it('renders temperature-managed state without a misleading power row for devices without onoff power state', () => {
     renderPlanSnapshot({
       devices: [
