@@ -316,7 +316,7 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
     return createMetaLine('State', stateText);
   }
   if (isRestoreCooldownState(dev)) {
-    stateText = dev.currentState === 'off' || dev.currentState === 'unknown'
+    stateText = isOffLikeState(dev.currentState)
       ? 'Shed (restore cooldown)'
       : 'Active';
   } else if (dev.plannedState === 'shed') {
@@ -330,9 +330,9 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
   } else if (dev.plannedState === 'inactive') {
     stateText = 'Inactive';
   } else if (dev.plannedState === 'keep') {
-    if (dev.binaryCommandPending && (dev.currentState === 'off' || dev.currentState === 'unknown')) {
+    if (dev.binaryCommandPending && isOffLikeState(dev.currentState)) {
       stateText = 'Restore requested';
-    } else if (steppedRestorePending || dev.currentState === 'off' || dev.currentState === 'unknown') {
+    } else if (steppedRestorePending || isOffLikeState(dev.currentState)) {
       stateText = 'Restoring';
     } else if (dev.currentState === 'not_applicable') {
       stateText = 'Active (temperature-managed)';
@@ -389,6 +389,9 @@ const isOnLikeState = (value: string | undefined): boolean => {
   return normalized !== 'off' && normalized !== 'unknown' && normalized !== 'not_applicable';
 };
 
+const isOffLikeState = (state?: string): boolean =>
+  state === 'off' || state === 'unknown';
+
 const resolvePlanBadgeState = (
   dev: PlanDeviceSnapshot,
 ): 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring' => {
@@ -401,7 +404,7 @@ const resolvePlanBadgeState = (
     return 'restoring';
   }
   if (dev.plannedState === 'shed') return 'shed';
-  if (dev.binaryCommandPending && !isOnLikeState(dev.currentState)) return 'restoring';
+  if (dev.binaryCommandPending && isOffLikeState(dev.currentState)) return 'restoring';
   if (steppedRestorePending) return 'restoring';
   if (dev.currentState === 'not_applicable') return 'active';
   if (isOnLikeState(dev.currentState)) return 'active';
