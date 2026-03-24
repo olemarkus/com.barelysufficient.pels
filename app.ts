@@ -893,10 +893,10 @@ class PelsApp extends Homey.App {
   private static readonly POST_ACTUATION_REFRESH_DELAY_MS = 30_000;
   private schedulePostActuationRefresh(): void {
     if (this.postActuationRefreshTimer) {
-      this.homey.clearTimeout(this.postActuationRefreshTimer);
+      clearTimeout(this.postActuationRefreshTimer);
     }
     this.logDebug('plan', 'Scheduling post-actuation snapshot refresh in 30 s');
-    this.postActuationRefreshTimer = this.homey.setTimeout(async () => {
+    this.postActuationRefreshTimer = setTimeout(async () => {
       this.postActuationRefreshTimer = undefined;
       this.logDebug('plan', 'Running post-actuation targeted snapshot refresh');
       try {
