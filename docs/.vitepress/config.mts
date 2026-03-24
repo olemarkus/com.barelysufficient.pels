@@ -39,6 +39,14 @@ export default defineConfig({
   head: [
     ['link', { rel: 'icon', href: '/icon.svg', type: 'image/svg+xml' }],
     ['meta', { name: 'theme-color', content: '#eef6f2' }],
+    [
+      'script',
+      {
+        defer: 'defer',
+        'data-cf-beacon': '{"token": "81524baa929d44238fcf2afd37134c4a"}',
+        src: 'https://static.cloudflareinsights.com/beacon.min.js',
+      },
+    ],
   ],
   themeConfig: {
     logo: '/icon.svg',
