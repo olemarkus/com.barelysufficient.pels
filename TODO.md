@@ -190,6 +190,13 @@ not per-field freshness tracking.
 - [ ] In `decorateSnapshotWithDeviceControl`, compare `lastLocalWriteMs` against the Homey
   snapshot timestamp. If Homey is newer, prefer observed values over preserved local writes.
   Files: `appDeviceControlHelpers.ts`.
+- [ ] Trigger a targeted snapshot refresh after binary restore/shed writes. With the periodic
+  refresh running only twice per hour (:25 and :55), `measuredPowerKw` can stay stale for up to
+  30 minutes after a state change. After a restore at 05:01, PELS keeps `measuredPowerKw=0` from
+  the 04:55 refresh even though Homey reports `measure_power=1193W` at 05:05. Either schedule a
+  delayed targeted refresh (e.g., 30–60s after actuation) or update `measuredPowerKw` from
+  realtime capability events when they arrive.
+  Files: `planExecutor.ts`, snapshot refresh pipeline.
 
 ### 4. `communicationModel` for device-class-aware timeouts
 
