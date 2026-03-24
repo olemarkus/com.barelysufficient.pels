@@ -171,22 +171,29 @@ power field each consumer should use:
 - [ ] Document intended fallback order per consumer and align the four power resolution functions.
   Files: `planCandidatePower.ts`, `planRestoreSwap.ts`, `planUsage.ts`, `planSteppedLoad.ts`.
 
-### 3. Stale local writes: one `lastLocalWriteMs` per device
+### 3. Stale local writes after snapshot refresh
 
-**Problem:** After PELS writes a command (restore, shed, step change), the local snapshot
-preserves the written value. If Homey later reports contradictory state with a fresher
-timestamp, the stale local write can still win because the decorator has no way to compare
-freshness.
+**Problem:** After PELS writes a command (restore, shed, step change), `updateLocalSnapshot`
+mutates the in-memory snapshot optimistically. On the next `refreshSnapshot`, the fetched
+data **replaces the snapshot entirely** — local writes are discarded. The
+`preserveFresherRealtimeCapabilityObservations` mechanism was intended to restore fresher
+values, but it is dead code (see "Snapshot freshness" section below). The actual protection
+comes from `device.update` events replacing snapshot entries inline, plus the 5-second echo
+suppression window. For local devices this works fine. For cloud devices where `device.update`
+may not arrive, the post-actuation refresh (30s) provides a safety net.
 
-**Fix:** Track one `lastLocalWriteMs` timestamp per device, set whenever `updateLocalSnapshot`
-writes any value. In the decorator, compare `lastLocalWriteMs` against the Homey snapshot's
-update timestamp. If the Homey snapshot is newer, stop trusting the local write and use the
-observed value instead. This is one timestamp per device, one comparison in the decorator —
-not per-field freshness tracking.
+**Remaining gap:** If a refresh arrives with stale Homey data (cloud device lag), the optimistic
+local write is overwritten with the stale fetch. No mechanism compares write freshness vs fetch
+freshness because the per-capability freshness tracking is dead code.
+
+**Fix:** Depends on whether per-capability listeners are implemented (see "Snapshot freshness"
+section). If not, a simpler approach: track `lastLocalWriteMs` per device and compare against
+`capabilitiesObj[cap].lastUpdated` from the fetched device. If the local write is newer,
+preserve it.
 
 - [ ] Add `lastLocalWriteMs` per device to runtime state. Set it in `updateLocalSnapshot`
   on every write.
-  Files: `planState.ts` or `appDeviceControlHelpers.ts` runtime state.
+  Files: `planState.ts` or `deviceManager.ts` runtime state.
 - [ ] In `decorateSnapshotWithDeviceControl`, compare `lastLocalWriteMs` against the Homey
   snapshot timestamp. If Homey is newer, prefer observed values over preserved local writes.
   Files: `appDeviceControlHelpers.ts`.
@@ -197,6 +204,10 @@ not per-field freshness tracking.
   delayed targeted refresh (e.g., 30–60s after actuation) or update `measuredPowerKw` from
   realtime capability events when they arrive.
   Files: `planExecutor.ts`, snapshot refresh pipeline.
+- [ ] In `refreshSnapshot`, after parse but before replacing snapshot: compare
+  `lastLocalWriteMs` against fetched device `capabilitiesObj[cap].lastUpdated`. If local
+  write is newer, preserve the local value for that capability.
+  Files: `deviceManager.ts`.
 
 ### 4. `communicationModel` for device-class-aware timeouts
 
@@ -328,6 +339,62 @@ more fragile than necessary.
   `stepCommandPending` only applies to stepped devices but isn't gated by type. Consider
   discriminated unions for shed behavior and control model to make invalid states unrepresentable.
   Files: `planTypes.ts`.
+
+## Snapshot freshness: simplify and fix
+
+The snapshot freshness and update pipeline has accumulated complexity for features that were
+never implemented (per-capability realtime listeners). The actual data flow is simpler than
+the code suggests. Cleaning this up makes the cloud-device staleness problem easier to solve.
+
+### Dead code: `preserveFresherRealtimeCapabilityObservations`
+
+The `realtimeCapabilities` record in `DeviceDebugObservedSources` is initialized as `{}` and
+**never written to** anywhere in the codebase. The comment at `deviceManager.ts:347` confirms:
+"Without per-capability realtime listeners, always preserve local binary state." This means:
+
+- `preserveFresherRealtimeCapabilityObservations` (~170 lines) never preserves anything —
+  `realtimeSource` is always `undefined`, so it returns early every time.
+- `shouldKeepFetchedTargetAfterNewerLocalWrite` is dead — depends on `realtimeCapabilities`.
+- `localWrites` debug tracking feeds into freshness comparison that never fires.
+- `preserveFresherRealtimeControlObservation` and `preserveFresherRealtimeTargetObservation`
+  are dead.
+
+- [ ] Remove `preserveFresherRealtimeCapabilityObservations` and all supporting methods.
+  Remove `realtimeCapabilities` from `DeviceDebugObservedSources`. Remove `localWrites`
+  tracking if no other consumer uses it. This deletes ~200 lines of dead code.
+  Files: `deviceManager.ts`, `appDebugHelpers.ts`, `appDebugHelpers.test.ts`.
+
+### How state actually flows (for reference)
+
+1. **Periodic snapshot refresh** (~30 min): full fetch from Homey API, replaces snapshot.
+2. **`device.update` realtime events**: Homey pushes full device objects. These **replace the
+   snapshot entry directly** in `reconcileRealtimeDeviceUpdate` — no partial merge needed.
+3. **Optimistic local writes**: `updateLocalSnapshot` mutates snapshot after actuation.
+4. **Echo suppression** (5s TTL): `recentLocalCapabilityWrites` prevents a returning
+   `device.update` from reverting an optimistic write before the device confirms.
+5. **Binary settle window** (5s): defers reconcile events until binary command is confirmed.
+6. **Post-actuation refresh** (30s): targeted snapshot refresh after actuation.
+
+### Cloud device staleness
+
+For cloud-to-cloud devices (e.g., Connected 300), `device.update` events may arrive late
+(seconds to minutes) or not at all. When they don't arrive, PELS has stale data until the
+next periodic refresh or post-actuation refresh.
+
+- [ ] Add per-device freshness tracking: record the timestamp of the most recent data source
+  (snapshot refresh, device.update, or local write) per device. Expose as
+  `lastFreshDataMs` on the snapshot or a parallel map.
+  Files: `deviceManager.ts`.
+- [ ] If a device's `lastFreshDataMs` is older than 5 minutes at plan rebuild time, treat
+  its state as uncertain — log a warning and consider skipping reconciliation for that
+  device to avoid acting on stale data.
+  Files: `planService.ts`, `planReconcileState.ts`.
+- [ ] Consider subscribing to per-capability realtime events for control capabilities
+  (`onoff`, `evcharger_charging`, `target_temperature`) on managed devices. This would
+  give sub-second freshness for local devices and make the freshness mechanism actually
+  useful. If implemented, the `preserveFresherRealtimeCapabilityObservations` pattern
+  could be revived in simplified form.
+  Files: `deviceManager.ts`.
 
 ## Deferred: restore-pending follow-up tests
 
