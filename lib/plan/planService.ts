@@ -40,6 +40,7 @@ export type PlanServiceDeps = {
   isCurrentHourExpensive: () => boolean;
   getCombinedPrices: () => unknown;
   getLastPowerUpdate: () => number | null;
+  schedulePostActuationRefresh?: () => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -262,6 +263,7 @@ export class PlanService {
 
     this.deps.logDebug('Realtime device drift detected, reapplying current plan');
     await this.applyPlanActions(driftedLivePlan, 'reconcile');
+    this.deps.schedulePostActuationRefresh?.();
     return true;
   }
 
@@ -551,6 +553,7 @@ export class PlanService {
     try {
       await this.applyPlanActions(plan);
       appliedActions = true;
+      this.deps.schedulePostActuationRefresh?.();
       const refreshed = this.refreshLatestPlanSnapshotFromSettledLiveState(plan);
       if (!refreshed) {
         this.refreshLatestPlanSnapshotPendingState();

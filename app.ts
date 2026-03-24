@@ -129,6 +129,7 @@ class PelsApp extends Homey.App {
   private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
+  private postActuationRefreshTimer?: ReturnType<typeof setTimeout>;
   private realtimeDeviceReconcileTimer?: ReturnType<typeof setTimeout>;
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private heartbeatInterval?: ReturnType<typeof setInterval>;
@@ -441,6 +442,7 @@ class PelsApp extends Homey.App {
       isBudgetExempt: (deviceId) => this.isBudgetExempt(deviceId),
       isCurrentHourCheap: () => this.isCurrentHourCheap(),
       isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
+      schedulePostActuationRefresh: () => this.schedulePostActuationRefresh(),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
       error: (...args: unknown[]) => this.error(...args),
@@ -499,6 +501,7 @@ class PelsApp extends Homey.App {
     if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
     if (this.powerSampleRebuildState.timer) clearTimeout(this.powerSampleRebuildState.timer);
     if (this.realtimeDeviceReconcileTimer) clearTimeout(this.realtimeDeviceReconcileTimer);
+    if (this.postActuationRefreshTimer) clearTimeout(this.postActuationRefreshTimer);
     this.stopHomeyEnergyPoll();
   }
   private stopUninitServices(): void {
@@ -886,6 +889,22 @@ class PelsApp extends Homey.App {
   }
   parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
     return this.deviceManager.parseDeviceListForTests(list);
+  }
+  private static readonly POST_ACTUATION_REFRESH_DELAY_MS = 30_000;
+  private schedulePostActuationRefresh(): void {
+    if (this.postActuationRefreshTimer) {
+      this.homey.clearTimeout(this.postActuationRefreshTimer);
+    }
+    this.logDebug('plan', 'Scheduling post-actuation snapshot refresh in 30 s');
+    this.postActuationRefreshTimer = this.homey.setTimeout(async () => {
+      this.postActuationRefreshTimer = undefined;
+      this.logDebug('plan', 'Running post-actuation targeted snapshot refresh');
+      try {
+        await this.refreshTargetDevicesSnapshot({ targeted: true });
+      } catch (err) {
+        this.error('Post-actuation snapshot refresh failed:', err);
+      }
+    }, PelsApp.POST_ACTUATION_REFRESH_DELAY_MS);
   }
   private async refreshTargetDevicesSnapshot(options: { fast?: boolean; targeted?: boolean } = {}): Promise<void> {
     if (this.isSnapshotRefreshing) {

@@ -117,6 +117,7 @@ export type PlanServiceInitApp = {
   isBudgetExempt: (deviceId: string) => boolean;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
+  schedulePostActuationRefresh?: () => void;
   log: (...args: unknown[]) => void;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -141,6 +142,7 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
     isCurrentHourExpensive: () => app.isCurrentHourExpensive(),
     getCombinedPrices: () => app.homey.settings.get(COMBINED_PRICES) as unknown,
     getLastPowerUpdate: () => app.getLastPowerUpdate(),
+    schedulePostActuationRefresh: app.schedulePostActuationRefresh,
   });
 }
 
