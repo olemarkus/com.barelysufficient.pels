@@ -3,7 +3,7 @@ import type { PlanContext } from '../lib/plan/planContext';
 import { SWAP_TIMEOUT_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/planRestore';
-import type { DevicePlanDevice } from '../lib/plan/planTypes';
+import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
@@ -19,16 +19,6 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   headroomRaw: 1,
   headroom: 1,
   restoreMarginPlanning: 0.2,
-  ...overrides,
-});
-
-const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice => ({
-  id: 'dev',
-  name: 'Device',
-  currentState: 'off',
-  plannedState: 'keep',
-  currentTarget: null,
-  plannedTarget: null,
   ...overrides,
 });
 
@@ -169,20 +159,9 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0,
           powerKw: 2,
         }),
-        buildPlanDevice({
+        steppedPlanDevice({
           id: 'dev-step',
           name: 'Tank',
-          currentState: 'on',
-          plannedState: 'keep',
-          controlModel: 'stepped_load',
-          steppedLoadProfile: {
-            model: 'stepped_load',
-            steps: [
-              { id: 'off', planningPowerW: 0 },
-              { id: 'low', planningPowerW: 1250 },
-              { id: 'medium', planningPowerW: 1750 },
-            ],
-          },
           selectedStepId: 'low',
           desiredStepId: 'low',
           measuredPowerKw: 0,
@@ -226,20 +205,9 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0,
           powerKw: 2,
         }),
-        buildPlanDevice({
+        steppedPlanDevice({
           id: 'dev-step',
           name: 'Tank',
-          currentState: 'on',
-          plannedState: 'keep',
-          controlModel: 'stepped_load',
-          steppedLoadProfile: {
-            model: 'stepped_load',
-            steps: [
-              { id: 'off', planningPowerW: 0 },
-              { id: 'low', planningPowerW: 1250 },
-              { id: 'medium', planningPowerW: 1750 },
-            ],
-          },
           selectedStepId: 'low',
           desiredStepId: 'low',
           measuredPowerKw: 0,
@@ -291,20 +259,9 @@ describe('restore cooldown backoff', () => {
           measuredPowerKw: 0,
           powerKw: 1.5,
         }),
-        buildPlanDevice({
+        steppedPlanDevice({
           id: 'dev-step',
           name: 'Tank',
-          currentState: 'on',
-          plannedState: 'keep',
-          controlModel: 'stepped_load',
-          steppedLoadProfile: {
-            model: 'stepped_load',
-            steps: [
-              { id: 'off', planningPowerW: 0 },
-              { id: 'low', planningPowerW: 1250 },
-              { id: 'medium', planningPowerW: 1750 },
-            ],
-          },
           selectedStepId: 'low',
           desiredStepId: 'low',
           measuredPowerKw: 0,
@@ -331,5 +288,41 @@ describe('restore cooldown backoff', () => {
     expect(tempDevice?.plannedState).toBe('keep');
     expect(steppedDevice?.desiredStepId).toBe('low');
     expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+  });
+
+  it('plans first restore to lowest non-zero step for an off stepped device, even with retained higher step', () => {
+    const state = createPlanEngineState();
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'off',
+          plannedState: 'keep',
+          selectedStepId: 'medium',
+          desiredStepId: 'medium',
+          measuredPowerKw: 0,
+          planningPowerKw: 2.0,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 1.6, // Enough for low (1.25 + 0.23 buffer = 1.48), but NOT enough for medium (2.0 + 0.3 buffer = 2.3)
+        headroom: 1.6,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    // It should successfully plan a restore to 'low'
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.reason).toBe('restore medium -> low (need 1.48kW)');
   });
 });

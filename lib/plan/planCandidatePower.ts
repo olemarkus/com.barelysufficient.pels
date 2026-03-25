@@ -9,7 +9,7 @@ const DEFAULT_FALLBACK_POWER_KW = 1;
 
 export function resolveCandidatePower(device: PowerCandidate): number | null {
   if (typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)) {
-    return device.measuredPowerKw > 0 ? device.measuredPowerKw : null;
+    return device.measuredPowerKw;
   }
   const expectedPower = resolveExpectedOrConfiguredPower(device.expectedPowerKw);
   if (expectedPower !== null) return expectedPower;

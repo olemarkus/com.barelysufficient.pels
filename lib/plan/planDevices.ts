@@ -86,13 +86,11 @@ export function buildInitialPlanDevices(params: {
       temperatureShedTargets,
     });
 
-    const withOffStateReason = isSteppedLoadDevice(base)
-      ? base
-      : applyOffStateReason({
-        planDevice: base,
-        headroomRaw: context.headroomRaw,
-        guardInShortfall,
-      });
+    const withOffStateReason = applyOffStateReason({
+      planDevice: base,
+      headroomRaw: context.headroomRaw,
+      guardInShortfall,
+    });
 
     return applyHourlyBudgetShed({
       planDevice: withOffStateReason,
@@ -138,7 +136,7 @@ function applyPriceOptimizationDelta(
 
 function resolveCurrentState(device: PlanInputDevice): string {
   const steppedState = resolveSteppedLoadCurrentState(device);
-  if (steppedState) return steppedState;
+  if (steppedState !== 'unknown') return steppedState;
   if (typeof device.currentOn === 'boolean') return device.currentOn ? 'on' : 'off';
   if (device.hasBinaryControl === false) return 'not_applicable';
   return 'unknown';
@@ -333,12 +331,27 @@ function applyOffStateReason(params: {
       reason: inactiveReason,
     };
   }
-  if (planDevice.plannedState === 'shed') return planDevice;
+  const shouldForceOffStep = guardInShortfall && isSteppedLoadDevice(planDevice);
+  const desiredStepId = shouldForceOffStep
+    ? getSteppedLoadShedTargetStep({
+      device: planDevice,
+      shedAction: 'turn_off',
+      currentDesiredStepId: planDevice.desiredStepId,
+    })?.id ?? planDevice.desiredStepId
+    : planDevice.desiredStepId;
+  if (planDevice.plannedState === 'shed') {
+    return desiredStepId === planDevice.desiredStepId ? planDevice : {
+      ...planDevice,
+      desiredStepId,
+    };
+  }
   const { needed: need } = computeBaseRestoreNeed(planDevice);
+
   if (guardInShortfall) {
     return {
       ...planDevice,
       plannedState: 'shed',
+      desiredStepId,
       reason: `shortfall (need ${need.toFixed(2)}kW, headroom `
         + `${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`,
     };

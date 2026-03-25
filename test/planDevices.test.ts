@@ -1,9 +1,9 @@
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanContext } from '../lib/plan/planContext';
-import type { PlanInputDevice } from '../lib/plan/planTypes';
+import { buildPlanInputDevice, steppedInputDevice } from './utils/planTestUtils';
 
-const buildContext = (devices: PlanInputDevice[]): PlanContext => ({
+const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
   desiredForMode: {},
   total: 3,
@@ -21,19 +21,10 @@ const buildContext = (devices: PlanInputDevice[]): PlanContext => ({
 
 describe('buildInitialPlanDevices', () => {
   it('keeps stepped loads on temperature shedding when that is the chosen shed behavior', () => {
-    const steppedDevice: PlanInputDevice = {
+    const steppedDevice = steppedInputDevice({
       id: 'dev-1',
       name: 'Water Heater',
       deviceType: 'temperature',
-      controlModel: 'stepped_load',
-      steppedLoadProfile: {
-        model: 'stepped_load',
-        steps: [
-          { id: 'off', planningPowerW: 0 },
-          { id: 'low', planningPowerW: 1250 },
-          { id: 'max', planningPowerW: 3000 },
-        ],
-      },
       selectedStepId: 'max',
       desiredStepId: 'max',
       targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
@@ -41,7 +32,7 @@ describe('buildInitialPlanDevices', () => {
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 0.5,
-    };
+    });
 
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
@@ -117,13 +108,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('exposes binaryCommandPending when a pending binary command exists for the device', () => {
-    const device: PlanInputDevice = {
-      id: 'dev-1',
-      name: 'Heater',
-      targets: [],
-      currentOn: false,
-      controllable: true,
-    };
+    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', currentOn: false });
 
     const state = createPlanEngineState();
     state.pendingBinaryCommands['dev-1'] = {
@@ -154,13 +139,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('omits binaryCommandPending when no pending binary command exists', () => {
-    const device: PlanInputDevice = {
-      id: 'dev-1',
-      name: 'Heater',
-      targets: [],
-      currentOn: true,
-      controllable: true,
-    };
+    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', currentOn: true });
 
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
@@ -184,13 +163,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('omits binaryCommandPending when pending command is a shed (desired=false)', () => {
-    const device: PlanInputDevice = {
-      id: 'dev-1',
-      name: 'Heater',
-      targets: [],
-      currentOn: true,
-      controllable: true,
-    };
+    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', currentOn: true });
 
     const state = createPlanEngineState();
     state.pendingBinaryCommands['dev-1'] = {
@@ -218,5 +191,81 @@ describe('buildInitialPlanDevices', () => {
     });
 
     expect(planDevice.binaryCommandPending).toBeUndefined();
+  });
+
+  it('detects shed drift for off stepped devices and drives them to the off-step during shortfall', () => {
+    const steppedDevice = steppedInputDevice({
+      id: 'dev-1',
+      name: 'Water Heater',
+      selectedStepId: 'max',
+      currentOn: false, // OFF at binary level
+      controllable: true,
+      expectedPowerKw: 3,
+      measuredPowerKw: 0,
+    });
+
+    const context = buildContext([steppedDevice]);
+    context.headroomRaw = -1;
+    context.headroom = -1; // Shortfall
+
+    const [planDevice] = buildInitialPlanDevices({
+      context,
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: true, // Shortfall!
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.currentState).toBe('off');
+    expect(planDevice.plannedState).toBe('shed'); // Should be shed because of shortfall
+    expect(planDevice.desiredStepId).toBe('off'); // Should be driven to off-step!
+    expect(planDevice.reason).toContain('shortfall');
+    // Restore need in reason should be based on low step (1.25kW + 0.23kW buffer = 1.48kW), not max (3kW),
+    // and shortfall must not retain the non-off set_step target.
+    expect(planDevice.reason).toContain('need 1.48kW');
+  });
+
+  it('forces already-shed off stepped devices to keep the off-step during shortfall', () => {
+    const steppedDevice = steppedInputDevice({
+      id: 'dev-1',
+      name: 'Water Heater',
+      selectedStepId: 'max',
+      currentOn: false,
+      controllable: true,
+      expectedPowerKw: 3,
+      measuredPowerKw: 0,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedDevice]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: true,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('shed');
+    expect(planDevice.reason).toBe('shed due to capacity');
+    expect(planDevice.desiredStepId).toBe('off');
   });
 });

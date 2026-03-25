@@ -4,6 +4,7 @@ import {
   getSteppedLoadNextLowerStep,
   getSteppedLoadNextHigherStep,
   getSteppedLoadOffStep,
+  getSteppedLoadRestoreStep,
   getSteppedLoadStep,
   getSteppedLoadLowestStep,
   isSteppedLoadOffStep,
@@ -38,9 +39,12 @@ const getSteppedLoadProfileForDevice = (
 
 export const resolveSteppedLoadCurrentState = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'> & { currentOn?: boolean },
-): string | null => {
+): string => {
   const profile = getSteppedLoadProfileForDevice(device);
-  if (!profile) return null;
+  if (!profile) {
+    if (typeof device.currentOn === 'boolean') return device.currentOn ? 'on' : 'off';
+    return 'unknown';
+  }
   if (device.currentOn === false) return 'off';
   if (!device.selectedStepId) return 'unknown';
   return isSteppedLoadOffStep(profile, device.selectedStepId) ? 'off' : 'on';
@@ -55,10 +59,15 @@ export const resolveSteppedLoadInitialDesiredStepId = (
 };
 
 export const getSteppedLoadNextRestoreStep = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'>,
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'> & { currentState?: string },
 ) => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
+
+  if (device.currentState === 'off') {
+    return getSteppedLoadRestoreStep(profile);
+  }
+
   const highestStepId = getSteppedLoadHighestStep(profile)?.id;
   return getSteppedLoadNextHigherStep({
     profile,
@@ -68,7 +77,7 @@ export const getSteppedLoadNextRestoreStep = (
 };
 
 export const getSteppedLoadShedTargetStep = (params: {
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'>;
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'> & { currentState?: string };
   shedAction: 'turn_off' | 'set_step';
   currentDesiredStepId?: string;
 }): ReturnType<typeof getSteppedLoadStep> => {
@@ -86,6 +95,10 @@ export const getSteppedLoadShedTargetStep = (params: {
     ? getSteppedLoadLowestActiveStep(profile) // set_step = lowest active step (never increases load)
     : getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile);
   if (!targetStep) return null;
+
+  if (device.currentState === 'off') {
+    return targetStep;
+  }
 
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
   const nextLowerStep = lowestActiveStep
@@ -135,28 +148,32 @@ export const resolveSteppedLoadPlanningKw = (
 };
 
 export const resolveSteppedLoadImmediateReliefKw = (params: {
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw'>;
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw' | 'selectedStepId'>;
   fromStepId?: string;
   toStepId?: string;
 }): number => {
-  const { device, fromStepId, toStepId } = params;
-  if (!getSteppedLoadProfileForDevice(device)) return 0;
+  const { device, fromStepId: rawFromStepId, toStepId } = params;
+  if (!isSteppedLoadDevice(device)) return 0;
+
+  const effectiveFromStepId = rawFromStepId ?? device.selectedStepId;
   const measured = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
     ? Math.max(0, device.measuredPowerKw)
     : 0;
-  const fromContribution = Math.min(measured, resolveSteppedLoadPlanningKw(device, fromStepId));
+  const fromContribution = Math.min(measured, resolveSteppedLoadPlanningKw(device, effectiveFromStepId));
   const toContribution = Math.min(measured, resolveSteppedLoadPlanningKw(device, toStepId));
   return Math.max(0, fromContribution - toContribution);
 };
 
 export const resolveSteppedLoadRestoreDeltaKw = (params: {
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>;
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & { currentState?: string };
   fromStepId?: string;
   toStepId?: string;
 }): number => {
   const { device, fromStepId, toStepId } = params;
   if (!isSteppedLoadDevice(device)) return 0;
-  const currentPlanningKw = resolveSteppedLoadPlanningKw(device, fromStepId);
+  const currentPlanningKw = device.currentState === 'off'
+    ? 0
+    : resolveSteppedLoadPlanningKw(device, fromStepId);
   const nextPlanningKw = resolveSteppedLoadPlanningKw(device, toStepId);
   return Math.max(0, nextPlanningKw - currentPlanningKw);
 };

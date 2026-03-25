@@ -86,6 +86,15 @@ non-zero step.
 - [x] Intent `keep`, external actor sets `onoff=false`. Verify PELS turns it back on.
 - [x] Intent `keep`, external actor sets `step=0`. Verify PELS sets a non-zero step.
 - [x] Intent `shed(set_step)`, external actor raises step. Verify PELS re-issues the shed step.
+- [x] Shed drift with binary off + retained higher step: verify drift is detected and driven to lowest step even if `onoff=false` and `measured=0`.
+- [x] Restore headroom for shed device with stale retained step: verify `off -> low` path is used, not a path derived from the stale step.
+- [x] Positive restore-feasibility: headroom enough for `low` but not `medium/max`; verify restore is allowed.
+- [x] Negative restore-feasibility: headroom NOT enough for `low`; verify restore is blocked with correct reason.
+- [x] First restore target after shed: verify target is always the lowest non-zero step (`low`).
+- [x] Drift correction and restore planning consistency: verify both use the same "lowest step" model.
+- [x] UI/state derivation consistency: verify shed devices are presented as `off` and restore state uses the correct baseline.
+- [x] End-to-end scenario: shed -> binary off + retained step -> drift correction -> restore feasibility -> restore to `low`.
+- [ ] Profiles without explicit off-step: verify shed converges to lowest available step (Deferred).
 
 ## Stepped Load Shedding Semantics
 

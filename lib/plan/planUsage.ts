@@ -1,6 +1,8 @@
 type UsageDevice = {
   controllable?: boolean;
   budgetExempt?: boolean;
+  currentState?: string;
+  plannedState?: string;
   measuredPowerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
@@ -14,7 +16,9 @@ const resolveUsageKw = (
     ? dev.measuredPowerKw
     : null;
   if (measured !== null) return measured;
-  if (!allowExpectedFallback) return null;
+  if (dev.currentState === 'off') return 0;
+  if (!allowExpectedFallback || dev.plannedState === 'shed') return null;
+
   const expected = typeof dev.expectedPowerKw === 'number' && Number.isFinite(dev.expectedPowerKw)
     ? dev.expectedPowerKw
     : null;
