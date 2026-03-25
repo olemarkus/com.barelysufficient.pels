@@ -241,5 +241,8 @@
   },
   "2.1.5": {
     "en": "Various bug fixes."
+  },
+  "2.1.6": {
+    "en": "Various bug fixes. Tightened shed action set step logic by ensuring it's the lowest non-zero step that is used."
   }
 }
