@@ -1182,16 +1182,16 @@ describe('DeviceManager', () => {
             await deviceManager.setCapability('dev1', 'onoff', true);
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                currentOn: false,
             }));
             expect(deviceManager.getDebugObservedSources('dev1')?.localWrites.onoff).toEqual(expect.objectContaining({
                 path: 'local_write',
                 capabilityId: 'onoff',
                 value: true,
-                preservedLocalState: true,
+                preservedLocalState: false,
                 snapshot: expect.objectContaining({
                     id: 'dev1',
-                    currentOn: true,
+                    currentOn: false,
                 }),
             }));
         });
@@ -1277,7 +1277,7 @@ describe('DeviceManager', () => {
             await deviceManager.setCapability('dev1', 'onoff', true);
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                currentOn: false,
             }));
         });
 

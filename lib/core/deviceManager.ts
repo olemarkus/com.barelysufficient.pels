@@ -344,9 +344,11 @@ export class DeviceManager extends EventEmitter {
             throw error;
         }
 
-        // Without per-capability realtime listeners, always preserve local binary state
+        // Keep local binary turn-off optimistic, but let binary turn-on stay pending until
+        // telemetry confirms it. A restore request is intent, not observed truth.
         const preservedLocalState = typeof normalizedValue === 'boolean'
-            && isRealtimeControlCapability(capabilityId);
+            && isRealtimeControlCapability(capabilityId)
+            && normalizedValue === false;
         if (preservedLocalState) {
             this.updateLocalSnapshot(deviceId, { on: normalizedValue });
         }
