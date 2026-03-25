@@ -87,6 +87,26 @@ non-zero step.
 - [x] Intent `keep`, external actor sets `step=0`. Verify PELS sets a non-zero step.
 - [x] Intent `shed(set_step)`, external actor raises step. Verify PELS re-issues the shed step.
 
+## Stepped Load Shedding Semantics
+
+For stepped load devices, `shed_action = set_step` must never increase commanded load.
+
+### Rule
+A shed action must never increase commanded load.
+
+### Implementation (2026-03-25)
+
+- `set_step` now targets the lowest non-zero step when one exists, not a user-configured step.
+- Returns no-op when device is already off (`currentOn === false`).
+- If a profile has no non-zero steps, `set_step` degrades to no-op/`turn_off` semantics instead of picking an arbitrary fallback step.
+- Removes step selection UI from settings — always uses lowest active step.
+
+This keeps `set_step` distinct from `turn_off`:
+- `turn_off` = disable the load entirely
+- `set_step` = keep the device active at its minimum active level
+
+Files: `lib/plan/planSteppedLoad.ts`, `lib/plan/planShedding.ts`.
+
 ## Plan UI: restore-cooldown badge inconsistency
 
 - [ ] `buildPlanStateLine()` shows "Shed (restore cooldown)" for restore-cooldown shed devices that

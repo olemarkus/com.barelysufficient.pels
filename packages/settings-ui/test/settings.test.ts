@@ -288,7 +288,7 @@ describe('settings script', () => {
     expect(stepRow.hidden).toBe(true);
   });
 
-  it('shows only the shed step setting for stepped-load shed mode', async () => {
+  it('keeps the step row hidden for stepped-load set_step shed mode', async () => {
     installSettingsHomeyMock({
       target_devices_snapshot: [
         {
@@ -328,7 +328,7 @@ describe('settings script', () => {
     expect(shedAction.value).toBe('set_step');
     expect(tempOption.hidden).toBe(false);
     expect(tempRow.hidden).toBe(true);
-    expect(stepRow.hidden).toBe(false);
+    expect(stepRow.hidden).toBe(true); // Step selection removed - always uses lowest active step
   });
 
   it('shows the min temperature setting for stepped loads when temperature shed mode is selected', async () => {
@@ -417,9 +417,9 @@ describe('settings script', () => {
     const stepInput = document.querySelector('#device-detail-overshoot-step') as HTMLSelectElement;
 
     expect(tempRow.hidden).toBe(true);
-    expect(stepRow.hidden).toBe(false);
+    expect(stepRow.hidden).toBe(true); // Step selection removed - always uses lowest active step
     expect(tempInput.disabled).toBe(true);
-    expect(stepInput.disabled).toBe(false);
+    expect(stepInput.disabled).toBe(true); // Step input always disabled
 
     shedAction.value = 'set_temperature';
     shedAction.dispatchEvent(new Event('change', { bubbles: true }));

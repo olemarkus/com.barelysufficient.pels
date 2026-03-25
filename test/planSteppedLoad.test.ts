@@ -71,19 +71,16 @@ describe('planSteppedLoad', () => {
     expect(getSteppedLoadShedTargetStep({
       device: steppedDevice({ selectedStepId: 'max' }),
       shedAction: 'set_step',
-      shedStepId: 'low',
     })?.id).toBe('mid');
 
     expect(getSteppedLoadShedTargetStep({
       device: steppedDevice({ selectedStepId: 'mid' }),
       shedAction: 'set_step',
-      shedStepId: 'low',
     })?.id).toBe('low');
 
     expect(getSteppedLoadShedTargetStep({
       device: steppedDevice({ selectedStepId: 'low' }),
       shedAction: 'set_step',
-      shedStepId: 'max',
     })?.id).toBe('low');
 
     expect(getSteppedLoadShedTargetStep({
@@ -124,6 +121,22 @@ describe('planSteppedLoad', () => {
     expect(getSteppedLoadShedTargetStep({
       device: steppedDevice({ selectedStepId: 'missing' }),
       shedAction: 'turn_off',
+    })).toBeNull();
+
+    const zeroOnlyProfile = {
+      model: 'stepped_load' as const,
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'idle', planningPowerW: 0 },
+      ],
+    };
+    expect(getSteppedLoadShedTargetStep({
+      device: {
+        controlModel: 'stepped_load',
+        steppedLoadProfile: zeroOnlyProfile,
+        selectedStepId: 'idle',
+      },
+      shedAction: 'set_step',
     })).toBeNull();
   });
 

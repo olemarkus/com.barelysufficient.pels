@@ -47,7 +47,6 @@ export function countRemainingCandidates(params: {
         const targetStep = getSteppedLoadShedTargetStep({
           device: d,
           shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-          shedStepId: shedBehavior.stepId,
           currentDesiredStepId: d.selectedStepId,
         });
         return Boolean(targetStep && targetStep.id !== d.selectedStepId);
