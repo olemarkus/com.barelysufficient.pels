@@ -3,21 +3,35 @@ import { resolveCandidatePower } from './planCandidatePower';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
 
+function isViableSwapCandidate(
+  onDev: DevicePlanDevice,
+  dev: DevicePlanDevice,
+  swappedOutFor: ReadonlyMap<string, string>,
+  restoredThisCycle: ReadonlySet<string>,
+): boolean {
+  const onDevPriority = onDev.priority ?? 100;
+  const devPriority = dev.priority ?? 100;
+  if (onDevPriority <= devPriority) return false;
+  if (onDev.plannedState === 'shed') return false;
+  if (swappedOutFor.has(onDev.id)) return false;
+  if (restoredThisCycle.has(onDev.id)) return false;
+  return true;
+}
+
 export function buildSwapCandidates(params: {
   dev: DevicePlanDevice;
   onDevices: DevicePlanDevice[];
   swappedOutFor: ReadonlyMap<string, string>;
   availableHeadroom: number;
   needed: number;
-  restoredThisCycle: Set<string>;
+  restoredThisCycle: ReadonlySet<string>;
 }): {
   ready: boolean;
   toShed: DevicePlanDevice[];
-  shedPowerByDeviceId: Map<string, number>;
-  potentialHeadroom: number;
   shedNames: string;
   shedPower: string;
-  availableHeadroom: number;
+  potentialHeadroom: number;
+  shedPowerByDeviceId: Map<string, number>;
   reason: string;
 } {
   const {
@@ -28,64 +42,47 @@ export function buildSwapCandidates(params: {
     needed,
     restoredThisCycle,
   } = params;
-  const targetPriority = dev.priority ?? 100;
-  let potentialHeadroom = availableHeadroom;
   const toShed: DevicePlanDevice[] = [];
   const shedPowerByDeviceId = new Map<string, number>();
+  let currentPotential = availableHeadroom;
+
   for (const onDev of onDevices) {
-    if ((onDev.priority ?? 100) <= targetPriority) break;
-    const onDevPower = getSwapCandidatePower(onDev, swappedOutFor, restoredThisCycle);
-    if (onDevPower === null) continue;
+    if (!isViableSwapCandidate(onDev, dev, swappedOutFor, restoredThisCycle)) continue;
+
+    const pwr = resolveCandidatePower(onDev);
+    if (pwr === null || pwr <= 0) continue;
+
     toShed.push(onDev);
-    shedPowerByDeviceId.set(onDev.id, onDevPower);
-    potentialHeadroom += onDevPower;
-    if (potentialHeadroom >= needed) break;
+    shedPowerByDeviceId.set(onDev.id, pwr);
+    currentPotential += pwr;
+
+    if (currentPotential >= needed) break;
   }
-  if (potentialHeadroom < needed || toShed.length === 0) {
-    return {
-      ready: false,
-      toShed,
-      shedPowerByDeviceId,
-      potentialHeadroom,
-      shedNames: '',
-      shedPower: '0.00',
-      availableHeadroom,
-      reason: `insufficient headroom (need ${needed.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`,
-    };
-  }
-  const shedNames = toShed.map((d) => d.name).join(', ');
-  const shedPower = Array.from(shedPowerByDeviceId.values()).reduce((sum, power) => sum + power, 0).toFixed(2);
+
+  const ready = currentPotential >= needed;
+  const names = toShed.map((d) => d.name).join(', ');
+  const reason = ready
+    ? `swapped out for ${dev.name}`
+    : `insufficient headroom to swap for ${dev.name} (need ${needed.toFixed(2)}kW, `
+    + `potential ${currentPotential.toFixed(2)}kW from ${names || 'none'})`;
+
   return {
-    ready: true,
+    ready,
     toShed,
+    shedNames: names,
+    shedPower: (currentPotential - availableHeadroom).toFixed(2),
+    potentialHeadroom: currentPotential,
     shedPowerByDeviceId,
-    potentialHeadroom,
-    shedNames,
-    shedPower,
-    availableHeadroom,
-    reason: '',
+    reason,
   };
 }
 
-function getSwapCandidatePower(
-  onDev: DevicePlanDevice,
-  swappedOutFor: ReadonlyMap<string, string>,
-  restoredThisCycle: Set<string>,
-): number | null {
-  if (onDev.plannedState === 'shed') return null;
-  if (swappedOutFor.has(onDev.id)) return null;
-  if (restoredThisCycle.has(onDev.id)) return null;
-  const onDevPower = resolveCandidatePower(onDev);
-  if (onDevPower === null || onDevPower <= 0) return null;
-  return onDevPower;
-}
-
-export function buildInsufficientHeadroomUpdate(
-  needed: number,
-  availableHeadroom: number,
-): Partial<DevicePlanDevice> {
-  const reason = `insufficient headroom (need ${needed.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`;
-  return { plannedState: 'shed', reason };
+export function buildInsufficientHeadroomUpdate(needed: number, available: number): Partial<DevicePlanDevice> {
+  return {
+    plannedState: 'shed',
+    reason: `insufficient headroom to restore (need ${needed.toFixed(2)}kW, `
+      + `available ${available.toFixed(2)}kW)`,
+  };
 }
 
 export function computeRestoreBufferKw(devPower: number): number {
@@ -95,16 +92,28 @@ export function computeRestoreBufferKw(devPower: number): number {
 }
 
 export function estimateRestorePower(dev: DevicePlanDevice): number {
+  const steppedPower = resolveSteppedRestorePower(dev);
+  if (steppedPower !== null) return steppedPower;
+
   if (typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) return dev.planningPowerKw;
-  // For stepped devices at zero planning power (off-step or temperature-shed),
-  // use the lowest non-zero step as the conservative re-entry estimate.
-  if (isSteppedLoadDevice(dev) && dev.steppedLoadProfile) {
-    const restoreStep = getSteppedLoadRestoreStep(dev.steppedLoadProfile);
-    if (restoreStep && restoreStep.planningPowerW > 0) return restoreStep.planningPowerW / 1000;
-  }
   if (typeof dev.expectedPowerKw === 'number') return dev.expectedPowerKw;
   if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
   return dev.powerKw ?? 1;
+}
+
+function resolveSteppedRestorePower(dev: DevicePlanDevice): number | null {
+  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
+
+  if (dev.currentState !== 'off' && typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) {
+    return dev.planningPowerKw;
+  }
+
+  // For stepped devices that are off, or on with zero planning power, use the
+  // lowest non-zero step as the conservative re-entry estimate.
+  const restoreStep = getSteppedLoadRestoreStep(dev.steppedLoadProfile);
+  if (restoreStep && restoreStep.planningPowerW > 0) return restoreStep.planningPowerW / 1000;
+
+  return null;
 }
 
 export function computeBaseRestoreNeed(dev: DevicePlanDevice): { power: number; buffer: number; needed: number } {

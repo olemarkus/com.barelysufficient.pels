@@ -28,4 +28,13 @@ describe('sumControlledUsageKw', () => {
 
     expect(result).toBeCloseTo(2.0, 6);
   });
+
+  it('prefers measured usage even when a device is currently marked off', () => {
+    const result = sumControlledUsageKw([
+      { controllable: true, currentState: 'off', measuredPowerKw: 0.15, expectedPowerKw: 1.2 },
+      { controllable: true, currentState: 'off', expectedPowerKw: 0.8 },
+    ]);
+
+    expect(result).toBeCloseTo(0.15, 6);
+  });
 });

@@ -5,122 +5,114 @@ import {
   resolveSteppedLoadCurrentState,
   resolveSteppedLoadImmediateReliefKw,
   resolveSteppedLoadInitialDesiredStepId,
-  resolveSteppedLoadPlanningKw,
   resolveSteppedLoadRestoreDeltaKw,
+  resolveSteppedLoadSheddingTarget,
 } from '../lib/plan/planSteppedLoad';
-
-const steppedProfile = {
-  model: 'stepped_load' as const,
-  steps: [
-    { id: 'off', planningPowerW: 0 },
-    { id: 'low', planningPowerW: 1250 },
-    { id: 'mid', planningPowerW: 2000 },
-    { id: 'max', planningPowerW: 3000 },
-  ],
-};
-
-const steppedDevice = (overrides: Record<string, unknown> = {}) => ({
-  controlModel: 'stepped_load' as const,
-  steppedLoadProfile: steppedProfile,
-  selectedStepId: 'max',
-  desiredStepId: undefined,
-  measuredPowerKw: 2.4,
-  ...overrides,
-});
+import { steppedInputDevice, steppedPlanDevice, steppedProfile } from './utils/planTestUtils';
 
 describe('planSteppedLoad', () => {
-  it('detects stepped-load devices and resolves current state', () => {
-    expect(isSteppedLoadDevice(steppedDevice())).toBe(true);
-    expect(isSteppedLoadDevice({ controlModel: 'binary_power', steppedLoadProfile: null })).toBe(false);
-
-    expect(resolveSteppedLoadCurrentState({ controlModel: 'binary_power', steppedLoadProfile: null, selectedStepId: 'off' }))
-      .toBeNull();
-    expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: undefined }))).toBe('unknown');
-    expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'off' }))).toBe('off');
-    expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'low' }))).toBe('on');
-    expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'max', currentOn: false }))).toBe('off');
-    expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'low', currentOn: false }))).toBe('off');
-    expect(resolveSteppedLoadCurrentState(steppedDevice({ selectedStepId: 'max', currentOn: true }))).toBe('on');
-  });
-
   it('resolves initial desired step and next restore step', () => {
-    expect(resolveSteppedLoadInitialDesiredStepId(
-      steppedDevice({ selectedStepId: 'low' }),
-    )).toBe('low');
-    expect(resolveSteppedLoadInitialDesiredStepId(
-      steppedDevice({ selectedStepId: 'missing' }),
-    )).toBeUndefined();
-    expect(resolveSteppedLoadInitialDesiredStepId({
+    expect(resolveSteppedLoadInitialDesiredStepId(steppedInputDevice({ selectedStepId: 'low' }))).toBe('low');
+    expect(resolveSteppedLoadInitialDesiredStepId(steppedInputDevice({ selectedStepId: undefined }))).toBeUndefined();
+    expect(resolveSteppedLoadInitialDesiredStepId(steppedInputDevice({
       controlModel: 'binary_power',
-      steppedLoadProfile: null,
+      steppedLoadProfile: undefined,
       selectedStepId: 'low',
-    })).toBeUndefined();
+    }))).toBeUndefined();
 
-    expect(getSteppedLoadNextRestoreStep(steppedDevice({ selectedStepId: 'off' }))?.id).toBe('low');
-    expect(getSteppedLoadNextRestoreStep(steppedDevice({ selectedStepId: 'low' }))?.id).toBe('mid');
-    expect(getSteppedLoadNextRestoreStep(steppedDevice({ selectedStepId: 'mid' }))?.id).toBe('max');
-    expect(getSteppedLoadNextRestoreStep(steppedDevice({ selectedStepId: 'max' }))).toBeNull();
-    expect(getSteppedLoadNextRestoreStep({
+    expect(getSteppedLoadNextRestoreStep(steppedInputDevice({ selectedStepId: 'off' }))?.id).toBe('low');
+    expect(getSteppedLoadNextRestoreStep(steppedInputDevice({ selectedStepId: 'medium' }))?.id).toBe('max');
+    expect(getSteppedLoadNextRestoreStep(steppedPlanDevice({
+      selectedStepId: 'medium',
+      currentState: 'off',
+    }))?.id).toBe('low');
+    expect(getSteppedLoadNextRestoreStep(steppedInputDevice({ selectedStepId: 'max' }))).toBeNull();
+    expect(getSteppedLoadNextRestoreStep(steppedInputDevice({
       controlModel: 'binary_power',
-      steppedLoadProfile: null,
+      steppedLoadProfile: undefined,
       selectedStepId: 'off',
-    })).toBeNull();
+    }))).toBeNull();
   });
 
   it('resolves shed targets conservatively for turn-off and set-step behavior', () => {
     expect(getSteppedLoadShedTargetStep({
-      device: steppedDevice({ selectedStepId: 'max' }),
+      device: steppedInputDevice({ selectedStepId: 'max' }),
       shedAction: 'set_step',
-    })?.id).toBe('mid');
+    })?.id).toBe('medium');
 
     expect(getSteppedLoadShedTargetStep({
-      device: steppedDevice({ selectedStepId: 'mid' }),
-      shedAction: 'set_step',
-    })?.id).toBe('low');
-
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedDevice({ selectedStepId: 'low' }),
+      device: steppedInputDevice({ selectedStepId: 'medium' }),
       shedAction: 'set_step',
     })?.id).toBe('low');
 
     expect(getSteppedLoadShedTargetStep({
-      device: steppedDevice({ selectedStepId: 'max' }),
+      device: steppedInputDevice({ selectedStepId: 'low' }),
+      shedAction: 'set_step',
+    })?.id).toBe('low');
+
+    expect(getSteppedLoadShedTargetStep({
+      device: steppedInputDevice({ selectedStepId: 'max' }),
       shedAction: 'turn_off',
-    })?.id).toBe('mid');
+    })?.id).toBe('medium');
 
     expect(getSteppedLoadShedTargetStep({
-      device: steppedDevice({ selectedStepId: 'low' }),
+      device: steppedPlanDevice({ selectedStepId: 'max', currentState: 'off' }),
+      shedAction: 'turn_off',
+    })?.id).toBe('off');
+
+    expect(getSteppedLoadShedTargetStep({
+      device: steppedInputDevice({ selectedStepId: 'low' }),
       shedAction: 'turn_off',
     })?.id).toBe('off');
 
     const noOffProfile = {
       model: 'stepped_load' as const,
       steps: [
-        { id: 'eco', planningPowerW: 900 },
-        { id: 'boost', planningPowerW: 1800 },
+        { id: 'low', planningPowerW: 1000 },
+        { id: 'max', planningPowerW: 2000 },
       ],
     };
     expect(getSteppedLoadShedTargetStep({
-      device: {
-        controlModel: 'stepped_load',
-        steppedLoadProfile: noOffProfile,
-        selectedStepId: 'boost',
-      },
+      device: steppedInputDevice({ steppedLoadProfile: noOffProfile, selectedStepId: 'max' }),
       shedAction: 'turn_off',
-    })?.id).toBe('eco');
+    })?.id).toBe('low');
 
     expect(getSteppedLoadShedTargetStep({
-      device: {
-        controlModel: 'binary_power',
-        steppedLoadProfile: null,
+      device: steppedInputDevice({ selectedStepId: 'max' }),
+      shedAction: 'set_step',
+    })?.id).toBe('medium');
+
+    expect(getSteppedLoadShedTargetStep({
+      device: steppedInputDevice({ selectedStepId: 'low' }),
+      shedAction: 'set_step',
+    })?.id).toBe('low');
+  });
+
+  it('resolves shedding target including profile and relief flags', () => {
+    const targetStep = { id: 'low', planningPowerW: 1250 };
+    const target = resolveSteppedLoadSheddingTarget({
+      device: steppedInputDevice({ selectedStepId: 'max' }),
+      targetStep,
+    });
+
+    expect(target?.steppedProfile).toBe(steppedProfile);
+    expect(target?.selectedStep.id).toBe('max');
+    expect(target?.clampedTargetStep.id).toBe('low');
+    expect(target?.hasUnconfirmedLowerDesiredStep).toBe(false);
+
+    const targetWithPending = resolveSteppedLoadSheddingTarget({
+      device: steppedInputDevice({
         selectedStepId: 'max',
-      },
-      shedAction: 'turn_off',
-    })).toBeNull();
+        stepCommandPending: true,
+        desiredStepId: 'low',
+      }),
+      targetStep,
+    });
+    expect(targetWithPending?.hasUnconfirmedLowerDesiredStep).toBe(true);
 
-    expect(getSteppedLoadShedTargetStep({
-      device: steppedDevice({ selectedStepId: 'missing' }),
-      shedAction: 'turn_off',
+    expect(resolveSteppedLoadSheddingTarget({
+      device: steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined }),
+      targetStep,
     })).toBeNull();
 
     const zeroOnlyProfile = {
@@ -140,51 +132,60 @@ describe('planSteppedLoad', () => {
     })).toBeNull();
   });
 
+  it('resolves current state from binary onoff or stepped profile', () => {
+    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ selectedStepId: undefined }))).toBe('unknown');
+    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ currentOn: true, selectedStepId: 'low' }))).toBe('on');
+    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ currentOn: false, selectedStepId: 'low' }))).toBe('off');
+    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ currentOn: true, selectedStepId: 'off' }))).toBe('off');
+    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: true }))).toBe('on');
+    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: false }))).toBe('off');
+    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: undefined }))).toBe('unknown');
+  });
+
   it('uses planning power for restore math and measured power for immediate shed relief', () => {
-    expect(resolveSteppedLoadPlanningKw(steppedDevice(), 'max')).toBe(3);
-    expect(resolveSteppedLoadPlanningKw(steppedDevice(), 'missing')).toBe(0);
-    expect(resolveSteppedLoadPlanningKw({
-      controlModel: 'binary_power',
-      steppedLoadProfile: null,
-    }, 'max')).toBe(0);
-
-    expect(resolveSteppedLoadImmediateReliefKw({
-      device: steppedDevice({ measuredPowerKw: 2.4 }),
-      fromStepId: 'max',
-      toStepId: 'mid',
-    })).toBeCloseTo(0.4, 6);
-    expect(resolveSteppedLoadImmediateReliefKw({
-      device: steppedDevice({ measuredPowerKw: undefined }),
-      fromStepId: 'max',
-      toStepId: 'low',
-    })).toBe(0);
-    expect(resolveSteppedLoadImmediateReliefKw({
-      device: {
-        controlModel: 'binary_power',
-        steppedLoadProfile: null,
-        measuredPowerKw: 2,
-      },
-      fromStepId: 'max',
-      toStepId: 'low',
-    })).toBe(0);
-
     expect(resolveSteppedLoadRestoreDeltaKw({
-      device: steppedDevice(),
+      device: steppedInputDevice(),
       fromStepId: 'low',
       toStepId: 'max',
     })).toBeCloseTo(1.75, 6);
     expect(resolveSteppedLoadRestoreDeltaKw({
-      device: steppedDevice(),
+      device: steppedPlanDevice({ currentState: 'off' }),
+      fromStepId: 'medium',
+      toStepId: 'low',
+    })).toBeCloseTo(1.25, 6);
+    expect(resolveSteppedLoadRestoreDeltaKw({
+      device: steppedInputDevice(),
       fromStepId: 'max',
       toStepId: 'low',
     })).toBe(0);
     expect(resolveSteppedLoadRestoreDeltaKw({
-      device: {
+      device: steppedInputDevice({
         controlModel: 'binary_power',
-        steppedLoadProfile: null,
-      },
+        steppedLoadProfile: undefined,
+      }),
       fromStepId: 'low',
       toStepId: 'max',
     })).toBe(0);
+
+    expect(resolveSteppedLoadImmediateReliefKw({
+      device: steppedInputDevice({ measuredPowerKw: 2.5 }),
+      toStepId: 'low',
+    })).toBeCloseTo(1.25, 6);
+    expect(resolveSteppedLoadImmediateReliefKw({
+      device: steppedInputDevice({ selectedStepId: 'low', measuredPowerKw: 0.5, hasBinaryControl: false }),
+      toStepId: 'off',
+    })).toBeCloseTo(0.5, 6);
+    expect(resolveSteppedLoadImmediateReliefKw({
+      device: steppedInputDevice({
+        controlModel: 'binary_power',
+        steppedLoadProfile: undefined,
+      }),
+      toStepId: 'low',
+    })).toBe(0);
+  });
+
+  it('isSteppedLoadDevice identifies stepped devices', () => {
+    expect(isSteppedLoadDevice(steppedInputDevice())).toBe(true);
+    expect(isSteppedLoadDevice(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined }))).toBe(false);
   });
 });
