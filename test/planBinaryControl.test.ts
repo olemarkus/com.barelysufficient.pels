@@ -264,6 +264,52 @@ describe('plan binary control helpers', () => {
     );
   });
 
+  it('keeps a pending restore when telemetry still shows the device off', async () => {
+    const state = createPlanEngineState();
+
+    await expect(setBinaryControl({
+      state,
+      deviceManager: {
+        setCapability: jest.fn().mockResolvedValue(undefined),
+        getSnapshot: jest.fn().mockReturnValue([]),
+      } as never,
+      updateLocalSnapshot: jest.fn(),
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: true,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        currentOn: false,
+      },
+      logContext: 'capacity',
+    })).resolves.toBe(true);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'socket1',
+        name: 'Socket',
+        currentOn: false,
+        hasBinaryControl: true,
+        targets: [],
+      }],
+      source: 'rebuild',
+      logDebug: jest.fn(),
+    });
+
+    expect(changed).toBe(false);
+    expect(state.pendingBinaryCommands.socket1).toMatchObject({
+      capabilityId: 'onoff',
+      desired: true,
+    });
+  });
+
   it('handles missing, blocked, and failing binary control requests', async () => {
     const state = createPlanEngineState();
     const updateLocalSnapshot = jest.fn();
