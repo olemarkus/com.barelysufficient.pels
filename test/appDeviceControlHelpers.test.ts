@@ -32,6 +32,10 @@ const baseSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevi
 });
 
 describe('appDeviceControlHelpers', () => {
+  it.todo(
+    'keeps a slow stepped-load step-up pending for 60s before confirmative telemetry arrives',
+  );
+
   it('resolves default control models from explicit and implicit device shape', () => {
     expect(resolveDefaultControlModel(baseSnapshot({ controlModel: 'stepped_load' }))).toBe('stepped_load');
     expect(resolveDefaultControlModel(baseSnapshot({ deviceType: 'temperature', controlModel: undefined }))).toBe('temperature_target');
