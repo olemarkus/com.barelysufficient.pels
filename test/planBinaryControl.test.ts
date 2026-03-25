@@ -12,6 +12,10 @@ describe('plan binary control helpers', () => {
     jest.restoreAllMocks();
   });
 
+  it.todo(
+    'keeps a slow Connected 300 restore pending for 60s before confirmative telemetry arrives',
+  );
+
   it('resolves binary control plans and EV restore blocks', () => {
     expect(getBinaryControlPlan()).toBeNull();
     expect(getBinaryControlPlan({

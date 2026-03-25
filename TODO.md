@@ -126,6 +126,11 @@ or present requested state as confirmed reality.
       Files: `planService.ts`, `planReconcileState.ts`.
 - [ ] Add `communicationModel: 'local' | 'cloud'` to device config / plan input and use it to
       scale confirmation windows, drift detection, and reconciliation aggressiveness.
+      Anchor scenario: a Connected 300 may take about 60s from command send to confirmative
+      telemetry. During that full window, PELS should stay in pending/awaiting-confirmation
+      state without treating the device as confirmed on, reissuing the command, or declaring
+      drift prematurely. The same principle also applies to slow stepped-load confirmations
+      where a step change takes similar time to show up in trusted telemetry.
       Files: `planTypes.ts`, device config, `planBinaryControl.ts`,
       `appDeviceControlHelpers.ts`, `planReconcileState.ts`.
 - [ ] Audit `measuredPowerKw` assignment so it only comes from `measure_power` telemetry, never
