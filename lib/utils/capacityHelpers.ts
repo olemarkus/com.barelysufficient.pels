@@ -38,14 +38,11 @@ export function normalizeShedBehaviors(input: unknown): Record<string, ShedBehav
     const temperature = typeof tempRaw === 'number' && Number.isFinite(tempRaw)
       ? Math.max(-50, Math.min(50, tempRaw))
       : undefined;
-    const stepId = typeof candidate.stepId === 'string' && candidate.stepId.trim()
-      ? candidate.stepId.trim()
-      : undefined;
     let behavior: ShedBehavior = { action: 'turn_off' };
     if (action === 'set_temperature' && typeof temperature === 'number') {
       behavior = { action, temperature };
-    } else if (action === 'set_step' && stepId) {
-      behavior = { action, stepId };
+    } else if (action === 'set_step') {
+      behavior = { action };
     }
     return [[deviceId, behavior]];
   });

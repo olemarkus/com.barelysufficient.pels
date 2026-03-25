@@ -11,7 +11,7 @@ import {
   resolveSteppedLoadPlanningKw,
   resolveSteppedLoadSheddingTarget,
 } from './planSteppedLoad';
-import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
 import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
   RECENT_RESTORE_SHED_GRACE_MS,
@@ -341,13 +341,12 @@ function buildSteppedCandidate(params: {
   const targetStep = getSteppedLoadShedTargetStep({
     device,
     shedAction: steppedShedAction,
-    shedStepId: shedBehavior.stepId,
     currentDesiredStepId: effectiveCurrentStepId,
   });
   const steppedTarget = resolveSteppedLoadSheddingTarget({ device, targetStep });
   if (!steppedTarget) return null;
   const { steppedProfile, selectedStep, clampedTargetStep, hasUnconfirmedLowerDesiredStep } = steppedTarget;
-  const lowestActiveStep = getSteppedLoadRestoreStep(steppedProfile);
+  const lowestActiveStep = getSteppedLoadLowestActiveStep(steppedProfile);
   // Preemptive when the confirmed position is above the lowest active step,
   // regardless of where the computed target lands.
   const preemptiveStepDown = Boolean(
@@ -471,4 +470,3 @@ function resolveShedReason(limitSource: PlanContext['softLimitSource']): string 
   if (limitSource === 'daily') return 'shed due to daily budget';
   return 'shed due to capacity';
 }
-

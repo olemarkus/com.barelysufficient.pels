@@ -1088,11 +1088,11 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    // With pending desired='low', the system advances to 'off' and keeps
-    // preemptive priority since selectedStep 'max' is still above lowestActive.
+    // With pending desired='low', the system stays at 'low' (lowest active step)
+    // which is the set_step target - never raises load.
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('off');
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
   it('keeps shedding other devices when a previous stepped-load shed command went stale', async () => {

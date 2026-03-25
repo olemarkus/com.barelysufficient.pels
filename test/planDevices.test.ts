@@ -69,6 +69,53 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.desiredStepId).toBe('max');
   });
 
+  it('preserves stepped set_step shed action without requiring a configured step id', () => {
+    const steppedDevice: PlanInputDevice = {
+      id: 'dev-1',
+      name: 'Water Heater',
+      deviceType: 'temperature',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+      targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+      currentOn: true,
+      controllable: true,
+      expectedPowerKw: 3,
+      measuredPowerKw: 0.5,
+    };
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedDevice]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      steppedDesiredStepByDeviceId: new Map([['dev-1', 'low']]),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('shed');
+    expect(planDevice.shedAction).toBe('set_step');
+    expect(planDevice.shedStepId).toBeNull();
+    expect(planDevice.desiredStepId).toBe('low');
+  });
+
   it('exposes binaryCommandPending when a pending binary command exists for the device', () => {
     const device: PlanInputDevice = {
       id: 'dev-1',

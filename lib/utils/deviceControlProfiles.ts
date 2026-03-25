@@ -6,6 +6,9 @@ import type { DeviceControlProfile, DeviceControlProfiles, SteppedLoadProfile, S
 export const POWER_HEURISTIC_ABSOLUTE_TOLERANCE_W = 350;
 export const POWER_HEURISTIC_RATIO_TOLERANCE = 0.35;
 
+// Keep these step-selection helpers mirrored with
+// packages/contracts/src/deviceControlProfiles.ts. The runtime/Jest/Homey
+// path cannot safely import that ESM contracts module directly.
 export const sortSteppedLoadSteps = (steps: SteppedLoadStep[]): SteppedLoadStep[] => (
   [...steps].sort((left, right) => left.planningPowerW - right.planningPowerW || left.id.localeCompare(right.id))
 );
@@ -22,8 +25,13 @@ export const getSteppedLoadHighestStep = (profile: SteppedLoadProfile): SteppedL
   sortSteppedLoadSteps(profile.steps).at(-1) ?? null
 );
 
-export const getSteppedLoadRestoreStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => (
+export const getSteppedLoadLowestActiveStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => (
   sortSteppedLoadSteps(profile.steps).find((step) => step.planningPowerW > 0)
+    ?? null
+);
+
+export const getSteppedLoadRestoreStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => (
+  getSteppedLoadLowestActiveStep(profile)
     ?? getSteppedLoadHighestStep(profile)
 );
 

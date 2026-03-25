@@ -290,8 +290,8 @@ function resolveSteppedShedAction(params: {
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
 }): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
   const { controllable, shedBehavior } = params;
-  if (controllable && shedBehavior.action === 'set_step' && typeof shedBehavior.stepId === 'string') {
-    return { shedAction: 'set_step', shedTemperature: null, shedStepId: shedBehavior.stepId };
+  if (controllable && shedBehavior.action === 'set_step') {
+    return { shedAction: 'set_step', shedTemperature: null, shedStepId: null };
   }
   return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
 }
@@ -312,7 +312,6 @@ function resolveSteppedLoadDirectShedStepId(params: {
   const targetStep = getSteppedLoadShedTargetStep({
     device: dev,
     shedAction: 'set_step',
-    shedStepId: shedBehavior.stepId,
     currentDesiredStepId,
   });
   return targetStep?.id;
@@ -367,7 +366,6 @@ function applyHourlyBudgetShed(params: {
     ? getSteppedLoadShedTargetStep({
       device: planDevice,
       shedAction: planDevice.shedAction === 'set_step' ? 'set_step' : 'turn_off',
-      shedStepId: planDevice.shedStepId,
       currentDesiredStepId: planDevice.desiredStepId,
     })?.id ?? planDevice.desiredStepId
     : planDevice.desiredStepId;

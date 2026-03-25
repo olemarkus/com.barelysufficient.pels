@@ -1,9 +1,9 @@
 import {
   getSteppedLoadHighestStep,
+  getSteppedLoadLowestActiveStep,
   getSteppedLoadNextLowerStep,
   getSteppedLoadNextHigherStep,
   getSteppedLoadOffStep,
-  getSteppedLoadRestoreStep,
   getSteppedLoadStep,
   getSteppedLoadLowestStep,
   isSteppedLoadOffStep,
@@ -70,13 +70,11 @@ export const getSteppedLoadNextRestoreStep = (
 export const getSteppedLoadShedTargetStep = (params: {
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'>;
   shedAction: 'turn_off' | 'set_step';
-  shedStepId?: string | null;
   currentDesiredStepId?: string;
 }): ReturnType<typeof getSteppedLoadStep> => {
   const {
     device,
     shedAction,
-    shedStepId,
     currentDesiredStepId,
   } = params;
   const profile = getSteppedLoadProfileForDevice(device);
@@ -85,11 +83,11 @@ export const getSteppedLoadShedTargetStep = (params: {
   if (!currentStep) return null;
 
   const targetStep = shedAction === 'set_step'
-    ? getSteppedLoadStep(profile, shedStepId ?? undefined)
+    ? getSteppedLoadLowestActiveStep(profile) // set_step = lowest active step (never increases load)
     : getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile);
   if (!targetStep) return null;
 
-  const lowestActiveStep = getSteppedLoadRestoreStep(profile);
+  const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
   const nextLowerStep = lowestActiveStep
     ? getSteppedLoadNextLowerStep({
       profile,

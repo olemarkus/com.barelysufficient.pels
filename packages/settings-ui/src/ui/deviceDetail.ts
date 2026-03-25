@@ -1,6 +1,6 @@
 /* eslint-disable max-lines */
 import {
-  getSteppedLoadRestoreStep,
+  getSteppedLoadLowestActiveStep,
   normalizeSteppedLoadProfile,
   sortSteppedLoadSteps,
 } from '../../../contracts/src/deviceControlProfiles';
@@ -172,64 +172,6 @@ const attachDraftSyncOnChange = (...inputs: HTMLInputElement[]) => {
   });
 };
 
-const renderSteppedLoadSelect = (
-  select: HTMLSelectElement | null,
-  profile: SteppedLoadProfile,
-  selectedStepId?: string,
-  options?: {
-    includeBlank?: boolean;
-    includeOffSteps?: boolean;
-  },
-) => {
-  if (!select) return;
-  const selectElement = select;
-  const includeBlank = options?.includeBlank === true;
-  const includeOffSteps = options?.includeOffSteps !== false;
-  const selectableSteps = sortSteppedLoadSteps(profile.steps)
-    .filter((step) => includeOffSteps || step.planningPowerW > 0);
-  const fallbackStepId = getSteppedLoadRestoreStep(profile)?.id;
-  let nextSelected = fallbackStepId;
-  if (selectedStepId && selectableSteps.some((step) => step.id === selectedStepId)) {
-    nextSelected = selectedStepId;
-  } else if (includeBlank) {
-    nextSelected = '';
-  }
-  selectElement.innerHTML = '';
-  if (includeBlank) {
-    const blank = document.createElement('option');
-    blank.value = '';
-    blank.textContent = 'Not set';
-    selectElement.appendChild(blank);
-  }
-  selectableSteps.forEach((step) => {
-    const option = document.createElement('option');
-    option.value = step.id;
-    option.textContent = `${step.id} (${step.planningPowerW} W)`;
-    option.selected = step.id === nextSelected;
-    selectElement.appendChild(option);
-  });
-};
-
-const resolveSteppedShedStepId = (device: TargetDeviceSnapshot): string => {
-  const profile = resolveSavedSteppedLoadProfile(device);
-  return getSteppedLoadRestoreStep(profile ?? getDraftProfileFromCurrentDevice(device))?.id ?? '';
-};
-
-const renderSteppedLoadShedStepSelect = (device: TargetDeviceSnapshot): void => {
-  if (!deviceDetailShedStep) return;
-  const profile = resolveSavedSteppedLoadProfile(device);
-  if (!profile) {
-    deviceDetailShedStep.innerHTML = '';
-    deviceDetailShedStep.disabled = true;
-    return;
-  }
-  const configuredStepId = state.shedBehaviors[device.id]?.stepId;
-  renderSteppedLoadSelect(deviceDetailShedStep, profile, configuredStepId, {
-    includeOffSteps: false,
-  });
-  deviceDetailShedStep.disabled = profile.steps.every((step) => step.planningPowerW <= 0);
-};
-
 const getDraftProfileFromCurrentDevice = (device: TargetDeviceSnapshot): SteppedLoadProfile => (
   currentSteppedLoadDraft
   ?? resolveSavedSteppedLoadProfile(device)
@@ -347,7 +289,6 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   }
 };
 
-// eslint-disable-next-line complexity
 const setDeviceDetailShedBehavior = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   const supportsTemperature = supportsTemperatureDevice(device);
@@ -365,12 +306,7 @@ const setDeviceDetailShedBehavior = (deviceId: string) => {
     });
     deviceDetailShedAction.value = nextAction === 'set_step' && !supportsStep ? 'turn_off' : nextAction;
   }
-  if (supportsStep && device) {
-    renderSteppedLoadShedStepSelect(device);
-    if (deviceDetailShedStep && !deviceDetailShedStep.value) {
-      deviceDetailShedStep.value = resolveSteppedShedStepId(device);
-    }
-  } else if (deviceDetailShedStep) {
+  if (deviceDetailShedStep) {
     deviceDetailShedStep.innerHTML = '';
     deviceDetailShedStep.disabled = true;
   }
@@ -470,7 +406,6 @@ const resolveTemperatureShedBehavior = (deviceId: string): {
 
 const resolveSteppedLoadShedBehavior = (deviceId: string): {
   behavior: { action: ShedAction; stepId?: string };
-  updateStepInput?: string;
 } => {
   const device = getDeviceById(deviceId);
   if (!device || !isSteppedLoadControlModel(device)) {
@@ -480,13 +415,7 @@ const resolveSteppedLoadShedBehavior = (deviceId: string): {
   if (action === 'turn_off') {
     return { behavior: { action: 'turn_off' } };
   }
-  const stepId = deviceDetailShedStep?.value
-    || state.shedBehaviors[deviceId]?.stepId
-    || resolveSteppedShedStepId(device);
-  return {
-    behavior: stepId ? { action: 'set_step', stepId } : { action: 'turn_off' },
-    updateStepInput: stepId || undefined,
-  };
+  return { behavior: { action: 'set_step' } };
 };
 
 const updateShedTempVisibility = () => {
@@ -511,16 +440,8 @@ const updateShedTempVisibility = () => {
 };
 
 const updateShedStepVisibility = () => {
-  if (!deviceDetailShedAction || !deviceDetailShedStepRow) return;
-  const device = currentDetailDeviceId ? getDeviceById(currentDetailDeviceId) : null;
-  const showStepRow = resolveVisibleShedAction(device) === 'set_step';
-  deviceDetailShedStepRow.hidden = !showStepRow;
-  if (deviceDetailShedStep) {
-    deviceDetailShedStep.disabled = !showStepRow;
-    if (showStepRow && device && !deviceDetailShedStep.value) {
-      deviceDetailShedStep.value = resolveSteppedShedStepId(device);
-    }
-  }
+  if (!deviceDetailShedStepRow) return;
+  deviceDetailShedStepRow.hidden = true;
 };
 
 const resolveVisibleShedAction = (
@@ -565,11 +486,8 @@ const saveShedBehavior = async () => {
     return;
   }
   if (isSteppedLoadControlModel(device) && deviceDetailShedAction?.value === 'set_step') {
-    const { behavior, updateStepInput } = resolveSteppedLoadShedBehavior(deviceId);
+    const { behavior } = resolveSteppedLoadShedBehavior(deviceId);
     state.shedBehaviors[deviceId] = behavior;
-    if (updateStepInput && deviceDetailShedStep) {
-      deviceDetailShedStep.value = updateStepInput;
-    }
     await setSetting(OVERSHOOT_BEHAVIORS, state.shedBehaviors);
     return;
   }
@@ -619,12 +537,9 @@ const saveSteppedLoadProfile = async () => {
   currentSteppedLoadDraft = profile;
   const existingShedBehavior = state.shedBehaviors[deviceId];
   if (existingShedBehavior?.action === 'set_step') {
-    const validStep = profile.steps.find((step) => step.id === existingShedBehavior.stepId && step.planningPowerW > 0);
-    const fallbackStepId = getSteppedLoadRestoreStep(profile)?.id;
-    if (validStep) {
-      state.shedBehaviors[deviceId] = existingShedBehavior;
-    } else if (fallbackStepId) {
-      state.shedBehaviors[deviceId] = { action: 'set_step', stepId: fallbackStepId };
+    const lowestActiveStepId = getSteppedLoadLowestActiveStep(profile)?.id;
+    if (lowestActiveStepId) {
+      state.shedBehaviors[deviceId] = { action: 'set_step' };
     } else {
       state.shedBehaviors[deviceId] = { action: 'turn_off' };
     }

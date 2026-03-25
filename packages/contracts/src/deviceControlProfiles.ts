@@ -28,8 +28,13 @@ export const getSteppedLoadHighestStep = (profile: SteppedLoadProfile): SteppedL
   sortSteppedLoadSteps(profile.steps).at(-1) ?? null
 );
 
-export const getSteppedLoadRestoreStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => (
+export const getSteppedLoadLowestActiveStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => (
   sortSteppedLoadSteps(profile.steps).find((step) => step.planningPowerW > 0)
+    ?? null
+);
+
+export const getSteppedLoadRestoreStep = (profile: SteppedLoadProfile): SteppedLoadStep | null => (
+  getSteppedLoadLowestActiveStep(profile)
     ?? getSteppedLoadHighestStep(profile)
 );
 
