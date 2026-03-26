@@ -189,6 +189,9 @@ function getObservedCapabilityIds(
   if (previous.measuredPowerKw !== next.measuredPowerKw) {
     capabilityIds.add('measure_power');
   }
+  if (previous.evChargingState !== next.evChargingState) {
+    capabilityIds.add('evcharger_charging_state');
+  }
 
   const previousTargetsById = new Map(previous.targets.map((target) => [target.id, target]));
   for (const nextTarget of next.targets) {

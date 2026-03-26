@@ -95,6 +95,21 @@ const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 1
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+
+function toPersistedTargetSnapshotFingerprint(value: unknown): string {
+  if (!Array.isArray(value)) return toStableFingerprint(value);
+  return toStableFingerprint(value.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+    const {
+      lastFreshDataMs: _lastFreshDataMs,
+      lastUpdated: _lastUpdated,
+      lastLocalWriteMs: _lastLocalWriteMs,
+      ...rest
+    } = entry as Record<string, unknown>;
+    return rest;
+  }));
+}
+
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
   private capacityGuard?: CapacityGuard;
@@ -937,7 +952,7 @@ class PelsApp extends Homey.App {
           cleanupMissingDevices: true,
         });
         const existingSnapshot = this.homey.settings.get('target_devices_snapshot') as unknown;
-        if (toStableFingerprint(existingSnapshot) !== toStableFingerprint(snapshot)) {
+        if (toPersistedTargetSnapshotFingerprint(existingSnapshot) !== toPersistedTargetSnapshotFingerprint(snapshot)) {
           this.homey.settings.set('target_devices_snapshot', snapshot);
         } else {
           this.logDebug('devices', 'Target devices snapshot unchanged, skipping settings write');

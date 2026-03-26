@@ -214,6 +214,7 @@ function buildBasePlanDevice(params: {
     currentTarget,
     plannedTarget: resolvedPlannedTarget,
     observationStale: dev.observationStale,
+    communicationModel: dev.communicationModel,
     controlModel: dev.controlModel,
     steppedLoadProfile: dev.steppedLoadProfile,
     selectedStepId: dev.selectedStepId,
