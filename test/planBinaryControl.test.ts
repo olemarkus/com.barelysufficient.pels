@@ -294,6 +294,7 @@ describe('plan binary control helpers', () => {
       logContext: 'capacity',
     })).resolves.toBe(true);
 
+    const logDebug = jest.fn();
     const changed = syncPendingBinaryCommands({
       state,
       liveDevices: [{
@@ -304,14 +305,121 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'rebuild',
-      logDebug: jest.fn(),
+      logDebug,
     });
 
-    expect(changed).toBe(false);
+    expect(changed).toBe(true);
     expect(state.pendingBinaryCommands.socket1).toMatchObject({
       capabilityId: 'onoff',
       desired: true,
+      lastObservedValue: false,
+      lastObservedSource: 'rebuild',
     });
+    expect(logDebug).toHaveBeenCalledWith(
+      'Capacity: waiting for onoff confirmation for Socket; observed off via rebuild, expected on',
+    );
+  });
+
+  it('logs unexpected conflicting telemetry while a binary command is still pending', async () => {
+    const state = createPlanEngineState();
+
+    await expect(setBinaryControl({
+      state,
+      deviceManager: {
+        setCapability: jest.fn().mockResolvedValue(undefined),
+        getSnapshot: jest.fn().mockReturnValue([]),
+      } as never,
+      updateLocalSnapshot: jest.fn(),
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: true,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        currentOn: false,
+      },
+      logContext: 'capacity',
+    })).resolves.toBe(true);
+
+    const logDebug = jest.fn();
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'socket1',
+        name: 'Socket',
+        currentOn: false,
+        hasBinaryControl: true,
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug,
+    });
+
+    expect(changed).toBe(true);
+    expect(state.pendingBinaryCommands.socket1).toMatchObject({
+      capabilityId: 'onoff',
+      desired: true,
+      lastObservedValue: false,
+      lastObservedSource: 'snapshot_refresh',
+    });
+    expect(logDebug).toHaveBeenCalledWith(
+      'Capacity: waiting for onoff confirmation for Socket; observed off via snapshot_refresh, expected on',
+    );
+  });
+
+  it('confirms pending EV commands from charging state, not only currentOn', async () => {
+    const state = createPlanEngineState();
+
+    await expect(setBinaryControl({
+      state,
+      deviceManager: {
+        setCapability: jest.fn().mockResolvedValue(undefined),
+        getSnapshot: jest.fn().mockReturnValue([]),
+      } as never,
+      updateLocalSnapshot: jest.fn(),
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+      deviceId: 'ev1',
+      name: 'EV',
+      desired: false,
+      snapshot: {
+        id: 'ev1',
+        name: 'EV',
+        controlCapabilityId: 'evcharger_charging',
+        canSetControl: true,
+        currentOn: true,
+        evChargingState: 'plugged_in_charging',
+      },
+      logContext: 'capacity',
+    })).resolves.toBe(true);
+
+    const logDebug = jest.fn();
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: true,
+        evChargingState: 'plugged_in_paused',
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        targets: [],
+      }],
+      source: 'device_update',
+      logDebug,
+    });
+
+    expect(changed).toBe(true);
+    expect(state.pendingBinaryCommands.ev1).toBeUndefined();
+    expect(logDebug).toHaveBeenCalledWith(
+      'Capacity: confirmed evcharger_charging for EV at paused via device_update',
+    );
   });
 
   it('handles missing, blocked, and failing binary control requests', async () => {
