@@ -12,16 +12,10 @@ export function shouldNormalizeKeepReason(reason: string | undefined): boolean {
 export function getBaseShedReason(params: {
   dev: DevicePlanDevice;
   shedReasons: Map<string, string>;
-  activeOvershoot: boolean;
-  inCooldown: boolean;
-  shedCooldownRemainingSec: number | null;
 }): string {
   const {
     dev,
     shedReasons,
-    activeOvershoot,
-    inCooldown,
-    shedCooldownRemainingSec,
   } = params;
   const isSwapReason = typeof dev.reason === 'string'
     && (dev.reason.includes('swapped out') || dev.reason.includes('swap pending'));
@@ -33,9 +27,6 @@ export function getBaseShedReason(params: {
   const baseReason = shedReasons.get(dev.id)
     || (hasSpecialReason && dev.reason)
     || 'shed due to capacity';
-  if (inCooldown && !activeOvershoot && !dev.reason?.includes('swap')) {
-    return `cooldown (shedding, ${shedCooldownRemainingSec ?? 0}s remaining)`;
-  }
   return baseReason;
 }
 

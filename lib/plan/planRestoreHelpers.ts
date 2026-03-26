@@ -94,7 +94,7 @@ export function shouldBlockRestoreForPendingSwap(
       continue;
     }
     const swapTargetPriority = swapTargetDev.priority ?? 100;
-    if (swapTargetPriority >= devPriority && swapTargetDev.currentState === 'off') {
+    if (swapTargetPriority <= devPriority && swapTargetDev.currentState === 'off') {
       setRestorePlanDevice(deviceMap, dev.id, {
         plannedState: 'shed',
         reason: `swap pending (${swapTargetDev.name})`,
