@@ -43,9 +43,6 @@ export function getLatestDeviceObservationMs(device: DeviceObservationLike): num
   if (typeof device.lastFreshDataMs === 'number' && device.lastFreshDataMs > 0) {
     return device.lastFreshDataMs;
   }
-  if (typeof device.lastLocalWriteMs === 'number' && device.lastLocalWriteMs > 0) {
-    return device.lastLocalWriteMs;
-  }
   return undefined;
 }
 

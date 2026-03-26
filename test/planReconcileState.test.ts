@@ -310,5 +310,24 @@ describe('planReconcileState stepped device drift', () => {
       expect(result.devices[0].currentState).toBe('unknown');
       expect(result.devices[0].observationStale).toBe(true);
     });
+
+    it('refreshes binaryCommandPending from live state so cleared pending does not stick', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'off',
+        binaryCommandPending: true,
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        binaryCommandPending: false,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0].binaryCommandPending).toBe(false);
+    });
   });
 });

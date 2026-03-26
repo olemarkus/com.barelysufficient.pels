@@ -37,6 +37,7 @@ export function handleRealtimeDeviceUpdate(params: {
   recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   shouldTrackRealtimeDevice: (deviceId: string) => boolean;
   parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+  recordObservedCapabilities?: (deviceId: string, capabilityIds: string[]) => void;
   notePendingBinarySettleObservation?: (
     deviceId: string,
     capabilityId: string,
@@ -52,6 +53,7 @@ export function handleRealtimeDeviceUpdate(params: {
     recentLocalCapabilityWrites,
     shouldTrackRealtimeDevice,
     parseDevice,
+    recordObservedCapabilities,
     notePendingBinarySettleObservation,
     logDebug,
     emitPlanReconcile,
@@ -81,6 +83,9 @@ export function handleRealtimeDeviceUpdate(params: {
   });
   const filteredChanges = settleResult.changes;
   const shouldReconcilePlan = filteredChanges.length > 0;
+  if (result.observedCapabilityIds.length > 0) {
+    recordObservedCapabilities?.(deviceId, result.observedCapabilityIds);
+  }
   let reconcileSuffix = '';
   if (settleResult.binaryChangeDeferred) {
     reconcileSuffix = ' [binary settling]';

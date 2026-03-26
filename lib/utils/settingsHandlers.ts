@@ -33,6 +33,10 @@ import {
   PRICE_SCHEME,
 } from './settingsKeys';
 import { incPerfCounters } from './perfCounters';
+import {
+  createDebouncedSyncScheduler,
+  type DebouncedSyncScheduler,
+} from './settingsHandlerDebounce';
 import { toStableFingerprint } from './stableFingerprint';
 export type PriceServiceLike = {
   refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
@@ -104,10 +108,7 @@ const DEDUPED_DAILY_BUDGET_KEYS = [
   DAILY_BUDGET_PRICE_FLEX_SHARE,
 ];
 
-const DEDUPED_LOGGING_KEYS = [
-  'debug_logging_enabled',
-  DEBUG_LOGGING_TOPICS,
-];
+const DEDUPED_LOGGING_KEYS = ['debug_logging_enabled', DEBUG_LOGGING_TOPICS];
 
 const DEDUPED_WRITE_KEYS = new Set<string>([
   ...DEDUPED_CAPACITY_KEYS,
@@ -117,101 +118,6 @@ const DEDUPED_WRITE_KEYS = new Set<string>([
 ]);
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
 const DAILY_BUDGET_SETTINGS_REBUILD_DEBOUNCE_MS = 500;
-
-type DebouncedSyncSchedulerParams = {
-  debounceMs: number;
-  rerunAfterRun?: 'debounce' | 'immediate';
-  run: () => Promise<void>;
-  onError: (error: unknown) => void;
-};
-
-type DebouncedSyncScheduler = {
-  schedule: () => Promise<void>;
-  stop: () => void;
-};
-
-const createDebouncedSyncScheduler = (
-  params: DebouncedSyncSchedulerParams,
-): DebouncedSyncScheduler => {
-  const {
-    debounceMs,
-    rerunAfterRun = 'debounce',
-    run,
-    onError,
-  } = params;
-
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let running = false;
-  let rerunRequested = false;
-  let pendingRun: Promise<void> | null = null;
-  let resolvePendingRun: (() => void) | null = null;
-
-  const ensurePendingRun = (): Promise<void> => {
-    if (!pendingRun) {
-      pendingRun = new Promise((resolve) => {
-        resolvePendingRun = resolve;
-      });
-    }
-    return pendingRun;
-  };
-
-  const finishPendingRun = (): void => {
-    const resolve = resolvePendingRun;
-    resolvePendingRun = null;
-    pendingRun = null;
-    resolve?.();
-  };
-
-  const executeRun = (): void => {
-    timer = null;
-    running = true;
-    void Promise.resolve()
-      .then(() => run())
-      .catch((error) => onError(error))
-      .finally(() => {
-        running = false;
-        if (rerunRequested) {
-          rerunRequested = false;
-          if (rerunAfterRun === 'immediate') {
-            executeRun();
-            return;
-          }
-          scheduleRun();
-          return;
-        }
-        finishPendingRun();
-      });
-  };
-
-  const scheduleRun = (): void => {
-    if (timer) {
-      clearTimeout(timer);
-    }
-    timer = setTimeout(() => {
-      executeRun();
-    }, debounceMs);
-  };
-
-  return {
-    schedule: (): Promise<void> => {
-      const promise = ensurePendingRun();
-      if (running) {
-        rerunRequested = true;
-        return promise;
-      }
-      scheduleRun();
-      return promise;
-    },
-    stop: (): void => {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      rerunRequested = false;
-      finishPendingRun();
-    },
-  };
-};
 
 export type SettingsHandler = ((key: string) => Promise<void>) & {
   stop: () => void;
@@ -252,32 +158,24 @@ type NoopWriteSkipper = {
 };
 
 type SettingsHandlerMap = Record<string, () => Promise<void>>;
+const DAILY_BUDGET_SETTING_KEYS = [
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
+  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  DAILY_BUDGET_CONTROLLED_WEIGHT,
+  DAILY_BUDGET_PRICE_FLEX_SHARE,
+] as const;
 
 const buildDailyBudgetSettingsHandlers = (
   scheduleDailyBudgetSettingsSync: () => Promise<void>,
 ): Pick<SettingsHandlerMap,
-  typeof DAILY_BUDGET_ENABLED
-  | typeof DAILY_BUDGET_KWH
-  | typeof DAILY_BUDGET_PRICE_SHAPING_ENABLED
-  | typeof DAILY_BUDGET_CONTROLLED_WEIGHT
-  | typeof DAILY_BUDGET_PRICE_FLEX_SHARE
-> => ({
-  [DAILY_BUDGET_ENABLED]: async () => {
+  typeof DAILY_BUDGET_SETTING_KEYS[number]
+> => Object.fromEntries(DAILY_BUDGET_SETTING_KEYS.map((key) => [
+  key,
+  async () => {
     void scheduleDailyBudgetSettingsSync();
   },
-  [DAILY_BUDGET_KWH]: async () => {
-    void scheduleDailyBudgetSettingsSync();
-  },
-  [DAILY_BUDGET_PRICE_SHAPING_ENABLED]: async () => {
-    void scheduleDailyBudgetSettingsSync();
-  },
-  [DAILY_BUDGET_CONTROLLED_WEIGHT]: async () => {
-    void scheduleDailyBudgetSettingsSync();
-  },
-  [DAILY_BUDGET_PRICE_FLEX_SHARE]: async () => {
-    void scheduleDailyBudgetSettingsSync();
-  },
-});
+])) as Pick<SettingsHandlerMap, typeof DAILY_BUDGET_SETTING_KEYS[number]>;
 
 const createNoopWriteSkipper = (deps: SettingsHandlerDeps): NoopWriteSkipper => {
   const lastProcessedFingerprints = new Map<string, string>();
@@ -337,7 +235,6 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
   });
 }
 
-// eslint-disable-next-line max-lines-per-function
 function buildSettingsHandlers(
   deps: SettingsHandlerDeps,
   scheduleDailyBudgetPriceSync: () => Promise<void>,
@@ -345,6 +242,14 @@ function buildSettingsHandlers(
 ): SettingsHandlerMap {
   return {
     ...buildDailyBudgetSettingsHandlers(scheduleDailyBudgetSettingsSync),
+    ...buildCapacitySettingsHandlers(deps),
+    ...buildPriceSettingsHandlers(deps, scheduleDailyBudgetPriceSync),
+    ...buildMiscSettingsHandlers(deps),
+  };
+}
+
+function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
+  return {
     mode_device_targets: async () => handleModeTargetsChange(deps),
     [OPERATING_MODE_SETTING]: async () => handleModeTargetsChange(deps),
     mode_aliases: async () => deps.loadCapacitySettings(),
@@ -393,9 +298,22 @@ function buildSettingsHandlers(
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, 'capacity_dry_run');
     },
+    [OVERSHOOT_BEHAVIORS]: async () => {
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after overshoot behavior change');
+      await rebuildPlanFromSettings(deps, OVERSHOOT_BEHAVIORS);
+    },
     refresh_target_devices_snapshot: async () => {
       await refreshSnapshotWithLog(deps, 'Failed to refresh target devices snapshot');
     },
+  };
+}
+
+function buildPriceSettingsHandlers(
+  deps: SettingsHandlerDeps,
+  scheduleDailyBudgetPriceSync: () => Promise<void>,
+): SettingsHandlerMap {
+  return {
     refresh_nettleie: async () => {
       try {
         await deps.priceService.refreshGridTariffData(true);
@@ -441,17 +359,17 @@ function buildSettingsHandlers(
     [COMBINED_PRICES]: async () => {
       void scheduleDailyBudgetPriceSync();
     },
-    [OVERSHOOT_BEHAVIORS]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after overshoot behavior change');
-      await rebuildPlanFromSettings(deps, OVERSHOOT_BEHAVIORS);
-    },
     [POWER_SOURCE]: async () => handlePowerSourceChange(deps),
     [PRICE_OPTIMIZATION_ENABLED]: async () => {
       deps.updatePriceOptimizationEnabled(true);
       deps.updateDailyBudgetState({ forcePlanRebuild: true });
       await rebuildPlanFromSettings(deps, 'price_optimization_enabled');
     },
+  };
+}
+
+function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
+  return {
     [DAILY_BUDGET_RESET]: async () => {
       deps.resetDailyBudgetLearning();
       deps.updateDailyBudgetState({ forcePlanRebuild: true });

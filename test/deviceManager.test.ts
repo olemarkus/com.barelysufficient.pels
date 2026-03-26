@@ -1493,7 +1493,7 @@ describe('DeviceManager', () => {
 
                 await deviceManager.refreshSnapshot();
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    lastFreshDataMs: new Date('2026-03-20T05:59:00.000Z').getTime(),
+                    lastFreshDataMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
                     lastLocalWriteMs: undefined,
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 23 })],
                 }));
@@ -1528,13 +1528,50 @@ describe('DeviceManager', () => {
                 await deviceManager.refreshSnapshot();
 
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    lastFreshDataMs: new Date('2026-03-20T05:59:30.000Z').getTime(),
+                    lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                     lastLocalWriteMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 16 })],
                 }));
                 expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining(
                     'Device snapshot refresh preserved newer local_write target_temperature for Heater (dev1)',
                 ));
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('uses snapshot refresh time as the freshness baseline for stable devices', async () => {
+            jest.useFakeTimers();
+            try {
+                await deviceManager.init();
+                jest.setSystemTime(new Date('2026-03-20T06:10:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: {
+                                value: 1000,
+                                id: 'measure_power',
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            onoff: {
+                                value: true,
+                                id: 'onoff',
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    lastFreshDataMs: new Date('2026-03-20T06:10:00.000Z').getTime(),
+                    lastUpdated: new Date('2026-03-20T06:10:00.000Z').getTime(),
+                }));
             } finally {
                 jest.useRealTimers();
             }
@@ -1713,6 +1750,185 @@ describe('DeviceManager', () => {
                     nextValue: 'on',
                 }],
             });
+        });
+
+        it('records device.update freshness before emitting reconcile', async () => {
+            jest.useFakeTimers();
+            try {
+                await deviceManager.init();
+                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: {
+                                value: 1000,
+                                id: 'measure_power',
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            onoff: {
+                                value: true,
+                                id: 'onoff',
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+
+                const freshnessSeenAtEmit: Array<number | undefined> = [];
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, () => {
+                    freshnessSeenAtEmit.push(deviceManager.getSnapshot()[0]?.lastFreshDataMs);
+                });
+
+                jest.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
+                emitMockSdkDeviceUpdate({
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: false, id: 'onoff' },
+                    },
+                });
+
+                expect(freshnessSeenAtEmit).toEqual([
+                    new Date('2026-03-20T06:05:00.000Z').getTime(),
+                ]);
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('treats ev state-only device.update events as fresh observations', async () => {
+            jest.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+
+                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_complete',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+
+                jest.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                emitMockSdkDeviceUpdate({
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                    capabilitiesObj: {
+                        evcharger_charging: { id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
+                        measure_power: { value: 0, id: 'measure_power' },
+                    },
+                });
+
+                expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    evChargingState: 'plugged_in_paused',
+                    lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('preserves fresher ev charger state across a stale snapshot refresh', async () => {
+            jest.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+
+                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_complete',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+
+                jest.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                emitMockSdkDeviceUpdate({
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                    capabilitiesObj: {
+                        evcharger_charging: { id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: { value: 'plugged_in_paused', id: 'evcharger_charging_state' },
+                        measure_power: { value: 0, id: 'measure_power' },
+                    },
+                });
+
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_complete',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T05:59:30.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+
+                expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    evChargingState: 'plugged_in_paused',
+                    lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                jest.useRealTimers();
+            }
         });
 
         it('suppresses stale device.update drift immediately after a local binary write', async () => {

@@ -31,6 +31,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         measuredPowerKw: live.measuredPowerKw,
         controlCapabilityId: live.controlCapabilityId,
         evChargingState: live.evChargingState,
+        binaryCommandPending: live.binaryCommandPending,
         available: live.available,
         zone: live.zone ?? device.zone,
         controllable: live.controllable ?? device.controllable,
