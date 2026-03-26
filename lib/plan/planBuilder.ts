@@ -316,6 +316,8 @@ export class PlanBuilder {
       restoredThisCycle: restoreResult.restoredThisCycle,
       shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
       holdDuringRestoreCooldown: restoreResult.inRestoreCooldown,
+      restoreCooldownSeconds: restoreResult.restoreCooldownSeconds,
+      restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
     }));
   }

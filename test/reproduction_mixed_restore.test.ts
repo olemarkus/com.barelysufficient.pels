@@ -161,10 +161,12 @@ describe('Mixed Type Restoration Throttling', () => {
         // The one that WAS shed should STAY shed (Cooldown)
         if (d1Restored) {
             expect(d2RestoredC2).toBe(false);
+            expect(d2Cycles2.reason).toMatch(/cooldown \(restore|restore throttled/);
             // Ensure it's blocked by COOLDOWN, not throttling
             // (Though throttling resets every cycle, cooldown is persistent)
         } else {
             expect(d1RestoredC2).toBe(false);
+            expect(d1Cycles2.reason).toMatch(/cooldown \(restore|restore throttled/);
         }
 
         // 4. After Cooldown (60s)
@@ -178,8 +180,10 @@ describe('Mixed Type Restoration Throttling', () => {
 
         if (d1Restored) {
             expect(d2Cycles3.plannedState).toBe('shed');
+            expect(d2Cycles3.reason).toMatch(/cooldown \(restore|restore throttled/);
         } else {
             expect(d1Cycles3.plannedState).toBe('shed');
+            expect(d1Cycles3.reason).toMatch(/cooldown \(restore|restore throttled/);
         }
 
         // 5. After restore cooldown window

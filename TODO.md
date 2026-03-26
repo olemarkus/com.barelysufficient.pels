@@ -129,10 +129,36 @@ or present requested state as confirmed reality.
       Anchor scenario: a Connected 300 may take about 60s from command send to confirmative
       telemetry. During that full window, PELS should stay in pending/awaiting-confirmation
       state without treating the device as confirmed on, reissuing the command, or declaring
-      drift prematurely. The same principle also applies to slow stepped-load confirmations
-      where a step change takes similar time to show up in trusted telemetry.
+      drift prematurely. That includes avoiding restore retry loops caused by a pending timeout
+      that expires before a slow device has any chance to report confirmed state. The same
+      principle also applies to slow stepped-load confirmations where a step change takes
+      similar time to show up in trusted telemetry.
       Files: `planTypes.ts`, device config, `planBinaryControl.ts`,
       `appDeviceControlHelpers.ts`, `planReconcileState.ts`.
+- [ ] Make downward stepped-load changes conservative end-to-end. A pending step-down may update
+      desired state, but planning and overshoot protection must keep using the last confirmed /
+      effective step and power until telemetry confirms the lower step. Do not count unconfirmed
+      freed capacity early, and make repeated downward requests collapse cleanly without treating
+      desired step as confirmed actual state.
+      Files: `appDeviceControlHelpers.ts`, `planSteppedLoad.ts`, `planShedding.ts`,
+      `planDevices.ts`, `planExecutor.ts`.
+- [ ] Enforce one shared restore cooldown gate for every capacity-driven restore path. Normal
+      restore, swap restore, stepped restore, rebuild-triggered restore, and feedback-triggered
+      restore should all consult the same cooldown state and emit a clear "blocked by cooldown"
+      reason when headroom exists but restore is still intentionally delayed.
+      Files: `planRestore.ts`, `planRestoreDevices.ts`, `planBuilder.ts`, `planReasons.ts`.
+- [ ] Preserve enough provisional post-command state for laggy/cloud devices that a requested but
+      unconfirmed restore is not invisible to overshoot control. Today a device can remain
+      `currentOn=false` until telemetry arrives even if it has already started drawing power,
+      which can exclude it from shedding candidates and weaken hard-cap protection.
+      Files: planning/reconciliation state model, `planShedding.ts`, `planDevices.ts`,
+      `planReconcileState.ts`.
+- [ ] Make binary drift/reconcile state internally consistent. Realtime updates should refresh
+      observed state before drift evaluation, drift reapply should always target plan state, and
+      logs should separate observed transition from corrective command direction instead of
+      implying that PELS is intentionally applying the drifted state.
+      Files: `deviceManagerRealtimeHandlers.ts`, `appRealtimeDeviceReconcile.ts`,
+      `appRealtimeDeviceReconcileRuntime.ts`, `planReconcileState.ts`, `planExecutor.ts`.
 - [ ] Audit `measuredPowerKw` assignment so it only comes from `measure_power` telemetry, never
       configured load, expected load, or step-derived nominal power.
       Files: `appDeviceControlHelpers.ts`, snapshot decoration pipeline.
@@ -166,6 +192,10 @@ question in different ways.
       consistent per-device pending-action model and shared timeout / confirmation semantics.
       Files: `planState.ts`, `planBinaryControl.ts`, `planTargetControl.ts`,
       `appDeviceControlHelpers.ts`.
+- [ ] Make stepped-load logs name their source of truth explicitly. Requested/confirmed step logs
+      should distinguish desired step, last confirmed step, and effective planning step so stale
+      desired state is never presented as actual device state.
+      Files: stepped feedback logging path, `planExecutor.ts`, `planLogging.ts`.
 - [ ] Standardize restore eligibility checks across normal restore, stepped restore, and swap
       restore so "can this device restore?" has one consistent answer.
       Files: `planRestoreDevices.ts`, `planRestoreSwap.ts`.
@@ -197,8 +227,23 @@ question in different ways.
       Files: stepped-load planning / executor tests.
 - [ ] Add restore-pending follow-up tests for per-device scoping, retry-window expiry,
       confirmation clearing, no-false-pending cases, unaffected on/off restore flow, and status
-      classification.
+      classification. Include slow-device cases where confirmation arrives after ~60s and verify
+      PELS neither reissues restore prematurely nor loses track of likely-live load during the
+      pending window.
       Files: restore / reconciliation / status test suites.
+- [ ] Add conservative pending-step test coverage: delayed `Max -> Low` confirmation must not
+      free headroom early, overshoot during pending step-down must still shed other loads, and
+      repeated downward requests must coalesce without changing effective planning power before
+      confirmation.
+      Files: stepped-load planning / shedding tests, mixed restore/shedding integration tests.
+- [ ] Add restore-cooldown branch-coverage tests so rebuild-triggered restore, swap restore, and
+      feedback-triggered restore all respect the same cooldown gate and log why restore was
+      blocked.
+      Files: restore planning / app integration tests.
+- [ ] Add binary drift consistency tests that assert observed-state update ordering, correct
+      reapply target direction, and duplicate reconcile suppression while an equivalent command is
+      already pending.
+      Files: realtime reconcile tests, device manager realtime tests, executor/reconcile tests.
 
 ## P3 Architecture, tooling, and perf tightening
 
@@ -229,6 +274,10 @@ question in different ways.
       `resolveRemainingFloors`, and `buildControlledMinFloors` do not repeatedly call
       `getZonedParts`.
       Files: plan rebuild helpers.
+- [ ] Investigate long-running `planRebuildApply` stalls (observed `applyMs` up to ~90s) and add
+      enough timing / queue instrumentation to distinguish slow Homey writes, delayed refreshes,
+      and local sequencing bottlenecks before they distort cooldown and control timing.
+      Files: apply path instrumentation, perf logging, executor / plan service timing.
 
 ## P4 Future extensibility
 
