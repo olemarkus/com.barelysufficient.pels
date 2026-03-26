@@ -29,6 +29,7 @@ node_modules/@napi-rs/canvas-win32-x64-msvc/
 .homeybuild/
 
 docs/
+notes/
 
 playwright.config.ts
 scripts/

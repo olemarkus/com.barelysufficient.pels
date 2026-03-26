@@ -1,0 +1,274 @@
+# State Management Notes
+
+This note is for contributors working on runtime state, drift handling, snapshot refresh, and post-actuation behavior.
+
+The core problem is simple:
+
+- PELS has multiple overlapping views of device state
+- those views arrive with different latency and reliability
+- Homey can return older data after a newer local write or realtime update
+- if PELS treats "requested" state as "observed" state, control becomes dishonest
+
+This document exists to keep those distinctions explicit.
+
+## Main Rule
+
+PELS must keep these concepts separate:
+
+- `planned` state: what the current plan wants
+- `commanded` state: what PELS most recently asked Homey/device to do
+- `observed` state: what trusted telemetry most recently says the device is doing
+- `effective planning` state: what the planner should conservatively assume right now
+- `pending` state: requested but not yet confirmed
+
+Most bugs in this area come from collapsing two of those into one.
+
+## Data Sources
+
+### 1. Local command/write path
+
+Examples:
+
+- `setCapabilityValue(...)`
+- pending binary/target/step command state
+- local "just wrote this" timestamps
+
+Use it for:
+
+- recording intent
+- suppressing immediate false drift after our own command
+- tracking pending confirmation windows
+- retry/backoff decisions
+
+Do not use it as:
+
+- proof that the device has already changed
+- proof that Homey's next full snapshot is fresh
+- proof that power draw has already changed
+
+Reliability:
+
+- very reliable for "PELS requested X"
+- not reliable for "device is now X"
+
+Known failure mode:
+
+- optimistic local writes make devices appear restored before telemetry confirms them
+
+### 2. Realtime device updates
+
+Examples:
+
+- `device.update`
+- capability change payloads from Homey
+
+Use it for:
+
+- freshest observed state for the changed capability
+- fast drift detection
+- clearing pending state when the update is trustworthy and matches the requested result
+
+Do not assume:
+
+- the event includes every relevant capability
+- unchanged fields in the event are fresh
+- event ordering is perfect relative to local writes and snapshot refreshes
+
+Reliability:
+
+- usually the freshest source for the specific capability that changed
+- only partial, and can still race with local writes or later stale refreshes
+
+Known failure modes:
+
+- partial updates leave other capability fields stale
+- a later snapshot refresh can overwrite fresher realtime state
+- cloud/laggy devices may emit confirmation much later than local devices
+
+### 3. Full snapshot refresh
+
+Examples:
+
+- device list refresh
+- refresh of `latestTargetSnapshot`
+
+Use it for:
+
+- broad state reconstruction
+- capabilities not covered by a recent realtime event
+- availability, metadata, and full-device shape
+
+Do not assume:
+
+- a full fetch is newer than a recent local write
+- a full fetch is newer than a recent realtime event for every field
+
+Reliability:
+
+- broadest coverage
+- not necessarily freshest per field
+
+Known failure modes:
+
+- stale Homey snapshot overwrites a fresher local write or realtime observation
+- planner starts reasoning from rolled-back state
+
+### 4. Measured power telemetry
+
+Examples:
+
+- `measure_power`
+- `meter_power`
+- Homey live energy `values.W`
+- whole-home power samples
+
+Use it for:
+
+- actual load attribution
+- headroom safety
+- detecting whether a supposedly restored device is probably already drawing load
+
+Do not use it as:
+
+- direct proof of binary/onoff state
+- direct proof of selected stepped-load state
+
+Reliability:
+
+- strongest source for "power is being drawn"
+- weaker for "which exact device state caused it"
+
+Known failure modes:
+
+- power arrives later than the command
+- whole-home power is authoritative for safety, but not for exact per-device attribution
+
+### 5. Static config / estimated power
+
+Examples:
+
+- `settings.load`
+- expected power override
+- stepped-load planning power
+
+Use it for:
+
+- restore planning
+- conservative budgeting
+- candidate ordering when measured power is absent
+
+Do not use it as:
+
+- observed live power
+- proof that a command has taken effect
+
+Reliability:
+
+- useful for planning
+- not telemetry
+
+## Trust Order By Question
+
+### "What did PELS ask for?"
+
+Trust:
+
+1. local command state
+2. pending command records
+
+### "What is the freshest observed capability value?"
+
+Trust:
+
+1. recent realtime capability update
+2. recent full snapshot
+3. otherwise unknown/stale
+
+Local write intent does not answer this question.
+
+### "What should the planner assume right now?"
+
+Trust depends on direction and risk:
+
+- for restore/upward movement, pending state may justify "requested, unconfirmed"
+- for shed/downward movement, use the conservative still-high/still-on assumption until confirmation unless there is stronger evidence
+- for hard-cap safety, trust whole-home power over device attribution
+
+### "Did the command succeed?"
+
+Trust:
+
+1. confirming telemetry
+2. timeout expiry means "unknown/failed to confirm", not "confirmed"
+
+Local write alone is not success.
+
+## Observed Homey Challenges
+
+These are the recurring patterns behind the current TODO items.
+
+### Homey can be stale in both directions
+
+- A device may already have changed, while Homey still reports the old state
+- A later full refresh may also be older than a recent local write or realtime event
+
+This is why "just compare live vs plan" is too naive.
+
+### Realtime is fresh but partial
+
+A realtime `onoff` update may be newer than the snapshot for `onoff`, while the target temperature or power field is still only known from the last full fetch.
+
+### Snapshot refresh is broad but can roll state backward
+
+A full fetch can improve coverage while still being older for one or two important fields.
+
+### Power is authoritative for safety, not attribution
+
+Whole-home metering protects against hard-cap overshoot even if PELS misattributes which device changed.
+That lowers the severity of some attribution bugs, but it does not make them harmless for restore order, drift reasoning, or user-visible diagnostics.
+
+### Slow/cloud devices need longer confirmation windows
+
+A device can take tens of seconds before trusted telemetry reflects a command.
+During that window, PELS should:
+
+- remember the request
+- avoid claiming confirmation early
+- avoid declaring drift too early
+- avoid retry loops caused by a too-short pending timeout
+
+## Practical Rules For Reconcile Work
+
+When changing reconcile logic, prefer these rules:
+
+1. Drift should compare observed state against intended plan state, not only against the last stored snapshot value.
+2. Realtime updates should update the observed view before drift evaluation uses that field.
+3. Reapply should target the plan state, not the observed transition direction.
+4. Logs should distinguish:
+   - observed transition
+   - planned target
+   - commanded/pending target
+5. If an equivalent command is already pending, suppress duplicate reapply unless retry policy explicitly allows it.
+
+## Practical Rules For Refresh Merging
+
+When merging snapshot refreshes with local/runtime state:
+
+1. Never let an older full fetch erase a fresher local or realtime observation without evidence it is newer.
+2. Preserve pending command state until confirmation or timeout.
+3. Treat "no confirmation yet" as pending/unknown, not success.
+4. Keep `measure_power`-derived observations separate from estimated/planning power.
+
+## Open Problem Areas
+
+This note does not solve the implementation by itself. The active backlog still includes:
+
+- binary pending confirmation semantics
+- stale-observation handling / freshness thresholds
+- communication-model-aware confirmation windows
+- conservative downward stepped-load semantics
+- provisional post-command state for laggy devices
+- binary drift/reconcile consistency
+- explicit source-of-truth logging for stepped devices
+
+See `TODO.md` for the executable backlog.
