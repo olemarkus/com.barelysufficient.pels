@@ -2210,4 +2210,40 @@ describe('PlanService', () => {
     expect(applyPlanActions).toHaveBeenCalled();
     expect(schedulePostActuationRefresh).toHaveBeenCalledTimes(1);
   });
+
+  it('calls schedulePostActuationRefresh after direct shedding actuation', async () => {
+    const schedulePostActuationRefresh = jest.fn();
+    const applySheddingToDevice = jest.fn().mockResolvedValue(undefined);
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn(),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice,
+      } as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      schedulePostActuationRefresh,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    await service.applySheddingToDevice('dev-1', 'Heater');
+
+    expect(applySheddingToDevice).toHaveBeenCalledWith('dev-1', 'Heater', undefined);
+    expect(schedulePostActuationRefresh).toHaveBeenCalledTimes(1);
+  });
 });

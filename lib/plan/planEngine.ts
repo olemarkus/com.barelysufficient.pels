@@ -21,6 +21,7 @@ import {
   syncPendingTargetCommands,
 } from './planTargetControl';
 import { syncPendingBinaryCommands } from './planBinaryControl';
+import { isPendingBinaryCommandActive } from './planObservationPolicy';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -57,6 +58,7 @@ export type PlanEngineDeps = {
     desiredStepId: string;
     previousStepId?: string;
     issuedAtMs?: number;
+    pendingWindowMs?: number;
   }) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
@@ -197,6 +199,16 @@ export class PlanEngine {
 
   public hasPendingBinaryCommands(): boolean {
     return Object.keys(this.state.pendingBinaryCommands).length > 0;
+  }
+
+  public isBinaryCommandPendingForDevice(
+    deviceId: string,
+    communicationModel?: 'local' | 'cloud',
+  ): boolean {
+    return isPendingBinaryCommandActive({
+      pending: this.state.pendingBinaryCommands[deviceId],
+      communicationModel,
+    });
   }
 
   public evaluateHeadroomForDevice(params: {

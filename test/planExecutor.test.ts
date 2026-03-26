@@ -492,6 +492,7 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'max',
       previousStepId: 'low',
       issuedAtMs: expect.any(Number),
+      pendingWindowMs: expect.any(Number),
     });
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
     expect(state.lastRestoreMs).toEqual(expect.any(Number));

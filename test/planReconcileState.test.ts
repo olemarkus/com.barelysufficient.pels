@@ -105,6 +105,23 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
+    it('does not treat a keep device as drift while a matching binary command is still pending', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'off',
+        plannedState: 'keep',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        binaryCommandPending: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+    });
+
     it('does not treat unknown binary state as keep-plan drift by itself', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'on',
@@ -114,6 +131,23 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         hasBinaryControl: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+    });
+
+    it('does not treat stale live binary observations as drift', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'on',
+        plannedState: 'keep',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        observationStale: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
@@ -241,6 +275,40 @@ describe('planReconcileState stepped device drift', () => {
 
       expect(result.devices[0].currentState).toBe('off');
       expect(result.devices[0].selectedStepId).toBe('max');
+    });
+
+    it('keeps stepped off-step classification consistent with initial planning even when currentOn is true', () => {
+      const plan = buildPlan([buildSteppedDevice({ currentState: 'off', selectedStepId: 'off' })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: true,
+        selectedStepId: 'off',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0].currentState).toBe('off');
+    });
+
+    it('treats stale live binary observations as unknown in the merged plan', () => {
+      const plan = buildPlan([buildBinaryDevice({ currentState: 'on' })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        observationStale: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0].currentState).toBe('unknown');
+      expect(result.devices[0].observationStale).toBe(true);
     });
   });
 });

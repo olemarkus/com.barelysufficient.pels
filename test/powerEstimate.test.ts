@@ -86,6 +86,7 @@ describe('estimatePower', () => {
     expect(result.loadKw).toBeCloseTo(0.65, 3);
     expect(result.expectedPowerSource).toBe('load-setting');
     expect(result.powerKw).toBeCloseTo(0.65, 3);
+    expect(result.measuredPowerKw).toBeUndefined();
     expect(updateLastKnownPower).toHaveBeenCalledWith('dev-1', 0.65, 'Device 1');
   });
 
@@ -116,6 +117,7 @@ describe('estimatePower', () => {
     expect(result.expectedPowerKw).toBeCloseTo(0.1, 6);
     expect(result.powerKw).toBeCloseTo(0.1, 6);
     expect(result.hasEnergyEstimate).toBe(true);
+    expect(result.measuredPowerKw).toBeUndefined();
   });
 
   it('uses canonical device settings energy values when available (usageOn - usageOff)', () => {
@@ -149,6 +151,7 @@ describe('estimatePower', () => {
     expect(result.expectedPowerKw).toBeCloseTo(0.0125, 6);
     expect(result.powerKw).toBeCloseTo(0.0125, 6);
     expect(result.hasEnergyEstimate).toBe(true);
+    expect(result.measuredPowerKw).toBeUndefined();
   });
 
   it('ignores Homey energy usageConstant when delta/on-state estimates are unavailable', () => {
@@ -176,6 +179,7 @@ describe('estimatePower', () => {
     expect(result.expectedPowerSource).toBe('default');
     expect(result.powerKw).toBe(1);
     expect(result.hasEnergyEstimate).toBeUndefined();
+    expect(result.measuredPowerKw).toBeUndefined();
   });
 
   it('falls back to energyObj.W when approximation is unavailable', () => {

@@ -18,14 +18,16 @@ import type {
   SteppedLoadCommandStatus,
   TargetDeviceSnapshot,
 } from '../utils/types';
+import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPolicy';
 
-export const STEPPED_LOAD_COMMAND_STALE_MS = 90 * 1000;
+export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
 
 export type SteppedLoadDesiredRuntimeState = {
   stepId: string;
   previousStepId?: string;
   changedAtMs: number;
   lastIssuedAtMs?: number;
+  pendingWindowMs?: number;
   pending: boolean;
   status: SteppedLoadCommandStatus;
 };
@@ -116,6 +118,7 @@ export const markSteppedLoadDesiredStepIssued = (params: {
   desiredStepId: string;
   previousStepId?: string;
   issuedAtMs?: number;
+  pendingWindowMs?: number;
 }): void => {
   const {
     runtimeState,
@@ -123,12 +126,14 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     desiredStepId,
     previousStepId,
     issuedAtMs = Date.now(),
+    pendingWindowMs,
   } = params;
   runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
     stepId: desiredStepId,
     previousStepId,
     changedAtMs: issuedAtMs,
     lastIssuedAtMs: issuedAtMs,
+    pendingWindowMs,
     pending: true,
     status: 'pending',
   };
@@ -178,7 +183,8 @@ export const pruneStaleSteppedLoadCommandStates = (
   let changed = false;
   for (const [deviceId, desired] of Object.entries(runtimeState.steppedLoadDesiredByDeviceId)) {
     if (!desired.pending || typeof desired.lastIssuedAtMs !== 'number') continue;
-    if (nowMs - desired.lastIssuedAtMs < STEPPED_LOAD_COMMAND_STALE_MS) continue;
+    const pendingWindowMs = desired.pendingWindowMs ?? STEPPED_LOAD_COMMAND_STALE_MS;
+    if (nowMs - desired.lastIssuedAtMs < pendingWindowMs) continue;
     runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
       ...desired,
       pending: false,

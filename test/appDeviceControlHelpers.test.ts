@@ -32,9 +32,34 @@ const baseSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevi
 });
 
 describe('appDeviceControlHelpers', () => {
-  it.todo(
-    'keeps a slow stepped-load step-up pending for 60s before confirmative telemetry arrives',
-  );
+  it('keeps a slow stepped-load step-up pending for 60s before confirmative telemetry arrives', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+      pendingWindowMs: 180_000,
+    });
+
+    expect(pruneStaleSteppedLoadCommandStates(runtimeState, 61_000)).toBe(false);
+    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      stepId: 'max',
+      pending: true,
+      status: 'pending',
+      pendingWindowMs: 180_000,
+    });
+
+    expect(pruneStaleSteppedLoadCommandStates(runtimeState, 181_001)).toBe(true);
+    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      stepId: 'max',
+      pending: false,
+      status: 'stale',
+      pendingWindowMs: 180_000,
+    });
+  });
 
   it('resolves default control models from explicit and implicit device shape', () => {
     expect(resolveDefaultControlModel(baseSnapshot({ controlModel: 'stepped_load' }))).toBe('stepped_load');

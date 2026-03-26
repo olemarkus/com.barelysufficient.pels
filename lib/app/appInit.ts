@@ -9,6 +9,7 @@ import type { PlanEngine } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import type { PendingTargetObservationSource, ShedAction } from '../plan/planTypes';
+import { isDeviceObservationStale } from '../plan/planObservationPolicy';
 import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { ReportSteppedLoadActualStepResult } from './appDeviceControlHelpers';
@@ -59,6 +60,7 @@ export type PlanEngineInitApp = {
     desiredStepId: string;
     previousStepId?: string;
     issuedAtMs?: number;
+    pendingWindowMs?: number;
   }) => void;
   logTargetRetryComparison?: (params: {
     deviceId: string;
@@ -130,9 +132,13 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
     getPlanDevices: () => app.getLatestTargetSnapshot().map((device) => ({
       ...device,
       hasBinaryControl: resolveHasBinaryControl(device),
+      observationStale: isDeviceObservationStale(device),
       managed: app.resolveManagedState(device.id),
       controllable: app.isCapacityControlEnabled(device.id),
       budgetExempt: app.isBudgetExempt(device.id),
+      binaryCommandPending: (
+        app.planEngine.isBinaryCommandPendingForDevice?.(device.id, device.communicationModel) ?? false
+      ),
     })).filter((device) => device.managed !== false),
     getCapacityDryRun: () => app.getCapacityDryRun(),
     log: (...args: unknown[]) => app.log(...args),

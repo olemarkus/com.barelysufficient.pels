@@ -18,6 +18,7 @@ export type RealtimeDeviceReconcileChange = {
 type RealtimeReconcileResult = {
   shouldReconcilePlan: boolean;
   changes: RealtimeDeviceReconcileChange[];
+  observedCapabilityIds: string[];
 };
 
 export function updateLastKnownPower(params: {
@@ -84,7 +85,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     recentLocalCapabilityWrites,
   } = params;
   const deviceId = device.id || device.data?.id;
-  if (!deviceId) return { shouldReconcilePlan: false, changes: [] };
+  if (!deviceId) return { shouldReconcilePlan: false, changes: [], observedCapabilityIds: [] };
 
   const parsed = parseDevice(device, Date.now());
   const snapshotIndex = latestSnapshot.findIndex((entry) => entry.id === deviceId);
@@ -92,9 +93,9 @@ export function reconcileRealtimeDeviceUpdate(params: {
   if (!parsed) {
     if (snapshotIndex >= 0) {
       latestSnapshot.splice(snapshotIndex, 1);
-      return { shouldReconcilePlan: false, changes: [] };
+      return { shouldReconcilePlan: false, changes: [], observedCapabilityIds: [] };
     }
-    return { shouldReconcilePlan: false, changes: [] };
+    return { shouldReconcilePlan: false, changes: [], observedCapabilityIds: [] };
   }
 
   preserveRecentLocalBinaryState({
@@ -111,9 +112,11 @@ export function reconcileRealtimeDeviceUpdate(params: {
   }
 
   const changes = getPlanReconcileRealtimeChanges(previous, parsed);
+  const observedCapabilityIds = getObservedCapabilityIds(previous, parsed);
   return {
     shouldReconcilePlan: changes.length > 0,
     changes,
+    observedCapabilityIds,
   };
 }
 
@@ -171,6 +174,30 @@ function getPlanReconcileRealtimeChanges(
   }
 
   return changes;
+}
+
+function getObservedCapabilityIds(
+  previous: TargetDeviceSnapshot | null,
+  next: TargetDeviceSnapshot,
+): string[] {
+  if (!previous) return [];
+
+  const capabilityIds = new Set<string>();
+  if (previous.currentOn !== next.currentOn) {
+    capabilityIds.add(next.controlCapabilityId ?? previous.controlCapabilityId ?? 'onoff');
+  }
+  if (previous.measuredPowerKw !== next.measuredPowerKw) {
+    capabilityIds.add('measure_power');
+  }
+
+  const previousTargetsById = new Map(previous.targets.map((target) => [target.id, target]));
+  for (const nextTarget of next.targets) {
+    const previousTarget = previousTargetsById.get(nextTarget.id);
+    if (!previousTarget || previousTarget.value === nextTarget.value) continue;
+    capabilityIds.add(nextTarget.id);
+  }
+
+  return [...capabilityIds];
 }
 
 export function isRealtimeControlCapability(

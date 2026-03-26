@@ -108,6 +108,7 @@ class PelsApp extends Homey.App {
   private managedDevices: Record<string, boolean> = {};
   private budgetExemptDevices: Record<string, boolean> = {};
   private deviceControlProfiles: DeviceControlProfiles = {};
+  private deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   private deviceControlRuntimeState: DeviceControlRuntimeState = createDeviceControlRuntimeState();
   private experimentalEvSupportEnabled = false;
   private shedBehaviors: Record<string, ShedBehavior> = {};
@@ -256,6 +257,7 @@ class PelsApp extends Homey.App {
     desiredStepId: string;
     previousStepId?: string;
     issuedAtMs?: number;
+    pendingWindowMs?: number;
   }): void {
     markSteppedLoadDesiredStepIssued({
       runtimeState: this.deviceControlRuntimeState,
@@ -263,6 +265,7 @@ class PelsApp extends Homey.App {
       desiredStepId: params.desiredStepId,
       previousStepId: params.previousStepId,
       issuedAtMs: params.issuedAtMs,
+      pendingWindowMs: params.pendingWindowMs,
     });
   }
   private getHomeyEnergyApi(): HomeyEnergyApi | null {
@@ -355,6 +358,7 @@ class PelsApp extends Homey.App {
       getControllable: (id) => this.isCapacityControlEnabled(id),
       getManaged: (id) => this.resolveManagedState(id),
       getBudgetExempt: (id) => this.isBudgetExempt(id),
+      getCommunicationModel: (id) => this.getCommunicationModel(id),
       getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
@@ -607,6 +611,7 @@ class PelsApp extends Homey.App {
         managedDevices: this.managedDevices,
         budgetExemptDevices: this.budgetExemptDevices,
         deviceControlProfiles: this.deviceControlProfiles,
+        deviceCommunicationModels: this.deviceCommunicationModels,
         experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
         shedBehaviors: this.shedBehaviors,
       },
@@ -621,6 +626,7 @@ class PelsApp extends Homey.App {
     this.managedDevices = next.managedDevices;
     this.budgetExemptDevices = next.budgetExemptDevices;
     this.deviceControlProfiles = normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {};
+    this.deviceCommunicationModels = next.deviceCommunicationModels;
     this.experimentalEvSupportEnabled = next.experimentalEvSupportEnabled;
     this.shedBehaviors = next.shedBehaviors;
     this.updatePriceOptimizationEnabled();
@@ -890,12 +896,15 @@ class PelsApp extends Homey.App {
   parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
     return this.deviceManager.parseDeviceListForTests(list);
   }
-  private static readonly POST_ACTUATION_REFRESH_DELAY_MS = 30_000;
+  private static readonly POST_ACTUATION_REFRESH_DELAY_MS = 5_000;
   private schedulePostActuationRefresh(): void {
     if (this.postActuationRefreshTimer) {
       clearTimeout(this.postActuationRefreshTimer);
     }
-    this.logDebug('plan', 'Scheduling post-actuation snapshot refresh in 30 s');
+    this.logDebug(
+      'plan',
+      `Scheduling post-actuation snapshot refresh in ${Math.round(PelsApp.POST_ACTUATION_REFRESH_DELAY_MS / 1000)} s`,
+    );
     this.postActuationRefreshTimer = setTimeout(async () => {
       this.postActuationRefreshTimer = undefined;
       this.logDebug('plan', 'Running post-actuation targeted snapshot refresh');
@@ -980,6 +989,9 @@ class PelsApp extends Homey.App {
   private resolveModeName = (name: string) => resolveModeNameHelper(name, this.modeAliases);
   private getAllModes = () => getAllModesHelper(this.operatingMode, this.capacityPriorities, this.modeDeviceTargets);
   private resolveManagedState = (deviceId: string) => this.managedDevices[deviceId] === true;
+  private getCommunicationModel = (deviceId: string): 'local' | 'cloud' => (
+    this.deviceCommunicationModels[deviceId] ?? 'local'
+  );
   private isCapacityControlEnabled = (deviceId: string) => (
     this.managedDevices[deviceId] === true && this.controllableDevices[deviceId] === true
   );

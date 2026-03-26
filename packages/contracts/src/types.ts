@@ -35,6 +35,7 @@ export type TargetDeviceSnapshot = {
     targets: TargetCapabilitySnapshot[];
     deviceClass?: string;
     deviceType?: 'temperature' | 'onoff';
+    communicationModel?: 'local' | 'cloud';
     controlModel?: DeviceControlModel;
     steppedLoadProfile?: SteppedLoadProfile;
     controlCapabilityId?: 'onoff' | 'evcharger_charging';
@@ -65,6 +66,8 @@ export type TargetDeviceSnapshot = {
     capabilities?: string[];
     canSetControl?: boolean;
     available?: boolean;
+    lastFreshDataMs?: number;
+    lastLocalWriteMs?: number;
     lastUpdated?: number;
 };
 

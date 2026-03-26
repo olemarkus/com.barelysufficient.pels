@@ -36,6 +36,8 @@ export type DevicePlanDevice = {
   plannedState: string;
   currentTarget: unknown;
   plannedTarget: number | null;
+  observationStale?: boolean;
+  communicationModel?: 'local' | 'cloud';
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
@@ -64,6 +66,8 @@ export type DevicePlanDevice = {
   shedTemperature?: number | null;
   shedStepId?: string | null;
   available?: boolean;
+  lastFreshDataMs?: number;
+  lastLocalWriteMs?: number;
   headroomCardBlocked?: boolean;
   headroomCardCooldownSec?: number | null;
   headroomCardCooldownSource?: HeadroomCardCooldownSource;
@@ -101,6 +105,8 @@ export type PlanInputDevice = {
   name: string;
   targets: TargetCapabilitySnapshot[];
   deviceType?: 'temperature' | 'onoff';
+  observationStale?: boolean;
+  communicationModel?: 'local' | 'cloud';
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
@@ -124,6 +130,9 @@ export type PlanInputDevice = {
   budgetExempt?: boolean;
   available?: boolean;
   zone?: string;
+  lastFreshDataMs?: number;
+  lastLocalWriteMs?: number;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
+  binaryCommandPending?: boolean;
 };

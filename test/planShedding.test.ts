@@ -221,6 +221,50 @@ describe('buildSheddingPlan', () => {
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 2);
   });
 
+  it('keeps stale off observations eligible for shedding so stale snapshots do not hide live load', async () => {
+    const state = createPlanEngineState();
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'dev-stale',
+            name: 'Stale Heater',
+            currentOn: false,
+            observationStale: true,
+            controllable: true,
+            measuredPowerKw: 0.8,
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('dev-stale')).toBe(true);
+    expect(result.shedReasons.get('dev-stale')).toBe('shed due to capacity');
+  });
+
   it('treats stepped loads with temperature shedding like target-based shed devices instead of stepping them down', async () => {
     const state = createPlanEngineState();
 
@@ -1446,6 +1490,58 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.has('bath')).toBe(true);
     expect(result.shedSet.has('hall')).toBe(true);
+  });
+
+  it('treats a pending restore as provisionally live so it can still be shed during overshoot', async () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.tank = {
+      capabilityId: 'onoff',
+      desired: true,
+      startedMs: Date.now() - 5_000,
+      pendingMs: 75_000,
+    };
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'tank',
+            name: 'Connected 300',
+            communicationModel: 'cloud',
+            measuredPowerKw: 3,
+            expectedPowerKw: 3,
+            currentOn: false,
+            controllable: true,
+          }),
+        ],
+        total: 8,
+        softLimit: 5,
+        capacitySoftLimit: 5,
+        headroomRaw: -3,
+        headroom: -3,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1_000 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('tank')).toBe(true);
+    expect(result.shedReasons.get('tank')).toBe('shed due to capacity');
   });
 
   it('checks shortfall in daily mode when hard-cap deficit exists and no candidates remain', async () => {

@@ -9,6 +9,7 @@ import {
   COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
+  DEVICE_COMMUNICATION_MODELS,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -72,6 +73,7 @@ const DEDUPED_CAPACITY_KEYS = [
   MANAGED_DEVICES,
   BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
+  DEVICE_COMMUNICATION_MODELS,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -335,6 +337,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
   });
 }
 
+// eslint-disable-next-line max-lines-per-function
 function buildSettingsHandlers(
   deps: SettingsHandlerDeps,
   scheduleDailyBudgetPriceSync: () => Promise<void>,
@@ -363,6 +366,11 @@ function buildSettingsHandlers(
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after control profile change');
       await rebuildPlanFromSettings(deps, DEVICE_CONTROL_PROFILES);
+    },
+    [DEVICE_COMMUNICATION_MODELS]: async () => {
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after communication model change');
+      await rebuildPlanFromSettings(deps, DEVICE_COMMUNICATION_MODELS);
     },
     [BUDGET_EXEMPT_DEVICES]: async () => {
       deps.loadCapacitySettings();

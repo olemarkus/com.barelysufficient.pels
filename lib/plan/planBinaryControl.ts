@@ -1,8 +1,12 @@
 import type { DeviceManager } from '../core/deviceManager';
 import type { TargetDeviceSnapshot } from '../utils/types';
-import { BINARY_COMMAND_PENDING_MS } from './planConstants';
 import type { PlanEngineState } from './planState';
 import type { PendingTargetObservationSource, PlanInputDevice } from './planTypes';
+import {
+  getPendingBinaryCommandWindowMs,
+  isPendingBinaryCommandActive,
+  resolveBinaryCommandPendingMs,
+} from './planObservationPolicy';
 
 export type BinaryControlPlan = {
   capabilityId: 'onoff' | 'evcharger_charging';
@@ -106,7 +110,15 @@ export async function setBinaryControl(params: BinaryControlDeps & {
 
   return executeBinaryCommand({
     state, deviceManager, log, logDebug, error,
-    controlPlan, deviceId, name, desired, logContext, reason, restoreSource, actuationMode,
+    controlPlan,
+    pendingMs: resolveBinaryCommandPendingMs(snapshot?.communicationModel),
+    deviceId,
+    name,
+    desired,
+    logContext,
+    reason,
+    restoreSource,
+    actuationMode,
   });
 }
 
@@ -172,6 +184,7 @@ async function executeBinaryCommand(params: {
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
   controlPlan: BinaryControlPlan;
+  pendingMs: number;
   deviceId: string;
   name: string;
   desired: boolean;
@@ -182,13 +195,14 @@ async function executeBinaryCommand(params: {
 }): Promise<boolean> {
   const {
     state, deviceManager, log, logDebug, error,
-    controlPlan, deviceId, name, desired, logContext, reason, restoreSource, actuationMode,
+    controlPlan, pendingMs, deviceId, name, desired, logContext, reason, restoreSource, actuationMode,
   } = params;
 
   state.pendingBinaryCommands[deviceId] = {
     capabilityId: controlPlan.capabilityId,
     desired,
     startedMs: Date.now(),
+    pendingMs,
   };
 
   try {
@@ -246,13 +260,14 @@ function getPendingBinaryCommand(
   const pendingBinaryCommands = state.pendingBinaryCommands;
   const entry = pendingBinaryCommands[deviceId];
   if (!entry) return undefined;
-  if ((Date.now() - entry.startedMs) < BINARY_COMMAND_PENDING_MS) {
+  if (isPendingBinaryCommandActive({ pending: entry })) {
     return entry;
   }
+  const ageMs = Date.now() - entry.startedMs;
   logDebug(buildPendingBinaryTimeoutLogMessage({
     pending: entry,
     name: deviceId,
-    ageMs: Date.now() - entry.startedMs,
+    ageMs,
   }).replace('cleared stale', 'clearing stale'));
   delete pendingBinaryCommands[deviceId];
   return undefined;
@@ -340,7 +355,11 @@ export function syncPendingBinaryCommands(params: {
   for (const [deviceId, pending] of Object.entries(state.pendingBinaryCommands)) {
     const liveDevice = liveById.get(deviceId);
     const ageMs = nowMs - pending.startedMs;
-    if (ageMs >= BINARY_COMMAND_PENDING_MS) {
+    if (!isPendingBinaryCommandActive({
+      pending,
+      nowMs,
+      communicationModel: liveDevice?.communicationModel,
+    })) {
       delete state.pendingBinaryCommands[deviceId];
       changed = true;
       logDebug(buildPendingBinaryTimeoutLogMessage({
@@ -430,10 +449,12 @@ function buildPendingBinaryTimeoutLogMessage(params: {
   ageMs: number;
 }): string {
   const { pending, name, ageMs } = params;
+  const timeoutMs = getPendingBinaryCommandWindowMs(pending);
   const observedSuffix = pending.lastObservedSource
     ? `; last observed ${formatPendingBinaryObservedValue(pending.capabilityId, pending.lastObservedValue)} `
       + `via ${pending.lastObservedSource}`
     : '';
   return `Capacity: cleared stale pending binary command for ${name}: `
-    + `${pending.capabilityId}=${pending.desired} after ${ageMs}ms${observedSuffix}`;
+    + `${pending.capabilityId}=${pending.desired} after ${ageMs}ms `
+    + `(timeout ${timeoutMs}ms)${observedSuffix}`;
 }

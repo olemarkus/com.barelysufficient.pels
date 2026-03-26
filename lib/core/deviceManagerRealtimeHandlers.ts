@@ -22,6 +22,7 @@ export type HandleRealtimeDeviceUpdateResult = {
   hadChanges: boolean;
   shouldReconcilePlan: boolean;
   changes: RealtimeDeviceReconcileChange[];
+  observedCapabilityIds: string[];
 };
 
 type PendingBinarySettleObservationRecorder = (
@@ -62,6 +63,7 @@ export function handleRealtimeDeviceUpdate(params: {
       hadChanges: false,
       shouldReconcilePlan: false,
       changes: [],
+      observedCapabilityIds: [],
     };
   }
   const label = device.name || deviceId;
@@ -97,6 +99,7 @@ export function handleRealtimeDeviceUpdate(params: {
       hadChanges: filteredChanges.length > 0,
       shouldReconcilePlan: false,
       changes: filteredChanges,
+      observedCapabilityIds: result.observedCapabilityIds,
     };
   }
   emitPlanReconcile({
@@ -108,6 +111,7 @@ export function handleRealtimeDeviceUpdate(params: {
     hadChanges: filteredChanges.length > 0,
     shouldReconcilePlan: true,
     changes: filteredChanges,
+    observedCapabilityIds: result.observedCapabilityIds,
   };
 }
 
@@ -150,4 +154,3 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
     binaryChangeDeferred: filteredChanges.length !== changes.length,
   };
 }
-

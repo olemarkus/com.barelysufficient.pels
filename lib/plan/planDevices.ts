@@ -3,6 +3,7 @@ import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { computeBaseRestoreNeed } from './planRestoreSwap';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
+import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import {
   getPrimaryTargetCapability,
   normalizeTargetCapabilityValue,
@@ -74,7 +75,10 @@ export function buildInitialPlanDevices(params: {
       dev,
       priority,
       recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
-      binaryCommandPending: state.pendingBinaryCommands[dev.id]?.desired === true,
+      binaryCommandPending: isPendingBinaryCommandActive({
+        pending: state.pendingBinaryCommands[dev.id],
+        communicationModel: dev.communicationModel,
+      }) && state.pendingBinaryCommands[dev.id]?.desired === true,
       currentState,
       currentTarget,
       plannedTarget,
@@ -135,6 +139,9 @@ function applyPriceOptimizationDelta(
 }
 
 function resolveCurrentState(device: PlanInputDevice): string {
+  if (device.observationStale === true) {
+    return device.hasBinaryControl === false ? 'not_applicable' : 'unknown';
+  }
   const steppedState = resolveSteppedLoadCurrentState(device);
   if (steppedState !== 'unknown') return steppedState;
   if (typeof device.currentOn === 'boolean') return device.currentOn ? 'on' : 'off';
@@ -206,6 +213,7 @@ function buildBasePlanDevice(params: {
     plannedState,
     currentTarget,
     plannedTarget: resolvedPlannedTarget,
+    observationStale: dev.observationStale,
     controlModel: dev.controlModel,
     steppedLoadProfile: dev.steppedLoadProfile,
     selectedStepId: dev.selectedStepId,
