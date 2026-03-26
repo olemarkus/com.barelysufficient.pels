@@ -81,7 +81,7 @@ export function hasPlanExecutionDriftForDevice(
     ? live.targets[0].value ?? null
     : null;
 
-  return hasRelevantBinaryExecutionDrift(previous, {
+  return hasRealtimeBinaryExecutionDrift(previous, {
     ...previous,
     currentState: liveCurrentState,
     selectedStepId: live.selectedStepId ?? previous.selectedStepId,
@@ -145,6 +145,31 @@ function hasRelevantBinaryExecutionDrift(
       || previousDevice.currentState !== liveDevice.currentState;
   }
   return previousDevice.currentState !== liveDevice.currentState;
+}
+
+function hasRealtimeBinaryExecutionDrift(
+  previousDevice: DevicePlan['devices'][number],
+  liveDevice: DevicePlan['devices'][number],
+): boolean {
+  const expectedBinaryState = resolveExpectedBinaryStateForPlan(previousDevice);
+  if (previousDevice.controlModel === 'stepped_load') {
+    return previousDevice.selectedStepId !== liveDevice.selectedStepId
+      || (
+        expectedBinaryState
+          ? liveDevice.currentState !== expectedBinaryState
+          : previousDevice.currentState !== liveDevice.currentState
+      );
+  }
+  if (expectedBinaryState) return liveDevice.currentState !== expectedBinaryState;
+  return previousDevice.currentState !== liveDevice.currentState;
+}
+
+function resolveExpectedBinaryStateForPlan(device: DevicePlan['devices'][number]): 'on' | 'off' | undefined {
+  if (device.currentState === 'not_applicable') return undefined;
+  if (device.controllable === false) return undefined;
+  if (device.plannedState === 'keep') return 'on';
+  if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') return 'off';
+  return undefined;
 }
 
 function hasRelevantTargetExecutionDrift(
