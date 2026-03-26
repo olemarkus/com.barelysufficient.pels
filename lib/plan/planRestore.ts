@@ -22,10 +22,18 @@ import {
   markOffDevicesStayOff,
 } from './planRestoreDevices';
 import {
+  hasOtherDevicesPendingRecovery,
+  markSteppedDevicesStayAtCurrentLevel,
+  setRestorePlanDevice as setDevice,
+  shouldBlockRestoreForPendingSwap,
+  shouldBlockRestoreForSwap,
+} from './planRestoreHelpers';
+import {
   applyActivationPenalty,
   syncActivationPenaltyState,
 } from './planActivationBackoff';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import { resolveCapacityRestoreBlockReason } from './planRestoreGate';
 import { buildRestoreTiming, shouldPlanRestores, type RestoreTiming } from './planRestoreTiming';
 import {
   getSteppedLoadNextRestoreStep,
@@ -110,6 +118,7 @@ export function applyRestorePlan(params: {
         timing,
         availableHeadroom,
         restoredOneThisCycle,
+        logDebug: deps.logDebug,
       });
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
@@ -132,6 +141,11 @@ export function applyRestorePlan(params: {
       logDebug: deps.logDebug,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
     });
+    markSteppedDevicesStayAtCurrentLevel({
+      deviceMap,
+      timing,
+      logDebug: deps.logDebug,
+    });
   }
 
   return {
@@ -148,9 +162,16 @@ function planRestoreForSteppedDevice(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
-  timing: Pick<RestoreTiming, 'restoreCooldownSeconds'>;
+  timing: Pick<RestoreTiming,
+  | 'activeOvershoot'
+  | 'inCooldown'
+  | 'inRestoreCooldown'
+  | 'restoreCooldownSeconds'
+  | 'shedCooldownRemainingSec'
+  | 'restoreCooldownRemainingSec'>;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
+  logDebug: (...args: unknown[]) => void;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
     dev,
@@ -159,19 +180,30 @@ function planRestoreForSteppedDevice(params: {
     timing,
     availableHeadroom,
     restoredOneThisCycle,
+    logDebug,
   } = params;
 
-  if (restoredOneThisCycle) {
+  const gateReason = resolveCapacityRestoreBlockReason({
+    timing,
+    restoredOneThisCycle,
+  });
+  if (gateReason) {
     setDevice(deviceMap, dev.id, {
-      reason: `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`,
+      reason: gateReason,
     });
+    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${gateReason}`);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
-  if (hasOtherDevicesPendingRecovery(deviceMap, dev.id, state)) {
+  const waitingReason = resolveCapacityRestoreBlockReason({
+    timing,
+    waitingForOtherRecovery: hasOtherDevicesPendingRecovery(deviceMap, dev.id, state),
+  });
+  if (waitingReason) {
     setDevice(deviceMap, dev.id, {
-      reason: 'waiting for other devices to recover',
+      reason: waitingReason,
     });
+    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${waitingReason}`);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -214,7 +246,14 @@ function planRestoreForDevice(params: {
   onDevices: DevicePlanDevice[];
   swapState: SwapState;
   state: PlanEngineState;
-  timing: Pick<RestoreTiming, 'measurementTs' | 'restoreCooldownSeconds'>;
+  timing: Pick<RestoreTiming,
+  | 'activeOvershoot'
+  | 'inCooldown'
+  | 'inRestoreCooldown'
+  | 'measurementTs'
+  | 'restoreCooldownSeconds'
+  | 'shedCooldownRemainingSec'
+  | 'restoreCooldownRemainingSec'>;
   availableHeadroom: number;
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
@@ -243,11 +282,16 @@ function planRestoreForDevice(params: {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
-  if (restoredOneThisCycle) {
+  const gateReason = resolveCapacityRestoreBlockReason({
+    timing,
+    restoredOneThisCycle,
+  });
+  if (gateReason) {
     setDevice(deviceMap, dev.id, {
       plannedState: 'shed',
-      reason: `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`,
+      reason: gateReason,
     });
+    deps.logDebug(`Plan: blocking restore of ${dev.name} - ${gateReason}`);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -278,66 +322,6 @@ function planRestoreForDevice(params: {
     availableHeadroom: swapResult.availableHeadroom,
     restoredOneThisCycle: swapResult.restoredOneThisCycle,
   };
-}
-
-function shouldBlockRestoreForSwap(
-  dev: DevicePlanDevice,
-  deviceMap: Map<string, DevicePlanDevice>,
-  swapState: SwapState,
-  logDebug: (...args: unknown[]) => void,
-): boolean {
-  const swappedFor = swapState.swappedOutFor.get(dev.id);
-  if (!swappedFor) return false;
-  const higherPriDev = deviceMap.get(swappedFor);
-  if (higherPriDev && higherPriDev.currentState === 'off') {
-    setDevice(deviceMap, dev.id, {
-      plannedState: 'shed',
-      reason: `swap pending (${higherPriDev.name})`,
-    });
-    logDebug(`Plan: blocking restore of ${dev.name} - was swapped out for ${higherPriDev.name} which is still off`);
-    return true;
-  }
-  swapState.swappedOutFor.delete(dev.id);
-  swapState.pendingSwapTargets.delete(swappedFor);
-  swapState.pendingSwapTimestamps.delete(swappedFor);
-  logDebug(`Plan: ${dev.name} can now be considered for restore - ${higherPriDev?.name ?? swappedFor} is restored`);
-  return false;
-}
-
-function shouldBlockRestoreForPendingSwap(
-  dev: DevicePlanDevice,
-  deviceMap: Map<string, DevicePlanDevice>,
-  swapState: SwapState,
-  logDebug: (...args: unknown[]) => void,
-): boolean {
-  if (swapState.pendingSwapTargets.size === 0 || swapState.pendingSwapTargets.has(dev.id)) return false;
-  const devPriority = dev.priority ?? 100;
-  for (const swapTargetId of swapState.pendingSwapTargets) {
-    if (swapTargetId === dev.id) continue;
-    const swapTargetDev = deviceMap.get(swapTargetId);
-    if (!swapTargetDev) {
-      swapState.pendingSwapTargets.delete(swapTargetId);
-      swapState.pendingSwapTimestamps.delete(swapTargetId);
-      continue;
-    }
-    const swapTargetPriority = swapTargetDev.priority ?? 100;
-    if (swapTargetPriority >= devPriority && swapTargetDev.currentState === 'off') {
-      setDevice(deviceMap, dev.id, {
-        plannedState: 'shed',
-        reason: `swap pending (${swapTargetDev.name})`,
-      });
-      logDebug(
-        `Plan: blocking restore of ${dev.name} (p${devPriority}) - `
-        + `swap target ${swapTargetDev.name} (p${swapTargetPriority}) should restore first`,
-      );
-      return true;
-    }
-    if (swapTargetDev.currentState === 'on') {
-      swapState.pendingSwapTargets.delete(swapTargetId);
-      swapState.pendingSwapTimestamps.delete(swapTargetId);
-    }
-  }
-  return false;
 }
 
 function getRestoreNeed(
@@ -472,53 +456,4 @@ function getSwapShedPower(
   throw new Error(
     `Plan: missing shed power entry for device ${shedDeviceId} while swapping to restore ${restoreDeviceId}`,
   );
-}
-
-function setDevice(
-  deviceMap: Map<string, DevicePlanDevice>,
-  id: string,
-  updates: Partial<DevicePlanDevice>,
-): void {
-  const current = deviceMap.get(id);
-  if (!current) return;
-  deviceMap.set(id, { ...current, ...updates });
-}
-
-function hasOtherDevicesPendingRecovery(
-  deviceMap: Map<string, DevicePlanDevice>,
-  steppedDeviceId: string,
-  state: Pick<PlanEngineState, 'lastDeviceShedMs'>,
-): boolean {
-  for (const device of deviceMap.values()) {
-    if (!shouldBlockSteppedRestoreForDevice(device, steppedDeviceId)) continue;
-    if (isDevicePendingRecovery(device, state)) return true;
-  }
-  return false;
-}
-
-function shouldBlockSteppedRestoreForDevice(
-  device: DevicePlanDevice,
-  steppedDeviceId: string,
-): boolean {
-  return device.id !== steppedDeviceId
-    && device.controllable !== false
-    && !getInactiveReason(device);
-}
-
-function isDevicePendingRecovery(
-  device: DevicePlanDevice,
-  state: Pick<PlanEngineState, 'lastDeviceShedMs'>,
-): boolean {
-  if (device.plannedState === 'shed') return true;
-  if (!state.lastDeviceShedMs[device.id] || device.plannedState !== 'keep') return false;
-  return device.currentState === 'off'
-    || device.currentState === 'unknown'
-    || isTargetRestorePending(device);
-}
-
-function isTargetRestorePending(device: DevicePlanDevice): boolean {
-  return device.shedAction === 'set_temperature'
-    && typeof device.plannedTarget === 'number'
-    && device.currentTarget !== device.plannedTarget
-    && device.pendingTargetCommand?.desired === device.plannedTarget;
 }
