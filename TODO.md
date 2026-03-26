@@ -78,6 +78,10 @@ this release if it stops being useful.
 - [x] Updated the UI to show "Restore requested" when `binaryCommandPending=true` and the device
       is off, instead of presenting it as confirmed "Restoring".
       Files: `packages/settings-ui/src/ui/plan.ts`.
+- [x] Kept `binaryCommandPending` until confirmed telemetry or timeout only, and added explicit
+      waiting/debug logs for contradictory pending observations. EV pending confirmation now
+      follows `evChargingState` instead of generic `currentOn`.
+      Files: `planBinaryControl.ts`.
 - [x] Stopped overwriting `expectedPowerKw` with `planningPowerKw` in runtime and settings UI
       decoration. `planningPowerKw` and `expectedPowerKw` now stay independent, and
       `'step-planning'` was removed from `expectedPowerSource`.
@@ -112,10 +116,11 @@ or present requested state as confirmed reality.
 - [x] Stop binary restore writes from setting local observed `currentOn=true` optimistically.
       Keep restore intent in pending state until telemetry confirms it.
       Files: `deviceManager.ts`.
-- [ ] Clear or expire `binaryCommandPending` from confirmed telemetry or timeout only, matching
-      the step-command pending model.
-      Files: `appDeviceControlHelpers.ts`, pending command sync code analogous to
-      `syncPendingBinaryCommands`.
+- [x] Clear or expire `binaryCommandPending` from confirmed telemetry or timeout only, matching
+      the step-command pending model. Record contradictory live observations while pending so
+      unexpected behavior is visible in debug logs, and confirm EV pending state from
+      `evChargingState`.
+      Files: `planBinaryControl.ts`.
 - [ ] Trigger targeted post-actuation refreshes or realtime measured-power updates after
       restore/shed writes so `measuredPowerKw` does not stay stale until the next half-hour
       snapshot.
@@ -135,14 +140,14 @@ or present requested state as confirmed reality.
       similar time to show up in trusted telemetry.
       Files: `planTypes.ts`, device config, `planBinaryControl.ts`,
       `appDeviceControlHelpers.ts`, `planReconcileState.ts`.
-- [ ] Make downward stepped-load changes conservative end-to-end. A pending step-down may update
+- [x] Make downward stepped-load changes conservative end-to-end. A pending step-down may update
       desired state, but planning and overshoot protection must keep using the last confirmed /
       effective step and power until telemetry confirms the lower step. Do not count unconfirmed
       freed capacity early, and make repeated downward requests collapse cleanly without treating
       desired step as confirmed actual state.
       Files: `appDeviceControlHelpers.ts`, `planSteppedLoad.ts`, `planShedding.ts`,
       `planDevices.ts`, `planExecutor.ts`.
-- [ ] Enforce one shared restore cooldown gate for every capacity-driven restore path. Normal
+- [x] Enforce one shared restore cooldown gate for every capacity-driven restore path. Normal
       restore, swap restore, stepped restore, rebuild-triggered restore, and feedback-triggered
       restore should all consult the same cooldown state and emit a clear "blocked by cooldown"
       reason when headroom exists but restore is still intentionally delayed.
@@ -153,7 +158,7 @@ or present requested state as confirmed reality.
       which can exclude it from shedding candidates and weaken hard-cap protection.
       Files: planning/reconciliation state model, `planShedding.ts`, `planDevices.ts`,
       `planReconcileState.ts`.
-- [ ] Make binary drift/reconcile state internally consistent. Realtime updates should refresh
+- [x] Make binary drift/reconcile state internally consistent. Realtime updates should refresh
       observed state before drift evaluation, drift reapply should always target plan state, and
       logs should separate observed transition from corrective command direction instead of
       implying that PELS is intentionally applying the drifted state.
@@ -231,7 +236,7 @@ question in different ways.
       PELS neither reissues restore prematurely nor loses track of likely-live load during the
       pending window.
       Files: restore / reconciliation / status test suites.
-- [ ] Add conservative pending-step test coverage: delayed `Max -> Low` confirmation must not
+- [x] Add conservative pending-step test coverage: delayed `Max -> Low` confirmation must not
       free headroom early, overshoot during pending step-down must still shed other loads, and
       repeated downward requests must coalesce without changing effective planning power before
       confirmation.

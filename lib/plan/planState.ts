@@ -49,6 +49,9 @@ export type PlanEngineState = {
     capabilityId: 'onoff' | 'evcharger_charging';
     desired: boolean;
     startedMs: number;
+    lastObservedValue?: boolean | string;
+    lastObservedSource?: PendingTargetObservationSource;
+    lastObservedAtMs?: number;
   }>;
   pendingTargetCommands: Record<string, PendingTargetCommandState>;
   lastInstabilityMs: number | null;

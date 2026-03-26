@@ -1021,6 +1021,80 @@ describe('buildSheddingPlan', () => {
     expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
+  it('does not free headroom early when Max -> Low is still pending without confirmation', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'mid', planningPowerW: 2000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'max',
+        desiredStepId: 'low',
+        stepCommandPending: true,
+        stepCommandStatus: 'pending',
+        measuredPowerKw: 2.9,
+        currentOn: true,
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'hall',
+        name: 'Hall thermostat',
+        measuredPowerKw: 1.1,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(false),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 4.0,
+        softLimit: 3,
+        capacitySoftLimit: 3,
+        headroomRaw: -1.0,
+        headroom: -1.0,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 445 } as PowerTrackerState,
+        getShedBehavior: (deviceId: string) => (
+          deviceId === 'connected-300'
+            ? { action: 'set_step', temperature: null, stepId: 'off' }
+            : { action: 'turn_off', temperature: null, stepId: null }
+        ),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    // Even with a pending Max -> Low request, the controller must keep treating the device as
+    // still effectively at Max for overshoot protection and continue shedding other loads.
+    expect(result.shedSet.has('connected-300')).toBe(true);
+    expect(result.shedSet.has('hall')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
+  });
+
   it('does not raise a stepped-load shed target above a deeper pending unconfirmed step', async () => {
     const state = createPlanEngineState();
 

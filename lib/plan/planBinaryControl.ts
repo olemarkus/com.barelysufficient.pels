@@ -249,10 +249,11 @@ function getPendingBinaryCommand(
   if ((Date.now() - entry.startedMs) < BINARY_COMMAND_PENDING_MS) {
     return entry;
   }
-  logDebug(
-    `Capacity: clearing stale pending binary command for ${deviceId}: `
-    + `${entry.capabilityId}=${entry.desired} after ${Date.now() - entry.startedMs}ms`,
-  );
+  logDebug(buildPendingBinaryTimeoutLogMessage({
+    pending: entry,
+    name: deviceId,
+    ageMs: Date.now() - entry.startedMs,
+  }).replace('cleared stale', 'clearing stale'));
   delete pendingBinaryCommands[deviceId];
   return undefined;
 }
@@ -342,25 +343,97 @@ export function syncPendingBinaryCommands(params: {
     if (ageMs >= BINARY_COMMAND_PENDING_MS) {
       delete state.pendingBinaryCommands[deviceId];
       changed = true;
-      logDebug(
-        `Capacity: cleared stale pending binary command for ${liveDevice?.name || deviceId}: `
-        + `${pending.capabilityId}=${pending.desired} after ${ageMs}ms`,
-      );
+      logDebug(buildPendingBinaryTimeoutLogMessage({
+        pending,
+        name: liveDevice?.name || deviceId,
+        ageMs,
+      }));
       continue;
     }
     if (!liveDevice) continue;
 
-    if (typeof liveDevice.currentOn !== 'boolean' || liveDevice.currentOn !== pending.desired) {
+    const observedValue = getObservedBinaryValue(liveDevice, pending.capabilityId);
+    if (observedValue === pending.desired) {
+      delete state.pendingBinaryCommands[deviceId];
+      changed = true;
+      logDebug(
+        `Capacity: confirmed ${pending.capabilityId} for ${liveDevice.name || deviceId} `
+        + `at ${formatPendingBinaryObservedValue(pending.capabilityId, observedValue)} via ${source}`,
+      );
       continue;
     }
 
-    delete state.pendingBinaryCommands[deviceId];
+    if (
+      pending.lastObservedValue === observedValue
+      && pending.lastObservedSource === source
+    ) {
+      continue;
+    }
+
+    pending.lastObservedValue = observedValue;
+    pending.lastObservedSource = source;
+    pending.lastObservedAtMs = nowMs;
     changed = true;
     logDebug(
-      `Capacity: confirmed ${pending.capabilityId} for ${liveDevice.name || deviceId} `
-      + `at ${liveDevice.currentOn ? 'on' : 'off'} via ${source}`,
+      `Capacity: waiting for ${pending.capabilityId} confirmation for ${liveDevice.name || deviceId}; `
+      + `observed ${formatPendingBinaryObservedValue(pending.capabilityId, observedValue)} via ${source}, `
+      + `expected ${formatPendingBinaryObservedValue(pending.capabilityId, pending.desired)}`,
     );
   }
 
   return changed;
+}
+
+function getObservedBinaryValue(
+  liveDevice: PlanInputDevice,
+  capabilityId: 'onoff' | 'evcharger_charging',
+): boolean | string | undefined {
+  if (capabilityId === 'evcharger_charging') {
+    return resolveEvChargingObservedState(liveDevice.evChargingState);
+  }
+  return typeof liveDevice.currentOn === 'boolean' ? liveDevice.currentOn : undefined;
+}
+
+function resolveEvChargingObservedState(
+  evChargingState: PlanInputDevice['evChargingState'],
+): boolean | string | undefined {
+  switch (evChargingState) {
+    case 'plugged_in_charging':
+      return true;
+    case 'plugged_in':
+    case 'plugged_in_paused':
+    case 'plugged_out':
+    case 'plugged_in_discharging':
+      return false;
+    default:
+      return evChargingState;
+  }
+}
+
+function formatPendingBinaryObservedValue(
+  capabilityId: 'onoff' | 'evcharger_charging',
+  value: boolean | string | undefined,
+): string {
+  if (capabilityId === 'evcharger_charging') {
+    if (value === true) return 'charging';
+    if (value === false) return 'paused';
+    return String(value ?? 'unknown');
+  }
+  if (value === true) return 'on';
+  if (value === false) return 'off';
+  return String(value ?? 'unknown');
+}
+
+function buildPendingBinaryTimeoutLogMessage(params: {
+  pending: PlanEngineState['pendingBinaryCommands'][string];
+  name: string;
+  ageMs: number;
+}): string {
+  const { pending, name, ageMs } = params;
+  const observedSuffix = pending.lastObservedSource
+    ? `; last observed ${formatPendingBinaryObservedValue(pending.capabilityId, pending.lastObservedValue)} `
+      + `via ${pending.lastObservedSource}`
+    : '';
+  return `Capacity: cleared stale pending binary command for ${name}: `
+    + `${pending.capabilityId}=${pending.desired} after ${ageMs}ms${observedSuffix}`;
 }
