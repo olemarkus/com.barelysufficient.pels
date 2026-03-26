@@ -169,7 +169,10 @@ export class PlanService {
 
   applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
     return this.enqueuePlanOperation(
-      () => this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason),
+      async () => {
+        await this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
+        this.deps.schedulePostActuationRefresh?.();
+      },
       `Failed to apply shedding to ${deviceName || deviceId}`,
       undefined,
     );

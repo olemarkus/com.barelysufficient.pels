@@ -12,9 +12,85 @@ describe('plan binary control helpers', () => {
     jest.restoreAllMocks();
   });
 
-  it.todo(
-    'keeps a slow Connected 300 restore pending for 60s before confirmative telemetry arrives',
-  );
+  it('keeps a slow Connected 300 restore pending for 60s before confirmative telemetry arrives', async () => {
+    const state = createPlanEngineState();
+
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+    await expect(setBinaryControl({
+      state,
+      deviceManager: {
+        setCapability: jest.fn().mockResolvedValue(undefined),
+        getSnapshot: jest.fn().mockReturnValue([]),
+      } as never,
+      updateLocalSnapshot: jest.fn(),
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+      deviceId: 'connected-300',
+      name: 'Connected 300',
+      desired: true,
+      snapshot: {
+        id: 'connected-300',
+        name: 'Connected 300',
+        communicationModel: 'cloud',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        currentOn: false,
+      },
+      logContext: 'capacity',
+    })).resolves.toBe(true);
+
+    nowSpy.mockReturnValue(61_000);
+    const waitingLog = jest.fn();
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'connected-300',
+        name: 'Connected 300',
+        communicationModel: 'cloud',
+        currentOn: false,
+        hasBinaryControl: true,
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: waitingLog,
+    });
+
+    expect(changed).toBe(true);
+    expect(state.pendingBinaryCommands['connected-300']).toMatchObject({
+      desired: true,
+      pendingMs: 75_000,
+      lastObservedValue: false,
+      lastObservedSource: 'snapshot_refresh',
+    });
+    expect(waitingLog).toHaveBeenCalledWith(
+      'Capacity: waiting for onoff confirmation for Connected 300; observed off via snapshot_refresh, expected on',
+    );
+
+    nowSpy.mockReturnValue(77_000);
+    const timeoutLog = jest.fn();
+    const timedOut = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'connected-300',
+        name: 'Connected 300',
+        communicationModel: 'cloud',
+        currentOn: false,
+        hasBinaryControl: true,
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: timeoutLog,
+    });
+    nowSpy.mockRestore();
+
+    expect(timedOut).toBe(true);
+    expect(state.pendingBinaryCommands['connected-300']).toBeUndefined();
+    expect(timeoutLog).toHaveBeenCalledWith(
+      'Capacity: cleared stale pending binary command for Connected 300: onoff=true after 76000ms '
+      + '(timeout 75000ms); last observed off via snapshot_refresh',
+    );
+  });
 
   it('resolves binary control plans and EV restore blocks', () => {
     expect(getBinaryControlPlan()).toBeNull();
@@ -511,7 +587,7 @@ describe('plan binary control helpers', () => {
     expect(changed).toBe(true);
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
     expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: cleared stale pending binary command for socket1: onoff=false after 20000ms',
+      'Capacity: cleared stale pending binary command for socket1: onoff=false after 20000ms (timeout 15000ms)',
     );
   });
 

@@ -4,6 +4,7 @@ import {
   getInactiveReason,
   getOffDevices,
   getOnDevices,
+  getSteppedRestoreCandidates,
   markOffDevicesStayOff,
 } from '../lib/plan/planRestoreDevices';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
@@ -43,6 +44,51 @@ describe('plan restore device helpers', () => {
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 20, plannedTarget: 20 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
     )).toEqual([]);
+  });
+
+  it('ignores stale observations when selecting restore and swap candidates', () => {
+    const devices = [
+      makeDevice({ id: 'fresh-off', priority: 1, currentState: 'off' }),
+      makeDevice({ id: 'stale-off', priority: 2, currentState: 'off', observationStale: true }),
+      makeDevice({
+        id: 'fresh-step',
+        priority: 3,
+        currentState: 'on',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+      }),
+      makeDevice({
+        id: 'stale-step',
+        priority: 4,
+        currentState: 'on',
+        observationStale: true,
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+      }),
+      makeDevice({ id: 'fresh-on', priority: 5, currentState: 'on' }),
+      makeDevice({ id: 'stale-on', priority: 6, currentState: 'on', observationStale: true }),
+    ];
+
+    expect(getOffDevices(devices).map((device) => device.id)).toEqual(['fresh-off']);
+    expect(getSteppedRestoreCandidates(devices).map((device) => device.id)).toEqual(['fresh-step']);
+    expect(getOnDevices(devices, () => ({ action: 'turn_off', temperature: null, stepId: null }))
+      .map((device) => device.id)).toEqual(['fresh-on']);
   });
 
   it('evaluates EV restore blocks and marks off devices as staying off', () => {

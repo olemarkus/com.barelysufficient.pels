@@ -193,6 +193,37 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.binaryCommandPending).toBeUndefined();
   });
 
+  it('treats stale binary observations as unknown instead of confirmed off', () => {
+    const device = buildPlanInputDevice({
+      id: 'dev-1',
+      name: 'Heater',
+      currentOn: false,
+      hasBinaryControl: true,
+      observationStale: true,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.currentState).toBe('unknown');
+    expect(planDevice.observationStale).toBe(true);
+  });
+
   it('detects shed drift for off stepped devices and drives them to the off-step during shortfall', () => {
     const steppedDevice = steppedInputDevice({
       id: 'dev-1',

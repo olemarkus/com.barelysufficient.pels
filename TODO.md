@@ -82,6 +82,36 @@ this release if it stops being useful.
       waiting/debug logs for contradictory pending observations. EV pending confirmation now
       follows `evChargingState` instead of generic `currentOn`.
       Files: `planBinaryControl.ts`.
+- [x] Added device-level freshness tracking and stale-refresh merge rules. `lastLocalWriteMs`
+      and `lastFreshDataMs` now flow through snapshots, stale fetches preserve fresher local
+      writes and `device.update` observations, and power-only realtime updates no longer get
+      silently overwritten by an older snapshot refresh.
+      Files: `deviceManager.ts`, `deviceManagerRuntime.ts`.
+- [x] Added per-device communication-model timing for slow devices. Binary pending windows,
+      stepped pending windows, and realtime reconcile suppression now stay conservative for
+      cloud/laggy devices instead of reissuing or drifting early.
+      Files: `planBinaryControl.ts`, `appDeviceControlHelpers.ts`, `planReconcileState.ts`.
+- [x] Made pending binary restores visible to shedding as provisional live load, so a requested
+      but unconfirmed restore is not invisible during overshoot protection.
+      Files: `planShedding.ts`.
+- [x] Tightened stale-observation handling and post-actuation refresh coverage. Planning and
+      reconciliation now treat stale observations as uncertain instead of restoring/reconciling
+      from them, stale-off devices stay conservatively shed-eligible, and direct shedding uses the
+      same targeted post-actuation refresh path as rebuild/reconcile.
+      Files: `planObservationPolicy.ts`, `planDevices.ts`, `planRestoreDevices.ts`,
+      `planReconcileState.ts`, `planShedding.ts`, `planService.ts`, `app.ts`.
+- [x] Stopped recent local writes from masking old live observations in stale detection. Fresh
+      telemetry timestamps now take precedence over local intent timestamps when deciding whether
+      a device observation has gone stale.
+      Files: `planObservationPolicy.ts`.
+- [x] Stopped stale recently shed devices from blocking unrelated stepped restores through the
+      pending-recovery path, and aligned stepped live-plan state resolution with the same
+      off-step classification used during initial planning.
+      Files: `planRestoreHelpers.ts`, `planReconcileState.ts`.
+- [x] Audited `measuredPowerKw` source handling so it stays tied to trusted power telemetry
+      (`measure_power`, meter deltas, and live-power telemetry) rather than configured load,
+      Homey energy expected-power estimates, or step-derived nominal power.
+      Files: `powerEstimate.ts`, `deviceManager.ts`.
 - [x] Stopped overwriting `expectedPowerKw` with `planningPowerKw` in runtime and settings UI
       decoration. `planningPowerKw` and `expectedPowerKw` now stay independent, and
       `'step-planning'` was removed from `expectedPowerSource`.
@@ -102,15 +132,15 @@ this release if it stops being useful.
 These items are highest priority because they can make PELS act on state that is no longer true,
 or present requested state as confirmed reality.
 
-- [ ] Remove the dead `preserveFresherRealtimeCapabilityObservations` path and its unused
+- [x] Remove the dead `preserveFresherRealtimeCapabilityObservations` path and its unused
       supporting freshness helpers (`realtimeCapabilities`,
       `shouldKeepFetchedTargetAfterNewerLocalWrite`, and related debug plumbing). The code
       suggests per-capability freshness exists, but nothing writes those observations.
       Files: `deviceManager.ts`, `appDebugHelpers.ts`, `appDebugHelpers.test.ts`.
-- [ ] Add `lastLocalWriteMs` and `lastFreshDataMs` per device. Use them to compare local writes,
+- [x] Add `lastLocalWriteMs` and `lastFreshDataMs` per device. Use them to compare local writes,
       full snapshot refreshes, and `device.update` events so fresher observations win.
       Files: `deviceManager.ts`, `planState.ts` or equivalent runtime state.
-- [ ] In snapshot refresh, preserve locally written control values when Homey data is older than
+- [x] In snapshot refresh, preserve locally written control values when Homey data is older than
       the last local write instead of replacing the snapshot wholesale.
       Files: `deviceManager.ts`, `appDeviceControlHelpers.ts`.
 - [x] Stop binary restore writes from setting local observed `currentOn=true` optimistically.
@@ -121,15 +151,16 @@ or present requested state as confirmed reality.
       unexpected behavior is visible in debug logs, and confirm EV pending state from
       `evChargingState`.
       Files: `planBinaryControl.ts`.
-- [ ] Trigger targeted post-actuation refreshes or realtime measured-power updates after
+- [x] Trigger targeted post-actuation refreshes or realtime measured-power updates after
       restore/shed writes so `measuredPowerKw` does not stay stale until the next half-hour
       snapshot.
-      Files: `planExecutor.ts`, snapshot refresh pipeline.
-- [ ] Treat devices with stale observations as uncertain during planning and reconciliation
+      Files: `planService.ts`, `app.ts`, snapshot refresh pipeline.
+- [x] Treat devices with stale observations as uncertain during planning and reconciliation
       instead of acting on outdated state. Start with a simple threshold such as "no fresh
       snapshot/update/write within 5 minutes".
-      Files: `planService.ts`, `planReconcileState.ts`.
-- [ ] Add `communicationModel: 'local' | 'cloud'` to device config / plan input and use it to
+      Files: `planObservationPolicy.ts`, `planDevices.ts`, `planRestoreDevices.ts`,
+      `planReconcileState.ts`, `planShedding.ts`.
+- [x] Add `communicationModel: 'local' | 'cloud'` to device config / plan input and use it to
       scale confirmation windows, drift detection, and reconciliation aggressiveness.
       Anchor scenario: a Connected 300 may take about 60s from command send to confirmative
       telemetry. During that full window, PELS should stay in pending/awaiting-confirmation
@@ -152,7 +183,7 @@ or present requested state as confirmed reality.
       restore should all consult the same cooldown state and emit a clear "blocked by cooldown"
       reason when headroom exists but restore is still intentionally delayed.
       Files: `planRestore.ts`, `planRestoreDevices.ts`, `planBuilder.ts`, `planReasons.ts`.
-- [ ] Preserve enough provisional post-command state for laggy/cloud devices that a requested but
+- [x] Preserve enough provisional post-command state for laggy/cloud devices that a requested but
       unconfirmed restore is not invisible to overshoot control. Today a device can remain
       `currentOn=false` until telemetry arrives even if it has already started drawing power,
       which can exclude it from shedding candidates and weaken hard-cap protection.
@@ -164,9 +195,10 @@ or present requested state as confirmed reality.
       implying that PELS is intentionally applying the drifted state.
       Files: `deviceManagerRealtimeHandlers.ts`, `appRealtimeDeviceReconcile.ts`,
       `appRealtimeDeviceReconcileRuntime.ts`, `planReconcileState.ts`, `planExecutor.ts`.
-- [ ] Audit `measuredPowerKw` assignment so it only comes from `measure_power` telemetry, never
-      configured load, expected load, or step-derived nominal power.
-      Files: `appDeviceControlHelpers.ts`, snapshot decoration pipeline.
+- [x] Audit `measuredPowerKw` assignment so it only comes from trusted power telemetry
+      (`measure_power`, meter deltas, or live-power telemetry), never configured load, expected
+      load, or step-derived nominal power.
+      Files: `powerEstimate.ts`, `deviceManager.ts`, snapshot decoration pipeline.
 - [ ] If the simpler freshness model is still insufficient for cloud devices, add
       per-capability realtime subscriptions for control capabilities (`onoff`,
       `evcharger_charging`, `target_temperature`) on managed devices.

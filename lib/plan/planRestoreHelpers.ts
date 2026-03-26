@@ -126,6 +126,7 @@ function isDevicePendingRecovery(
   device: DevicePlanDevice,
   state: Pick<PlanEngineState, 'lastDeviceShedMs'>,
 ): boolean {
+  if (device.observationStale === true) return false;
   if (device.plannedState === 'shed') return true;
   if (!state.lastDeviceShedMs[device.id] || device.plannedState !== 'keep') return false;
   return device.currentState === 'off'

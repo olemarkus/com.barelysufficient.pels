@@ -128,6 +128,47 @@ describe('appRealtimeDeviceReconcile', () => {
     );
   });
 
+  it('skips reconcile while a matching binary command is still pending', () => {
+    const logDebug = jest.fn();
+
+    const shouldQueue = shouldQueueRealtimeDeviceReconcile({
+      event: {
+        deviceId: 'dev-1',
+        name: 'Heater',
+        capabilityId: 'onoff',
+        changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
+      },
+      latestPlanSnapshot: {
+        meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+        devices: [{
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 20,
+          plannedTarget: 20,
+          controllable: true,
+        }],
+      },
+      liveDevices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        binaryCommandPending: true,
+        currentTemperature: 21,
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+      }],
+      logDebug,
+    });
+
+    expect(shouldQueue).toBe(false);
+    expect(logDebug).toHaveBeenCalledWith(
+      'Realtime device change matches current plan, skipping reconcile: '
+      + 'Heater (dev-1) via onoff [onoff: on -> off]; plan state: on',
+    );
+  });
+
   it('skips reconcile when a keep device only has unknown live binary state', () => {
     const logDebug = jest.fn();
 

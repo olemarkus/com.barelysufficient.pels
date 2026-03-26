@@ -16,6 +16,7 @@ import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
   RECENT_RESTORE_SHED_GRACE_MS,
 } from './planConstants';
+import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { updateGuardState, isCapacityBreached } from './planSheddingGuard';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 
@@ -210,7 +211,11 @@ function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
   const nowTs = Date.now();
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return devices
-    .filter((d) => d.controllable !== false && d.currentOn !== false)
+    .filter((d) => d.controllable !== false && isEligibleForShedding({
+      device: d,
+      state,
+      nowTs,
+    }))
     // Budget exemption only bypasses daily soft-limit control. Capacity shedding
     // still considers the device because hard-cap protection remains in force.
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
@@ -264,7 +269,10 @@ function buildBinaryCandidate(
 ): BinaryShedCandidate | null {
   const power = resolveCandidatePower(device);
   if (power === null || power <= 0) return null;
-  const pendingBinary = state.pendingBinaryCommands[device.id];
+  const pendingBinary = isPendingBinaryCommandActive({
+    pending: state.pendingBinaryCommands[device.id],
+    communicationModel: device.communicationModel,
+  }) ? state.pendingBinaryCommands[device.id] : undefined;
   return {
     ...device,
     kind: 'binary',
@@ -273,6 +281,21 @@ function buildBinaryCandidate(
     effectivePower: power,
     unconfirmedRelief: pendingBinary?.desired === false,
   };
+}
+
+function isEligibleForShedding(params: {
+  device: PlanInputDevice;
+  state: PlanEngineState;
+  nowTs: number;
+}): boolean {
+  const { device, state, nowTs } = params;
+  if (device.observationStale === true) return true;
+  if (device.currentOn !== false) return true;
+  return isPendingBinaryCommandActive({
+    pending: state.pendingBinaryCommands[device.id],
+    nowMs: nowTs,
+    communicationModel: device.communicationModel,
+  }) && state.pendingBinaryCommands[device.id]?.desired === true;
 }
 
 function buildTemperatureCandidate(params: {

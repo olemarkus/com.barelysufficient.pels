@@ -85,6 +85,14 @@ type PendingBinarySettleWindow = {
     timer: ReturnType<typeof setTimeout>;
 };
 
+type CapabilityObservationSource = 'device_update' | 'local_write';
+
+type CapabilityObservation = {
+    value: unknown;
+    observedAt: number;
+    source: CapabilityObservationSource;
+};
+
 export type DeviceDebugObservedSource = {
     observedAt: number;
     path: 'snapshot_refresh' | 'device_update' | 'realtime_capability' | 'local_write';
@@ -145,11 +153,13 @@ export class DeviceManager extends EventEmitter {
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private pendingBinarySettleWindows: Map<string, PendingBinarySettleWindow> = new Map();
     private debugObservedSourcesByDeviceId: Map<string, DeviceDebugObservedSources> = new Map();
+    private capabilityObservations: Map<string, CapabilityObservation> = new Map();
     private providers: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
         getManaged?: (deviceId: string) => boolean;
         getBudgetExempt?: (deviceId: string) => boolean;
+        getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
         getExperimentalEvSupportEnabled?: () => boolean;
     } = {};
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
@@ -167,6 +177,9 @@ export class DeviceManager extends EventEmitter {
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
+        if (deviceId && result.observedCapabilityIds.length > 0) {
+            this.recordSnapshotCapabilityObservations(deviceId, 'device_update', result.observedCapabilityIds);
+        }
         if (deviceId && result.hadChanges) {
             this.recordDeviceUpdateObservation(deviceId, result);
         }
@@ -177,6 +190,7 @@ export class DeviceManager extends EventEmitter {
         getControllable?: (deviceId: string) => boolean;
         getManaged?: (deviceId: string) => boolean;
         getBudgetExempt?: (deviceId: string) => boolean;
+        getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
         getExperimentalEvSupportEnabled?: () => boolean;
     }, powerState?: PowerEstimateState) {
         super();
@@ -274,7 +288,7 @@ export class DeviceManager extends EventEmitter {
                 : await this.fetchLivePowerReport();
             this.latestHomePowerW = livePowerReport.homePowerW;
             const snapshot = this.parseDeviceList(list, livePowerReport.byDeviceId);
-            this.preserveFresherRealtimeCapabilityObservations({
+            this.mergeFresherCapabilityObservations({
                 previousSnapshot,
                 nextSnapshot: snapshot,
                 devices: list,
@@ -304,10 +318,14 @@ export class DeviceManager extends EventEmitter {
             const entry = updates.targetCapabilityId
                 ? snap.targets.find((t) => t.id === updates.targetCapabilityId)
                 : snap.targets[0];
-            if (entry) entry.value = updates.target;
+            if (entry) {
+                entry.value = updates.target;
+                snap.lastLocalWriteMs = Date.now();
+            }
         }
         if (typeof updates.on === 'boolean') {
             snap.currentOn = updates.on;
+            snap.lastLocalWriteMs = Date.now();
         }
     }
 
@@ -669,6 +687,7 @@ export class DeviceManager extends EventEmitter {
         const zone = resolveZoneLabel(device);
         const deviceType: TargetDeviceSnapshot['deviceType'] = targetCaps.length > 0 ? 'temperature' : 'onoff';
         const powerCapable = this.isPowerCapable(device, capsStatus, powerEstimate);
+        const lastFreshDataMs = this.getLatestCapabilityLastUpdatedMs(capabilityObj);
 
         return {
             id: deviceId,
@@ -676,6 +695,7 @@ export class DeviceManager extends EventEmitter {
             targets,
             deviceClass: deviceClassKey,
             deviceType,
+            communicationModel: this.providers.getCommunicationModel?.(deviceId) ?? 'local',
             controlCapabilityId,
             powerKw: powerEstimate.powerKw,
             expectedPowerKw: powerEstimate.expectedPowerKw,
@@ -694,6 +714,9 @@ export class DeviceManager extends EventEmitter {
             capabilities,
             canSetControl,
             available,
+            lastFreshDataMs,
+            lastLocalWriteMs: this.resolveLatestLocalWriteMs(deviceId),
+            lastUpdated: lastFreshDataMs,
         };
     }
 
@@ -762,9 +785,10 @@ export class DeviceManager extends EventEmitter {
             value,
             preservedLocalState: options.preservedLocalState,
         };
+        this.recordCapabilityObservation(deviceId, capabilityId, value, 'local_write');
     }
 
-    private preserveFresherRealtimeCapabilityObservations(params: {
+    private mergeFresherCapabilityObservations(params: {
         previousSnapshot: TargetDeviceSnapshot[];
         nextSnapshot: TargetDeviceSnapshot[];
         devices: HomeyDeviceLike[];
@@ -778,164 +802,231 @@ export class DeviceManager extends EventEmitter {
             devicesById.set(deviceId, device);
         }
 
-        for (const device of nextSnapshot) {
-            const previous = previousById.get(device.id);
-            const sourceDevice = devicesById.get(device.id);
+        for (const snapshot of nextSnapshot) {
+            const previous = previousById.get(snapshot.id);
+            const sourceDevice = devicesById.get(snapshot.id);
             if (!previous || !sourceDevice) continue;
+            snapshot.lastLocalWriteMs = Math.max(
+                snapshot.lastLocalWriteMs ?? 0,
+                previous.lastLocalWriteMs ?? 0,
+                this.resolveLatestLocalWriteMs(snapshot.id) ?? 0,
+            ) || undefined;
 
-            if (device.controlCapabilityId) {
-                this.preserveFresherRealtimeCapabilityObservation({
-                    deviceId: device.id,
-                    deviceName: device.name,
-                    capabilityId: device.controlCapabilityId,
-                    previousSnapshot: previous,
-                    nextSnapshot: device,
+            if (snapshot.controlCapabilityId) {
+                this.mergeCapabilityObservation({
+                    deviceId: snapshot.id,
+                    deviceName: snapshot.name,
+                    capabilityId: snapshot.controlCapabilityId,
                     sourceDevice,
+                    nextSnapshot: snapshot,
                 });
             }
 
-            for (const target of device.targets) {
-                this.preserveFresherRealtimeCapabilityObservation({
-                    deviceId: device.id,
-                    deviceName: device.name,
+            for (const target of snapshot.targets) {
+                this.mergeCapabilityObservation({
+                    deviceId: snapshot.id,
+                    deviceName: snapshot.name,
                     capabilityId: target.id,
-                    previousSnapshot: previous,
-                    nextSnapshot: device,
                     sourceDevice,
+                    nextSnapshot: snapshot,
                 });
             }
-        }
-    }
 
-    private preserveFresherRealtimeCapabilityObservation(params: {
-        deviceId: string;
-        deviceName: string;
-        capabilityId: string;
-        previousSnapshot: TargetDeviceSnapshot;
-        nextSnapshot: TargetDeviceSnapshot;
-        sourceDevice: HomeyDeviceLike;
-    }): void {
-        const {
-            deviceId,
-            deviceName,
-            capabilityId,
-            previousSnapshot,
-            nextSnapshot,
-            sourceDevice,
-        } = params;
-        const sources = this.debugObservedSourcesByDeviceId.get(deviceId);
-        const realtimeSource = sources?.realtimeCapabilities[capabilityId];
-        if (!realtimeSource?.snapshot) return;
-        const localWriteSource = sources?.localWrites[capabilityId];
-
-        const fetchedLastUpdatedMs = this.getCapabilityLastUpdatedMs(sourceDevice, capabilityId);
-        if (typeof fetchedLastUpdatedMs !== 'number' || !Number.isFinite(fetchedLastUpdatedMs)) return;
-        if (fetchedLastUpdatedMs >= realtimeSource.observedAt) return;
-
-        if (capabilityId === nextSnapshot.controlCapabilityId) {
-            this.preserveFresherRealtimeControlObservation({
-                deviceId,
-                deviceName,
-                capabilityId,
-                nextSnapshot,
-                realtimeSource,
-                fetchedLastUpdatedMs,
+            this.mergeCapabilityObservation({
+                deviceId: snapshot.id,
+                deviceName: snapshot.name,
+                capabilityId: 'measure_power',
+                sourceDevice,
+                nextSnapshot: snapshot,
             });
-            return;
         }
-
-        this.preserveFresherRealtimeTargetObservation({
-            deviceId,
-            deviceName,
-            capabilityId,
-            previousSnapshot,
-            nextSnapshot,
-            realtimeSource,
-            localWriteSource,
-            fetchedLastUpdatedMs,
-        });
     }
 
-    private preserveFresherRealtimeControlObservation(params: {
+    // eslint-disable-next-line complexity, sonarjs/cognitive-complexity
+    private mergeCapabilityObservation(params: {
         deviceId: string;
         deviceName: string;
         capabilityId: string;
+        sourceDevice: HomeyDeviceLike;
         nextSnapshot: TargetDeviceSnapshot;
-        realtimeSource: DeviceDebugObservedSource;
-        fetchedLastUpdatedMs: number;
     }): void {
         const {
             deviceId,
             deviceName,
             capabilityId,
+            sourceDevice,
             nextSnapshot,
-            realtimeSource,
-            fetchedLastUpdatedMs,
         } = params;
-        const realtimeSnapshot = realtimeSource.snapshot;
-        if (!realtimeSnapshot || typeof realtimeSnapshot.currentOn !== 'boolean') return;
-        if (nextSnapshot.currentOn === realtimeSnapshot.currentOn) return;
-        nextSnapshot.currentOn = realtimeSnapshot.currentOn;
+        const observation = this.capabilityObservations.get(this.buildCapabilityObservationKey(deviceId, capabilityId));
+        if (!observation) return;
+        const fetchedLastUpdatedMs = this.getCapabilityLastUpdatedMs(sourceDevice, capabilityId);
+        const fetchedHasKnownFreshness = typeof fetchedLastUpdatedMs === 'number'
+            && Number.isFinite(fetchedLastUpdatedMs);
+        const fetchedIsFreshEnough = fetchedHasKnownFreshness && fetchedLastUpdatedMs >= observation.observedAt;
+        if (fetchedIsFreshEnough) {
+            this.clearCapabilityObservationIfMatched(deviceId, capabilityId, nextSnapshot);
+            return;
+        }
+        const shouldPreserveObservation = observation.source === 'device_update'
+            ? !fetchedHasKnownFreshness || fetchedLastUpdatedMs < observation.observedAt
+            : fetchedHasKnownFreshness && fetchedLastUpdatedMs < observation.observedAt;
+        if (!shouldPreserveObservation) return;
+        if (capabilityId === nextSnapshot.controlCapabilityId) {
+            if (typeof observation.value !== 'boolean' || nextSnapshot.currentOn === observation.value) return;
+            nextSnapshot.currentOn = observation.value;
+            nextSnapshot.lastLocalWriteMs = observation.source === 'local_write'
+                ? Math.max(nextSnapshot.lastLocalWriteMs ?? 0, observation.observedAt)
+                : nextSnapshot.lastLocalWriteMs;
+            nextSnapshot.lastFreshDataMs = observation.source === 'device_update'
+                ? Math.max(nextSnapshot.lastFreshDataMs ?? 0, observation.observedAt)
+                : nextSnapshot.lastFreshDataMs;
+            nextSnapshot.lastUpdated = nextSnapshot.lastFreshDataMs ?? nextSnapshot.lastUpdated;
+        } else if (capabilityId === 'measure_power') {
+            if (
+                typeof observation.value !== 'number'
+                || Object.is(nextSnapshot.measuredPowerKw, observation.value)
+            ) return;
+            nextSnapshot.measuredPowerKw = observation.value;
+            nextSnapshot.lastFreshDataMs = Math.max(nextSnapshot.lastFreshDataMs ?? 0, observation.observedAt);
+            nextSnapshot.lastUpdated = nextSnapshot.lastFreshDataMs;
+        } else {
+            const target = nextSnapshot.targets.find((entry) => entry.id === capabilityId);
+            if (!target || Object.is(target.value, observation.value)) return;
+            target.value = observation.value;
+            if (observation.source === 'local_write') {
+                nextSnapshot.lastLocalWriteMs = Math.max(nextSnapshot.lastLocalWriteMs ?? 0, observation.observedAt);
+            } else {
+                nextSnapshot.lastFreshDataMs = Math.max(nextSnapshot.lastFreshDataMs ?? 0, observation.observedAt);
+                nextSnapshot.lastUpdated = nextSnapshot.lastFreshDataMs;
+            }
+        }
         this.logger.debug(
-            `Device snapshot refresh preserved newer realtime ${capabilityId} for ${deviceName} (${deviceId}); `
-            + `fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}, `
-            + `realtime observedAt=${new Date(realtimeSource.observedAt).toISOString()}`,
+            `Device snapshot refresh preserved newer ${observation.source} ${capabilityId} `
+            + `for ${deviceName} (${deviceId}); `
+            + `observedAt=${new Date(observation.observedAt).toISOString()}`
+            + (typeof fetchedLastUpdatedMs === 'number' && Number.isFinite(fetchedLastUpdatedMs)
+                ? `, fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}`
+                : ', fetched lastUpdated=unknown'),
         );
     }
 
-    private preserveFresherRealtimeTargetObservation(params: {
-        deviceId: string;
-        deviceName: string;
-        capabilityId: string;
-        previousSnapshot: TargetDeviceSnapshot;
-        nextSnapshot: TargetDeviceSnapshot;
-        realtimeSource: DeviceDebugObservedSource;
-        localWriteSource?: DeviceDebugObservedSource;
-        fetchedLastUpdatedMs: number;
-    }): void {
-        const {
-            deviceId,
-            deviceName,
-            capabilityId,
-            previousSnapshot,
-            nextSnapshot,
-            realtimeSource,
-            localWriteSource,
-            fetchedLastUpdatedMs,
-        } = params;
-        const realtimeSnapshot = realtimeSource.snapshot;
-        if (!realtimeSnapshot) return;
-        const nextTarget = nextSnapshot.targets.find((target) => target.id === capabilityId);
-        const previousTarget = previousSnapshot.targets.find((target) => target.id === capabilityId);
-        const realtimeTarget = realtimeSnapshot.targets.find((target) => target.id === capabilityId);
-        if (!nextTarget || !previousTarget || !realtimeTarget) return;
-        if (this.shouldKeepFetchedTargetAfterNewerLocalWrite(localWriteSource, realtimeSource, nextTarget.value)) {
-            this.logger.debug(
-                `Device snapshot refresh kept fetched ${capabilityId} for ${deviceName} (${deviceId}); `
-                + 'fetched value matches a newer local write',
+    private clearCapabilityObservationIfMatched(
+        deviceId: string,
+        capabilityId: string,
+        snapshot: TargetDeviceSnapshot,
+    ): void {
+        const key = this.buildCapabilityObservationKey(deviceId, capabilityId);
+        const observation = this.capabilityObservations.get(key);
+        if (!observation) return;
+        if (capabilityId === snapshot.controlCapabilityId) {
+            if (snapshot.currentOn === observation.value) {
+                this.capabilityObservations.delete(key);
+            }
+            return;
+        }
+        if (capabilityId === 'measure_power') {
+            if (snapshot.measuredPowerKw === observation.value) {
+                this.capabilityObservations.delete(key);
+            }
+            return;
+        }
+        const target = snapshot.targets.find((entry) => entry.id === capabilityId);
+        if (target && Object.is(target.value, observation.value)) {
+            this.capabilityObservations.delete(key);
+        }
+    }
+
+    private recordSnapshotCapabilityObservations(
+        deviceId: string,
+        source: CapabilityObservationSource,
+        capabilityIds?: string[],
+    ): void {
+        const snapshot = this.latestSnapshot.find((entry) => entry.id === deviceId);
+        if (!snapshot) return;
+        const observedAt = Date.now();
+        const capabilityIdSet = capabilityIds ? new Set(capabilityIds) : null;
+        let recordedFreshData = false;
+        if (
+            snapshot.controlCapabilityId
+            && typeof snapshot.currentOn === 'boolean'
+            && (!capabilityIdSet || capabilityIdSet.has(snapshot.controlCapabilityId))
+        ) {
+            this.recordCapabilityObservation(
+                deviceId,
+                snapshot.controlCapabilityId,
+                snapshot.currentOn,
+                source,
+                observedAt,
             );
-            return;
+            recordedFreshData = true;
         }
-        if (!Object.is(previousTarget.value, realtimeTarget.value)) return;
-        if (Object.is(nextTarget.value, realtimeTarget.value)) return;
-        nextTarget.value = realtimeTarget.value;
-        this.logger.debug(
-            `Device snapshot refresh preserved newer realtime ${capabilityId} for ${deviceName} (${deviceId}); `
-            + `fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}, `
-            + `realtime observedAt=${new Date(realtimeSource.observedAt).toISOString()}`,
-        );
+        for (const target of snapshot.targets) {
+            if (capabilityIdSet && !capabilityIdSet.has(target.id)) continue;
+            this.recordCapabilityObservation(deviceId, target.id, target.value, source, observedAt);
+            recordedFreshData = true;
+        }
+        if (
+            typeof snapshot.measuredPowerKw === 'number'
+            && (!capabilityIdSet || capabilityIdSet.has('measure_power'))
+        ) {
+            this.recordCapabilityObservation(deviceId, 'measure_power', snapshot.measuredPowerKw, source, observedAt);
+            recordedFreshData = true;
+        }
+        if (recordedFreshData) {
+            snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observedAt);
+            snapshot.lastUpdated = snapshot.lastFreshDataMs;
+        }
     }
 
-    private shouldKeepFetchedTargetAfterNewerLocalWrite(
-        localWriteSource: DeviceDebugObservedSource | undefined,
-        realtimeSource: DeviceDebugObservedSource,
-        fetchedValue: unknown,
-    ): boolean {
-        return Boolean(
-            localWriteSource
-            && localWriteSource.observedAt > realtimeSource.observedAt
-            && Object.is(fetchedValue, localWriteSource.value),
-        );
+    private recordCapabilityObservation(
+        deviceId: string,
+        capabilityId: string,
+        value: unknown,
+        source: CapabilityObservationSource,
+        observedAt: number = Date.now(),
+    ): void {
+        this.capabilityObservations.set(this.buildCapabilityObservationKey(deviceId, capabilityId), {
+            value,
+            observedAt,
+            source,
+        });
+        const snapshot = this.latestSnapshot.find((entry) => entry.id === deviceId);
+        if (!snapshot) return;
+        if (source === 'local_write') {
+            snapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observedAt);
+            return;
+        }
+        snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observedAt);
+        snapshot.lastUpdated = snapshot.lastFreshDataMs;
+    }
+
+    private resolveLatestLocalWriteMs(deviceId: string): number | undefined {
+        let latest = 0;
+        for (const [key, observation] of this.capabilityObservations.entries()) {
+            if (!key.startsWith(`${deviceId}:`) || observation.source !== 'local_write') continue;
+            latest = Math.max(latest, observation.observedAt);
+        }
+        return latest || undefined;
+    }
+
+    private buildCapabilityObservationKey(deviceId: string, capabilityId: string): string {
+        return `${deviceId}:${capabilityId}`;
+    }
+
+    private getLatestCapabilityLastUpdatedMs(capabilityObj: DeviceCapabilityMap): number | undefined {
+        let latest = 0;
+        for (const capability of Object.values(capabilityObj)) {
+            const rawValue = capability?.lastUpdated;
+            let parsed: number | undefined;
+            if (rawValue instanceof Date) parsed = rawValue.getTime();
+            else if (typeof rawValue === 'number' && Number.isFinite(rawValue)) parsed = rawValue;
+            else if (typeof rawValue === 'string') {
+                const nextParsed = Date.parse(rawValue);
+                if (Number.isFinite(nextParsed)) parsed = nextParsed;
+            }
+            if (parsed) latest = Math.max(latest, parsed);
+        }
+        return latest || undefined;
     }
 
     private getCapabilityLastUpdatedMs(device: HomeyDeviceLike, capabilityId: string): number | undefined {

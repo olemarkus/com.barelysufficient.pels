@@ -43,6 +43,7 @@ import {
   shouldSkipUnavailable,
 } from './planExecutorSupport';
 import { isSteppedLoadDevice } from './planSteppedLoad';
+import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -58,6 +59,7 @@ export type PlanExecutorDeps = {
     desiredStepId: string;
     previousStepId?: string;
     issuedAtMs?: number;
+    pendingWindowMs?: number;
   }) => void;
   logTargetRetryComparison?: (params: {
     deviceId: string;
@@ -175,6 +177,7 @@ export class PlanExecutor {
     desiredStepId: string;
     previousStepId?: string;
     issuedAtMs?: number;
+    pendingWindowMs?: number;
   }): void {
     this.deps.markSteppedLoadDesiredStepIssued(params);
   }
@@ -468,6 +471,7 @@ export class PlanExecutor {
         desiredStepId: desiredStep.id,
         previousStepId,
         issuedAtMs: now,
+        pendingWindowMs: resolveSteppedLoadCommandPendingMs(dev.communicationModel),
       });
 
       const previousStep = previousStepId ? getSteppedLoadStep(profile, previousStepId) : undefined;

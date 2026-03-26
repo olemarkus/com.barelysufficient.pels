@@ -7,6 +7,7 @@ import {
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
+  DEVICE_COMMUNICATION_MODELS,
   MANAGED_DEVICES,
 } from '../lib/utils/settingsKeys';
 
@@ -111,6 +112,17 @@ describe('createSettingsHandler', () => {
     expect(guard.setSoftMargin).toHaveBeenCalledWith(0.5);
     expect(deps.updateOverheadToken).toHaveBeenCalledWith(0.5);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+  });
+
+  it('reloads capacity settings and rebuilds when device communication models change', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler(DEVICE_COMMUNICATION_MODELS);
+
+    expect(deps.loadCapacitySettings).toHaveBeenCalled();
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 

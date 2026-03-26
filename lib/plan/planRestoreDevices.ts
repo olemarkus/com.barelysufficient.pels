@@ -8,6 +8,7 @@ export function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice
     .filter((device) => (
       !isSteppedLoadDevice(device)
       && device.controllable !== false
+      && device.observationStale !== true
       && device.currentState === 'off'
       && device.plannedState !== 'shed'
     ));
@@ -19,6 +20,7 @@ export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): De
     .filter((device) => (
       isSteppedLoadDevice(device)
       && device.controllable !== false
+      && device.observationStale !== true
       && device.plannedState !== 'shed'
       && device.selectedStepId !== undefined
       && device.steppedLoadProfile?.model === 'stepped_load'
@@ -37,7 +39,11 @@ export function getOnDevices(
 ): DevicePlanDevice[] {
   const filtered = planDevices
     .filter((device) => !isSteppedLoadDevice(device))
-    .filter((device) => device.controllable !== false && device.plannedState !== 'shed')
+    .filter((device) => (
+      device.controllable !== false
+      && device.observationStale !== true
+      && device.plannedState !== 'shed'
+    ))
     .filter((device) => device.currentState === 'on' || device.currentState === 'not_applicable')
     .filter((device) => canSwapOutDevice(device, getShedBehavior(device.id)));
   return sortByPriorityDesc(filtered);
@@ -99,6 +105,7 @@ export function markOffDevicesStayOff(params: {
   const offDevices = Array.from(deviceMap.values())
     .filter((device) => (
       device.controllable !== false
+      && device.observationStale !== true
       && device.currentState === 'off'
       && device.plannedState !== 'shed'
     ));
