@@ -24,7 +24,7 @@ import { PlanStatusWriter } from './planStatusWriter';
 import {
   buildLiveStatePlan,
   canRefreshPlanSnapshotFromLiveState,
-  hasPlanExecutionDrift,
+  hasPlanExecutionDriftAgainstIntent,
 } from './planReconcileState';
 import type { PlanEngine } from './planEngine';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice } from './planTypes';
@@ -256,11 +256,12 @@ export class PlanService {
     const plannedSnapshot = this.getLatestReconcilePlanSnapshot();
     if (!plannedSnapshot) return false;
 
-    const driftedLivePlan = buildLiveStatePlan(plannedSnapshot, this.deps.getPlanDevices());
-    if (!hasPlanExecutionDrift(plannedSnapshot, driftedLivePlan)) {
+    const liveDevices = this.deps.getPlanDevices();
+    if (!hasPlanExecutionDriftAgainstIntent(plannedSnapshot, liveDevices)) {
       return false;
     }
 
+    const driftedLivePlan = buildLiveStatePlan(plannedSnapshot, liveDevices);
     this.deps.logDebug('Realtime device drift detected, reapplying current plan');
     await this.applyPlanActions(driftedLivePlan, 'reconcile');
     this.deps.schedulePostActuationRefresh?.();

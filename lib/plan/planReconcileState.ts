@@ -1,4 +1,5 @@
 import type { DevicePlan, PlanInputDevice } from './planTypes';
+import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
@@ -11,7 +12,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       if (!live) return device;
       return {
         ...device,
-        currentState: resolveCurrentStateFromPlanInput(live.currentOn, live.hasBinaryControl),
+        currentState: resolveCurrentStateFromPlanInput(device, live),
         currentTarget: Array.isArray(live.targets) && live.targets.length > 0 ? live.targets[0].value ?? null : null,
         controlModel: live.controlModel ?? device.controlModel,
         steppedLoadProfile: live.steppedLoadProfile ?? device.steppedLoadProfile,
@@ -76,7 +77,7 @@ export function hasPlanExecutionDriftForDevice(
   const live = liveDevices.find((device) => device.id === deviceId);
   if (!live) return false;
 
-  const liveCurrentState = resolveCurrentStateFromPlanInput(live.currentOn, live.hasBinaryControl);
+  const liveCurrentState = resolveCurrentStateFromPlanInput(previous, live);
   const liveCurrentTarget = Array.isArray(live.targets) && live.targets.length > 0
     ? live.targets[0].value ?? null
     : null;
@@ -91,9 +92,53 @@ export function hasPlanExecutionDriftForDevice(
   });
 }
 
-function resolveCurrentStateFromPlanInput(currentOn?: boolean, hasBinaryControl?: boolean): string {
-  if (typeof currentOn === 'boolean') return currentOn ? 'on' : 'off';
-  if (hasBinaryControl === false) return 'not_applicable';
+export function hasPlanExecutionDriftAgainstIntent(
+  previousPlan: DevicePlan,
+  liveDevices: PlanInputDevice[],
+): boolean {
+  const liveById = new Map(liveDevices.map((device) => [device.id, device]));
+  for (const previous of previousPlan.devices) {
+    const live = liveById.get(previous.id);
+    if (!live) continue;
+    if (hasRealtimeExecutionDriftForLiveDevice(previous, live)) return true;
+  }
+  return false;
+}
+
+function hasRealtimeExecutionDriftForLiveDevice(
+  previousDevice: DevicePlan['devices'][number],
+  liveDevice: PlanInputDevice,
+): boolean {
+  const liveCurrentState = resolveCurrentStateFromPlanInput(previousDevice, liveDevice);
+  const liveSelectedStepId = liveDevice.selectedStepId ?? previousDevice.selectedStepId;
+  if (hasRealtimeBinaryExecutionDrift(previousDevice, {
+    currentState: liveCurrentState,
+    selectedStepId: liveSelectedStepId,
+  })) {
+    return true;
+  }
+  const liveCurrentTarget = Array.isArray(liveDevice.targets) && liveDevice.targets.length > 0
+    ? liveDevice.targets[0].value ?? null
+    : null;
+  return hasRelevantTargetExecutionDrift(previousDevice, { currentTarget: liveCurrentTarget });
+}
+
+function resolveCurrentStateFromPlanInput(
+  previousDevice: DevicePlan['devices'][number],
+  liveDevice: PlanInputDevice,
+): string {
+  if (typeof liveDevice.currentOn === 'boolean') return liveDevice.currentOn ? 'on' : 'off';
+  if (liveDevice.hasBinaryControl === false) return 'not_applicable';
+  if (
+    previousDevice.controlModel === 'stepped_load'
+    && previousDevice.steppedLoadProfile
+    && liveDevice.selectedStepId
+  ) {
+    return isSteppedLoadOffStep(previousDevice.steppedLoadProfile, liveDevice.selectedStepId) ? 'off' : 'on';
+  }
+  if (previousDevice.currentState === 'on' || previousDevice.currentState === 'off') {
+    return previousDevice.currentState;
+  }
   return 'unknown';
 }
 
@@ -147,37 +192,43 @@ function hasRelevantBinaryExecutionDrift(
   return previousDevice.currentState !== liveDevice.currentState;
 }
 
+function hasRelevantTargetExecutionDrift(
+  previousDevice: DevicePlan['devices'][number],
+  liveDevice: Pick<DevicePlan['devices'][number], 'currentTarget'>,
+): boolean {
+  if (!tracksTargetForExecution(previousDevice)) return false;
+  return previousDevice.currentTarget !== liveDevice.currentTarget;
+}
+
 function hasRealtimeBinaryExecutionDrift(
   previousDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
+  liveDevice: Pick<DevicePlan['devices'][number], 'currentState' | 'selectedStepId'>,
 ): boolean {
   const expectedBinaryState = resolveExpectedBinaryStateForPlan(previousDevice);
+  const binaryStateDrift = liveDevice.currentState !== 'unknown'
+    && liveDevice.currentState !== (expectedBinaryState ?? previousDevice.currentState);
   if (previousDevice.controlModel === 'stepped_load') {
-    return previousDevice.selectedStepId !== liveDevice.selectedStepId
-      || (
-        expectedBinaryState
-          ? liveDevice.currentState !== expectedBinaryState
-          : previousDevice.currentState !== liveDevice.currentState
-      );
+    return previousDevice.selectedStepId !== liveDevice.selectedStepId || binaryStateDrift;
   }
-  if (expectedBinaryState) return liveDevice.currentState !== expectedBinaryState;
-  return previousDevice.currentState !== liveDevice.currentState;
+  return binaryStateDrift;
 }
 
 function resolveExpectedBinaryStateForPlan(device: DevicePlan['devices'][number]): 'on' | 'off' | undefined {
   if (device.currentState === 'not_applicable') return undefined;
   if (device.controllable === false) return undefined;
   if (device.plannedState === 'keep') return 'on';
-  if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') return 'off';
-  return undefined;
+  if (device.plannedState !== 'shed') return undefined;
+  if (device.shedAction === 'set_temperature') return undefined;
+  if (device.shedAction !== 'set_step') return 'off';
+  return resolveSteppedShedBinaryState(device);
 }
 
-function hasRelevantTargetExecutionDrift(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: DevicePlan['devices'][number],
-): boolean {
-  if (!tracksTargetForExecution(previousDevice)) return false;
-  return previousDevice.currentTarget !== liveDevice.currentTarget;
+function resolveSteppedShedBinaryState(device: DevicePlan['devices'][number]): 'on' | 'off' {
+  const stepId = device.desiredStepId ?? device.selectedStepId;
+  if (device.steppedLoadProfile && stepId) {
+    return isSteppedLoadOffStep(device.steppedLoadProfile, stepId) ? 'off' : 'on';
+  }
+  return 'on';
 }
 
 function tracksTargetForExecution(device: DevicePlan['devices'][number]): boolean {

@@ -105,6 +105,21 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
+    it('does not treat unknown binary state as keep-plan drift by itself', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'on',
+        plannedState: 'keep',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        hasBinaryControl: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+    });
+
     it('detects binary drift for a stepped device via live input', () => {
       const plan = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
       const liveDevices: PlanInputDevice[] = [{
@@ -148,6 +163,64 @@ describe('planReconcileState stepped device drift', () => {
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
+    it('does not force stepped set_step shedding to look binary-off when the device is correctly on at the shed step', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'on',
+        plannedState: 'shed',
+        shedAction: 'set_step',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: true,
+        selectedStepId: 'low',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
+    it('does not treat stepped set_step shedding as drift when the stored snapshot is stale off but the live device is on at the shed step', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'off',
+        plannedState: 'shed',
+        shedAction: 'set_step',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: true,
+        selectedStepId: 'low',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
+    it('treats unknown binary state as drift for shed-off intent', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'on',
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        hasBinaryControl: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
   });
 

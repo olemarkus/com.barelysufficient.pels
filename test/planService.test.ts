@@ -679,6 +679,62 @@ describe('PlanService', () => {
     expect(applyPlanActions).not.toHaveBeenCalled();
   });
 
+  it('reapplies shed-off intent when live binary state is unknown', async () => {
+    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn(),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    (service as any).latestPlanSnapshot = buildPlan(21, 'shed', {}, {
+      currentState: 'on',
+      plannedState: 'shed',
+      currentTarget: 21,
+      plannedTarget: 21,
+      shedAction: 'turn_off',
+    });
+
+    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
+    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'on',
+          plannedState: 'shed',
+          shedAction: 'turn_off',
+        }),
+      ],
+    }), 'reconcile');
+  });
+
   it('refreshes the stored plan snapshot when a pending binary command is confirmed by live state', async () => {
     let hasPendingBinaryCommands = true;
     const realtime = jest.fn().mockResolvedValue(undefined);
@@ -818,6 +874,61 @@ describe('PlanService', () => {
 
     resolveApply?.();
     await expect(reconcilePromise).resolves.toBe(true);
+  });
+
+  it('reapplies the current plan when reconcile runs from a stale keep/off snapshot', async () => {
+    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const service = new PlanService({
+      homey: {
+        settings: { set: jest.fn() },
+        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: jest.fn(),
+        computeDynamicSoftLimit: jest.fn(() => 0),
+        computeShortfallThreshold: jest.fn(() => 0),
+        handleShortfall: jest.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn: false,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+    });
+
+    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+      currentState: 'off',
+      plannedState: 'keep',
+      currentTarget: 20,
+      plannedTarget: 20,
+    });
+
+    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
+    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'off',
+          plannedState: 'keep',
+        }),
+      ],
+    }), 'reconcile');
   });
 
   it('does not refresh the stored plan snapshot from stale live state immediately after reconcile actuation', async () => {
