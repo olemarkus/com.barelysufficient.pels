@@ -2168,9 +2168,9 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [swapTarget, lowerPriDev]),
     });
 
-    // Swap target (10) > Lower priority (8)
+    // Lower number = higher priority. The pending swap target should restore first.
     mockHomeyInstance.settings.set('capacity_priorities', {
-      Home: { 'dev-swap-target': 10, 'dev-lower': 8 },
+      Home: { 'dev-swap-target': 1, 'dev-lower': 8 },
     });
     setManagedControllableDevices({
       'dev-swap-target': true, 'dev-lower': true,
@@ -2213,6 +2213,50 @@ describe('Device plan snapshot', () => {
     // But should be blocked because swap target is pending
     expect(lowerPriPlan?.plannedState).toBe('shed');
     expect(lowerPriPlan?.reason).toContain('swap pending');
+  });
+
+  it('does not block a higher-priority device behind a lower-priority pending swap target', async () => {
+    const pendingLowPriorityTarget = new MockDevice('dev-pending-low', 'Pending Low Priority', ['target_temperature', 'onoff', 'measure_power']);
+    await pendingLowPriorityTarget.setCapabilityValue('measure_power', 300);
+    await pendingLowPriorityTarget.setCapabilityValue('onoff', false);
+
+    const higherPriorityCandidate = new MockDevice('dev-high', 'Higher Priority', ['target_temperature', 'onoff', 'measure_power']);
+    await higherPriorityCandidate.setCapabilityValue('measure_power', 300);
+    await higherPriorityCandidate.setCapabilityValue('onoff', false);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [pendingLowPriorityTarget, higherPriorityCandidate]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_priorities', {
+      Home: { 'dev-pending-low': 8, 'dev-high': 1 },
+    });
+    setManagedControllableDevices({
+      'dev-pending-low': true, 'dev-high': true,
+    });
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    (app as any).planEngine.state.lastInstabilityMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+    (app as any).planEngine.state.swapByDevice['dev-pending-low'] = { pendingTarget: true };
+
+    await (app as any).recordPowerSample(300);
+
+    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const pendingLowPlan = plan.devices.find((d: any) => d.id === 'dev-pending-low');
+    const higherPriorityPlan = plan.devices.find((d: any) => d.id === 'dev-high');
+
+    expect(pendingLowPlan?.plannedState).toBe('shed');
+    expect(higherPriorityPlan?.plannedState).not.toBe('shed');
+    expect(higherPriorityPlan?.reason).not.toContain('swap pending');
   });
 
   it('clears stale swap tracking after timeout (60 seconds)', async () => {

@@ -215,12 +215,9 @@ function resolveHoldDecision(params: {
     state,
     shedReasons,
     inShedWindow,
-    inCooldown,
-    activeOvershoot,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
-    shedCooldownRemainingSec,
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
@@ -264,9 +261,6 @@ function resolveHoldDecision(params: {
   const baseReason = getBaseShedReason({
     dev,
     shedReasons,
-    activeOvershoot,
-    inCooldown,
-    shedCooldownRemainingSec,
   });
   return { type: 'hold', reason: baseReason };
 }
