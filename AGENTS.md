@@ -9,3 +9,4 @@ Repo-wide instructions only:
 - Runtime code uses TypeScript with strict mode and Jest with the mock SDK in `test/mocks/homey.ts`. If a runtime change uses a new Homey SDK API, update that mock.
 - When `.homeycompose` changes, `homey app validate` updates root `app.json`; include that generated change.
 - Runtime logging uses `this.log()` for user-visible logs and `this.logDebug()` for debug logs.
+- Internal engineering notes for Homey state trust, freshness, and drift/reconcile pitfalls live under `notes/`. Read those before changing snapshot/realtime merge logic.

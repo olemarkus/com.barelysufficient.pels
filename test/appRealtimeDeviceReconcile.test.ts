@@ -88,6 +88,46 @@ describe('appRealtimeDeviceReconcile', () => {
     );
   });
 
+  it('does not skip reconcile just because the stored snapshot already drifted away from a keep plan', () => {
+    const logDebug = jest.fn();
+
+    const shouldQueue = shouldQueueRealtimeDeviceReconcile({
+      event: {
+        deviceId: 'dev-1',
+        name: 'Heater',
+        capabilityId: 'onoff',
+        changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
+      },
+      latestPlanSnapshot: {
+        meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+        devices: [{
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 20,
+          plannedTarget: 20,
+          controllable: true,
+        }],
+      },
+      liveDevices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        currentTemperature: 21,
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+      }],
+      logDebug,
+    });
+
+    expect(shouldQueue).toBe(true);
+    expect(logDebug).not.toHaveBeenCalledWith(
+      'Realtime device change matches current plan, skipping reconcile: '
+      + 'Heater (dev-1) via onoff [onoff: on -> off]; plan state: on',
+    );
+  });
+
   it('skips reconcile for target drift when a shed device is already off', () => {
     const logDebug = jest.fn();
 

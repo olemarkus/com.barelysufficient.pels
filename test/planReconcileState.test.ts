@@ -89,6 +89,22 @@ describe('planReconcileState stepped device drift', () => {
   });
 
   describe('hasPlanExecutionDriftForDevice', () => {
+    it('treats a keep device that is still observed off as drift even if the stored snapshot is stale', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'off',
+        plannedState: 'keep',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
+    });
+
     it('detects binary drift for a stepped device via live input', () => {
       const plan = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
       const liveDevices: PlanInputDevice[] = [{
