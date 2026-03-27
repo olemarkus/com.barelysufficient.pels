@@ -247,5 +247,8 @@
   },
   "2.1.7": {
     "en": "Various bug fixes."
+  },
+  "2.1.8": {
+    "en": "Fixed a bug where devices may be shed while stepped devices are running at max."
   }
 }
