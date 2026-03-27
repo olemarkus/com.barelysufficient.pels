@@ -23,6 +23,83 @@ PELS must keep these concepts separate:
 
 Most bugs in this area come from collapsing two of those into one.
 
+## Generic Device-State Assumptions
+
+These rules are intentionally generic. They apply across vendors, transports, and device models.
+
+PELS should reason only from formal PELS concepts such as:
+
+- observed binary state
+- observed target / selected step
+- measured power
+- planner intent
+- local writes
+- pending confirmation windows
+- estimated power when telemetry is missing or contradictory
+
+PELS should not let vendor-specific diagnostic fields become a source of truth unless those fields
+are explicitly part of the formal device model.
+
+Contributor rule:
+
+- use vendor-specific details to explain weird logs to humans
+- do not let vendor-specific capability quirks shape generic planner truth rules unless the
+  capability is formally modeled
+
+### Binary confirmation is not full convergence
+
+A device can confirm `onoff=true` or `onoff=false` before the rest of its state has converged.
+
+Keep these separate:
+
+- binary state confirmed
+- measured power converged
+- final device behavior converged
+
+Do not assume binary confirmation means full convergence.
+
+### Measured power may lag state transitions
+
+A device may expose a new binary state quickly while measured power or final behavior still lags.
+
+Do not assume fresh power simply because the command or binary state already changed.
+
+### Local writes are provisional, not proof
+
+Local writes are strong evidence that PELS requested a change.
+They are not proof that the device has already converged.
+
+Treat a local write as:
+
+- requested state change
+- provisional transition
+- awaiting observed confirmation
+
+### Observation paths can disagree temporarily
+
+Different observation paths may briefly disagree:
+
+- one path says on, another still says off
+- measured power is non-zero while another state field still looks stale
+- state looks updated while power lags
+- power looks updated while state lags
+
+Assume this can happen for any managed device, not just one vendor or model.
+
+### Fallback estimates are planning inputs, not measured truth
+
+Fallback estimates are necessary for planning when telemetry is missing or contradictory.
+
+Keep the distinction explicit:
+
+- measured power is telemetry
+- estimated power is a planning assumption
+
+### Fresh observed state should eventually win
+
+Even with laggy or contradictory telemetry, fresher trusted observations must eventually replace
+older local-write assumptions, older snapshot assumptions, and older fallback estimates.
+
 ## Data Sources
 
 ### 1. Local command/write path
