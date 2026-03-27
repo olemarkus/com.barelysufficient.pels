@@ -89,6 +89,11 @@ jobs:
   settings-ui-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      HOME: /root
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      options: --ipc=host
 
     steps:
       - name: Checkout repository
@@ -105,9 +110,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
 
       - name: Run settings UI Jest suites
         run: npm run ci:test:settings-ui
