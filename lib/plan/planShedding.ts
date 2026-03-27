@@ -5,13 +5,13 @@ import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { resolveCandidatePower } from './planCandidatePower';
 import {
-  getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
   resolveSteppedCandidatePower,
   resolveSteppedLoadPlanningKw,
   resolveSteppedLoadSheddingTarget,
 } from './planSteppedLoad';
 import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
+import { resolveSteppedShedTargetStep } from './planSheddingStepped';
 import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
   RECENT_RESTORE_SHED_GRACE_MS,
@@ -219,24 +219,41 @@ function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
     // Budget exemption only bypasses daily soft-limit control. Capacity shedding
     // still considers the device because hard-cap protection remains in force.
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
-    .map((d) => addCandidatePower(d, state, nowTs, needed, deps))
+    .map((device) => addCandidatePower({
+      device,
+      devices,
+      state,
+      nowTs,
+      needed,
+      deps,
+    }))
     .filter((candidate): candidate is ShedCandidate => candidate !== null)
     .filter((d) => isNotAtShedTemperature(d))
     .sort(sortCandidates);
 }
 
-function addCandidatePower(
-  device: PlanInputDevice,
-  state: PlanEngineState,
-  nowTs: number,
-  needed: number,
-  deps: Pick<SheddingDeps, 'getPriorityForDevice' | 'getShedBehavior' | 'logDebug'>,
-): ShedCandidate | null {
+function addCandidatePower(params: {
+  device: PlanInputDevice;
+  devices: PlanInputDevice[];
+  state: PlanEngineState;
+  nowTs: number;
+  needed: number;
+  deps: Pick<SheddingDeps, 'getPriorityForDevice' | 'getShedBehavior' | 'logDebug'>;
+}): ShedCandidate | null {
+  const {
+    device,
+    devices,
+    state,
+    nowTs,
+    needed,
+    deps,
+  } = params;
   const priority = deps.getPriorityForDevice(device.id);
   const recentlyRestored = resolveRecentRestoreState(device, state, nowTs, needed, deps.logDebug);
   if (isSteppedLoadDevice(device)) {
     return buildSteppedCandidate({
       device,
+      devices,
       priority,
       recentlyRestored,
       state,
@@ -331,12 +348,20 @@ function buildTemperatureCandidate(params: {
 
 function buildSteppedCandidate(params: {
   device: PlanInputDevice;
+  devices: PlanInputDevice[];
   priority: number;
   recentlyRestored: boolean;
   state: PlanEngineState;
   getShedBehavior: SheddingDeps['getShedBehavior'];
 }): ShedCandidate | null {
-  const { device, priority, recentlyRestored, state, getShedBehavior } = params;
+  const {
+    device,
+    devices,
+    priority,
+    recentlyRestored,
+    state,
+    getShedBehavior,
+  } = params;
   const shedBehavior = getShedBehavior(device.id);
   if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
     const target = device.targets?.[0];
@@ -361,10 +386,12 @@ function buildSteppedCandidate(params: {
   const effectiveCurrentStepId = pendingIsLower
     ? device.desiredStepId : device.selectedStepId;
   const steppedShedAction = shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off';
-  const targetStep = getSteppedLoadShedTargetStep({
+  const targetStep = resolveSteppedShedTargetStep({
     device,
-    shedAction: steppedShedAction,
-    currentDesiredStepId: effectiveCurrentStepId,
+    devices,
+    state,
+    shedBehaviorAction: steppedShedAction,
+    effectiveCurrentStepId,
   });
   const steppedTarget = resolveSteppedLoadSheddingTarget({ device, targetStep });
   if (!steppedTarget) return null;

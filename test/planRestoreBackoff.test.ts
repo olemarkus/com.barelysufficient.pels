@@ -236,6 +236,115 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
   });
 
+  it('blocks stepped-load step-up while another ordinary device is swapped out', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.swapByDevice = {
+      'dev-swapped': { swappedOutFor: 'dev-target' },
+      'dev-target': { pendingTarget: true, timestamp: now },
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-swapped',
+          name: 'Swapped heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          reason: 'swapped out for Critical heater',
+          expectedPowerKw: 1.5,
+          measuredPowerKw: 0,
+          powerKw: 1.5,
+        }),
+        buildPlanDevice({
+          id: 'dev-target',
+          name: 'Critical heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          reason: 'swap pending',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 0,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+  });
+
+  it('blocks stepped-load step-up while an ordinary device is still swap pending', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.swapByDevice = {
+      'dev-target': { pendingTarget: true, timestamp: now },
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-target',
+          name: 'Critical heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          reason: 'swap pending',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 0,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+  });
+
   it('does not let a stale recently shed device block an unrelated stepped restore', () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-off'] = Date.now() - 30_000;
