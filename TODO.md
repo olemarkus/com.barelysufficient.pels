@@ -203,6 +203,22 @@ or present requested state as confirmed reality.
       per-capability realtime subscriptions for control capabilities (`onoff`,
       `evcharger_charging`, `target_temperature`) on managed devices.
       Files: `deviceManager.ts`.
+- [ ] Fix `flushRealtimeDeviceReconcileQueue` attempt recording so when
+      `shouldRecordAttempt` reports that no devices still drift after reconcile, PELS does not
+      fall back to logging/recording all eligible devices or open the circuit breaker early.
+      Files: `lib/app/appRealtimeDeviceReconcile.ts`, realtime reconcile tests.
+- [ ] Back off repeated target-temperature retries for persistently unreachable devices and surface
+      a temporary-unavailable state in logs/status instead of re-sending the same doomed command
+      every cycle.
+      Files: `lib/plan/planTargetControl.ts`, diagnostics/logging, tests.
+- [ ] Audit target confirmation semantics for temperature devices so
+      "Target still waiting for confirmation" compares against the confirmed target/setpoint
+      capability rather than observed room temperature.
+      Files: `lib/plan/planTargetControl.ts`, target confirmation tests.
+- [ ] Reduce restore ping-pong / shedding churn when a just-restored device is followed by a
+      predictable stepped-load or EV ramp. PELS should not restore into headroom that will vanish
+      inside the same convergence window and immediately force a re-shed.
+      Files: restore/headroom/shedding logic, mixed restore/shedding tests.
 
 ## P1 Consistency: reduce duplicate logic and conflicting models
 
@@ -229,9 +245,15 @@ question in different ways.
       consistent per-device pending-action model and shared timeout / confirmation semantics.
       Files: `planState.ts`, `planBinaryControl.ts`, `planTargetControl.ts`,
       `appDeviceControlHelpers.ts`.
+- [ ] Merge temperature-target and binary-power actuation settlement, retry policy, pending vs
+      observed semantics, and logging behind one shared control pipeline instead of two parallel
+      implementations that drift.
+      Files: `planBinaryControl.ts`, `planTargetControl.ts`, `planExecutor.ts`,
+      pending/logging helpers.
 - [ ] Make stepped-load logs name their source of truth explicitly. Requested/confirmed step logs
-      should distinguish desired step, last confirmed step, and effective planning step so stale
-      desired state is never presented as actual device state.
+      should distinguish desired step, last confirmed step, effective planning step, and externally
+      observed step so stale desired state is never presented as actual device state and
+      "outside PELS" followed by a later PELS request is easy to interpret.
       Files: stepped feedback logging path, `planExecutor.ts`, `planLogging.ts`.
 - [ ] Standardize restore eligibility checks across normal restore, stepped restore, and swap
       restore so "can this device restore?" has one consistent answer.
@@ -254,19 +276,44 @@ question in different ways.
 
 ## P2 Product and test follow-ups
 
+- [ ] Rework temperature-device starvation detection to the intended-target / suppression-only
+      model described in `notes/starvation/README.md`. This is detection only: it must not change
+      planner decisions. Includes pauseable accumulation, counting vs pause reasons, overview
+      badge/status suffix, insights, diagnostics/logs, and once-per-episode duration-threshold
+      flow triggers.
+      Files: diagnostics model/service, plan snapshot/contracts/UI, flow cards, insights.
+- [ ] Treat stepped-load upward transitions for already-on devices as active mode transitions, not
+      restore UI. `low -> medium/max` should not show a gray `Restoring` badge/text just because
+      the target step changed.
+      Files: `packages/settings-ui/src/ui/plan.ts`, plan state/status derivation.
+- [ ] Debounce/coalesce rapid temperature changes from the device tab so bulk edits do not flap
+      the plan or spam writes/retries.
+      Files: settings UI device detail, target write path, tests.
+- [ ] Add gray badge/state handling for unknown or disappeared devices in the overview/device list
+      instead of leaving them visually ambiguous.
+      Files: settings UI overview / device list.
+- [ ] Expose yesterday's daily-budget deviation as variables/tags and surface it in daily-budget
+      data where useful.
+      Files: daily budget API, flow cards, UI/contracts.
+- [ ] Add headroom threshold flow cards for crossing above/below a configured threshold. Support
+      generic triggers/conditions rather than only per-device headroom checks.
+      Files: `flowCards/registerFlowCards.ts`, flow-card tests.
+- [ ] Add a mode-switch surface to the insights device so flows and dashboards can drive or show
+      operating mode more directly.
+      Files: `drivers/pels_insights/**`, related flow cards/capabilities.
 - [ ] Align restore-cooldown badge/state text in the plan UI. Either add a dedicated badge state
-      or make badge text match the existing state line.
+      or make badge text match the existing state line, and audit true shed devices so they do not
+      accidentally render as neutral gray.
       Files: `packages/settings-ui/src/ui/plan.ts`.
 - [ ] Rename the restore-cooldown plan UI test so the description matches the actual assertion.
       Files: `packages/settings-ui/test/plan-ui.test.ts`.
 - [ ] Add stepped-load coverage for profiles without an explicit off-step. Shed should converge to
       the lowest available step instead of assuming a synthetic off-step exists.
       Files: stepped-load planning / executor tests.
-- [ ] Add restore-pending follow-up tests for per-device scoping, retry-window expiry,
+- [ ] Add remaining restore-pending follow-up tests for per-device scoping, retry-window expiry,
       confirmation clearing, no-false-pending cases, unaffected on/off restore flow, and status
-      classification. Include slow-device cases where confirmation arrives after ~60s and verify
-      PELS neither reissues restore prematurely nor loses track of likely-live load during the
-      pending window.
+      classification. Slow-device confirmation timing and provisional-live-load behavior now have
+      dedicated coverage; keep this item focused on the remaining pending-state gaps.
       Files: restore / reconciliation / status test suites.
 - [x] Add conservative pending-step test coverage: delayed `Max -> Low` confirmation must not
       free headroom early, overshoot during pending step-down must still shed other loads, and
@@ -277,23 +324,27 @@ question in different ways.
       feedback-triggered restore all respect the same cooldown gate and log why restore was
       blocked.
       Files: restore planning / app integration tests.
-- [ ] Add binary drift consistency tests that assert observed-state update ordering, correct
-      reapply target direction, and duplicate reconcile suppression while an equivalent command is
-      already pending.
+- [ ] Add remaining binary drift consistency tests that assert observed-state update ordering and
+      correct reapply target direction across realtime -> reconcile integration. Pending-command
+      suppression now has dedicated coverage; keep this item focused on the missing drift path
+      assertions.
       Files: realtime reconcile tests, device manager realtime tests, executor/reconcile tests.
 
 ## P3 Architecture, tooling, and perf tightening
 
 - [ ] Remove the remaining `lib/utils/** -> lib/{core,plan}` imports by moving those helpers to
       better owned modules, then make the architecture check strict instead of advisory.
-      Files: runtime helpers / architecture checks.
-- [ ] Expand dead-code export checks to cover the shared packages and settings UI, then remove the
+      Files: `lib/utils/settingsHandlers.ts`, `lib/utils/capacityHelpers.ts`,
+      `lib/utils/appTypeGuards.ts`, architecture checks.
+- [ ] Expand unused-export checks to cover the shared packages and settings UI, then remove the
       temporary allowlist exceptions that exist only because those areas are not checked yet.
-      Files: `scripts/check-dead-code.mjs`, `packages/contracts/**`, `packages/shared-domain/**`,
-      `packages/settings-ui/**`.
+      Files: `scripts/check-dead-code.mjs`, `tsconfig.runtime-unused.json`,
+      `packages/contracts/**`, `packages/shared-domain/**`, `packages/settings-ui/**`.
 - [ ] Tighten hot-path perf linting by changing `unicorn/no-array-reduce` to
       `{ allowSimpleOperations: false }` once the remaining reducers are migrated.
-      Files: `eslint.config.mjs`, remaining reducer call sites.
+      Files: `eslint.config.mjs`, `lib/plan/planShedding.ts`,
+      `lib/dailyBudget/dailyBudgetAllocation.ts`, `lib/dailyBudget/dailyBudgetConfidence.ts`,
+      `lib/dailyBudget/dailyBudgetMath.ts`, `lib/dailyBudget/dailyBudgetService.ts`.
 - [ ] Expand hot-path iteration rules (`no-array-for-each`, `no-array-reduce`, loop allocation
       bans) from `lib/{core,plan,dailyBudget}` to the rest of runtime after violations are
       cleaned up.
@@ -304,9 +355,9 @@ question in different ways.
 - [ ] Enable targeted `no-await-in-loop` in safe non-actuation loops after documenting approved
       sequential-actuation patterns.
       Files: lint config, loop call sites.
-- [ ] Gate `logNextDayPlanDebug` behind the debug flag early so production plan rebuilds do not
+- [x] Gate `logNextDayPlanDebug` behind the debug flag early so production plan rebuilds do not
       pay for an unnecessary "tomorrow" `buildPlan()` call.
-      Files: `dailyBudgetManager.ts`.
+      Files: `lib/dailyBudget/dailyBudgetManager.ts`, `lib/dailyBudget/dailyBudgetNextDayDebug.ts`.
 - [ ] Precompute shared zone/hour lookup data during plan rebuild so `resolveRemainingCaps`,
       `resolveRemainingFloors`, and `buildControlledMinFloors` do not repeatedly call
       `getZonedParts`.
@@ -315,9 +366,71 @@ question in different ways.
       enough timing / queue instrumentation to distinguish slow Homey writes, delayed refreshes,
       and local sequencing bottlenecks before they distort cooldown and control timing.
       Files: apply path instrumentation, perf logging, executor / plan service timing.
+- [ ] Avoid full plan rebuilds on every power sample. Sample updates should normally refresh
+      headroom/status only, and rebuild the full plan only when PELS crosses a control boundary
+      (over a limit, into another protection mode, or enough headroom exists to recover another
+      device).
+      Files: power update pipeline, rebuild scheduler, plan status/headroom path.
 
 ## P4 Future extensibility
 
 - [ ] Introduce a pluggable pricing strategy interface so non-Norwegian price schemes can swap in
       their own calculators without touching control logic.
       Files: pricing domain / aggregation pipeline.
+- [ ] Auto-adjust daily budget from past eligible exemptions using the policy in
+      `notes/daily-budget-auto-adjust/README.md`. Keep base budget, correction, and effective
+      budget separate, and derive correction from completed-day eligible exempted kWh rather than
+      starved minutes.
+      Files: daily budget state/service/UI/settings/diagnostics.
+- [ ] Support configurable per-device cooldowns for restore/shedding behavior instead of a single
+      global timing model.
+      Files: device config, restore/shedding timing, settings UI.
+- [ ] Support explicit headroom reservations within the budget model (`book X kW for X minutes`)
+      so predictable near-term loads can reserve capacity/headroom.
+      Files: headroom/daily budget planning, UI/flows.
+- [ ] Restore more than one device at a time when headroom allows, e.g. restore a configurable
+      share of headroom rather than strict one-by-one reactivation.
+      Files: restore planner/executor/tests.
+- [ ] Make price influence more explainable and adaptive to actual price spread, so users can see
+      that price weighting is doing real work and the effect scales with volatility.
+      Files: price optimization, daily budget, settings UI.
+- [ ] Explore weather-aware budget context or diagnostics so current budget pressure can be
+      compared with recent weather / heat demand.
+      Files: daily budget analytics/UI.
+- [ ] Store a small per-device action log ring buffer and expose it in the UI so users can inspect
+      hysteresis, price-driven changes, sheds, restores, and other recent actions.
+      Files: diagnostics/history storage, settings UI.
+
+## P5 Product, docs, and integration backlog
+
+- [ ] Rewrite landing-page / getting-started copy to emphasize automatic and intelligent control,
+      hard-cap setup, usage-flow setup, modes/targets/priorities, and mode-switch flows; remove
+      contributor-oriented copy from end-user docs and simplify over-technical early sections.
+      Files: website / published docs.
+- [ ] Add a Homey Energy-only how-to for users who want PELS without extra integrations.
+      Files: website / published docs.
+- [ ] Add a proper daily-budget how-to with a worked budget-exemption example.
+      Files: website / published docs.
+- [ ] Add website metadata and refresh branding assets/copy, including a non-black PELS logo.
+      Files: app/site metadata, branding assets.
+- [ ] Revisit daily-budget history navigation: remove the 7/14-day toggle, add week navigation,
+      and consider merging hourly details plus daily history into one shared view.
+      Files: settings UI daily-budget views/components.
+- [ ] Replace the hourly price list with a line graph for today/tomorrow with cheap/expensive
+      background bands and the existing tooltip content.
+      Files: settings UI prices/daily-budget charts.
+- [ ] Fix the mobile vs web color-scheme mismatch so the visual language is consistent across
+      surfaces.
+      Files: settings UI / website styling.
+- [ ] Design a virtual thermostat driver based on the examples in `tmp`, focusing on pairing,
+      settings, repair, and overall user UX before implementation.
+      Files: new driver design / UX note / `tmp` review.
+- [ ] Add a virtual EV charger / proxy driver that proxies official capabilities by default,
+      allows optional extra capability mapping via settings or flows, hides the proxy from the
+      main settings device list, uses device class `other`, and supports stepped charging /
+      unsupported chargers such as Easee and Zaptec.
+      Files: new driver(s), pairing/settings integration, device discovery/UI.
+- [ ] Add generic proxy / flow-owned devices for unsupported integrations (for example Flexit) and
+      flow-only controllable loads that are hidden by default but can participate in
+      price/capacity control when configured.
+      Files: new drivers, settings UI, flow cards.
