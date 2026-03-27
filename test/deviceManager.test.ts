@@ -184,7 +184,7 @@ describe('DeviceManager', () => {
             expect(snapshot[0].deviceClass).toBe('airtreatment');
             expect(snapshot[0].deviceType).toBe('temperature');
             expect(snapshot[0].powerCapable).toBe(true);
-            expect(snapshot[0].currentOn).toBeUndefined();
+            expect(snapshot[0].currentOn).toBe(true);
             expect(snapshot[0].canSetControl).toBeUndefined();
         });
 
@@ -812,7 +812,7 @@ describe('DeviceManager', () => {
                 }),
                 changes: [{
                     capabilityId: 'onoff',
-                    previousValue: 'unknown',
+                    previousValue: 'on',
                     nextValue: 'off',
                 }],
             }));
@@ -865,7 +865,7 @@ describe('DeviceManager', () => {
                 name: 'Heater',
                 changes: [{
                     capabilityId: 'onoff',
-                    previousValue: 'unknown',
+                    previousValue: 'on',
                     nextValue: 'off',
                 }],
             });
@@ -1715,15 +1715,23 @@ describe('DeviceManager', () => {
             expect(realtimeListener).not.toHaveBeenCalled();
         });
 
+        it('assumes on for onoff devices when snapshot data omits the boolean value', async () => {
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+                measuredPowerKw: 1,
+            }));
+            expect(loggerMock.debug).toHaveBeenCalledWith(
+                expect.stringContaining('Snapshot missing boolean onoff value for Heater (dev1); assuming device is on'),
+                undefined,
+            );
+        });
+
         it('updates local state on generic device.update events', async () => {
             await deviceManager.refreshSnapshot();
             const realtimeListener = jest.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
-
-            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: undefined,
-                measuredPowerKw: 1,
-            }));
 
             emitMockSdkDeviceUpdate({
                 id: 'dev1',
@@ -1741,15 +1749,7 @@ describe('DeviceManager', () => {
                 measuredPowerKw: 2.865,
                 powerKw: 2.865,
             }));
-            expect(realtimeListener).toHaveBeenCalledWith({
-                deviceId: 'dev1',
-                name: 'Heater',
-                changes: [{
-                    capabilityId: 'onoff',
-                    previousValue: 'unknown',
-                    nextValue: 'on',
-                }],
-            });
+            expect(realtimeListener).not.toHaveBeenCalled();
         });
 
         it('records device.update freshness before emitting reconcile', async () => {

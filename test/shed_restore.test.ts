@@ -10,7 +10,7 @@ type InternalApp = {
         expectedPowerKw?: number;
         powerKw?: number;
         controllable?: boolean;
-        currentOn?: boolean;
+        currentOn: boolean;
         priority?: number;
     }>;
     capacitySettings: { marginKw?: number };

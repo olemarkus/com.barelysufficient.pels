@@ -45,7 +45,7 @@ export type TargetDeviceSnapshot = {
     expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
     loadKw?: number;
     priority?: number;
-    currentOn?: boolean;
+    currentOn: boolean;
     evChargingState?: string;
     currentTemperature?: number;
     measuredPowerKw?: number;

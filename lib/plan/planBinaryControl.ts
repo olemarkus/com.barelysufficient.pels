@@ -410,7 +410,7 @@ function getObservedBinaryValue(
   if (capabilityId === 'evcharger_charging') {
     return resolveEvChargingObservedState(liveDevice.evChargingState);
   }
-  return typeof liveDevice.currentOn === 'boolean' ? liveDevice.currentOn : undefined;
+  return liveDevice.currentOn;
 }
 
 function resolveEvChargingObservedState(

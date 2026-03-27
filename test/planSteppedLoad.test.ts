@@ -139,7 +139,7 @@ describe('planSteppedLoad', () => {
     expect(resolveSteppedLoadCurrentState(steppedInputDevice({ currentOn: true, selectedStepId: 'off' }))).toBe('off');
     expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: true }))).toBe('on');
     expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: false }))).toBe('off');
-    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: undefined }))).toBe('unknown');
+    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: true }))).toBe('on');
   });
 
   it('uses planning power for restore math and measured power for immediate shed relief', () => {

@@ -18,7 +18,7 @@ export type HeadroomCardDeviceLike = {
   powerKw?: number;
   expectedPowerKw?: number;
   measuredPowerKw?: number;
-  currentOn?: boolean;
+  currentOn: boolean;
   currentState?: string;
   available?: boolean;
 };

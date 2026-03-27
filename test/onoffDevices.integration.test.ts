@@ -90,7 +90,7 @@ describe('On/off device integration', () => {
       deviceType?: string;
       deviceClass?: string;
       targets?: Array<unknown>;
-      currentOn?: boolean;
+      currentOn: boolean;
       powerKw?: number;
     }>;
     const entry = snapshot.find((snap) => snap.id === 'device-a');

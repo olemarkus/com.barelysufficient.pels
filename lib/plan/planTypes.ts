@@ -32,6 +32,7 @@ export type ShedBehavior = {
 export type DevicePlanDevice = {
   id: string;
   name: string;
+  currentOn: boolean;
   currentState: string;
   plannedState: string;
   currentTarget: unknown;
@@ -117,7 +118,7 @@ export type PlanInputDevice = {
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   priority?: number;
-  currentOn?: boolean;
+  currentOn: boolean;
   evChargingState?: string;
   powerKw?: number;
   expectedPowerKw?: number;

@@ -583,9 +583,7 @@ export class DeviceManager extends EventEmitter {
 
         const snapshot = this.latestSnapshot.find((device) => device.id === pending.deviceId);
         if (!snapshot) return;
-        const observed = typeof snapshot?.currentOn === 'boolean'
-            ? snapshot.currentOn
-            : pending.latestObserved;
+        const observed = snapshot.currentOn ?? pending.latestObserved;
         if (observed === pending.desired) {
             this.logger.debug(
                 `Binary settle confirmed for ${pending.name} (${pending.deviceId}) via ${pending.capabilityId}: `
@@ -686,7 +684,12 @@ export class DeviceManager extends EventEmitter {
         const { targetCaps } = capsStatus;
         const targets = buildTargets(targetCaps, capabilityObj);
         const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
-        const currentOn = getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId });
+        const currentOn = this.resolveSnapshotCurrentOn({
+            deviceLabel,
+            controlCapabilityId,
+            capabilityObj,
+            currentOn: getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId }),
+        });
         const canSetControl = getCanSetControl(controlCapabilityId, capabilityObj);
         const evChargingState = getEvChargingState(capabilityObj);
         const available = getIsAvailable(device);
@@ -735,6 +738,33 @@ export class DeviceManager extends EventEmitter {
             managed: this.providers.getManaged?.(deviceId),
             budgetExempt: this.providers.getBudgetExempt?.(deviceId),
         };
+    }
+
+    private resolveSnapshotCurrentOn(params: {
+        deviceLabel: string;
+        controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+        capabilityObj: DeviceCapabilityMap;
+        currentOn: boolean;
+    }): boolean {
+        const {
+            deviceLabel,
+            controlCapabilityId,
+            capabilityObj,
+            currentOn,
+        } = params;
+        if (controlCapabilityId === 'onoff' && typeof capabilityObj.onoff?.value !== 'boolean') {
+            this.logger.debug(
+                `Snapshot missing boolean onoff value for ${deviceLabel}; assuming device is on`,
+                capabilityObj.onoff?.value,
+            );
+        } else if (controlCapabilityId === 'evcharger_charging'
+            && typeof capabilityObj.evcharger_charging?.value !== 'boolean'
+            && getEvChargingState(capabilityObj) === undefined) {
+            this.logger.debug(
+                `Snapshot missing EV charging state for ${deviceLabel}; assuming device is on`,
+            );
+        }
+        return currentOn;
     }
 
     private getOrCreateDebugObservedSources(deviceId: string): DeviceDebugObservedSources {

@@ -63,7 +63,7 @@ type PelsTargetSnapshotSummary = {
   name: string;
   deviceType?: string;
   controlCapabilityId?: string;
-  currentOn?: boolean;
+  currentOn: boolean;
   currentTemperature?: number;
   targets: Array<{ id: string; value: unknown; unit: string }>;
   powerKw?: number;
@@ -293,7 +293,7 @@ const buildPelsSnapshotComparisonSource = (
   const target = Array.isArray(snapshot.targets) ? snapshot.targets[0] : null;
   const powerW = resolveComparisonPowerW(snapshot);
   return {
-    ...(typeof snapshot.currentOn === 'boolean' ? { sourceState: snapshot.currentOn ? 'on' : 'off' } : {}),
+    sourceState: snapshot.currentOn ? 'on' : 'off',
     ...(target ? { target: target.value } : {}),
     ...(powerW !== null ? { powerW } : {}),
     ...(asTimestampString(snapshot.lastUpdated) ? { lastSeenAt: asTimestampString(snapshot.lastUpdated) } : {}),
