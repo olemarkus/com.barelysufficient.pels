@@ -1,14 +1,14 @@
 /**
  * Settings UI Tests
  *
- * These tests use Puppeteer to validate the settings UI renders correctly
+ * These tests use Playwright's browser API to validate the settings UI renders correctly
  * and handles touch interactions properly in a 480px iframe (Homey's settings width).
  *
  * Optimized for speed: reuses browser page between tests, caches file reads,
  * and uses domcontentloaded instead of networkidle0.
  */
 
-import puppeteer, { Browser, Page } from 'puppeteer';
+import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -29,6 +29,7 @@ if (fs.existsSync(tokensCssPath)) {
 
 describe('Settings UI', () => {
   let browser: Browser;
+  let context: BrowserContext;
   let page: Page;
 
   // Prepare HTML with inlined CSS (cached)
@@ -160,7 +161,31 @@ describe('Settings UI', () => {
     });
   `;
 
-  // Helper to set up page with mock data - reuses existing page
+  const recreatePage = async (options: {
+    viewport: { width: number; height: number };
+    isMobile: boolean;
+    hasTouch: boolean;
+  }): Promise<void> => {
+    const {
+      viewport,
+      isMobile,
+      hasTouch,
+    } = options;
+    if (page) await page.close();
+    if (context) await context.close();
+    context = await browser.newContext({
+      viewport,
+      deviceScaleFactor: 2,
+      isMobile,
+      hasTouch,
+      userAgent: isMobile
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    });
+    page = await context.newPage();
+  };
+
+  // Helper to set up page with mock data
   const setupPage = async (options: {
     viewport?: { width: number; height: number };
     isMobile?: boolean;
@@ -173,14 +198,10 @@ describe('Settings UI', () => {
       hasTouch = false,
       mockDeviceCount = 5,
     } = options;
-
-    await page.emulate({
-      viewport: {
-        ...viewport, deviceScaleFactor: 2, isMobile, hasTouch,
-      },
-      userAgent: isMobile
-        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
-        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    await recreatePage({
+      viewport,
+      isMobile,
+      hasTouch,
     });
 
     const html = prepareHtml(getDefaultMockScript(mockDeviceCount));
@@ -189,15 +210,15 @@ describe('Settings UI', () => {
   };
 
   beforeAll(async () => {
-    browser = await puppeteer.launch({
+    browser = await chromium.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
-    page = await browser.newPage();
   });
 
   afterAll(async () => {
-    await page.close();
+    if (page) await page.close();
+    if (context) await context.close();
     await browser.close();
   });
 
@@ -363,7 +384,7 @@ describe('Settings UI', () => {
 
       const scrollBefore = await page.evaluate(() => window.scrollY);
 
-      const client = await page.target().createCDPSession();
+      const client = await context.newCDPSession(page);
       const startX = 240;
       const startY = 600;
       const endY = 200;
@@ -487,11 +508,10 @@ describe('Settings UI', () => {
         });
       `;
 
-      await page.emulate({
-        viewport: {
-          width: 480, height: 800, deviceScaleFactor: 2, isMobile: false, hasTouch: false,
-        },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      await recreatePage({
+        viewport: { width: 480, height: 800 },
+        isMobile: false,
+        hasTouch: false,
       });
 
       const html = prepareHtml(mockScript);
@@ -676,11 +696,10 @@ describe('Settings UI', () => {
         });
       `;
 
-      await page.emulate({
-        viewport: {
-          width: 480, height: 800, deviceScaleFactor: 2, isMobile: false, hasTouch: false,
-        },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      await recreatePage({
+        viewport: { width: 480, height: 800 },
+        isMobile: false,
+        hasTouch: false,
       });
 
       const html = prepareHtml(mockScript);
@@ -739,8 +758,11 @@ describe('Settings UI', () => {
     });
 
     test('temperature lines do not overflow at 320px', async () => {
-      await page.setViewport({ width: 320, height: 600, deviceScaleFactor: 2 });
-
+      await recreatePage({
+        viewport: { width: 320, height: 600 },
+        isMobile: false,
+        hasTouch: false,
+      });
       await setupPlanPage([
         {
           name: 'Long Device Name', zone: 'Room', currentTemperature: 99.5, currentTarget: 99.5, plannedTarget: 10.0,
@@ -1031,11 +1053,10 @@ describe('Settings UI', () => {
         });
       `;
 
-      await page.emulate({
-        viewport: {
-          width: 480, height: 800, deviceScaleFactor: 2, isMobile: false, hasTouch: false,
-        },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      await recreatePage({
+        viewport: { width: 480, height: 800 },
+        isMobile: false,
+        hasTouch: false,
       });
 
       const html = prepareHtml(mockScript);
@@ -1153,7 +1174,7 @@ describe('Settings UI', () => {
       const initiallyHidden = await page.$eval('#device-detail-overshoot-temp-row', (el) => (el as HTMLElement).hidden);
       expect(initiallyHidden).toBe(true);
 
-      await page.select('#device-detail-overshoot', 'set_temperature');
+      await page.selectOption('#device-detail-overshoot', 'set_temperature');
 
       const hiddenAfterSelect = await page.$eval('#device-detail-overshoot-temp-row', (el) => (el as HTMLElement).hidden);
       expect(hiddenAfterSelect).toBe(false);

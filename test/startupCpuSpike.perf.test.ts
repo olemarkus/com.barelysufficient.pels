@@ -139,7 +139,7 @@ const captureStartupMetrics = async (params: {
 
   const beforePerf = getPerfSnapshot();
   const app = createApp();
-  let onInitMs = 0;
+  let onInitMs: number;
   try {
     const onInitStart = Date.now();
     await app.onInit();

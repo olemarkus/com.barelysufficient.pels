@@ -247,22 +247,22 @@ const evaluateLowestToday = (
       candidateCount: daySlots.length,
     };
   }
-  let currentPrice: number | null = null;
-  if (hasFiniteNumber(currentPriceOverride)) {
-    currentPrice = currentPriceOverride;
-  } else {
-    const currentHourSlots = context.slotsByDateHour.get(context.todayKey)?.get(context.currentHour) ?? [];
-    const currentSlot = selectCurrentHourSlot(currentHourSlots, context.nowMs);
-    if (!currentSlot) {
-      return {
-        matches: false,
-        reason: 'missing_current_slot',
-        currentPrice: null,
-        cutoff: null,
-        candidateCount: daySlots.length,
-      };
-    }
-    currentPrice = currentSlot.price;
+  const currentPrice = hasFiniteNumber(currentPriceOverride)
+    ? currentPriceOverride
+    : (() => {
+      const currentHourSlots = context.slotsByDateHour.get(context.todayKey)?.get(context.currentHour) ?? [];
+      const currentSlot = selectCurrentHourSlot(currentHourSlots, context.nowMs);
+      if (!currentSlot) return null;
+      return currentSlot.price;
+    })();
+  if (!hasFiniteNumber(currentPrice)) {
+    return {
+      matches: false,
+      reason: 'missing_current_slot',
+      currentPrice: null,
+      cutoff: null,
+      candidateCount: daySlots.length,
+    };
   }
   if (!hasFiniteNumber(currentPrice)) {
     return {

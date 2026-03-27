@@ -35,7 +35,7 @@ export function getHourBucketKey(nowMs: number = Date.now()): string {
 }
 
 export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
-    let primaryError: unknown = null;
+    let primaryError: unknown;
     try {
         const parts = new Intl.DateTimeFormat('en-US', {
             timeZone,

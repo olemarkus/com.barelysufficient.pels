@@ -491,7 +491,7 @@ export async function logHomeyDeviceForDebug(params: {
   } = params;
   if (!deviceId) return false;
 
-  let devices: HomeyDeviceLike[] = [];
+  let devices: HomeyDeviceLike[];
   try {
     devices = await getHomeyDevicesForDebug({ deviceManager });
   } catch (err) {
@@ -599,7 +599,7 @@ export async function logHomeyDeviceComparisonForDebug(params: {
   } = params;
   if (!deviceId) return false;
 
-  let devices: HomeyDeviceLike[] = [];
+  let devices: HomeyDeviceLike[];
   try {
     devices = await getHomeyDevicesForDebug({ deviceManager });
   } catch (err) {
