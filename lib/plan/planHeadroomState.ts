@@ -87,8 +87,7 @@ const cleanupMissingHeadroomDevices = (
     if (activeIds.has(deviceId)) continue;
     removeHeadroomCardStateForDevice(state, deviceId);
     // A missing snapshot should close any open attempt, but it must not forgive prior failed activations.
-    stateChanged = closeActivationAttemptForDevice(state, deviceId) || stateChanged;
-    stateChanged = true;
+    stateChanged = closeActivationAttemptForDevice(state, deviceId) || true;
   }
   return stateChanged;
 };
