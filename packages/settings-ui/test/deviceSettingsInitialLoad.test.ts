@@ -22,6 +22,7 @@ const buildDevice = (overrides?: Partial<TargetDeviceSnapshot>): TargetDeviceSna
   name: 'Test Device',
   targets: [],
   deviceType: 'temperature',
+  currentOn: true,
   ...overrides,
 });
 

@@ -1054,6 +1054,7 @@ describe('Device plan snapshot', () => {
 
   it('restores devices when plan says keep even if headroom is below its power need', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff']);
+    await dev1.setCapabilityValue('onoff', false);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
     });
@@ -1072,6 +1073,8 @@ describe('Device plan snapshot', () => {
         {
           id: 'dev-1',
           name: 'Heater A',
+          controlCapabilityId: 'onoff',
+          currentOn: false,
           plannedState: 'keep',
           currentState: 'off',
           plannedTarget: null,
@@ -1428,7 +1431,7 @@ describe('Device plan snapshot', () => {
     }
   });
 
-  it('uses not_applicable currentState for controllable temperature devices without onoff', async () => {
+  it('uses currentState on for controllable temperature devices without onoff', async () => {
     const dev1 = new MockDevice('dev-1', 'Temp-only device', ['target_temperature', 'measure_temperature', 'measure_power']);
     await dev1.setCapabilityValue('target_temperature', 21);
     await dev1.setCapabilityValue('measure_temperature', 20);
@@ -1451,7 +1454,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(250);
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
-    expect(devPlan?.currentState).toBe('not_applicable');
+    expect(devPlan?.currentState).toBe('on');
     expect(devPlan?.reason).not.toContain('restore');
   });
 
@@ -3522,7 +3525,7 @@ describe('Dry run mode', () => {
       targets: [],
       capabilities: ['onoff'],
       canSetOnOff: false,
-      currentOn: undefined, // unknown power/on state
+      currentOn: true,
       controllable: true,
     }]);
 
@@ -3856,7 +3859,7 @@ describe('Dry run mode', () => {
         name: 'Lower-priority thermostat without onoff',
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         capabilities: ['target_temperature'],
-        currentOn: undefined,
+        currentOn: true,
         controllable: true,
         powerKw: 0.3,
         expectedPowerKw: 0.3,

@@ -122,7 +122,7 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
     });
 
-    it('does not treat unknown binary state as keep-plan drift by itself', () => {
+    it('treats fresh off binary state as keep-plan drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'on',
         plannedState: 'keep',
@@ -130,11 +130,12 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
+        currentOn: false,
         hasBinaryControl: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
     it('does not treat stale live binary observations as drift', () => {
@@ -241,7 +242,7 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
     });
 
-    it('treats unknown binary state as drift for shed-off intent', () => {
+    it('does not treat fresh off binary state as drift for shed-off intent', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'on',
         plannedState: 'shed',
@@ -250,11 +251,12 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
+        currentOn: false,
         hasBinaryControl: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
     });
   });
 

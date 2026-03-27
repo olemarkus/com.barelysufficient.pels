@@ -218,12 +218,19 @@ or present requested state as confirmed reality.
 - [ ] Reduce restore ping-pong / shedding churn when a just-restored device is followed by a
       predictable stepped-load or EV ramp. PELS should not restore into headroom that will vanish
       inside the same convergence window and immediately force a re-shed.
+      Follow-up direction: reserve provisional restore load until the device confirms the requested
+      binary/step transition, and anchor restore cooldown from confirmation time rather than command
+      send time. This should prevent double-spending headroom during pending restore convergence
+      without relying on laggy per-device power telemetry.
       Files: restore/headroom/shedding logic, mixed restore/shedding tests.
 
-## P1 Consistency: reduce duplicate logic and conflicting models
+## P1 Correctness, inefficiency, and cleanup follow-ups
 
-These items are next because they currently let different parts of the planner answer the same
-question in different ways.
+These are important follow-ups, but they are a mix of correctness bugs, avoidable inefficiencies,
+and code-cleanup work. Keep them separated so the behavioral fixes do not get buried under larger
+refactors.
+
+### P1 Bugs: conflicting models and wrong answers
 
 - [ ] Document the intended fallback order per consumer and align power resolution across
       `resolveCandidatePower`, `estimateRestorePower`, `resolveUsageKw`, and stepped-load power
@@ -234,6 +241,27 @@ question in different ways.
       executor logic so the same device does not look "off" in one stage and "on" in another.
       Files: `planShedding.ts`, `planRestoreDevices.ts`, `planReconcileState.ts`,
       `planExecutor.ts`.
+- [ ] Standardize restore eligibility checks across normal restore, stepped restore, and swap
+      restore so "can this device restore?" has one consistent answer.
+      Files: `planRestoreDevices.ts`, `planRestoreSwap.ts`.
+- [ ] Pick one source of truth for the controlled vs uncontrolled power split. Today the plan
+      builder and `PowerTracker` compute it independently and can drift.
+      Files: `powerTracker.ts`, `planBuilder.ts`, `planUsage.ts`.
+- [ ] Make planner and guard use the same soft-limit model. The dynamic plan budget limit and the
+      guard's static margin should not produce different headroom answers at the same time.
+      Files: `planBudget.ts`, `capacityGuard.ts`, `planContext.ts`.
+- [ ] Add hysteresis to shedding active state so power oscillation near the limit does not flip
+      shed/restore state every few seconds.
+      Files: `capacityGuard.ts`, `planSheddingGuard.ts`.
+
+### P1 Inefficiencies: unnecessary work or repeated lookups
+
+- [ ] Cache snapshot lookup by device ID in `applyPlanActions` instead of repeating
+      `latestTargetSnapshot.find(...)` across action paths.
+      Files: `planExecutor.ts`.
+
+### P1 Cleanup: reduce duplicate logic and state-model sprawl
+
 - [ ] Remove duplicate stepped-state derivation in `resolveSteppedLoadCurrentState` and rely on
       the already decorated snapshot state instead of deriving the same intent twice.
       Files: `planSteppedLoad.ts`, `planDevices.ts`.
@@ -255,21 +283,6 @@ question in different ways.
       observed step so stale desired state is never presented as actual device state and
       "outside PELS" followed by a later PELS request is easy to interpret.
       Files: stepped feedback logging path, `planExecutor.ts`, `planLogging.ts`.
-- [ ] Standardize restore eligibility checks across normal restore, stepped restore, and swap
-      restore so "can this device restore?" has one consistent answer.
-      Files: `planRestoreDevices.ts`, `planRestoreSwap.ts`.
-- [ ] Pick one source of truth for the controlled vs uncontrolled power split. Today the plan
-      builder and `PowerTracker` compute it independently and can drift.
-      Files: `powerTracker.ts`, `planBuilder.ts`, `planUsage.ts`.
-- [ ] Make planner and guard use the same soft-limit model. The dynamic plan budget limit and the
-      guard's static margin should not produce different headroom answers at the same time.
-      Files: `planBudget.ts`, `capacityGuard.ts`, `planContext.ts`.
-- [ ] Add hysteresis to shedding active state so power oscillation near the limit does not flip
-      shed/restore state every few seconds.
-      Files: `capacityGuard.ts`, `planSheddingGuard.ts`.
-- [ ] Cache snapshot lookup by device ID in `applyPlanActions` instead of repeating
-      `latestTargetSnapshot.find(...)` across action paths.
-      Files: `planExecutor.ts`.
 - [ ] Replace the 30+ field `DevicePlanDevice` bag with tighter types where shed behavior and
       control-model-specific fields are coupled instead of independent optionals.
       Files: `planTypes.ts`.

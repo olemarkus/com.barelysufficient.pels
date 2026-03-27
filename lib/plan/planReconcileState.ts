@@ -148,12 +148,8 @@ function resolveCurrentStateFromPlanInput(
     });
     if (steppedState !== 'unknown') return steppedState;
   }
-  if (typeof liveDevice.currentOn === 'boolean') return liveDevice.currentOn ? 'on' : 'off';
   if (liveDevice.hasBinaryControl === false) return 'not_applicable';
-  if (previousDevice.currentState === 'on' || previousDevice.currentState === 'off') {
-    return previousDevice.currentState;
-  }
-  return 'unknown';
+  return liveDevice.currentOn ? 'on' : 'off';
 }
 
 function hasSettledPostActuationState(

@@ -169,7 +169,7 @@ describe('appRealtimeDeviceReconcile', () => {
     );
   });
 
-  it('skips reconcile when a keep device only has unknown live binary state', () => {
+  it('queues reconcile when a keep device has fresh off live binary state', () => {
     const logDebug = jest.fn();
 
     const shouldQueue = shouldQueueRealtimeDeviceReconcile({
@@ -177,7 +177,7 @@ describe('appRealtimeDeviceReconcile', () => {
         deviceId: 'dev-1',
         name: 'Heater',
         capabilityId: 'onoff',
-        changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'unknown' }],
+        changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
       },
       latestPlanSnapshot: {
         meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
@@ -195,17 +195,14 @@ describe('appRealtimeDeviceReconcile', () => {
         id: 'dev-1',
         name: 'Heater',
         hasBinaryControl: true,
+        currentOn: false,
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       }],
       logDebug,
     });
 
-    expect(shouldQueue).toBe(false);
-    expect(logDebug).toHaveBeenCalledWith(
-      'Realtime device change matches current plan, skipping reconcile: '
-      + 'Heater (dev-1) via onoff [onoff: on -> unknown]; plan state: on',
-    );
+    expect(shouldQueue).toBe(true);
   });
 
   it('skips reconcile for target drift when a shed device is already off', () => {
@@ -271,6 +268,23 @@ describe('appRealtimeDeviceReconcile', () => {
     expect(log).toHaveBeenCalledWith(
       'Realtime device drift detected; reapplying current plan: Heater 2 (dev-2) via onoff',
     );
+  });
+
+  it.failing('does not log or record attempts when shouldRecordAttempt filters out every reconciled event', async () => {
+    const state = createRealtimeDeviceReconcileState();
+    const log = jest.fn();
+    state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
+
+    await flushRealtimeDeviceReconcileQueue({
+      state,
+      reconcile: jest.fn().mockResolvedValue(true),
+      shouldRecordAttempt: () => false,
+      logDebug: jest.fn(),
+      log,
+    });
+
+    expect(log).not.toHaveBeenCalled();
+    expect(state.circuitState.size).toBe(0);
   });
 
   it('opens the breaker after repeated reconcile attempts for devices that still drift', async () => {

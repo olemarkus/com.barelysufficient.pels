@@ -44,7 +44,7 @@ type SnapshotEntry = {
   name: string;
   deviceClass?: string;
   controlCapabilityId?: string;
-  currentOn?: boolean;
+  currentOn: boolean;
   evChargingState?: string;
   expectedPowerSource?: string;
   powerKw?: number;

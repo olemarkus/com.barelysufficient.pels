@@ -21,12 +21,14 @@ const buildPlan = (
     {
       id: 'dev-1',
       name: 'Heater',
+      currentOn: true,
       currentState: 'on',
       plannedState: 'keep',
       currentTarget,
       plannedTarget: 20,
       reason,
       controllable: true,
+      controlCapabilityId: 'onoff',
       ...deviceOverrides,
     },
   ],
@@ -679,7 +681,7 @@ describe('PlanService', () => {
     expect(applyPlanActions).not.toHaveBeenCalled();
   });
 
-  it('reapplies shed-off intent when live binary state is unknown', async () => {
+  it('reapplies shed-off intent when live binary state is still on', async () => {
     const applyPlanActions = jest.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
@@ -702,6 +704,7 @@ describe('PlanService', () => {
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         deviceType: 'temperature',
         hasBinaryControl: true,
+        currentOn: true,
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,

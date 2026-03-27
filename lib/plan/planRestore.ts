@@ -342,6 +342,7 @@ function getRestoreNeed(
     deviceId: dev.id,
     observation: {
       available: dev.available,
+      currentOn: dev.currentOn,
       currentState: dev.currentState,
       measuredPowerKw: dev.measuredPowerKw,
     },

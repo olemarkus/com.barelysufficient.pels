@@ -138,7 +138,7 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   const currentSnapshot = latestSnapshot.find((entry) => entry.id === deviceId);
   const binaryCapabilityId = currentSnapshot?.controlCapabilityId;
   const shouldDefer = (
-    typeof currentSnapshot?.currentOn === 'boolean'
+    currentSnapshot !== undefined
     && typeof binaryCapabilityId === 'string'
     && notePendingBinarySettleObservation?.(
       deviceId,

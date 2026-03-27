@@ -756,7 +756,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     ...overrides,
   }];
 
-  const buildSnapshot = (overrides: { currentOn?: boolean } = {}) => [{
+  const buildSnapshot = (overrides: { currentOn: boolean } = { currentOn: false }) => [{
     id: 'dev-1',
     name: 'Tank',
     controlCapabilityId: 'onoff' as const,

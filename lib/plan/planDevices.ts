@@ -144,9 +144,8 @@ function resolveCurrentState(device: PlanInputDevice): string {
   }
   const steppedState = resolveSteppedLoadCurrentState(device);
   if (steppedState !== 'unknown') return steppedState;
-  if (typeof device.currentOn === 'boolean') return device.currentOn ? 'on' : 'off';
   if (device.hasBinaryControl === false) return 'not_applicable';
-  return 'unknown';
+  return device.currentOn ? 'on' : 'off';
 }
 
 function buildBasePlanDevice(params: {
@@ -209,6 +208,7 @@ function buildBasePlanDevice(params: {
   return {
     id: dev.id,
     name: dev.name,
+    currentOn: dev.currentOn,
     currentState,
     plannedState,
     currentTarget,
