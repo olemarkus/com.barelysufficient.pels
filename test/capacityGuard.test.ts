@@ -148,6 +148,33 @@ describe('CapacityGuard', () => {
       expect(shortfallEvents).toHaveLength(0);
       expect(guard.isInShortfall()).toBe(false);
     });
+
+    it('does not reset incidentId on repeated shortfall entries', async () => {
+      const logEvents: Array<Record<string, unknown>> = [];
+      const structuredLog = {
+        warn: (obj: Record<string, unknown>) => { logEvents.push(obj); },
+        info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
+      };
+      const guard = new CapacityGuard({
+        limitKw: 5,
+        softMarginKw: 0.2,
+        onShortfall: () => {},
+        structuredLog: structuredLog as never,
+      });
+
+      guard.reportTotalPower(5.5);
+      await guard.checkShortfall(false, 0.5);
+      expect(guard.isInShortfall()).toBe(true);
+      expect(logEvents).toHaveLength(1);
+      expect(logEvents[0].event).toBe('capacity_overshoot_detected');
+      const firstIncidentId = logEvents[0].incidentId;
+      expect(firstIncidentId).toBeDefined();
+
+      // Second shortfall check while already in shortfall should not emit another event
+      guard.reportTotalPower(6.0);
+      await guard.checkShortfall(false, 1.0);
+      expect(logEvents).toHaveLength(1); // No new event
+    });
   });
 
   describe('Shortfall clearing with hysteresis', () => {

@@ -4,6 +4,7 @@ import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
 import { PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
+import type { Logger as PinoLogger } from '../logging/logger';
 
 export type PriceCoordinatorDeps = {
   homey: Homey.App['homey'];
@@ -13,6 +14,7 @@ export type PriceCoordinatorDeps = {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
+  structuredLog?: PinoLogger;
 };
 
 export class PriceCoordinator {
@@ -80,6 +82,7 @@ export class PriceCoordinator {
       log: (...args: unknown[]) => this.deps.log(...args),
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       error: (...args: unknown[]) => this.deps.error(...args),
+      structuredLog: this.deps.structuredLog,
     });
   }
 
@@ -109,6 +112,11 @@ export class PriceCoordinator {
     this.priceRefreshInterval = setInterval(() => {
       this.priceService.refreshSpotPrices().catch((error: Error) => {
         this.deps.error('Failed to refresh spot prices', error);
+        this.deps.structuredLog?.error({
+          event: 'price_fetch_failed',
+          priceSource: 'spot',
+          reasonCode: resolveErrorReasonCode(error),
+        });
       });
       this.priceService.refreshGridTariffData().catch((error: Error) => {
         this.deps.error('Failed to refresh grid tariff data', error);
@@ -169,6 +177,23 @@ export class PriceCoordinator {
   getCurrentHourStartMs(): number {
     return this.priceService.getCurrentHourStartMs();
   }
+}
+
+function resolveErrorReasonCode(error: Error): string {
+  const anyError = error as { message?: unknown; code?: unknown };
+  const code = typeof anyError.code === 'string' ? anyError.code.toUpperCase() : undefined;
+
+  if (code === 'ETIMEDOUT') return 'request_timeout';
+  if (code === 'ECONNRESET') return 'socket_hangup';
+
+  const msg = typeof anyError.message === 'string' ? anyError.message : '';
+  const msgLower = msg.toLowerCase();
+
+  if (msgLower.includes('etimedout') || msgLower.includes('timeout')) return 'request_timeout';
+  if (msgLower.includes('econnreset') || msgLower.includes('socket hang up')) return 'socket_hangup';
+  if (msgLower.includes('cert') || msgLower.includes('ssl')) return 'ssl_verification_failed';
+
+  return 'price_fetch_failed';
 }
 
 function isPriceOptimizationSettings(

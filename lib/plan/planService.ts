@@ -19,6 +19,8 @@ import {
 } from './planServiceInternals';
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
+import type { Logger as PinoLogger } from '../logging/logger';
+import { withRebuildContext } from '../logging/logger';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
 import {
@@ -44,6 +46,7 @@ export type PlanServiceDeps = {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
+  structuredLog?: PinoLogger;
 };
 
 export class PlanService {
@@ -434,20 +437,44 @@ export class PlanService {
   }): Promise<void> {
     const { reason, queueWaitMs, queueDepth } = params;
     const isDryRun = this.deps.getCapacityDryRun();
+    const rebuildId = `rb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const rebuildStart = Date.now();
     const stopSpan = startRuntimeSpan(`plan_rebuild(${reason})`);
     const outcome = createPlanRebuildOutcome(isDryRun);
 
-    try {
-      await this.executePlanRebuild(isDryRun, outcome);
-    } catch (error) {
-      outcome.failed = true;
-      incPerfCounter('plan_rebuild_failed_total');
-      throw error;
-    } finally {
-      this.recordPlanRebuildMetrics(reason, queueWaitMs, queueDepth, rebuildStart, outcome);
-      stopSpan();
-    }
+    const run = async (): Promise<void> => {
+      this.deps.structuredLog?.info({ event: 'plan_rebuild_started', rebuildId, reasonCode: reason });
+
+      try {
+        await this.executePlanRebuild(isDryRun, outcome);
+      } catch (error) {
+        outcome.failed = true;
+        incPerfCounter('plan_rebuild_failed_total');
+        throw error;
+      } finally {
+        const durationMs = Date.now() - rebuildStart;
+        this.recordPlanRebuildMetrics(reason, queueWaitMs, queueDepth, rebuildStart, outcome);
+        stopSpan();
+        this.deps.structuredLog?.info({
+          event: 'plan_rebuild_completed',
+          rebuildId,
+          durationMs,
+          buildMs: outcome.buildMs,
+          snapshotMs: outcome.snapshotMs,
+          statusMs: outcome.statusMs,
+          applyMs: outcome.applyMs,
+          reasonCode: reason,
+          actionChanged: outcome.actionChanged,
+          detailChanged: outcome.detailChanged,
+          metaChanged: outcome.metaChanged,
+          hadShedding: outcome.hadShedding,
+          appliedActions: outcome.appliedActions,
+          failed: outcome.failed,
+        });
+      }
+    };
+
+    await withRebuildContext(rebuildId, run);
   }
 
   private async executePlanRebuild(

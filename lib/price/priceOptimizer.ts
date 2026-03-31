@@ -2,6 +2,7 @@ import type { CombinedHourlyPrice } from './priceTypes';
 import { PriceLevel } from './priceLevels';
 import { incPerfCounters } from '../utils/perfCounters';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
+import type { Logger as PinoLogger } from '../logging/logger';
 
 export type PriceOptimizationSettings = {
   enabled: boolean;
@@ -26,6 +27,7 @@ export type PriceOptimizerDeps = {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
+  structuredLog?: PinoLogger;
 };
 
 export class PriceOptimizer {
@@ -64,13 +66,22 @@ export class PriceOptimizer {
         + `threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, `
         + `isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`,
       );
-
       let hourLabel = 'normal';
       if (isCheap) {
         hourLabel = 'cheap';
       } else if (isExpensive) {
         hourLabel = 'expensive';
       }
+      this.deps.structuredLog?.info({
+        event: 'price_optimization_completed',
+        mode: hourLabel,
+        devicesCount: Object.keys(settings).length,
+        currentPriceAvailable: currentPrice != null,
+        currentPriceOre: currentPrice?.totalPrice ?? null,
+        avgPriceOre: Math.round(avgPrice * 10) / 10,
+        isCheap,
+        isExpensive,
+      });
       incPerfCounters([
         'plan_rebuild_requested_total',
         'plan_rebuild_requested.price_optimizer_total',
