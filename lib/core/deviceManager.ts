@@ -302,6 +302,24 @@ export class DeviceManager extends EventEmitter {
             this.latestSnapshot = snapshot;
             this.recordSnapshotRefreshObservations(snapshot, fetchSource);
             this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
+            if (this.logger.structuredLog) {
+                let known = 0;
+                let unknown = 0;
+                let unavailable = 0;
+                for (const d of snapshot) {
+                    if (d.available === false) unavailable++;
+                    else if (d.currentTemperature != null) known++;
+                    else unknown++;
+                }
+                this.logger.structuredLog.info({
+                    event: 'device_snapshot_refresh_completed',
+                    durationMs: Date.now() - start,
+                    devicesTotal: snapshot.length,
+                    knownDevices: known,
+                    unknownDevices: unknown,
+                    unavailableDevices: unavailable,
+                });
+            }
             logEvSnapshotChanges({
                 logger: this.logger,
                 previousSnapshot,

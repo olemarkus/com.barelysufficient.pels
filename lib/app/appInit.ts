@@ -15,6 +15,7 @@ import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { ReportSteppedLoadActualStepResult } from './appDeviceControlHelpers';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import type { Logger as PinoLogger } from '../logging/logger';
 import { COMBINED_PRICES } from '../utils/settingsKeys';
 import type { CapacitySettingsSnapshot } from './appSettingsHelpers';
 import { PriceCoordinator } from '../price/priceCoordinator';
@@ -123,6 +124,7 @@ export type PlanServiceInitApp = {
   log: (...args: unknown[]) => void;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
+  structuredLog?: PinoLogger;
 };
 
 export function createPlanService(app: PlanServiceInitApp): PlanService {
@@ -149,6 +151,7 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
     getCombinedPrices: () => app.homey.settings.get(COMBINED_PRICES) as unknown,
     getLastPowerUpdate: () => app.getLastPowerUpdate(),
     schedulePostActuationRefresh: app.schedulePostActuationRefresh,
+    structuredLog: app.structuredLog?.child({ component: 'plan' }),
   });
 }
 
@@ -238,6 +241,7 @@ export type PriceCoordinatorInitApp = {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
+  structuredLog?: PinoLogger;
 };
 
 export function createPriceCoordinator(app: PriceCoordinatorInitApp): PriceCoordinator {
@@ -249,5 +253,6 @@ export function createPriceCoordinator(app: PriceCoordinatorInitApp): PriceCoord
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug(...args),
     error: (...args: unknown[]) => app.error(...args),
+    structuredLog: app.structuredLog?.child({ component: 'price' }),
   });
 }

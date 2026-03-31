@@ -30,6 +30,7 @@ import { incPerfCounter, addPerfDuration } from '../utils/perfCounters';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../utils/debugLogging';
 import { normalizeError } from '../utils/errorUtils';
+import type { Logger as PinoLogger } from '../logging/logger';
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
@@ -39,6 +40,7 @@ type DailyBudgetServiceDeps = {
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
+  structuredLog?: PinoLogger;
 };
 
 export class DailyBudgetService {
@@ -134,6 +136,14 @@ export class DailyBudgetService {
         includeConfidenceBootstrapDebug: params.includeConfidenceBootstrapDebug,
       });
       this.setDaySnapshot(update.snapshot, nowMs, includeAdjacentDays);
+      const snap = update.snapshot;
+      this.deps.structuredLog?.info({
+        event: 'budget_recomputed',
+        newBudgetKWh: snap.budget.dailyBudgetKWh,
+        actualKWh: snap.state.usedNowKWh,
+        remainingNewKWh: snap.state.remainingKWh,
+        exceeded: snap.state.exceeded,
+      });
       if (update.shouldPersist) {
         this.persistState();
       }

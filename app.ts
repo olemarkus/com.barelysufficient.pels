@@ -78,6 +78,8 @@ import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/
 import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
+import { createRootLogger, type Logger as PinoLogger } from './lib/logging/logger';
+import { createHomeyDestination } from './lib/logging/homeyDestination';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
 import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
 import type { ObservedDeviceStateEvent } from './lib/core/deviceManagerRealtimeHandlers';
@@ -154,6 +156,7 @@ class PelsApp extends Homey.App {
   private stopPerfLogging?: () => void;
   private stopResourceWarningListeners?: () => void;
   private stopSettingsHandler?: () => void;
+  private structuredLogger?: PinoLogger;
   private flowRebuildScheduler?: FlowRebuildScheduler;
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
   private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
@@ -289,6 +292,9 @@ class PelsApp extends Homey.App {
   async onInit() {
     const deferStartupBootstrap = process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1';
     this.log('PELS has been initialized');
+    this.structuredLogger = createRootLogger(
+      createHomeyDestination({ log: (...a) => this.log(...a), error: (...a) => this.error(...a) }),
+    );
     this.startResourceWarningListeners();
     await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled());
     this.startPerfLogging();
@@ -348,6 +354,7 @@ class PelsApp extends Homey.App {
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (...args: unknown[]) => this.logDebug('price', ...args),
       error: (...args: unknown[]) => this.error(...args),
+      structuredLog: this.structuredLogger,
     });
   }
   private initDailyBudgetService(): void {
@@ -359,6 +366,7 @@ class PelsApp extends Homey.App {
       getPowerTracker: () => this.powerTracker,
       getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
       getCapacitySettings: () => this.capacitySettings,
+      structuredLog: this.structuredLogger?.child({ component: 'daily_budget' }),
     });
     this.dailyBudgetService.loadSettings();
     this.dailyBudgetService.loadState();
@@ -368,6 +376,7 @@ class PelsApp extends Homey.App {
       log: this.log.bind(this),
       debug: (...args: unknown[]) => this.logDebug('devices', ...args),
       error: this.error.bind(this),
+      structuredLog: this.structuredLogger?.child({ component: 'devices' }),
     }, {
       getPriority: (id) => this.getPriorityForDevice(id),
       getControllable: (id) => this.isCapacityControlEnabled(id),
@@ -401,6 +410,7 @@ class PelsApp extends Homey.App {
       onShortfall: async (deficitKw) => this.handleShortfall(deficitKw),
       onShortfallCleared: async () => this.handleShortfallCleared(),
       log: (...args) => this.log(...args),
+      structuredLog: this.structuredLogger?.child({ component: 'capacity' }),
     });
   }
   private initPlanEngine(): void {
@@ -465,6 +475,7 @@ class PelsApp extends Homey.App {
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
       error: (...args: unknown[]) => this.error(...args),
+      structuredLog: this.structuredLogger,
     };
     this.planService = createPlanService(deps);
   }
