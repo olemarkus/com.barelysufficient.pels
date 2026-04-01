@@ -1,12 +1,31 @@
 import type {
   DeviceDiagnosticsBlockCause,
   DeviceDiagnosticsPlanObservation,
+  DeviceDiagnosticsStarvationCountingCause,
+  DeviceDiagnosticsStarvationPauseReason,
+  DeviceDiagnosticsStarvationSuppressionState,
 } from '../diagnostics/deviceDiagnosticsService';
 import type { PlanContext } from './planContext';
 import type { RestorePlanResult } from './planRestore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
+import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 
 const TARGET_DEFICIT_EPSILON_C = 0.5;
+const STARVATION_LOW_TEMP_STEP_C = 0.5;
+const STARVATION_HIGH_TEMP_STEP_C = 1.0;
+const STARVATION_SUPPORTED_DEVICE_CLASSES = new Set([
+  'thermostat',
+  'heater',
+  'heatpump',
+  'airconditioning',
+  'airtreatment',
+]);
+
+type StarvationSuppressionNormalization = {
+  suppressionState: DeviceDiagnosticsStarvationSuppressionState;
+  countingCause: DeviceDiagnosticsStarvationCountingCause | null;
+  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
+};
 
 type BuildDeviceDiagnosticsObservationsParams = {
   context: PlanContext;
@@ -40,6 +59,221 @@ const isEvLikeDevice = (device: DevicePlanDevice, inputDevice?: PlanInputDevice)
   || typeof device.evChargingState === 'string'
   || typeof inputDevice?.evChargingState === 'string'
 );
+
+const isFiniteNumber = (value: unknown): value is number => (
+  typeof value === 'number' && Number.isFinite(value)
+);
+
+const isTemperatureInputDevice = (inputDevice?: PlanInputDevice): boolean => (
+  inputDevice?.deviceType === 'temperature'
+);
+
+const resolveCurrentTemperatureC = (
+  device: DevicePlanDevice,
+  inputDevice?: PlanInputDevice,
+): number | null => {
+  if (isFiniteNumber(device.currentTemperature)) return device.currentTemperature;
+  if (isFiniteNumber(inputDevice?.currentTemperature)) return inputDevice.currentTemperature;
+  return null;
+};
+
+const resolveIntendedNormalTemperatureTarget = (params: {
+  desiredForMode: Record<string, number>;
+  inputDevice?: PlanInputDevice;
+}): number | null => {
+  const { desiredForMode, inputDevice } = params;
+  if (!inputDevice || !isTemperatureInputDevice(inputDevice)) return null;
+  if (!Array.isArray(inputDevice.targets) || inputDevice.targets.length === 0) return null;
+  const desired = desiredForMode[inputDevice.id];
+  return Number.isFinite(desired) ? Number(desired) : null;
+};
+
+const resolveTargetStepC = (
+  inputDevice: PlanInputDevice | undefined,
+  intendedNormalTargetC: number | null,
+): number | null => {
+  if (!inputDevice || !isFiniteNumber(intendedNormalTargetC)) return null;
+  const target = getPrimaryTargetCapability(inputDevice.targets);
+  if (isFiniteNumber(target?.step) && target.step > 0) {
+    return target.step;
+  }
+  return intendedNormalTargetC < 30 ? STARVATION_LOW_TEMP_STEP_C : STARVATION_HIGH_TEMP_STEP_C;
+};
+
+const resolveObservationFresh = (
+  device: DevicePlanDevice,
+  inputDevice?: PlanInputDevice,
+): boolean => (
+  device.observationStale !== true
+  && inputDevice?.observationStale !== true
+);
+
+const resolveEligibleForStarvation = (params: {
+  device: DevicePlanDevice;
+  inputDevice?: PlanInputDevice;
+  isEv: boolean;
+}): boolean => {
+  const { device, inputDevice, isEv } = params;
+  if (isEv || !inputDevice) return false;
+  if (!isTemperatureInputDevice(inputDevice)) return false;
+  const deviceClass = (device.deviceClass ?? inputDevice.deviceClass ?? '').trim().toLowerCase();
+  if (!STARVATION_SUPPORTED_DEVICE_CLASSES.has(deviceClass)) return false;
+  return inputDevice.managed === true
+    && inputDevice.controllable === true
+    && device.controllable !== false
+    && inputDevice.available !== false
+    && device.available !== false;
+};
+
+const resolveSuppressionFromReason = (
+  reason: string,
+): StarvationSuppressionNormalization => {
+  if (reason.startsWith('headroom cooldown (')) {
+    return {
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'headroom_cooldown',
+    };
+  }
+  if (reason.startsWith('cooldown (')) {
+    return {
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'cooldown',
+    };
+  }
+  if (reason === 'restore throttled') {
+    return {
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'restore_throttled',
+    };
+  }
+  if (
+    reason.startsWith('restore pending (')
+    || reason === 'waiting for other devices to recover'
+    || reason.startsWith('restore ')
+  ) {
+    return {
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'restore',
+    };
+  }
+  if (reason === 'keep' || reason.startsWith('keep (')) {
+    return {
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'keep',
+    };
+  }
+  if (reason.startsWith('inactive (') || reason === 'inactive') {
+    return {
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'inactive',
+    };
+  }
+  if (reason.startsWith('shed due to capacity')) {
+    return {
+      suppressionState: 'counting',
+      countingCause: 'capacity',
+      pauseReason: null,
+    };
+  }
+  if (reason.startsWith('shed due to daily budget')) {
+    return {
+      suppressionState: 'counting',
+      countingCause: 'daily_budget',
+      pauseReason: null,
+    };
+  }
+  if (reason.startsWith('shed due to hourly budget')) {
+    return {
+      suppressionState: 'counting',
+      countingCause: 'hourly_budget',
+      pauseReason: null,
+    };
+  }
+  if (reason === 'shortfall' || reason.startsWith('shortfall (')) {
+    return {
+      suppressionState: 'counting',
+      countingCause: 'shortfall',
+      pauseReason: null,
+    };
+  }
+  if (reason === 'swap pending' || reason.startsWith('swap pending (')) {
+    return {
+      suppressionState: 'counting',
+      countingCause: 'swap_pending',
+      pauseReason: null,
+    };
+  }
+  if (reason.startsWith('swapped out for ')) {
+    return {
+      suppressionState: 'counting',
+      countingCause: 'swapped_out',
+      pauseReason: null,
+    };
+  }
+  if (reason.startsWith('insufficient headroom')) {
+    return {
+      suppressionState: 'counting',
+      countingCause: 'insufficient_headroom',
+      pauseReason: null,
+    };
+  }
+  if (reason === 'shedding active' || reason.startsWith('shedding active ')) {
+    return {
+      suppressionState: 'counting',
+      countingCause: 'shedding_active',
+      pauseReason: null,
+    };
+  }
+  return {
+    suppressionState: 'none',
+    countingCause: null,
+    pauseReason: null,
+  };
+};
+
+const resolveStarvationSuppression = (params: {
+  device: DevicePlanDevice;
+  inputDevice?: PlanInputDevice;
+  isEv: boolean;
+}): StarvationSuppressionNormalization => {
+  const { device, inputDevice, isEv } = params;
+  if (isEv || !inputDevice || device.controllable === false || inputDevice.controllable !== true) {
+    return {
+      suppressionState: 'none',
+      countingCause: null,
+      pauseReason: null,
+    };
+  }
+  const reason = (device.reason || '').trim();
+  if (!reason) {
+    return {
+      suppressionState: device.plannedState === 'shed' ? 'paused' : 'none',
+      countingCause: null,
+      pauseReason: device.plannedState === 'shed' ? 'unknown_suppression_reason' : null,
+    };
+  }
+
+  const normalized = resolveSuppressionFromReason(reason);
+  if (normalized.suppressionState !== 'none') {
+    return normalized;
+  }
+
+  if (device.plannedState === 'shed') {
+    return {
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'unknown_suppression_reason',
+    };
+  }
+
+  return normalized;
+};
 
 const buildAppliedStateSummary = (
   desiredTarget: number | null,
@@ -91,6 +325,23 @@ const buildDiagnosticsObservation = (params: {
     isCurrentHourExpensive,
   });
   const currentTarget = typeof device.currentTarget === 'number' ? device.currentTarget : null;
+  const intendedNormalTargetC = resolveIntendedNormalTemperatureTarget({
+    desiredForMode,
+    inputDevice,
+  });
+  const currentTemperatureC = resolveCurrentTemperatureC(device, inputDevice);
+  const targetStepC = resolveTargetStepC(inputDevice, intendedNormalTargetC);
+  const observationFresh = resolveObservationFresh(device, inputDevice);
+  const eligibleForStarvation = resolveEligibleForStarvation({
+    device,
+    inputDevice,
+    isEv,
+  });
+  const starvationSuppression = resolveStarvationSuppression({
+    device,
+    inputDevice,
+    isEv,
+  });
   const targetDeficitActive = includeDemandMetrics
     && desiredTarget !== null
     && currentTarget !== null
@@ -112,6 +363,14 @@ const buildDiagnosticsObservation = (params: {
     targetDeficitActive,
     desiredStateSummary: desiredTarget !== null ? `${desiredTarget.toFixed(1)}C` : 'on',
     appliedStateSummary: buildAppliedStateSummary(desiredTarget, currentTarget, device.currentState),
+    eligibleForStarvation,
+    currentTemperatureC,
+    intendedNormalTargetC,
+    targetStepC,
+    suppressionState: starvationSuppression.suppressionState,
+    countingCause: starvationSuppression.countingCause,
+    pauseReason: starvationSuppression.pauseReason,
+    observationFresh,
   };
 };
 
