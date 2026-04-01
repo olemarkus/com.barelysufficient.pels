@@ -20,6 +20,9 @@ This note is for contributors changing runtime logging.
   `rebuildId` through `withRebuildContext(...)`.
 - `incidentId` is still attached manually by `CapacityGuard`; other important flows still lack
   automatic correlation IDs.
+- Debug-level structured events should follow the existing debug-topic model. When a topic is
+  enabled, the corresponding child logger may lower its level to `debug`; otherwise debug events
+  stay suppressed while higher-severity structured events still flow.
 
 ## Current Structured Events
 
