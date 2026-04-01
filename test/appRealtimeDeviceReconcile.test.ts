@@ -22,6 +22,7 @@ describe('appRealtimeDeviceReconcile', () => {
   it('logs drift details when queueing realtime reconcile', () => {
     jest.useFakeTimers();
     const logDebug = jest.fn();
+    const structuredLog = { debug: jest.fn() };
 
     const timer = scheduleRealtimeDeviceReconcile({
       state: createRealtimeDeviceReconcileState(),
@@ -33,6 +34,7 @@ describe('appRealtimeDeviceReconcile', () => {
         changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
       },
       logDebug,
+      structuredLog: structuredLog as never,
       onTimerFired: jest.fn(),
       onFlush: jest.fn().mockResolvedValue(undefined),
       onError: jest.fn(),
@@ -43,6 +45,14 @@ describe('appRealtimeDeviceReconcile', () => {
       'Realtime device drift queued for plan reconcile: '
       + 'Heater (dev-1) via onoff [onoff: on -> off]',
     );
+    expect(structuredLog.debug).toHaveBeenCalledWith({
+      event: 'realtime_reconcile_queued',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'onoff',
+      planExpectation: undefined,
+      changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
+    });
 
     if (timer) clearTimeout(timer);
     jest.useRealTimers();
@@ -50,6 +60,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it('skips reconcile when the live device state already matches the current plan', () => {
     const logDebug = jest.fn();
+    const structuredLog = { debug: jest.fn() };
 
     const shouldQueue = shouldQueueRealtimeDeviceReconcile({
       event: {
@@ -79,6 +90,7 @@ describe('appRealtimeDeviceReconcile', () => {
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       }],
       logDebug,
+      structuredLog: structuredLog as never,
     });
 
     expect(shouldQueue).toBe(false);
@@ -86,6 +98,14 @@ describe('appRealtimeDeviceReconcile', () => {
       'Realtime device change matches current plan, skipping reconcile: '
       + 'Heater (dev-1) via onoff [onoff: off -> on]; plan state: on',
     );
+    expect(structuredLog.debug).toHaveBeenCalledWith({
+      event: 'realtime_reconcile_skipped_no_drift',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'onoff',
+      planExpectation: 'plan state: on',
+      changes: [{ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' }],
+    });
   });
 
   it('does not skip reconcile just because the stored snapshot already drifted away from a keep plan', () => {
@@ -249,7 +269,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it('records breaker attempts only for devices that still drift after reconcile', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const log = jest.fn();
+    const structuredLog = { warn: jest.fn() };
     state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
     state.pendingEvents.set('dev-2', { deviceId: 'dev-2', name: 'Heater 2', capabilityId: 'onoff' });
 
@@ -258,21 +278,28 @@ describe('appRealtimeDeviceReconcile', () => {
       reconcile: jest.fn().mockResolvedValue(true),
       shouldRecordAttempt: (event) => event.deviceId === 'dev-2',
       logDebug: jest.fn(),
-      log,
+      structuredLog: structuredLog as never,
     });
 
     expect(state.circuitState.get('dev-1')).toBeUndefined();
     expect(state.circuitState.get('dev-2')).toEqual(expect.objectContaining({
       reconcileCount: 1,
     }));
-    expect(log).toHaveBeenCalledWith(
-      'Realtime device drift detected; reapplying current plan: Heater 2 (dev-2) via onoff',
-    );
+    expect(structuredLog.warn).toHaveBeenCalledWith({
+      event: 'realtime_reconcile_applied',
+      devices: [{
+        deviceId: 'dev-2',
+        deviceName: 'Heater 2',
+        capabilityId: 'onoff',
+        planExpectation: undefined,
+        changes: undefined,
+      }],
+    });
   });
 
   it.failing('does not log or record attempts when shouldRecordAttempt filters out every reconciled event', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const log = jest.fn();
+    const structuredLog = { warn: jest.fn() };
     state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
 
     await flushRealtimeDeviceReconcileQueue({
@@ -280,16 +307,16 @@ describe('appRealtimeDeviceReconcile', () => {
       reconcile: jest.fn().mockResolvedValue(true),
       shouldRecordAttempt: () => false,
       logDebug: jest.fn(),
-      log,
+      structuredLog: structuredLog as never,
     });
 
-    expect(log).not.toHaveBeenCalled();
+    expect(structuredLog.warn).not.toHaveBeenCalled();
     expect(state.circuitState.size).toBe(0);
   });
 
   it('opens the breaker after repeated reconcile attempts for devices that still drift', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const log = jest.fn();
+    const structuredLog = { warn: jest.fn() };
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
@@ -298,19 +325,24 @@ describe('appRealtimeDeviceReconcile', () => {
         reconcile: jest.fn().mockResolvedValue(true),
         shouldRecordAttempt: () => true,
         logDebug: jest.fn(),
-        log,
+        structuredLog: structuredLog as never,
       });
     }
 
-    expect(log).toHaveBeenCalledWith(
-      'Realtime reconcile circuit breaker opened for Heater 1 (dev-1) via onoff; '
-      + 'suppressing automatic reconcile for 60s',
-    );
+    expect(structuredLog.warn).toHaveBeenCalledWith({
+      event: 'realtime_reconcile_circuit_opened',
+      suppressMs: 60_000,
+      deviceId: 'dev-1',
+      deviceName: 'Heater 1',
+      capabilityId: 'onoff',
+      planExpectation: undefined,
+      changes: undefined,
+    });
   });
 
   it('opens the breaker after repeated target reconcile attempts for devices that still drift', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const log = jest.fn();
+    const structuredLog = { warn: jest.fn() };
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       state.pendingEvents.set('dev-1', {
@@ -325,14 +357,18 @@ describe('appRealtimeDeviceReconcile', () => {
         reconcile: jest.fn().mockResolvedValue(true),
         shouldRecordAttempt: () => true,
         logDebug: jest.fn(),
-        log,
+        structuredLog: structuredLog as never,
       });
     }
 
-    expect(log).toHaveBeenCalledWith(
-      'Realtime reconcile circuit breaker opened for '
-      + 'Heater 1 (dev-1) via target_temperature [target_temperature: 25.5°C -> 26°C]; '
-      + 'plan target: 20°C; suppressing automatic reconcile for 60s',
-    );
+    expect(structuredLog.warn).toHaveBeenCalledWith({
+      event: 'realtime_reconcile_circuit_opened',
+      suppressMs: 60_000,
+      deviceId: 'dev-1',
+      deviceName: 'Heater 1',
+      capabilityId: 'target_temperature',
+      planExpectation: 'plan target: 20°C',
+      changes: [{ capabilityId: 'target_temperature', previousValue: '25.5°C', nextValue: '26°C' }],
+    });
   });
 });

@@ -1,4 +1,5 @@
 import type { RealtimeDeviceReconcileChange } from '../core/deviceManagerRuntime';
+import type { Logger as PinoLogger } from '../logging/logger';
 
 export const REALTIME_DEVICE_RECONCILE_DEBOUNCE_MS = 250;
 const REALTIME_DEVICE_RECONCILE_CONFLICT_WINDOW_MS = 30 * 1000;
@@ -41,6 +42,7 @@ export function scheduleRealtimeDeviceReconcile(params: {
   hasPendingTimer: boolean;
   event: RealtimeDeviceReconcileEvent;
   logDebug: (message: string) => void;
+  structuredLog?: PinoLogger;
   onTimerFired: () => void;
   onFlush: () => Promise<void>;
   onError: (error: unknown) => void;
@@ -50,11 +52,16 @@ export function scheduleRealtimeDeviceReconcile(params: {
     hasPendingTimer,
     event,
     logDebug,
+    structuredLog,
     onTimerFired,
     onFlush,
     onError,
   } = params;
   logDebug(`Realtime device drift queued for plan reconcile: ${formatRealtimeDeviceReconcileEvent(event)}`);
+  structuredLog?.debug({
+    event: 'realtime_reconcile_queued',
+    ...toRealtimeReconcileEventPayload(event),
+  });
   state.pendingEvents.set(event.deviceId, event);
   if (hasPendingTimer) return undefined;
   return setTimeout(() => {
@@ -68,14 +75,14 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
   reconcile: () => Promise<boolean>;
   shouldRecordAttempt?: (event: RealtimeDeviceReconcileEvent) => boolean;
   logDebug: (message: string) => void;
-  log: (message: string) => void;
+  structuredLog?: PinoLogger;
 }): Promise<void> {
   const {
     state,
     reconcile,
     shouldRecordAttempt,
     logDebug,
-    log,
+    structuredLog,
   } = params;
   const pendingEvents = Array.from(state.pendingEvents.values());
   state.pendingEvents.clear();
@@ -87,6 +94,7 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
     event,
     now,
     logDebug,
+    structuredLog,
   }));
   if (eligibleEvents.length === 0) return;
 
@@ -97,15 +105,15 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
     : eligibleEvents;
   const attemptedEvents = driftedEvents.length > 0 ? driftedEvents : eligibleEvents;
   if (attemptedEvents.length === 0) return;
-  log(
-    `Realtime device drift detected; reapplying current plan: `
-    + attemptedEvents.map((event) => formatRealtimeDeviceReconcileEvent(event)).join('; '),
-  );
+  structuredLog?.warn({
+    event: 'realtime_reconcile_applied',
+    devices: attemptedEvents.map((event) => toRealtimeReconcileEventPayload(event)),
+  });
   recordRealtimeDeviceReconcileAttempts({
     state,
     events: attemptedEvents,
     now: Date.now(),
-    log,
+    structuredLog,
   });
 }
 
@@ -114,8 +122,9 @@ function isRealtimeDeviceReconcileSuppressed(params: {
   event: RealtimeDeviceReconcileEvent;
   now: number;
   logDebug: (message: string) => void;
+  structuredLog?: PinoLogger;
 }): boolean {
-  const { state, event, now, logDebug } = params;
+  const { state, event, now, logDebug, structuredLog } = params;
   const currentState = state.circuitState.get(event.deviceId);
   if (!currentState?.suppressedUntil) return false;
   if (currentState.suppressedUntil <= now) {
@@ -127,6 +136,11 @@ function isRealtimeDeviceReconcileSuppressed(params: {
     `Realtime device drift suppressed for ${formatRealtimeDeviceReconcileEvent(event)}; `
     + `${remainingSeconds}s remaining`,
   );
+  structuredLog?.debug({
+    event: 'realtime_reconcile_suppressed',
+    remainingSeconds,
+    ...toRealtimeReconcileEventPayload(event),
+  });
   return true;
 }
 
@@ -134,9 +148,9 @@ function recordRealtimeDeviceReconcileAttempts(params: {
   state: RealtimeDeviceReconcileState;
   events: RealtimeDeviceReconcileEvent[];
   now: number;
-  log: (message: string) => void;
+  structuredLog?: PinoLogger;
 }): void {
-  const { state, events, now, log } = params;
+  const { state, events, now, structuredLog } = params;
   for (const event of events) {
     const currentState = getRealtimeDeviceReconcileCircuitState(state, event.deviceId, now);
     const nextState: RealtimeDeviceReconcileCircuitState = {
@@ -153,10 +167,11 @@ function recordRealtimeDeviceReconcileAttempts(params: {
       reconcileCount: 0,
       suppressedUntil,
     });
-    log(
-      `Realtime reconcile circuit breaker opened for ${formatRealtimeDeviceReconcileEvent(event)}; `
-      + `suppressing automatic reconcile for ${Math.round(REALTIME_DEVICE_RECONCILE_SUPPRESS_MS / 1000)}s`,
-    );
+    structuredLog?.warn({
+      event: 'realtime_reconcile_circuit_opened',
+      suppressMs: REALTIME_DEVICE_RECONCILE_SUPPRESS_MS,
+      ...toRealtimeReconcileEventPayload(event),
+    });
   }
 }
 
@@ -193,4 +208,14 @@ function formatRealtimeDeviceReconcileChanges(
     `${change.capabilityId}: ${change.previousValue} -> ${change.nextValue}`
   ));
   return ` [${formatted.join(', ')}]`;
+}
+
+function toRealtimeReconcileEventPayload(event: RealtimeDeviceReconcileEvent): Record<string, unknown> {
+  return {
+    deviceId: event.deviceId,
+    deviceName: event.name,
+    capabilityId: event.capabilityId,
+    planExpectation: event.planExpectation,
+    changes: event.changes,
+  };
 }
