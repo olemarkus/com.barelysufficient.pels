@@ -80,6 +80,7 @@ import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './li
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
 import { createRootLogger, type Logger as PinoLogger } from './lib/logging/logger';
 import { createHomeyDestination } from './lib/logging/homeyDestination';
+import { normalizeError } from './lib/utils/errorUtils';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
 import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
 import type { ObservedDeviceStateEvent } from './lib/core/deviceManagerRealtimeHandlers';
@@ -291,10 +292,10 @@ class PelsApp extends Homey.App {
   }
   async onInit() {
     const deferStartupBootstrap = process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1';
-    this.log('PELS has been initialized');
     this.structuredLogger = createRootLogger(
       createHomeyDestination({ log: (...a) => this.log(...a), error: (...a) => this.error(...a) }),
     );
+    this.structuredLogger.child({ component: 'startup' }).info({ event: 'app_initialized' });
     this.startResourceWarningListeners();
     await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled());
     this.startPerfLogging();
@@ -336,7 +337,14 @@ class PelsApp extends Homey.App {
       refreshGridTariffData: () => this.priceCoordinator.refreshGridTariffData(),
       startPriceRefresh: () => this.priceCoordinator.startPriceRefresh(),
       startPriceOptimization: (applyImmediately) => this.priceCoordinator.startPriceOptimization(applyImmediately),
-      logError: (label, error) => this.error(`Startup background task failed (${label})`, error),
+      logError: (label, error) => {
+        const normalizedError = normalizeError(error);
+        this.structuredLogger?.child({ component: 'startup' }).error({
+          event: 'startup_background_task_failed',
+          taskLabel: label,
+          err: normalizedError,
+        });
+      },
       snapshotPlanBootstrapDelayMs,
       runSnapshotPlanBootstrapInBackground: deferStartupBootstrap,
       runPriceBootstrapInBackground: deferStartupBootstrap,
@@ -542,18 +550,31 @@ class PelsApp extends Homey.App {
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
     if (this.debugLoggingTopics.has(topic)) this.log(...args);
   }
+  private getStructuredLogger(component: string, debugTopic?: DebugLoggingTopic): PinoLogger | undefined {
+    if (!this.structuredLogger) return undefined;
+    if (debugTopic && this.debugLoggingTopics.has(debugTopic)) {
+      return this.structuredLogger.child({ component }, { level: 'debug' });
+    }
+    return this.structuredLogger.child({ component });
+  }
   private scheduleRealtimeDeviceReconcile(event: realtimeReconcile.RealtimeDeviceReconcileEvent): void {
+    const structuredLog = this.getStructuredLogger('reconcile', 'devices');
     const timer = scheduleAppRealtimeDeviceReconcile({
       event,
       state: this.realtimeDeviceReconcileState,
       hasPendingTimer: Boolean(this.realtimeDeviceReconcileTimer),
       getLatestPlanSnapshot: () => this.planService?.getLatestReconcilePlanSnapshot() ?? null,
       getLiveDevices: () => this.latestTargetSnapshot,
-      logDebug: (message) => this.logDebug('devices', message),
-      log: (message) => this.log(message),
+      structuredLog,
       reconcile: () => this.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),
       onTimerFired: () => { this.realtimeDeviceReconcileTimer = undefined; },
-      onError: (error) => this.error('Failed to reconcile plan after realtime device update', error as Error),
+      onError: (error) => {
+        const normalizedError = normalizeError(error);
+        structuredLog?.error({
+          event: 'realtime_reconcile_failed',
+          err: normalizedError,
+        });
+      },
     });
     if (timer) this.realtimeDeviceReconcileTimer = timer;
   }

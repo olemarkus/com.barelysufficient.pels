@@ -254,6 +254,52 @@ refactors.
       shed/restore state every few seconds.
       Files: `capacityGuard.ts`, `planSheddingGuard.ts`.
 
+### P1 Structured logging: runtime coverage and correlation
+
+- [ ] Expand structured events for the highest-value runtime failure/control paths that still only
+      emit prose/debug logs, starting with command actuation, executor outcomes, periodic/status
+      output, and the remaining startup/background-task paths.
+      Files: `planExecutor.ts`, runtime helpers in `app.ts`, startup helpers, tests.
+- [ ] Add bounded `reasonCode` values for important failures, fallback paths, and degraded-state
+      decisions instead of relying on free-form prose or exception text alone.
+      Files: `lib/logging/`, price/device/startup/runtime failure paths, tests.
+- [ ] Expand ALS correlation helpers beyond rebuilds. Add shared helpers for flow-scoped IDs such
+      as `incidentId`, `snapshotId`, and `priceRefreshId`, generated with `crypto.randomUUID()`
+      and propagated automatically across async boundaries.
+      Files: `lib/logging/alsContext.ts`, `lib/logging/logger.ts`, overshoot/snapshot/price flows,
+      logging tests.
+- [ ] Add the next high-value structured events:
+      `capacity_action_selected`, `price_source_fallback_used`, `device_state_unknown_entered`,
+      `ui_snapshot_written`, and degraded-mode boundary events.
+      Files: capacity handling, price services, device manager/UI snapshot writers, tests.
+- [ ] Emit compact summary snapshot events only at key boundaries such as startup completion,
+      device snapshot refresh completion, plan rebuild completion, UI snapshot writes, and
+      degraded-mode enter/exit. Keep payloads bounded and machine-friendly.
+      Files: startup, device manager, plan service, UI snapshot write paths, tests.
+- [ ] Extend logging tests to cover end-to-end correlation and boundary behavior, including
+      overshoot incidents grouped by `incidentId`, rebuild flows grouped by `rebuildId`, nested
+      ALS contexts, and Homey forwarding for correlated structured events.
+      Files: `test/logging/`, flow-specific runtime tests.
+
+### P2 Structured logging: schema and cleanup polish
+
+- [ ] Add typed structured-log event/reason-code definitions and migrate the current stringly
+      typed event names / reason codes to them so payloads do not drift across services.
+      Files: `lib/logging/`, structured-log call sites, logging tests.
+- [ ] Replace ad hoc `Date.now() + Math.random()` correlation IDs such as `incidentId` and
+      `rebuildId` with `crypto.randomUUID()` so generated IDs are uniform and do not encode
+      accidental timestamp semantics.
+      Files: `capacityGuard.ts`, `planService.ts`, logging tests.
+- [ ] Finish the structured logging policy migration so runtime logging no longer depends on prose
+      `this.log()` / `this.logDebug()` messages. Spell out the target end-state, how debug-topic
+      filtering applies to structured debug events, and which legacy prose log sites remain to be
+      removed.
+      Files: `AGENTS.md`, `notes/`, logging helpers, remaining runtime log call sites.
+- [x] Add a contributor-facing structured logging note covering current event inventory,
+      ALS context (`rebuildId`), incident correlation, transport constraints, and test guidance
+      for new event emitters / destinations.
+      Files: `notes/README.md`, `notes/logging/README.md`, logging tests.
+
 ### P1 Inefficiencies: unnecessary work or repeated lookups
 
 - [ ] Cache snapshot lookup by device ID in `applyPlanActions` instead of repeating
@@ -302,6 +348,9 @@ refactors.
 - [ ] Debounce/coalesce rapid temperature changes from the device tab so bulk edits do not flap
       the plan or spam writes/retries.
       Files: settings UI device detail, target write path, tests.
+- [ ] Add a budget-exemption toggle on the device page so a device can be marked or unmarked as
+      budget-exempt without leaving the device detail flow.
+      Files: settings UI device detail, settings write path, tests.
 - [ ] Add gray badge/state handling for unknown or disappeared devices in the overview/device list
       instead of leaving them visually ambiguous.
       Files: settings UI overview / device list.
