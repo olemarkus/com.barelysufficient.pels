@@ -443,7 +443,7 @@ export class PlanService {
     const outcome = createPlanRebuildOutcome(isDryRun);
 
     const run = async (): Promise<void> => {
-      this.deps.structuredLog?.info({ event: 'plan_rebuild_started', rebuildId, reasonCode: reason });
+      this.deps.structuredLog?.info({ event: 'plan_rebuild_started', reasonCode: reason });
 
       try {
         await this.executePlanRebuild(isDryRun, outcome);
@@ -457,7 +457,6 @@ export class PlanService {
         stopSpan();
         this.deps.structuredLog?.info({
           event: 'plan_rebuild_completed',
-          rebuildId,
           durationMs,
           buildMs: outcome.buildMs,
           snapshotMs: outcome.snapshotMs,
