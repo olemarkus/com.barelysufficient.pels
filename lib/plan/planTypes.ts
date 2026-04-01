@@ -15,10 +15,15 @@ export type PendingTargetObservationSource =
   | 'realtime_capability'
   | 'device_update';
 
+export type PendingTargetCommandStatus =
+  | 'waiting_confirmation'
+  | 'temporary_unavailable';
+
 export type PendingTargetCommandSummary = {
   desired: number;
   retryCount: number;
   nextRetryAtMs: number;
+  status: PendingTargetCommandStatus;
   lastObservedValue?: unknown;
   lastObservedSource?: PendingTargetObservationSource;
 };

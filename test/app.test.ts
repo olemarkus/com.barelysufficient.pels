@@ -1100,6 +1100,7 @@ describe('MyApp initialization', () => {
       lastAttemptMs: nowMs - 5_000,
       retryCount: 0,
       nextRetryAtMs: nowMs + 30_000,
+      status: 'waiting_confirmation',
       lastObservedValue: 23,
       lastObservedSource: 'snapshot_refresh',
     };

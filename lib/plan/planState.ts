@@ -1,5 +1,8 @@
 import { RESTORE_COOLDOWN_MS } from './planConstants';
-import type { PendingTargetObservationSource } from './planTypes';
+import type {
+  PendingTargetCommandStatus,
+  PendingTargetObservationSource,
+} from './planTypes';
 
 export type ActivationAttemptSource = 'pels_restore' | 'tracked_step_up';
 
@@ -10,6 +13,7 @@ export type PendingTargetCommandState = {
   lastAttemptMs: number;
   retryCount: number;
   nextRetryAtMs: number;
+  status: PendingTargetCommandStatus;
   lastObservedValue?: unknown;
   lastObservedSource?: PendingTargetObservationSource;
   lastObservedAtMs?: number;

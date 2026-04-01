@@ -1,6 +1,7 @@
 import { createPlanEngineState } from '../lib/plan/planState';
 import {
   prunePendingTargetCommandsForPlan,
+  recordFailedPendingTargetCommandAttempt,
   recordPendingTargetCommandAttempt,
   syncPendingTargetCommands,
 } from '../lib/plan/planTargetControl';
@@ -41,6 +42,7 @@ describe('syncPendingTargetCommands', () => {
       lastAttemptMs: Date.now() - 1_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
+      status: 'waiting_confirmation',
     };
     const log = jest.fn();
     const logDebug = jest.fn();
@@ -68,6 +70,7 @@ describe('syncPendingTargetCommands', () => {
       lastAttemptMs: Date.now() - 10_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
+      status: 'waiting_confirmation',
       lastObservedValue: 25.5,
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 1_000,
@@ -98,6 +101,7 @@ describe('syncPendingTargetCommands', () => {
       lastAttemptMs: Date.now() - 10_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
+      status: 'waiting_confirmation',
       lastObservedValue: 27,
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 1_000,
@@ -130,6 +134,7 @@ describe('syncPendingTargetCommands', () => {
         lastAttemptMs: nowMs - 90_000,
         retryCount: 0,
         nextRetryAtMs: nowMs + 30_000,
+        status: 'waiting_confirmation',
         lastObservedValue: 27,
         lastObservedSource: 'snapshot_refresh',
         lastObservedAtMs: nowMs - 70_000,
@@ -164,6 +169,7 @@ describe('syncPendingTargetCommands', () => {
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
+      status: 'waiting_confirmation',
     };
     state.pendingTargetCommands['dev-2'] = {
       capabilityId: 'target_temperature',
@@ -172,6 +178,7 @@ describe('syncPendingTargetCommands', () => {
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
+      status: 'waiting_confirmation',
     };
     const log = jest.fn();
     const logDebug = jest.fn();
@@ -208,6 +215,7 @@ describe('syncPendingTargetCommands', () => {
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
+      status: 'waiting_confirmation',
     };
     const log = jest.fn();
     const logDebug = jest.fn();
@@ -237,6 +245,7 @@ describe('syncPendingTargetCommands', () => {
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
+      status: 'waiting_confirmation',
     };
     const log = jest.fn();
     const logDebug = jest.fn();
@@ -256,6 +265,38 @@ describe('syncPendingTargetCommands', () => {
     expect(log).not.toHaveBeenCalled();
     expect(logDebug).not.toHaveBeenCalled();
   });
+
+  it('does not emit confirmation waiting logs for temporarily unavailable targets', () => {
+    const state = createPlanEngineState();
+    state.pendingTargetCommands['dev-1'] = {
+      capabilityId: 'target_temperature',
+      desired: 23,
+      startedMs: Date.now() - 10_000,
+      lastAttemptMs: Date.now() - 10_000,
+      retryCount: 1,
+      nextRetryAtMs: Date.now() + 30_000,
+      status: 'temporary_unavailable',
+      lastObservedValue: 27,
+      lastObservedSource: 'realtime_capability',
+      lastObservedAtMs: Date.now() - 1_000,
+    };
+    const log = jest.fn();
+    const logDebug = jest.fn();
+
+    const changed = syncPendingTargetCommands({
+      state,
+      liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
+      source: 'snapshot_refresh',
+      log,
+      logDebug,
+    });
+
+    expect(changed).toBe(true);
+    expect(log).not.toHaveBeenCalled();
+    expect(logDebug).toHaveBeenCalledWith(
+      expect.stringContaining('temporarily unavailable'),
+    );
+  });
 });
 
 describe('prunePendingTargetCommandsForPlan', () => {
@@ -268,6 +309,7 @@ describe('prunePendingTargetCommandsForPlan', () => {
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30_000,
+      status: 'waiting_confirmation',
       lastObservedValue: 25,
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 1_000,
@@ -305,6 +347,7 @@ describe('recordPendingTargetCommandAttempt', () => {
       lastAttemptMs: Date.now() - 10_000,
       retryCount: 1,
       nextRetryAtMs: Date.now() + 20_000,
+      status: 'waiting_confirmation',
       lastObservedValue: 27,
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 1_000,
@@ -326,5 +369,26 @@ describe('recordPendingTargetCommandAttempt', () => {
     expect(pending.lastObservedValue).toBeUndefined();
     expect(pending.lastObservedSource).toBeUndefined();
     expect(pending.lastObservedAtMs).toBeUndefined();
+  });
+
+  it('records failed target commands as temporarily unavailable with retry backoff', () => {
+    const state = createPlanEngineState();
+
+    const pending = recordFailedPendingTargetCommandAttempt({
+      state,
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      desired: 18,
+      nowMs: Date.now(),
+      observedValue: 21,
+    });
+
+    expect(pending).toMatchObject({
+      capabilityId: 'target_temperature',
+      desired: 18,
+      retryCount: 0,
+      status: 'temporary_unavailable',
+      lastObservedValue: 21,
+    });
   });
 });

@@ -408,6 +408,7 @@ describe('restore cooldown backoff', () => {
             desired: 23,
             retryCount: 0,
             nextRetryAtMs: Date.now() + 30_000,
+            status: 'waiting_confirmation',
           },
           expectedPowerKw: 1.5,
           measuredPowerKw: 0,

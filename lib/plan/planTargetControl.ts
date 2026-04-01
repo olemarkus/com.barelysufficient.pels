@@ -63,6 +63,7 @@ export function recordPendingTargetCommandAttempt(params: {
     lastAttemptMs: nowMs,
     retryCount,
     nextRetryAtMs: nowMs + getTargetCommandRetryDelayMs(retryCount),
+    status: 'waiting_confirmation',
     lastObservedValue: resolvePendingTargetObservedValue({
       isRetry,
       observedValue,
@@ -71,6 +72,46 @@ export function recordPendingTargetCommandAttempt(params: {
     lastObservedSource: isRetry ? previous?.lastObservedSource : undefined,
     lastObservedAtMs: isRetry ? previous?.lastObservedAtMs : undefined,
     lastWaitingLogAtMs: isRetry ? previous?.lastWaitingLogAtMs : undefined,
+  };
+  state.pendingTargetCommands[deviceId] = entry;
+  return entry;
+}
+
+export function recordFailedPendingTargetCommandAttempt(params: {
+  state: PlanEngineState;
+  deviceId: string;
+  capabilityId: string;
+  desired: number;
+  nowMs: number;
+  observedValue?: unknown;
+}): PendingTargetCommandState {
+  const {
+    state,
+    deviceId,
+    capabilityId,
+    desired,
+    nowMs,
+    observedValue,
+  } = params;
+  const previous = state.pendingTargetCommands[deviceId];
+  const isRetry = previous?.capabilityId === capabilityId && previous.desired === desired;
+  const retryCount = isRetry ? previous.retryCount + 1 : 0;
+  const entry: PendingTargetCommandState = {
+    capabilityId,
+    desired,
+    startedMs: isRetry ? previous.startedMs : nowMs,
+    lastAttemptMs: nowMs,
+    retryCount,
+    nextRetryAtMs: nowMs + getTargetCommandRetryDelayMs(retryCount),
+    status: 'temporary_unavailable',
+    lastObservedValue: resolvePendingTargetObservedValue({
+      isRetry,
+      observedValue,
+      previous,
+    }),
+    lastObservedSource: isRetry ? previous?.lastObservedSource : undefined,
+    lastObservedAtMs: isRetry ? previous?.lastObservedAtMs : undefined,
+    lastWaitingLogAtMs: undefined,
   };
   state.pendingTargetCommands[deviceId] = entry;
   return entry;
@@ -136,13 +177,27 @@ export function syncPendingTargetCommands(params: {
     }
     const observedValue = getObservedTargetValue(liveDevice, pending.capabilityId);
 
-    if (Object.is(observedValue, pending.desired)) {
-      delete state.pendingTargetCommands[deviceId];
+    if (handleConfirmedPendingTargetObservation({
+      state,
+      deviceId,
+      pending,
+      observedValue,
+      source,
+      name: liveDevice.name || deviceId,
+      logDebug,
+    })) {
       changed = true;
-      logDebug(
-        `Capacity: confirmed ${pending.capabilityId} for ${liveDevice.name || deviceId} `
-        + `at ${pending.desired}°C via ${source}`,
-      );
+      continue;
+    }
+
+    if (handleTemporaryUnavailablePendingTargetObservation({
+      pending,
+      observedValue,
+      source,
+      name: liveDevice.name || deviceId,
+      logDebug,
+    })) {
+      changed = true;
       continue;
     }
 
@@ -160,30 +215,15 @@ export function syncPendingTargetCommands(params: {
       continue;
     }
 
-    const previousObservedValue = pending.lastObservedValue;
-    const previousObservedSource = pending.lastObservedSource;
-    pending.lastObservedValue = observedValue;
-    pending.lastObservedSource = source;
-    pending.lastObservedAtMs = Date.now();
     changed = true;
-    logDebug(
-      `Capacity: waiting for ${pending.capabilityId} confirmation for ${liveDevice.name || deviceId}; `
-      + `observed ${formatObservedTarget(observedValue)} via ${source}, `
-      + `expected ${pending.desired}°C`,
-    );
-    const waitingLog = buildPendingConfirmationLogMessage({
-      name: liveDevice.name || deviceId,
-      capabilityId: pending.capabilityId,
-      desired: pending.desired,
-      source,
-      previousObservedValue,
-      previousObservedSource,
+    updatePendingTargetWaitingObservation({
+      pending,
       observedValue,
+      source,
+      name: liveDevice.name || deviceId,
+      log,
+      logDebug,
     });
-    if (log && waitingLog) {
-      pending.lastWaitingLogAtMs = Date.now();
-      log(waitingLog);
-    }
   }
 
   return changed;
@@ -210,6 +250,7 @@ export function decoratePlanWithPendingTargetCommands(
       desired: pending.desired,
       retryCount: pending.retryCount,
       nextRetryAtMs: pending.nextRetryAtMs,
+      status: pending.status,
       lastObservedValue: pending.lastObservedValue,
       lastObservedSource: pending.lastObservedSource,
     };
@@ -269,6 +310,112 @@ function formatObservedTarget(value: unknown): string {
   if (typeof value === 'number' && Number.isFinite(value)) return `${value}°C`;
   if (value === null || value === undefined) return 'unknown';
   return String(value);
+}
+
+export function isPendingTargetCommandTemporarilyUnavailable(
+  pending: PendingTargetCommandState | undefined,
+): boolean {
+  return pending?.status === 'temporary_unavailable';
+}
+
+function handleConfirmedPendingTargetObservation(params: {
+  state: PlanEngineState;
+  deviceId: string;
+  pending: PendingTargetCommandState;
+  observedValue: unknown;
+  source: PendingTargetObservationSource;
+  name: string;
+  logDebug: (message: string) => void;
+}): boolean {
+  const {
+    state,
+    deviceId,
+    pending,
+    observedValue,
+    source,
+    name,
+    logDebug,
+  } = params;
+  if (!Object.is(observedValue, pending.desired)) return false;
+  delete state.pendingTargetCommands[deviceId];
+  logDebug(
+    `Capacity: confirmed ${pending.capabilityId} for ${name} `
+    + `at ${pending.desired}°C via ${source}`,
+  );
+  return true;
+}
+
+function handleTemporaryUnavailablePendingTargetObservation(params: {
+  pending: PendingTargetCommandState;
+  observedValue: unknown;
+  source: PendingTargetObservationSource;
+  name: string;
+  logDebug: (message: string) => void;
+}): boolean {
+  const {
+    pending,
+    observedValue,
+    source,
+    name,
+    logDebug,
+  } = params;
+  if (pending.status !== 'temporary_unavailable') return false;
+  if (
+    Object.is(pending.lastObservedValue, observedValue)
+    && pending.lastObservedSource === source
+  ) {
+    return false;
+  }
+  pending.lastObservedValue = observedValue;
+  pending.lastObservedSource = source;
+  pending.lastObservedAtMs = Date.now();
+  const remainingSec = Math.max(1, Math.ceil((pending.nextRetryAtMs - Date.now()) / 1000));
+  logDebug(
+    `Capacity: ${pending.capabilityId} for ${name} is temporarily unavailable; `
+    + `observed ${formatObservedTarget(observedValue)} via ${source}, retry in ${remainingSec}s`,
+  );
+  return true;
+}
+
+function updatePendingTargetWaitingObservation(params: {
+  pending: PendingTargetCommandState;
+  observedValue: unknown;
+  source: PendingTargetObservationSource;
+  name: string;
+  log?: (message: string) => void;
+  logDebug: (message: string) => void;
+}): void {
+  const {
+    pending,
+    observedValue,
+    source,
+    name,
+    log,
+    logDebug,
+  } = params;
+  const previousObservedValue = pending.lastObservedValue;
+  const previousObservedSource = pending.lastObservedSource;
+  pending.lastObservedValue = observedValue;
+  pending.lastObservedSource = source;
+  pending.lastObservedAtMs = Date.now();
+  logDebug(
+    `Capacity: waiting for ${pending.capabilityId} confirmation for ${name}; `
+    + `observed ${formatObservedTarget(observedValue)} via ${source}, `
+    + `expected ${pending.desired}°C`,
+  );
+  const waitingLog = buildPendingConfirmationLogMessage({
+    name,
+    capabilityId: pending.capabilityId,
+    desired: pending.desired,
+    source,
+    previousObservedValue,
+    previousObservedSource,
+    observedValue,
+  });
+  if (log && waitingLog) {
+    pending.lastWaitingLogAtMs = Date.now();
+    log(waitingLog);
+  }
 }
 
 function buildPendingConfirmationLogMessage(params: {

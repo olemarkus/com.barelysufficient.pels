@@ -29,6 +29,8 @@ import {
 } from './planBinaryControl';
 import {
   getPendingTargetCommandDecision,
+  isPendingTargetCommandTemporarilyUnavailable,
+  recordFailedPendingTargetCommandAttempt,
   recordPendingTargetCommandAttempt,
 } from './planTargetControl';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -747,7 +749,10 @@ export class PlanExecutor {
     }
 
     const nowMs = Date.now();
-    const decision = actuationMode === 'reconcile'
+    const pendingBeforeDecision = this.state.pendingTargetCommands[deviceId];
+    const canBypassRetryState = actuationMode === 'reconcile'
+      && !isPendingTargetCommandTemporarilyUnavailable(pendingBeforeDecision);
+    const decision = canBypassRetryState
       ? { type: 'send' as const }
       : getPendingTargetCommandDecision({
         state: this.state,
@@ -758,14 +763,39 @@ export class PlanExecutor {
       });
     if (decision.type === 'skip') {
       const remainingSec = Math.max(1, Math.ceil(decision.remainingMs / 1000));
-      this.logDebug(
-        `Capacity: skip ${targetCap} for ${name}, waiting ${remainingSec}s `
-        + `for ${desired}°C confirmation (${skipContext})`,
-      );
+      if (decision.pending.status === 'temporary_unavailable') {
+        this.logDebug(
+          `Capacity: skip ${targetCap} for ${name}, device temporarily unavailable `
+          + `for ${remainingSec}s before retry (${skipContext})`,
+        );
+      } else {
+        this.logDebug(
+          `Capacity: skip ${targetCap} for ${name}, waiting ${remainingSec}s `
+          + `for ${desired}°C confirmation (${skipContext})`,
+        );
+      }
       return { applied: false };
     }
 
-    await this.deviceManager.setCapability(deviceId, targetCap, desired);
+    try {
+      await this.deviceManager.setCapability(deviceId, targetCap, desired);
+    } catch (error) {
+      const failedPending = recordFailedPendingTargetCommandAttempt({
+        state: this.state,
+        deviceId,
+        capabilityId: targetCap,
+        desired,
+        nowMs,
+        observedValue: latestObservedValue ?? observedValue,
+      });
+      const retryDelaySec = Math.max(1, Math.ceil((failedPending.nextRetryAtMs - nowMs) / 1000));
+      this.log(
+        `Failed to set ${targetCap} for ${name}; treating device as temporarily unavailable `
+        + `for ${retryDelaySec}s before retry`,
+      );
+      this.error(`Failed to set ${targetCap} for ${name} via DeviceManager`, error);
+      return { applied: false };
+    }
     const pending = recordPendingTargetCommandAttempt({
       state: this.state,
       deviceId,

@@ -207,7 +207,7 @@ or present requested state as confirmed reality.
       `shouldRecordAttempt` reports that no devices still drift after reconcile, PELS does not
       fall back to logging/recording all eligible devices or open the circuit breaker early.
       Files: `lib/app/appRealtimeDeviceReconcile.ts`, realtime reconcile tests.
-- [ ] Back off repeated target-temperature retries for persistently unreachable devices and surface
+- [x] Back off repeated target-temperature retries for persistently unreachable devices and surface
       a temporary-unavailable state in logs/status instead of re-sending the same doomed command
       every cycle.
       Files: `lib/plan/planTargetControl.ts`, diagnostics/logging, tests.
