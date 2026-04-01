@@ -2,7 +2,7 @@
 
 Repo-wide instructions only:
 
-- Root is the Homey app root. Safe Homey CLI commands are allowed, especially `homey app validate`. Do not run Homey deploy/install commands unless the user explicitly asks.
+- Root is the Homey app root. The only safe Homey CLI command is `homey app validate`. Do not run `homey app run`, `homey app install`, `homey app publish`, or any other Homey CLI command unless the user explicitly asks.
 - The settings UI source lives in `packages/settings-ui`. Generated deployable assets sync into `settings/` via `npm run build:settings`.
 - Shared browser-safe modules for the settings UI live in `packages/contracts/src` and `packages/shared-domain/src`.
 - For settings-only work, start from `packages/settings-ui` and stay out of `app.ts`, `drivers/`, `flowCards/`, and `lib/` unless a missing contract blocks the task.

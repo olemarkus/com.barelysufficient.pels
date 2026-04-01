@@ -100,13 +100,13 @@ When `.homeycompose/` changes, run `homey app validate` — this regenerates roo
 ### Running Locally
 
 ```bash
-npm run start               # Build settings/widgets then `homey app run --remote`
-npm run start:local         # Same but runs locally (not remote)
 npm run validate            # homey app validate + packaging checks
 ```
 
-**Safe Homey CLI commands:** `homey app validate`, `homey app run --remote`.
-**Do not run** `homey app install` or `homey app publish` unless the user explicitly asks.
+Do not run `npm run start` or `npm run start:local` — these invoke `homey app run`, which is not a safe command.
+
+**Safe Homey CLI command:** `homey app validate`.
+**Do not run** `homey app run`, `homey app install`, or `homey app publish` unless the user explicitly asks.
 
 ### Testing
 
