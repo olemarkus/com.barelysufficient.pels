@@ -565,7 +565,6 @@ class PelsApp extends Homey.App {
       hasPendingTimer: Boolean(this.realtimeDeviceReconcileTimer),
       getLatestPlanSnapshot: () => this.planService?.getLatestReconcilePlanSnapshot() ?? null,
       getLiveDevices: () => this.latestTargetSnapshot,
-      logDebug: (message) => this.logDebug('devices', message),
       structuredLog,
       reconcile: () => this.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),
       onTimerFired: () => { this.realtimeDeviceReconcileTimer = undefined; },

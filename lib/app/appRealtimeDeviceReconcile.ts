@@ -41,7 +41,6 @@ export function scheduleRealtimeDeviceReconcile(params: {
   state: RealtimeDeviceReconcileState;
   hasPendingTimer: boolean;
   event: RealtimeDeviceReconcileEvent;
-  logDebug: (message: string) => void;
   structuredLog?: PinoLogger;
   onTimerFired: () => void;
   onFlush: () => Promise<void>;
@@ -51,13 +50,11 @@ export function scheduleRealtimeDeviceReconcile(params: {
     state,
     hasPendingTimer,
     event,
-    logDebug,
     structuredLog,
     onTimerFired,
     onFlush,
     onError,
   } = params;
-  logDebug(`Realtime device drift queued for plan reconcile: ${formatRealtimeDeviceReconcileEvent(event)}`);
   structuredLog?.debug({
     event: 'realtime_reconcile_queued',
     ...toRealtimeReconcileEventPayload(event),
@@ -74,14 +71,12 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
   state: RealtimeDeviceReconcileState;
   reconcile: () => Promise<boolean>;
   shouldRecordAttempt?: (event: RealtimeDeviceReconcileEvent) => boolean;
-  logDebug: (message: string) => void;
   structuredLog?: PinoLogger;
 }): Promise<void> {
   const {
     state,
     reconcile,
     shouldRecordAttempt,
-    logDebug,
     structuredLog,
   } = params;
   const pendingEvents = Array.from(state.pendingEvents.values());
@@ -93,7 +88,6 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
     state,
     event,
     now,
-    logDebug,
     structuredLog,
   }));
   if (eligibleEvents.length === 0) return;
@@ -121,10 +115,9 @@ function isRealtimeDeviceReconcileSuppressed(params: {
   state: RealtimeDeviceReconcileState;
   event: RealtimeDeviceReconcileEvent;
   now: number;
-  logDebug: (message: string) => void;
   structuredLog?: PinoLogger;
 }): boolean {
-  const { state, event, now, logDebug, structuredLog } = params;
+  const { state, event, now, structuredLog } = params;
   const currentState = state.circuitState.get(event.deviceId);
   if (!currentState?.suppressedUntil) return false;
   if (currentState.suppressedUntil <= now) {
@@ -132,10 +125,6 @@ function isRealtimeDeviceReconcileSuppressed(params: {
     return false;
   }
   const remainingSeconds = Math.max(1, Math.ceil((currentState.suppressedUntil - now) / 1000));
-  logDebug(
-    `Realtime device drift suppressed for ${formatRealtimeDeviceReconcileEvent(event)}; `
-    + `${remainingSeconds}s remaining`,
-  );
   structuredLog?.debug({
     event: 'realtime_reconcile_suppressed',
     remainingSeconds,
@@ -191,23 +180,6 @@ function getRealtimeDeviceReconcileCircuitState(
     return { windowStartedAt: now, reconcileCount: 0 };
   }
   return existingState;
-}
-
-export function formatRealtimeDeviceReconcileEvent(event: RealtimeDeviceReconcileEvent): string {
-  const capabilitySuffix = event.capabilityId ? ` via ${event.capabilityId}` : '';
-  const changesSuffix = formatRealtimeDeviceReconcileChanges(event.changes);
-  const expectationSuffix = event.planExpectation ? `; ${event.planExpectation}` : '';
-  return `${event.name} (${event.deviceId})${capabilitySuffix}${changesSuffix}${expectationSuffix}`;
-}
-
-function formatRealtimeDeviceReconcileChanges(
-  changes: RealtimeDeviceReconcileChange[] | undefined,
-): string {
-  if (!changes || changes.length === 0) return '';
-  const formatted = changes.map((change) => (
-    `${change.capabilityId}: ${change.previousValue} -> ${change.nextValue}`
-  ));
-  return ` [${formatted.join(', ')}]`;
 }
 
 export function toRealtimeReconcileEventPayload(event: RealtimeDeviceReconcileEvent): Record<string, unknown> {
