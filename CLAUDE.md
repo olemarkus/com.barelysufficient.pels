@@ -11,7 +11,7 @@ PELS is a Homey Pro app that implements an hourly electricity capacity controlle
 ├── app.ts                    # Homey app entry point (~1030 lines)
 ├── api.ts                    # REST API handlers for the settings UI
 ├── app.json                  # Auto-generated from .homeycompose — do not edit directly
-├── package.json              # npm workspace root (Node 22, npm 10.9.4)
+├── package.json              # npm workspace root (Node 22, npm >=10.9)
 ├── tsconfig.json             # TypeScript config (targets Node 22)
 ├── jest.config.cjs           # Jest config (80% coverage threshold)
 ├── eslint.config.mjs         # ESLint (strict, sonarjs, functional, unicorn)
@@ -37,7 +37,7 @@ PELS is a Homey Pro app that implements an hourly electricity capacity controlle
 The codebase is strictly layered. `dependency-cruiser` enforces the rules at `npm run arch:check`.
 
 ```
-Entry Points          app.ts, api.ts, drivers/**, packages/settings-ui/src/script.ts
+Entry Points          app.ts, drivers/**, packages/settings-ui/src/script.ts
       ↓
 App Wiring/Adapters   lib/app/**, flowCards/**
       ↓
@@ -55,6 +55,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 - Settings UI must only consume shared contracts and shared-domain — never import runtime backend directly.
 - Domain modules (`lib/core`, `lib/plan`, `lib/price`, `lib/dailyBudget`) must not import `lib/app/**`.
 - `flowCards/**` must not import `packages/settings-ui/**` or `drivers/**`.
+- Accept code duplication if consolidation would violate an architectural boundary (e.g., runtime vs. contracts). Add a comment at the duplication site explaining the constraint.
 
 **Known transitional allowance:** `lib/utils/**` still has some imports from `lib/core` and `lib/plan`. This is tracked in `TODO.md` and should not be expanded.
 
@@ -111,7 +112,7 @@ Do not run `npm run start` or `npm run start:local` — these invoke `homey app 
 ### Testing
 
 ```bash
-npm run test:unit           # Fast Jest suite (skips .ts compilation)
+npm run test:unit           # Fast Jest suite (no coverage, lighter config)
 npm run test:unit:ci        # Full Jest suite with coverage
 npm run test:unit:tz        # Timezone-sensitive tests
 npm run test:ui             # Settings UI Jest tests
@@ -119,7 +120,11 @@ npm run test:e2e            # Playwright E2E (chromium + firefox mobile)
 npm run ci:full             # Complete CI: checks + runtime + settings UI + Playwright
 ```
 
-**Coverage threshold:** 80% across branches, functions, lines, statements. Collected from `app.ts`, `lib/**`, `flowCards/**`, `drivers/**`.
+**Coverage threshold:** 80% across branches, functions, lines, statements. Collected from all `*.ts` files under `<rootDir>` (excluding `test/**`, `settings/**`, `packages/**`), which includes root entry points (`app.ts`, `api.ts`), `lib/**`, `flowCards/**`, and `drivers/**`.
+
+**Testing rules:**
+- Unit tests must have a narrow, specific purpose — avoid adding broad checks already covered by integration or regression tests.
+- Use shared, type-safe mock helpers instead of ad-hoc `as any` casts so mocks stay in sync with the production API.
 
 ### Linting and Checks
 
@@ -148,12 +153,18 @@ Pre-commit hooks (Husky + lint-staged) run ESLint + `tsc --noEmit` on every `.ts
 - Functional patterns preferred: avoid mutation, use immutable data structures. ESLint `functional` plugin enforces this (with class exemptions).
 - Max file size: 500 LOC. Max function size: 120 LOC.
 - Max line length: 120 characters.
+- Extract complex inline boolean logic into a dedicated, well-named helper function.
+- In performance-sensitive loops, avoid creating new arrays on each iteration (e.g., no `reduce` with spread); use `push` or `for` loops instead.
+- Lazy-load large dependencies not needed at startup to reduce baseline memory footprint.
+- When parsing external command output, normalise empty/unexpected results to `null`, not empty strings.
+- Never write custom implementations for security-sensitive utilities (e.g., HTML escaping); use a standard library or built-in.
 
 ### Logging
 
 - `this.log()` — user-visible operational logs (shown in Homey app manager).
 - `this.logDebug()` — debug-only logs (gated by debug flag).
 - Never use `console.log` in runtime code.
+- When a helper is refactored to be more generic, make its log messages generic too — specific wording from the original use case will be misleading for new callers.
 
 ### Settings UI
 
@@ -189,6 +200,7 @@ Key timing parameters:
 - Shed cooldown: 60 seconds minimum between shed operations.
 - Restore cooldown: 60–300 seconds (exponential back-off per restore attempt).
 - Hour-boundary logic handles transitions between capacity hours.
+- Account for DST transitions in daily bucket logic — days can be 23 or 25 hours; never hardcode a 24-hour expectation.
 
 ---
 
@@ -215,7 +227,7 @@ GitHub Actions (`.github/workflows/test.yml`) runs on every push and PR:
 4. **settings-ui-tests** — `npm run ci:test:settings-ui`.
 5. **playwright** — E2E matrix (chromium mobile + firefox mobile).
 
-Nightly `docs.yml` deploys docs to GitHub Pages at `pels.barelysufficient.org`.
+`docs.yml` deploys docs to GitHub Pages at `pels.barelysufficient.org` on every push to `main` and on manual dispatch.
 
 ---
 
@@ -257,6 +269,7 @@ For planner assumptions: use conservative still-on/still-high for shed decisions
 - Fallback/estimated power is a planning input, not measured telemetry. Keep the distinction explicit.
 - Fresh trusted observations must eventually win over local-write assumptions, older snapshots, and fallback estimates.
 - "No confirmation yet" means pending/unknown — **never** treat it as success.
+- Do not infer the `on` state of a device from its power consumption — power is unreliable for binary state attribution.
 
 #### Rules when changing reconcile or merge logic
 
@@ -320,3 +333,4 @@ Non-counting reasons (do not add time, but keep starved state latched): cooldown
 - No whitespace-only reformatting.
 - Tests must pass; add new tests for new logic.
 - If `.homeycompose/` changed, include the regenerated `app.json`.
+- To diff all changes on a branch with no common ancestor, use `git diff root^..localSha` (includes the root commit itself).
