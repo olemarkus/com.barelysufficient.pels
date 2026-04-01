@@ -550,7 +550,15 @@ class PelsApp extends Homey.App {
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
     if (this.debugLoggingTopics.has(topic)) this.log(...args);
   }
+  private getStructuredLogger(component: string, debugTopic?: DebugLoggingTopic): PinoLogger | undefined {
+    if (!this.structuredLogger) return undefined;
+    if (debugTopic && this.debugLoggingTopics.has(debugTopic)) {
+      return this.structuredLogger.child({ component }, { level: 'debug' });
+    }
+    return this.structuredLogger.child({ component });
+  }
   private scheduleRealtimeDeviceReconcile(event: realtimeReconcile.RealtimeDeviceReconcileEvent): void {
+    const structuredLog = this.getStructuredLogger('reconcile', 'devices');
     const timer = scheduleAppRealtimeDeviceReconcile({
       event,
       state: this.realtimeDeviceReconcileState,
@@ -558,12 +566,12 @@ class PelsApp extends Homey.App {
       getLatestPlanSnapshot: () => this.planService?.getLatestReconcilePlanSnapshot() ?? null,
       getLiveDevices: () => this.latestTargetSnapshot,
       logDebug: (message) => this.logDebug('devices', message),
-      structuredLog: this.structuredLogger?.child({ component: 'reconcile' }),
+      structuredLog,
       reconcile: () => this.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),
       onTimerFired: () => { this.realtimeDeviceReconcileTimer = undefined; },
       onError: (error) => {
         const normalizedError = normalizeError(error);
-        this.structuredLogger?.child({ component: 'reconcile' }).error({
+        structuredLog?.error({
           event: 'realtime_reconcile_failed',
           err: normalizedError,
         });
