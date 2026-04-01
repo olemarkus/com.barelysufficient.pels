@@ -94,10 +94,9 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
 
   const reconciled = await reconcile();
   if (!reconciled) return;
-  const driftedEvents = shouldRecordAttempt
+  const attemptedEvents = shouldRecordAttempt
     ? eligibleEvents.filter((event) => shouldRecordAttempt(event))
     : eligibleEvents;
-  const attemptedEvents = driftedEvents.length > 0 ? driftedEvents : eligibleEvents;
   if (attemptedEvents.length === 0) return;
   structuredLog?.warn({
     event: 'realtime_reconcile_applied',
