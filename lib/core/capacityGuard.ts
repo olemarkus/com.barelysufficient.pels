@@ -173,20 +173,18 @@ export default class CapacityGuard {
 
   private async enterShortfall(deficitKw: number): Promise<void> {
     this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW`);
-    if (!this.inShortfall) {
-      this.incidentId = `inc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      this.incidentStartMs = Date.now();
-      const powerW = (this.mainPowerKw ?? 0) * 1000;
-      const limitW = this.limitKw * 1000;
-      this.structuredLog?.warn({
-        event: 'capacity_overshoot_detected',
-        incidentId: this.incidentId,
-        powerW,
-        limitW,
-        headroomW: limitW - powerW,
-        excessW: powerW - limitW,
-      });
-    }
+    this.incidentId = `inc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.incidentStartMs = Date.now();
+    const thresholdW = this.getShortfallThreshold() * 1000;
+    const powerW = (this.mainPowerKw ?? 0) * 1000;
+    this.structuredLog?.warn({
+      event: 'capacity_overshoot_detected',
+      incidentId: this.incidentId,
+      powerW,
+      limitW: thresholdW,
+      headroomW: thresholdW - powerW,
+      excessW: powerW - thresholdW,
+    });
     this.inShortfall = true;
     this.shortfallClearStartTime = null;
     await this.onShortfall?.(deficitKw);
@@ -195,13 +193,13 @@ export default class CapacityGuard {
   private async maybeClearShortfall(shortfallThreshold: number): Promise<void> {
     const thresholdHeadroom = shortfallThreshold - (this.mainPowerKw ?? 0);
     if (thresholdHeadroom >= CapacityGuard.SHORTFALL_CLEAR_MARGIN_KW) {
-      await this.updateShortfallClearTimer();
+      await this.updateShortfallClearTimer(shortfallThreshold);
       return;
     }
     this.resetShortfallClearTimer();
   }
 
-  private async updateShortfallClearTimer(): Promise<void> {
+  private async updateShortfallClearTimer(shortfallThreshold: number): Promise<void> {
     const now = Date.now();
     if (this.shortfallClearStartTime === null) {
       this.shortfallClearStartTime = now;
@@ -211,13 +209,13 @@ export default class CapacityGuard {
     if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
       this.log?.('Guard: shortfall cleared (sustained positive headroom)');
       const powerW = (this.mainPowerKw ?? 0) * 1000;
-      const limitW = this.limitKw * 1000;
+      const thresholdW = shortfallThreshold * 1000;
       this.structuredLog?.info({
         event: 'capacity_overshoot_recovered',
         incidentId: this.incidentId,
         powerW,
-        limitW,
-        headroomW: limitW - powerW,
+        limitW: thresholdW,
+        headroomW: thresholdW - powerW,
         recoveryMs: this.incidentStartMs > 0 ? now - this.incidentStartMs : 0,
       });
       this.inShortfall = false;

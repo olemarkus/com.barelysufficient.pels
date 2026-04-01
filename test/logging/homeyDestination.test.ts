@@ -3,6 +3,12 @@
  */
 import { createHomeyDestination } from '../../lib/logging/homeyDestination';
 
+function writeChunk(dest: ReturnType<typeof createHomeyDestination>, chunk: string): Promise<void> {
+  return new Promise((resolve) => {
+    dest.write(chunk, 'utf8', () => resolve());
+  });
+}
+
 describe('homeyDestination', () => {
   it('routes info-level lines to log callback', (done) => {
     const log = jest.fn();
@@ -48,7 +54,7 @@ describe('homeyDestination', () => {
     const dest = createHomeyDestination({ log, error });
 
     const line = JSON.stringify({ level: 30, msg: 'no newline' });
-    dest.write(line, 'utf8', () => {
+    dest.end(line, 'utf8', () => {
       expect(log).toHaveBeenCalledWith(line);
       done();
     });
@@ -74,5 +80,21 @@ describe('homeyDestination', () => {
       // If we reach here, no uncaught exception was thrown
       done();
     });
+  });
+
+  it('buffers partial chunks until a full line is available', async () => {
+    const log = jest.fn();
+    const error = jest.fn();
+    const dest = createHomeyDestination({ log, error });
+    const line = JSON.stringify({ level: 50, msg: 'split' }) + '\n';
+    const mid = Math.floor(line.length / 2);
+
+    await writeChunk(dest, line.slice(0, mid));
+    expect(log).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+
+    await writeChunk(dest, line.slice(mid));
+    expect(log).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(JSON.stringify({ level: 50, msg: 'split' }));
   });
 });

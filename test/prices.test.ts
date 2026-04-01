@@ -1181,13 +1181,14 @@ describe('Price optimization', () => {
     }
   };
 
-  const createPriceCoordinatorForTest = (): PriceCoordinator => new PriceCoordinator({
+  const createPriceCoordinatorForTest = (overrides: Partial<ConstructorParameters<typeof PriceCoordinator>[0]> = {}): PriceCoordinator => new PriceCoordinator({
     homey: mockHomeyInstance as never,
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
     rebuildPlanFromCache: async () => undefined,
     log: () => undefined,
     logDebug: () => undefined,
     error: () => undefined,
+    ...overrides,
   });
 
   // Generate mock prices for the app-local day that contains the provided timestamp.
@@ -2448,4 +2449,24 @@ describe('Price optimization', () => {
       });
     },
   );
+
+  it('emits structured failure events for direct grid tariff refreshes', async () => {
+    const error = jest.fn();
+    const structuredLog: Pick<import('../lib/logging/logger').Logger, 'error'> = { error: jest.fn() };
+    const coordinator = createPriceCoordinatorForTest({
+      error,
+      structuredLog: structuredLog as unknown as import('../lib/logging/logger').Logger,
+    });
+    const refreshError = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+    (coordinator as any).priceService.refreshGridTariffData = jest.fn().mockRejectedValue(refreshError);
+
+    await expect(coordinator.refreshGridTariffData(true)).rejects.toThrow('socket hang up');
+
+    expect(error).toHaveBeenCalledWith('Failed to refresh grid tariff data', refreshError);
+    expect(structuredLog.error).toHaveBeenCalledWith({
+      event: 'price_fetch_failed',
+      priceSource: 'grid_tariff',
+      reasonCode: 'socket_hangup',
+    });
+  });
 });

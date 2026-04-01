@@ -98,6 +98,13 @@ type ParsedDeviceSettings = Pick<
     'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt'
 >;
 
+type SnapshotRefreshMetrics = {
+    availableDevices: number;
+    temperatureKnownDevices: number;
+    temperatureUnknownDevices: number;
+    unavailableDevices: number;
+};
+
 export type DeviceDebugObservedSource = {
     observedAt: number;
     path: 'snapshot_refresh' | 'device_update' | 'realtime_capability' | 'local_write';
@@ -303,21 +310,12 @@ export class DeviceManager extends EventEmitter {
             this.recordSnapshotRefreshObservations(snapshot, fetchSource);
             this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
             if (this.logger.structuredLog) {
-                let known = 0;
-                let unknown = 0;
-                let unavailable = 0;
-                for (const d of snapshot) {
-                    if (d.available === false) unavailable++;
-                    else if (d.currentTemperature != null) known++;
-                    else unknown++;
-                }
+                const metrics = summarizeSnapshotRefreshMetrics(snapshot);
                 this.logger.structuredLog.info({
                     event: 'device_snapshot_refresh_completed',
                     durationMs: Date.now() - start,
                     devicesTotal: snapshot.length,
-                    knownDevices: known,
-                    unknownDevices: unknown,
-                    unavailableDevices: unavailable,
+                    ...metrics,
                 });
             }
             logEvSnapshotChanges({
@@ -1243,4 +1241,24 @@ export class DeviceManager extends EventEmitter {
             || hasPotentialHomeyEnergyEstimate(device)
             || powerEstimate.hasEnergyEstimate === true;
     }
+}
+
+function summarizeSnapshotRefreshMetrics(snapshot: TargetDeviceSnapshot[]): SnapshotRefreshMetrics {
+    let availableDevices = 0;
+    let temperatureKnownDevices = 0;
+    let unavailableDevices = 0;
+    for (const device of snapshot) {
+        if (device.available === false) {
+            unavailableDevices++;
+            continue;
+        }
+        availableDevices++;
+        if (device.currentTemperature != null) temperatureKnownDevices++;
+    }
+    return {
+        availableDevices,
+        temperatureKnownDevices,
+        temperatureUnknownDevices: availableDevices - temperatureKnownDevices,
+        unavailableDevices,
+    };
 }
