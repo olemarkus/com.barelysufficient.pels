@@ -7,6 +7,7 @@ import {
 } from './appRealtimeDeviceReconcile';
 import { hasPlanExecutionDriftForDevice } from '../plan/planReconcileState';
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
+import type { Logger as PinoLogger } from '../logging/logger';
 
 export function hasRealtimeDeviceReconcileDrift(params: {
   event: RealtimeDeviceReconcileEvent;
@@ -27,12 +28,14 @@ export function shouldQueueRealtimeDeviceReconcile(params: {
   latestPlanSnapshot: DevicePlan | null;
   liveDevices: PlanInputDevice[];
   logDebug: (message: string) => void;
+  structuredLog?: PinoLogger;
 }): boolean {
   const {
     event,
     latestPlanSnapshot,
     liveDevices,
     logDebug,
+    structuredLog,
   } = params;
   const eventWithPlanExpectation = enrichRealtimeDeviceReconcileEvent(event, latestPlanSnapshot);
   const hasDrift = hasRealtimeDeviceReconcileDrift({
@@ -46,6 +49,14 @@ export function shouldQueueRealtimeDeviceReconcile(params: {
     `Realtime device change matches current plan, skipping reconcile: `
     + formatRealtimeDeviceReconcileEvent(eventWithPlanExpectation),
   );
+  structuredLog?.debug({
+    event: 'realtime_reconcile_skipped_no_drift',
+    deviceId: eventWithPlanExpectation.deviceId,
+    deviceName: eventWithPlanExpectation.name,
+    capabilityId: eventWithPlanExpectation.capabilityId,
+    planExpectation: eventWithPlanExpectation.planExpectation,
+    changes: eventWithPlanExpectation.changes,
+  });
   return false;
 }
 
@@ -56,7 +67,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
   getLatestPlanSnapshot: () => DevicePlan | null;
   getLiveDevices: () => PlanInputDevice[];
   logDebug: (message: string) => void;
-  log: (message: string) => void;
+  structuredLog?: PinoLogger;
   reconcile: () => Promise<boolean>;
   onTimerFired: () => void;
   onError: (error: unknown) => void;
@@ -68,7 +79,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
     getLatestPlanSnapshot,
     getLiveDevices,
     logDebug,
-    log,
+    structuredLog,
     reconcile,
     onTimerFired,
     onError,
@@ -79,6 +90,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
     latestPlanSnapshot: getLatestPlanSnapshot(),
     liveDevices: getLiveDevices(),
     logDebug,
+    structuredLog,
   })) {
     return undefined;
   }
@@ -88,6 +100,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
     hasPendingTimer,
     event: eventWithPlanExpectation,
     logDebug,
+    structuredLog,
     onTimerFired,
     onFlush: async () => {
       await flushRealtimeDeviceReconcileQueue({
@@ -99,7 +112,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
           liveDevices: getLiveDevices(),
         }),
         logDebug,
-        log,
+        structuredLog,
       });
     },
     onError,

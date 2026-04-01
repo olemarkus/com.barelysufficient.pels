@@ -291,10 +291,10 @@ class PelsApp extends Homey.App {
   }
   async onInit() {
     const deferStartupBootstrap = process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1';
-    this.log('PELS has been initialized');
     this.structuredLogger = createRootLogger(
       createHomeyDestination({ log: (...a) => this.log(...a), error: (...a) => this.error(...a) }),
     );
+    this.structuredLogger.child({ component: 'startup' }).info({ event: 'app_initialized' });
     this.startResourceWarningListeners();
     await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled());
     this.startPerfLogging();
@@ -336,7 +336,13 @@ class PelsApp extends Homey.App {
       refreshGridTariffData: () => this.priceCoordinator.refreshGridTariffData(),
       startPriceRefresh: () => this.priceCoordinator.startPriceRefresh(),
       startPriceOptimization: (applyImmediately) => this.priceCoordinator.startPriceOptimization(applyImmediately),
-      logError: (label, error) => this.error(`Startup background task failed (${label})`, error),
+      logError: (label, error) => {
+        this.structuredLogger?.child({ component: 'startup' }).error({
+          event: 'startup_background_task_failed',
+          taskLabel: label,
+          err: error,
+        });
+      },
       snapshotPlanBootstrapDelayMs,
       runSnapshotPlanBootstrapInBackground: deferStartupBootstrap,
       runPriceBootstrapInBackground: deferStartupBootstrap,
@@ -550,10 +556,16 @@ class PelsApp extends Homey.App {
       getLatestPlanSnapshot: () => this.planService?.getLatestReconcilePlanSnapshot() ?? null,
       getLiveDevices: () => this.latestTargetSnapshot,
       logDebug: (message) => this.logDebug('devices', message),
-      log: (message) => this.log(message),
+      structuredLog: this.structuredLogger?.child({ component: 'reconcile' }),
       reconcile: () => this.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),
       onTimerFired: () => { this.realtimeDeviceReconcileTimer = undefined; },
-      onError: (error) => this.error('Failed to reconcile plan after realtime device update', error as Error),
+      onError: (error) => {
+        const normalizedError = error instanceof Error ? error : new Error(String(error));
+        this.structuredLogger?.child({ component: 'reconcile' }).error({
+          event: 'realtime_reconcile_failed',
+          err: normalizedError,
+        });
+      },
     });
     if (timer) this.realtimeDeviceReconcileTimer = timer;
   }
