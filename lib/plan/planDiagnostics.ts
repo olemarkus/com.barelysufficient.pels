@@ -21,11 +21,121 @@ const STARVATION_SUPPORTED_DEVICE_CLASSES = new Set([
   'airtreatment',
 ]);
 
+const starvationReasonMatchers: readonly StarvationReasonMatcher[] = [
+  {
+    matches: reason => reason.startsWith('headroom cooldown ('),
+    suppressionState: 'paused',
+    countingCause: null,
+    pauseReason: 'headroom_cooldown',
+  },
+  {
+    matches: reason => reason.startsWith('cooldown ('),
+    suppressionState: 'paused',
+    countingCause: null,
+    pauseReason: 'cooldown',
+  },
+  {
+    matches: reason => reason === 'restore throttled',
+    suppressionState: 'paused',
+    countingCause: null,
+    pauseReason: 'restore_throttled',
+  },
+  {
+    matches: reason => reason.startsWith('restore pending (')
+      || reason === 'waiting for other devices to recover'
+      || reason.startsWith('restore '),
+    suppressionState: 'paused',
+    countingCause: null,
+    pauseReason: 'restore',
+  },
+  {
+    matches: reason => reason === 'keep' || reason.startsWith('keep ('),
+    suppressionState: 'paused',
+    countingCause: null,
+    pauseReason: 'keep',
+  },
+  {
+    matches: reason => reason.startsWith('inactive (') || reason === 'inactive',
+    suppressionState: 'paused',
+    countingCause: null,
+    pauseReason: 'inactive',
+  },
+  {
+    matches: reason => reason.startsWith('shed due to capacity'),
+    suppressionState: 'counting',
+    countingCause: 'capacity',
+    pauseReason: null,
+  },
+  {
+    matches: reason => reason.startsWith('shed due to daily budget'),
+    suppressionState: 'counting',
+    countingCause: 'daily_budget',
+    pauseReason: null,
+  },
+  {
+    matches: reason => reason.startsWith('shed due to hourly budget'),
+    suppressionState: 'counting',
+    countingCause: 'hourly_budget',
+    pauseReason: null,
+  },
+  {
+    matches: reason => reason === 'shortfall' || reason.startsWith('shortfall ('),
+    suppressionState: 'counting',
+    countingCause: 'shortfall',
+    pauseReason: null,
+  },
+  {
+    matches: reason => reason === 'swap pending' || reason.startsWith('swap pending ('),
+    suppressionState: 'counting',
+    countingCause: 'swap_pending',
+    pauseReason: null,
+  },
+  {
+    matches: reason => reason.startsWith('swapped out for '),
+    suppressionState: 'counting',
+    countingCause: 'swapped_out',
+    pauseReason: null,
+  },
+  {
+    matches: reason => reason.startsWith('insufficient headroom'),
+    suppressionState: 'counting',
+    countingCause: 'insufficient_headroom',
+    pauseReason: null,
+  },
+  {
+    matches: reason => reason === 'shedding active' || reason.startsWith('shedding active '),
+    suppressionState: 'counting',
+    countingCause: 'shedding_active',
+    pauseReason: null,
+  },
+] as const;
+
+const noStarvationSuppression = (): StarvationSuppressionNormalization => ({
+  suppressionState: 'none',
+  countingCause: null,
+  pauseReason: null,
+});
+
 type StarvationSuppressionNormalization = {
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
 };
+
+type StarvationReasonMatcher = {
+  matches: (reason: string) => boolean;
+} & (
+  | {
+    suppressionState: 'counting';
+    countingCause: DeviceDiagnosticsStarvationCountingCause;
+    pauseReason: null;
+  }
+  | {
+    suppressionState: 'paused';
+    countingCause: null;
+    pauseReason: DeviceDiagnosticsStarvationPauseReason;
+  }
+);
 
 type BuildDeviceDiagnosticsObservationsParams = {
   context: PlanContext;
@@ -128,113 +238,12 @@ const resolveEligibleForStarvation = (params: {
 const resolveSuppressionFromReason = (
   reason: string,
 ): StarvationSuppressionNormalization => {
-  if (reason.startsWith('headroom cooldown (')) {
-    return {
-      suppressionState: 'paused',
-      countingCause: null,
-      pauseReason: 'headroom_cooldown',
-    };
-  }
-  if (reason.startsWith('cooldown (')) {
-    return {
-      suppressionState: 'paused',
-      countingCause: null,
-      pauseReason: 'cooldown',
-    };
-  }
-  if (reason === 'restore throttled') {
-    return {
-      suppressionState: 'paused',
-      countingCause: null,
-      pauseReason: 'restore_throttled',
-    };
-  }
-  if (
-    reason.startsWith('restore pending (')
-    || reason === 'waiting for other devices to recover'
-    || reason.startsWith('restore ')
-  ) {
-    return {
-      suppressionState: 'paused',
-      countingCause: null,
-      pauseReason: 'restore',
-    };
-  }
-  if (reason === 'keep' || reason.startsWith('keep (')) {
-    return {
-      suppressionState: 'paused',
-      countingCause: null,
-      pauseReason: 'keep',
-    };
-  }
-  if (reason.startsWith('inactive (') || reason === 'inactive') {
-    return {
-      suppressionState: 'paused',
-      countingCause: null,
-      pauseReason: 'inactive',
-    };
-  }
-  if (reason.startsWith('shed due to capacity')) {
-    return {
-      suppressionState: 'counting',
-      countingCause: 'capacity',
-      pauseReason: null,
-    };
-  }
-  if (reason.startsWith('shed due to daily budget')) {
-    return {
-      suppressionState: 'counting',
-      countingCause: 'daily_budget',
-      pauseReason: null,
-    };
-  }
-  if (reason.startsWith('shed due to hourly budget')) {
-    return {
-      suppressionState: 'counting',
-      countingCause: 'hourly_budget',
-      pauseReason: null,
-    };
-  }
-  if (reason === 'shortfall' || reason.startsWith('shortfall (')) {
-    return {
-      suppressionState: 'counting',
-      countingCause: 'shortfall',
-      pauseReason: null,
-    };
-  }
-  if (reason === 'swap pending' || reason.startsWith('swap pending (')) {
-    return {
-      suppressionState: 'counting',
-      countingCause: 'swap_pending',
-      pauseReason: null,
-    };
-  }
-  if (reason.startsWith('swapped out for ')) {
-    return {
-      suppressionState: 'counting',
-      countingCause: 'swapped_out',
-      pauseReason: null,
-    };
-  }
-  if (reason.startsWith('insufficient headroom')) {
-    return {
-      suppressionState: 'counting',
-      countingCause: 'insufficient_headroom',
-      pauseReason: null,
-    };
-  }
-  if (reason === 'shedding active' || reason.startsWith('shedding active ')) {
-    return {
-      suppressionState: 'counting',
-      countingCause: 'shedding_active',
-      pauseReason: null,
-    };
-  }
-  return {
-    suppressionState: 'none',
-    countingCause: null,
-    pauseReason: null,
-  };
+  const match = starvationReasonMatchers.find(candidate => candidate.matches(reason));
+  return match ? {
+    suppressionState: match.suppressionState,
+    countingCause: match.countingCause,
+    pauseReason: match.pauseReason,
+  } : noStarvationSuppression();
 };
 
 const resolveStarvationSuppression = (params: {
@@ -244,11 +253,7 @@ const resolveStarvationSuppression = (params: {
 }): StarvationSuppressionNormalization => {
   const { device, inputDevice, isEv } = params;
   if (isEv || !inputDevice || device.controllable === false || inputDevice.controllable !== true) {
-    return {
-      suppressionState: 'none',
-      countingCause: null,
-      pauseReason: null,
-    };
+    return noStarvationSuppression();
   }
   const reason = (device.reason || '').trim();
   if (!reason) {
