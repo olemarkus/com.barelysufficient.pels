@@ -151,7 +151,7 @@ describe('CapacityGuard', () => {
 
     it('does not emit duplicate structured shortfall event while in shortfall', async () => {
       const logEvents: Array<Record<string, unknown>> = [];
-      const structuredLog: Pick<import('../lib/logging/logger').PinoLogger, 'warn' | 'info'> = {
+      const structuredLog: Pick<import('../lib/logging/logger').Logger, 'warn' | 'info'> = {
         warn: (obj: Record<string, unknown>) => { logEvents.push(obj); },
         info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
       };
@@ -159,7 +159,7 @@ describe('CapacityGuard', () => {
         limitKw: 5,
         softMarginKw: 0.2,
         onShortfall: () => {},
-        structuredLog: structuredLog as unknown as import('../lib/logging/logger').PinoLogger,
+        structuredLog: structuredLog as unknown as import('../lib/logging/logger').Logger,
       });
 
       guard.reportTotalPower(5.5);
