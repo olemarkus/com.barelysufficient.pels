@@ -38,6 +38,7 @@ type PlanDeviceSnapshot = {
     desired: number;
     retryCount: number;
     nextRetryAtMs: number;
+    status: 'waiting_confirmation' | 'temporary_unavailable';
   };
 };
 
@@ -225,11 +226,16 @@ const buildPlanTemperatureLine = (dev: PlanDeviceSnapshot) => {
   const currentTarget = typeof dev.currentTarget === 'number' ? `${dev.currentTarget}°` : '–';
   const plannedTarget = typeof dev.plannedTarget === 'number' ? `${dev.plannedTarget}°` : '–';
   const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
-  const pendingSuffix = dev.pendingTargetCommand
+  let pendingSuffix = '';
+  if (
+    dev.pendingTargetCommand
     && typeof dev.plannedTarget === 'number'
     && dev.pendingTargetCommand.desired === dev.plannedTarget
-    ? ' (waiting for confirmation)'
-    : '';
+  ) {
+    pendingSuffix = dev.pendingTargetCommand.status === 'temporary_unavailable'
+      ? ' (temporarily unavailable)'
+      : ' (waiting for confirmation)';
+  }
   const targetText = targetChanging ? `${currentTarget} → ${plannedTarget}` : currentTarget;
   const targetTextWithPending = `${targetText}${pendingSuffix}`;
   return createMetaLine('Temperature', `${currentTemp} / target ${targetTextWithPending}`);

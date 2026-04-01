@@ -224,6 +224,45 @@ describe('PlanExecutor pending target commands', () => {
     });
   });
 
+  it('backs off failed target writes and marks the device temporarily unavailable', async () => {
+    const state = createPlanEngineState();
+    const failure = new Error('Device offline');
+    const { executor, deps, deviceManager, state: nextState } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      },
+    ]);
+    deviceManager.setCapability.mockRejectedValue(failure);
+    const plan = buildTargetPlan();
+
+    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(plan);
+
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      capabilityId: 'target_temperature',
+      desired: 23,
+      retryCount: 0,
+      status: 'temporary_unavailable',
+    });
+    expect(deps.log).toHaveBeenCalledWith(
+      'Failed to set target_temperature for Heater; treating device as temporarily unavailable for 30s before retry',
+    );
+    expect(deps.error).toHaveBeenCalledWith(
+      'Failed to set target_temperature for Heater via DeviceManager',
+      failure,
+    );
+    expect(deps.logDebug).toHaveBeenCalledWith(
+      'Capacity: skip target_temperature for Heater, device temporarily unavailable for 30s before retry (plan)',
+    );
+  });
+
   it('tags reconcile target updates in the user-visible log', async () => {
     const state = createPlanEngineState();
     const { executor, deps, deviceManager } = buildExecutor(state, [
@@ -324,6 +363,7 @@ describe('PlanExecutor pending target commands', () => {
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
+      status: 'waiting_confirmation',
       lastObservedValue: 18,
       lastObservedSource: 'rebuild',
       lastObservedAtMs: Date.now() - 5_000,
@@ -362,6 +402,7 @@ describe('PlanExecutor pending target commands', () => {
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
+      status: 'waiting_confirmation',
       lastObservedValue: 25,
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 5_000,
@@ -414,6 +455,7 @@ describe('PlanExecutor pending target commands', () => {
       lastAttemptMs: Date.now() - 5_000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
+      status: 'waiting_confirmation',
       lastObservedValue: 27,
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 5_000,

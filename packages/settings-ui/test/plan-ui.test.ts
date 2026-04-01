@@ -314,12 +314,37 @@ describe('plan device state', () => {
             desired: 23,
             retryCount: 0,
             nextRetryAtMs: Date.now() + 30_000,
+            status: 'waiting_confirmation',
           },
         },
       ],
     });
 
     expect(getTemperatureText()).toBe('21.0° / target 18° → 23° (waiting for confirmation)');
+  });
+
+  it('shows temporary unavailable text while target retries are backed off', () => {
+    renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-temp-unavailable',
+          name: 'Pending Heater',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTemperature: 21,
+          currentTarget: 18,
+          plannedTarget: 23,
+          pendingTargetCommand: {
+            desired: 23,
+            retryCount: 0,
+            nextRetryAtMs: Date.now() + 30_000,
+            status: 'temporary_unavailable',
+          },
+        },
+      ],
+    });
+
+    expect(getTemperatureText()).toBe('21.0° / target 18° → 23° (temporarily unavailable)');
   });
 
   it('shows stepped-load restore state and step transition in the overview row', () => {

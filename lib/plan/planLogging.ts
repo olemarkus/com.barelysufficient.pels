@@ -36,6 +36,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       pendingTargetDesired: d.pendingTargetCommand?.desired ?? null,
       pendingTargetRetryCount: d.pendingTargetCommand?.retryCount ?? null,
       pendingTargetNextRetryAtMs: d.pendingTargetCommand?.nextRetryAtMs ?? null,
+      pendingTargetStatus: d.pendingTargetCommand?.status ?? null,
     })),
   );
 }

@@ -430,6 +430,7 @@ describe('PlanService', () => {
           desired: 20,
           retryCount: 0,
           nextRetryAtMs: Date.now() + 30_000,
+          status: 'waiting_confirmation',
           lastObservedValue: 18,
           lastObservedSource: 'snapshot_refresh' as const,
         },
@@ -514,6 +515,7 @@ describe('PlanService', () => {
             desired: 20,
             retryCount: 0,
             nextRetryAtMs: Date.now() + 30_000,
+            status: 'waiting_confirmation',
             lastObservedValue: 18,
             lastObservedSource: 'rebuild' as const,
           }

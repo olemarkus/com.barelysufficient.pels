@@ -336,6 +336,7 @@ describe('buildSheddingPlan', () => {
       lastAttemptMs: Date.now() - 5000,
       retryCount: 0,
       nextRetryAtMs: Date.now() + 30000,
+      status: 'waiting_confirmation',
     };
 
     const devices = [
