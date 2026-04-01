@@ -32,6 +32,7 @@ export type ShedBehavior = {
 export type DevicePlanDevice = {
   id: string;
   name: string;
+  deviceClass?: string;
   currentOn: boolean;
   currentState: string;
   plannedState: string;
@@ -105,6 +106,7 @@ export type PlanInputDevice = {
   id: string;
   name: string;
   targets: TargetCapabilitySnapshot[];
+  deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
   observationStale?: boolean;
   communicationModel?: 'local' | 'cloud';

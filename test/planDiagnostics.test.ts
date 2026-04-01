@@ -44,14 +44,18 @@ const buildObservation = (params: {
   planDevice: DevicePlanDevice;
   restoreResult?: Partial<RestorePlanResult>;
   desiredForMode?: Record<string, number>;
+  priceOptimizationEnabled?: boolean;
+  priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+  isCurrentHourCheap?: () => boolean;
+  isCurrentHourExpensive?: () => boolean;
 }) => buildDeviceDiagnosticsObservations({
   context: buildContext(params.inputDevice, params.desiredForMode),
   planDevices: [params.planDevice],
   restoreResult: buildRestoreResult(params.restoreResult),
-  priceOptimizationEnabled: false,
-  priceOptimizationSettings: {},
-  isCurrentHourCheap: () => false,
-  isCurrentHourExpensive: () => false,
+  priceOptimizationEnabled: params.priceOptimizationEnabled ?? false,
+  priceOptimizationSettings: params.priceOptimizationSettings ?? {},
+  isCurrentHourCheap: params.isCurrentHourCheap ?? (() => false),
+  isCurrentHourExpensive: params.isCurrentHourExpensive ?? (() => false),
 })[0];
 
 describe('plan diagnostics observations', () => {
@@ -222,6 +226,226 @@ describe('plan diagnostics observations', () => {
       unmetDemand: false,
       blockCause: 'not_blocked',
       desiredStateSummary: 'on',
+      eligibleForStarvation: false,
+      suppressionState: 'none',
     });
+  });
+
+  it('builds starvation eligibility and counting cause from the formal temperature device model', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'not_applicable',
+        plannedState: 'shed',
+        currentTarget: 18,
+        plannedTarget: 18,
+        reason: 'shed due to capacity',
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(observation).toMatchObject({
+      eligibleForStarvation: true,
+      observationFresh: true,
+      currentTemperatureC: 18,
+      intendedNormalTargetC: 21,
+      targetStepC: 0.5,
+      suppressionState: 'counting',
+      countingCause: 'capacity',
+      pauseReason: null,
+    });
+  });
+
+  it('uses the operating-mode target rather than price-optimization deltas for starvation baseline', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'heater',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'heater',
+        currentState: 'not_applicable',
+        plannedState: 'shed',
+        currentTarget: 18,
+        plannedTarget: 24,
+        reason: 'shed due to capacity',
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 20 },
+      priceOptimizationEnabled: true,
+      priceOptimizationSettings: { 'heater-1': { enabled: true, cheapDelta: 4, expensiveDelta: -4 } },
+      isCurrentHourCheap: () => true,
+    });
+
+    expect(observation.desiredStateSummary).toBe('24.0C');
+    expect(observation.intendedNormalTargetC).toBe(20);
+    expect(observation.targetStepC).toBe(0.5);
+  });
+
+  it('marks stale temperature observations as not fresh without inventing continuity', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        observationStale: true,
+        currentTemperature: 18,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'unknown',
+        plannedState: 'shed',
+        currentTarget: 18,
+        plannedTarget: 18,
+        reason: 'shed due to capacity',
+        controllable: true,
+        available: true,
+        observationStale: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(observation.eligibleForStarvation).toBe(true);
+    expect(observation.observationFresh).toBe(false);
+    expect(observation.currentTemperatureC).toBe(18);
+  });
+
+  it('treats unknown shed reasons as non-counting instead of silently counting starvation', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'not_applicable',
+        plannedState: 'shed',
+        currentTarget: 18,
+        plannedTarget: 18,
+        reason: 'waiting for moon phase alignment',
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(observation).toMatchObject({
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'unknown_suppression_reason',
+    });
+  });
+
+  it('normalizes keep and restore hold states as paused starvation states', () => {
+    const keepObservation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'not_applicable',
+        plannedState: 'keep',
+        currentTarget: 21,
+        plannedTarget: 21,
+        reason: 'keep (recently restored)',
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+    const restoreObservation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'not_applicable',
+        plannedState: 'shed',
+        currentTarget: 18,
+        plannedTarget: 21,
+        reason: 'restore pending (45s remaining)',
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(keepObservation.pauseReason).toBe('keep');
+    expect(keepObservation.suppressionState).toBe('paused');
+    expect(restoreObservation.pauseReason).toBe('restore');
+    expect(restoreObservation.suppressionState).toBe('paused');
   });
 });

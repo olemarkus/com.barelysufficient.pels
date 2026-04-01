@@ -208,6 +208,7 @@ function buildBasePlanDevice(params: {
   return {
     id: dev.id,
     name: dev.name,
+    deviceClass: dev.deviceClass,
     currentOn: dev.currentOn,
     currentState,
     plannedState,

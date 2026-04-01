@@ -2469,4 +2469,23 @@ describe('Price optimization', () => {
       reasonCode: 'socket_hangup',
     });
   });
+
+  it('normalizes non-Error spot refresh failures before rethrowing', async () => {
+    const error = jest.fn();
+    const structuredLog: Pick<import('../lib/logging/logger').Logger, 'error'> = { error: jest.fn() };
+    const coordinator = createPriceCoordinatorForTest({
+      error,
+      structuredLog: structuredLog as unknown as import('../lib/logging/logger').Logger,
+    });
+    (coordinator as any).priceService.refreshSpotPrices = jest.fn().mockRejectedValue('timeout');
+
+    await expect(coordinator.refreshSpotPrices(true)).rejects.toThrow('timeout');
+
+    expect(error).toHaveBeenCalledWith('Failed to refresh spot prices', expect.any(Error));
+    expect(structuredLog.error).toHaveBeenCalledWith({
+      event: 'price_fetch_failed',
+      priceSource: 'spot',
+      reasonCode: 'request_timeout',
+    });
+  });
 });

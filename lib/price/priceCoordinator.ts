@@ -120,8 +120,7 @@ export class PriceCoordinator {
     try {
       await this.priceService.refreshSpotPrices(forceRefresh);
     } catch (error) {
-      this.reportPriceFetchFailure('spot', error);
-      throw error;
+      throw this.reportPriceFetchFailure('spot', error);
     } finally {
       stopSpan();
     }
@@ -132,8 +131,7 @@ export class PriceCoordinator {
     try {
       await this.priceService.refreshGridTariffData(forceRefresh);
     } catch (error) {
-      this.reportPriceFetchFailure('grid_tariff', error);
-      throw error;
+      throw this.reportPriceFetchFailure('grid_tariff', error);
     } finally {
       stopSpan();
     }
@@ -175,7 +173,7 @@ export class PriceCoordinator {
     return this.priceService.getCurrentHourStartMs();
   }
 
-  private reportPriceFetchFailure(priceSource: 'spot' | 'grid_tariff', error: unknown): void {
+  private reportPriceFetchFailure(priceSource: 'spot' | 'grid_tariff', error: unknown): Error {
     const err = error instanceof Error ? error : new Error(String(error));
     const label = priceSource === 'spot' ? 'spot prices' : 'grid tariff data';
     this.deps.error(`Failed to refresh ${label}`, err);
@@ -184,6 +182,7 @@ export class PriceCoordinator {
       priceSource,
       reasonCode: resolveErrorReasonCode(err),
     });
+    return err;
   }
 }
 
