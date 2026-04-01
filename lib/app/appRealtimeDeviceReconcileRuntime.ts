@@ -2,6 +2,7 @@ import {
   formatRealtimeDeviceReconcileEvent,
   flushRealtimeDeviceReconcileQueue,
   scheduleRealtimeDeviceReconcile,
+  toRealtimeReconcileEventPayload,
   type RealtimeDeviceReconcileEvent,
   type RealtimeDeviceReconcileState,
 } from './appRealtimeDeviceReconcile';
@@ -51,11 +52,7 @@ export function shouldQueueRealtimeDeviceReconcile(params: {
   );
   structuredLog?.debug({
     event: 'realtime_reconcile_skipped_no_drift',
-    deviceId: eventWithPlanExpectation.deviceId,
-    deviceName: eventWithPlanExpectation.name,
-    capabilityId: eventWithPlanExpectation.capabilityId,
-    planExpectation: eventWithPlanExpectation.planExpectation,
-    changes: eventWithPlanExpectation.changes,
+    ...toRealtimeReconcileEventPayload(eventWithPlanExpectation),
   });
   return false;
 }

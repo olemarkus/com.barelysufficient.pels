@@ -210,7 +210,7 @@ function formatRealtimeDeviceReconcileChanges(
   return ` [${formatted.join(', ')}]`;
 }
 
-function toRealtimeReconcileEventPayload(event: RealtimeDeviceReconcileEvent): Record<string, unknown> {
+export function toRealtimeReconcileEventPayload(event: RealtimeDeviceReconcileEvent): Record<string, unknown> {
   return {
     deviceId: event.deviceId,
     deviceName: event.name,

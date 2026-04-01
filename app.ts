@@ -80,6 +80,7 @@ import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './li
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
 import { createRootLogger, type Logger as PinoLogger } from './lib/logging/logger';
 import { createHomeyDestination } from './lib/logging/homeyDestination';
+import { normalizeError } from './lib/utils/errorUtils';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
 import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
 import type { ObservedDeviceStateEvent } from './lib/core/deviceManagerRealtimeHandlers';
@@ -337,10 +338,11 @@ class PelsApp extends Homey.App {
       startPriceRefresh: () => this.priceCoordinator.startPriceRefresh(),
       startPriceOptimization: (applyImmediately) => this.priceCoordinator.startPriceOptimization(applyImmediately),
       logError: (label, error) => {
+        const normalizedError = normalizeError(error);
         this.structuredLogger?.child({ component: 'startup' }).error({
           event: 'startup_background_task_failed',
           taskLabel: label,
-          err: error,
+          err: normalizedError,
         });
       },
       snapshotPlanBootstrapDelayMs,
@@ -560,7 +562,7 @@ class PelsApp extends Homey.App {
       reconcile: () => this.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),
       onTimerFired: () => { this.realtimeDeviceReconcileTimer = undefined; },
       onError: (error) => {
-        const normalizedError = error instanceof Error ? error : new Error(String(error));
+        const normalizedError = normalizeError(error);
         this.structuredLogger?.child({ component: 'reconcile' }).error({
           event: 'realtime_reconcile_failed',
           err: normalizedError,

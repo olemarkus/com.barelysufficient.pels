@@ -5,8 +5,12 @@ import {
   scheduleRealtimeDeviceReconcile,
 } from '../lib/app/appRealtimeDeviceReconcile';
 import { shouldQueueRealtimeDeviceReconcile } from '../lib/app/appRealtimeDeviceReconcileRuntime';
+import type { Logger } from '../lib/logging/logger';
 
 describe('appRealtimeDeviceReconcile', () => {
+  const createDebugLoggerMock = (): Pick<Logger, 'debug'> => ({ debug: jest.fn() as Logger['debug'] });
+  const createWarnLoggerMock = (): Pick<Logger, 'warn'> => ({ warn: jest.fn() as Logger['warn'] });
+
   it('formats reconcile events with old and new values', () => {
     expect(formatRealtimeDeviceReconcileEvent({
       deviceId: 'dev-1',
@@ -22,7 +26,7 @@ describe('appRealtimeDeviceReconcile', () => {
   it('logs drift details when queueing realtime reconcile', () => {
     jest.useFakeTimers();
     const logDebug = jest.fn();
-    const structuredLog = { debug: jest.fn() };
+    const structuredLog = createDebugLoggerMock();
 
     const timer = scheduleRealtimeDeviceReconcile({
       state: createRealtimeDeviceReconcileState(),
@@ -34,7 +38,7 @@ describe('appRealtimeDeviceReconcile', () => {
         changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
       },
       logDebug,
-      structuredLog: structuredLog as never,
+      structuredLog,
       onTimerFired: jest.fn(),
       onFlush: jest.fn().mockResolvedValue(undefined),
       onError: jest.fn(),
@@ -60,7 +64,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it('skips reconcile when the live device state already matches the current plan', () => {
     const logDebug = jest.fn();
-    const structuredLog = { debug: jest.fn() };
+    const structuredLog = createDebugLoggerMock();
 
     const shouldQueue = shouldQueueRealtimeDeviceReconcile({
       event: {
@@ -90,7 +94,7 @@ describe('appRealtimeDeviceReconcile', () => {
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       }],
       logDebug,
-      structuredLog: structuredLog as never,
+      structuredLog,
     });
 
     expect(shouldQueue).toBe(false);
@@ -269,7 +273,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it('records breaker attempts only for devices that still drift after reconcile', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const structuredLog = { warn: jest.fn() };
+    const structuredLog = createWarnLoggerMock();
     state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
     state.pendingEvents.set('dev-2', { deviceId: 'dev-2', name: 'Heater 2', capabilityId: 'onoff' });
 
@@ -278,7 +282,7 @@ describe('appRealtimeDeviceReconcile', () => {
       reconcile: jest.fn().mockResolvedValue(true),
       shouldRecordAttempt: (event) => event.deviceId === 'dev-2',
       logDebug: jest.fn(),
-      structuredLog: structuredLog as never,
+      structuredLog,
     });
 
     expect(state.circuitState.get('dev-1')).toBeUndefined();
@@ -299,7 +303,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it.failing('does not log or record attempts when shouldRecordAttempt filters out every reconciled event', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const structuredLog = { warn: jest.fn() };
+    const structuredLog = createWarnLoggerMock();
     state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
 
     await flushRealtimeDeviceReconcileQueue({
@@ -307,7 +311,7 @@ describe('appRealtimeDeviceReconcile', () => {
       reconcile: jest.fn().mockResolvedValue(true),
       shouldRecordAttempt: () => false,
       logDebug: jest.fn(),
-      structuredLog: structuredLog as never,
+      structuredLog,
     });
 
     expect(structuredLog.warn).not.toHaveBeenCalled();
@@ -316,7 +320,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it('opens the breaker after repeated reconcile attempts for devices that still drift', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const structuredLog = { warn: jest.fn() };
+    const structuredLog = createWarnLoggerMock();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
@@ -325,7 +329,7 @@ describe('appRealtimeDeviceReconcile', () => {
         reconcile: jest.fn().mockResolvedValue(true),
         shouldRecordAttempt: () => true,
         logDebug: jest.fn(),
-        structuredLog: structuredLog as never,
+        structuredLog,
       });
     }
 
@@ -342,7 +346,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it('opens the breaker after repeated target reconcile attempts for devices that still drift', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const structuredLog = { warn: jest.fn() };
+    const structuredLog = createWarnLoggerMock();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       state.pendingEvents.set('dev-1', {
@@ -357,7 +361,7 @@ describe('appRealtimeDeviceReconcile', () => {
         reconcile: jest.fn().mockResolvedValue(true),
         shouldRecordAttempt: () => true,
         logDebug: jest.fn(),
-        structuredLog: structuredLog as never,
+        structuredLog,
       });
     }
 
