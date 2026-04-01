@@ -34,6 +34,27 @@ const DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS = 10 * 60 * 1000;
 
 export type DeviceDiagnosticsBlockCause = 'not_blocked' | 'headroom' | 'cooldown_backoff';
 export type DeviceDiagnosticsControlEventOrigin = 'pels' | 'tracked';
+export type DeviceDiagnosticsStarvationSuppressionState = 'counting' | 'paused' | 'none';
+export type DeviceDiagnosticsStarvationCountingCause =
+  | 'capacity'
+  | 'daily_budget'
+  | 'hourly_budget'
+  | 'shortfall'
+  | 'swap_pending'
+  | 'swapped_out'
+  | 'insufficient_headroom'
+  | 'shedding_active';
+export type DeviceDiagnosticsStarvationPauseReason =
+  | 'cooldown'
+  | 'headroom_cooldown'
+  | 'restore_throttled'
+  | 'activation_backoff'
+  | 'inactive'
+  | 'keep'
+  | 'restore'
+  | 'invalid_observation'
+  | 'sample_gap'
+  | 'unknown_suppression_reason';
 
 export type DeviceDiagnosticsPlanObservation = {
   deviceId: string;
@@ -44,6 +65,14 @@ export type DeviceDiagnosticsPlanObservation = {
   targetDeficitActive: boolean;
   desiredStateSummary: string;
   appliedStateSummary: string;
+  eligibleForStarvation: boolean;
+  currentTemperatureC: number | null;
+  intendedNormalTargetC: number | null;
+  targetStepC: number | null;
+  suppressionState: DeviceDiagnosticsStarvationSuppressionState;
+  countingCause: DeviceDiagnosticsStarvationCountingCause | null;
+  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
+  observationFresh: boolean;
 };
 
 export type DeviceDiagnosticsControlEvent = {

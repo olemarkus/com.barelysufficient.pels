@@ -2,6 +2,7 @@ import {
   DEVICE_DIAGNOSTICS_STATE_KEY,
   DeviceDiagnosticsService,
 } from '../lib/diagnostics/deviceDiagnosticsService';
+import type { DeviceDiagnosticsPlanObservation } from '../lib/diagnostics/deviceDiagnosticsService';
 
 type MockSettings = {
   get: jest.Mock;
@@ -38,6 +39,28 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
   };
 };
 
+const buildObservation = (
+  overrides: Partial<DeviceDiagnosticsPlanObservation> = {},
+): DeviceDiagnosticsPlanObservation => ({
+  deviceId: 'heater-1',
+  name: 'Hall Heater',
+  includeDemandMetrics: true,
+  unmetDemand: true,
+  blockCause: 'headroom',
+  targetDeficitActive: true,
+  desiredStateSummary: '22.0C',
+  appliedStateSummary: '18.0C',
+  eligibleForStarvation: true,
+  currentTemperatureC: 18,
+  intendedNormalTargetC: 22,
+  targetStepC: 0.5,
+  suppressionState: 'counting',
+  countingCause: 'capacity',
+  pauseReason: null,
+  observationFresh: true,
+  ...overrides,
+});
+
 describe('DeviceDiagnosticsService', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -54,42 +77,29 @@ describe('DeviceDiagnosticsService', () => {
 
     service.observePlanSample({
       nowTs: start,
-      observations: [{
-        deviceId: 'heater-1',
-        name: 'Hall Heater',
-        includeDemandMetrics: true,
-        unmetDemand: true,
-        blockCause: 'headroom',
-        targetDeficitActive: true,
-        desiredStateSummary: '22.0C',
-        appliedStateSummary: '18.0C',
-      }],
+      observations: [buildObservation()],
     });
     service.observePlanSample({
       nowTs: start + (6 * 60 * 1000),
-      observations: [{
-        deviceId: 'heater-1',
-        name: 'Hall Heater',
-        includeDemandMetrics: true,
-        unmetDemand: true,
+      observations: [buildObservation({
         blockCause: 'cooldown_backoff',
-        targetDeficitActive: true,
-        desiredStateSummary: '22.0C',
         appliedStateSummary: '19.0C',
-      }],
+        suppressionState: 'paused',
+        countingCause: null,
+        pauseReason: 'cooldown',
+      })],
     });
     service.observePlanSample({
       nowTs: start + (9 * 60 * 1000),
-      observations: [{
-        deviceId: 'heater-1',
-        name: 'Hall Heater',
-        includeDemandMetrics: true,
+      observations: [buildObservation({
         unmetDemand: false,
         blockCause: 'not_blocked',
         targetDeficitActive: false,
-        desiredStateSummary: '22.0C',
         appliedStateSummary: '22.0C',
-      }],
+        suppressionState: 'paused',
+        countingCause: null,
+        pauseReason: 'keep',
+      })],
     });
 
     const shedTs = start + (60 * 60 * 1000);
@@ -161,39 +171,23 @@ describe('DeviceDiagnosticsService', () => {
 
     service.observePlanSample({
       nowTs: start,
-      observations: [{
-        deviceId: 'heater-1',
-        includeDemandMetrics: true,
-        unmetDemand: true,
-        blockCause: 'headroom',
-        targetDeficitActive: true,
-        desiredStateSummary: '22.0C',
-        appliedStateSummary: '18.0C',
-      }],
+      observations: [buildObservation()],
     });
     service.observePlanSample({
       nowTs: start + (11 * 60 * 1000),
-      observations: [{
-        deviceId: 'heater-1',
-        includeDemandMetrics: true,
-        unmetDemand: true,
-        blockCause: 'headroom',
-        targetDeficitActive: true,
-        desiredStateSummary: '22.0C',
-        appliedStateSummary: '18.0C',
-      }],
+      observations: [buildObservation()],
     });
     service.observePlanSample({
       nowTs: start + (12 * 60 * 1000),
-      observations: [{
-        deviceId: 'heater-1',
-        includeDemandMetrics: true,
+      observations: [buildObservation({
         unmetDemand: false,
         blockCause: 'not_blocked',
         targetDeficitActive: false,
-        desiredStateSummary: '22.0C',
         appliedStateSummary: '22.0C',
-      }],
+        suppressionState: 'paused',
+        countingCause: null,
+        pauseReason: 'keep',
+      })],
     });
 
     expect(service.getUiPayload(start + (12 * 60 * 1000)).diagnosticsByDeviceId['heater-1']?.windows['1d'].unmetDemandMs)
@@ -292,27 +286,19 @@ describe('DeviceDiagnosticsService', () => {
 
     service.observePlanSample({
       nowTs: start,
-      observations: [{
-        deviceId: 'heater-1',
-        includeDemandMetrics: true,
-        unmetDemand: true,
-        blockCause: 'headroom',
-        targetDeficitActive: true,
-        desiredStateSummary: '22.0C',
-        appliedStateSummary: '18.0C',
-      }],
+      observations: [buildObservation()],
     });
     service.observePlanSample({
       nowTs: end,
-      observations: [{
-        deviceId: 'heater-1',
-        includeDemandMetrics: true,
+      observations: [buildObservation({
         unmetDemand: false,
         blockCause: 'not_blocked',
         targetDeficitActive: false,
-        desiredStateSummary: '22.0C',
         appliedStateSummary: '22.0C',
-      }],
+        suppressionState: 'paused',
+        countingCause: null,
+        pauseReason: 'keep',
+      })],
     });
 
     const payload = service.getUiPayload(end);
