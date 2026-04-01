@@ -31,6 +31,16 @@ export const DEVICE_DIAGNOSTICS_PERSIST_VERSION = 1;
 
 const DEVICE_DIAGNOSTICS_FLUSH_THROTTLE_MS = 5 * 60 * 1000;
 const DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS = 10 * 60 * 1000;
+const DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS = 15 * 60 * 1000;
+const DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS = 10 * 60 * 1000;
+
+const STARVATION_ENTRY_ANCHORS = [
+  { targetC: 16, deficitC: 2 },
+  { targetC: 21, deficitC: 2 },
+  { targetC: 24, deficitC: 3 },
+  { targetC: 55, deficitC: 10 },
+  { targetC: 80, deficitC: 20 },
+] as const;
 
 export type DeviceDiagnosticsBlockCause = 'not_blocked' | 'headroom' | 'cooldown_backoff';
 export type DeviceDiagnosticsControlEventOrigin = 'pels' | 'tracked';
@@ -52,6 +62,7 @@ export type DeviceDiagnosticsStarvationPauseReason =
   | 'inactive'
   | 'keep'
   | 'restore'
+  | 'suppression_none'
   | 'invalid_observation'
   | 'sample_gap'
   | 'unknown_suppression_reason';
@@ -154,13 +165,54 @@ type LiveDemandObservation = {
   appliedStateSummary: string;
 };
 
+type StarvationThresholds = {
+  entryDeficitC: number;
+  entryThresholdC: number;
+  exitDeficitC: number;
+  exitThresholdC: number;
+};
+
+type LiveStarvationObservation = {
+  eligibleForStarvation: boolean;
+  observationFresh: boolean;
+  currentTemperatureC: number | null;
+  intendedNormalTargetC: number | null;
+  targetStepC: number | null;
+  suppressionState: DeviceDiagnosticsStarvationSuppressionState;
+  countingCause: DeviceDiagnosticsStarvationCountingCause | null;
+  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
+  thresholds: StarvationThresholds | null;
+};
+
+type StarvationEvaluation = {
+  validObservation: boolean;
+  counting: boolean;
+  entryQualified: boolean;
+  belowExitThreshold: boolean;
+  clearQualified: boolean;
+  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
+};
+
+type LiveStarvationState = {
+  isStarved: boolean;
+  pendingEntryStartedAt?: number;
+  clearQualifiedStartedAt?: number;
+  starvedAccumulatedMs: number;
+  starvationEpisodeStartedAt?: number;
+  starvationLastResumedAt?: number;
+  starvationCause: DeviceDiagnosticsStarvationCountingCause | null;
+  starvationPauseReason: DeviceDiagnosticsStarvationPauseReason | null;
+};
+
 type LiveDeviceDiagnostics = {
   name?: string;
   lastObservedTs?: number;
   lastObservation?: LiveDemandObservation;
+  lastStarvationObservation?: LiveStarvationObservation;
   openShedTs?: number;
   openRestoreTs?: number;
   currentPenaltyLevel: number;
+  starvation: LiveStarvationState;
 };
 
 type DeviceDiagnosticsServiceDeps = {
@@ -178,6 +230,123 @@ const isFiniteNumber = (value: unknown): value is number => (
 const clampPenaltyLevel = (value: unknown): number => {
   if (!isFiniteNumber(value)) return 0;
   return Math.max(0, Math.min(ACTIVATION_BACKOFF_MAX_LEVEL, Math.trunc(value)));
+};
+
+const createEmptyStarvationState = (): LiveStarvationState => ({
+  isStarved: false,
+  starvedAccumulatedMs: 0,
+  starvationCause: null,
+  starvationPauseReason: null,
+});
+
+const roundUpToStep = (value: number, step: number): number => (
+  Math.ceil(value / step) * step
+);
+
+const roundDownToStep = (value: number, step: number): number => (
+  Math.floor(value / step) * step
+);
+
+const interpolateEntryDeficitC = (targetC: number): number => {
+  const firstAnchor = STARVATION_ENTRY_ANCHORS[0];
+  const lastAnchor = STARVATION_ENTRY_ANCHORS[STARVATION_ENTRY_ANCHORS.length - 1];
+  if (targetC <= firstAnchor.targetC) return firstAnchor.deficitC;
+  if (targetC >= lastAnchor.targetC) return lastAnchor.deficitC;
+
+  for (let index = 1; index < STARVATION_ENTRY_ANCHORS.length; index += 1) {
+    const previous = STARVATION_ENTRY_ANCHORS[index - 1];
+    const current = STARVATION_ENTRY_ANCHORS[index];
+    if (targetC > current.targetC) continue;
+    const span = current.targetC - previous.targetC;
+    const progress = span <= 0 ? 0 : (targetC - previous.targetC) / span;
+    return previous.deficitC + ((current.deficitC - previous.deficitC) * progress);
+  }
+
+  return lastAnchor.deficitC;
+};
+
+const buildStarvationThresholds = (
+  intendedNormalTargetC: number | null,
+  targetStepC: number | null,
+): StarvationThresholds | null => {
+  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(targetStepC) || targetStepC <= 0) {
+    return null;
+  }
+  const entryDeficitC = Math.max(
+    targetStepC,
+    roundUpToStep(interpolateEntryDeficitC(intendedNormalTargetC), targetStepC),
+  );
+  const exitDeficitC = Math.max(targetStepC, roundDownToStep(entryDeficitC * 0.5, targetStepC));
+  return {
+    entryDeficitC,
+    entryThresholdC: intendedNormalTargetC - entryDeficitC,
+    exitDeficitC,
+    exitThresholdC: intendedNormalTargetC - exitDeficitC,
+  };
+};
+
+const normalizeStarvationObservation = (
+  observation: DeviceDiagnosticsPlanObservation,
+): LiveStarvationObservation => ({
+  eligibleForStarvation: observation.eligibleForStarvation,
+  observationFresh: observation.observationFresh,
+  currentTemperatureC: observation.currentTemperatureC,
+  intendedNormalTargetC: observation.intendedNormalTargetC,
+  targetStepC: observation.targetStepC,
+  suppressionState: observation.suppressionState,
+  countingCause: observation.countingCause,
+  pauseReason: observation.pauseReason,
+  thresholds: buildStarvationThresholds(
+    observation.intendedNormalTargetC,
+    observation.targetStepC,
+  ),
+});
+
+const isValidStarvationObservation = (observation: LiveStarvationObservation): boolean => (
+  observation.eligibleForStarvation
+  && observation.observationFresh
+  && isFiniteNumber(observation.currentTemperatureC)
+  && observation.thresholds !== null
+);
+
+const isCountingStarvationObservation = (observation: LiveStarvationObservation): boolean => (
+  isValidStarvationObservation(observation)
+  && observation.suppressionState === 'counting'
+  && observation.countingCause !== null
+);
+
+const starvationTargetChanged = (
+  previous: LiveStarvationObservation | undefined,
+  next: LiveStarvationObservation,
+): boolean => (
+  previous !== undefined
+  && previous.intendedNormalTargetC !== next.intendedNormalTargetC
+);
+
+const evaluateStarvationObservation = (
+  observation: LiveStarvationObservation,
+): StarvationEvaluation => {
+  const validObservation = isValidStarvationObservation(observation);
+  const currentTemperatureC = observation.currentTemperatureC ?? Number.NaN;
+  const thresholds = observation.thresholds;
+  const counting = isCountingStarvationObservation(observation);
+  const pauseReason = !validObservation
+    ? 'invalid_observation'
+    : observation.pauseReason ?? (
+      observation.suppressionState === 'none' ? 'suppression_none' : 'unknown_suppression_reason'
+    );
+  return {
+    validObservation,
+    counting,
+    entryQualified: counting && thresholds !== null && currentTemperatureC <= thresholds.entryThresholdC,
+    belowExitThreshold: validObservation
+      && thresholds !== null
+      && currentTemperatureC < thresholds.exitThresholdC,
+    clearQualified: validObservation
+      && thresholds !== null
+      && currentTemperatureC >= thresholds.exitThresholdC,
+    pauseReason,
+  };
 };
 
 export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
@@ -400,6 +569,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       desiredStateSummary: observation.desiredStateSummary,
       appliedStateSummary: observation.appliedStateSummary,
     };
+    const nextStarvationObservation = normalizeStarvationObservation(observation);
 
     if (isFiniteNumber(live.lastObservedTs) && live.lastObservation) {
       const gapMs = Math.max(0, nowTs - live.lastObservedTs);
@@ -408,14 +578,246 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           `Diagnostics: gap skipped ${formatDeviceRef(observation.deviceId, live.name)} `
           + `gap=${formatDurationSeconds(gapMs)}`,
         );
+        this.handleStarvationGap(observation.deviceId, nowTs);
       } else {
         this.accumulateObservationSpan(observation.deviceId, live.lastObservedTs, nowTs, live.lastObservation);
+        if (live.lastStarvationObservation) {
+          this.applyStarvationObservationSpan(
+            observation.deviceId,
+            live,
+            live.lastStarvationObservation,
+            live.lastObservedTs,
+            nowTs,
+          );
+        }
       }
     }
 
     this.logObservationTransition(observation.deviceId, live.name, live.lastObservation, nextObservation);
+    if (starvationTargetChanged(live.lastStarvationObservation, nextStarvationObservation)) {
+      this.handleStarvationTargetChange(observation.deviceId, nowTs);
+    }
+    this.applyStarvationObservationSpan(
+      observation.deviceId,
+      live,
+      nextStarvationObservation,
+      nowTs,
+      nowTs,
+    );
     live.lastObservation = nextObservation;
+    live.lastStarvationObservation = nextStarvationObservation;
     live.lastObservedTs = nowTs;
+  }
+
+  private applyStarvationObservationSpan(
+    deviceId: string,
+    live: LiveDeviceDiagnostics,
+    observation: LiveStarvationObservation,
+    startTs: number,
+    endTs: number,
+  ): void {
+    if (!observation.eligibleForStarvation) {
+      this.hardResetStarvation(deviceId, 'device no longer eligible', startTs);
+      return;
+    }
+    const evaluation = evaluateStarvationObservation(observation);
+    if (!live.starvation.isStarved) {
+      this.applyStarvationEntryProgress(deviceId, observation, evaluation, { startTs, endTs });
+      return;
+    }
+    if (evaluation.clearQualified) {
+      this.applyStarvationClearProgress(deviceId, observation, evaluation, { startTs, endTs });
+      return;
+    }
+    if (evaluation.counting && evaluation.belowExitThreshold) {
+      this.applyStarvationCountingProgress(deviceId, observation, startTs, endTs);
+      return;
+    }
+    this.pauseStarvation(deviceId, evaluation.pauseReason, startTs);
+  }
+
+  private handleStarvationGap(
+    deviceId: string,
+    nowTs: number,
+  ): void {
+    const live = this.getLiveDeviceState(deviceId);
+    live.starvation = {
+      ...live.starvation,
+      pendingEntryStartedAt: undefined,
+      clearQualifiedStartedAt: undefined,
+    };
+    if (!live.starvation.isStarved) return;
+    this.pauseStarvation(deviceId, 'sample_gap', nowTs);
+  }
+
+  private handleStarvationTargetChange(deviceId: string, nowTs: number): void {
+    const live = this.getLiveDeviceState(deviceId);
+    if (!live.starvation.isStarved) {
+      live.starvation = {
+        ...live.starvation,
+        pendingEntryStartedAt: undefined,
+        clearQualifiedStartedAt: undefined,
+        starvationCause: null,
+        starvationPauseReason: null,
+      };
+      this.deps.logDebug(
+        `Diagnostics: starvation pending reset ${formatDeviceRef(deviceId, live.name)} `
+        + `reason=target_changed at=${new Date(nowTs).toISOString()}`,
+      );
+      return;
+    }
+    live.starvation = {
+      ...live.starvation,
+      clearQualifiedStartedAt: undefined,
+    };
+    this.deps.logDebug(
+      `Diagnostics: starvation thresholds refreshed ${formatDeviceRef(deviceId, live.name)} `
+      + `reason=target_changed at=${new Date(nowTs).toISOString()}`,
+    );
+  }
+
+  private resetStarvationState(deviceId: string): void {
+    this.getLiveDeviceState(deviceId).starvation = createEmptyStarvationState();
+  }
+
+  private applyStarvationEntryProgress(
+    deviceId: string,
+    observation: LiveStarvationObservation,
+    evaluation: StarvationEvaluation,
+    span: { startTs: number; endTs: number },
+  ): void {
+    const live = this.getLiveDeviceState(deviceId);
+    const { startTs, endTs } = span;
+    if (!evaluation.entryQualified) {
+      live.starvation = {
+        ...live.starvation,
+        pendingEntryStartedAt: undefined,
+        starvationCause: null,
+        starvationPauseReason: null,
+      };
+      return;
+    }
+    const pendingEntryStartedAt = isFiniteNumber(live.starvation.pendingEntryStartedAt)
+      ? live.starvation.pendingEntryStartedAt
+      : startTs;
+    const entryAt = pendingEntryStartedAt + DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS;
+    live.starvation = {
+      ...live.starvation,
+      pendingEntryStartedAt,
+    };
+    if (endTs < entryAt) return;
+
+    const accumulatedMs = endTs > entryAt && evaluation.belowExitThreshold
+      ? endTs - entryAt
+      : 0;
+    live.starvation = {
+      isStarved: true,
+      pendingEntryStartedAt: undefined,
+      clearQualifiedStartedAt: undefined,
+      starvedAccumulatedMs: accumulatedMs,
+      starvationEpisodeStartedAt: entryAt,
+      starvationLastResumedAt: entryAt,
+      starvationCause: observation.countingCause,
+      starvationPauseReason: null,
+    };
+    this.deps.logDebug(
+      `Diagnostics: starvation started ${formatDeviceRef(deviceId, live.name)} `
+      + `cause=${observation.countingCause ?? 'unknown'} at=${new Date(entryAt).toISOString()}`,
+    );
+  }
+
+  private applyStarvationClearProgress(
+    deviceId: string,
+    observation: LiveStarvationObservation,
+    evaluation: StarvationEvaluation,
+    span: { startTs: number; endTs: number },
+  ): void {
+    const live = this.getLiveDeviceState(deviceId);
+    const { startTs, endTs } = span;
+    const clearQualifiedStartedAt = isFiniteNumber(live.starvation.clearQualifiedStartedAt)
+      ? live.starvation.clearQualifiedStartedAt
+      : startTs;
+    const clearAt = clearQualifiedStartedAt + DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS;
+    live.starvation = {
+      ...live.starvation,
+      clearQualifiedStartedAt,
+      starvationLastResumedAt: undefined,
+      starvationCause: evaluation.counting ? observation.countingCause : null,
+      starvationPauseReason: evaluation.counting ? null : evaluation.pauseReason,
+    };
+    if (endTs < clearAt) return;
+    this.deps.logDebug(
+      `Diagnostics: starvation cleared ${formatDeviceRef(deviceId, live.name)} `
+      + `at=${new Date(clearAt).toISOString()}`,
+    );
+    this.resetStarvationState(deviceId);
+  }
+
+  private applyStarvationCountingProgress(
+    deviceId: string,
+    observation: LiveStarvationObservation,
+    startTs: number,
+    endTs: number,
+  ): void {
+    const live = this.getLiveDeviceState(deviceId);
+    if (!isFiniteNumber(live.starvation.starvationLastResumedAt)) {
+      this.deps.logDebug(
+        `Diagnostics: starvation resumed ${formatDeviceRef(deviceId, live.name)} `
+        + `cause=${observation.countingCause ?? 'unknown'} at=${new Date(startTs).toISOString()}`,
+      );
+    }
+    live.starvation = {
+      ...live.starvation,
+      clearQualifiedStartedAt: undefined,
+      starvationLastResumedAt: isFiniteNumber(live.starvation.starvationLastResumedAt)
+        ? live.starvation.starvationLastResumedAt
+        : startTs,
+      starvedAccumulatedMs: live.starvation.starvedAccumulatedMs + Math.max(0, endTs - startTs),
+      starvationCause: observation.countingCause,
+      starvationPauseReason: null,
+    };
+  }
+
+  private pauseStarvation(
+    deviceId: string,
+    pauseReason: DeviceDiagnosticsStarvationPauseReason | null,
+    nowTs: number,
+  ): void {
+    const live = this.getLiveDeviceState(deviceId);
+    if (isFiniteNumber(live.starvation.starvationLastResumedAt)) {
+      this.deps.logDebug(
+        `Diagnostics: starvation paused ${formatDeviceRef(deviceId, live.name)} `
+        + `reason=${pauseReason ?? 'temperature_recovered'} at=${new Date(nowTs).toISOString()}`,
+      );
+    }
+    live.starvation = {
+      ...live.starvation,
+      clearQualifiedStartedAt: undefined,
+      starvationLastResumedAt: undefined,
+      starvationCause: null,
+      starvationPauseReason: pauseReason,
+    };
+  }
+
+  private hardResetStarvation(
+    deviceId: string,
+    reason: string,
+    nowTs: number,
+  ): void {
+    const live = this.getLiveDeviceState(deviceId);
+    const starvation = live.starvation;
+    if (
+      !starvation.isStarved
+      && !isFiniteNumber(starvation.pendingEntryStartedAt)
+      && starvation.starvedAccumulatedMs === 0
+    ) {
+      return;
+    }
+    this.deps.logDebug(
+      `Diagnostics: starvation hard-reset ${formatDeviceRef(deviceId, live.name)} `
+      + `reason=${reason} at=${new Date(nowTs).toISOString()}`,
+    );
+    this.resetStarvationState(deviceId);
   }
 
   private accumulateObservationSpan(
@@ -604,6 +1006,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     if (!live) {
       live = {
         currentPenaltyLevel: 0,
+        starvation: createEmptyStarvationState(),
       };
       this.liveByDeviceId[deviceId] = live;
     }

@@ -61,6 +61,23 @@ const buildObservation = (
   ...overrides,
 });
 
+const getStarvationState = (service: DeviceDiagnosticsService, deviceId = 'heater-1') => (
+  ((service as unknown as {
+    liveByDeviceId: Record<string, {
+      starvation: {
+        isStarved: boolean;
+        pendingEntryStartedAt?: number;
+        clearQualifiedStartedAt?: number;
+        starvedAccumulatedMs: number;
+        starvationEpisodeStartedAt?: number;
+        starvationLastResumedAt?: number;
+        starvationCause: string | null;
+        starvationPauseReason: string | null;
+      };
+    }>;
+  }).liveByDeviceId[deviceId]?.starvation)
+);
+
 describe('DeviceDiagnosticsService', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -193,6 +210,268 @@ describe('DeviceDiagnosticsService', () => {
     expect(service.getUiPayload(start + (12 * 60 * 1000)).diagnosticsByDeviceId['heater-1']?.windows['1d'].unmetDemandMs)
       .toBe(60 * 1000);
     expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('Diagnostics: gap skipped deviceId=heater-1'));
+  });
+
+  it('enters starvation only after fifteen minutes of continuous qualifying suppression', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+
+    let starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(false);
+    expect(starvation?.pendingEntryStartedAt).toBe(start);
+
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+
+    starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(true);
+    expect(starvation?.starvationEpisodeStartedAt).toBe(start + (15 * 60 * 1000));
+    expect(starvation?.starvationLastResumedAt).toBe(start + (15 * 60 * 1000));
+    expect(starvation?.starvedAccumulatedMs).toBe(60 * 1000);
+    expect(starvation?.starvationCause).toBe('capacity');
+    expect(starvation?.starvationPauseReason).toBeNull();
+  });
+
+  it('pauses and resumes starvation accumulation without counting paused time', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (20 * 60 * 1000),
+      observations: [buildObservation({
+        suppressionState: 'paused',
+        countingCause: null,
+        pauseReason: 'keep',
+      })],
+    });
+    service.observePlanSample({
+      nowTs: start + (25 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (27 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+
+    const starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(true);
+    expect(starvation?.starvedAccumulatedMs).toBe(7 * 60 * 1000);
+    expect(starvation?.starvationCause).toBe('capacity');
+    expect(starvation?.starvationPauseReason).toBeNull();
+    expect(starvation?.starvationLastResumedAt).toBe(start + (25 * 60 * 1000));
+  });
+
+  it('keeps starvation latched across sample gaps but pauses accumulation', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (28 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+
+    const starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(true);
+    expect(starvation?.starvedAccumulatedMs).toBe(60 * 1000);
+    expect(starvation?.starvationCause).toBe('capacity');
+    expect(starvation?.starvationPauseReason).toBeNull();
+    expect(starvation?.starvationLastResumedAt).toBe(start + (28 * 60 * 1000));
+  });
+
+  it('pauses a latched starvation episode with suppression_none when suppression disappears', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (20 * 60 * 1000),
+      observations: [buildObservation({
+        suppressionState: 'none',
+        countingCause: null,
+        pauseReason: null,
+      })],
+    });
+
+    const starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(true);
+    expect(starvation?.starvedAccumulatedMs).toBe(5 * 60 * 1000);
+    expect(starvation?.starvationCause).toBeNull();
+    expect(starvation?.starvationPauseReason).toBe('suppression_none');
+    expect(starvation?.starvationLastResumedAt).toBeUndefined();
+  });
+
+  it('resets pending starvation entry when the intended normal target changes', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (10 * 60 * 1000),
+      observations: [buildObservation({
+        intendedNormalTargetC: 24,
+        currentTemperatureC: 20,
+      })],
+    });
+    service.observePlanSample({
+      nowTs: start + (19 * 60 * 1000),
+      observations: [buildObservation({
+        intendedNormalTargetC: 24,
+        currentTemperatureC: 20,
+      })],
+    });
+    service.observePlanSample({
+      nowTs: start + (24 * 60 * 1000),
+      observations: [buildObservation({
+        intendedNormalTargetC: 24,
+        currentTemperatureC: 20,
+      })],
+    });
+
+    let starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(false);
+    expect(starvation?.pendingEntryStartedAt).toBe(start + (10 * 60 * 1000));
+
+    service.observePlanSample({
+      nowTs: start + (26 * 60 * 1000),
+      observations: [buildObservation({
+        intendedNormalTargetC: 24,
+        currentTemperatureC: 20,
+      })],
+    });
+
+    starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(true);
+    expect(starvation?.starvationEpisodeStartedAt).toBe(start + (25 * 60 * 1000));
+  });
+
+  it('clears and hard-resets starvation when recovery or eligibility loss criteria are met', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (20 * 60 * 1000),
+      observations: [buildObservation({
+        currentTemperatureC: 21,
+      })],
+    });
+    service.observePlanSample({
+      nowTs: start + (29 * 60 * 1000),
+      observations: [buildObservation({
+        currentTemperatureC: 21,
+      })],
+    });
+    service.observePlanSample({
+      nowTs: start + (31 * 60 * 1000),
+      observations: [buildObservation({
+        currentTemperatureC: 21,
+      })],
+    });
+
+    let starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(false);
+    expect(starvation?.starvedAccumulatedMs).toBe(0);
+
+    service.observePlanSample({
+      nowTs: start + (40 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (49 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (54 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (56 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (57 * 60 * 1000),
+      observations: [buildObservation({
+        eligibleForStarvation: false,
+        observationFresh: false,
+        currentTemperatureC: null,
+        intendedNormalTargetC: null,
+        targetStepC: null,
+        suppressionState: 'none',
+        countingCause: null,
+        pauseReason: null,
+      })],
+    });
+
+    starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(false);
+    expect(starvation?.starvedAccumulatedMs).toBe(0);
+    expect(starvation?.starvationEpisodeStartedAt).toBeUndefined();
+    expect(starvation?.starvationCause).toBeNull();
+    expect(starvation?.starvationPauseReason).toBeNull();
   });
 
   it('repairs invalid persisted payloads and prunes expired day buckets', () => {
