@@ -272,7 +272,7 @@ describe('appRealtimeDeviceReconcile', () => {
     });
   });
 
-  it.failing('does not log or record attempts when shouldRecordAttempt filters out every reconciled event', async () => {
+  it('does not log or record attempts when shouldRecordAttempt filters out every reconciled event', async () => {
     const state = createRealtimeDeviceReconcileState();
     const structuredLog = createWarnLoggerMock();
     state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
