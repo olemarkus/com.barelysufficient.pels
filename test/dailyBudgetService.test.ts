@@ -211,4 +211,79 @@ describe('DailyBudgetService', () => {
     expect(error).toHaveBeenCalledWith('Daily budget: failed to update state', expect.any(Error));
     expect((error.mock.calls[0]?.[1] as Error).message).toBe('boom');
   });
+
+  it('does not emit budget_recomputed when refreshing for periodic status only', () => {
+    const info = jest.fn();
+    const service = new DailyBudgetService({
+      homey: {
+        settings: {
+          get: jest.fn(() => null),
+          set: jest.fn(),
+        },
+        clock: {
+          getTimezone: () => TZ,
+        },
+      } as any,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+      getPowerTracker: () => ({ buckets: {} }),
+      getPriceOptimizationEnabled: () => false,
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+      structuredLog: { info } as any,
+    });
+    (service as any).manager.update = jest.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      shouldPersist: false,
+    }));
+
+    const result = service.getPeriodicStatusLog();
+
+    expect(result).toContain('Daily budget:');
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  it('emits budget_recomputed during normal updates', () => {
+    const info = jest.fn();
+    const service = new DailyBudgetService({
+      homey: {
+        settings: {
+          get: jest.fn(() => null),
+          set: jest.fn(),
+        },
+        clock: {
+          getTimezone: () => TZ,
+        },
+      } as any,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+      getPowerTracker: () => ({ buckets: {} }),
+      getPriceOptimizationEnabled: () => false,
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+      structuredLog: { info } as any,
+    });
+    (service as any).manager.update = jest.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      shouldPersist: false,
+    }));
+
+    service.updateState();
+
+    expect(info).toHaveBeenCalledWith({
+      event: 'budget_recomputed',
+      newBudgetKWh: 10,
+      actualKWh: 1,
+      remainingNewKWh: 9,
+      exceeded: false,
+    });
+  });
 });
