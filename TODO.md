@@ -199,10 +199,6 @@ or present requested state as confirmed reality.
       (`measure_power`, meter deltas, or live-power telemetry), never configured load, expected
       load, or step-derived nominal power.
       Files: `powerEstimate.ts`, `deviceManager.ts`, snapshot decoration pipeline.
-- [ ] If the simpler freshness model is still insufficient for cloud devices, add
-      per-capability realtime subscriptions for control capabilities (`onoff`,
-      `evcharger_charging`, `target_temperature`) on managed devices.
-      Files: `deviceManager.ts`.
 - [x] Fix `flushRealtimeDeviceReconcileQueue` attempt recording so when
       `shouldRecordAttempt` reports that no devices still drift after reconcile, PELS does not
       fall back to logging/recording all eligible devices or open the circuit breaker early.
@@ -223,6 +219,15 @@ or present requested state as confirmed reality.
       send time. This should prevent double-spending headroom during pending restore convergence
       without relying on laggy per-device power telemetry.
       Files: restore/headroom/shedding logic, mixed restore/shedding tests.
+- [ ] Fix structured-log context leakage so unrelated events never inherit previous event payload
+      fields. Only explicit flow IDs such as `rebuildId` should propagate across async boundaries.
+      Files: `lib/logging/logger.ts`, `lib/logging/alsContext.ts`, structured logging tests.
+- [ ] Reduce steady-state log volume so healthy operation stays within the normal log budget.
+      Suppress routine `budget_recomputed`, `device_snapshot_refresh_completed`, and no-op plan
+      rebuild events, and fold healthy summary data into the existing periodic `:25` / `:55`
+      status emission instead of separate routine event lines.
+      Files: `lib/dailyBudget/dailyBudgetService.ts`, `lib/core/deviceManager.ts`,
+      `lib/plan/planService.ts`, `app.ts`, logging/status tests.
 
 ## P1 Correctness, inefficiency, and cleanup follow-ups
 
@@ -232,6 +237,10 @@ refactors.
 
 ### P1 Bugs: conflicting models and wrong answers
 
+- [ ] If real-world cloud devices still show confirmation/drift gaps after the current freshness
+      model fixes, add per-capability realtime subscriptions for control capabilities (`onoff`,
+      `evcharger_charging`, `target_temperature`) on managed devices.
+      Files: `deviceManager.ts`.
 - [ ] Document the intended fallback order per consumer and align power resolution across
       `resolveCandidatePower`, `estimateRestorePower`, `resolveUsageKw`, and stepped-load power
       resolution to that model.
@@ -258,14 +267,6 @@ refactors.
       Files: `capacityGuard.ts`, `planSheddingGuard.ts`.
 
 ### P1 Structured logging: runtime coverage and correlation
-
-- [ ] Collapse repetitive structured diagnostics so unchanged periodic telemetry does not exhaust
-      Homey’s limited log budget. In particular, `budget_recomputed`,
-      `device_snapshot_refresh_completed`, and no-op `plan_rebuild_*` / `danger_zone` events
-      should emit only on meaningful change, failure, or coarse summary boundaries rather than on
-      every periodic/status update.
-      Files: `lib/dailyBudget/dailyBudgetService.ts`, `lib/core/deviceManager.ts`,
-      `lib/plan/planService.ts`, periodic logging/tests.
 - [ ] Keep default structured event payloads bounded. Normal diagnostics should avoid large
       per-device arrays and full change objects unless the event is explicitly incident/debug
       scoped, so reconcile/incident output stays compact enough for diagnostics snapshots.

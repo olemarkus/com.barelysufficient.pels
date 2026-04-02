@@ -15,21 +15,23 @@ export const createHomeyDestination = (callbacks: HomeyLogCallbacks): Writable =
     if (!trimmed) return;
 
     let level = 0;
+    let forwarded = trimmed;
     try {
       const parsed: unknown = JSON.parse(trimmed);
-      if (parsed && typeof parsed === 'object' && 'level' in parsed) {
-        level = typeof (parsed as { level: unknown }).level === 'number'
-          ? (parsed as { level: number }).level
-          : 0;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const record = parsed as Record<string, unknown>;
+        level = typeof record.level === 'number' ? record.level : 0;
+        const { level: _level, pid: _pid, hostname: _hostname, ...forwardRecord } = record;
+        forwarded = JSON.stringify(forwardRecord);
       }
     } catch {
       // If parsing fails, treat as info-level and forward the raw line.
     }
 
     if (level >= PINO_ERROR_LEVEL) {
-      callbacks.error(trimmed);
+      callbacks.error(forwarded);
     } else {
-      callbacks.log(trimmed);
+      callbacks.log(forwarded);
     }
   };
 

@@ -21,6 +21,8 @@ import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { withRebuildContext } from '../logging/logger';
+
+const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
 import {
@@ -443,8 +445,6 @@ export class PlanService {
     const outcome = createPlanRebuildOutcome(isDryRun);
 
     const run = async (): Promise<void> => {
-      this.deps.structuredLog?.info({ event: 'plan_rebuild_started', reasonCode: reason });
-
       try {
         await this.executePlanRebuild(isDryRun, outcome);
       } catch (error) {
@@ -455,21 +455,23 @@ export class PlanService {
         const durationMs = Date.now() - rebuildStart;
         this.recordPlanRebuildMetrics(reason, queueWaitMs, queueDepth, rebuildStart, outcome);
         stopSpan();
-        this.deps.structuredLog?.info({
-          event: 'plan_rebuild_completed',
-          durationMs,
-          buildMs: outcome.buildMs,
-          snapshotMs: outcome.snapshotMs,
-          statusMs: outcome.statusMs,
-          applyMs: outcome.applyMs,
-          reasonCode: reason,
-          actionChanged: outcome.actionChanged,
-          detailChanged: outcome.detailChanged,
-          metaChanged: outcome.metaChanged,
-          hadShedding: outcome.hadShedding,
-          appliedActions: outcome.appliedActions,
-          failed: outcome.failed,
-        });
+        if (shouldEmitPlanRebuildLog(reason, durationMs, outcome)) {
+          this.deps.structuredLog?.info({
+            event: 'plan_rebuild_completed',
+            durationMs,
+            buildMs: outcome.buildMs,
+            snapshotMs: outcome.snapshotMs,
+            statusMs: outcome.statusMs,
+            applyMs: outcome.applyMs,
+            reasonCode: reason,
+            actionChanged: outcome.actionChanged,
+            detailChanged: outcome.detailChanged,
+            metaChanged: outcome.metaChanged,
+            hadShedding: outcome.hadShedding,
+            appliedActions: outcome.appliedActions,
+            failed: outcome.failed,
+          });
+        }
       }
     };
 
@@ -669,4 +671,18 @@ export class PlanService {
   destroy(): void {
     this.clearPendingNonActionSnapshot();
   }
+}
+
+function shouldEmitPlanRebuildLog(
+  reason: string,
+  durationMs: number,
+  outcome: PlanRebuildOutcome,
+): boolean {
+  if (outcome.failed) return true;
+  if (outcome.appliedActions || outcome.actionChanged) return true;
+  if (durationMs >= SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS) return true;
+  if (reason === 'initial' || reason === 'startup_snapshot_bootstrap' || reason.startsWith('settings:')) {
+    return true;
+  }
+  return false;
 }

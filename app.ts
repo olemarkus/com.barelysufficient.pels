@@ -931,6 +931,7 @@ class PelsApp extends Homey.App {
       operatingMode: this.operatingMode,
       capacityDryRun: this.capacityDryRun,
     }));
+    const deviceStatusLog = this.deviceManager.getPeriodicStatusLog(); if (deviceStatusLog) this.log(deviceStatusLog);
     const dailyBudgetLog = this.dailyBudgetService.getPeriodicStatusLog(); if (dailyBudgetLog) this.log(dailyBudgetLog);
   }
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
