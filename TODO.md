@@ -248,7 +248,10 @@ refactors.
       builder and `PowerTracker` compute it independently and can drift.
       Files: `powerTracker.ts`, `planBuilder.ts`, `planUsage.ts`.
 - [ ] Make planner and guard use the same soft-limit model. The dynamic plan budget limit and the
-      guard's static margin should not produce different headroom answers at the same time.
+      guard's static margin should not produce different headroom answers at the same time. In
+      particular, daily-budget hourly bucket caps should not be allowed to plan up to raw
+      `limitKw` when runtime capacity control uses `limitKw - marginKw` as the usable hourly
+      budget.
       Files: `planBudget.ts`, `capacityGuard.ts`, `planContext.ts`.
 - [ ] Add hysteresis to shedding active state so power oscillation near the limit does not flip
       shed/restore state every few seconds.
@@ -256,6 +259,17 @@ refactors.
 
 ### P1 Structured logging: runtime coverage and correlation
 
+- [ ] Collapse repetitive structured diagnostics so unchanged periodic telemetry does not exhaust
+      Homey’s limited log budget. In particular, `budget_recomputed`,
+      `device_snapshot_refresh_completed`, and no-op `plan_rebuild_*` / `danger_zone` events
+      should emit only on meaningful change, failure, or coarse summary boundaries rather than on
+      every periodic/status update.
+      Files: `lib/dailyBudget/dailyBudgetService.ts`, `lib/core/deviceManager.ts`,
+      `lib/plan/planService.ts`, periodic logging/tests.
+- [ ] Keep default structured event payloads bounded. Normal diagnostics should avoid large
+      per-device arrays and full change objects unless the event is explicitly incident/debug
+      scoped, so reconcile/incident output stays compact enough for diagnostics snapshots.
+      Files: realtime reconcile / incident logging paths, structured-log tests.
 - [ ] Expand structured events for the highest-value runtime failure/control paths that still only
       emit prose/debug logs, starting with command actuation, executor outcomes, periodic/status
       output, and the remaining startup/background-task paths.
@@ -335,6 +349,10 @@ refactors.
 
 ## P2 Product and test follow-ups
 
+- [ ] Clarify periodic status output so the current soft limit in kW and the hourly hard-cap usage
+      budget in kWh are labeled distinctly. The current `limit=` plus `used=X/YkWh` format is easy
+      to misread as one infeasible target instead of two separate constraints.
+      Files: `lib/core/periodicStatus.ts`, status tests / notes.
 - [ ] Rework temperature-device starvation detection to the intended-target / suppression-only
       model described in `notes/starvation/README.md`. This is detection only: it must not change
       planner decisions. Includes pauseable accumulation, counting vs pause reasons, overview
