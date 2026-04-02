@@ -100,7 +100,8 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
   if (attemptedEvents.length === 0) return;
   structuredLog?.warn({
     event: 'realtime_reconcile_applied',
-    devices: attemptedEvents.map((event) => toRealtimeReconcileEventPayload(event)),
+    deviceCount: attemptedEvents.length,
+    devices: attemptedEvents.map((event) => toRealtimeReconcileEventSummary(event)),
   });
   recordRealtimeDeviceReconcileAttempts({
     state,
@@ -188,5 +189,13 @@ export function toRealtimeReconcileEventPayload(event: RealtimeDeviceReconcileEv
     capabilityId: event.capabilityId,
     planExpectation: event.planExpectation,
     changes: event.changes,
+  };
+}
+
+function toRealtimeReconcileEventSummary(event: RealtimeDeviceReconcileEvent): Record<string, unknown> {
+  return {
+    deviceId: event.deviceId,
+    deviceName: event.name,
+    capabilityId: event.capabilityId,
   };
 }

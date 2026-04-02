@@ -294,6 +294,14 @@ export class PlanExecutor {
             name,
             nowTs: now,
           });
+        } else if (mode === 'reconcile') {
+          recordActivationSetbackForDevice({
+            state: this.state,
+            diagnostics: this.deps.deviceDiagnostics,
+            deviceId: dev.id,
+            name,
+            nowTs: Date.now(),
+          });
         }
         // Clear this device from pending swap targets if it was one
         const swapEntry = this.state.swapByDevice[dev.id];
@@ -600,6 +608,14 @@ export class PlanExecutor {
           deviceId: dev.id,
           name,
           nowTs: now,
+        });
+      } else if (mode === 'reconcile') {
+        recordActivationSetbackForDevice({
+          state: this.state,
+          diagnostics: this.deps.deviceDiagnostics,
+          deviceId: dev.id,
+          name,
+          nowTs: Date.now(),
         });
       }
     } catch (error) {
