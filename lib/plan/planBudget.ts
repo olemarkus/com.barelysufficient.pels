@@ -1,5 +1,5 @@
 import type { PowerTrackerState } from '../core/powerTracker';
-import { resolveUsableCapacityBudgetKWh } from '../core/capacityModel';
+import { resolveUsableCapacityKw } from '../core/capacityModel';
 import { getCurrentHourContext } from './planHourContext';
 
 const SUSTAINABLE_RATE_THRESHOLD_MIN = 10;
@@ -11,7 +11,7 @@ export function computeDynamicSoftLimit(params: {
   logDebug: (...args: unknown[]) => void;
 }): { allowedKw: number; hourlyBudgetExhausted: boolean } {
   const { capacitySettings, powerTracker, logDebug } = params;
-  const netBudgetKWh = resolveUsableCapacityBudgetKWh(capacitySettings);
+  const netBudgetKWh = resolveUsableCapacityKw(capacitySettings);
   if (netBudgetKWh <= 0) return { allowedKw: 0, hourlyBudgetExhausted: false };
 
   const now = Date.now();
