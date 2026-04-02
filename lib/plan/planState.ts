@@ -75,6 +75,7 @@ export type PlanEngineState = {
   overshootLogged: boolean;
   overshootStartedMs: number | null;
   lastOvershootEscalationMs: number | null;
+  lastOvershootMitigationMs: number | null;
 };
 
 export function createPlanEngineState(): PlanEngineState {
@@ -102,5 +103,6 @@ export function createPlanEngineState(): PlanEngineState {
     overshootLogged: false,
     overshootStartedMs: null,
     lastOvershootEscalationMs: null,
+    lastOvershootMitigationMs: null,
   };
 }

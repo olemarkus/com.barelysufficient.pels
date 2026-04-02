@@ -211,11 +211,13 @@ export class PlanBuilder {
       this.state.overshootLogged = true;
       this.state.overshootStartedMs = Date.now();
       this.state.lastOvershootEscalationMs = null;
+      this.state.lastOvershootMitigationMs = null;
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.deps.log('Recovered from capacity overshoot.');
       this.state.overshootLogged = false;
       this.state.overshootStartedMs = null;
       this.state.lastOvershootEscalationMs = null;
+      this.state.lastOvershootMitigationMs = null;
     } else if (overshootActive && this.state.overshootStartedMs === null) {
       this.state.overshootStartedMs = Date.now();
     }
@@ -409,6 +411,9 @@ export class PlanBuilder {
     }
     if (sheddingPlan.updates.lastOvershootEscalationMs !== undefined) {
       this.state.lastOvershootEscalationMs = sheddingPlan.updates.lastOvershootEscalationMs;
+    }
+    if (sheddingPlan.updates.lastOvershootMitigationMs !== undefined) {
+      this.state.lastOvershootMitigationMs = sheddingPlan.updates.lastOvershootMitigationMs;
     }
     if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
       this.state.inShortfall = sheddingPlan.guardInShortfall;
