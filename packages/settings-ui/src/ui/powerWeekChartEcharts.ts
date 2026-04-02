@@ -67,8 +67,8 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
 
   disposePowerWeekChart();
   container.replaceChildren();
-  container.style.height = `${DEFAULT_CHART_HEIGHT}px`;
-  container.style.minHeight = `${DEFAULT_CHART_HEIGHT}px`;
+  container.style.setProperty('height', `${DEFAULT_CHART_HEIGHT}px`);
+  container.style.setProperty('min-height', `${DEFAULT_CHART_HEIGHT}px`);
 
   plot = initEcharts(container, undefined, {
     renderer: 'svg',
