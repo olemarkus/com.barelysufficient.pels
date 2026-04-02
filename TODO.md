@@ -215,7 +215,7 @@ or present requested state as confirmed reality.
       "Target still waiting for confirmation" compares against the confirmed target/setpoint
       capability rather than observed room temperature.
       Files: `lib/plan/planTargetControl.ts`, target confirmation tests.
-- [ ] Reduce restore ping-pong / shedding churn when a just-restored device is followed by a
+- [x] Reduce restore ping-pong / shedding churn when a just-restored device is followed by a
       predictable stepped-load or EV ramp. PELS should not restore into headroom that will vanish
       inside the same convergence window and immediately force a re-shed.
       Follow-up direction: reserve provisional restore load until the device confirms the requested

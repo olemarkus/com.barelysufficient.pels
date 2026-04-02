@@ -22,7 +22,8 @@ import {
   markOffDevicesStayOff,
 } from './planRestoreDevices';
 import {
-  hasOtherDevicesPendingRecovery,
+  hasOtherDevicesBlockingSteppedRestore,
+  hasOtherDevicesWithUnconfirmedRecovery,
   markSteppedDevicesStayAtCurrentLevel,
   setRestorePlanDevice as setDevice,
   shouldBlockRestoreForPendingSwap,
@@ -197,7 +198,11 @@ function planRestoreForSteppedDevice(params: {
 
   const waitingReason = resolveCapacityRestoreBlockReason({
     timing,
-    waitingForOtherRecovery: hasOtherDevicesPendingRecovery(deviceMap, dev.id, state),
+    waitingForOtherRecovery: hasOtherDevicesBlockingSteppedRestore(
+      deviceMap,
+      dev.id,
+      state.lastDeviceShedMs,
+    ),
   });
   if (waitingReason) {
     setDevice(deviceMap, dev.id, {
@@ -300,6 +305,19 @@ function planRestoreForDevice(params: {
 
   const pendingBlock = shouldBlockRestoreForPendingSwap(dev, deviceMap, swapState, deps.logDebug);
   if (pendingBlock) return { availableHeadroom, restoredOneThisCycle };
+
+  const waitingReason = resolveCapacityRestoreBlockReason({
+    timing,
+    waitingForOtherRecovery: hasOtherDevicesWithUnconfirmedRecovery(deviceMap, dev.id),
+  });
+  if (waitingReason) {
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'shed',
+      reason: waitingReason,
+    });
+    deps.logDebug(`Plan: blocking restore of ${dev.name} - ${waitingReason}`);
+    return { availableHeadroom, restoredOneThisCycle };
+  }
 
   const restoreNeed = getRestoreNeed(dev, state, deps.deviceDiagnostics);
   if (availableHeadroom >= restoreNeed.needed) {

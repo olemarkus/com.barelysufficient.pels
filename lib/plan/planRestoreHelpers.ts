@@ -1,9 +1,10 @@
 import type { DevicePlanDevice } from './planTypes';
-import type { PlanEngineState } from './planState';
 import type { RestoreTiming } from './planRestoreTiming';
 import type { SwapState } from './planSwapState';
 import { getInactiveReason, getSteppedRestoreCandidates } from './planRestoreDevices';
 import { resolveCapacityRestoreBlockReason } from './planRestoreGate';
+import { isSteppedLoadDevice } from './planSteppedLoad';
+import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -41,14 +42,29 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   }
 }
 
-export function hasOtherDevicesPendingRecovery(
+export function hasOtherDevicesWithUnconfirmedRecovery(
   deviceMap: Map<string, DevicePlanDevice>,
-  steppedDeviceId: string,
-  state: Pick<PlanEngineState, 'lastDeviceShedMs'>,
+  deviceId: string,
 ): boolean {
   for (const device of deviceMap.values()) {
-    if (!shouldBlockSteppedRestoreForDevice(device, steppedDeviceId)) continue;
-    if (isDevicePendingRecovery(device, state)) return true;
+    if (device.id === deviceId) continue;
+    if (device.controllable === false) continue;
+    if (getInactiveReason(device)) continue;
+    if (isDeviceUnconfirmedRecoveryInFlight(device)) return true;
+  }
+  return false;
+}
+
+export function hasOtherDevicesBlockingSteppedRestore(
+  deviceMap: Map<string, DevicePlanDevice>,
+  steppedDeviceId: string,
+  lastDeviceShedMs: Record<string, number>,
+): boolean {
+  for (const device of deviceMap.values()) {
+    if (device.id === steppedDeviceId) continue;
+    if (device.controllable === false) continue;
+    if (getInactiveReason(device)) continue;
+    if (isDeviceBlockingSteppedRestore(device, lastDeviceShedMs)) return true;
   }
   return false;
 }
@@ -113,30 +129,44 @@ export function shouldBlockRestoreForPendingSwap(
   return false;
 }
 
-function shouldBlockSteppedRestoreForDevice(
-  device: DevicePlanDevice,
-  steppedDeviceId: string,
-): boolean {
-  return device.id !== steppedDeviceId
-    && device.controllable !== false
-    && !getInactiveReason(device);
-}
-
-function isDevicePendingRecovery(
-  device: DevicePlanDevice,
-  state: Pick<PlanEngineState, 'lastDeviceShedMs'>,
-): boolean {
-  if (device.observationStale === true) return false;
-  if (device.plannedState === 'shed') return true;
-  if (!state.lastDeviceShedMs[device.id] || device.plannedState !== 'keep') return false;
-  return device.currentState === 'off'
-    || device.currentState === 'unknown'
-    || isTargetRestorePending(device);
-}
-
 function isTargetRestorePending(device: DevicePlanDevice): boolean {
   return device.shedAction === 'set_temperature'
     && typeof device.plannedTarget === 'number'
     && device.currentTarget !== device.plannedTarget
+    && device.pendingTargetCommand?.status === 'waiting_confirmation'
     && device.pendingTargetCommand?.desired === device.plannedTarget;
+}
+
+function isSteppedRestorePending(device: DevicePlanDevice): boolean {
+  if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile) return false;
+  if (device.stepCommandPending !== true) return false;
+  if (!device.selectedStepId || !device.desiredStepId || device.desiredStepId === device.selectedStepId) {
+    return false;
+  }
+  const selectedStep = getSteppedLoadStep(device.steppedLoadProfile, device.selectedStepId);
+  const desiredStep = getSteppedLoadStep(device.steppedLoadProfile, device.desiredStepId);
+  if (!selectedStep || !desiredStep) return false;
+  return desiredStep.planningPowerW > selectedStep.planningPowerW;
+}
+
+function isDeviceBlockingSteppedRestore(
+  device: DevicePlanDevice,
+  lastDeviceShedMs: Record<string, number>,
+): boolean {
+  if (device.observationStale === true) return false;
+  if (device.plannedState === 'shed') return true;
+  if (!lastDeviceShedMs[device.id] || device.plannedState !== 'keep') return false;
+  return device.currentState === 'off'
+    || device.currentState === 'unknown'
+    || isTargetRestorePending(device)
+    || isSteppedRestorePending(device)
+    || device.binaryCommandPending === true;
+}
+
+function isDeviceUnconfirmedRecoveryInFlight(device: DevicePlanDevice): boolean {
+  if (device.observationStale === true) return false;
+  if (device.plannedState !== 'keep') return false;
+  return device.binaryCommandPending === true
+    || isTargetRestorePending(device)
+    || isSteppedRestorePending(device);
 }

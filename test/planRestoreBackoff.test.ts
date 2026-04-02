@@ -445,6 +445,110 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
   });
 
+  it('blocks ordinary restore while another stepped-load restore is still awaiting confirmation', () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-step'] = Date.now() - 30_000;
+    state.lastDeviceRestoreMs['dev-step'] = Date.now() - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'medium',
+          stepCommandPending: true,
+          stepCommandStatus: 'pending',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Hall heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          expectedPowerKw: 1.5,
+          measuredPowerKw: 0,
+          powerKw: 1.5,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+    const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
+
+    expect(steppedDevice?.plannedState).toBe('keep');
+    expect(offDevice?.plannedState).toBe('shed');
+    expect(offDevice?.reason).toBe('waiting for other devices to recover');
+  });
+
+  it('does not block ordinary restore when another shed-temperature device is temporarily unavailable rather than recovering', () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-temp'] = Date.now() - 30_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-temp',
+          name: 'Hall thermostat',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTarget: 16,
+          plannedTarget: 23,
+          shedAction: 'set_temperature',
+          pendingTargetCommand: {
+            desired: 23,
+            retryCount: 1,
+            nextRetryAtMs: Date.now() + 30_000,
+            status: 'temporary_unavailable',
+          },
+          expectedPowerKw: 1.5,
+          measuredPowerKw: 0,
+          powerKw: 1.5,
+        }),
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Hall heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          expectedPowerKw: 1.5,
+          measuredPowerKw: 0,
+          powerKw: 1.5,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
+
+    expect(offDevice?.plannedState).toBe('keep');
+    expect(offDevice?.reason).toBeUndefined();
+  });
+
   it('plans first restore to lowest non-zero step for an off stepped device, even with retained higher step', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
