@@ -906,10 +906,15 @@ class PelsApp extends Homey.App {
       next.setHours(now.getHours() + 1, SNAPSHOT_REFRESH_MINUTE_INTERVALS[0], 0, 0);
     }
 
-    this.snapshotRefreshTimer = setTimeout(() => {
-      this.refreshTargetDevicesSnapshot({ targeted: true })
-        .catch((e) => this.error('Periodic snapshot refresh failed', e));
-      this.logPeriodicStatus();
+    this.snapshotRefreshTimer = setTimeout(async () => {
+      let refreshed = false;
+      try {
+        await this.refreshTargetDevicesSnapshot({ targeted: true });
+        refreshed = true;
+      } catch (e) {
+        this.error('Periodic snapshot refresh failed', e);
+      }
+      this.logPeriodicStatus({ includeDeviceHealth: refreshed });
       this.scheduleNextSnapshotRefresh();
     }, next.getTime() - now.getTime());
   }
@@ -923,7 +928,7 @@ class PelsApp extends Homey.App {
     );
     await this.refreshTargetDevicesSnapshot({ targeted: true });
   }
-  private logPeriodicStatus(): void {
+  private logPeriodicStatus(options: { includeDeviceHealth?: boolean } = {}): void {
     this.log(buildPeriodicStatusLog({
       capacityGuard: this.capacityGuard,
       powerTracker: this.powerTracker,
@@ -931,7 +936,15 @@ class PelsApp extends Homey.App {
       operatingMode: this.operatingMode,
       capacityDryRun: this.capacityDryRun,
     }));
-    const deviceStatusLog = this.deviceManager.getPeriodicStatusLog(); if (deviceStatusLog) this.log(deviceStatusLog);
+    if (options.includeDeviceHealth === true) {
+      const deviceStatus = this.deviceManager.getPeriodicStatusMetrics();
+      if (deviceStatus) {
+        this.getStructuredLogger('devices')?.info({
+          event: 'periodic_device_health_summary',
+          ...deviceStatus,
+        });
+      }
+    }
     const dailyBudgetLog = this.dailyBudgetService.getPeriodicStatusLog(); if (dailyBudgetLog) this.log(dailyBudgetLog);
   }
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
