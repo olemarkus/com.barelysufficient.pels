@@ -219,15 +219,31 @@ or present requested state as confirmed reality.
       send time. This should prevent double-spending headroom during pending restore convergence
       without relying on laggy per-device power telemetry.
       Files: restore/headroom/shedding logic, mixed restore/shedding tests.
-- [ ] Fix structured-log context leakage so unrelated events never inherit previous event payload
+- [x] Treat a reconcile re-restore as an activation setback when it immediately follows a fresh
+      restore attempt. A restore that drifts back off should increase the activation penalty before
+      PELS considers restoring the same device again.
+      Files: `lib/plan/planExecutor.ts`, restore logging/backoff tests.
+- [x] Block automatic restores for a cooldown window after a fresh activation setback so a device
+      that immediately drifts back off is not considered again on the next headroom-positive cycle
+      just because global headroom still looks good.
+      Files: `lib/plan/planRestore.ts`, `lib/plan/planActivationBackoff.ts`, restore tests.
+- [x] Stop awaiting `desired_stepped_load_changed` flow execution inside the plan apply path.
+      Stepped-load flow handlers may run slowly, but they should not hold `planRebuildApply`
+      open or delay danger-zone protection decisions.
+      Files: `lib/plan/planExecutor.ts`, stepped-load executor tests.
+- [x] Fix structured-log context leakage so unrelated events never inherit previous event payload
       fields. Only explicit flow IDs such as `rebuildId` should propagate across async boundaries.
       Files: `lib/logging/logger.ts`, `lib/logging/alsContext.ts`, structured logging tests.
-- [ ] Reduce steady-state log volume so healthy operation stays within the normal log budget.
+- [x] Reduce steady-state log volume so healthy operation stays within the normal log budget.
       Suppress routine `budget_recomputed`, `device_snapshot_refresh_completed`, and no-op plan
       rebuild events, and fold healthy summary data into the existing periodic `:25` / `:55`
       status emission instead of separate routine event lines.
       Files: `lib/dailyBudget/dailyBudgetService.ts`, `lib/core/deviceManager.ts`,
       `lib/plan/planService.ts`, `app.ts`, logging/status tests.
+- [x] Keep default `realtime_reconcile_applied` logs compact. Preserve detailed drift payloads for
+      debug-only events, but keep the normal warning event bounded to per-device identifiers and
+      a count.
+      Files: `lib/app/appRealtimeDeviceReconcile.ts`, realtime reconcile tests.
 
 ## P1 Correctness, inefficiency, and cleanup follow-ups
 
@@ -446,9 +462,11 @@ refactors.
       `resolveRemainingFloors`, and `buildControlledMinFloors` do not repeatedly call
       `getZonedParts`.
       Files: plan rebuild helpers.
-- [ ] Investigate long-running `planRebuildApply` stalls (observed `applyMs` up to ~90s) and add
-      enough timing / queue instrumentation to distinguish slow Homey writes, delayed refreshes,
-      and local sequencing bottlenecks before they distort cooldown and control timing.
+- [ ] Keep investigating long-running `planRebuildApply` stalls after the stepped-load flow fix.
+      The known ~90s case was caused by awaiting `desired_stepped_load_changed` flow execution in
+      the apply path; remaining investigation should distinguish slow Homey device writes,
+      delayed refreshes, and local sequencing bottlenecks before they distort cooldown and control
+      timing.
       Files: apply path instrumentation, perf logging, executor / plan service timing.
 - [ ] Avoid full plan rebuilds on every power sample. Sample updates should normally refresh
       headroom/status only, and rebuild the full plan only when PELS crosses a control boundary

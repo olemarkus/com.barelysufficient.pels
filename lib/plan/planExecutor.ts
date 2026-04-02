@@ -294,6 +294,14 @@ export class PlanExecutor {
             name,
             nowTs: now,
           });
+        } else if (mode === 'reconcile') {
+          recordActivationSetbackForDevice({
+            state: this.state,
+            diagnostics: this.deps.deviceDiagnostics,
+            deviceId: dev.id,
+            name,
+            nowTs: Date.now(),
+          });
         }
         // Clear this device from pending swap targets if it was one
         const swapEntry = this.state.swapByDevice[dev.id];
@@ -461,7 +469,7 @@ export class PlanExecutor {
     const now = Date.now();
     const planningPowerW = desiredStep.planningPowerW;
     try {
-      await triggerCard.trigger({
+      const triggerPromise = triggerCard.trigger({
         step_id: desiredStep.id,
         planning_power_w: planningPowerW,
         previous_step_id: previousStepId ?? '',
@@ -492,6 +500,9 @@ export class PlanExecutor {
         `Capacity: requested stepped load ${dev.name || dev.id} `
         + `${previousStepId ?? 'unknown'} -> ${desiredStep.id}${actuationSuffix}`,
       );
+      void Promise.resolve(triggerPromise).catch((error) => {
+        this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
+      });
       if (mode !== 'plan') return;
       if (nextDirection === 'shed') {
         this.recordShedActuation(dev.id, dev.name, now);
@@ -600,6 +611,14 @@ export class PlanExecutor {
           deviceId: dev.id,
           name,
           nowTs: now,
+        });
+      } else if (mode === 'reconcile') {
+        recordActivationSetbackForDevice({
+          state: this.state,
+          diagnostics: this.deps.deviceDiagnostics,
+          deviceId: dev.id,
+          name,
+          nowTs: Date.now(),
         });
       }
     } catch (error) {

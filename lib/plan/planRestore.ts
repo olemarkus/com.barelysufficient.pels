@@ -22,6 +22,7 @@ import {
   markOffDevicesStayOff,
 } from './planRestoreDevices';
 import {
+  blockRestoreForRecentActivationSetback,
   hasOtherDevicesBlockingSteppedRestore,
   hasOtherDevicesWithUnconfirmedRecovery,
   markSteppedDevicesStayAtCurrentLevel,
@@ -212,6 +213,17 @@ function planRestoreForSteppedDevice(params: {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
+  if (blockRestoreForRecentActivationSetback({
+    deviceMap,
+    deviceId: dev.id,
+    deviceName: dev.name,
+    state,
+    logDebug,
+    stepped: true,
+  })) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
   const nextStep = getSteppedLoadNextRestoreStep(dev);
   if (!nextStep || !dev.selectedStepId) {
     return { availableHeadroom, restoredOneThisCycle };
@@ -316,6 +328,17 @@ function planRestoreForDevice(params: {
       reason: waitingReason,
     });
     deps.logDebug(`Plan: blocking restore of ${dev.name} - ${waitingReason}`);
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  if (blockRestoreForRecentActivationSetback({
+    deviceMap,
+    deviceId: dev.id,
+    deviceName: dev.name,
+    state,
+    logDebug: deps.logDebug,
+    stepped: false,
+  })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
