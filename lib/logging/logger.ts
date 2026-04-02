@@ -8,7 +8,7 @@ export const createRootLogger = (destination: Writable, level = 'info'): pino.Lo
   {
     level,
     timestamp: false,
-    mixin: () => getCurrentContext(),
+    mixin: () => ({ ...getCurrentContext() }),
   },
   destination,
 );

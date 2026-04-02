@@ -286,4 +286,96 @@ describe('DailyBudgetService', () => {
       exceeded: false,
     });
   });
+
+  it('does not emit budget_recomputed repeatedly for unchanged steady-state updates', () => {
+    const info = jest.fn();
+    const service = new DailyBudgetService({
+      homey: {
+        settings: {
+          get: jest.fn(() => null),
+          set: jest.fn(),
+        },
+        clock: {
+          getTimezone: () => TZ,
+        },
+      } as any,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+      getPowerTracker: () => ({ buckets: {} }),
+      getPriceOptimizationEnabled: () => false,
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+      structuredLog: { info } as any,
+    });
+    (service as any).manager.update = jest.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      shouldPersist: false,
+    }));
+
+    service.updateState();
+    service.updateState();
+
+    expect(info).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits budget_recomputed when exceeded state changes', () => {
+    const info = jest.fn();
+    const service = new DailyBudgetService({
+      homey: {
+        settings: {
+          get: jest.fn(() => null),
+          set: jest.fn(),
+        },
+        clock: {
+          getTimezone: () => TZ,
+        },
+      } as any,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+      getPowerTracker: () => ({ buckets: {} }),
+      getPriceOptimizationEnabled: () => false,
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+      structuredLog: { info } as any,
+    });
+    const snapshots = [
+      buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      {
+        ...buildDayPayload({
+          dateKey: '2025-03-15',
+          confidence: 0.72,
+          confidenceDebug: buildConfidenceDebug(),
+        }),
+        state: {
+          ...buildDayPayload({
+            dateKey: '2025-03-15',
+            confidence: 0.72,
+            confidenceDebug: buildConfidenceDebug(),
+          }).state,
+          exceeded: true,
+        },
+      },
+    ];
+    (service as any).manager.update = jest
+      .fn()
+      .mockReturnValueOnce({ snapshot: snapshots[0], shouldPersist: false })
+      .mockReturnValueOnce({ snapshot: snapshots[1], shouldPersist: false });
+
+    service.updateState();
+    service.updateState();
+
+    expect(info).toHaveBeenCalledTimes(2);
+    expect(info).toHaveBeenLastCalledWith(expect.objectContaining({
+      event: 'budget_recomputed',
+      exceeded: true,
+    }));
+  });
 });

@@ -167,6 +167,7 @@ export class DeviceManager extends EventEmitter {
     private debugObservedSourcesByDeviceId: Map<string, DeviceDebugObservedSources> = new Map();
     private capabilityObservations: Map<string, CapabilityObservation> = new Map();
     private latestLocalWriteMsByDeviceId: Map<string, number> = new Map();
+    private lastSnapshotRefreshMetricsKey: string | null = null;
     private providers: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
@@ -311,12 +312,14 @@ export class DeviceManager extends EventEmitter {
             this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
             if (this.logger.structuredLog) {
                 const metrics = summarizeSnapshotRefreshMetrics(snapshot);
-                this.logger.structuredLog.info({
-                    event: 'device_snapshot_refresh_completed',
-                    durationMs: Date.now() - start,
-                    devicesTotal: snapshot.length,
-                    ...metrics,
-                });
+                if (this.shouldEmitSnapshotRefreshLog(snapshot.length, metrics)) {
+                    this.logger.structuredLog.info({
+                        event: 'device_snapshot_refresh_completed',
+                        durationMs: Date.now() - start,
+                        devicesTotal: snapshot.length,
+                        ...metrics,
+                    });
+                }
             }
             logEvSnapshotChanges({
                 logger: this.logger,
@@ -349,6 +352,34 @@ export class DeviceManager extends EventEmitter {
             snap.currentOn = updates.on;
             snap.lastLocalWriteMs = Date.now();
         }
+    }
+
+    getPeriodicStatusLog(): string | null {
+        if (this.latestSnapshot.length === 0) return null;
+        const metrics = summarizeSnapshotRefreshMetrics(this.latestSnapshot);
+        return (
+            `Devices: total=${this.latestSnapshot.length}, `
+            + `available=${metrics.availableDevices}, `
+            + `tempKnown=${metrics.temperatureKnownDevices}, `
+            + `tempUnknown=${metrics.temperatureUnknownDevices}, `
+            + `unavailable=${metrics.unavailableDevices}`
+        );
+    }
+
+    private shouldEmitSnapshotRefreshLog(
+        devicesTotal: number,
+        metrics: SnapshotRefreshMetrics,
+    ): boolean {
+        const nextKey = [
+            devicesTotal,
+            metrics.availableDevices,
+            metrics.temperatureKnownDevices,
+            metrics.temperatureUnknownDevices,
+            metrics.unavailableDevices,
+        ].join(':');
+        if (this.lastSnapshotRefreshMetricsKey === nextKey) return false;
+        this.lastSnapshotRefreshMetricsKey = nextKey;
+        return true;
     }
 
     async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {

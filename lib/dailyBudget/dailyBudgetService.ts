@@ -43,6 +43,12 @@ type DailyBudgetServiceDeps = {
   structuredLog?: PinoLogger;
 };
 
+type BudgetLogState = {
+  enabled: boolean;
+  dailyBudgetKWh: number;
+  exceeded: boolean;
+};
+
 export class DailyBudgetService {
   private manager: DailyBudgetManager;
   private settings: DailyBudgetSettings = {
@@ -54,6 +60,7 @@ export class DailyBudgetService {
   };
   private snapshot: DailyBudgetUiPayload | null = null;
   private daySnapshots: Record<string, DailyBudgetDayPayload> = {};
+  private lastBudgetLogState: BudgetLogState | null = null;
 
   constructor(private deps: DailyBudgetServiceDeps) {
     this.manager = new DailyBudgetManager({
@@ -138,7 +145,7 @@ export class DailyBudgetService {
       });
       this.setDaySnapshot(update.snapshot, nowMs, includeAdjacentDays);
       const snap = update.snapshot;
-      if (params.emitStructuredEvent !== false) {
+      if (params.emitStructuredEvent !== false && this.shouldEmitBudgetRecomputed(snap)) {
         this.deps.structuredLog?.info({
           event: 'budget_recomputed',
           newBudgetKWh: snap.budget.dailyBudgetKWh,
@@ -228,6 +235,20 @@ export class DailyBudgetService {
 
   getSnapshot(): DailyBudgetUiPayload | null {
     return this.snapshot;
+  }
+
+  private shouldEmitBudgetRecomputed(snapshot: DailyBudgetDayPayload): boolean {
+    const nextState: BudgetLogState = {
+      enabled: snapshot.budget.enabled,
+      dailyBudgetKWh: snapshot.budget.dailyBudgetKWh,
+      exceeded: snapshot.state.exceeded,
+    };
+    const previous = this.lastBudgetLogState;
+    this.lastBudgetLogState = nextState;
+    if (!previous) return true;
+    return previous.enabled !== nextState.enabled
+      || previous.dailyBudgetKWh !== nextState.dailyBudgetKWh
+      || previous.exceeded !== nextState.exceeded;
   }
 
   private shouldIncludeConfidenceBootstrapDebug(): boolean {

@@ -15,9 +15,9 @@ describe('homeyDestination', () => {
     const error = jest.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 30, msg: 'hello' }) + '\n';
+    const line = JSON.stringify({ level: 30, pid: 1, hostname: 'homey', msg: 'hello' }) + '\n';
     dest.write(line, 'utf8', () => {
-      expect(log).toHaveBeenCalledWith(JSON.stringify({ level: 30, msg: 'hello' }));
+      expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'hello' }));
       expect(error).not.toHaveBeenCalled();
       done();
     });
@@ -28,9 +28,9 @@ describe('homeyDestination', () => {
     const error = jest.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 50, msg: 'fail' }) + '\n';
+    const line = JSON.stringify({ level: 50, pid: 1, hostname: 'homey', msg: 'fail' }) + '\n';
     dest.write(line, 'utf8', () => {
-      expect(error).toHaveBeenCalledWith(JSON.stringify({ level: 50, msg: 'fail' }));
+      expect(error).toHaveBeenCalledWith(JSON.stringify({ msg: 'fail' }));
       expect(log).not.toHaveBeenCalled();
       done();
     });
@@ -41,9 +41,9 @@ describe('homeyDestination', () => {
     const error = jest.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 60, msg: 'fatal' }) + '\n';
+    const line = JSON.stringify({ level: 60, pid: 1, hostname: 'homey', msg: 'fatal' }) + '\n';
     dest.write(line, 'utf8', () => {
-      expect(error).toHaveBeenCalledWith(JSON.stringify({ level: 60, msg: 'fatal' }));
+      expect(error).toHaveBeenCalledWith(JSON.stringify({ msg: 'fatal' }));
       done();
     });
   });
@@ -53,9 +53,9 @@ describe('homeyDestination', () => {
     const error = jest.fn();
     const dest = createHomeyDestination({ log, error });
 
-    const line = JSON.stringify({ level: 30, msg: 'no newline' });
+    const line = JSON.stringify({ level: 30, pid: 1, hostname: 'homey', msg: 'no newline' });
     dest.end(line, 'utf8', () => {
-      expect(log).toHaveBeenCalledWith(line);
+      expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'no newline' }));
       done();
     });
   });
@@ -86,7 +86,7 @@ describe('homeyDestination', () => {
     const log = jest.fn();
     const error = jest.fn();
     const dest = createHomeyDestination({ log, error });
-    const line = JSON.stringify({ level: 50, msg: 'split' }) + '\n';
+    const line = JSON.stringify({ level: 50, pid: 1, hostname: 'homey', msg: 'split' }) + '\n';
     const mid = Math.floor(line.length / 2);
 
     await writeChunk(dest, line.slice(0, mid));
@@ -95,6 +95,6 @@ describe('homeyDestination', () => {
 
     await writeChunk(dest, line.slice(mid));
     expect(log).not.toHaveBeenCalled();
-    expect(error).toHaveBeenCalledWith(JSON.stringify({ level: 50, msg: 'split' }));
+    expect(error).toHaveBeenCalledWith(JSON.stringify({ msg: 'split' }));
   });
 });

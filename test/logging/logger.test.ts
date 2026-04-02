@@ -111,4 +111,29 @@ describe('logger', () => {
       expect(getCurrentContext()).toEqual({ rebuildId: 'rb_test' });
     });
   });
+
+  it('does not leak previous event payload fields through ALS context', async () => {
+    const dest = new PassThrough();
+    const firstPending = waitForLine(dest);
+    const logger = createRootLogger(dest);
+
+    await runWithContext({ rebuildId: 'rb1' }, async () => {
+      logger.info({ event: 'first_event', reasonCode: 'initial' }, 'first');
+      const first = JSON.parse(await firstPending);
+      expect(first.rebuildId).toBe('rb1');
+      expect(getCurrentContext()).toEqual({ rebuildId: 'rb1' });
+
+      const secondPending = waitForLine(dest);
+      logger.info({ event: 'second_event' }, 'second');
+      const second = JSON.parse(await secondPending);
+      expect(second.rebuildId).toBe('rb1');
+      expect(second.reasonCode).toBeUndefined();
+    });
+
+    const finalPending = waitForLine(dest);
+    logger.info({ event: 'outside_context' }, 'plain');
+    const final = JSON.parse(await finalPending);
+    expect(final.rebuildId).toBeUndefined();
+    expect(final.reasonCode).toBeUndefined();
+  });
 });
