@@ -102,7 +102,7 @@ export async function updateGuardState(params: {
   const canDisable = headroom !== null && headroom >= restoreMargin;
   const current = capacityGuard?.isSheddingActive() ?? false;
   if (canDisable) {
-    await capacityGuard?.setSheddingActive(false);
+    await capacityGuard?.setSheddingActive(false, headroom);
   }
   await capacityGuard?.checkShortfall(true, 0);
   const next = capacityGuard?.isSheddingActive() ?? current;

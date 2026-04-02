@@ -95,6 +95,20 @@ describe('CapacityGuard', () => {
       expect(guard.isSheddingActive()).toBe(false);
       expect(callbacks).toEqual(['start', 'end']);
     });
+
+    it('uses override headroom when clearing shedding state', async () => {
+      const guard = new CapacityGuard({
+        limitKw: 4,
+        softMarginKw: 0.5,
+        restoreMarginKw: 0.2,
+      });
+
+      guard.reportTotalPower(3.65);
+      await guard.setSheddingActive(true);
+      await guard.setSheddingActive(false, 0.45);
+
+      expect(guard.isSheddingActive()).toBe(false);
+    });
   });
 
   describe('Shortfall detection', () => {

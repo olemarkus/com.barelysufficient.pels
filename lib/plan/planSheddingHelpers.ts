@@ -38,12 +38,16 @@ export function resolveSameMeasurementSheddingDecision(params: {
   state: PlanEngineState;
   measurementTs: number | null;
   nowTs: number;
+  allowEscalation?: boolean;
 }): { skip: boolean; escalatedSameSample: boolean } {
-  const { state, measurementTs, nowTs } = params;
+  const { state, measurementTs, nowTs, allowEscalation = true } = params;
   const alreadyShedThisSample = measurementTs !== null
     && measurementTs === state.lastShedPlanMeasurementTs;
   if (!alreadyShedThisSample) {
     return { skip: false, escalatedSameSample: false };
+  }
+  if (!allowEscalation) {
+    return { skip: true, escalatedSameSample: false };
   }
   const escalatedSameSample = shouldEscalateOvershoot(state, nowTs);
   return {

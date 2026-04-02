@@ -151,6 +151,7 @@ function planShedding(
     state,
     measurementTs,
     nowTs,
+    allowEscalation: context.softLimitSource === 'capacity',
   });
   if (measurementDecision.skip) {
     deps.logDebug('Plan: skipping additional shedding until a new power measurement arrives');

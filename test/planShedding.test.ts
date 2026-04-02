@@ -2536,6 +2536,54 @@ describe('buildSheddingPlan', () => {
     });
   });
 
+  it('does not escalate same-sample daily-budget shedding after the overshoot interval', async () => {
+    const state = createPlanEngineState();
+    state.overshootStartedMs = Date.now() - 31_000;
+    state.lastShedPlanMeasurementTs = 500;
+
+    const logDebug = jest.fn();
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(true),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'dev-daily',
+            name: 'Daily',
+            expectedPowerKw: 0.8,
+            currentOn: true,
+            controllable: true,
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 5,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'daily',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug,
+      },
+    );
+
+    expect(result.shedSet.size).toBe(0);
+    expect(result.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(logDebug).toHaveBeenCalledWith('Plan: skipping additional shedding until a new power measurement arrives');
+  });
+
   it('keeps shedding active until headroom clears the restore margin plus hysteresis', async () => {
     const guard = new CapacityGuard({
       limitKw: 4,
@@ -2568,6 +2616,40 @@ describe('buildSheddingPlan', () => {
 
     expect(result.sheddingActive).toBe(true);
     expect(guard.isSheddingActive()).toBe(true);
+  });
+
+  it('clears shedding using the active plan headroom even if capacity guard headroom is lower', async () => {
+    const guard = new CapacityGuard({
+      limitKw: 4,
+      softMarginKw: 0.5,
+      restoreMarginKw: 0.2,
+    });
+    guard.reportTotalPower(3.65);
+    await guard.setSheddingActive(true);
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [],
+        total: 3.65,
+        softLimit: 4.1,
+        capacitySoftLimit: 3.5,
+        headroomRaw: 0.45,
+        headroom: 0.45,
+        softLimitSource: 'daily',
+      }),
+      createPlanEngineState(),
+      {
+        capacityGuard: guard,
+        powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.sheddingActive).toBe(false);
+    expect(guard.isSheddingActive()).toBe(false);
   });
 
   it('clears shedding active once headroom clears the restore margin plus hysteresis', async () => {

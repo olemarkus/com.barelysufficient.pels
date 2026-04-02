@@ -84,13 +84,17 @@ export function applyRestorePlan(params: {
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapState = buildSwapState(state);
   const timing = buildRestoreTiming(state, context.headroomRaw, deps.powerTracker);
+  const capacityStartupStabilization = timing.inStartupStabilization && context.softLimitSource === 'capacity';
+  const effectiveTiming = capacityStartupStabilization
+    ? timing
+    : { ...timing, inStartupStabilization: false as const, startupStabilizationRemainingSec: null };
   cleanupStaleSwaps(deviceMap, swapState, deps.log);
 
   const restoredThisCycle = new Set<string>();
   let availableHeadroom = context.headroomRaw !== null ? context.headroomRaw : 0;
   let restoredOneThisCycle = false;
 
-  if (shouldPlanRestores(context.headroomRaw, sheddingActive, timing)) {
+  if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {
     const snapshot = Array.from(deviceMap.values());
     const offDevices = getOffDevices(snapshot);
     const onDevices = getOnDevices(snapshot, deps.getShedBehavior);
@@ -101,7 +105,7 @@ export function applyRestorePlan(params: {
         onDevices,
         swapState,
         state,
-        timing,
+        timing: effectiveTiming,
         availableHeadroom,
         restoredThisCycle,
         restoredOneThisCycle,
@@ -117,7 +121,7 @@ export function applyRestorePlan(params: {
         dev,
         deviceMap,
         state,
-        timing,
+        timing: effectiveTiming,
         availableHeadroom,
         restoredOneThisCycle,
         logDebug: deps.logDebug,
@@ -140,17 +144,17 @@ export function applyRestorePlan(params: {
     sheddingActive
     || timing.inCooldown
     || timing.inRestoreCooldown
-    || timing.inStartupStabilization
+    || effectiveTiming.inStartupStabilization
   ) {
     markOffDevicesStayOff({
       deviceMap,
-      timing,
+      timing: effectiveTiming,
       logDebug: deps.logDebug,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
     });
     markSteppedDevicesStayAtCurrentLevel({
       deviceMap,
-      timing,
+      timing: effectiveTiming,
       logDebug: deps.logDebug,
     });
   }

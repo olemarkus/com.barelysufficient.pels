@@ -145,14 +145,14 @@ export default class CapacityGuard {
    * Called by Plan after making shedding decisions.
    * Updates sheddingActive state and triggers callbacks.
    */
-  async setSheddingActive(active: boolean): Promise<void> {
+  async setSheddingActive(active: boolean, clearHeadroomKw?: number | null): Promise<void> {
     if (active && !this.sheddingActive) {
       this.sheddingActive = true;
       await this.onSheddingStart?.();
       return;
     }
     if (!active && this.sheddingActive) {
-      const headroom = this.headroom();
+      const headroom = clearHeadroomKw ?? this.headroom();
       const clearThreshold = this.restoreMarginKw + CapacityGuard.SHEDDING_CLEAR_HYSTERESIS_KW;
       if (headroom !== null && headroom < clearThreshold) {
         return;
