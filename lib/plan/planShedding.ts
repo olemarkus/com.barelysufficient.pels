@@ -38,6 +38,7 @@ export type SheddingPlan = {
     lastRecoveryMs?: number;
     lastShedPlanMeasurementTs?: number;
     lastOvershootEscalationMs?: number;
+    lastOvershootMitigationMs?: number;
   };
   overshootStats: {
     needed: number;
@@ -121,6 +122,7 @@ type PlanSheddingResult = {
     lastRecoveryMs?: number;
     lastShedPlanMeasurementTs?: number;
     lastOvershootEscalationMs?: number;
+    lastOvershootMitigationMs?: number;
   };
   overshootStats: SheddingPlan['overshootStats'];
 };
@@ -200,13 +202,17 @@ function planShedding(
           nowTs,
         });
       }
-      return emptySheddingResult({ lastOvershootEscalationMs: nowTs });
+      return emptySheddingResult({
+        lastOvershootEscalationMs: nowTs,
+        lastOvershootMitigationMs: nowTs,
+      });
     }
     return emptySheddingResult();
   }
   const updates = {
     lastInstabilityMs: nowTs,
     ...(measurementTs !== null ? { lastShedPlanMeasurementTs: measurementTs } : {}),
+    lastOvershootMitigationMs: nowTs,
     ...(measurementDecision.escalatedSameSample ? { lastOvershootEscalationMs: nowTs } : {}),
   };
   return {

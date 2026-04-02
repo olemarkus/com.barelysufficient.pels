@@ -2437,6 +2437,77 @@ describe('buildSheddingPlan', () => {
     expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
   });
 
+  it('does not same-sample escalate again immediately after a fresh-measurement shed', async () => {
+    const state = createPlanEngineState();
+    state.overshootStartedMs = Date.now() - 31_000;
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(true),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const deps = {
+      capacityGuard,
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      getPriorityForDevice: () => 100,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+    };
+
+    const context = buildContext({
+      devices: [
+        buildDevice({
+          id: 'dev-fresh',
+          name: 'Fresh Shed',
+          expectedPowerKw: 0.8,
+          currentOn: true,
+          controllable: true,
+        }),
+      ],
+      total: 4.8,
+      softLimit: 4,
+      capacitySoftLimit: 4,
+      headroomRaw: -0.8,
+      headroom: -0.8,
+      softLimitSource: 'capacity',
+    });
+
+    const freshResult = await buildSheddingPlan(
+      context,
+      state,
+      {
+        ...deps,
+        powerTracker: { lastTimestamp: 501 } as PowerTrackerState,
+      },
+    );
+
+    expect(freshResult.shedSet.has('dev-fresh')).toBe(true);
+    expect(freshResult.updates.lastOvershootMitigationMs).toBe(Date.now());
+    expect(freshResult.updates.lastOvershootEscalationMs).toBeUndefined();
+
+    Object.assign(state, freshResult.updates);
+
+    jest.setSystemTime(new Date(Date.now() + 5_000));
+
+    const sameSampleResult = await buildSheddingPlan(
+      context,
+      state,
+      {
+        ...deps,
+        powerTracker: { lastTimestamp: 501 } as PowerTrackerState,
+      },
+    );
+
+    expect(sameSampleResult.shedSet.size).toBe(0);
+    expect(sameSampleResult.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(deps.logDebug).toHaveBeenCalledWith(
+      'Plan: skipping additional shedding until a new power measurement arrives',
+    );
+  });
+
   it('does not escalate same-sample overshoot before the escalation interval elapses', async () => {
     const state = createPlanEngineState();
     state.overshootStartedMs = Date.now() - 10_000;

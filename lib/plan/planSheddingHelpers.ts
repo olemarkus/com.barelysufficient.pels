@@ -171,6 +171,8 @@ export function resolveShedReason(limitSource: PlanContext['softLimitSource']): 
 function shouldEscalateOvershoot(state: PlanEngineState, nowTs: number): boolean {
   if (typeof state.overshootStartedMs !== 'number') return false;
   if (nowTs - state.overshootStartedMs < OVERSHOOT_ESCALATION_INTERVAL_MS) return false;
-  const lastAttemptMs = state.lastOvershootEscalationMs ?? state.overshootStartedMs;
+  const lastAttemptMs = state.lastOvershootMitigationMs
+    ?? state.lastOvershootEscalationMs
+    ?? state.overshootStartedMs;
   return nowTs - lastAttemptMs >= OVERSHOOT_ESCALATION_INTERVAL_MS;
 }
