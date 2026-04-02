@@ -6,6 +6,7 @@ export type { ActivationAttemptSource } from './planState';
 export const ACTIVATION_BACKOFF_STICK_WINDOW_MS = 10 * 60 * 1000;
 export const ACTIVATION_BACKOFF_CLEAR_WINDOW_MS = 30 * 60 * 1000;
 export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
+export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = ACTIVATION_BACKOFF_STICK_WINDOW_MS;
 
 export type ActivationBackoffObservation = {
   available?: boolean;
@@ -45,6 +46,12 @@ const getPenaltyLevel = (state: PlanEngineState, deviceId: string): number => {
   return isFiniteNumber(value) && value > 0 ? Math.min(value, ACTIVATION_BACKOFF_MAX_LEVEL) : 0;
 };
 
+const readLastSetbackMs = (state: PlanEngineState, deviceId: string): number | null => {
+  const attempts = state.activationAttemptByDevice;
+  const value = attempts[deviceId]?.lastSetbackMs;
+  return isFiniteNumber(value) ? value : null;
+};
+
 const setPenaltyLevel = (state: PlanEngineState, deviceId: string, level: number): boolean => {
   const nextLevel = Math.max(0, Math.min(ACTIVATION_BACKOFF_MAX_LEVEL, Math.trunc(level)));
   const currentLevel = getPenaltyLevel(state, deviceId);
@@ -54,6 +61,7 @@ const setPenaltyLevel = (state: PlanEngineState, deviceId: string, level: number
     const entry = attempts[deviceId];
     if (entry) {
       delete entry.penaltyLevel;
+      delete entry.lastSetbackMs;
       if (Object.keys(entry).length === 0) {
         delete attempts[deviceId];
       }
@@ -343,6 +351,11 @@ export function recordActivationSetback(params: {
   if (!stickReached) {
     stateChanged = setPenaltyLevel(state, deviceId, penaltyLevel + 1) || stateChanged;
     penaltyLevel = getPenaltyLevel(state, deviceId);
+    const entry = ensureAttemptEntry(state, deviceId);
+    if (entry.lastSetbackMs !== nowTs) {
+      entry.lastSetbackMs = nowTs;
+      stateChanged = true;
+    }
     bumped = true;
   }
   return {
@@ -390,4 +403,22 @@ export function applyActivationPenalty(params: {
     requiredKwWithPenalty,
     penaltyExtraKw: Math.max(0, requiredKwWithPenalty - baseRequiredKw),
   };
+}
+
+export function getActivationRestoreBlockRemainingMs(params: {
+  state: PlanEngineState;
+  deviceId: string;
+  nowTs?: number;
+}): number | null {
+  const {
+    state,
+    deviceId,
+  } = params;
+  if (getPenaltyLevel(state, deviceId) <= 0) return null;
+  const lastSetbackMs = readLastSetbackMs(state, deviceId);
+  if (lastSetbackMs === null) return null;
+  const nowTs = params.nowTs ?? Date.now();
+  const elapsedMs = Math.max(0, nowTs - lastSetbackMs);
+  const remainingMs = ACTIVATION_SETBACK_RESTORE_BLOCK_MS - elapsedMs;
+  return remainingMs > 0 ? remainingMs : null;
 }

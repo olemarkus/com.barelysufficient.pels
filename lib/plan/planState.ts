@@ -22,6 +22,7 @@ export type PendingTargetCommandState = {
 
 export type ActivationAttemptState = {
   penaltyLevel?: number;
+  lastSetbackMs?: number;
   startedMs?: number;
   source?: ActivationAttemptSource;
   stickReached?: boolean;
