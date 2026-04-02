@@ -253,5 +253,8 @@
   },
   "2.1.9": {
     "en": "Updated widget previews to conform with guidelines. Also includes a number of bug fixes."
+  },
+  "2.1.10": {
+    "en": "Updated widget previews to conform with guidelines."
   }
 }
