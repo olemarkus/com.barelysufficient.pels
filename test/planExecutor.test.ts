@@ -263,6 +263,37 @@ describe('PlanExecutor pending target commands', () => {
     );
   });
 
+  it('falls back to turn_off shedding when a shed temperature write fails', async () => {
+    const state = createPlanEngineState();
+    const failure = new Error('Device offline');
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
+      },
+    ], {
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
+    });
+    deviceManager.setCapability.mockImplementation(async (_deviceId: string, capabilityId: string) => {
+      if (capabilityId === 'target_temperature') throw failure;
+    });
+
+    await executor.applySheddingToDevice('dev-1', 'Heater');
+
+    expect(deviceManager.setCapability).toHaveBeenNthCalledWith(1, 'dev-1', 'target_temperature', 15);
+    expect(deviceManager.setCapability).toHaveBeenNthCalledWith(2, 'dev-1', 'onoff', false);
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      capabilityId: 'target_temperature',
+      desired: 15,
+      status: 'temporary_unavailable',
+    });
+  });
+
   it('tags reconcile target updates in the user-visible log', async () => {
     const state = createPlanEngineState();
     const { executor, deps, deviceManager } = buildExecutor(state, [
