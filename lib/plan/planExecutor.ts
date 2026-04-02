@@ -82,7 +82,7 @@ export type PlanExecutorDeps = {
 
 export type PlanActuationMode = 'plan' | 'reconcile';
 type TargetCommandDispatchResult =
-  | { applied: false }
+  | { applied: false; reason: 'skipped' | 'failed' }
   | { applied: true; attemptType: 'send' | 'retry' };
 
 type TargetCommandPostActuationState = {
@@ -711,7 +711,7 @@ export class PlanExecutor {
         skipContext: 'shedding',
         actuationMode: 'plan',
       });
-      if (!result.applied) return true;
+      if (!result.applied) return result.reason === 'skipped';
       this.log(`Capacity: set ${targetCap} for ${name} to ${shedTemp}°C (shedding)`);
       this.recordShedActuation(deviceId, name, now);
       return true;
@@ -745,7 +745,7 @@ export class PlanExecutor {
     const latestObservedValue = latestObservedSnapshot?.targets?.find((entry) => entry.id === targetCap)?.value;
     if (Object.is(latestObservedValue, desired)) {
       this.logDebug(`Capacity: skip ${targetCap} for ${name}, already ${desired}°C in current snapshot`);
-      return { applied: false };
+      return { applied: false, reason: 'skipped' };
     }
 
     const nowMs = Date.now();
@@ -774,7 +774,7 @@ export class PlanExecutor {
           + `for ${desired}°C confirmation (${skipContext})`,
         );
       }
-      return { applied: false };
+      return { applied: false, reason: 'skipped' };
     }
 
     try {
@@ -794,7 +794,7 @@ export class PlanExecutor {
         + `for ${retryDelaySec}s before retry`,
       );
       this.error(`Failed to set ${targetCap} for ${name} via DeviceManager`, error);
-      return { applied: false };
+      return { applied: false, reason: 'failed' };
     }
     const pending = recordPendingTargetCommandAttempt({
       state: this.state,
