@@ -21,8 +21,6 @@ import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { withRebuildContext } from '../logging/logger';
-
-const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
 import {
@@ -34,6 +32,8 @@ import type { PlanEngine } from './planEngine';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice } from './planTypes';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './planHeadroomDevice';
 import type { PlanActuationMode } from './planExecutor';
+
+const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
 export type PlanServiceDeps = {
   homey: Homey.App['homey'];
