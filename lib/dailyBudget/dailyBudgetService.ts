@@ -112,6 +112,7 @@ export class DailyBudgetService {
     refreshObservedStats?: boolean;
     refreshConfidence?: boolean;
     includeConfidenceBootstrapDebug?: boolean;
+    emitStructuredEvent?: boolean;
   } = {}): void {
     const stopSpan = startRuntimeSpan('daily_budget_update');
     const start = Date.now();
@@ -137,13 +138,15 @@ export class DailyBudgetService {
       });
       this.setDaySnapshot(update.snapshot, nowMs, includeAdjacentDays);
       const snap = update.snapshot;
-      this.deps.structuredLog?.info({
-        event: 'budget_recomputed',
-        newBudgetKWh: snap.budget.dailyBudgetKWh,
-        actualKWh: snap.state.usedNowKWh,
-        remainingNewKWh: snap.state.remainingKWh,
-        exceeded: snap.state.exceeded,
-      });
+      if (params.emitStructuredEvent !== false) {
+        this.deps.structuredLog?.info({
+          event: 'budget_recomputed',
+          newBudgetKWh: snap.budget.dailyBudgetKWh,
+          actualKWh: snap.state.usedNowKWh,
+          remainingNewKWh: snap.state.remainingKWh,
+          exceeded: snap.state.exceeded,
+        });
+      }
       if (update.shouldPersist) {
         this.persistState();
       }
@@ -235,7 +238,7 @@ export class DailyBudgetService {
 
   getPeriodicStatusLog(): string | null {
     const nowMs = Date.now();
-    this.updateState({ nowMs, forcePlanRebuild: false });
+    this.updateState({ nowMs, forcePlanRebuild: false, emitStructuredEvent: false });
     const snapshot = this.getTodaySnapshot();
     if (!snapshot || !snapshot.budget.enabled) return null;
     const plannedKWh = snapshot.buckets?.plannedKWh ?? [];

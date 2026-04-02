@@ -203,7 +203,7 @@ or present requested state as confirmed reality.
       per-capability realtime subscriptions for control capabilities (`onoff`,
       `evcharger_charging`, `target_temperature`) on managed devices.
       Files: `deviceManager.ts`.
-- [ ] Fix `flushRealtimeDeviceReconcileQueue` attempt recording so when
+- [x] Fix `flushRealtimeDeviceReconcileQueue` attempt recording so when
       `shouldRecordAttempt` reports that no devices still drift after reconcile, PELS does not
       fall back to logging/recording all eligible devices or open the circuit breaker early.
       Files: `lib/app/appRealtimeDeviceReconcile.ts`, realtime reconcile tests.
@@ -211,7 +211,7 @@ or present requested state as confirmed reality.
       a temporary-unavailable state in logs/status instead of re-sending the same doomed command
       every cycle.
       Files: `lib/plan/planTargetControl.ts`, diagnostics/logging, tests.
-- [ ] Audit target confirmation semantics for temperature devices so
+- [x] Audit target confirmation semantics for temperature devices so
       "Target still waiting for confirmation" compares against the confirmed target/setpoint
       capability rather than observed room temperature.
       Files: `lib/plan/planTargetControl.ts`, target confirmation tests.
@@ -425,6 +425,9 @@ refactors.
       Files: `eslint.config.mjs`, `lib/plan/planShedding.ts`,
       `lib/dailyBudget/dailyBudgetAllocation.ts`, `lib/dailyBudget/dailyBudgetConfidence.ts`,
       `lib/dailyBudget/dailyBudgetMath.ts`, `lib/dailyBudget/dailyBudgetService.ts`.
+- [ ] Review whether our ECharts usage follows current best practices for sizing, resize handling,
+      lifecycle/disposal, and option update patterns before we add more chart complexity.
+      Files: `packages/settings-ui/src/ui/**`, chart helpers/tests, notes if new guidance is needed.
 - [ ] Expand hot-path iteration rules (`no-array-for-each`, `no-array-reduce`, loop allocation
       bans) from `lib/{core,plan,dailyBudget}` to the rest of runtime after violations are
       cleaned up.
