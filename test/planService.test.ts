@@ -34,6 +34,37 @@ const buildPlan = (
   ],
 });
 
+const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanService>[0]> = {}) => {
+  const deps = {
+    homey: {
+      settings: { set: jest.fn() },
+      api: { realtime: jest.fn().mockResolvedValue(undefined) },
+      flow: {},
+    } as any,
+    planEngine: {
+      buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(20, 'stable')),
+      computeDynamicSoftLimit: jest.fn(() => 0),
+      computeShortfallThreshold: jest.fn(() => 0),
+      handleShortfall: jest.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+      applyPlanActions: jest.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+    } as any,
+    getPlanDevices: () => [],
+    getCapacityDryRun: () => false,
+    isCurrentHourCheap: () => false,
+    isCurrentHourExpensive: () => false,
+    getCombinedPrices: () => null,
+    getLastPowerUpdate: () => null,
+    log: jest.fn(),
+    logDebug: jest.fn(),
+    error: jest.fn(),
+    ...overrides,
+  };
+
+  return { service: new PlanService(deps as ConstructorParameters<typeof PlanService>[0]), deps };
+};
+
 describe('PlanService', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -2118,6 +2149,85 @@ describe('PlanService', () => {
       queueDepth: 1,
     }));
     expect(trace.totalMs).toBeGreaterThanOrEqual(17);
+  });
+
+  it('suppresses structured rebuild logs for unchanged no-op rebuilds', async () => {
+    const structuredLog = { info: jest.fn() };
+    const { service } = createPlanService({
+      structuredLog: structuredLog as any,
+    });
+
+    await service.rebuildPlanFromCache('seed');
+    structuredLog.info.mockClear();
+
+    await service.rebuildPlanFromCache('power_delta');
+
+    expect(structuredLog.info).not.toHaveBeenCalled();
+  });
+
+  it('emits structured rebuild logs for initial rebuild reasons even without action changes', async () => {
+    const structuredLog = { info: jest.fn() };
+    const { service } = createPlanService({
+      structuredLog: structuredLog as any,
+    });
+
+    await service.rebuildPlanFromCache('seed');
+    structuredLog.info.mockClear();
+
+    await service.rebuildPlanFromCache('initial');
+
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_rebuild_completed',
+      reasonCode: 'initial',
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    }));
+  });
+
+  it('emits structured rebuild logs for slow rebuilds even without action changes', async () => {
+    const structuredLog = { info: jest.fn() };
+    const { service, deps } = createPlanService({
+      structuredLog: structuredLog as any,
+    });
+
+    await service.rebuildPlanFromCache('seed');
+    structuredLog.info.mockClear();
+    (deps.planEngine.buildDevicePlanSnapshot as jest.Mock).mockImplementation(async () => {
+      jest.advanceTimersByTime(1501);
+      return buildPlan(20, 'stable');
+    });
+
+    await service.rebuildPlanFromCache('power_delta');
+
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_rebuild_completed',
+      reasonCode: 'power_delta',
+      durationMs: expect.any(Number),
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    }));
+    expect((structuredLog.info.mock.calls[0]?.[0] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(1500);
+  });
+
+  it('emits structured rebuild logs for failed rebuilds', async () => {
+    const structuredLog = { info: jest.fn() };
+    const { service, deps } = createPlanService({
+      structuredLog: structuredLog as any,
+    });
+    (deps.planEngine.buildDevicePlanSnapshot as jest.Mock).mockImplementation(async () => {
+      jest.advanceTimersByTime(17);
+      throw new Error('plan exploded');
+    });
+
+    await service.rebuildPlanFromCache('power_delta');
+
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_rebuild_completed',
+      reasonCode: 'power_delta',
+      failed: true,
+    }));
   });
 
   it('calls schedulePostActuationRefresh after rebuild actuation', async () => {
