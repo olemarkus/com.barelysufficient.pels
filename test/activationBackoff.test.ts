@@ -1,6 +1,7 @@
 import { createPlanEngineState } from '../lib/plan/planState';
 import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
+  ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
   ACTIVATION_BACKOFF_STICK_WINDOW_MS,
   recordActivationAttemptStart,
   recordActivationSetback,
@@ -206,6 +207,98 @@ describe('activation backoff', () => {
     expect(result.restoredOneThisCycle).toBe(false);
     expect(result.planDevices[0]?.plannedState).toBe('shed');
     expect(result.planDevices[0]?.reason).toContain('insufficient headroom');
+  });
+
+  it('blocks restore for a cooldown window after a fresh activation setback', () => {
+    const state = createPlanEngineState();
+    const now = Date.now();
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: now - 30_000,
+    });
+    recordActivationSetback({
+      state,
+      deviceId: 'dev-1',
+      nowTs: now - 5_000,
+    });
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    expect(result.restoredOneThisCycle).toBe(false);
+    expect(result.planDevices[0]?.plannedState).toBe('shed');
+    expect(result.planDevices[0]?.reason).toContain('activation backoff');
+  });
+
+  it('allows restore again once the activation setback window expires', () => {
+    const state = createPlanEngineState();
+    const now = Date.now();
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 60_000,
+    });
+    recordActivationSetback({
+      state,
+      deviceId: 'dev-1',
+      nowTs: now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1_000,
+    });
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    expect(result.restoredOneThisCycle).toBe(true);
+    expect(result.restoredThisCycle.has('dev-1')).toBe(true);
+    expect(result.planDevices[0]?.plannedState).toBe('keep');
   });
 
   it('applies penalty level to the headroom flow decision after a failed tracked reactivation', () => {

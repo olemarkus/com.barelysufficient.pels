@@ -1,10 +1,12 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { RestoreTiming } from './planRestoreTiming';
 import type { SwapState } from './planSwapState';
+import type { PlanEngineState } from './planState';
 import { getInactiveReason, getSteppedRestoreCandidates } from './planRestoreDevices';
 import { resolveCapacityRestoreBlockReason } from './planRestoreGate';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
 
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -127,6 +129,38 @@ export function shouldBlockRestoreForPendingSwap(
     }
   }
   return false;
+}
+
+export function blockRestoreForRecentActivationSetback(params: {
+  deviceMap: Map<string, DevicePlanDevice>;
+  deviceId: string;
+  deviceName: string | undefined;
+  state: PlanEngineState;
+  logDebug: (...args: unknown[]) => void;
+  stepped: boolean;
+}): boolean {
+  const {
+    deviceMap,
+    deviceId,
+    deviceName,
+    state,
+    logDebug,
+    stepped,
+  } = params;
+  const remainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId });
+  if (remainingMs === null) return false;
+  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  const reason = `activation backoff (${remainingSeconds}s remaining)`;
+  if (stepped) {
+    setRestorePlanDevice(deviceMap, deviceId, { reason });
+  } else {
+    setRestorePlanDevice(deviceMap, deviceId, {
+      plannedState: 'shed',
+      reason,
+    });
+  }
+  logDebug(`Plan: blocking ${stepped ? 'stepped ' : ''}restore of ${deviceName} - ${reason}`);
+  return true;
 }
 
 function isTargetRestorePending(device: DevicePlanDevice): boolean {

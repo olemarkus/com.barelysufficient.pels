@@ -145,6 +145,7 @@ describe('PlanExecutor restore logging', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(nextState.activationAttemptByDevice['dev-1']).toEqual({
+      lastSetbackMs: expect.any(Number),
       penaltyLevel: 1,
     });
   });
@@ -588,6 +589,35 @@ describe('PlanExecutor stepped loads', () => {
       pendingWindowMs: expect.any(Number),
     });
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(state.lastRestoreMs).toEqual(expect.any(Number));
+  });
+
+  it('does not wait for stepped-load flow execution before completing apply', async () => {
+    const { executor, desiredSteppedTrigger, deps, state } = buildExecutor();
+    desiredSteppedTrigger.trigger.mockImplementation(() => new Promise<void>(() => {}));
+
+    const outcome = await Promise.race([
+      executor.applyPlanActions(steppedPlan()).then(() => 'resolved'),
+      new Promise<'pending'>((resolve) => {
+        setTimeout(() => resolve('pending'), 0);
+      }),
+    ]);
+
+    expect(outcome).toBe('resolved');
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+      step_id: 'max',
+      planning_power_w: 3000,
+      previous_step_id: 'low',
+    }, {
+      deviceId: 'dev-1',
+    });
+    expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: expect.any(Number),
+      pendingWindowMs: expect.any(Number),
+    });
     expect(state.lastRestoreMs).toEqual(expect.any(Number));
   });
 
