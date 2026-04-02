@@ -129,6 +129,26 @@ describe('PlanExecutor restore logging', () => {
     expect(nextState.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
 
+  it('records an activation setback when reconcile has to reapply a fresh restore attempt', async () => {
+    const state = createPlanEngineState();
+    const now = Date.now();
+    state.lastRestoreMs = now - 5_000;
+    state.lastDeviceRestoreMs['dev-1'] = now - 5_000;
+    state.activationAttemptByDevice['dev-1'] = {
+      startedMs: now - 5_000,
+      source: 'pels_restore',
+      stickReached: false,
+    };
+    const { executor, deviceManager, state: nextState } = buildExecutor(state);
+
+    await executor.applyPlanActions(buildPlan(), 'reconcile');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(nextState.activationAttemptByDevice['dev-1']).toEqual({
+      penaltyLevel: 1,
+    });
+  });
+
   it('logs restore from shed temperature as explicit capacity work', async () => {
     const state = createPlanEngineState();
     const { executor, deps, deviceManager } = buildExecutor(state, [

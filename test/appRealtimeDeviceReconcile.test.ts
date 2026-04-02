@@ -262,12 +262,11 @@ describe('appRealtimeDeviceReconcile', () => {
     }));
     expect(structuredLog.warn).toHaveBeenCalledWith({
       event: 'realtime_reconcile_applied',
+      deviceCount: 1,
       devices: [{
         deviceId: 'dev-2',
         deviceName: 'Heater 2',
         capabilityId: 'onoff',
-        planExpectation: undefined,
-        changes: undefined,
       }],
     });
   });

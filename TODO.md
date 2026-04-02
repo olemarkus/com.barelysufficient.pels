@@ -219,15 +219,23 @@ or present requested state as confirmed reality.
       send time. This should prevent double-spending headroom during pending restore convergence
       without relying on laggy per-device power telemetry.
       Files: restore/headroom/shedding logic, mixed restore/shedding tests.
-- [ ] Fix structured-log context leakage so unrelated events never inherit previous event payload
+- [x] Treat a reconcile re-restore as an activation setback when it immediately follows a fresh
+      restore attempt. A restore that drifts back off should increase the activation penalty before
+      PELS considers restoring the same device again.
+      Files: `lib/plan/planExecutor.ts`, restore logging/backoff tests.
+- [x] Fix structured-log context leakage so unrelated events never inherit previous event payload
       fields. Only explicit flow IDs such as `rebuildId` should propagate across async boundaries.
       Files: `lib/logging/logger.ts`, `lib/logging/alsContext.ts`, structured logging tests.
-- [ ] Reduce steady-state log volume so healthy operation stays within the normal log budget.
+- [x] Reduce steady-state log volume so healthy operation stays within the normal log budget.
       Suppress routine `budget_recomputed`, `device_snapshot_refresh_completed`, and no-op plan
       rebuild events, and fold healthy summary data into the existing periodic `:25` / `:55`
       status emission instead of separate routine event lines.
       Files: `lib/dailyBudget/dailyBudgetService.ts`, `lib/core/deviceManager.ts`,
       `lib/plan/planService.ts`, `app.ts`, logging/status tests.
+- [x] Keep default `realtime_reconcile_applied` logs compact. Preserve detailed drift payloads for
+      debug-only events, but keep the normal warning event bounded to per-device identifiers and
+      a count.
+      Files: `lib/app/appRealtimeDeviceReconcile.ts`, realtime reconcile tests.
 
 ## P1 Correctness, inefficiency, and cleanup follow-ups
 
