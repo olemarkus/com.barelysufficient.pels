@@ -1782,14 +1782,41 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).startPeriodicSnapshotRefresh();
 
     // Advance to :25 — should fire
-    jest.advanceTimersByTime(25 * 60 * 1000);
+    await jest.advanceTimersByTimeAsync(25 * 60 * 1000);
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenCalledTimes(1);
 
     // Advance to :55 — should fire again
-    jest.advanceTimersByTime(30 * 60 * 1000);
+    await jest.advanceTimersByTimeAsync(30 * 60 * 1000);
     expect(refreshSpy).toHaveBeenCalledTimes(2);
     expect(logSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('waits for periodic snapshot refresh completion before logging periodic status', async () => {
+    const app = createApp();
+    jest.spyOn(app as any, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
+
+    let resolveRefresh: (() => void) | undefined;
+    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
+      new Promise<void>((resolve) => { resolveRefresh = resolve; })
+    ));
+    const logSpy = jest.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
+    const rescheduleSpy = jest.spyOn(app as any, 'scheduleNextSnapshotRefresh');
+
+    (app as any).scheduleNextSnapshotRefresh();
+
+    jest.advanceTimersByTime(25 * 60 * 1000);
+    await Promise.resolve();
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(rescheduleSpy).toHaveBeenCalledTimes(1);
+
+    resolveRefresh?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledWith({ includeDeviceHealth: true });
+    expect(rescheduleSpy).toHaveBeenCalledTimes(2);
   });
 
   it('does not fire at other minutes', async () => {
@@ -1805,7 +1832,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).startPeriodicSnapshotRefresh();
 
     // Advance 10 minutes — no scheduled refresh
-    jest.advanceTimersByTime(10 * 60 * 1000);
+    await jest.advanceTimersByTimeAsync(10 * 60 * 1000);
     expect(refreshSpy).not.toHaveBeenCalled();
   });
 
@@ -1822,11 +1849,11 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).startPeriodicSnapshotRefresh();
 
     // Should not fire during remaining 4 minutes of the hour
-    jest.advanceTimersByTime(4 * 60 * 1000);
+    await jest.advanceTimersByTimeAsync(4 * 60 * 1000);
     expect(refreshSpy).not.toHaveBeenCalled();
 
     // Advance to next hour :25 (29 minutes from :56)
-    jest.advanceTimersByTime(25 * 60 * 1000);
+    await jest.advanceTimersByTimeAsync(25 * 60 * 1000);
     expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
 });

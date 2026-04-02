@@ -98,7 +98,7 @@ type ParsedDeviceSettings = Pick<
     'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt'
 >;
 
-type SnapshotRefreshMetrics = {
+export type SnapshotRefreshMetrics = {
     availableDevices: number;
     temperatureKnownDevices: number;
     temperatureUnknownDevices: number;
@@ -354,16 +354,12 @@ export class DeviceManager extends EventEmitter {
         }
     }
 
-    getPeriodicStatusLog(): string | null {
+    getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {
         if (this.latestSnapshot.length === 0) return null;
-        const metrics = summarizeSnapshotRefreshMetrics(this.latestSnapshot);
-        return (
-            `Devices: total=${this.latestSnapshot.length}, `
-            + `available=${metrics.availableDevices}, `
-            + `tempKnown=${metrics.temperatureKnownDevices}, `
-            + `tempUnknown=${metrics.temperatureUnknownDevices}, `
-            + `unavailable=${metrics.unavailableDevices}`
-        );
+        return {
+            devicesTotal: this.latestSnapshot.length,
+            ...summarizeSnapshotRefreshMetrics(this.latestSnapshot),
+        };
     }
 
     private shouldEmitSnapshotRefreshLog(
