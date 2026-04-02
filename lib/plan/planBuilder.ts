@@ -30,6 +30,8 @@ import {
   getCurrentHourKWh,
   resolveDailySoftLimitBucket,
 } from './planDailyBudgetWindow';
+import { recordActivationSetback } from './planActivationBackoff';
+import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
 
 export type PlanBuilderDeps = {
   homey: Homey.App['homey'];
@@ -212,6 +214,7 @@ export class PlanBuilder {
       this.state.overshootStartedMs = Date.now();
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
+      this.attributeOvershootToRecentRestores();
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.deps.log('Recovered from capacity overshoot.');
       this.state.overshootLogged = false;
@@ -222,6 +225,24 @@ export class PlanBuilder {
       this.state.overshootStartedMs = Date.now();
     }
     this.state.wasOvershoot = overshootActive;
+  }
+
+  private attributeOvershootToRecentRestores(): void {
+    const nowTs = Date.now();
+    for (const [deviceId, restoreMs] of Object.entries(this.state.lastDeviceRestoreMs)) {
+      if (nowTs - restoreMs > OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS) continue;
+      const result = recordActivationSetback({ state: this.state, deviceId, nowTs });
+      if (result.bumped) {
+        const ageSec = Math.round((nowTs - restoreMs) / 1000);
+        this.deps.log(
+          `Overshoot attributed to ${deviceId} restored ${ageSec}s ago`
+          + ` (penalty L${result.penaltyLevel})`,
+        );
+        if (result.transition && this.deps.deviceDiagnostics) {
+          this.deps.deviceDiagnostics.recordActivationTransition(result.transition, { name: deviceId });
+        }
+      }
+    }
   }
 
   private buildPlanDevices(context: PlanContext, sheddingPlan: SheddingPlan): DevicePlanDevice[] {
