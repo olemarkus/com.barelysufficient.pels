@@ -95,6 +95,7 @@ const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
 const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
+const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
@@ -453,11 +454,13 @@ class PelsApp extends Homey.App {
       },
       syncLivePlanStateAfterTargetActuation: (source) => this.planService?.syncLivePlanStateInline(source) ?? false,
       deviceDiagnostics: this.deviceDiagnosticsService,
+      structuredLog: this.getStructuredLogger('plan'),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
       error: (...args: unknown[]) => this.error(...args),
     };
     this.planEngine = createPlanEngine(deps);
+    this.planEngine.beginStartupRestoreStabilization(STARTUP_RESTORE_STABILIZATION_MS);
   }
   private initDeviceDiagnosticsService(): void {
     this.deviceDiagnosticsService = createDeviceDiagnosticsService({
@@ -759,6 +762,7 @@ class PelsApp extends Homey.App {
   }
   private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
     const sampleStart = Date.now();
+    const previousSampleTs = this.powerTracker.lastTimestamp;
     try {
       await recordPowerSampleForApp({
         currentPowerW,
@@ -787,6 +791,9 @@ class PelsApp extends Homey.App {
         }),
         saveState: (state) => this.savePowerTracker(state),
       });
+      if (previousSampleTs === undefined || nowMs > previousSampleTs) {
+        this.planEngine.clearStartupRestoreStabilization();
+      }
     } finally {
       addPerfDuration('power_sample_ms', Date.now() - sampleStart);
       incPerfCounter('power_sample_total');

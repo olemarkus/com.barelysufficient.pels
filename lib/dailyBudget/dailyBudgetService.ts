@@ -31,6 +31,7 @@ import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../utils/debugLogging';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
+import { resolveUsableCapacityBudgetKWh } from '../core/capacityModel';
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
@@ -128,7 +129,7 @@ export class DailyBudgetService {
     const timeZone = this.resolveTimeZone();
     const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
     const capacity = this.deps.getCapacitySettings();
-    const capacityBudgetKWh = Math.max(0, capacity.limitKw);
+    const capacityBudgetKWh = resolveUsableCapacityBudgetKWh(capacity);
     try {
       const update = this.manager.update({
         nowMs,
@@ -184,7 +185,7 @@ export class DailyBudgetService {
       const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
       const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
       const capacity = this.deps.getCapacitySettings();
-      const capacityBudgetKWh = Math.max(0, capacity.limitKw);
+      const capacityBudgetKWh = resolveUsableCapacityBudgetKWh(capacity);
       return this.manager.buildPreview({
         dayStartUtcMs: tomorrowStartUtcMs,
         timeZone,

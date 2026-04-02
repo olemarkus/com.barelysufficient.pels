@@ -22,6 +22,7 @@ import {
 } from './planTargetControl';
 import { syncPendingBinaryCommands } from './planBinaryControl';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
+import type { Logger as PinoLogger } from '../logging/logger';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -52,6 +53,7 @@ export type PlanEngineDeps = {
   }) => Promise<void> | void;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
+  structuredLog?: PinoLogger;
   updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
@@ -96,6 +98,7 @@ export class PlanEngine {
       getShedBehavior: deps.getShedBehavior,
       getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
       deviceDiagnostics: deps.deviceDiagnostics,
+      structuredLog: deps.structuredLog,
       log: deps.log,
       logDebug: deps.logDebug,
     };
@@ -257,5 +260,15 @@ export class PlanEngine {
 
   public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
     return this.executor.applySheddingToDevice(deviceId, deviceName, reason);
+  }
+
+  public beginStartupRestoreStabilization(durationMs = 60_000, nowTs = Date.now()): void {
+    this.state.startupRestoreBlockedUntilMs = nowTs + Math.max(0, durationMs);
+  }
+
+  public clearStartupRestoreStabilization(): boolean {
+    if (this.state.startupRestoreBlockedUntilMs === null) return false;
+    this.state.startupRestoreBlockedUntilMs = null;
+    return true;
   }
 }

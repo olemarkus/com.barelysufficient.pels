@@ -75,6 +75,7 @@ export type PlanEngineInitApp = {
   }) => Promise<void> | void;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
+  structuredLog?: PinoLogger;
   log: (...args: unknown[]) => void;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -103,6 +104,7 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
     logTargetRetryComparison: (params) => app.logTargetRetryComparison?.(params),
     syncLivePlanStateAfterTargetActuation: (source) => app.syncLivePlanStateAfterTargetActuation?.(source),
     deviceDiagnostics: app.deviceDiagnostics,
+    structuredLog: app.structuredLog?.child({ component: 'plan' }),
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug('plan', ...args),
     error: (...args: unknown[]) => app.error(...args),

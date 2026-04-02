@@ -30,6 +30,8 @@ node_modules/
 
 # Claude Code
 /.claude/
+/.codex/
+/.codex
 
 # VitePress docs build output
 /docs/.vitepress/dist/

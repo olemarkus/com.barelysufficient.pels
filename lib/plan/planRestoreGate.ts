@@ -2,9 +2,11 @@ export type CapacityRestoreGateTiming = {
   activeOvershoot: boolean;
   inCooldown: boolean;
   inRestoreCooldown: boolean;
+  inStartupStabilization: boolean;
   restoreCooldownSeconds: number;
   shedCooldownRemainingSec: number | null;
   restoreCooldownRemainingSec: number | null;
+  startupStabilizationRemainingSec: number | null;
 };
 
 export function resolveCapacityRestoreBlockReason(params: {
@@ -20,6 +22,9 @@ export function resolveCapacityRestoreBlockReason(params: {
     useThrottleLabel = false,
   } = params;
 
+  if (timing.inStartupStabilization) {
+    return 'startup stabilization';
+  }
   if (timing.inCooldown && !timing.activeOvershoot) {
     return `cooldown (shedding, ${timing.shedCooldownRemainingSec ?? 0}s remaining)`;
   }

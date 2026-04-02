@@ -669,4 +669,149 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.reason).toBe('cooldown (restore, 55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
+
+  it('blocks binary restores during startup stabilization', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.startupRestoreBlockedUntilMs = now + 60_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Startup Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-off');
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.reason).toBe('startup stabilization');
+  });
+
+  it('blocks stepped restore during startup stabilization', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.startupRestoreBlockedUntilMs = now + 60_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Startup Tank',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 0,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-step');
+    expect(device?.desiredStepId).toBe('low');
+    expect(device?.reason).toBe('startup stabilization');
+  });
+
+  it('does not block non-capacity restores during startup stabilization', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.startupRestoreBlockedUntilMs = now + 60_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Budget Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+        softLimitSource: 'daily',
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-off');
+    expect(device?.plannedState).toBe('keep');
+    expect(device?.reason).not.toBe('startup stabilization');
+  });
+
+  it('returns effective timing for non-capacity restores during startup stabilization', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.startupRestoreBlockedUntilMs = now + 60_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Budget Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+        softLimitSource: 'daily',
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 15, stepId: null }),
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    });
+
+    expect(result.inStartupStabilization).toBe(false);
+    expect(result.inShedWindow).toBe(false);
+  });
 });

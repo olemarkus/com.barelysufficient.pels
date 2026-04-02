@@ -12,10 +12,12 @@ import { getShedCooldownState } from './planTiming';
 export type RestoreTiming = {
   inCooldown: boolean;
   inRestoreCooldown: boolean;
+  inStartupStabilization: boolean;
   activeOvershoot: boolean;
   restoreCooldownSeconds: number;
   shedCooldownRemainingSec: number | null;
   restoreCooldownRemainingSec: number | null;
+  startupStabilizationRemainingSec: number | null;
   inShedWindow: boolean;
   measurementTs: number | null;
   nowTs: number;
@@ -46,6 +48,10 @@ export const buildRestoreTiming = (
   const cooldownRemainingMs = cooldown.cooldownRemainingMs;
   const inCooldown = cooldown.inCooldown;
   const inRestoreCooldown = sinceRestore !== null && sinceRestore < cooldownState.restoreCooldownMs;
+  const startupBlockRemainingMs = typeof state.startupRestoreBlockedUntilMs === 'number'
+    ? Math.max(0, state.startupRestoreBlockedUntilMs - nowTs)
+    : null;
+  const inStartupStabilization = startupBlockRemainingMs !== null && startupBlockRemainingMs > 0;
   const activeOvershoot = headroomRaw !== null && headroomRaw < 0;
   const restoreCooldownSeconds = sinceRestore !== null
     ? Math.max(0, Math.ceil((cooldownState.restoreCooldownMs - sinceRestore) / 1000))
@@ -57,15 +63,20 @@ export const buildRestoreTiming = (
   const restoreCooldownRemainingSec = restoreCooldownRemainingMs !== null
     ? Math.ceil(restoreCooldownRemainingMs / 1000)
     : null;
-  const inShedWindow = inCooldown || activeOvershoot || inRestoreCooldown;
+  const startupStabilizationRemainingSec = startupBlockRemainingMs !== null
+    ? Math.ceil(startupBlockRemainingMs / 1000)
+    : null;
+  const inShedWindow = inCooldown || activeOvershoot || inRestoreCooldown || inStartupStabilization;
 
   return {
     inCooldown,
     inRestoreCooldown,
+    inStartupStabilization,
     activeOvershoot,
     restoreCooldownSeconds,
     shedCooldownRemainingSec,
     restoreCooldownRemainingSec,
+    startupStabilizationRemainingSec,
     inShedWindow,
     measurementTs,
     nowTs,
@@ -76,8 +87,14 @@ export const buildRestoreTiming = (
 export const shouldPlanRestores = (
   headroomRaw: number | null,
   sheddingActive: boolean,
-  timing: Pick<RestoreTiming, 'inCooldown' | 'inRestoreCooldown'>,
-): boolean => headroomRaw !== null && !sheddingActive && !timing.inCooldown && !timing.inRestoreCooldown;
+  timing: Pick<RestoreTiming, 'inCooldown' | 'inRestoreCooldown' | 'inStartupStabilization'>,
+): boolean => (
+  headroomRaw !== null
+  && !sheddingActive
+  && !timing.inCooldown
+  && !timing.inRestoreCooldown
+  && !timing.inStartupStabilization
+);
 
 const resolveRestoreCooldown = (
   state: PlanEngineState,

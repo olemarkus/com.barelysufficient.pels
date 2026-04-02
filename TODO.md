@@ -227,6 +227,15 @@ or present requested state as confirmed reality.
       that immediately drifts back off is not considered again on the next headroom-positive cycle
       just because global headroom still looks good.
       Files: `lib/plan/planRestore.ts`, `lib/plan/planActivationBackoff.ts`, restore tests.
+- [x] Gate capacity-driven restore/upward actuation during startup stabilization until the first
+      fresh power sample arrives or the startup window expires. Protective shedding must still
+      remain available immediately at startup.
+      Files: `app.ts`, `lib/app/appInit.ts`, `lib/plan/planEngine.ts`,
+      `lib/plan/planRestore*.ts`, restore tests.
+- [x] Allow one additional overshoot mitigation pass after 30 seconds of sustained overshoot even
+      without a new power sample, and rate-limit that escalation per incident so danger-zone
+      control does not wait forever on stale measurements.
+      Files: `lib/plan/planBuilder.ts`, `lib/plan/planShedding*.ts`, shedding tests.
 - [x] Stop awaiting `desired_stepped_load_changed` flow execution inside the plan apply path.
       Stepped-load flow handlers may run slowly, but they should not hold `planRebuildApply`
       open or delay danger-zone protection decisions.
@@ -272,13 +281,13 @@ refactors.
 - [ ] Pick one source of truth for the controlled vs uncontrolled power split. Today the plan
       builder and `PowerTracker` compute it independently and can drift.
       Files: `powerTracker.ts`, `planBuilder.ts`, `planUsage.ts`.
-- [ ] Make planner and guard use the same soft-limit model. The dynamic plan budget limit and the
+- [x] Make planner and guard use the same soft-limit model. The dynamic plan budget limit and the
       guard's static margin should not produce different headroom answers at the same time. In
       particular, daily-budget hourly bucket caps should not be allowed to plan up to raw
       `limitKw` when runtime capacity control uses `limitKw - marginKw` as the usable hourly
       budget.
       Files: `planBudget.ts`, `capacityGuard.ts`, `planContext.ts`.
-- [ ] Add hysteresis to shedding active state so power oscillation near the limit does not flip
+- [x] Add hysteresis to shedding active state so power oscillation near the limit does not flip
       shed/restore state every few seconds.
       Files: `capacityGuard.ts`, `planSheddingGuard.ts`.
 
@@ -366,7 +375,7 @@ refactors.
 
 ## P2 Product and test follow-ups
 
-- [ ] Clarify periodic status output so the current soft limit in kW and the hourly hard-cap usage
+- [x] Clarify periodic status output so the current soft limit in kW and the hourly hard-cap usage
       budget in kWh are labeled distinctly. The current `limit=` plus `used=X/YkWh` format is easy
       to misread as one infeasible target instead of two separate constraints.
       Files: `lib/core/periodicStatus.ts`, status tests / notes.

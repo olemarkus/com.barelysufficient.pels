@@ -696,12 +696,12 @@ describe('Device plan snapshot', () => {
     // Move past cooldown and provide ample headroom so device should restore.
     (app as any).planEngine.state.lastInstabilityMs = Date.now() - 180000; // cooldown expired
     (app as any).planEngine.state.lastRecoveryMs = Date.now() - 180000;
-    // Deactivate the guard so the next cycle doesn't trigger a fresh recovery transition.
-    await (app as any).capacityGuard?.setSheddingActive(false);
     (app as any).computeDynamicSoftLimit = () => 5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
+    // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
+    await (app as any).capacityGuard?.setSheddingActive(false);
 
     await (app as any).recordPowerSample(500);
 

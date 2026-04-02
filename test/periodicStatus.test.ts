@@ -33,18 +33,48 @@ describe('periodic status used kWh', () => {
     const log = buildPeriodicStatusLog({
       capacityGuard: undefined,
       powerTracker: state,
-      capacitySettings: { limitKw: 7 },
+      capacitySettings: { limitKw: 7, marginKw: 0.5 },
       operatingMode: 'Home',
       capacityDryRun: false,
     });
     nowSpy.mockRestore();
 
-    expect(log).toContain('used=0.75/7.0kWh');
+    expect(log).toContain('softLimit=6.50kW');
+    expect(log).toContain('used=0.75kWh');
+    expect(log).toContain('hourBudget=6.5kWh');
   });
 
   it('uses UTC hour bucket for usage', () => {
     const nowMs = Date.UTC(2025, 0, 1, 12, 5, 0);
     const bucketKey = getHourBucketKey(nowMs);
     expect(bucketKey).toBe('2025-01-01T12:00:00.000Z');
+  });
+
+  it('labels soft limit separately from hourly usage budget', () => {
+    const nowMs = Date.UTC(2025, 0, 1, 10, 55, 0);
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const log = buildPeriodicStatusLog({
+      capacityGuard: {
+        getLastTotalPower: () => 2.48,
+        getSoftLimit: () => 4,
+        getHeadroom: () => 1.52,
+        isSheddingActive: () => false,
+        isInShortfall: () => false,
+      } as any,
+      powerTracker: {
+        buckets: {
+          [getHourBucketKey(nowMs)]: 2.52,
+        },
+      },
+      capacitySettings: { limitKw: 5, marginKw: 1 },
+      operatingMode: 'Home',
+      capacityDryRun: false,
+    });
+    nowSpy.mockRestore();
+
+    expect(log).toContain('softLimit=4.00kW');
+    expect(log).toContain('used=2.52kWh');
+    expect(log).toContain('hourBudget=4.0kWh');
+    expect(log).not.toContain('/5.0kWh');
   });
 });

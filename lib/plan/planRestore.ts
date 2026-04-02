@@ -84,13 +84,22 @@ export function applyRestorePlan(params: {
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapState = buildSwapState(state);
   const timing = buildRestoreTiming(state, context.headroomRaw, deps.powerTracker);
+  const capacityStartupStabilization = timing.inStartupStabilization && context.softLimitSource === 'capacity';
+  const effectiveTiming = capacityStartupStabilization
+    ? timing
+    : {
+      ...timing,
+      inStartupStabilization: false as const,
+      startupStabilizationRemainingSec: null,
+      inShedWindow: timing.inCooldown || timing.activeOvershoot || timing.inRestoreCooldown,
+    };
   cleanupStaleSwaps(deviceMap, swapState, deps.log);
 
   const restoredThisCycle = new Set<string>();
   let availableHeadroom = context.headroomRaw !== null ? context.headroomRaw : 0;
   let restoredOneThisCycle = false;
 
-  if (shouldPlanRestores(context.headroomRaw, sheddingActive, timing)) {
+  if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {
     const snapshot = Array.from(deviceMap.values());
     const offDevices = getOffDevices(snapshot);
     const onDevices = getOnDevices(snapshot, deps.getShedBehavior);
@@ -101,7 +110,7 @@ export function applyRestorePlan(params: {
         onDevices,
         swapState,
         state,
-        timing,
+        timing: effectiveTiming,
         availableHeadroom,
         restoredThisCycle,
         restoredOneThisCycle,
@@ -117,7 +126,7 @@ export function applyRestorePlan(params: {
         dev,
         deviceMap,
         state,
-        timing,
+        timing: effectiveTiming,
         availableHeadroom,
         restoredOneThisCycle,
         logDebug: deps.logDebug,
@@ -136,16 +145,21 @@ export function applyRestorePlan(params: {
         return `insufficient headroom (need ${needed.toFixed(2)}kW, headroom unknown)`;
       },
     });
-  } else if (sheddingActive || timing.inCooldown || timing.inRestoreCooldown) {
+  } else if (
+    sheddingActive
+    || timing.inCooldown
+    || timing.inRestoreCooldown
+    || effectiveTiming.inStartupStabilization
+  ) {
     markOffDevicesStayOff({
       deviceMap,
-      timing,
+      timing: effectiveTiming,
       logDebug: deps.logDebug,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
     });
     markSteppedDevicesStayAtCurrentLevel({
       deviceMap,
-      timing,
+      timing: effectiveTiming,
       logDebug: deps.logDebug,
     });
   }
@@ -156,7 +170,7 @@ export function applyRestorePlan(params: {
     restoredThisCycle,
     availableHeadroom,
     restoredOneThisCycle,
-    ...timing,
+    ...effectiveTiming,
   };
 }
 
@@ -168,9 +182,11 @@ function planRestoreForSteppedDevice(params: {
   | 'activeOvershoot'
   | 'inCooldown'
   | 'inRestoreCooldown'
+  | 'inStartupStabilization'
   | 'restoreCooldownSeconds'
   | 'shedCooldownRemainingSec'
-  | 'restoreCooldownRemainingSec'>;
+  | 'restoreCooldownRemainingSec'
+  | 'startupStabilizationRemainingSec'>;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   logDebug: (...args: unknown[]) => void;
@@ -267,10 +283,12 @@ function planRestoreForDevice(params: {
   | 'activeOvershoot'
   | 'inCooldown'
   | 'inRestoreCooldown'
+  | 'inStartupStabilization'
   | 'measurementTs'
   | 'restoreCooldownSeconds'
   | 'shedCooldownRemainingSec'
-  | 'restoreCooldownRemainingSec'>;
+  | 'restoreCooldownRemainingSec'
+  | 'startupStabilizationRemainingSec'>;
   availableHeadroom: number;
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;

@@ -1,26 +1,29 @@
 import type CapacityGuard from './capacityGuard';
+import { resolveCapacitySoftLimitKw, resolveUsableCapacityBudgetKWh } from './capacityModel';
 import type { PowerTrackerState } from './powerTracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 
 export function buildPeriodicStatusLog(params: {
   capacityGuard?: CapacityGuard;
   powerTracker: PowerTrackerState;
-  capacitySettings: { limitKw: number };
+  capacitySettings: { limitKw: number; marginKw: number };
   operatingMode: string;
   capacityDryRun: boolean;
 }): string {
   const { capacityGuard, powerTracker, capacitySettings, operatingMode, capacityDryRun } = params;
   const total = capacityGuard?.getLastTotalPower() ?? null;
-  const softLimit = capacityGuard?.getSoftLimit() ?? capacitySettings.limitKw;
+  const softLimit = capacityGuard?.getSoftLimit() ?? resolveCapacitySoftLimitKw(capacitySettings);
+  const hourBudgetKWh = resolveUsableCapacityBudgetKWh(capacitySettings);
   const headroom = capacityGuard?.getHeadroom() ?? null;
   const sheddingActive = capacityGuard?.isSheddingActive() ?? false;
   const inShortfall = capacityGuard?.isInShortfall() ?? false;
   const usage = getCurrentHourUsage(powerTracker);
   const parts = [
     formatPowerPart(total),
-    `limit=${softLimit.toFixed(2)}kW`,
+    `softLimit=${softLimit.toFixed(2)}kW`,
     formatHeadroomPart(headroom),
-    `used=${usage.usedKWh.toFixed(2)}/${capacitySettings.limitKw.toFixed(1)}kWh`,
+    `used=${usage.usedKWh.toFixed(2)}kWh`,
+    `hourBudget=${hourBudgetKWh.toFixed(1)}kWh`,
     sheddingActive ? 'SHEDDING' : null,
     inShortfall ? 'SHORTFALL' : null,
     `mode=${operatingMode}`,

@@ -88,8 +88,10 @@ export function markOffDevicesStayOff(params: {
   timing: {
     activeOvershoot: boolean;
     inCooldown: boolean;
+    inStartupStabilization: boolean;
     restoreCooldownSeconds: number;
     shedCooldownRemainingSec: number | null;
+    startupStabilizationRemainingSec: number | null;
   };
   logDebug: (...args: unknown[]) => void;
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
@@ -146,11 +148,14 @@ function resolveOffDeviceReason(
   timing: {
     activeOvershoot: boolean;
     inCooldown: boolean;
+    inStartupStabilization: boolean;
     restoreCooldownSeconds: number;
     shedCooldownRemainingSec: number | null;
+    startupStabilizationRemainingSec: number | null;
   },
   defaultReason: string,
 ): string {
+  if (timing.inStartupStabilization) return 'startup stabilization';
   if (timing.activeOvershoot) return defaultReason;
   if (timing.inCooldown) {
     const seconds = timing.shedCooldownRemainingSec ?? 0;
