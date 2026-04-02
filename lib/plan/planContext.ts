@@ -1,5 +1,5 @@
 import CapacityGuard from '../core/capacityGuard';
-import { resolveUsableCapacityBudgetKWh } from '../core/capacityModel';
+import { resolveUsableCapacityKw } from '../core/capacityModel';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { getCurrentHourContext } from './planHourContext';
 import type { PlanInputDevice } from './planTypes';
@@ -62,7 +62,7 @@ export function buildPlanContext(params: {
   const total = capacityGuard ? capacityGuard.getLastTotalPower() : null;
 
   // Compute used/budget kWh for this hour
-  const budgetKWh = resolveUsableCapacityBudgetKWh(capacitySettings);
+  const budgetKWh = resolveUsableCapacityKw(capacitySettings);
   const now = Date.now();
   const hourContext = getCurrentHourContext(powerTracker, now);
   const usedKWh = hourContext.usedKWh;
