@@ -332,6 +332,7 @@ function buildTemperatureCandidate(params: {
   if (power === null || power <= 0) return null;
   const pending = pendingTargetCommands[device.id];
   const unconfirmedRelief = pending !== undefined
+    && pending.status === 'waiting_confirmation'
     && pending.capabilityId === targetCapabilityId
     && pending.desired === shedTemperature;
   return {
