@@ -34,8 +34,7 @@ const resolveChartSize = (element: HTMLElement) => {
   const fallbackWidth = viewportWidth > 0
     ? Math.min(DEFAULT_CHART_WIDTH, viewportWidth)
     : DEFAULT_CHART_WIDTH;
-  const height = element.clientHeight > 0 ? element.clientHeight : DEFAULT_CHART_HEIGHT;
-  return { width: width > 0 ? width : fallbackWidth, height };
+  return { width: width > 0 ? width : fallbackWidth, height: DEFAULT_CHART_HEIGHT };
 };
 
 const HEATMAP_COLOR_LOW = '#64B5F6';
@@ -68,6 +67,8 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
 
   disposePowerWeekChart();
   container.replaceChildren();
+  container.style.height = `${DEFAULT_CHART_HEIGHT}px`;
+  container.style.minHeight = `${DEFAULT_CHART_HEIGHT}px`;
 
   plot = initEcharts(container, undefined, {
     renderer: 'svg',

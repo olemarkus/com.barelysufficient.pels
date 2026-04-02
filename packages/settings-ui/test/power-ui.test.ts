@@ -135,6 +135,7 @@ describe('power page stats (buckets-only)', () => {
     renderPowerUsage(entries);
     const powerList = document.querySelector('#power-list') as HTMLElement;
     expect(powerList.querySelector('svg')).not.toBeNull();
+    expect(powerList.style.height).toBe('240px');
     jest.restoreAllMocks();
   });
 
