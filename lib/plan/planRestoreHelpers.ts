@@ -24,9 +24,11 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   | 'activeOvershoot'
   | 'inCooldown'
   | 'inRestoreCooldown'
+  | 'inStartupStabilization'
   | 'restoreCooldownSeconds'
   | 'shedCooldownRemainingSec'
-  | 'restoreCooldownRemainingSec'>;
+  | 'restoreCooldownRemainingSec'
+  | 'startupStabilizationRemainingSec'>;
   logDebug: (...args: unknown[]) => void;
 }): void {
   const {

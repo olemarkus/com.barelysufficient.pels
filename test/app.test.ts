@@ -585,6 +585,27 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('only clears startup stabilization when a power sample advances the tracked timestamp', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp({ preserveStartupRestoreStabilization: true });
+    await initApp(app);
+    await waitForSnapshot();
+
+    const clearSpy = jest.spyOn((app as any).planEngine, 'clearStartupRestoreStabilization');
+    const baseTs = new Date('2026-03-03T10:20:00.000Z').getTime();
+
+    (app as any).powerTracker.lastTimestamp = baseTs;
+    await (app as any).recordPowerSample(2000, baseTs);
+    expect(clearSpy).not.toHaveBeenCalled();
+
+    await (app as any).recordPowerSample(2100, baseTs + 1000);
+    expect(clearSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('reconciles the current plan after an external target drift without rebuilding', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('measure_temperature', 21);

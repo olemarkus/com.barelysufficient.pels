@@ -1,4 +1,4 @@
-import type CapacityGuard from '../lib/core/capacityGuard';
+import CapacityGuard from '../lib/core/capacityGuard';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PlanContext } from '../lib/plan/planContext';
 import { createPlanEngineState } from '../lib/plan/planState';
@@ -2171,10 +2171,13 @@ describe('buildSheddingPlan', () => {
 
   it('emits lastRecoveryMs when guard transitions from active to inactive', async () => {
     const state = createPlanEngineState();
+    let sheddingActive = true;
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(true),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      isSheddingActive: jest.fn().mockImplementation(() => sheddingActive),
+      setSheddingActive: jest.fn().mockImplementation(async (active: boolean) => {
+        sheddingActive = active;
+      }),
       checkShortfall: jest.fn().mockResolvedValue(undefined),
       isInShortfall: jest.fn().mockReturnValue(false),
       getRestoreMargin: jest.fn().mockReturnValue(0.2),
@@ -2385,5 +2388,410 @@ describe('buildSheddingPlan', () => {
 
     // Binary device should now shed (highest priority among non-preemptive candidates).
     expect(result3.shedSet.has('binary-dev')).toBe(true);
+  });
+
+  it('allows one additional shedding pass after sustained overshoot even without a new measurement', async () => {
+    const state = createPlanEngineState();
+    state.overshootStartedMs = Date.now() - 31_000;
+    state.lastShedPlanMeasurementTs = 500;
+
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(true),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      getCurrentIncidentId: jest.fn().mockReturnValue('inc-1'),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'dev-escalate',
+            name: 'Escalate',
+            expectedPowerKw: 0.8,
+            currentOn: true,
+            controllable: true,
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('dev-escalate')).toBe(true);
+    expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
+  });
+
+  it('does not escalate same-sample overshoot before the escalation interval elapses', async () => {
+    const state = createPlanEngineState();
+    state.overshootStartedMs = Date.now() - 10_000;
+    state.lastShedPlanMeasurementTs = 500;
+
+    const logDebug = jest.fn();
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(true),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'dev-wait',
+            name: 'Wait',
+            expectedPowerKw: 0.8,
+            currentOn: true,
+            controllable: true,
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug,
+      },
+    );
+
+    expect(result.shedSet.size).toBe(0);
+    expect(result.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(logDebug).toHaveBeenCalledWith('Plan: skipping additional shedding until a new power measurement arrives');
+  });
+
+  it('emits a bounded blocker event when sustained overshoot escalation has no candidates left', async () => {
+    const state = createPlanEngineState();
+    state.overshootStartedMs = Date.now() - 31_000;
+    state.lastShedPlanMeasurementTs = 500;
+
+    const structuredLog = {
+      warn: jest.fn(),
+    };
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(true),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      getCurrentIncidentId: jest.fn().mockReturnValue('inc-77'),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'dev-at-temp',
+            name: 'AtTemp',
+            currentOn: true,
+            controllable: true,
+            expectedPowerKw: 0.8,
+            targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+        structuredLog: structuredLog as any,
+      },
+    );
+
+    expect(result.shedSet.size).toBe(0);
+    expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
+    expect(structuredLog.warn).toHaveBeenCalledWith({
+      event: 'capacity_overshoot_escalation_blocked',
+      incidentId: 'inc-77',
+      reasonCode: 'no_candidates',
+      neededKw: 0.8,
+      remainingCandidates: 0,
+      measurementAgeMs: Date.now() - 500,
+    });
+  });
+
+  it('does not emit an escalation blocker event when there are no controllable devices at all', async () => {
+    const state = createPlanEngineState();
+    state.overshootStartedMs = Date.now() - 31_000;
+    state.lastShedPlanMeasurementTs = 500;
+
+    const structuredLog = {
+      warn: jest.fn(),
+    };
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(true),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      getCurrentIncidentId: jest.fn().mockReturnValue('inc-88'),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'dev-unmanaged',
+            name: 'Unmanaged',
+            expectedPowerKw: 0.8,
+            currentOn: true,
+            controllable: false,
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+        structuredLog: structuredLog as any,
+      },
+    );
+
+    expect(result.shedSet.size).toBe(0);
+    expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
+    expect(structuredLog.warn).not.toHaveBeenCalled();
+  });
+
+  it('does not escalate same-sample daily-budget shedding after the overshoot interval', async () => {
+    const state = createPlanEngineState();
+    state.overshootStartedMs = Date.now() - 31_000;
+    state.lastShedPlanMeasurementTs = 500;
+
+    const logDebug = jest.fn();
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(true),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'dev-daily',
+            name: 'Daily',
+            expectedPowerKw: 0.8,
+            currentOn: true,
+            controllable: true,
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 5,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'daily',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug,
+      },
+    );
+
+    expect(result.shedSet.size).toBe(0);
+    expect(result.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(logDebug).toHaveBeenCalledWith('Plan: skipping additional shedding until a new power measurement arrives');
+  });
+
+  it('does escalate same-sample shedding after the interval when capacity is breached under a tighter daily limit', async () => {
+    const state = createPlanEngineState();
+    state.overshootStartedMs = Date.now() - 31_000;
+    state.lastShedPlanMeasurementTs = 500;
+
+    const logDebug = jest.fn();
+    const capacityGuard = {
+      isSheddingActive: jest.fn().mockReturnValue(true),
+      setSheddingActive: jest.fn().mockResolvedValue(undefined),
+      checkShortfall: jest.fn().mockResolvedValue(undefined),
+      isInShortfall: jest.fn().mockReturnValue(false),
+      getShortfallThreshold: jest.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'dev-cap',
+            name: 'Capacity Device',
+            expectedPowerKw: 0.8,
+            currentOn: true,
+            controllable: true,
+          }),
+        ],
+        total: 5.2,
+        softLimit: 4,
+        capacitySoftLimit: 5,
+        headroomRaw: -1.2,
+        headroom: -1.2,
+        softLimitSource: 'daily',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug,
+      },
+    );
+
+    expect(result.shedSet.has('dev-cap')).toBe(true);
+    expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
+    expect(logDebug).toHaveBeenCalledWith('Plan: escalating overshoot despite unchanged power measurement');
+  });
+
+  it('keeps shedding active until headroom clears the restore margin plus hysteresis', async () => {
+    const guard = new CapacityGuard({
+      limitKw: 4,
+      softMarginKw: 0,
+      restoreMarginKw: 0.2,
+    });
+    guard.reportTotalPower(3.65);
+    await guard.setSheddingActive(true);
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [],
+        total: 3.65,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: 0.35,
+        headroom: 0.35,
+        softLimitSource: 'capacity',
+      }),
+      createPlanEngineState(),
+      {
+        capacityGuard: guard,
+        powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.sheddingActive).toBe(true);
+    expect(guard.isSheddingActive()).toBe(true);
+  });
+
+  it('clears shedding using the active plan headroom even if capacity guard headroom is lower', async () => {
+    const guard = new CapacityGuard({
+      limitKw: 4,
+      softMarginKw: 0.5,
+      restoreMarginKw: 0.2,
+    });
+    guard.reportTotalPower(3.65);
+    await guard.setSheddingActive(true);
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [],
+        total: 3.65,
+        softLimit: 4.1,
+        capacitySoftLimit: 3.5,
+        headroomRaw: 0.45,
+        headroom: 0.45,
+        softLimitSource: 'daily',
+      }),
+      createPlanEngineState(),
+      {
+        capacityGuard: guard,
+        powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.sheddingActive).toBe(false);
+    expect(guard.isSheddingActive()).toBe(false);
+  });
+
+  it('clears shedding active once headroom clears the restore margin plus hysteresis', async () => {
+    const guard = new CapacityGuard({
+      limitKw: 4,
+      softMarginKw: 0,
+      restoreMarginKw: 0.2,
+    });
+    guard.reportTotalPower(3.59);
+    await guard.setSheddingActive(true);
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [],
+        total: 3.59,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: 0.41,
+        headroom: 0.41,
+        softLimitSource: 'capacity',
+      }),
+      createPlanEngineState(),
+      {
+        capacityGuard: guard,
+        powerTracker: { lastTimestamp: 801 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: jest.fn(),
+        logDebug: jest.fn(),
+      },
+    );
+
+    expect(result.sheddingActive).toBe(false);
+    expect(guard.isSheddingActive()).toBe(false);
   });
 });

@@ -378,4 +378,39 @@ describe('DailyBudgetService', () => {
       exceeded: true,
     }));
   });
+
+  it('uses usable hourly capacity when updating daily budget plans', () => {
+    const service = new DailyBudgetService({
+      homey: {
+        settings: {
+          get: jest.fn(() => null),
+          set: jest.fn(),
+        },
+        clock: {
+          getTimezone: () => TZ,
+        },
+      } as any,
+      log: jest.fn(),
+      logDebug: jest.fn(),
+      error: jest.fn(),
+      getPowerTracker: () => ({ buckets: {} }),
+      getPriceOptimizationEnabled: () => false,
+      getCapacitySettings: () => ({ limitKw: 5, marginKw: 1 }),
+    });
+    const updateSpy = jest.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      shouldPersist: false,
+    }));
+    (service as any).manager.update = updateSpy;
+
+    service.updateState();
+
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      capacityBudgetKWh: 4,
+    }));
+  });
 });
