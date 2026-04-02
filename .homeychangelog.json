@@ -256,5 +256,8 @@
   },
   "2.1.10": {
     "en": "Updated widget previews to conform with guidelines."
+  },
+  "2.1.11": {
+    "en": "Fix bugs around overshoot instabilities."
   }
 }
