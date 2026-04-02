@@ -19,11 +19,17 @@ import {
   finalizePlanDevices,
   normalizeShedReasons,
 } from './planReasons';
-import { getHourBucketKey } from '../utils/dateUtils';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
+import type { Logger as PinoLogger } from '../logging/logger';
+import {
+  buildDailyBudgetContext as buildPlanDailyBudgetContext,
+  extractDailyBudgetHourKWh as extractPlanDailyBudgetHourKWh,
+  getCurrentHourKWh,
+  resolveDailySoftLimitBucket,
+} from './planDailyBudgetWindow';
 
 export type PlanBuilderDeps = {
   homey: Homey.App['homey'];
@@ -41,69 +47,11 @@ export type PlanBuilderDeps = {
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getDynamicSoftLimitOverride?: () => number | null;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
+  structuredLog?: PinoLogger;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
 const SOFT_LIMIT_EPSILON = 1e-3;
-const getCurrentHourKWh = (buckets?: Record<string, number>): number | undefined => {
-  const value = buckets?.[getHourBucketKey()];
-  return typeof value === 'number' ? value : undefined;
-};
-type DailySoftLimitBucket = {
-  plannedKWh: number;
-  usedKWh: number;
-  bucketStartMs: number;
-  bucketEndMs: number;
-};
-type DailySoftLimitInput = {
-  plannedKWh: number;
-  bucketStartIso: string;
-  nextBucketStartIso?: string;
-};
-const resolveDailySoftLimitInput = (snapshot: DailyBudgetUiPayload | null): DailySoftLimitInput | null => {
-  const today = snapshot?.days[snapshot.todayKey];
-  if (!today?.budget.enabled) return null;
-  const plannedKWh = today.buckets.plannedKWh;
-  const bucketStartUtc = today.buckets.startUtc;
-  const index = today.currentBucketIndex;
-  if (!Array.isArray(plannedKWh) || !Array.isArray(bucketStartUtc)) return null;
-  if (index < 0 || index >= plannedKWh.length || index >= bucketStartUtc.length) return null;
-  const planned = plannedKWh[index];
-  if (!Number.isFinite(planned)) return null;
-  return {
-    plannedKWh: planned,
-    bucketStartIso: bucketStartUtc[index],
-    nextBucketStartIso: index + 1 < bucketStartUtc.length ? bucketStartUtc[index + 1] : undefined,
-  };
-};
-
-const resolveDailySoftLimitWindow = (
-  input: DailySoftLimitInput,
-): Pick<DailySoftLimitBucket, 'bucketStartMs' | 'bucketEndMs'> | null => {
-  const bucketStartMs = new Date(input.bucketStartIso).getTime();
-  if (!Number.isFinite(bucketStartMs)) return null;
-  const bucketEndMs = input.nextBucketStartIso
-    ? new Date(input.nextBucketStartIso).getTime()
-    : bucketStartMs + 60 * 60 * 1000;
-  if (!Number.isFinite(bucketEndMs)) return null;
-  return { bucketStartMs, bucketEndMs };
-};
-const resolveDailySoftLimitBucket = (
-  snapshot: DailyBudgetUiPayload | null,
-  powerTracker: PowerTrackerState,
-): DailySoftLimitBucket | null => {
-  const input = resolveDailySoftLimitInput(snapshot);
-  if (!input) return null;
-  const window = resolveDailySoftLimitWindow(input);
-  if (!window) return null;
-  const meteredUsedKWh = powerTracker.buckets?.[input.bucketStartIso] ?? 0;
-  const exemptUsedKWh = powerTracker.exemptBuckets?.[input.bucketStartIso] ?? 0;
-  return {
-    plannedKWh: input.plannedKWh,
-    usedKWh: Math.max(0, meteredUsedKWh - exemptUsedKWh),
-    ...window,
-  };
-};
 
 export class PlanBuilder {
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) { }
@@ -235,7 +183,7 @@ export class PlanBuilder {
       softLimitSource,
       desiredForMode,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
-      dailyBudget: this.buildDailyBudgetContext(dailyBudgetSnapshot),
+      dailyBudget: buildPlanDailyBudgetContext(dailyBudgetSnapshot),
     }));
 
     const sheddingPlan = await this.trackDurationAsync(
@@ -247,6 +195,7 @@ export class PlanBuilder {
         getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
         log: (...args: unknown[]) => this.deps.log(...args),
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+        structuredLog: this.deps.structuredLog,
       }),
     );
     this.applySheddingUpdates(sheddingPlan);
@@ -260,9 +209,15 @@ export class PlanBuilder {
     if (overshootActive && !prevOvershoot) {
       this.deps.log('Capacity overshoot.');
       this.state.overshootLogged = true;
+      this.state.overshootStartedMs = Date.now();
+      this.state.lastOvershootEscalationMs = null;
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.deps.log('Recovered from capacity overshoot.');
       this.state.overshootLogged = false;
+      this.state.overshootStartedMs = null;
+      this.state.lastOvershootEscalationMs = null;
+    } else if (overshootActive && this.state.overshootStartedMs === null) {
+      this.state.overshootStartedMs = Date.now();
     }
     this.state.wasOvershoot = overshootActive;
   }
@@ -442,34 +397,6 @@ export class PlanBuilder {
     }) + Math.max(0, exemptKw);
   }
 
-  private extractDailyBudgetHourKWh(snapshot: DailyBudgetUiPayload | null): number | undefined {
-    const today = this.getTodayDailyBudget(snapshot);
-    if (!today?.budget.enabled) return undefined;
-    const plannedKWh = today.buckets.plannedKWh;
-    const index = today.currentBucketIndex;
-    if (!Array.isArray(plannedKWh) || index < 0 || index >= plannedKWh.length) return undefined;
-    const value = plannedKWh[index];
-    return Number.isFinite(value) ? value : undefined;
-  }
-
-  private buildDailyBudgetContext(snapshot: DailyBudgetUiPayload | null): PlanContext['dailyBudget'] | undefined {
-    const today = this.getTodayDailyBudget(snapshot);
-    if (!today) return undefined;
-    return {
-      enabled: today.budget.enabled,
-      usedNowKWh: today.state.usedNowKWh,
-      allowedNowKWh: today.state.allowedNowKWh,
-      remainingKWh: today.state.remainingKWh,
-      exceeded: today.state.exceeded,
-      frozen: today.state.frozen,
-    };
-  }
-
-  private getTodayDailyBudget(snapshot: DailyBudgetUiPayload | null) {
-    if (!snapshot) return null;
-    return snapshot.days[snapshot.todayKey] ?? null;
-  }
-
   private applySheddingUpdates(sheddingPlan: SheddingPlan): void {
     if (sheddingPlan.updates.lastInstabilityMs !== undefined) {
       this.state.lastInstabilityMs = sheddingPlan.updates.lastInstabilityMs;
@@ -479,6 +406,9 @@ export class PlanBuilder {
     }
     if (sheddingPlan.updates.lastShedPlanMeasurementTs !== undefined) {
       this.state.lastShedPlanMeasurementTs = sheddingPlan.updates.lastShedPlanMeasurementTs;
+    }
+    if (sheddingPlan.updates.lastOvershootEscalationMs !== undefined) {
+      this.state.lastOvershootEscalationMs = sheddingPlan.updates.lastOvershootEscalationMs;
     }
     if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
       this.state.inShortfall = sheddingPlan.guardInShortfall;
@@ -521,7 +451,7 @@ export class PlanBuilder {
     const uncontrolledKw = typeof context.total === 'number' && controlledKw !== null
       ? Math.max(0, context.total - controlledKw)
       : undefined;
-    const today = this.getTodayDailyBudget(dailyBudgetSnapshot);
+    const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
     return {
       totalKw: context.total,
       softLimitKw: context.softLimit,
@@ -539,7 +469,7 @@ export class PlanBuilder {
       hourUncontrolledKWh: getCurrentHourKWh(this.powerTracker.uncontrolledBuckets),
       dailyBudgetRemainingKWh: today?.state.remainingKWh ?? 0,
       dailyBudgetExceeded: today?.state.exceeded ?? false,
-      dailyBudgetHourKWh: this.extractDailyBudgetHourKWh(dailyBudgetSnapshot),
+      dailyBudgetHourKWh: extractPlanDailyBudgetHourKWh(dailyBudgetSnapshot),
       lastPowerUpdateMs: typeof this.powerTracker.lastTimestamp === 'number'
         ? this.powerTracker.lastTimestamp : undefined,
     };

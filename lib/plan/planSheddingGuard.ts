@@ -105,5 +105,6 @@ export async function updateGuardState(params: {
     await capacityGuard?.setSheddingActive(false);
   }
   await capacityGuard?.checkShortfall(true, 0);
-  return { sheddingActive: canDisable ? false : current };
+  const next = capacityGuard?.isSheddingActive() ?? current;
+  return { sheddingActive: next };
 }

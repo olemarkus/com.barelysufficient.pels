@@ -23,6 +23,7 @@ export type CapacityGuardOptions = {
  * Guard tracks state (sheddingActive, shortfall) and provides shortfall hysteresis.
  */
 export default class CapacityGuard {
+  private static readonly SHEDDING_CLEAR_HYSTERESIS_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 60000; // 60 seconds of sustained positive headroom
 
@@ -136,6 +137,10 @@ export default class CapacityGuard {
     return this.inShortfall;
   }
 
+  getCurrentIncidentId(): string | null {
+    return this.incidentId;
+  }
+
   /**
    * Called by Plan after making shedding decisions.
    * Updates sheddingActive state and triggers callbacks.
@@ -144,7 +149,14 @@ export default class CapacityGuard {
     if (active && !this.sheddingActive) {
       this.sheddingActive = true;
       await this.onSheddingStart?.();
-    } else if (!active && this.sheddingActive) {
+      return;
+    }
+    if (!active && this.sheddingActive) {
+      const headroom = this.headroom();
+      const clearThreshold = this.restoreMarginKw + CapacityGuard.SHEDDING_CLEAR_HYSTERESIS_KW;
+      if (headroom !== null && headroom < clearThreshold) {
+        return;
+      }
       this.sheddingActive = false;
       await this.onSheddingEnd?.();
     }

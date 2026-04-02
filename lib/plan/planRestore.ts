@@ -136,7 +136,12 @@ export function applyRestorePlan(params: {
         return `insufficient headroom (need ${needed.toFixed(2)}kW, headroom unknown)`;
       },
     });
-  } else if (sheddingActive || timing.inCooldown || timing.inRestoreCooldown) {
+  } else if (
+    sheddingActive
+    || timing.inCooldown
+    || timing.inRestoreCooldown
+    || timing.inStartupStabilization
+  ) {
     markOffDevicesStayOff({
       deviceMap,
       timing,
@@ -168,9 +173,11 @@ function planRestoreForSteppedDevice(params: {
   | 'activeOvershoot'
   | 'inCooldown'
   | 'inRestoreCooldown'
+  | 'inStartupStabilization'
   | 'restoreCooldownSeconds'
   | 'shedCooldownRemainingSec'
-  | 'restoreCooldownRemainingSec'>;
+  | 'restoreCooldownRemainingSec'
+  | 'startupStabilizationRemainingSec'>;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   logDebug: (...args: unknown[]) => void;
@@ -267,10 +274,12 @@ function planRestoreForDevice(params: {
   | 'activeOvershoot'
   | 'inCooldown'
   | 'inRestoreCooldown'
+  | 'inStartupStabilization'
   | 'measurementTs'
   | 'restoreCooldownSeconds'
   | 'shedCooldownRemainingSec'
-  | 'restoreCooldownRemainingSec'>;
+  | 'restoreCooldownRemainingSec'
+  | 'startupStabilizationRemainingSec'>;
   availableHeadroom: number;
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
