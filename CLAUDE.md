@@ -11,7 +11,7 @@ PELS is a Homey Pro app that implements an hourly electricity capacity controlle
 ├── app.ts                    # Homey app entry point
 ├── api.ts                    # REST API handlers for the settings UI
 ├── app.json                  # Auto-generated from .homeycompose — do not edit directly
-├── package.json              # npm workspace root (Node 22, npm >=10.9)
+├── package.json              # npm workspace root (Node 22, npm 10.9.4)
 ├── jest.config.cjs           # Jest config (80% coverage threshold)
 ├── eslint.config.mjs         # ESLint (strict, sonarjs, functional, unicorn)
 ├── .dependency-cruiser.cjs   # Enforced architecture boundary rules
@@ -133,7 +133,7 @@ npm run ci:checks           # Full static analysis suite (build + all lints + ar
 
 ## Control Flow
 
-1. **Measurement** — Power samples collected from Homey devices at 10-second intervals.
+1. **Measurement** — Power samples come from one of two modes: with `power_source = homey_energy`, the app polls Homey Energy every 10 seconds; with `power_source = flow`, samples are driven by incoming Flow events and may arrive at irregular intervals.
 2. **Planning** — `PlanEngine` reads power, device states, and (optionally) prices → outputs a `DevicePlan` (shed / restore / keep per device).
 3. **Execution** — `PlanExecutor` applies targets (setTemperature, on/off, stepped dimming).
 4. **Reconciliation** — `DeviceManager` syncs Homey state back, detects external changes.

@@ -1,6 +1,6 @@
 # Temperature Device Starvation — Invariants
 
-The starvation episode state machine is implemented in `lib/diagnostics/deviceDiagnosticsService.ts`.
+> This feature is **not yet implemented**. These invariants define the intended design. Do not implement partial versions that deviate from these rules. See `notes/starvation/README.md` for the full specification.
 
 **Scope:** managed temperature-driven devices only (room thermostats, water heaters). Not EV chargers or generic binary loads.
 
