@@ -1,3 +1,4 @@
+import type { Logger as PinoLogger } from '../logging/logger';
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
@@ -12,6 +13,7 @@ import {
   buildInsufficientHeadroomUpdate,
   buildSwapCandidates,
   computeBaseRestoreNeed,
+  computePendingRestorePowerKw,
   computeRestoreBufferKw,
 } from './planRestoreSwap';
 import {
@@ -50,7 +52,7 @@ export type RestoreDeps = {
     stepId: string | null;
   };
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  log: (...args: unknown[]) => void;
+  structuredLog?: PinoLogger;
   logDebug: (...args: unknown[]) => void;
 };
 
@@ -73,6 +75,24 @@ export type RestorePlanResult = {
   lastRestoreCooldownBumpMs: number | null;
 };
 
+function reserveHeadroomForPendingRestores(
+  rawHeadroom: number,
+  planDevices: DevicePlanDevice[],
+  lastDeviceRestoreMs: Record<string, number>,
+  structuredLog: PinoLogger | undefined,
+): number {
+  const pending = computePendingRestorePowerKw(planDevices, lastDeviceRestoreMs, Date.now());
+  if (pending.pendingKw <= 0) return rawHeadroom;
+  const adjusted = Math.max(0, rawHeadroom - pending.pendingKw);
+  structuredLog?.info({
+    event: 'restore_headroom_reserved',
+    pendingKw: pending.pendingKw,
+    deviceIds: pending.deviceIds,
+    headroomAfterKw: adjusted,
+  });
+  return adjusted;
+}
+
 export function applyRestorePlan(params: {
   planDevices: DevicePlanDevice[];
   context: PlanContext;
@@ -93,10 +113,15 @@ export function applyRestorePlan(params: {
       startupStabilizationRemainingSec: null,
       inShedWindow: timing.inCooldown || timing.activeOvershoot || timing.inRestoreCooldown,
     };
-  cleanupStaleSwaps(deviceMap, swapState, deps.log);
+  cleanupStaleSwaps(swapState, deps.structuredLog);
 
   const restoredThisCycle = new Set<string>();
-  let availableHeadroom = context.headroomRaw !== null ? context.headroomRaw : 0;
+  let availableHeadroom = reserveHeadroomForPendingRestores(
+    context.headroomRaw !== null ? context.headroomRaw : 0,
+    planDevices,
+    state.lastDeviceRestoreMs,
+    deps.structuredLog,
+  );
   let restoredOneThisCycle = false;
 
   if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {
@@ -446,13 +471,11 @@ function attemptSwapRestore(params: {
 
   if (measurementTs !== null && swapState.lastSwapPlanMeasurementTs.get(dev.id) === measurementTs) {
     setDevice(deviceMap, dev.id, { plannedState: 'shed', reason: 'swap pending' });
-    deps.logDebug(`Plan: skipping ${dev.name} - waiting for new measurement before swap`);
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
   if (swapState.pendingSwapTargets.has(dev.id)) {
     setDevice(deviceMap, dev.id, { plannedState: 'shed', reason: 'swap pending' });
-    deps.logDebug(`Plan: skipping ${dev.name} - swap already pending`);
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
@@ -467,21 +490,24 @@ function attemptSwapRestore(params: {
   if (!swap.ready) {
     const update = buildInsufficientHeadroomUpdate(restoreNeed.needed, availableHeadroom);
     setDevice(deviceMap, dev.id, update);
-    deps.logDebug(
-      `Plan: skipping restore of ${dev.name} `
-      + `(p${dev.priority ?? 100}, ~${restoreNeed.devPower.toFixed(2)}kW) `
-      + `- ${swap.reason}`
-      + (restoreNeed.penaltyLevel > 0
-        ? `, activation penalty L${restoreNeed.penaltyLevel} (+${restoreNeed.penaltyExtraKw.toFixed(2)}kW)`
-        : ''),
-    );
+    deps.structuredLog?.info({
+      event: 'restore_skipped',
+      deviceId: dev.id,
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    });
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
-  deps.log(
-    `Plan: swap approved for ${dev.name} - shedding ${swap.shedNames} (${swap.shedPower}kW) `
-    + `to get ${swap.potentialHeadroom.toFixed(2)}kW >= ${restoreNeed.needed.toFixed(2)}kW needed`,
-  );
+  deps.structuredLog?.info({
+    event: 'restore_swap_approved',
+    deviceId: dev.id,
+    shedDeviceIds: swap.toShed.map((d) => d.id),
+    neededKw: restoreNeed.needed,
+    potentialHeadroomKw: swap.potentialHeadroom,
+  });
   swapState.pendingSwapTargets.add(dev.id);
   swapState.pendingSwapTimestamps.set(dev.id, Date.now());
   if (measurementTs !== null) {
@@ -489,31 +515,18 @@ function attemptSwapRestore(params: {
   }
   const nextHeadroom = swap.potentialHeadroom;
   for (const shedDev of swap.toShed) {
-    const shedPowerKw = getSwapShedPower(swap, shedDev.id, dev.id);
     setDevice(deviceMap, shedDev.id, {
       plannedState: 'shed',
       reason: `swapped out for ${dev.name}`,
     });
-    deps.log(
-      `Plan: swapping out ${shedDev.name} `
-      + `(p${shedDev.priority ?? 100}, ~${shedPowerKw.toFixed(2)}kW) `
-      + `to restore ${dev.name} (p${dev.priority ?? 100})`,
-    );
+    deps.structuredLog?.info({
+      event: 'restore_swap_shed',
+      shedDeviceId: shedDev.id,
+      forDeviceId: dev.id,
+    });
     swapState.swappedOutFor.set(shedDev.id, dev.id);
   }
   restoredThisCycle.add(dev.id);
   setDevice(deviceMap, dev.id, { plannedState: 'keep' });
   return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
-}
-
-function getSwapShedPower(
-  swap: ReturnType<typeof buildSwapCandidates>,
-  shedDeviceId: string,
-  restoreDeviceId: string,
-): number {
-  const shedPowerKw = swap.shedPowerByDeviceId.get(shedDeviceId);
-  if (shedPowerKw !== undefined) return shedPowerKw;
-  throw new Error(
-    `Plan: missing shed power entry for device ${shedDeviceId} while swapping to restore ${restoreDeviceId}`,
-  );
 }
