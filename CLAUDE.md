@@ -80,7 +80,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 |---------|---------|
 | `packages/contracts/src/` | Type contracts shared between runtime and settings UI |
 | `packages/shared-domain/src/` | Browser-safe shared logic (price math, daily budget, utilities) |
-| `packages/settings-ui/src/` | React settings UI — compiled to `settings/script.js` via esbuild |
+| `packages/settings-ui/src/` | Imperative DOM/TypeScript settings UI — compiled to `settings/script.js` via esbuild |
 
 ---
 
@@ -91,7 +91,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 ```bash
 npm run build               # Full build: tsc + settings UI + widgets + sanitize
 npm run build:settings      # Build and sync settings UI only
-npm run build:widgets       # Build widget HTML
+npm run build:widgets       # Build widget bundles/assets
 npm run watch:settings      # Live rebuild of settings UI
 ```
 
