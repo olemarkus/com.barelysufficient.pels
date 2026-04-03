@@ -214,12 +214,20 @@ describe('computePendingRestorePowerKw', () => {
     expect(result.pendingKw).toBe(0);
   });
 
-  it('reserves headroom for recently restored device not yet confirmed on (stepped-load case)', () => {
+  it('reserves headroom for recently restored stepped device not yet confirmed on', () => {
     // Stepped loads stay currentOn=false until snapshot confirms — must still reserve headroom.
-    const dev = buildPlanDevice({ id: 'therm', currentOn: false, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const dev = steppedPlanDevice({ id: 'therm', currentOn: false, planningPowerKw: 2, measuredPowerKw: 0 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.deviceIds).toEqual(['therm']);
     expect(result.pendingKw).toBeCloseTo(2, 5);
+  });
+
+  it('skips ordinary (non-stepped) device that is off within the window', () => {
+    // Restore command may not have taken effect, or device was turned back off — no latent load.
+    const dev = buildPlanDevice({ id: 'therm', currentOn: false, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.pendingKw).toBe(0);
+    expect(result.deviceIds).toHaveLength(0);
   });
 
   it('uses powerKw as observed draw fallback when measuredPowerKw is absent', () => {

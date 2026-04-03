@@ -129,8 +129,10 @@ export function computePendingRestorePowerKw(
     if (dev.plannedState === 'shed') continue;
     const restoreMs = lastDeviceRestoreMs[dev.id];
     if (!restoreMs || nowTs - restoreMs > PENDING_RESTORE_WINDOW_MS) continue;
-    // Include currentOn=false devices that have a recent restore timestamp: stepped loads
-    // remain currentOn=false until their step command is confirmed by the snapshot.
+    // Non-stepped devices that are off are genuinely off — no latent load to reserve for.
+    // Stepped loads are the exception: they remain currentOn=false during their confirmation
+    // window even when a step-up command has already been issued.
+    if (!dev.currentOn && !isSteppedLoadDevice(dev)) continue;
     const expectedKw = estimateRestorePower(dev);
     // Fall back to powerKw when measuredPowerKw is absent — some installations only
     // populate powerKw — so we don't treat a drawing device as drawing 0.
