@@ -3,14 +3,18 @@ import type { DevicePlanDevice } from './planTypes';
 import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
+function isLiveEligibleDevice(device: DevicePlanDevice): boolean {
+  return device.controllable !== false
+    && device.observationStale !== true
+    && device.plannedState !== 'shed';
+}
+
 export function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
   const filtered = planDevices
     .filter((device) => (
       !isSteppedLoadDevice(device)
-      && device.controllable !== false
-      && device.observationStale !== true
+      && isLiveEligibleDevice(device)
       && device.currentState === 'off'
-      && device.plannedState !== 'shed'
     ));
   return sortByPriorityAsc(filtered);
 }
@@ -19,9 +23,7 @@ export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): De
   const filtered = planDevices
     .filter((device) => (
       isSteppedLoadDevice(device)
-      && device.controllable !== false
-      && device.observationStale !== true
-      && device.plannedState !== 'shed'
+      && isLiveEligibleDevice(device)
       && device.selectedStepId !== undefined
       && device.steppedLoadProfile?.model === 'stepped_load'
       && device.selectedStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id
@@ -38,12 +40,7 @@ export function getOnDevices(
   },
 ): DevicePlanDevice[] {
   const filtered = planDevices
-    .filter((device) => !isSteppedLoadDevice(device))
-    .filter((device) => (
-      device.controllable !== false
-      && device.observationStale !== true
-      && device.plannedState !== 'shed'
-    ))
+    .filter((device) => !isSteppedLoadDevice(device) && isLiveEligibleDevice(device))
     .filter((device) => device.currentState === 'on' || device.currentState === 'not_applicable')
     .filter((device) => canSwapOutDevice(device, getShedBehavior(device.id)));
   return sortByPriorityDesc(filtered);
@@ -105,12 +102,7 @@ export function markOffDevicesStayOff(params: {
     reasonOverride,
   } = params;
   const offDevices = Array.from(deviceMap.values())
-    .filter((device) => (
-      device.controllable !== false
-      && device.observationStale !== true
-      && device.currentState === 'off'
-      && device.plannedState !== 'shed'
-    ));
+    .filter((device) => isLiveEligibleDevice(device) && device.currentState === 'off');
   for (const dev of offDevices) {
     const inactiveReason = getInactiveReason(dev);
     if (inactiveReason) {
