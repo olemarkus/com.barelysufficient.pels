@@ -74,6 +74,7 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 | `lib/app/` | Wiring layer: initializes services, registers flow cards, handles settings API |
 | `lib/utils/` | Pure helpers, type guards, math utilities, debug logging, settings keys |
 | `lib/diagnostics/` | Per-device diagnostics recording |
+| `lib/logging/` | Structured logging infrastructure: pino logger, AsyncLocalStorage context, Homey destination |
 
 ### Packages (shared)
 
@@ -161,8 +162,11 @@ Pre-commit hooks (Husky + lint-staged) run ESLint + `tsc --noEmit` on every `.ts
 
 ### Logging
 
-- `this.log()` — user-visible operational logs (shown in Homey app manager).
-- `this.logDebug()` — debug-only logs (gated by debug flag).
+Runtime logging uses a pino-based structured logger (`lib/logging/`). Logs are JSON objects emitted through a Homey-aware destination that routes errors to `this.error()` and everything else to `this.log()`.
+
+- **New logs** must go through the structured logger (`logger.info()`, `logger.warn()`, `logger.error()`, `logger.debug()`). Emit structured events with stable field names.
+- **Debug logs** are gated by topic flags (see `lib/utils/debugLogging.ts`): `plan`, `diagnostics`, `price`, `daily_budget`, `devices`, `settings`, `perf`. The topic flag controls whether the debug event fires at all — it does not switch between prose and structured output.
+- **Legacy prose logs** (`this.log()` / `this.logDebug(topic, ...)`) still exist and may be migrated incrementally. Do not add new ones.
 - Never use `console.log` in runtime code.
 - When a helper is refactored to be more generic, make its log messages generic too — specific wording from the original use case will be misleading for new callers.
 
@@ -283,9 +287,9 @@ For planner assumptions: use conservative still-on/still-high for shed decisions
 
 ---
 
-### `notes/starvation/` — Temperature Device Starvation (Planned Feature)
+### `notes/starvation/` — Temperature Device Starvation
 
-> This feature is **not yet implemented**. This note defines the intended design. Do not implement partial versions that deviate from these rules.
+> The starvation episode state machine is implemented in `lib/diagnostics/deviceDiagnosticsService.ts`. The note defines invariants that **must be preserved** when modifying the detection logic.
 
 **Scope:** managed temperature-driven devices only (room thermostats, water heaters). Not EV chargers or generic binary loads.
 
