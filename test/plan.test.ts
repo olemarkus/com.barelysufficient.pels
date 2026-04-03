@@ -214,7 +214,7 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.reason).toContain('shed');
   });
 
-  it('logs plan overshoot transitions', async () => {
+  it('tracks plan overshoot state transitions', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
     await dev1.setCapabilityValue('onoff', true);
@@ -233,26 +233,19 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 2);
     }
 
-    (console.log as jest.Mock).mockClear();
+    // First cycle: overshoot enters
     await (app as any).recordPowerSample(5000);
-    const enterLogs = (console.log as jest.Mock).mock.calls
-      .map((call) => call[0])
-      .filter((msg) => msg === 'Capacity overshoot.');
-    expect(enterLogs.length).toBe(1);
+    expect((app as any).planEngine.state.wasOvershoot).toBe(true);
+    expect((app as any).planEngine.state.overshootLogged).toBe(true);
 
-    (console.log as jest.Mock).mockClear();
+    // Second cycle: still in overshoot, state remains stable (no double-log)
     await (app as any).recordPowerSample(5000);
-    const repeatEnterLogs = (console.log as jest.Mock).mock.calls
-      .map((call) => call[0])
-      .filter((msg) => msg === 'Capacity overshoot.');
-    expect(repeatEnterLogs.length).toBe(0);
+    expect((app as any).planEngine.state.wasOvershoot).toBe(true);
 
-    (console.log as jest.Mock).mockClear();
+    // Third cycle: power drops — overshoot clears
     await (app as any).recordPowerSample(0);
-    const clearedLogs = (console.log as jest.Mock).mock.calls
-      .map((call) => call[0])
-      .filter((msg) => msg === 'Recovered from capacity overshoot.');
-    expect(clearedLogs.length).toBe(1);
+    expect((app as any).planEngine.state.wasOvershoot).toBe(false);
+    expect((app as any).planEngine.state.overshootLogged).toBe(false);
   });
 
   it('uses concise reason when shedding to a minimum temperature', async () => {

@@ -161,9 +161,6 @@ class PelsApp extends Homey.App {
   private structuredLogger?: PinoLogger;
   private flowRebuildScheduler?: FlowRebuildScheduler;
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
-  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
-    this.deviceManager.updateLocalSnapshot(deviceId, updates);
-  }
   private setExpectedOverride(deviceId: string, kw: number): boolean {
     if (this.getSteppedLoadProfile(deviceId)) {
       throw new Error(
@@ -418,7 +415,6 @@ class PelsApp extends Homey.App {
       softMarginKw: this.capacitySettings.marginKw,
       onShortfall: async (deficitKw) => this.handleShortfall(deficitKw),
       onShortfallCleared: async () => this.handleShortfallCleared(),
-      log: (...args) => this.log(...args),
       structuredLog: this.structuredLogger?.child({ component: 'capacity' }),
     });
   }
@@ -440,7 +436,6 @@ class PelsApp extends Homey.App {
       getPriorityForDevice: (deviceId) => this.getPriorityForDevice(deviceId),
       getShedBehavior: (deviceId) => this.getShedBehavior(deviceId),
       getDynamicSoftLimitOverride: () => this.getDynamicSoftLimitOverride(),
-      updateLocalSnapshot: (deviceId, updates) => this.updateLocalSnapshot(deviceId, updates),
       markSteppedLoadDesiredStepIssued: (params) => this.markSteppedLoadDesiredStepIssued(params),
       logTargetRetryComparison: async (params) => {
         await logHomeyDeviceComparisonForDebugFromApp({
