@@ -106,6 +106,14 @@ refactors.
       removed.
       Files: `AGENTS.md`, `notes/`, logging helpers, remaining runtime log call sites.
 
+### P1 Dead code and dead plumbing
+
+- [ ] Remove unused `updateLocalSnapshot` dependency from the binary-control pipeline.
+      `planBinaryControl.ts` declares it in `BinaryControlDeps` but never calls it.
+      `planExecutor.ts` still threads it through `buildBinaryControlDeps()`. Dead plumbing
+      with no behavior change on removal.
+      Files: `lib/plan/planBinaryControl.ts`, `lib/plan/planExecutor.ts`.
+
 ### P1 Inefficiencies: unnecessary work or repeated lookups
 
 - [ ] Cache snapshot lookup by device ID in `applyPlanActions` instead of repeating
@@ -166,6 +174,23 @@ See `notes/plan-module-simplification/README.md` for context.
       Reason strings are a presentation concern currently interleaved with control flow.
       Consider generating reasons as a post-pass over the finalized plan.
       Files: `lib/plan/planReasons.ts`, `lib/plan/planRestore.ts`.
+
+### P1 Wiring and orchestration cleanup
+
+- [ ] Reduce pass-through wiring boilerplate between `app.ts` and `lib/app/appInit.ts`.
+      A meaningful share of the code is thin wrapper methods and lambda forwarding that
+      only adapts app methods into service dependencies. Trim or collapse where it does not
+      protect a real boundary; pass narrower dependency objects instead of many one-line
+      lambda wrappers.
+      Files: `app.ts`, `lib/app/appInit.ts`.
+- [ ] Reduce top-level orchestrator complexity in `app.ts`, `planExecutor.ts`, and
+      `planService.ts`. All three carry explicit size/complexity lint suppressions and act as
+      accumulation points for wiring, sequencing, and cross-cutting control logic. Track
+      shrinking them as a first-class task, not only as a side-effect of deeper planner
+      refactors. Good changes: remove thin wrappers, push mechanical wiring into better-owned
+      helpers, separate lifecycle sequencing from domain decisions. Bad changes: splitting
+      files without reducing actual orchestration load.
+      Files: `app.ts`, `lib/plan/planExecutor.ts`, `lib/plan/planService.ts`.
 
 ## P2 Product and test follow-ups
 
