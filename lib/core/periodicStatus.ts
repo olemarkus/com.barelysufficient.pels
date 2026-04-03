@@ -1,14 +1,12 @@
+import type CapacityGuard from './capacityGuard';
 import { resolveCapacitySoftLimitKw, resolveUsableCapacityKw } from './capacityModel';
 import type { PowerTrackerState } from './powerTracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 
-type CapacityGuardView = {
-  getLastTotalPower(): number | null;
-  getSoftLimit(): number;
-  getHeadroom(): number | null;
-  isSheddingActive(): boolean;
-  isInShortfall(): boolean;
-};
+type CapacityGuardView = Pick<
+  CapacityGuard,
+  'getLastTotalPower' | 'getSoftLimit' | 'getHeadroom' | 'isSheddingActive' | 'isInShortfall'
+>;
 
 export function buildPeriodicStatusLog(params: {
   capacityGuard?: CapacityGuardView;

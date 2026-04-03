@@ -3,13 +3,6 @@ import {
     PowerTrackerState,
 } from '../lib/core/powerTracker';
 
-// Mock dependencies
-const mockHomey = {
-    clock: {
-        getTimezone: jest.fn().mockReturnValue('UTC'),
-    },
-} as any;
-
 const mockRebuildPlan = jest.fn().mockResolvedValue(undefined);
 const mockSaveState = jest.fn();
 
@@ -42,7 +35,7 @@ describe('PowerTracker Outage Tracking', () => {
             state,
             currentPowerW: 1200,
             nowMs: time2,
-            homey: mockHomey,
+
             rebuildPlanFromCache: mockRebuildPlan,
             saveState: mockSaveState,
         });
@@ -59,7 +52,7 @@ describe('PowerTracker Outage Tracking', () => {
             state,
             currentPowerW: 1200,
             nowMs: nextTime,
-            homey: mockHomey,
+
             rebuildPlanFromCache: mockRebuildPlan,
             saveState: mockSaveState,
         });
@@ -79,7 +72,7 @@ describe('PowerTracker Outage Tracking', () => {
             state,
             currentPowerW: 1200,
             nowMs: time1,
-            homey: mockHomey,
+
             rebuildPlanFromCache: mockRebuildPlan,
             saveState: mockSaveState,
         });
@@ -92,7 +85,7 @@ describe('PowerTracker Outage Tracking', () => {
             state: savedState,
             currentPowerW: 1300,
             nowMs: time2,
-            homey: mockHomey,
+
             rebuildPlanFromCache: mockRebuildPlan,
             saveState: mockSaveState,
         });
@@ -105,7 +98,7 @@ describe('PowerTracker Outage Tracking', () => {
             state: savedState,
             currentPowerW: 1400,
             nowMs: time3,
-            homey: mockHomey,
+
             rebuildPlanFromCache: mockRebuildPlan,
             saveState: mockSaveState,
         });
@@ -129,7 +122,7 @@ describe('PowerTracker Outage Tracking', () => {
             state,
             currentPowerW: 1000,
             nowMs: time2,
-            homey: mockHomey,
+
             rebuildPlanFromCache: mockRebuildPlan,
             saveState: mockSaveState,
         });
@@ -151,7 +144,7 @@ describe('PowerTracker Outage Tracking', () => {
             state,
             currentPowerW: 1000,
             nowMs: time2,
-            homey: mockHomey,
+
             rebuildPlanFromCache: mockRebuildPlan,
             saveState: mockSaveState,
         });
@@ -172,7 +165,7 @@ describe('PowerTracker Outage Tracking', () => {
             state,
             currentPowerW: 1000,
             nowMs: time2,
-            homey: mockHomey,
+
             rebuildPlanFromCache: mockRebuildPlan,
             saveState: mockSaveState,
         });
