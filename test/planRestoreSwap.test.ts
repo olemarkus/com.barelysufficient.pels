@@ -104,9 +104,8 @@ describe('buildSwapCandidates', () => {
 
     expect(result.ready).toBe(true);
     expect(result.toShed.map((device) => device.id)).toEqual(['candidate']);
-    expect(result.shedPowerByDeviceId.get('candidate')).toBeCloseTo(1.2, 6);
+    expect(result.potentialHeadroom).toBeCloseTo(1.4, 6); // 0.2 headroom + 1.2 expectedPowerKw
     expect(result.shedPower).toBe('1.20');
-    expect(result.potentialHeadroom).toBeCloseTo(1.4, 6);
   });
 
   it('treats explicit zero expected or configured power as zero instead of falling back to 1kW', () => {
@@ -129,7 +128,6 @@ describe('buildSwapCandidates', () => {
 
     expect(result.ready).toBe(false);
     expect(result.toShed).toHaveLength(0);
-    expect(result.shedPowerByDeviceId.size).toBe(0);
   });
 });
 
@@ -235,6 +233,14 @@ describe('computePendingRestorePowerKw', () => {
   it('considers powerKw-only device confirmed when powerKw meets threshold', () => {
     // powerKw=1.2 meets the 50% threshold of expectedPowerKw=2 — device is confirmed, no reservation.
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, powerKw: 1.2 });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.pendingKw).toBe(0);
+    expect(result.deviceIds).toHaveLength(0);
+  });
+
+  it('skips device already planned to be shed this cycle', () => {
+    // Re-shed device keeps its recent restore timestamp but must not block unrelated restores.
+    const dev = buildPlanDevice({ id: 'therm', currentOn: true, plannedState: 'shed', expectedPowerKw: 2, measuredPowerKw: 0 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
