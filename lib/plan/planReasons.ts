@@ -11,7 +11,7 @@ import {
 } from './planReasonHelpers';
 import { sortByPriorityAsc } from './planSort';
 import { RESTORE_CONFIRM_RETRY_MS } from './planConstants';
-import { resolveCapacityRestoreBlockReason } from './planRestoreGate';
+import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
 
 export type ShedHoldParams = {
   planDevices: DevicePlanDevice[];

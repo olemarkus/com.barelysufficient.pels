@@ -35,7 +35,7 @@ import {
   syncActivationPenaltyState,
 } from './planActivationBackoff';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import { resolveCapacityRestoreBlockReason } from './planRestoreGate';
+import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
 import { buildRestoreTiming, shouldPlanRestores, type RestoreTiming } from './planRestoreTiming';
 import {
   getSteppedLoadNextRestoreStep,
