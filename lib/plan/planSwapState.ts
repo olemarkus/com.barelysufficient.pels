@@ -1,4 +1,4 @@
-import type { DevicePlanDevice } from './planTypes';
+import type { Logger as PinoLogger } from '../logging/logger';
 import type { PlanEngineState, SwapEntry } from './planState';
 import { SWAP_TIMEOUT_MS } from './planConstants';
 
@@ -70,9 +70,8 @@ export function exportSwapState(state: SwapState): SwapStateSnapshot {
 }
 
 export function cleanupStaleSwaps(
-  deviceMap: Map<string, DevicePlanDevice>,
   swapState: SwapState,
-  log: (...args: unknown[]) => void,
+  structuredLog: PinoLogger | undefined,
 ): void {
   const swapCleanupNow = Date.now();
   const pendingSwapTargets = Array.from(swapState.pendingSwapTargets);
@@ -80,11 +79,11 @@ export function cleanupStaleSwaps(
   for (const swapTargetId of pendingSwapTargets) {
     const swapTime = swapState.pendingSwapTimestamps.get(swapTargetId);
     if (swapTime !== undefined && swapCleanupNow - swapTime > SWAP_TIMEOUT_MS) {
-      const swapName = deviceMap.get(swapTargetId)?.name || swapTargetId;
-      log(
-        `Plan: clearing stale swap for ${swapName} `
-        + `(${Math.round((swapCleanupNow - swapTime) / 1000)}s since swap initiated)`,
-      );
+      structuredLog?.info({
+        event: 'swap_stale_cleared',
+        deviceId: swapTargetId,
+        ageMs: swapCleanupNow - swapTime,
+      });
       swapState.pendingSwapTargets.delete(swapTargetId);
       swapState.pendingSwapTimestamps.delete(swapTargetId);
       staleTargetIds.push(swapTargetId);

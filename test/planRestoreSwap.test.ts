@@ -1,9 +1,11 @@
 import {
   buildInsufficientHeadroomUpdate,
   buildSwapCandidates,
+  computePendingRestorePowerKw,
   computeRestoreBufferKw,
   estimateRestorePower,
 } from '../lib/plan/planRestoreSwap';
+import { PENDING_RESTORE_WINDOW_MS } from '../lib/plan/planConstants';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 
 describe('buildSwapCandidates', () => {
@@ -180,5 +182,61 @@ describe('restore swap helpers', () => {
     expect(computeRestoreBufferKw(3)).toBeCloseTo(0.4, 5);
     expect(computeRestoreBufferKw(5)).toBeCloseTo(0.6, 5);
     expect(computeRestoreBufferKw(10)).toBeCloseTo(0.6, 5);
+  });
+});
+
+describe('computePendingRestorePowerKw', () => {
+  const now = Date.UTC(2025, 0, 1, 12, 0, 0);
+  const recentMs = now - 30_000; // 30s ago — within window
+
+  it('reserves gap for recently restored device whose element has not fired', () => {
+    const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.deviceIds).toEqual(['therm']);
+    expect(result.pendingKw).toBeCloseTo(2, 5); // full gap: expected 2, actual 0
+  });
+
+  it('reserves only the gap, not full expected power, when device is partially drawing', () => {
+    const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 3, measuredPowerKw: 0.5 });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.pendingKw).toBeCloseTo(2.5, 5); // gap: 3 - 0.5
+  });
+
+  it('skips device that has confirmed its draw (>=50% of expected)', () => {
+    const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, measuredPowerKw: 1.5 });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.pendingKw).toBe(0);
+    expect(result.deviceIds).toHaveLength(0);
+  });
+
+  it('skips device restored outside the pending window', () => {
+    const oldMs = now - PENDING_RESTORE_WINDOW_MS - 1000;
+    const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const result = computePendingRestorePowerKw([dev], { therm: oldMs }, now);
+    expect(result.pendingKw).toBe(0);
+  });
+
+  it('skips device that is not yet confirmed on', () => {
+    const dev = buildPlanDevice({ id: 'therm', currentOn: false, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.pendingKw).toBe(0);
+  });
+
+  it('skips device with no restore timestamp in state', () => {
+    const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const result = computePendingRestorePowerKw([dev], {}, now);
+    expect(result.pendingKw).toBe(0);
+  });
+
+  it('accumulates pending power across multiple qualifying devices', () => {
+    const dev1 = buildPlanDevice({ id: 'd1', currentOn: true, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const dev2 = buildPlanDevice({ id: 'd2', currentOn: true, expectedPowerKw: 3, measuredPowerKw: 0 });
+    const result = computePendingRestorePowerKw(
+      [dev1, dev2],
+      { d1: recentMs, d2: recentMs },
+      now,
+    );
+    expect(result.pendingKw).toBeCloseTo(5, 5);
+    expect(result.deviceIds).toEqual(['d1', 'd2']);
   });
 });

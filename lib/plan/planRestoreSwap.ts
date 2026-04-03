@@ -2,6 +2,7 @@ import type { DevicePlanDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
+import { PENDING_RESTORE_CONFIRMED_FRACTION, PENDING_RESTORE_WINDOW_MS } from './planConstants';
 
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
@@ -114,6 +115,34 @@ function resolveSteppedRestorePower(dev: DevicePlanDevice): number | null {
   if (restoreStep && restoreStep.planningPowerW > 0) return restoreStep.planningPowerW / 1000;
 
   return null;
+}
+
+/**
+ * Returns the total power (kW) to reserve for recently restored devices whose elements
+ * have not yet fired. Subtracting this from available headroom prevents back-to-back
+ * restores from committing headroom that is still pending from the previous cycle.
+ */
+export function computePendingRestorePowerKw(
+  planDevices: DevicePlanDevice[],
+  lastDeviceRestoreMs: Record<string, number>,
+  nowTs: number,
+): { pendingKw: number; deviceIds: string[] } {
+  let pendingKw = 0;
+  const deviceIds: string[] = [];
+  for (const dev of planDevices) {
+    if (!dev.currentOn) continue;
+    const restoreMs = lastDeviceRestoreMs[dev.id];
+    if (!restoreMs || nowTs - restoreMs > PENDING_RESTORE_WINDOW_MS) continue;
+    const expectedKw = estimateRestorePower(dev);
+    const actualKw = Math.max(0, dev.measuredPowerKw ?? 0);
+    if (actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION) continue;
+    const gap = expectedKw - actualKw;
+    if (gap > 0) {
+      pendingKw += gap;
+      deviceIds.push(dev.id);
+    }
+  }
+  return { pendingKw, deviceIds };
 }
 
 export function computeBaseRestoreNeed(dev: DevicePlanDevice): { power: number; buffer: number; needed: number } {

@@ -470,7 +470,7 @@ export class PlanBuilder {
         powerTracker: this.powerTracker,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         deviceDiagnostics: this.deps.deviceDiagnostics,
-        log: (...args: unknown[]) => this.deps.log(...args),
+        structuredLog: this.deps.structuredLog,
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       },
     });

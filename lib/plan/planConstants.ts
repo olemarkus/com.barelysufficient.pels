@@ -13,6 +13,11 @@ export const RECENT_RESTORE_SHED_GRACE_MS = 3 * 60 * 1000;
 export const RECENT_RESTORE_OVERSHOOT_BYPASS_KW = 0.5; // Allow immediate re-shed if overshoot is >= 0.5 kW
 // Block restore of a device that was restored right before an overshoot event.
 export const OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS = 2 * 60 * 1000;
+// Reserve headroom for recently restored devices whose elements have not yet fired.
+// Elements typically fire within 1-2 minutes; 3 minutes covers slower thermal responses.
+export const PENDING_RESTORE_WINDOW_MS = 3 * 60 * 1000;
+// A device is considered to have confirmed its draw once it reaches this fraction of expected power.
+export const PENDING_RESTORE_CONFIRMED_FRACTION = 0.5;
 export const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 export const BINARY_COMMAND_PENDING_MS = 15000;
 export const TARGET_COMMAND_RETRY_DELAYS_MS = [

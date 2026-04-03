@@ -2395,13 +2395,14 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    // Capture log calls
-    const logCalls: string[] = [];
-    const originalLog = (app as any).log.bind(app);
-    (app as any).log = (...args: unknown[]) => {
-      const msg = args.map((a) => String(a)).join(' ');
-      logCalls.push(msg);
-      originalLog(...args);
+    // Capture structured log events from the plan engine
+    const structuredEvents: Record<string, unknown>[] = [];
+    (app as any).planEngine.builder.deps.structuredLog = {
+      info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
+      warn: jest.fn(),
+      debug: jest.fn(),
+      error: jest.fn(),
+      child: () => (app as any).planEngine.builder.deps.structuredLog,
     };
 
     // Simulate what happens when periodic refresh and power sample happen close together
@@ -2413,13 +2414,9 @@ describe('Device plan snapshot', () => {
       (app as any).recordPowerSample(3000),
     ]);
 
-    // Count swap-related log messages
-    const swapApprovedLogs = logCalls.filter((msg) => msg.includes('swap approved'));
-    const swappingOutLogs = logCalls.filter((msg) => msg.includes('swapping out'));
-
     // Should only have ONE of each, not duplicates
-    expect(swapApprovedLogs.length).toBe(1);
-    expect(swappingOutLogs.length).toBe(1);
+    expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(1);
+    expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_shed').length).toBe(1);
   });
 
   it('does not re-plan swap when swap is already pending (e.g. after API timeout)', async () => {
@@ -2465,35 +2462,33 @@ describe('Device plan snapshot', () => {
     // Mock api.put to simulate timeout (shedding fails)
     const putSpy = jest.spyOn(mockHomeyInstance.api, 'put').mockRejectedValue(new Error('Timeout after 10000ms'));
 
-    // Capture log calls
-    const logCalls: string[] = [];
-    const originalLog = (app as any).log.bind(app);
-    (app as any).log = (...args: unknown[]) => {
-      const msg = args.map((a) => String(a)).join(' ');
-      logCalls.push(msg);
-      originalLog(...args);
+    // Capture structured log events from the plan engine
+    const structuredEvents: Record<string, unknown>[] = [];
+    (app as any).planEngine.builder.deps.structuredLog = {
+      info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
+      warn: jest.fn(),
+      debug: jest.fn(),
+      error: jest.fn(),
+      child: () => (app as any).planEngine.builder.deps.structuredLog,
     };
 
     // First power sample - should plan the swap
     await (app as any).recordPowerSample(3000);
     await flushPromises(); // Let async shedding attempt complete
 
-    const swapApprovedAfterFirst = logCalls.filter((msg) => msg.includes('swap approved')).length;
-    expect(swapApprovedAfterFirst).toBe(1);
+    expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(1);
 
-    // Clear logs for second sample
-    logCalls.length = 0;
+    // Clear events for second sample
+    structuredEvents.length = 0;
 
     // Second power sample - should NOT re-plan the same swap
     // The swap is already pending (dev-high in pendingSwapTargets)
     await (app as any).recordPowerSample(3000);
     await flushPromises();
 
-    const swapApprovedAfterSecond = logCalls.filter((msg) => msg.includes('swap approved')).length;
-
     // BUG: Without the fix, this would be 1 (re-planning the same swap)
     // With the fix, this should be 0 (swap already pending)
-    expect(swapApprovedAfterSecond).toBe(0);
+    expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(0);
     putSpy.mockRestore();
     errorSpy.mockRestore();
   });

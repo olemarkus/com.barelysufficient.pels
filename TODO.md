@@ -5,19 +5,13 @@
 These items are highest priority because they can make PELS act on state that is no longer true,
 or present requested state as confirmed reality.
 
-- [ ] Fix restore → overshoot → shed instability. PELS is still restoring loads that cause
-      overshoot within ~14 seconds, then immediately shedding the same device. Observed
-      2026-04-02: `Termostat vaskerom` restored 17:38:11 → overshoot 17:38:25 → shed 17:38:26;
-      `Termostat bad tredje` restored 18:27:46 → overshoot 18:28:00 → shed 18:28:01;
-      `Connected 300` + `Termostat kontor` both restored 18:05:14 → overshoot 18:05:27 →
-      `Termostat kontor` shed 18:05:28. Eight overshoots in ~65 minutes. The existing cooldown,
-      backoff, and activation penalty mechanisms are not preventing this. Root causes to
-      investigate: (1) restore headroom calculation does not account for the actual power the
-      device will draw once its element fires, (2) multiple devices restored in the same cycle
-      without reserving headroom for all of them, (3) restore buffer (`computeRestoreBufferKw`)
-      may be too small for devices whose `expectedPowerKw` underestimates real draw.
-      Files: `lib/plan/planRestore.ts`, `lib/plan/planRestoreSwap.ts`,
-      `lib/plan/planActivationBackoff.ts`, `lib/core/capacityGuard.ts`, restore/shedding tests.
+- [x] Fix restore → overshoot → shed instability. Root cause (1) fixed: restore headroom now
+      reserves pending power for recently restored devices whose elements have not yet fired
+      (`computePendingRestorePowerKw`, 3-minute window, 50% confirmation threshold). Root cause
+      (2) was already handled by the `restoredOneThisCycle` gate. Root cause (3) (buffer too
+      small) remains a monitoring item — `computeRestoreBufferKw` is tuned but may need
+      adjustment based on field data.
+      Files: `lib/plan/planRestoreSwap.ts`, `lib/plan/planRestore.ts`, `lib/plan/planConstants.ts`.
 - [ ] If real-world cloud devices still show confirmation/drift gaps after the current freshness
       model fixes, add per-capability realtime subscriptions for control capabilities (`onoff`,
       `evcharger_charging`, `target_temperature`) on managed devices.
