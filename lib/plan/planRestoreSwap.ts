@@ -130,11 +130,14 @@ export function computePendingRestorePowerKw(
   let pendingKw = 0;
   const deviceIds: string[] = [];
   for (const dev of planDevices) {
-    if (!dev.currentOn) continue;
     const restoreMs = lastDeviceRestoreMs[dev.id];
     if (!restoreMs || nowTs - restoreMs > PENDING_RESTORE_WINDOW_MS) continue;
+    // Include currentOn=false devices that have a recent restore timestamp: stepped loads
+    // remain currentOn=false until their step command is confirmed by the snapshot.
     const expectedKw = estimateRestorePower(dev);
-    const actualKw = Math.max(0, dev.measuredPowerKw ?? 0);
+    // Fall back to powerKw when measuredPowerKw is absent — some installations only
+    // populate powerKw — so we don't treat a drawing device as drawing 0.
+    const actualKw = Math.max(0, dev.measuredPowerKw ?? dev.powerKw ?? 0);
     if (actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION) continue;
     const gap = expectedKw - actualKw;
     if (gap > 0) {
