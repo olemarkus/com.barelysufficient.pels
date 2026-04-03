@@ -1,12 +1,11 @@
 import { buildPeriodicStatusLog } from '../lib/core/periodicStatus';
-import { recordPowerSample } from '../lib/core/powerTracker';
+import { recordPowerSample, type PowerTrackerState } from '../lib/core/powerTracker';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
-import { mockHomeyInstance } from './mocks/homey';
 
 describe('periodic status used kWh', () => {
   it('reports usage from current hour bucket in Homey timezone', async () => {
-    const state = {};
-    const saveState = (nextState: any) => Object.assign(state, nextState);
+    let state: PowerTrackerState = {};
+    const saveState = (nextState: PowerTrackerState) => { state = nextState; };
     const rebuildPlanFromCache = async () => { };
 
     const sampleStart = Date.UTC(2025, 0, 1, 0, 30, 0);
@@ -14,7 +13,7 @@ describe('periodic status used kWh', () => {
       state,
       currentPowerW: 3000,
       nowMs: sampleStart,
-      homey: mockHomeyInstance as any,
+
       rebuildPlanFromCache,
       saveState,
       capacityGuard: undefined,
@@ -23,7 +22,7 @@ describe('periodic status used kWh', () => {
       state,
       currentPowerW: 3000,
       nowMs: sampleStart + 15 * 60 * 1000,
-      homey: mockHomeyInstance as any,
+
       rebuildPlanFromCache,
       saveState,
       capacityGuard: undefined,
@@ -41,7 +40,8 @@ describe('periodic status used kWh', () => {
 
     expect(log).toContain('softLimit=6.50kW');
     expect(log).toContain('used=0.75kWh');
-    expect(log).toContain('hourBudget=6.5kWh');
+    // cap=6.5kWh, used=0.75kWh → remaining=5.75kWh
+    expect(log).toContain('hourRemaining=5.8kWh');
   });
 
   it('uses UTC hour bucket for usage', () => {
@@ -60,7 +60,7 @@ describe('periodic status used kWh', () => {
         getHeadroom: () => 1.52,
         isSheddingActive: () => false,
         isInShortfall: () => false,
-      } as any,
+      },
       powerTracker: {
         buckets: {
           [getHourBucketKey(nowMs)]: 2.52,
@@ -74,7 +74,8 @@ describe('periodic status used kWh', () => {
 
     expect(log).toContain('softLimit=4.00kW');
     expect(log).toContain('used=2.52kWh');
-    expect(log).toContain('hourBudget=4.0kWh');
+    // hourCap=4.0kWh, used=2.52kWh → remaining=1.48kWh (not the full cap)
+    expect(log).toContain('hourRemaining=1.5kWh');
     expect(log).not.toContain('/5.0kWh');
   });
 });

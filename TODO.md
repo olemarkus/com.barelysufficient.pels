@@ -55,7 +55,7 @@ refactors.
       real device actions are happening without a matching prose log. The semantics must be
       tightened so `actionChanged:true` means a visible device command was issued.
       Files: `lib/plan/planService.ts`, `lib/plan/planBuilder.ts`, rebuild logging path.
-- [ ] Fix `hourBudget` label in periodic status output. `hourBudget=4.0kWh` reads as "remaining
+- [x] Fix `hourBudget` label in periodic status output. `hourBudget=4.0kWh` reads as "remaining
       feasible target for this hour" but actually means "full-hour configured budget." At 17:55
       with 3.17 kWh already used, the label implies 4.0 kWh is still achievable when only ~0.33
       kWh of budget headroom remains. Either rename to `hourCap` or show remaining budget.

@@ -7,7 +7,6 @@ import {
   schedulePlanRebuildFromPowerSample,
   schedulePlanRebuildFromSignal,
 } from '../lib/app/appPowerHelpers';
-import { mockHomeyInstance } from './mocks/homey';
 
 const createCapacityGuardMock = (params: {
   limitKw?: number;
@@ -531,7 +530,7 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      homey: mockHomeyInstance as any,
+
       schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
@@ -544,7 +543,7 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      homey: mockHomeyInstance as any,
+
       schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
@@ -574,7 +573,7 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      homey: mockHomeyInstance as any,
+
       schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
@@ -587,7 +586,7 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      homey: mockHomeyInstance as any,
+
       schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
@@ -618,7 +617,7 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      homey: mockHomeyInstance as any,
+
       schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
@@ -631,7 +630,7 @@ describe('recordPowerSampleForApp', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot,
       powerTracker: tracker,
-      homey: mockHomeyInstance as any,
+
       schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
