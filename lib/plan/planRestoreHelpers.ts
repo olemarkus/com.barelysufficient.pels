@@ -73,7 +73,23 @@ export function hasOtherDevicesBlockingSteppedRestore(
   return false;
 }
 
-export function shouldBlockRestoreForSwap(
+/**
+ * Returns true if this device should be held back from restoring because a swap is still
+ * in progress. Checks both whether this device was explicitly swapped out for a specific
+ * higher-priority target (`swappedOutFor`), and whether any other higher-priority target
+ * in `pendingSwapTargets` is still off. Also cleans up stale swap state.
+ */
+export function isBlockedBySwapState(
+  dev: DevicePlanDevice,
+  deviceMap: Map<string, DevicePlanDevice>,
+  swapState: SwapState,
+  logDebug: (...args: unknown[]) => void,
+): boolean {
+  if (isBlockedByDirectSwap(dev, deviceMap, swapState, logDebug)) return true;
+  return isBlockedByPendingSwapTarget(dev, deviceMap, swapState, logDebug);
+}
+
+function isBlockedByDirectSwap(
   dev: DevicePlanDevice,
   deviceMap: Map<string, DevicePlanDevice>,
   swapState: SwapState,
@@ -97,7 +113,7 @@ export function shouldBlockRestoreForSwap(
   return false;
 }
 
-export function shouldBlockRestoreForPendingSwap(
+function isBlockedByPendingSwapTarget(
   dev: DevicePlanDevice,
   deviceMap: Map<string, DevicePlanDevice>,
   swapState: SwapState,

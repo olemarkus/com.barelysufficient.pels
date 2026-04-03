@@ -27,10 +27,9 @@ import {
   blockRestoreForRecentActivationSetback,
   hasOtherDevicesBlockingSteppedRestore,
   hasOtherDevicesWithUnconfirmedRecovery,
+  isBlockedBySwapState,
   markSteppedDevicesStayAtCurrentLevel,
   setRestorePlanDevice as setDevice,
-  shouldBlockRestoreForPendingSwap,
-  shouldBlockRestoreForSwap,
 } from './planRestoreHelpers';
 import {
   applyActivationPenalty,
@@ -355,11 +354,9 @@ function planRestoreForDevice(params: {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
-  const swapBlock = shouldBlockRestoreForSwap(dev, deviceMap, swapState, deps.logDebug);
-  if (swapBlock) return { availableHeadroom, restoredOneThisCycle };
-
-  const pendingBlock = shouldBlockRestoreForPendingSwap(dev, deviceMap, swapState, deps.logDebug);
-  if (pendingBlock) return { availableHeadroom, restoredOneThisCycle };
+  if (isBlockedBySwapState(dev, deviceMap, swapState, deps.logDebug)) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
 
   const waitingReason = resolveCapacityRestoreBlockReason({
     timing,
