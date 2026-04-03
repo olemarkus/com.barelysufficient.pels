@@ -195,7 +195,6 @@ describe('P1 bug proofs', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot: () => [rawDevice],
       powerTracker: tracker,
-      homey: mockHomeyInstance as never,
       schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;

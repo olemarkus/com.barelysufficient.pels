@@ -3,7 +3,7 @@ import { recordPowerSample, type PowerTrackerState } from '../lib/core/powerTrac
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 describe('periodic status used kWh', () => {
-  it('reports usage from current hour bucket in Homey timezone', async () => {
+  it('reports usage from the current UTC hour bucket', async () => {
     let state: PowerTrackerState = {};
     const saveState = (nextState: PowerTrackerState) => { state = nextState; };
     const rebuildPlanFromCache = async () => { };

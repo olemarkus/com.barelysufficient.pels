@@ -213,12 +213,15 @@ export class PlanBuilder {
       this.state.overshootStartedMs = Date.now();
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
+      this.deps.structuredLog?.warn({ event: 'overshoot_entered', headroomKw: context.headroom });
       this.attributeOvershootToRecentRestores();
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.state.overshootLogged = false;
+      const durationMs = this.state.overshootStartedMs !== null ? Date.now() - this.state.overshootStartedMs : 0;
       this.state.overshootStartedMs = null;
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
+      this.deps.structuredLog?.info({ event: 'overshoot_cleared', durationMs });
     } else if (overshootActive && this.state.overshootStartedMs === null) {
       this.state.overshootStartedMs = Date.now();
     }

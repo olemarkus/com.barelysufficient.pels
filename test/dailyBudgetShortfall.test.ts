@@ -3,7 +3,6 @@
  * Only hourly hard cap violations should trigger shortfall.
  */
 
-import { jest } from '@jest/globals';
 import CapacityGuard from '../lib/core/capacityGuard';
 
 describe('Daily Budget Shortfall Prevention', () => {
@@ -13,7 +12,6 @@ describe('Daily Budget Shortfall Prevention', () => {
     guard = new CapacityGuard({
       limitKw: 10,
       softMarginKw: 1,
-      log: jest.fn(),
     });
 
     // Report some power
