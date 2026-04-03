@@ -83,8 +83,8 @@ function reserveHeadroomForPendingRestores(
 ): number {
   const pending = computePendingRestorePowerKw(planDevices, lastDeviceRestoreMs, Date.now());
   if (pending.pendingKw <= 0) return rawHeadroom;
-  const adjusted = Math.max(0, rawHeadroom - pending.pendingKw);
-  structuredLog?.info({
+  const adjusted = rawHeadroom - pending.pendingKw;
+  structuredLog?.debug({
     event: 'restore_headroom_reserved',
     pendingKw: pending.pendingKw,
     deviceIds: pending.deviceIds,
@@ -488,11 +488,11 @@ function attemptSwapRestore(params: {
     restoredThisCycle,
   });
   if (!swap.ready) {
-    const update = buildInsufficientHeadroomUpdate(restoreNeed.needed, availableHeadroom);
-    setDevice(deviceMap, dev.id, update);
-    deps.structuredLog?.info({
+    setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate(restoreNeed.needed, availableHeadroom));
+    deps.structuredLog?.debug({
       event: 'restore_skipped',
       deviceId: dev.id,
+      reason: swap.reason,
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
