@@ -3,7 +3,7 @@ import type { RestoreTiming } from './planRestoreTiming';
 import type { SwapState } from './planSwapState';
 import type { PlanEngineState } from './planState';
 import { getInactiveReason, getSteppedRestoreCandidates } from './planRestoreDevices';
-import { resolveCapacityRestoreBlockReason } from './planRestoreGate';
+import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { getActivationRestoreBlockRemainingMs } from './planActivationBackoff';

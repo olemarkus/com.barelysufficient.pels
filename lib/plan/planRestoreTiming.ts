@@ -7,7 +7,6 @@ import {
   RESTORE_STABLE_RESET_MS,
   SHED_COOLDOWN_MS,
 } from './planConstants';
-import { getShedCooldownState } from './planTiming';
 
 export type RestoreTiming = {
   inCooldown: boolean;
@@ -160,3 +159,64 @@ const shouldBumpRestoreCooldown = (params: {
   if (lastRestoreCooldownBumpMs !== null && lastRestoreCooldownBumpMs >= lastInstabilityMs) return false;
   return true;
 };
+
+export function getShedCooldownState(params: {
+  lastInstabilityMs?: number | null;
+  lastRecoveryMs?: number | null;
+  nowTs?: number;
+  cooldownMs?: number;
+}): { cooldownRemainingMs: number | null; inCooldown: boolean } {
+  const nowTs = params.nowTs ?? Date.now();
+  const cooldownMs = params.cooldownMs ?? SHED_COOLDOWN_MS;
+  const sinceInstability = typeof params.lastInstabilityMs === 'number' ? nowTs - params.lastInstabilityMs : null;
+  const sinceRecovery = typeof params.lastRecoveryMs === 'number' ? nowTs - params.lastRecoveryMs : null;
+  const parts = [sinceInstability, sinceRecovery].filter((v) => v !== null) as number[];
+  if (parts.length === 0) return { cooldownRemainingMs: null, inCooldown: false };
+  const min = Math.min(...parts);
+  const cooldownRemainingMs = Math.max(0, cooldownMs - min);
+  return { cooldownRemainingMs, inCooldown: cooldownRemainingMs > 0 };
+}
+
+export type CapacityRestoreGateTiming = {
+  activeOvershoot: boolean;
+  inCooldown: boolean;
+  inRestoreCooldown: boolean;
+  inStartupStabilization: boolean;
+  restoreCooldownSeconds: number;
+  shedCooldownRemainingSec: number | null;
+  restoreCooldownRemainingSec: number | null;
+  startupStabilizationRemainingSec: number | null;
+};
+
+export function resolveCapacityRestoreBlockReason(params: {
+  timing: CapacityRestoreGateTiming;
+  restoredOneThisCycle?: boolean;
+  waitingForOtherRecovery?: boolean;
+  useThrottleLabel?: boolean;
+}): string | null {
+  const {
+    timing,
+    restoredOneThisCycle = false,
+    waitingForOtherRecovery = false,
+    useThrottleLabel = false,
+  } = params;
+
+  if (timing.inStartupStabilization) {
+    return 'startup stabilization';
+  }
+  if (timing.inCooldown && !timing.activeOvershoot) {
+    return `cooldown (shedding, ${timing.shedCooldownRemainingSec ?? 0}s remaining)`;
+  }
+  if (timing.inRestoreCooldown && !timing.activeOvershoot) {
+    return `cooldown (restore, ${timing.restoreCooldownRemainingSec ?? 0}s remaining)`;
+  }
+  if (restoredOneThisCycle) {
+    return useThrottleLabel
+      ? 'restore throttled'
+      : `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`;
+  }
+  if (waitingForOtherRecovery) {
+    return 'waiting for other devices to recover';
+  }
+  return null;
+}
