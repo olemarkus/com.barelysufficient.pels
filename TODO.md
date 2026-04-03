@@ -155,7 +155,7 @@ See `notes/plan-module-simplification/README.md` for context.
 - [ ] Merge `planServiceInternals.ts` (64 lines, 2 consumers) into `planService.ts`.
       Blocked: creates a `planService ↔ planStatusWriter` circular dependency.
       Files: `lib/plan/planServiceInternals.ts`, `lib/plan/planService.ts`.
-- [ ] Collapse `shouldBlockRestoreForSwap` and `shouldBlockRestoreForPendingSwap` in
+- [x] Collapse `shouldBlockRestoreForSwap` and `shouldBlockRestoreForPendingSwap` in
       `planRestoreHelpers.ts` into one swap-blocking gate. They are two checks for the same
       concept (is a swap in progress for this device?).
       Files: `lib/plan/planRestoreHelpers.ts`.
