@@ -1,4 +1,3 @@
-import Homey from 'homey';
 import CapacityGuard from './capacityGuard';
 import { truncateToUtcHour, getHourBucketKey } from '../utils/dateUtils';
 
@@ -34,7 +33,6 @@ export type RecordPowerSampleParams = {
   controlledPowerW?: number;
   exemptPowerW?: number;
   nowMs?: number;
-  homey: Homey.App['homey'];
   capacityGuard?: CapacityGuard;
   hourBudgetKWh?: number;
   rebuildPlanFromCache: (reason?: string) => Promise<void>;

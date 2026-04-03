@@ -139,7 +139,7 @@ describe('power tracker integration', () => {
       state,
       currentPowerW: 1000,
       nowMs,
-      homey: mockHomeyInstance as any,
+
       rebuildPlanFromCache,
       saveState,
       capacityGuard: undefined,
@@ -163,7 +163,7 @@ describe('power tracker integration', () => {
       state,
       currentPowerW: 3600,
       nowMs: start,
-      homey: mockHomeyInstance as any,
+
       rebuildPlanFromCache,
       saveState,
       capacityGuard: undefined,
@@ -173,7 +173,7 @@ describe('power tracker integration', () => {
       state,
       currentPowerW: 3600,
       nowMs: start + 20 * 60 * 1000,
-      homey: mockHomeyInstance as any,
+
       rebuildPlanFromCache,
       saveState,
       capacityGuard: undefined,
@@ -197,7 +197,7 @@ describe('power tracker integration', () => {
       currentPowerW: 1000,
       controlledPowerW: 600,
       nowMs: start,
-      homey: mockHomeyInstance as any,
+
       rebuildPlanFromCache,
       saveState,
       capacityGuard: undefined,
@@ -208,7 +208,7 @@ describe('power tracker integration', () => {
       currentPowerW: 1000,
       controlledPowerW: 600,
       nowMs: start + 30 * 60 * 1000,
-      homey: mockHomeyInstance as any,
+
       rebuildPlanFromCache,
       saveState,
       capacityGuard: undefined,
@@ -231,7 +231,7 @@ describe('power tracker integration', () => {
       currentPowerW: 1000,
       exemptPowerW: 400,
       nowMs: start,
-      homey: mockHomeyInstance as any,
+
       rebuildPlanFromCache,
       saveState,
       capacityGuard: undefined,
@@ -242,7 +242,7 @@ describe('power tracker integration', () => {
       currentPowerW: 1000,
       exemptPowerW: 400,
       nowMs: start + 30 * 60 * 1000,
-      homey: mockHomeyInstance as any,
+
       rebuildPlanFromCache,
       saveState,
       capacityGuard: undefined,

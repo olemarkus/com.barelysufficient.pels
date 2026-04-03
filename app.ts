@@ -766,7 +766,6 @@ class PelsApp extends Homey.App {
         getLatestTargetSnapshot: () => this.latestTargetSnapshot,
         powerTracker: this.powerTracker,
         capacityGuard: this.capacityGuard,
-        homey: this.homey,
         schedulePlanRebuild: () => schedulePlanRebuildFromSignal({
           getState: () => this.powerSampleRebuildState,
           setState: (state) => {

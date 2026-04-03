@@ -395,7 +395,6 @@ export async function recordPowerSampleForApp(params: {
   getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
   powerTracker: PowerTrackerState;
   capacityGuard?: CapacityGuard;
-  homey: Homey.App['homey'];
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
 }): Promise<void> {
@@ -406,7 +405,6 @@ export async function recordPowerSampleForApp(params: {
     getLatestTargetSnapshot,
     powerTracker,
     capacityGuard,
-    homey,
     schedulePlanRebuild,
     saveState,
   } = params;
@@ -426,7 +424,6 @@ export async function recordPowerSampleForApp(params: {
     hourBudgetKWh,
     rebuildPlanFromCache: schedulePlanRebuild,
     saveState,
-    homey,
   });
 }
 

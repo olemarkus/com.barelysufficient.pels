@@ -1,10 +1,17 @@
-import type CapacityGuard from './capacityGuard';
 import { resolveCapacitySoftLimitKw, resolveUsableCapacityKw } from './capacityModel';
 import type { PowerTrackerState } from './powerTracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 
+type CapacityGuardView = {
+  getLastTotalPower(): number | null;
+  getSoftLimit(): number;
+  getHeadroom(): number | null;
+  isSheddingActive(): boolean;
+  isInShortfall(): boolean;
+};
+
 export function buildPeriodicStatusLog(params: {
-  capacityGuard?: CapacityGuard;
+  capacityGuard?: CapacityGuardView;
   powerTracker: PowerTrackerState;
   capacitySettings: { limitKw: number; marginKw: number };
   operatingMode: string;
@@ -18,12 +25,13 @@ export function buildPeriodicStatusLog(params: {
   const sheddingActive = capacityGuard?.isSheddingActive() ?? false;
   const inShortfall = capacityGuard?.isInShortfall() ?? false;
   const usage = getCurrentHourUsage(powerTracker);
+  const hourRemainingKWh = Math.max(0, hourBudgetKWh - usage.usedKWh);
   const parts = [
     formatPowerPart(total),
     `softLimit=${softLimit.toFixed(2)}kW`,
     formatHeadroomPart(headroom),
     `used=${usage.usedKWh.toFixed(2)}kWh`,
-    `hourBudget=${hourBudgetKWh.toFixed(1)}kWh`,
+    `hourRemaining=${hourRemainingKWh.toFixed(1)}kWh`,
     sheddingActive ? 'SHEDDING' : null,
     inShortfall ? 'SHORTFALL' : null,
     `mode=${operatingMode}`,
