@@ -20,12 +20,12 @@ export function buildPeriodicStatusLog(params: {
   const { capacityGuard, powerTracker, capacitySettings, operatingMode, capacityDryRun } = params;
   const total = capacityGuard?.getLastTotalPower() ?? null;
   const softLimit = capacityGuard?.getSoftLimit() ?? resolveCapacitySoftLimitKw(capacitySettings);
-  const hourBudgetKWh = resolveUsableCapacityKw(capacitySettings);
+  const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
   const headroom = capacityGuard?.getHeadroom() ?? null;
   const sheddingActive = capacityGuard?.isSheddingActive() ?? false;
   const inShortfall = capacityGuard?.isInShortfall() ?? false;
   const usage = getCurrentHourUsage(powerTracker);
-  const hourRemainingKWh = Math.max(0, hourBudgetKWh - usage.usedKWh);
+  const hourRemainingKWh = Math.max(0, hourCapKWh - usage.usedKWh);
   const parts = [
     formatPowerPart(total),
     `softLimit=${softLimit.toFixed(2)}kW`,
