@@ -113,7 +113,7 @@ npm run test:e2e            # Playwright E2E (chromium + firefox mobile)
 npm run ci:full             # Complete CI: checks + runtime + settings UI + Playwright
 ```
 
-**Coverage threshold:** 80% across branches, functions, lines, statements (collected from `app.ts`, `api.ts`, `lib/**`, `flowCards/**`, `drivers/**`).
+**Coverage threshold:** 80% across branches, functions, lines, statements. Collected from all `*.ts` files under `<rootDir>` (excluding `test/**`, `settings/**`, `packages/**`), which includes root entry points (`app.ts`, `api.ts`), `lib/**`, `flowCards/**`, and `drivers/**`.
 
 **Testing rules:**
 - Unit tests must have a narrow, specific purpose — avoid adding broad checks already covered by integration or regression tests.

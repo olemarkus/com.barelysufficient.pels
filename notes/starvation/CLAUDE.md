@@ -1,6 +1,6 @@
 # Temperature Device Starvation — Invariants
 
-> This feature is **not yet implemented**. These invariants define the intended design. Do not implement partial versions that deviate from these rules. See `notes/starvation/README.md` for the full specification.
+Partial starvation tracking exists in `lib/diagnostics/deviceDiagnosticsService.ts`, but the full model (intended-target suppression-only detection, per-episode flow triggers) is not yet complete — see `TODO.md` and `notes/starvation/README.md` for remaining work.
 
 **Scope:** managed temperature-driven devices only (room thermostats, water heaters). Not EV chargers or generic binary loads.
 
