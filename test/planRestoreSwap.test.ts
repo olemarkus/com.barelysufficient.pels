@@ -216,10 +216,28 @@ describe('computePendingRestorePowerKw', () => {
     expect(result.pendingKw).toBe(0);
   });
 
-  it('skips device that is not yet confirmed on', () => {
+  it('reserves headroom for recently restored device not yet confirmed on (stepped-load case)', () => {
+    // Stepped loads stay currentOn=false until snapshot confirms — must still reserve headroom.
     const dev = buildPlanDevice({ id: 'therm', currentOn: false, expectedPowerKw: 2, measuredPowerKw: 0 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.deviceIds).toEqual(['therm']);
+    expect(result.pendingKw).toBeCloseTo(2, 5);
+  });
+
+  it('uses powerKw as observed draw fallback when measuredPowerKw is absent', () => {
+    // Installations without live power only populate powerKw. Treat it as actual draw so
+    // a device already drawing via powerKw is not double-reserved for the full expected load.
+    const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 3, powerKw: 1 });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.pendingKw).toBeCloseTo(2, 5); // gap: 3 - 1 (1 < 3*0.5 — not yet confirmed)
+  });
+
+  it('considers powerKw-only device confirmed when powerKw meets threshold', () => {
+    // powerKw=1.2 meets the 50% threshold of expectedPowerKw=2 — device is confirmed, no reservation.
+    const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, powerKw: 1.2 });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
+    expect(result.deviceIds).toHaveLength(0);
   });
 
   it('skips device with no restore timestamp in state', () => {
