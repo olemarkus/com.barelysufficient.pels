@@ -143,16 +143,15 @@ refactors.
 
 See `notes/plan-module-simplification/README.md` for context.
 
-- [ ] Merge `planRestoreGate.ts` (43 lines) and `planTiming.ts` (18 lines, 1 consumer) into
+- [x] Merge `planRestoreGate.ts` (43 lines) and `planTiming.ts` (18 lines, 1 consumer) into
       `planRestoreTiming.ts`. All three are about "should restores happen now?" and the splits
       just add import hops.
-      Files: `lib/plan/planRestoreGate.ts`, `lib/plan/planTiming.ts`,
-      `lib/plan/planRestoreTiming.ts`.
-- [ ] Merge `planSheddingStepped.ts` (41 lines, 1 consumer) into `planShedding.ts`.
-      Files: `lib/plan/planSheddingStepped.ts`, `lib/plan/planShedding.ts`.
+- [x] Merge `planSheddingStepped.ts` (41 lines, 1 consumer) into `planShedding.ts`.
 - [ ] Merge `planReasonHelpers.ts` (102 lines, 1 consumer) into `planReasons.ts`.
+      Blocked: merging would push `planReasons.ts` over the 500-line lint limit.
       Files: `lib/plan/planReasonHelpers.ts`, `lib/plan/planReasons.ts`.
 - [ ] Merge `planServiceInternals.ts` (64 lines, 2 consumers) into `planService.ts`.
+      Blocked: creates a `planService ↔ planStatusWriter` circular dependency.
       Files: `lib/plan/planServiceInternals.ts`, `lib/plan/planService.ts`.
 - [ ] Collapse `shouldBlockRestoreForSwap` and `shouldBlockRestoreForPendingSwap` in
       `planRestoreHelpers.ts` into one swap-blocking gate. They are two checks for the same
