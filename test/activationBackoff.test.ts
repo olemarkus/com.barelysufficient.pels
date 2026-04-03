@@ -383,24 +383,35 @@ describe('activation backoff', () => {
   });
 });
 
+// Mirrors attributeOvershootToRecentRestores: finds the single most-recently-restored
+// device within the attribution window and records a setback for it.
+const attributeOvershoot = (state: ReturnType<typeof createPlanEngineState>, nowTs: number): void => {
+  let latestDeviceId: string | null = null;
+  let latestRestoreMs = 0;
+  for (const [deviceId, restoreMs] of Object.entries(state.lastDeviceRestoreMs)) {
+    if (nowTs - restoreMs > OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS) continue;
+    if (restoreMs > latestRestoreMs) {
+      latestRestoreMs = restoreMs;
+      latestDeviceId = deviceId;
+    }
+  }
+  if (latestDeviceId !== null) {
+    recordActivationSetback({ state, deviceId: latestDeviceId, nowTs });
+  }
+};
+
 describe('overshoot-after-restore attribution', () => {
-  it('records a setback for a device restored within the attribution window', () => {
+  it('records a setback for the most recently restored device within the attribution window', () => {
     const state = createPlanEngineState();
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
-    // Simulate a restore that happened 14 seconds ago
     state.lastDeviceRestoreMs['dev-a'] = nowTs - 14_000;
     recordActivationAttemptStart({ state, deviceId: 'dev-a', source: 'pels_restore', nowTs: nowTs - 14_000 });
 
-    // Simulate what attributeOvershootToRecentRestores does: iterate lastDeviceRestoreMs and call setback
-    for (const [deviceId, restoreMs] of Object.entries(state.lastDeviceRestoreMs)) {
-      if (nowTs - restoreMs > OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS) continue;
-      recordActivationSetback({ state, deviceId, nowTs });
-    }
+    attributeOvershoot(state, nowTs);
 
     expect(state.activationAttemptByDevice['dev-a']?.penaltyLevel).toBe(1);
     expect(state.activationAttemptByDevice['dev-a']?.lastSetbackMs).toBe(nowTs);
-    // Device should be blocked for ~10 minutes
     const block = getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-a', nowTs });
     expect(block).not.toBeNull();
     expect(block).toBeGreaterThan(9 * 60 * 1000);
@@ -414,12 +425,8 @@ describe('overshoot-after-restore attribution', () => {
     state.lastDeviceRestoreMs['dev-b'] = nowTs - 3 * 60 * 1000;
     recordActivationAttemptStart({ state, deviceId: 'dev-b', source: 'pels_restore', nowTs: nowTs - 3 * 60 * 1000 });
 
-    for (const [deviceId, restoreMs] of Object.entries(state.lastDeviceRestoreMs)) {
-      if (nowTs - restoreMs > OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS) continue;
-      recordActivationSetback({ state, deviceId, nowTs });
-    }
+    attributeOvershoot(state, nowTs);
 
-    // No setback — restore was too old
     expect(state.activationAttemptByDevice['dev-b']?.penaltyLevel).toBeUndefined();
     expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-b', nowTs })).toBeNull();
   });
@@ -430,14 +437,29 @@ describe('overshoot-after-restore attribution', () => {
 
     // Restore timestamp is recent but no activation attempt was started (e.g., manually turned on)
     state.lastDeviceRestoreMs['dev-c'] = nowTs - 10_000;
-    // No recordActivationAttemptStart call
 
-    for (const [deviceId, restoreMs] of Object.entries(state.lastDeviceRestoreMs)) {
-      if (nowTs - restoreMs > OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS) continue;
-      const result = recordActivationSetback({ state, deviceId, nowTs });
-      expect(result.bumped).toBe(false);
-    }
+    attributeOvershoot(state, nowTs);
 
     expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-c', nowTs })).toBeNull();
+  });
+
+  it('only penalizes the most recently restored device when multiple are in the window', () => {
+    const state = createPlanEngineState();
+    const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
+
+    // dev-earlier was restored 90s ago — within window, but not the marginal restore
+    state.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
+    recordActivationAttemptStart({ state, deviceId: 'dev-earlier', source: 'pels_restore', nowTs: nowTs - 90_000 });
+
+    // dev-latest was restored 14s ago — the one that tipped headroom negative
+    state.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
+    recordActivationAttemptStart({ state, deviceId: 'dev-latest', source: 'pels_restore', nowTs: nowTs - 14_000 });
+
+    attributeOvershoot(state, nowTs);
+
+    // Only dev-latest gets penalized
+    expect(state.activationAttemptByDevice['dev-latest']?.penaltyLevel).toBe(1);
+    expect(state.activationAttemptByDevice['dev-earlier']?.penaltyLevel).toBeUndefined();
+    expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-earlier', nowTs })).toBeNull();
   });
 });

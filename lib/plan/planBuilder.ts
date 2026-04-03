@@ -229,18 +229,28 @@ export class PlanBuilder {
 
   private attributeOvershootToRecentRestores(): void {
     const nowTs = Date.now();
+    // Only attribute to the single most recently restored device — it was the marginal addition
+    // that tipped headroom negative. Devices restored earlier were already absorbed without
+    // triggering overshoot, so penalizing them would be a false attribution.
+    let latestDeviceId: string | null = null;
+    let latestRestoreMs = 0;
     for (const [deviceId, restoreMs] of Object.entries(this.state.lastDeviceRestoreMs)) {
       if (nowTs - restoreMs > OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS) continue;
-      const result = recordActivationSetback({ state: this.state, deviceId, nowTs });
-      if (result.bumped) {
-        const ageSec = Math.round((nowTs - restoreMs) / 1000);
-        this.deps.log(
-          `Overshoot attributed to ${deviceId} restored ${ageSec}s ago`
-          + ` (penalty L${result.penaltyLevel})`,
-        );
-        if (result.transition && this.deps.deviceDiagnostics) {
-          this.deps.deviceDiagnostics.recordActivationTransition(result.transition, { name: deviceId });
-        }
+      if (restoreMs > latestRestoreMs) {
+        latestRestoreMs = restoreMs;
+        latestDeviceId = deviceId;
+      }
+    }
+    if (latestDeviceId === null) return;
+    const result = recordActivationSetback({ state: this.state, deviceId: latestDeviceId, nowTs });
+    if (result.bumped) {
+      const ageSec = Math.round((nowTs - latestRestoreMs) / 1000);
+      this.deps.log(
+        `Overshoot attributed to ${latestDeviceId} restored ${ageSec}s ago`
+        + ` (penalty L${result.penaltyLevel})`,
+      );
+      if (result.transition && this.deps.deviceDiagnostics) {
+        this.deps.deviceDiagnostics.recordActivationTransition(result.transition, { name: latestDeviceId });
       }
     }
   }
