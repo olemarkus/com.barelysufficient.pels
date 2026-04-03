@@ -1,4 +1,4 @@
-import { getShedCooldownState } from '../lib/plan/planTiming';
+import { getShedCooldownState } from '../lib/plan/planRestoreTiming';
 import { SHED_COOLDOWN_MS } from '../lib/plan/planConstants';
 
 describe('getShedCooldownState', () => {
