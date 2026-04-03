@@ -55,7 +55,6 @@ export type PlanEngineInitApp = {
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getDynamicSoftLimitOverride: () => number | null;
-  updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -99,7 +98,6 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
     getPriorityForDevice: (deviceId) => app.getPriorityForDevice(deviceId),
     getShedBehavior: (deviceId) => app.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: () => app.getDynamicSoftLimitOverride(),
-    updateLocalSnapshot: (deviceId, updates) => app.updateLocalSnapshot(deviceId, updates),
     markSteppedLoadDesiredStepIssued: (params) => app.markSteppedLoadDesiredStepIssued(params),
     logTargetRetryComparison: (params) => app.logTargetRetryComparison?.(params),
     syncLivePlanStateAfterTargetActuation: (source) => app.syncLivePlanStateAfterTargetActuation?.(source),

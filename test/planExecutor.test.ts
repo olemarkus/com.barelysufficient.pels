@@ -77,7 +77,6 @@ const buildExecutor = (
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-    updateLocalSnapshot: jest.fn(),
     markSteppedLoadDesiredStepIssued: jest.fn(),
     logTargetRetryComparison: jest.fn(),
     log: jest.fn(),

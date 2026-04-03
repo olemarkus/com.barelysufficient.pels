@@ -13,7 +13,6 @@ export type CapacityGuardOptions = {
   onSheddingEnd?: TriggerCallback;
   onShortfall?: ShortfallCallback;
   onShortfallCleared?: TriggerCallback;
-  log?: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
 };
 
@@ -47,7 +46,6 @@ export default class CapacityGuard {
   private softLimitProvider?: SoftLimitProvider;
   private shortfallThresholdProvider?: ShortfallThresholdProvider;
 
-  private log?: (...args: unknown[]) => void;
   private structuredLog?: PinoLogger;
   private incidentId: string | null = null;
   private incidentStartMs = 0;
@@ -61,7 +59,6 @@ export default class CapacityGuard {
     this.onSheddingEnd = options.onSheddingEnd;
     this.onShortfall = options.onShortfall;
     this.onShortfallCleared = options.onShortfallCleared;
-    this.log = options.log;
   }
 
   // --- Configuration ---
@@ -184,7 +181,6 @@ export default class CapacityGuard {
   }
 
   private async enterShortfall(deficitKw: number): Promise<void> {
-    this.log?.(`Guard: shortfall detected - no more devices to shed, deficit=${deficitKw.toFixed(2)}kW`);
     this.incidentId = `inc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.incidentStartMs = Date.now();
     const thresholdW = this.getShortfallThreshold() * 1000;
@@ -215,11 +211,14 @@ export default class CapacityGuard {
     const now = Date.now();
     if (this.shortfallClearStartTime === null) {
       this.shortfallClearStartTime = now;
-      this.log?.('Guard: positive headroom detected, waiting for sustained period before clearing shortfall');
+      this.structuredLog?.info({
+        event: 'shortfall_recovery_started',
+        incidentId: this.incidentId,
+        sustainRequiredMs: CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS,
+      });
       return;
     }
     if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
-      this.log?.('Guard: shortfall cleared (sustained positive headroom)');
       const powerW = (this.mainPowerKw ?? 0) * 1000;
       const thresholdW = shortfallThreshold * 1000;
       this.structuredLog?.info({
@@ -240,7 +239,10 @@ export default class CapacityGuard {
 
   private resetShortfallClearTimer(): void {
     if (this.shortfallClearStartTime !== null) {
-      this.log?.('Guard: headroom dropped, resetting shortfall clear timer');
+      this.structuredLog?.info({
+        event: 'shortfall_recovery_reset',
+        incidentId: this.incidentId,
+      });
       this.shortfallClearStartTime = null;
     }
   }

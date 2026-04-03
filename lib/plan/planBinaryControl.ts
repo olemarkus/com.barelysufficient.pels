@@ -21,7 +21,6 @@ type BinaryControlActuationMode = 'plan' | 'reconcile';
 type BinaryControlDeps = {
   state: PlanEngineState;
   deviceManager: DeviceManager;
-  updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;

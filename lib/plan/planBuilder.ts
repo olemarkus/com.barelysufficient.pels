@@ -209,14 +209,12 @@ export class PlanBuilder {
     const overshootActive = context.headroom !== null && context.headroom < 0;
     const prevOvershoot = this.state.wasOvershoot;
     if (overshootActive && !prevOvershoot) {
-      this.deps.log('Capacity overshoot.');
       this.state.overshootLogged = true;
       this.state.overshootStartedMs = Date.now();
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
       this.attributeOvershootToRecentRestores();
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
-      this.deps.log('Recovered from capacity overshoot.');
       this.state.overshootLogged = false;
       this.state.overshootStartedMs = null;
       this.state.lastOvershootEscalationMs = null;
@@ -244,11 +242,12 @@ export class PlanBuilder {
     if (latestDeviceId === null) return;
     const result = recordActivationSetback({ state: this.state, deviceId: latestDeviceId, nowTs });
     if (result.bumped) {
-      const ageSec = Math.round((nowTs - latestRestoreMs) / 1000);
-      this.deps.log(
-        `Overshoot attributed to ${latestDeviceId} restored ${ageSec}s ago`
-        + ` (penalty L${result.penaltyLevel})`,
-      );
+      this.deps.structuredLog?.warn({
+        event: 'overshoot_attributed',
+        deviceId: latestDeviceId,
+        restoreAgeMs: nowTs - latestRestoreMs,
+        penaltyLevel: result.penaltyLevel,
+      });
       if (result.transition && this.deps.deviceDiagnostics) {
         this.deps.deviceDiagnostics.recordActivationTransition(result.transition, { name: latestDeviceId });
       }

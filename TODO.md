@@ -108,7 +108,7 @@ refactors.
 
 ### P1 Dead code and dead plumbing
 
-- [ ] Remove unused `updateLocalSnapshot` dependency from the binary-control pipeline.
+- [x] Remove unused `updateLocalSnapshot` dependency from the binary-control pipeline.
       `planBinaryControl.ts` declares it in `BinaryControlDeps` but never calls it.
       `planExecutor.ts` still threads it through `buildBinaryControlDeps()`. Dead plumbing
       with no behavior change on removal.

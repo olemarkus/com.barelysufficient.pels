@@ -55,7 +55,6 @@ export type PlanExecutorDeps = {
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
-  updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -122,7 +121,6 @@ export class PlanExecutor {
     return {
       state: this.state,
       deviceManager: this.deviceManager,
-      updateLocalSnapshot: this.updateLocalSnapshot.bind(this),
       log: this.log.bind(this),
       logDebug: this.logDebug.bind(this),
       error: this.error.bind(this),
@@ -168,10 +166,6 @@ export class PlanExecutor {
       name,
       nowTs: now,
     });
-  }
-
-  private updateLocalSnapshot(deviceId: string, updates: { target?: number | null; on?: boolean }): void {
-    this.deps.updateLocalSnapshot(deviceId, updates);
   }
 
   private markSteppedLoadDesiredStepIssued(params: {

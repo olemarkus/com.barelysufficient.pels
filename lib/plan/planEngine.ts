@@ -54,7 +54,6 @@ export type PlanEngineDeps = {
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
-  updateLocalSnapshot: (deviceId: string, updates: { target?: number | null; on?: boolean }) => void;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -111,7 +110,6 @@ export class PlanEngine {
       getCapacityDryRun: deps.getCapacityDryRun,
       getOperatingMode: deps.getOperatingMode,
       getShedBehavior: deps.getShedBehavior,
-      updateLocalSnapshot: deps.updateLocalSnapshot,
       markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
       logTargetRetryComparison: deps.logTargetRetryComparison,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
