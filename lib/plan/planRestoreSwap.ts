@@ -32,7 +32,6 @@ export function buildSwapCandidates(params: {
   shedNames: string;
   shedPower: string;
   potentialHeadroom: number;
-  shedPowerByDeviceId: Map<string, number>;
   reason: string;
 } {
   const {
@@ -44,7 +43,6 @@ export function buildSwapCandidates(params: {
     restoredThisCycle,
   } = params;
   const toShed: DevicePlanDevice[] = [];
-  const shedPowerByDeviceId = new Map<string, number>();
   let currentPotential = availableHeadroom;
 
   for (const onDev of onDevices) {
@@ -54,7 +52,6 @@ export function buildSwapCandidates(params: {
     if (pwr === null || pwr <= 0) continue;
 
     toShed.push(onDev);
-    shedPowerByDeviceId.set(onDev.id, pwr);
     currentPotential += pwr;
 
     if (currentPotential >= needed) break;
@@ -73,7 +70,6 @@ export function buildSwapCandidates(params: {
     shedNames: names,
     shedPower: (currentPotential - availableHeadroom).toFixed(2),
     potentialHeadroom: currentPotential,
-    shedPowerByDeviceId,
     reason,
   };
 }
@@ -130,6 +126,7 @@ export function computePendingRestorePowerKw(
   let pendingKw = 0;
   const deviceIds: string[] = [];
   for (const dev of planDevices) {
+    if (dev.plannedState === 'shed') continue;
     const restoreMs = lastDeviceRestoreMs[dev.id];
     if (!restoreMs || nowTs - restoreMs > PENDING_RESTORE_WINDOW_MS) continue;
     // Include currentOn=false devices that have a recent restore timestamp: stepped loads
