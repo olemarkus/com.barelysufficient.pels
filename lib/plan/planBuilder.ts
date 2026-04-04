@@ -313,6 +313,7 @@ export class PlanBuilder {
       holdDuringRestoreCooldown: restoreResult.inRestoreCooldown,
       restoreCooldownSeconds: restoreResult.restoreCooldownSeconds,
       restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
+      structuredLog: this.deps.structuredLog,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
     }));
   }

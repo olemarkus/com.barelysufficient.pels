@@ -9,6 +9,7 @@ import {
   recordActivationSetback,
 } from '../lib/plan/planActivationBackoff';
 import { SWAP_TIMEOUT_MS } from '../lib/plan/planConstants';
+import { applyShedTemperatureHold } from '../lib/plan/planReasons';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/planRestore';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
@@ -573,8 +574,8 @@ describe('restore cooldown backoff', () => {
         }),
       ],
       context: buildContext({
-        headroomRaw: 1.6, // Enough for low (1.25 + 0.23 buffer = 1.48), but NOT enough for medium (2.0 + 0.3 buffer = 2.3)
-        headroom: 1.6,
+        headroomRaw: 1.75, // Enough for low plus 0.25kW reserve, but NOT enough for medium
+        headroom: 1.75,
       }),
       state,
       sheddingActive: false,
@@ -993,9 +994,9 @@ describe('restore admission — headroom and penalty gates', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('admits device when headroom exactly meets base need (no penalty)', () => {
+  it('admits device when headroom exactly meets base need plus admission reserve', () => {
     const state = createPlanEngineState();
-    // expected=2kW, buffer=0.3kW → needed=2.3kW
+    // expected=2kW, buffer=0.3kW → needed=2.3kW, plus 0.25kW admission reserve = 2.55kW
     const result = applyRestorePlan({
       planDevices: [
         buildPlanDevice({
@@ -1006,7 +1007,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 2.3, headroom: 2.3 }),
+      context: buildContext({ headroomRaw: 2.55, headroom: 2.55 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -1014,7 +1015,7 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(result.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('keep');
   });
 
-  it('blocks device when headroom is just below base need', () => {
+  it('blocks device when headroom is just below base need plus admission reserve', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
       planDevices: [
@@ -1026,7 +1027,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 2.29, headroom: 2.29 }),
+      context: buildContext({ headroomRaw: 2.54, headroom: 2.54 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -1034,6 +1035,45 @@ describe('restore admission — headroom and penalty gates', () => {
     const dev = result.planDevices.find((d) => d.id === 'dev');
     expect(dev?.plannedState).toBe('shed');
     expect(dev?.reason).toMatch(/insufficient headroom/);
+  });
+
+  it('uses the explicit 0.25kW final admission reserve for thin-margin restores', () => {
+    const state = createPlanEngineState();
+
+    const rejected = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev',
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 0.522,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0.94, headroom: 0.94 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const admitted = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev',
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 0.522,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 1.0, headroom: 1.0 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    expect(rejected.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('shed');
+    expect(admitted.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('keep');
   });
 
   it('device with expectedPowerKw=0 falls through to powerKw for admission — not 0.2kW only', () => {
@@ -1195,5 +1235,99 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(dev?.reason).toMatch(/activation backoff/);
     // On device should remain on (swap was not triggered)
     expect(onDev?.plannedState).toBe('keep');
+  });
+
+  it('uses full restore need for target-based restore instead of buffer-only headroom', () => {
+    const state = createPlanEngineState();
+    state.lastPlannedShedIds = new Set(['dev-temp']);
+
+    const result = applyShedTemperatureHold({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-temp',
+          name: 'Nordic S4 REL',
+          currentState: 'keep',
+          plannedState: 'keep',
+          currentTarget: 18,
+          plannedTarget: 22,
+          currentOn: true,
+          shedAction: 'set_temperature',
+          shedTemperature: 18,
+          expectedPowerKw: 1.0,
+          powerKw: 1.0,
+        }),
+      ],
+      state,
+      shedReasons: new Map(),
+      inShedWindow: false,
+      inCooldown: false,
+      activeOvershoot: false,
+      availableHeadroom: 0.25,
+      restoredOneThisCycle: false,
+      restoredThisCycle: new Set(),
+      shedCooldownRemainingSec: null,
+      holdDuringRestoreCooldown: false,
+      restoreCooldownSeconds: 60,
+      restoreCooldownRemainingSec: null,
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18, stepId: null }),
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-temp');
+    expect(device?.plannedTarget).toBe(18);
+    expect(device?.reason).toContain('insufficient headroom');
+    expect(result.restoredOneThisCycle).toBe(false);
+  });
+
+  it('blocks target-based restore on activation setback and logs the rejection', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastPlannedShedIds = new Set(['dev-temp']);
+    state.activationAttemptByDevice['dev-temp'] = {
+      penaltyLevel: 1,
+      lastSetbackMs: now - 1_000,
+    };
+    const structuredLog = { debug: jest.fn(), info: jest.fn() };
+
+    const result = applyShedTemperatureHold({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-temp',
+          name: 'Nordic S4 REL',
+          currentState: 'keep',
+          plannedState: 'keep',
+          currentTarget: 18,
+          plannedTarget: 22,
+          currentOn: true,
+          shedAction: 'set_temperature',
+          shedTemperature: 18,
+          expectedPowerKw: 1.0,
+          powerKw: 1.0,
+        }),
+      ],
+      state,
+      shedReasons: new Map(),
+      inShedWindow: false,
+      inCooldown: false,
+      activeOvershoot: false,
+      availableHeadroom: 3,
+      restoredOneThisCycle: false,
+      restoredThisCycle: new Set(),
+      shedCooldownRemainingSec: null,
+      holdDuringRestoreCooldown: false,
+      restoreCooldownSeconds: 60,
+      restoreCooldownRemainingSec: null,
+      structuredLog: structuredLog as any,
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18, stepId: null }),
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-temp');
+    expect(device?.plannedTarget).toBe(18);
+    expect(device?.reason).toMatch(/activation backoff/);
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_rejected',
+      restoreType: 'target',
+      deviceId: 'dev-temp',
+    }));
   });
 });

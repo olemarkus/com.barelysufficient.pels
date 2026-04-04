@@ -70,6 +70,7 @@ export type PlanEngineState = {
   restoreCooldownMs: number;
   lastRestoreCooldownBumpMs: number | null;
   startupRestoreBlockedUntilMs: number | null;
+  currentRebuildReason: string | null;
   hourlyBudgetExhausted: boolean;
   wasOvershoot: boolean;
   overshootLogged: boolean;
@@ -98,6 +99,7 @@ export function createPlanEngineState(): PlanEngineState {
     restoreCooldownMs: RESTORE_COOLDOWN_MS,
     lastRestoreCooldownBumpMs: null,
     startupRestoreBlockedUntilMs: null,
+    currentRebuildReason: null,
     hourlyBudgetExhausted: false,
     wasOvershoot: false,
     overshootLogged: false,

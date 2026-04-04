@@ -1,6 +1,15 @@
+/* eslint-disable max-lines -- reason normalization and shed-temperature hold decisions share stateful helpers here */
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
-import { computeBaseRestoreNeed } from './planRestoreSwap';
+import type { Logger as PinoLogger } from '../logging/logger';
+import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
+import { resolveRestorePowerSource } from './planRestoreSwap';
+import { getRestoreNeed } from './planRestore';
+import {
+  canAdmitRestore,
+  resolveRestoreDecisionPhase,
+  shouldLogRestoreAdmissionAtInfo,
+} from './planRestoreAdmission';
 import {
   buildBaseReason,
   getBaseShedReason,
@@ -27,6 +36,7 @@ export type ShedHoldParams = {
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
+  structuredLog?: PinoLogger;
   getShedBehavior: (deviceId: string) => {
     action: 'turn_off' | 'set_temperature' | 'set_step';
     temperature: number | null;
@@ -53,6 +63,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
+    structuredLog,
     getShedBehavior,
   } = params;
 
@@ -79,6 +90,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
       pendingRestoreDelaySec,
+      structuredLog,
     });
     headroom = result.availableHeadroom;
     restoredOne = result.restoredOneThisCycle;
@@ -147,26 +159,74 @@ function hasTemperatureTarget(dev: DevicePlanDevice): boolean {
     || (typeof dev.plannedTarget === 'number' && Number.isFinite(dev.plannedTarget));
 }
 
+/* eslint-disable-next-line max-lines-per-function --
+target restore admission mirrors binary restore checks and keeps decision/logging together */
 function resolveRestoreDecision(params: {
   dev: DevicePlanDevice;
+  state: PlanEngineState;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
+  structuredLog?: PinoLogger;
 }): HoldDecision {
   const {
     dev,
+    state,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
+    structuredLog,
   } = params;
-  const { buffer: restoreBuffer } = computeBaseRestoreNeed(dev);
-  if (availableHeadroom < restoreBuffer) {
-    const reason = `insufficient headroom (need ${restoreBuffer.toFixed(2)}kW, `
+
+  const setbackRemainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId: dev.id });
+  const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
+  if (setbackRemainingMs !== null) {
+    const reason = `activation backoff (${Math.max(1, Math.ceil(setbackRemainingMs / 1000))}s remaining)`;
+    structuredLog?.debug({
+      event: 'restore_rejected',
+      restoreType: 'target',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      reason,
+      availableKw: availableHeadroom,
+      decision: 'rejected',
+      decisionReason: reason,
+      penaltyLevel: getActivationPenaltyLevel(state, dev.id),
+    });
+    return { type: 'hold', reason };
+  }
+
+  const restoreNeed = getRestoreNeed(dev, state);
+  const admission = canAdmitRestore({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
+  if (admission.postReserveMarginKw < 0) {
+    const reason = `insufficient headroom (need ${admission.requiredKw.toFixed(2)}kW, `
       + `headroom ${availableHeadroom.toFixed(2)}kW)`;
+    structuredLog?.debug({
+      event: 'restore_rejected',
+      restoreType: 'target',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      reason,
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource: resolveRestorePowerSource(dev),
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      reserveKw: admission.admissionReserveKw,
+      admissionReserveKw: admission.admissionReserveKw,
+      marginKw: admission.marginKw,
+      postRestoreSlackKw: admission.postReserveMarginKw,
+      postReserveMarginKw: admission.postReserveMarginKw,
+      decision: 'rejected',
+      decisionReason: reason,
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    });
     return { type: 'hold', reason };
   }
   const gateReason = resolveCapacityRestoreBlockReason({
@@ -184,12 +244,59 @@ function resolveRestoreDecision(params: {
     useThrottleLabel: true,
   });
   if (gateReason) {
+    structuredLog?.debug({
+      event: 'restore_rejected',
+      restoreType: 'target',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      reason: gateReason,
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource: resolveRestorePowerSource(dev),
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      reserveKw: admission.admissionReserveKw,
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+      marginKw: admission.marginKw,
+      postRestoreSlackKw: admission.postReserveMarginKw,
+      postReserveMarginKw: admission.postReserveMarginKw,
+      decision: 'rejected',
+      decisionReason: gateReason,
+    });
     return { type: 'hold', reason: gateReason };
   }
   restoredThisCycle.add(dev.id);
+  const powerSource = resolveRestorePowerSource(dev);
+  const logMethod = shouldLogRestoreAdmissionAtInfo({
+    restoreType: 'target',
+    marginKw: admission.marginKw,
+    penaltyLevel: restoreNeed.penaltyLevel,
+    powerSource,
+    recentInstabilityMs: state.lastInstabilityMs,
+  }) ? 'info' : 'debug';
+  structuredLog?.[logMethod]({
+    event: 'restore_admitted',
+    restoreType: 'target',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    estimatedPowerKw: restoreNeed.devPower,
+    powerSource,
+    neededKw: restoreNeed.needed,
+    availableKw: availableHeadroom,
+    reserveKw: admission.admissionReserveKw,
+    admissionReserveKw: admission.admissionReserveKw,
+    marginKw: admission.marginKw,
+    postRestoreSlackKw: admission.postReserveMarginKw,
+    postReserveMarginKw: admission.postReserveMarginKw,
+    decision: 'admitted',
+    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+  });
   return {
     type: 'restore',
-    availableHeadroom: availableHeadroom - restoreBuffer,
+    availableHeadroom: availableHeadroom - restoreNeed.needed,
     restoredOneThisCycle: true,
   };
 }
@@ -210,6 +317,7 @@ function resolveHoldDecision(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelaySec: number | null;
+  structuredLog?: PinoLogger;
 }): HoldDecision {
   const {
     dev,
@@ -224,6 +332,7 @@ function resolveHoldDecision(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
+    structuredLog,
   } = params;
 
   if (dev.controllable === false) {
@@ -247,12 +356,14 @@ function resolveHoldDecision(params: {
   if (!shouldHold && wasShedLastPlan) {
     return resolvePostHoldRestoreDecision({
       dev,
+      state,
       availableHeadroom,
       restoredOneThisCycle,
       restoredThisCycle,
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
       pendingRestoreDelaySec,
+      structuredLog,
     });
   }
 
@@ -269,32 +380,38 @@ function resolveHoldDecision(params: {
 
 function resolvePostHoldRestoreDecision(params: {
   dev: DevicePlanDevice;
+  state: PlanEngineState;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelaySec: number | null;
+  structuredLog?: PinoLogger;
 }): HoldDecision {
   const {
     dev,
+    state,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
+    structuredLog,
   } = params;
   if (pendingRestoreDelaySec !== null) {
     return { type: 'hold', reason: `restore pending (${pendingRestoreDelaySec}s remaining)` };
   }
   return resolveRestoreDecision({
     dev,
+    state,
     availableHeadroom,
     restoredOneThisCycle,
     restoredThisCycle,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
+    structuredLog,
   });
 }
 
@@ -314,6 +431,7 @@ function applyHoldToDevice(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelaySec: number | null;
+  structuredLog?: PinoLogger;
 }): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
     dev,
@@ -331,6 +449,7 @@ function applyHoldToDevice(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
+    structuredLog,
   } = params;
 
   const decision = resolveHoldDecision({
@@ -349,6 +468,7 @@ function applyHoldToDevice(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
+    structuredLog,
   });
 
   if (decision.type === 'restore') {
