@@ -138,7 +138,7 @@ export class PlanBuilder {
     this.updateOvershootState(context, deviceNameById);
 
     let planDevices = this.buildPlanDevices(context, sheddingPlan);
-    const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan);
+    const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan, deviceNameById);
     planDevices = restoreResult.planDevices;
 
     const holdResult = this.applyHoldPlanWithTiming(planDevices, restoreResult, sheddingPlan);
@@ -284,11 +284,13 @@ export class PlanBuilder {
     planDevices: DevicePlanDevice[],
     context: PlanContext,
     sheddingPlan: SheddingPlan,
+    deviceNameById: ReadonlyMap<string, string>,
   ): RestorePlanResult {
     return this.trackDuration('plan_restore_ms', () => this.applyRestorePlanAndUpdateState({
       planDevices,
       context,
       sheddingActive: sheddingPlan.sheddingActive,
+      deviceNameById,
     }));
   }
 
@@ -462,8 +464,9 @@ export class PlanBuilder {
     planDevices: DevicePlanDevice[];
     context: PlanContext;
     sheddingActive: boolean;
+    deviceNameById: ReadonlyMap<string, string>;
   }): RestorePlanResult {
-    const { planDevices, context, sheddingActive } = params;
+    const { planDevices, context, sheddingActive, deviceNameById } = params;
     const restoreResult = applyRestorePlan({
       planDevices,
       context,
@@ -474,6 +477,7 @@ export class PlanBuilder {
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         deviceDiagnostics: this.deps.deviceDiagnostics,
         structuredLog: this.deps.structuredLog,
+        deviceNameById,
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       },
     });

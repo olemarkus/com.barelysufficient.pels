@@ -1,5 +1,13 @@
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PlanContext } from '../lib/plan/planContext';
+import {
+  ACTIVATION_BACKOFF_STICK_WINDOW_MS,
+  ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
+  getActivationPenaltyLevel,
+  getActivationRestoreBlockRemainingMs,
+  recordActivationAttemptStart,
+  recordActivationSetback,
+} from '../lib/plan/planActivationBackoff';
 import { SWAP_TIMEOUT_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/planRestore';
@@ -813,5 +821,379 @@ describe('restore cooldown backoff', () => {
 
     expect(result.inStartupStabilization).toBe(false);
     expect(result.inShedWindow).toBe(false);
+  });
+});
+
+// Shared deps factory for restore tests below
+const makeDeps = () => ({
+  powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+  getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+  log: jest.fn(),
+  logDebug: jest.fn(),
+});
+
+
+describe('restore → overshoot attribution → penalty → re-restore block', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('pre-stick shed writes lastSetbackMs and blocks restore for 10 minutes', () => {
+    // §3.1: Prove restore→overshoot→shed loop is broken when shed happens before stick window.
+    const state = createPlanEngineState();
+    const deviceId = 'dev-heater';
+    const T0 = Date.UTC(2024, 0, 1, 10, 0, 0);
+    jest.setSystemTime(T0);
+
+    // T=0: restore actuation — attempt started
+    recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 });
+    state.lastDeviceRestoreMs[deviceId] = T0;
+
+    // T=14s: overshoot attribution — shed before stick window
+    const T14s = T0 + 14_000;
+    const setback = recordActivationSetback({ state, deviceId, nowTs: T14s });
+
+    expect(setback.bumped).toBe(true);
+    expect(setback.penaltyLevel).toBe(1);
+    expect(state.activationAttemptByDevice[deviceId]?.lastSetbackMs).toBe(T14s);
+
+    // T=60s: restore cooldown expires — device should be blocked by activation setback
+    const T60s = T0 + 60_000;
+    jest.setSystemTime(T60s);
+    const blockRemaining = getActivationRestoreBlockRemainingMs({
+      state,
+      deviceId,
+      nowTs: T60s,
+    });
+    expect(blockRemaining).toBeGreaterThan(0);
+    expect(blockRemaining).toBeLessThanOrEqual(ACTIVATION_SETBACK_RESTORE_BLOCK_MS);
+
+    // applyRestorePlan should block the device
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: deviceId,
+          name: 'Water Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const dev = result.planDevices.find((d) => d.id === deviceId);
+    expect(dev?.plannedState).toBe('shed');
+    expect(dev?.reason).toMatch(/activation backoff/);
+  });
+
+  it('post-stick shed refreshes lastSetbackMs so the time block stays active', () => {
+    // §3.1 / H3 fix: after the stick window, shedding should still update lastSetbackMs
+    // so the 10-minute restore block restarts. Without the fix, lastSetbackMs is not updated
+    // and getActivationRestoreBlockRemainingMs returns null.
+    const state = createPlanEngineState();
+    const deviceId = 'dev-heater';
+    const T0 = Date.UTC(2024, 0, 1, 10, 0, 0);
+
+    // Pre-stick setback → L1, lastSetbackMs set at T0+5s
+    recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 });
+    recordActivationSetback({ state, deviceId, nowTs: T0 + 5_000 });
+
+    // New attempt started; shed happens after stick window
+    recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 + 65_000 });
+    const TPostStick = T0 + 65_000 + ACTIVATION_BACKOFF_STICK_WINDOW_MS + 60_000;
+    const setback = recordActivationSetback({ state, deviceId, nowTs: TPostStick });
+
+    expect(setback.bumped).toBe(false); // stickReached → no level bump, still expected
+
+    // lastSetbackMs should be updated to TPostStick so the block restarts
+    expect(state.activationAttemptByDevice[deviceId]?.lastSetbackMs).toBe(TPostStick);
+
+    // Block should be active immediately after the post-stick shed
+    const blockRemaining = getActivationRestoreBlockRemainingMs({
+      state,
+      deviceId,
+      nowTs: TPostStick + 1_000,
+    });
+    expect(blockRemaining).toBeGreaterThan(0);
+  });
+
+  it('block expires after stick window and device is admitted with elevated headroom', () => {
+    // §3.3: Full cycle — after block expires, device restores but requires penalty headroom.
+    const state = createPlanEngineState();
+    const deviceId = 'dev-heater';
+    const T0 = Date.UTC(2024, 0, 1, 10, 0, 0);
+    jest.setSystemTime(T0);
+
+    // Simulate: restore attempted, overshoot attributed (pre-stick)
+    recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 });
+    state.lastDeviceRestoreMs[deviceId] = T0;
+    recordActivationSetback({ state, deviceId, nowTs: T0 + 14_000 }); // L0 → L1
+
+    expect(getActivationPenaltyLevel(state, deviceId)).toBe(1);
+
+    // Block is active at T=60s
+    expect(getActivationRestoreBlockRemainingMs({ state, deviceId, nowTs: T0 + 60_000 }))
+      .toBeGreaterThan(0);
+
+    // Block expires 10min after lastSetbackMs (T0+14s), not T0
+    const TAfterBlock = T0 + 14_000 + ACTIVATION_SETBACK_RESTORE_BLOCK_MS + 1_000;
+    jest.setSystemTime(TAfterBlock);
+    expect(getActivationRestoreBlockRemainingMs({ state, deviceId, nowTs: TAfterBlock })).toBeNull();
+
+    // Device needs penalty headroom: L1 adds ~15% extra above base
+    // base: expected=2kW + buffer=0.3kW = 2.3kW; penalty L1: ~15% → ~2.65kW
+    // With headroom=2.2kW (below penalty threshold) → still blocked by headroom
+    const resultInsufficient = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: deviceId,
+          name: 'Water Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 2.2, headroom: 2.2 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+    const devInsufficient = resultInsufficient.planDevices.find((d) => d.id === deviceId);
+    expect(devInsufficient?.plannedState).toBe('shed');
+    expect(devInsufficient?.reason).toMatch(/insufficient headroom/);
+
+    // With headroom=3kW (above penalty threshold) → admitted
+    const resultAdmitted = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: deviceId,
+          name: 'Water Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 3, headroom: 3 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+    const devAdmitted = resultAdmitted.planDevices.find((d) => d.id === deviceId);
+    expect(devAdmitted?.plannedState).toBe('keep');
+  });
+});
+
+describe('restore admission — headroom and penalty gates', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('admits device when headroom exactly meets base need (no penalty)', () => {
+    const state = createPlanEngineState();
+    // expected=2kW, buffer=0.3kW → needed=2.3kW
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev',
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 2.3, headroom: 2.3 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+    expect(result.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('keep');
+  });
+
+  it('blocks device when headroom is just below base need', () => {
+    const state = createPlanEngineState();
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev',
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 2.29, headroom: 2.29 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+    const dev = result.planDevices.find((d) => d.id === 'dev');
+    expect(dev?.plannedState).toBe('shed');
+    expect(dev?.reason).toMatch(/insufficient headroom/);
+  });
+
+  it('device with expectedPowerKw=0 falls through to powerKw for admission — not 0.2kW only', () => {
+    // H1 fix: expectedPowerKw=0 should not be treated as "device draws 0kW".
+    // After fix, estimateRestorePower skips 0 and uses powerKw=2 → needed≈2.3kW.
+    // 0.25kW headroom is insufficient → device blocked.
+    const state = createPlanEngineState();
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev',
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 0,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0.25, headroom: 0.25 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+    const dev = result.planDevices.find((d) => d.id === 'dev');
+    expect(dev?.plannedState).toBe('shed');
+    expect(dev?.reason).toMatch(/insufficient headroom/);
+  });
+
+  it('recently shed device needs extra headroom via recent-shed multiplier', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    // Shed 20s ago — within the recent-shed backoff window
+    state.lastDeviceShedMs['dev'] = now - 20_000;
+
+    // Without recent-shed penalty: expected=2kW + buffer=0.3kW = 2.3kW needed
+    // With recent-shed multiplier (1.5×): 2.3 * 1.5 = 3.45kW
+    // 2.5kW headroom: sufficient without penalty, insufficient with it
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev',
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 2.5, headroom: 2.5 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+    const dev = result.planDevices.find((d) => d.id === 'dev');
+    expect(dev?.plannedState).toBe('shed');
+    expect(dev?.reason).toMatch(/insufficient headroom/);
+  });
+
+  it('penalty L4 requires approximately double the base needed headroom', () => {
+    // §3.4: penalty L4 → applyActivationPenalty gives max(base*2, base+1.2kW)
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    const deviceId = 'dev';
+
+    // Set penalty level 4 with a fresh lastSetbackMs (block expired)
+    state.activationAttemptByDevice[deviceId] = {
+      penaltyLevel: 4,
+      lastSetbackMs: now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1_000,
+    };
+
+    // base need: expected=2kW + buffer=0.3kW = 2.3kW
+    // L4 penalty: max(2.3*2, 2.3+1.2) = max(4.6, 3.5) = 4.6kW
+    // 3kW headroom: below 4.6 → blocked
+    const resultBlocked = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: deviceId,
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 3, headroom: 3 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+    expect(resultBlocked.planDevices.find((d) => d.id === deviceId)?.plannedState).toBe('shed');
+
+    // 5kW headroom: above 4.6 → admitted
+    const resultAdmitted = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: deviceId,
+          name: 'Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+    expect(resultAdmitted.planDevices.find((d) => d.id === deviceId)?.plannedState).toBe('keep');
+  });
+
+  it('active setback blocks device before swap phase is reached', () => {
+    // §3.4: when setback is active, planRestoreForDevice returns early — swap is never attempted
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    jest.setSystemTime(now);
+    const state = createPlanEngineState();
+    const deviceId = 'dev-off';
+
+    // Fresh setback — block in effect
+    state.activationAttemptByDevice[deviceId] = {
+      penaltyLevel: 1,
+      lastSetbackMs: now - 1_000, // 1s ago, block runs for 10min
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: deviceId,
+          name: 'Off Heater',
+          currentState: 'off',
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+        }),
+        // High-priority on device that could be swapped out
+        buildPlanDevice({
+          id: 'dev-on',
+          name: 'On Heater',
+          priority: 90,
+          currentState: 'on',
+          expectedPowerKw: 3,
+          measuredPowerKw: 3,
+          powerKw: 3,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0, headroom: 0 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        ...makeDeps(),
+        getShedBehavior: (id: string) => id === 'dev-on'
+          ? { action: 'turn_off' as const, temperature: null, stepId: null }
+          : { action: 'turn_off' as const, temperature: null, stepId: null },
+      },
+    });
+
+    const dev = result.planDevices.find((d) => d.id === deviceId);
+    const onDev = result.planDevices.find((d) => d.id === 'dev-on');
+    // Blocked by setback — swap should NOT have been attempted
+    expect(dev?.plannedState).toBe('shed');
+    expect(dev?.reason).toMatch(/activation backoff/);
+    // On device should remain on (swap was not triggered)
+    expect(onDev?.plannedState).toBe('keep');
   });
 });
