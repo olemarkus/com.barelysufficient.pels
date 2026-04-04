@@ -134,7 +134,8 @@ export class PlanBuilder {
 
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const { context, dailyBudgetSnapshot, sheddingPlan } = await this.buildContextAndShedding(devices);
-    this.updateOvershootState(context);
+    const deviceNameById = new Map(devices.map((d) => [d.id, d.name]));
+    this.updateOvershootState(context, deviceNameById);
 
     let planDevices = this.buildPlanDevices(context, sheddingPlan);
     const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan);
@@ -205,7 +206,7 @@ export class PlanBuilder {
     return { context, dailyBudgetSnapshot, sheddingPlan };
   }
 
-  private updateOvershootState(context: PlanContext): void {
+  private updateOvershootState(context: PlanContext, deviceNameById: ReadonlyMap<string, string>): void {
     const overshootActive = context.headroom !== null && context.headroom < 0;
     const prevOvershoot = this.state.wasOvershoot;
     if (overshootActive && !prevOvershoot) {
@@ -214,7 +215,7 @@ export class PlanBuilder {
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
       this.deps.structuredLog?.warn({ event: 'overshoot_entered', headroomKw: context.headroom });
-      this.attributeOvershootToRecentRestores();
+      this.attributeOvershootToRecentRestores(deviceNameById);
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.state.overshootLogged = false;
       const durationMs = this.state.overshootStartedMs !== null ? Date.now() - this.state.overshootStartedMs : 0;
@@ -228,7 +229,7 @@ export class PlanBuilder {
     this.state.wasOvershoot = overshootActive;
   }
 
-  private attributeOvershootToRecentRestores(): void {
+  private attributeOvershootToRecentRestores(deviceNameById: ReadonlyMap<string, string>): void {
     const nowTs = Date.now();
     // Only attribute to the single most recently restored device — it was the marginal addition
     // that tipped headroom negative. Devices restored earlier were already absorbed without
@@ -243,16 +244,18 @@ export class PlanBuilder {
       }
     }
     if (latestDeviceId === null) return;
+    const deviceName = deviceNameById.get(latestDeviceId) ?? latestDeviceId;
     const result = recordActivationSetback({ state: this.state, deviceId: latestDeviceId, nowTs });
     if (result.bumped) {
       this.deps.structuredLog?.warn({
         event: 'overshoot_attributed',
         deviceId: latestDeviceId,
+        deviceName,
         restoreAgeMs: nowTs - latestRestoreMs,
         penaltyLevel: result.penaltyLevel,
       });
       if (result.transition && this.deps.deviceDiagnostics) {
-        this.deps.deviceDiagnostics.recordActivationTransition(result.transition, { name: latestDeviceId });
+        this.deps.deviceDiagnostics.recordActivationTransition(result.transition, { name: deviceName });
       }
     }
   }

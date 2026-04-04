@@ -2,11 +2,17 @@ import type { DevicePlanDevice } from './planTypes';
 import type { RestoreTiming } from './planRestoreTiming';
 import type { SwapState } from './planSwapState';
 import type { PlanEngineState } from './planState';
+import type { Logger as PinoLogger } from '../logging/logger';
 import { getInactiveReason, getSteppedRestoreCandidates } from './planRestoreDevices';
 import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
-import { isSteppedLoadDevice } from './planSteppedLoad';
+import {
+  getSteppedLoadNextRestoreStep,
+  isSteppedLoadDevice,
+  resolveSteppedLoadRestoreDeltaKw,
+} from './planSteppedLoad';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
-import { getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
+import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
+import { computeRestoreBufferKw } from './planRestoreSwap';
 
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -156,6 +162,7 @@ export function blockRestoreForRecentActivationSetback(params: {
   state: PlanEngineState;
   logDebug: (...args: unknown[]) => void;
   stepped: boolean;
+  structuredLog?: PinoLogger;
 }): boolean {
   const {
     deviceMap,
@@ -164,6 +171,7 @@ export function blockRestoreForRecentActivationSetback(params: {
     state,
     logDebug,
     stepped,
+    structuredLog,
   } = params;
   const remainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId });
   if (remainingMs === null) return false;
@@ -177,6 +185,14 @@ export function blockRestoreForRecentActivationSetback(params: {
       reason,
     });
   }
+  structuredLog?.debug({
+    event: 'restore_blocked_setback',
+    deviceId,
+    deviceName,
+    penaltyLevel: getActivationPenaltyLevel(state, deviceId),
+    remainingMs,
+    stepped,
+  });
   logDebug(`Plan: blocking ${stepped ? 'stepped ' : ''}restore of ${deviceName} - ${reason}`);
   return true;
 }
@@ -221,4 +237,112 @@ function isDeviceUnconfirmedRecoveryInFlight(device: DevicePlanDevice): boolean 
   return device.binaryCommandPending === true
     || isTargetRestorePending(device)
     || isSteppedRestorePending(device);
+}
+
+export function planRestoreForSteppedDevice(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  state: PlanEngineState;
+  timing: Pick<RestoreTiming,
+  | 'activeOvershoot'
+  | 'inCooldown'
+  | 'inRestoreCooldown'
+  | 'inStartupStabilization'
+  | 'restoreCooldownSeconds'
+  | 'shedCooldownRemainingSec'
+  | 'restoreCooldownRemainingSec'
+  | 'startupStabilizationRemainingSec'>;
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+  logDebug: (...args: unknown[]) => void;
+  structuredLog?: PinoLogger;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const {
+    dev,
+    deviceMap,
+    state,
+    timing,
+    availableHeadroom,
+    restoredOneThisCycle,
+    logDebug,
+    structuredLog,
+  } = params;
+
+  const gateReason = resolveCapacityRestoreBlockReason({
+    timing,
+    restoredOneThisCycle,
+  });
+  if (gateReason) {
+    setRestorePlanDevice(deviceMap, dev.id, { reason: gateReason });
+    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${gateReason}`);
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  const waitingReason = resolveCapacityRestoreBlockReason({
+    timing,
+    waitingForOtherRecovery: hasOtherDevicesBlockingSteppedRestore(
+      deviceMap,
+      dev.id,
+      state.lastDeviceShedMs,
+    ),
+  });
+  if (waitingReason) {
+    setRestorePlanDevice(deviceMap, dev.id, { reason: waitingReason });
+    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${waitingReason}`);
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  if (blockRestoreForRecentActivationSetback({
+    deviceMap,
+    deviceId: dev.id,
+    deviceName: dev.name,
+    state,
+    logDebug,
+    stepped: true,
+    structuredLog,
+  })) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  const nextStep = getSteppedLoadNextRestoreStep(dev);
+  if (!nextStep || !dev.selectedStepId) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  const deltaKw = resolveSteppedLoadRestoreDeltaKw({
+    device: dev,
+    fromStepId: dev.selectedStepId,
+    toStepId: nextStep.id,
+  });
+  if (deltaKw <= 0) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  const restoreBuffer = computeRestoreBufferKw(deltaKw);
+  const needed = deltaKw + restoreBuffer;
+  if (availableHeadroom < needed) {
+    setRestorePlanDevice(deviceMap, dev.id, {
+      reason: `insufficient headroom (need ${needed.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`,
+    });
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
+  setRestorePlanDevice(deviceMap, dev.id, {
+    desiredStepId: nextStep.id,
+    reason: `restore ${dev.selectedStepId} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
+  });
+  structuredLog?.info({
+    event: 'restore_stepped_admitted',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    fromStepId: dev.selectedStepId,
+    toStepId: nextStep.id,
+    deltaKw,
+    neededKw: needed,
+    availableKw: availableHeadroom,
+  });
+  return {
+    availableHeadroom: availableHeadroom - needed,
+    restoredOneThisCycle: true,
+  };
 }

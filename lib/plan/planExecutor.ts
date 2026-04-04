@@ -46,6 +46,7 @@ import {
 } from './planExecutorSupport';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
+import type { Logger as PinoLogger } from '../logging/logger';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -74,6 +75,7 @@ export type PlanExecutorDeps = {
   }) => Promise<void> | void;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
+  structuredLog?: PinoLogger;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -596,6 +598,14 @@ export class PlanExecutor {
         actuationMode: mode,
       });
       if (!applied) return;
+      this.deps.structuredLog?.info({
+        event: 'restore_keep_invariant_enforced',
+        deviceId: dev.id,
+        deviceName: name,
+        mode,
+        onoffViolated,
+        stepViolated,
+      });
       if (mode === 'plan') {
         const now = Date.now();
         this.recordRestoreActuation(dev.id, name, now);

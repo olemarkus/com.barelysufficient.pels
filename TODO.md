@@ -110,7 +110,7 @@ refactors.
 
 ### P1 Inefficiencies: unnecessary work or repeated lookups
 
-- [ ] Cache snapshot lookup by device ID in `applyPlanActions` instead of repeating
+- [x] Cache snapshot lookup by device ID in `applyPlanActions` instead of repeating
       `latestTargetSnapshot.find(...)` across action paths.
       Files: `planExecutor.ts`.
 
