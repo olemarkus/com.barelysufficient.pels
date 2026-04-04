@@ -52,6 +52,8 @@ export function buildSwapCandidates(params: {
   } = params;
   const toShed: DevicePlanDevice[] = [];
   let currentPotential = availableHeadroom;
+  let effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
+  let admission = canAdmitRestore({ availableKw: effectiveHeadroom, neededKw: needed });
 
   for (const onDev of onDevices) {
     if (!isViableSwapCandidate(onDev, dev, swappedOutFor, restoredThisCycle)) continue;
@@ -61,12 +63,12 @@ export function buildSwapCandidates(params: {
 
     toShed.push(onDev);
     currentPotential += pwr;
+    effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
+    admission = canAdmitRestore({ availableKw: effectiveHeadroom, neededKw: needed });
 
-    if (currentPotential >= needed) break;
+    if (admission.postReserveMarginKw >= 0) break;
   }
 
-  const effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
-  const admission = canAdmitRestore({ availableKw: effectiveHeadroom, neededKw: needed });
   const ready = admission.postReserveMarginKw >= 0;
   const names = toShed.map((d) => d.name).join(', ');
   const reason = ready

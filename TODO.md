@@ -226,6 +226,20 @@ See `notes/plan-module-simplification/README.md` for context.
       better after the shared restore gate, explicit reserve, and target/swap fixes, but there
       are still rare cases where a restore is later attributed in overshoot.
       Files: restore telemetry review, restore planning/tests as needed.
+- [ ] Tighten restore admission further for near-zero post-reserve margin cases. Recent logs still
+      show `restore_admitted` decisions with `postReserveMarginKw` around `0.028` and `0.009`,
+      which is operationally too tight even if technically above zero. Consider a hard minimum
+      post-reserve margin, likely at least `0.15kW`, and possibly `0.20-0.25kW` for noisy/slow
+      devices.
+      Files: `lib/plan/planRestoreAdmission.ts`, restore planning/tests.
+- [ ] Audit suspicious long overshoot durations, including cases like `overshoot_cleared` with
+      `durationMs=365319` (~6.1 min), to verify whether overshoot lifecycle state is lingering
+      longer than intended or the event is genuinely correct.
+      Files: overshoot lifecycle/state handling, overshoot tests/log review.
+- [ ] Make target-based restore execution as explicit as binary restore execution. Admission now
+      logs `restoreType: "target"`, but the actual capacity action path still lacks a clearly
+      equivalent execution log/event to binary `turning on ...` restores.
+      Files: target control execution/logging paths, tests.
 - [ ] Clean up stepped-load retry/backoff behavior so delayed feedback does not trigger clumsy
       re-requests while the previous desired step is still plausibly catching up.
       Files: `planSteppedLoad.ts`, stepped feedback/retry logic, tests.

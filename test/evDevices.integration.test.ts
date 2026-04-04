@@ -349,7 +349,7 @@ describe('EV charger integration', () => {
       },
     });
 
-    const plan = await rebuildPlan(app, { totalPowerKw: 1.0, softLimitKw: 1.6 });
+    const plan = await rebuildPlan(app, { totalPowerKw: 1.0, softLimitKw: 2.0 });
     const heaterPlan = getPlanEntry(plan, heater.idValue);
     const evPlan = getPlanEntry(plan, charger.idValue);
 

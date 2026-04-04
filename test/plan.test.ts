@@ -1030,11 +1030,12 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastInstabilityMs = 0;
     (app as any).planEngine.state.lastRestoreMs = 0;
 
-    // Set soft limit high enough for restoration: need > device power + margin
-    // Power 500W, soft limit 2kW => headroom 1.5kW. Device needs 1kW + 0.2kW = 1.2kW. OK!
-    (app as any).computeDynamicSoftLimit = () => 2;
+    // Set soft limit high enough for restoration:
+    // with recent-shed backoff plus admission reserve we now need a bit more than before.
+    // Power 500W, soft limit 2.2kW => headroom 1.7kW. That clears the stricter restore gate.
+    (app as any).computeDynamicSoftLimit = () => 2.2;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 2);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2.2);
     }
 
     // Soft-limit changes alone no longer trigger an immediate rebuild.
@@ -1975,15 +1976,19 @@ describe('Device plan snapshot', () => {
 
     // With hysteresis: restoreBuffer = clamp(0.2..0.6, 1.5 * 0.1 + 0.1) = 0.25 kW
     // High-pri device needs 1.5 + 0.25 = 1.75 kW
-    // Soft limit = 4 kW, total = 3 kW, headroom = 1 kW
-    // Shedding low-pri (1.2 kW) gives us 1.0 + 1.2 = 2.2 kW >= 1.75 kW - enough!
-    (app as any).computeDynamicSoftLimit = () => 4;
+    // Soft limit = 4.5 kW, total = 3 kW, headroom = 1.5 kW
+    // Shedding low-pri (1.2 kW) gives 2.7 kW potential headroom.
+    // After the swap reserve (0.3) that leaves 2.4 kW, enough even with
+    // recent-shed backoff plus the final admission reserve.
+    (app as any).computeDynamicSoftLimit = () => 4.5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4.5);
     }
 
     // Clear any shedding/overshoot timestamps to avoid cooldown
     (app as any).planEngine.state.lastInstabilityMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+    (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
       // Ensure shedding is not active
       (app as any).capacityGuard.sheddingActive = false;
@@ -2077,6 +2082,7 @@ describe('Device plan snapshot', () => {
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
 
     await (app as any).recordPowerSample(3000);
 
@@ -2119,15 +2125,18 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    // Soft limit = 4 kW, total = 3 kW, headroom = 1 kW
-    // High-pri needs 1.5 + 0.2 = 1.7 kW
-    // Shedding low1 (0.5) + low2 (0.5) = 1kW, total headroom = 1 + 1 = 2 kW >= 1.7kW
-    (app as any).computeDynamicSoftLimit = () => 4;
+    // Soft limit = 4.8 kW, total = 3 kW, headroom = 1.8 kW
+    // Shedding both low-priority devices yields 2.8 kW potential headroom.
+    // After the swap reserve (0.3) that leaves 2.5 kW, enough for the stricter gate,
+    // while one low-priority device alone is still insufficient.
+    (app as any).computeDynamicSoftLimit = () => 4.8;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4.8);
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+    (app as any).planEngine.state.lastDeviceShedMs = {};
 
     await (app as any).recordPowerSample(3000);
 
@@ -2235,9 +2244,9 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 1;
+    (app as any).computeDynamicSoftLimit = () => 1.1;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1.1);
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;
@@ -2386,11 +2395,13 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Set up conditions for swap
-    (app as any).computeDynamicSoftLimit = () => 4;
+    (app as any).computeDynamicSoftLimit = () => 4.8;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4.8);
     }
     (app as any).planEngine.state.lastInstabilityMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+    (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
@@ -2448,11 +2459,13 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Set up conditions for swap
-    (app as any).computeDynamicSoftLimit = () => 4;
+    (app as any).computeDynamicSoftLimit = () => 4.5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4.5);
     }
     (app as any).planEngine.state.lastInstabilityMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+    (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
@@ -2515,11 +2528,13 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 4;
+    (app as any).computeDynamicSoftLimit = () => 4.5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4.5);
     }
     (app as any).planEngine.state.lastInstabilityMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+    (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
@@ -2569,11 +2584,13 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 4;
+    (app as any).computeDynamicSoftLimit = () => 4.8;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4.8);
     }
     (app as any).planEngine.state.lastInstabilityMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+    (app as any).planEngine.state.lastDeviceShedMs = {};
     if ((app as any).capacityGuard) {
       (app as any).capacityGuard.sheddingActive = false;
     }
@@ -2583,7 +2600,7 @@ describe('Device plan snapshot', () => {
     // Clear swap state without a new measurement.
     (app as any).planEngine.state.swapByDevice = {};
 
-    (app as any).planEngine.state.lastRestoreMs = Date.now() - 60000;
+    (app as any).planEngine.state.lastRestoreMs = Date.now() - 120000;
     await (app as any).recordPowerSample(3000, 2000);
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
@@ -2972,6 +2989,14 @@ describe('Dry run mode', () => {
     await app.onInit();
     (app as any).isCurrentHourCheap = () => true;
     (app as any).isCurrentHourExpensive = () => false;
+    (app as any).computeDynamicSoftLimit = () => 3;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 3);
+    }
+    (app as any).planEngine.state.lastInstabilityMs = null;
+    (app as any).planEngine.state.lastRestoreMs = null;
+    (app as any).planEngine.state.lastDeviceShedMs = {};
+    (app as any).planEngine.state.lastPlannedShedIds = new Set();
 
     (app as any).deviceManager.setSnapshotForTests([
       {
@@ -3237,9 +3262,9 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 2.25;
+    (app as any).computeDynamicSoftLimit = () => 2.5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 2.25);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2.5);
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;
@@ -3751,9 +3776,9 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.3; // 0.3kW limit
+    (app as any).computeDynamicSoftLimit = () => 0.4; // 0.4kW limit
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 0.3);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.4);
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;
@@ -3777,14 +3802,14 @@ describe('Dry run mode', () => {
         capabilities: ['target_temperature', 'onoff'],
         currentOn: true,
         controllable: true,
-        powerKw: 0.3,
-        expectedPowerKw: 0.3,
+        powerKw: 0.6,
+        expectedPowerKw: 0.6,
       },
     ]);
 
-    // Headroom = 0.3 - 0.2 = 0.1kW.
-    // Spotter restore needs ~0.25kW (0.05 + min restore buffer 0.2),
-    // so restore requires swapping out the lower-priority thermostat.
+    // Headroom = 0.4 - 0.2 = 0.2kW.
+    // Spotter restore needs ~0.50kW once the explicit admission reserve is included,
+    // so restore still requires swapping out the lower-priority thermostat.
     await (app as any).recordPowerSample(200);
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
@@ -3823,9 +3848,9 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.3;
+    (app as any).computeDynamicSoftLimit = () => 0.4;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 0.3);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.4);
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;
@@ -3849,8 +3874,8 @@ describe('Dry run mode', () => {
         capabilities: ['target_temperature'],
         currentOn: true,
         controllable: true,
-        powerKw: 0.3,
-        expectedPowerKw: 0.3,
+        powerKw: 0.6,
+        expectedPowerKw: 0.6,
       },
     ]);
 
