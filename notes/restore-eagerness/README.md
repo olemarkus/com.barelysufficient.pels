@@ -221,7 +221,7 @@ This is a narrow but real timing window.
 ### 3.2 Unit tests for restore admission
 
 - `estimateRestorePower` for each branch: planning, expected, measured, configured, fallback.
-- `estimateRestorePower` with `expectedPowerKw = 0`: assert returns 0.
+- `estimateRestorePower` with `expectedPowerKw = 0`: assert it falls through to measured/configured/fallback (not 0).
 - `computeBaseRestoreNeed`: assert `needed` = power + buffer, including 0-power edge case.
 - `computeRestoreBufferKw` at extremes: negative, 0, 1, 5, 10+ kW.
 - `getRestoreNeed` with recent-shed multiplier active vs inactive.
@@ -267,7 +267,7 @@ This is a narrow but real timing window.
 | `restore_swap_approved` | `deviceName`, `estimatedPowerKw`, `powerSource`, `penaltyLevel`, `penaltyExtraKw` |
 | `restore_swap_shed` | `shedDeviceName`, `forDeviceName` |
 | `restore_headroom_reserved` | `deviceNames` alongside `deviceIds` (per the naming rule: structured logs carry both) |
-| `overshoot_attributed` | `deviceName` alongside `deviceId` (naming rule), `penaltyLevel` before and after |
+| `overshoot_attributed` | `deviceName` alongside `deviceId` (naming rule) |
 
 ### 4.3 New structured events that must be added
 
@@ -284,9 +284,8 @@ estimatedPowerKw: number
 powerSource: 'planning' | 'expected' | 'measured' | 'configured' | 'fallback' | 'stepped'
 neededKw: number
 availableKw: number
-penaltyLevel: number           // 0 if no penalty
-penaltyExtraKw: number         // 0 if no penalty
-recentlyShed: boolean
+penaltyLevel: number | undefined    // omitted when no penalty (level 0)
+penaltyExtraKw: number | undefined  // omitted when no penalty
 ```
 
 **`restore_blocked_setback`** — emitted from `blockRestoreForRecentActivationSetback` when
@@ -311,7 +310,8 @@ Fields:
 event: 'restore_keep_invariant_enforced'
 deviceId: string
 deviceName: string
-violation: 'onoff_false' | 'step_off' | 'both'
+onoffViolated: boolean
+stepViolated: boolean
 mode: 'plan' | 'reconcile'
 ```
 
@@ -333,6 +333,14 @@ availableKw: number
 
 ---
 
+## 5. Naming rules
+
+- In markdown and analysis: use device names ("Water Heater")
+- In structured logs: always include both `deviceName` and `deviceId`
+- In examples: prefer `deviceName`, optionally add ID once where disambiguation matters
+
+---
+
 ## 6. Progress
 
 ### Observability (§4)
@@ -349,28 +357,21 @@ availableKw: number
 
 ### Test coverage (§3)
 
-- [ ] §3.1 regression: restore → overshoot → same device blocked for 10 min
-- [ ] §3.1 regression: `setback_after_stick` gap — block absent after stick-window shed
-- [ ] §3.2 unit: `estimateRestorePower` for each source branch (planning/expected/measured/configured/fallback)
-- [ ] §3.2 unit: `expectedPowerKw = 0` edge case (`needed = 0.2 kW`, pending reserve = 0)
-- [ ] §3.2 unit: `computeRestoreBufferKw` extremes
-- [ ] §3.2 unit: `getRestoreNeed` with recent-shed multiplier and penalty levels 0/1/4
-- [ ] §3.2 unit: `resolveCandidatePower` vs `estimateRestorePower` asymmetry for same device
-- [ ] §3.3 integration: T+0 restore → T+14s attribution → T+60s blocked → T+10min admitted with penalty
-- [ ] §3.4 swap: admitted only when headroom ≥ needed after swap; penalty L4 doubles threshold
+- [x] §3.1 regression: restore → overshoot → same device blocked for 10 min
+- [x] §3.1 regression: H3 fix — post-stick shed now refreshes `lastSetbackMs`, block stays active
+- [x] §3.2 unit: `estimateRestorePower` for each source branch (planning/expected/measured/configured/fallback)
+- [x] §3.2 unit: `expectedPowerKw = 0` edge case — fixed to fall through to next source
+- [x] §3.2 unit: `computeRestoreBufferKw` extremes
+- [x] §3.2 unit: `getRestoreNeed` with recent-shed multiplier and penalty levels 0/1/4
+- [x] §3.2 unit: `resolveCandidatePower` vs `estimateRestorePower` asymmetry for same device
+- [x] §3.3 integration: T+0 restore → T+14s attribution → T+60s blocked → T+10min admitted with penalty
+- [x] §3.4 swap: admitted only when headroom ≥ needed after swap; penalty L4 doubles threshold
 
 ### Fixes
 
-- [ ] H3: update `lastSetbackMs` in `recordActivationSetback` even when `stickReached`
+- [x] H3: update `lastSetbackMs` in `recordActivationSetback` even when `stickReached`
       (closes the gap where post-stick sheddings leave the time block unset)
 - [ ] H4: decide whether `applySteppedLoadRestore` should check the activation setback
       before issuing a keep-invariant restore (or document the intentional bypass)
-- [ ] H1: validate/warn when `expectedPowerKw === 0` — likely a misconfiguration
-
----
-
-## 5. Naming rules
-
-- In markdown and analysis: use device names ("Water Heater")
-- In structured logs: always include both `deviceName` and `deviceId`
-- In examples: prefer `deviceName`, optionally add ID once where disambiguation matters
+- [x] H1: treat `expectedPowerKw === 0` as absent in `estimateRestorePower` — skips to
+      `measuredPowerKw` / `powerKw` / fallback instead of making needed = 0.2kW only

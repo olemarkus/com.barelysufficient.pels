@@ -355,12 +355,15 @@ export function recordActivationSetback(params: {
   if (!stickReached) {
     stateChanged = setPenaltyLevel(state, deviceId, penaltyLevel + 1) || stateChanged;
     penaltyLevel = getPenaltyLevel(state, deviceId);
-    const entry = ensureAttemptEntry(state, deviceId);
-    if (entry.lastSetbackMs !== nowTs) {
-      entry.lastSetbackMs = nowTs;
-      stateChanged = true;
-    }
     bumped = true;
+  }
+  // Always refresh lastSetbackMs so the 10-minute restore block restarts, even when
+  // stickReached is true. Without this, post-stick sheddings leave the time block
+  // unrefreshed and the device can be restored as soon as the global cooldown expires.
+  const setbackEntry = ensureAttemptEntry(state, deviceId);
+  if (setbackEntry.lastSetbackMs !== nowTs) {
+    setbackEntry.lastSetbackMs = nowTs;
+    stateChanged = true;
   }
   return {
     stateChanged,

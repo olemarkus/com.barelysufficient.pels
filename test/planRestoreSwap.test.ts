@@ -4,7 +4,9 @@ import {
   computePendingRestorePowerKw,
   computeRestoreBufferKw,
   estimateRestorePower,
+  resolveRestorePowerSource,
 } from '../lib/plan/planRestoreSwap';
+import { resolveCandidatePower } from '../lib/plan/planCandidatePower';
 import { PENDING_RESTORE_WINDOW_MS } from '../lib/plan/planConstants';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 
@@ -180,6 +182,80 @@ describe('restore swap helpers', () => {
     expect(computeRestoreBufferKw(3)).toBeCloseTo(0.4, 5);
     expect(computeRestoreBufferKw(5)).toBeCloseTo(0.6, 5);
     expect(computeRestoreBufferKw(10)).toBeCloseTo(0.6, 5);
+  });
+
+  it('prefers planningPowerKw over expectedPowerKw in estimateRestorePower', () => {
+    // planningPowerKw takes priority over expectedPowerKw for non-stepped devices
+    expect(estimateRestorePower(buildPlanDevice({
+      planningPowerKw: 3,
+      expectedPowerKw: 2,
+      measuredPowerKw: 5,
+    }))).toBe(3);
+  });
+
+  it('estimateRestorePower skips expectedPowerKw=0 and falls through to the next source', () => {
+    // H1 fix: expectedPowerKw=0 is almost certainly misconfiguration — a device that draws
+    // 0kW needs no capacity management. Treating it as 0 makes needed=0.2kW (buffer only),
+    // admitting the restore regardless of actual draw, and reserving no pending headroom.
+    // The fix: treat 0 the same as absent — fall through to measuredPowerKw or powerKw.
+    expect(estimateRestorePower(buildPlanDevice({ expectedPowerKw: 0, powerKw: 2 }))).toBe(2);
+    expect(estimateRestorePower(buildPlanDevice({ expectedPowerKw: 0, measuredPowerKw: 3, powerKw: 2 }))).toBe(3);
+    expect(estimateRestorePower(buildPlanDevice({ expectedPowerKw: 0 }))).toBe(1); // fallback
+  });
+});
+
+describe('resolveRestorePowerSource', () => {
+  it('returns stepped for stepped-load devices', () => {
+    expect(resolveRestorePowerSource(steppedPlanDevice({}))).toBe('stepped');
+  });
+
+  it('returns planning when planningPowerKw > 0', () => {
+    expect(resolveRestorePowerSource(buildPlanDevice({ planningPowerKw: 2 }))).toBe('planning');
+  });
+
+  it('returns expected when expectedPowerKw > 0 and no planningPowerKw', () => {
+    expect(resolveRestorePowerSource(buildPlanDevice({ expectedPowerKw: 1.5 }))).toBe('expected');
+  });
+
+  it('skips expectedPowerKw=0 and falls through to next source', () => {
+    expect(resolveRestorePowerSource(buildPlanDevice({ expectedPowerKw: 0, powerKw: 2 }))).toBe('configured');
+    expect(resolveRestorePowerSource(buildPlanDevice({ expectedPowerKw: 0 }))).toBe('fallback');
+  });
+
+  it('returns measured when only measuredPowerKw > 0 is available', () => {
+    expect(resolveRestorePowerSource(buildPlanDevice({ measuredPowerKw: 2 }))).toBe('measured');
+  });
+
+  it('returns configured when powerKw is set and no other source', () => {
+    expect(resolveRestorePowerSource(buildPlanDevice({ powerKw: 1.5 }))).toBe('configured');
+  });
+
+  it('returns fallback when no power fields are set', () => {
+    expect(resolveRestorePowerSource(buildPlanDevice({}))).toBe('fallback');
+  });
+});
+
+describe('estimateRestorePower vs resolveCandidatePower asymmetry', () => {
+  it('shedding uses measured power first; restore admission uses planning/expected first', () => {
+    // A device drawing 3kW but configured for 1kW expected:
+    // shedding frees 3kW (measured), restore claims only 1kW (expected).
+    // Net effect: headroom appears to grow by 3kW when shed but only shrinks by 1kW when re-admitted.
+    const device = buildPlanDevice({
+      currentState: 'on',
+      measuredPowerKw: 3,
+      expectedPowerKw: 1,
+    });
+    expect(resolveCandidatePower(device)).toBe(3);     // shedding sees 3kW
+    expect(estimateRestorePower(device)).toBe(1);       // restore admission sees 1kW
+
+    // Conversely, a device with accurate expected but zero measured (it is off):
+    const offDevice = buildPlanDevice({
+      currentState: 'off',
+      measuredPowerKw: 0,
+      expectedPowerKw: 2,
+    });
+    expect(resolveCandidatePower(offDevice)).toBe(0);   // shedding sees 0kW (off)
+    expect(estimateRestorePower(offDevice)).toBe(2);    // restore admission sees 2kW (expected)
   });
 });
 

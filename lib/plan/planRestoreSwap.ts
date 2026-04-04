@@ -93,9 +93,9 @@ export type RestorePowerSource = 'stepped' | 'planning' | 'expected' | 'measured
 export function resolveRestorePowerSource(dev: DevicePlanDevice): RestorePowerSource {
   if (isSteppedLoadDevice(dev) && dev.steppedLoadProfile) return 'stepped';
   if (typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) return 'planning';
-  if (typeof dev.expectedPowerKw === 'number') return 'expected';
+  if (typeof dev.expectedPowerKw === 'number' && dev.expectedPowerKw > 0) return 'expected';
   if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return 'measured';
-  return typeof dev.powerKw === 'number' ? 'configured' : 'fallback';
+  return (typeof dev.powerKw === 'number' && dev.powerKw > 0) ? 'configured' : 'fallback';
 }
 
 export function estimateRestorePower(dev: DevicePlanDevice): number {
@@ -103,9 +103,9 @@ export function estimateRestorePower(dev: DevicePlanDevice): number {
   if (steppedPower !== null) return steppedPower;
 
   if (typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) return dev.planningPowerKw;
-  if (typeof dev.expectedPowerKw === 'number') return dev.expectedPowerKw;
+  if (typeof dev.expectedPowerKw === 'number' && dev.expectedPowerKw > 0) return dev.expectedPowerKw;
   if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
-  return dev.powerKw ?? 1;
+  return (typeof dev.powerKw === 'number' && dev.powerKw > 0) ? dev.powerKw : 1;
 }
 
 function resolveSteppedRestorePower(dev: DevicePlanDevice): number | null {

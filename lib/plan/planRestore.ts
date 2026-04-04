@@ -52,6 +52,7 @@ export type RestoreDeps = {
   };
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
+  deviceNameById?: ReadonlyMap<string, string>;
   logDebug: (...args: unknown[]) => void;
 };
 
@@ -79,20 +80,18 @@ function reserveHeadroomForPendingRestores(
   planDevices: DevicePlanDevice[],
   lastDeviceRestoreMs: Record<string, number>,
   structuredLog: PinoLogger | undefined,
+  deviceNameById: ReadonlyMap<string, string> | undefined,
 ): number {
   const pending = computePendingRestorePowerKw(planDevices, lastDeviceRestoreMs, Date.now());
   if (pending.pendingKw <= 0) return rawHeadroom;
   const adjusted = rawHeadroom - pending.pendingKw;
-  if (structuredLog) {
-    const nameById = new Map(planDevices.map((d) => [d.id, d.name]));
-    structuredLog.debug({
-      event: 'restore_headroom_reserved',
-      pendingKw: pending.pendingKw,
-      deviceIds: pending.deviceIds,
-      deviceNames: pending.deviceIds.map((id) => nameById.get(id) ?? id),
-      headroomAfterKw: adjusted,
-    });
-  }
+  structuredLog?.debug({
+    event: 'restore_headroom_reserved',
+    pendingKw: pending.pendingKw,
+    deviceIds: pending.deviceIds,
+    deviceNames: pending.deviceIds.map((id) => deviceNameById?.get(id) ?? id),
+    headroomAfterKw: adjusted,
+  });
   return adjusted;
 }
 
@@ -124,6 +123,7 @@ export function applyRestorePlan(params: {
     planDevices,
     state.lastDeviceRestoreMs,
     deps.structuredLog,
+    deps.deviceNameById,
   );
   let restoredOneThisCycle = false;
 
