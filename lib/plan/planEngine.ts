@@ -114,6 +114,7 @@ export class PlanEngine {
       logTargetRetryComparison: deps.logTargetRetryComparison,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
       deviceDiagnostics: deps.deviceDiagnostics,
+      structuredLog: deps.structuredLog,
       log: deps.log,
       logDebug: deps.logDebug,
       error: deps.error,

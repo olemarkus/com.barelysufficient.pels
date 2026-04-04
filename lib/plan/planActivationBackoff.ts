@@ -46,6 +46,10 @@ const getPenaltyLevel = (state: PlanEngineState, deviceId: string): number => {
   return isFiniteNumber(value) && value > 0 ? Math.min(value, ACTIVATION_BACKOFF_MAX_LEVEL) : 0;
 };
 
+export function getActivationPenaltyLevel(state: PlanEngineState, deviceId: string): number {
+  return getPenaltyLevel(state, deviceId);
+}
+
 const readLastSetbackMs = (state: PlanEngineState, deviceId: string): number | null => {
   const attempts = state.activationAttemptByDevice;
   const value = attempts[deviceId]?.lastSetbackMs;

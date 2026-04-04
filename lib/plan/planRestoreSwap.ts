@@ -88,6 +88,16 @@ export function computeRestoreBufferKw(devPower: number): number {
   return Math.max(0.2, Math.min(0.6, scaled));
 }
 
+export type RestorePowerSource = 'stepped' | 'planning' | 'expected' | 'measured' | 'configured' | 'fallback';
+
+export function resolveRestorePowerSource(dev: DevicePlanDevice): RestorePowerSource {
+  if (isSteppedLoadDevice(dev) && dev.steppedLoadProfile) return 'stepped';
+  if (typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) return 'planning';
+  if (typeof dev.expectedPowerKw === 'number') return 'expected';
+  if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return 'measured';
+  return typeof dev.powerKw === 'number' ? 'configured' : 'fallback';
+}
+
 export function estimateRestorePower(dev: DevicePlanDevice): number {
   const steppedPower = resolveSteppedRestorePower(dev);
   if (steppedPower !== null) return steppedPower;

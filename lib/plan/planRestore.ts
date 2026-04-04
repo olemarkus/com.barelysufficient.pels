@@ -14,7 +14,7 @@ import {
   buildSwapCandidates,
   computeBaseRestoreNeed,
   computePendingRestorePowerKw,
-  computeRestoreBufferKw,
+  resolveRestorePowerSource,
 } from './planRestoreSwap';
 import {
   getInactiveReason,
@@ -25,10 +25,10 @@ import {
 } from './planRestoreDevices';
 import {
   blockRestoreForRecentActivationSetback,
-  hasOtherDevicesBlockingSteppedRestore,
   hasOtherDevicesWithUnconfirmedRecovery,
   isBlockedBySwapState,
   markSteppedDevicesStayAtCurrentLevel,
+  planRestoreForSteppedDevice,
   setRestorePlanDevice as setDevice,
 } from './planRestoreHelpers';
 import {
@@ -36,12 +36,12 @@ import {
   syncActivationPenaltyState,
 } from './planActivationBackoff';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
-import { buildRestoreTiming, shouldPlanRestores, type RestoreTiming } from './planRestoreTiming';
 import {
-  getSteppedLoadNextRestoreStep,
-  resolveSteppedLoadRestoreDeltaKw,
-} from './planSteppedLoad';
+  buildRestoreTiming,
+  resolveCapacityRestoreBlockReason,
+  shouldPlanRestores,
+  type RestoreTiming,
+} from './planRestoreTiming';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -83,12 +83,16 @@ function reserveHeadroomForPendingRestores(
   const pending = computePendingRestorePowerKw(planDevices, lastDeviceRestoreMs, Date.now());
   if (pending.pendingKw <= 0) return rawHeadroom;
   const adjusted = rawHeadroom - pending.pendingKw;
-  structuredLog?.debug({
-    event: 'restore_headroom_reserved',
-    pendingKw: pending.pendingKw,
-    deviceIds: pending.deviceIds,
-    headroomAfterKw: adjusted,
-  });
+  if (structuredLog) {
+    const nameById = new Map(planDevices.map((d) => [d.id, d.name]));
+    structuredLog.debug({
+      event: 'restore_headroom_reserved',
+      pendingKw: pending.pendingKw,
+      deviceIds: pending.deviceIds,
+      deviceNames: pending.deviceIds.map((id) => nameById.get(id) ?? id),
+      headroomAfterKw: adjusted,
+    });
+  }
   return adjusted;
 }
 
@@ -154,6 +158,7 @@ export function applyRestorePlan(params: {
         availableHeadroom,
         restoredOneThisCycle,
         logDebug: deps.logDebug,
+        structuredLog: deps.structuredLog,
       });
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
@@ -195,105 +200,6 @@ export function applyRestorePlan(params: {
     availableHeadroom,
     restoredOneThisCycle,
     ...effectiveTiming,
-  };
-}
-
-function planRestoreForSteppedDevice(params: {
-  dev: DevicePlanDevice;
-  deviceMap: Map<string, DevicePlanDevice>;
-  state: PlanEngineState;
-  timing: Pick<RestoreTiming,
-  | 'activeOvershoot'
-  | 'inCooldown'
-  | 'inRestoreCooldown'
-  | 'inStartupStabilization'
-  | 'restoreCooldownSeconds'
-  | 'shedCooldownRemainingSec'
-  | 'restoreCooldownRemainingSec'
-  | 'startupStabilizationRemainingSec'>;
-  availableHeadroom: number;
-  restoredOneThisCycle: boolean;
-  logDebug: (...args: unknown[]) => void;
-}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const {
-    dev,
-    deviceMap,
-    state,
-    timing,
-    availableHeadroom,
-    restoredOneThisCycle,
-    logDebug,
-  } = params;
-
-  const gateReason = resolveCapacityRestoreBlockReason({
-    timing,
-    restoredOneThisCycle,
-  });
-  if (gateReason) {
-    setDevice(deviceMap, dev.id, {
-      reason: gateReason,
-    });
-    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${gateReason}`);
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  const waitingReason = resolveCapacityRestoreBlockReason({
-    timing,
-    waitingForOtherRecovery: hasOtherDevicesBlockingSteppedRestore(
-      deviceMap,
-      dev.id,
-      state.lastDeviceShedMs,
-    ),
-  });
-  if (waitingReason) {
-    setDevice(deviceMap, dev.id, {
-      reason: waitingReason,
-    });
-    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${waitingReason}`);
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  if (blockRestoreForRecentActivationSetback({
-    deviceMap,
-    deviceId: dev.id,
-    deviceName: dev.name,
-    state,
-    logDebug,
-    stepped: true,
-  })) {
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  const nextStep = getSteppedLoadNextRestoreStep(dev);
-  if (!nextStep || !dev.selectedStepId) {
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  const deltaKw = resolveSteppedLoadRestoreDeltaKw({
-    device: dev,
-    fromStepId: dev.selectedStepId,
-    toStepId: nextStep.id,
-  });
-  if (deltaKw <= 0) {
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  const restoreBuffer = computeRestoreBufferKw(deltaKw);
-  const needed = deltaKw + restoreBuffer;
-  if (availableHeadroom < needed) {
-    setDevice(deviceMap, dev.id, {
-      reason: `insufficient headroom (need ${needed.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`,
-    });
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  setDevice(deviceMap, dev.id, {
-    desiredStepId: nextStep.id,
-    reason: `restore ${dev.selectedStepId} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
-  });
-  return {
-    availableHeadroom: availableHeadroom - needed,
-    restoredOneThisCycle: true,
   };
 }
 
@@ -378,12 +284,24 @@ function planRestoreForDevice(params: {
     state,
     logDebug: deps.logDebug,
     stepped: false,
+    structuredLog: deps.structuredLog,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
   const restoreNeed = getRestoreNeed(dev, state, deps.deviceDiagnostics);
   if (availableHeadroom >= restoreNeed.needed) {
+    deps.structuredLog?.info({
+      event: 'restore_admitted',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource: resolveRestorePowerSource(dev),
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    });
     restoredThisCycle.add(dev.id);
     return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
   }
@@ -489,7 +407,10 @@ function attemptSwapRestore(params: {
     deps.structuredLog?.debug({
       event: 'restore_skipped',
       deviceId: dev.id,
+      deviceName: dev.name,
       reason: swap.reason,
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource: resolveRestorePowerSource(dev),
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
@@ -501,9 +422,14 @@ function attemptSwapRestore(params: {
   deps.structuredLog?.info({
     event: 'restore_swap_approved',
     deviceId: dev.id,
+    deviceName: dev.name,
     shedDeviceIds: swap.toShed.map((d) => d.id),
     neededKw: restoreNeed.needed,
     potentialHeadroomKw: swap.potentialHeadroom,
+    estimatedPowerKw: restoreNeed.devPower,
+    powerSource: resolveRestorePowerSource(dev),
+    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
   });
   swapState.pendingSwapTargets.add(dev.id);
   swapState.pendingSwapTimestamps.set(dev.id, Date.now());
@@ -519,7 +445,9 @@ function attemptSwapRestore(params: {
     deps.structuredLog?.info({
       event: 'restore_swap_shed',
       shedDeviceId: shedDev.id,
+      shedDeviceName: shedDev.name,
       forDeviceId: dev.id,
+      forDeviceName: dev.name,
     });
     swapState.swappedOutFor.set(shedDev.id, dev.id);
   }
