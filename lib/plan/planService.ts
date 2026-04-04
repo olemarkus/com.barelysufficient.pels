@@ -521,13 +521,17 @@ export class PlanService {
     this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, 'rebuild');
     const buildStart = Date.now();
     this.currentBuildReason = reason;
-    this.deps.planEngine.state.currentRebuildReason = this.currentBuildReason;
+    if (this.deps.planEngine.state) {
+      this.deps.planEngine.state.currentRebuildReason = this.currentBuildReason;
+    }
     let plan: DevicePlan;
     try {
       plan = await this.buildDevicePlanSnapshot(liveDevices);
     } finally {
       this.currentBuildReason = null;
-      this.deps.planEngine.state.currentRebuildReason = null;
+      if (this.deps.planEngine.state) {
+        this.deps.planEngine.state.currentRebuildReason = null;
+      }
     }
     this.deps.planEngine.prunePendingTargetCommands?.(plan);
     plan = this.decoratePlanWithPendingTargetCommands(plan);
