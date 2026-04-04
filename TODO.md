@@ -8,10 +8,13 @@ or present requested state as confirmed reality.
 - [x] Fix restore → overshoot → shed instability. Root cause (1) fixed: restore headroom now
       reserves pending power for recently restored devices whose elements have not yet fired
       (`computePendingRestorePowerKw`, 3-minute window, 50% confirmation threshold). Root cause
-      (2) was already handled by the `restoredOneThisCycle` gate. Root cause (3) (buffer too
-      small) remains a monitoring item — `computeRestoreBufferKw` is tuned but may need
-      adjustment based on field data.
-      Files: `lib/plan/planRestoreSwap.ts`, `lib/plan/planRestore.ts`, `lib/plan/planConstants.ts`.
+      (2) was already handled by the `restoredOneThisCycle` gate. Root cause (3) is now also
+      tightened: restores require an explicit final admission reserve (`available >= needed +
+      reserve`), target-based restores go through the same restore gate as normal restores, and
+      restore decisions now log `phase`, `reserveKw`, and `postRestoreSlackKw`. Edge-case
+      optimism still remains a monitoring item based on field data.
+      Files: `lib/plan/planRestoreAdmission.ts`, `lib/plan/planRestoreSwap.ts`,
+      `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, `lib/plan/planConstants.ts`.
 - [ ] If real-world cloud devices still show confirmation/drift gaps after the current freshness
       model fixes, add per-capability realtime subscriptions for control capabilities (`onoff`,
       `evcharger_charging`, `target_temperature`) on managed devices.
@@ -25,6 +28,12 @@ refactors.
 
 ### P1 Bugs: conflicting models and wrong answers
 
+- [ ] Startup should converge in one clean actionful rebuild unless genuinely new information
+      arrives after the first pass. Recent logs show `initial`, `settings:daily_budget_price`,
+      and `startup_snapshot_bootstrap` running back-to-back, with both `initial` and
+      `startup_snapshot_bootstrap` sometimes reporting `actionChanged=true` and
+      `appliedActions=true`.
+      Files: startup helpers, `lib/plan/planService.ts`, rebuild orchestration tests.
 - [ ] Document the intended fallback order per consumer and align power resolution across
       `resolveCandidatePower`, `estimateRestorePower`, `resolveUsageKw`, and stepped-load power
       resolution to that model.
@@ -49,6 +58,18 @@ refactors.
       real device actions are happening without a matching prose log. The semantics must be
       tightened so `actionChanged:true` means a visible device command was issued.
       Files: `lib/plan/planService.ts`, `lib/plan/planBuilder.ts`, rebuild logging path.
+- [ ] Log whether a rebuild actually issued device writes, and how many. If
+      `plan_rebuild_completed` reports `actionChanged=true` / `appliedActions=true`, that should
+      correlate with a concrete write count and not just internal plan churn.
+      Files: `lib/plan/planService.ts`, executor/rebuild logging path, tests.
+- [ ] Fix price-optimization mode and reason logging at hour transitions so logs reflect the
+      resulting state, not the previous one. Recent logs report `mode="expensive"` /
+      `reasonCode="price optimization (expensive hour)"` while behavior is actually exiting the
+      expensive-hour path into normal-hour targets.
+      Files: price optimization transition logic, reason logging, hour-boundary tests.
+- [ ] Log both previous and new optimization state for price-optimization transitions so
+      expensive -> normal and normal -> expensive boundaries are unambiguous in diagnostics.
+      Files: price optimization logging path, tests.
 - [x] Fix `hourBudget` label in periodic status output. `hourBudget=4.0kWh` reads as "remaining
       feasible target for this hour" but actually means "full-hour configured budget." At 17:55
       with 3.17 kWh already used, the label implies 4.0 kWh is still achievable when only ~0.83
@@ -76,6 +97,9 @@ refactors.
       `capacity_action_selected`, `price_source_fallback_used`, `device_state_unknown_entered`,
       `ui_snapshot_written`, and degraded-mode boundary events.
       Files: capacity handling, price services, device manager/UI snapshot writers, tests.
+- [ ] Keep device names first in structured logs and IDs secondary so operational review stays
+      readable without sacrificing machine correlation.
+      Files: logging helpers/call sites, structured-log tests.
 - [ ] Emit compact summary snapshot events only at key boundaries such as startup completion,
       device snapshot refresh completion, plan rebuild completion, UI snapshot writes, and
       degraded-mode enter/exit. Keep payloads bounded and machine-friendly.
@@ -113,6 +137,12 @@ refactors.
 - [x] Cache snapshot lookup by device ID in `applyPlanActions` instead of repeating
       `latestTargetSnapshot.find(...)` across action paths.
       Files: `planExecutor.ts`.
+- [ ] Debounce or batch `settings:capacity_priorities` changes so one editing session produces
+      one effective rebuild instead of several rapid rebuilds and log bursts.
+      Files: settings write path, `lib/plan/planService.ts`, settings/rebuild tests.
+- [ ] Avoid redundant device writes when capacity-priority reordering does not change the
+      effective plan.
+      Files: priority handling, plan/executor tests.
 
 ### P1 Cleanup: reduce duplicate logic and state-model sprawl
 
@@ -188,6 +218,25 @@ See `notes/plan-module-simplification/README.md` for context.
 
 ## P2 Product and test follow-ups
 
+- [ ] Make transient overshoot handling more explicit in logs. Short enter/clear windows should
+      say whether a culprit was attributed, mitigation was intentionally skipped, or the event was
+      treated as transient/noise.
+      Files: overshoot incident logging path, capacity guard tests.
+- [ ] Keep restore-admission edge cases under monitoring. The major eagerness issue looks much
+      better after the shared restore gate, explicit reserve, and target/swap fixes, but there
+      are still rare cases where a restore is later attributed in overshoot.
+      Files: restore telemetry review, restore planning/tests as needed.
+- [ ] Clean up stepped-load retry/backoff behavior so delayed feedback does not trigger clumsy
+      re-requests while the previous desired step is still plausibly catching up.
+      Files: `planSteppedLoad.ts`, stepped feedback/retry logic, tests.
+- [ ] Add structured observability for Settings UI network failures with stable fields such as
+      `component`, `event`, `endpoint`, `refreshLoop`, `errorType`, `message`,
+      `consecutiveFailureCount`, and `timeSinceLastSuccessMs`, so repeated browser-side failures
+      stop surfacing only as noisy stack traces.
+      Files: settings UI API/client refresh paths, runtime logging/tests.
+- [ ] Rate-limit repeated Settings UI failure logs and prefer structured summaries over repeated
+      full stack traces when the same endpoint keeps failing.
+      Files: settings UI API/client refresh paths, logging/tests.
 - [ ] Rework temperature-device starvation detection to the intended-target / suppression-only
       model described in `notes/starvation/README.md`. This is detection only: it must not change
       planner decisions. Includes pauseable accumulation, counting vs pause reasons, overview
@@ -234,6 +283,38 @@ See `notes/plan-module-simplification/README.md` for context.
       feedback-triggered restore all respect the same cooldown gate and log why restore was
       blocked.
       Files: restore planning / app integration tests.
+- [ ] Add startup orchestration tests asserting that startup produces at most one actionful
+      rebuild unless genuinely new information arrives after the first pass, and that
+      `startup_snapshot_bootstrap` does not re-apply actions already applied by `initial`.
+      Files: startup/bootstrap integration tests.
+- [ ] Add rebuild-result semantics tests covering no-op rebuilds, detail-only rebuilds, and
+      actual device-write rebuilds so `actionChanged` / `appliedActions` become trustworthy.
+      Files: `lib/plan/planService.ts`, rebuild logging/tests.
+- [ ] Add capacity-priority editing tests for debounce/batching and for "effective plan
+      unchanged" reorders that should not produce redundant writes.
+      Files: settings/rebuild tests.
+- [ ] Add price-optimization transition tests for expensive -> normal and normal -> expensive
+      hour boundaries, asserting both resulting mode/reason and previous/new state logging.
+      Files: price optimization tests.
+- [ ] Add startup restore tests proving startup bootstrap uses the same restore admission gate and
+      reserve as steady-state restore logic, including boundary and rounding cases and
+      startup-vs-runtime parity for the same inputs.
+      Files: startup/bootstrap integration tests, restore admission tests.
+- [ ] Add restore-admission/headroom tests covering the tightened penalty+margin behavior and the
+      "recently attributed overshoot increases the next restore threshold" case.
+      Files: restore admission/backoff tests.
+- [ ] Add overshoot observability tests so transient overshoots emit an explicit structured reason
+      instead of only `overshoot_entered` / `overshoot_cleared`, and actionful overshoots emit
+      attribution or explicit `no_attribution`.
+      Files: overshoot incident tests.
+- [ ] Add stepped-load retry tests asserting retries back off while desired state is still
+      pending and delayed confirmation does not trigger redundant re-requests before policy
+      allows it.
+      Files: stepped-load retry tests.
+- [ ] Add Settings UI failure observability tests covering rate-limited repeated failures and
+      structured summaries with endpoint, refresh loop, consecutive failure count, and time since
+      last success.
+      Files: settings UI API/logging tests.
 - [ ] Add remaining binary drift consistency tests that assert observed-state update ordering and
       correct reapply target direction across realtime -> reconcile integration. Pending-command
       suppression now has dedicated coverage; keep this item focused on the missing drift path
@@ -245,6 +326,11 @@ See `notes/plan-module-simplification/README.md` for context.
       Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget plan/service.
 
 ## P3 Architecture, tooling, and perf tightening
+
+- [ ] Reduce churn from bulk target changes at mode/hour transitions. Large target updates can
+      still create a heavy apply phase followed by immediate correction; worth smoothing or
+      batching later even if it is not operationally critical now.
+      Files: target planning/apply paths, mode/price transition tests.
 
 - [ ] Remove the remaining `lib/utils/** -> lib/{core,plan}` imports by moving those helpers to
       better owned modules, then make the architecture check strict instead of advisory.

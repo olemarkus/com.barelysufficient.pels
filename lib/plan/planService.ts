@@ -64,6 +64,7 @@ export class PlanService {
   private pendingNonActionSnapshotTimer?: ReturnType<typeof setTimeout>;
   private planOperationQueue: Promise<void> = Promise.resolve();
   private queuedRebuilds = 0;
+  private currentBuildReason: string | null = null;
   private planStatusWriter: PlanStatusWriter;
 
   constructor(private deps: PlanServiceDeps) {
@@ -446,7 +447,7 @@ export class PlanService {
 
     const run = async (): Promise<void> => {
       try {
-        await this.executePlanRebuild(isDryRun, outcome);
+        await this.executePlanRebuild(reason, isDryRun, outcome);
       } catch (error) {
         outcome.failed = true;
         incPerfCounter('plan_rebuild_failed_total');
@@ -479,10 +480,11 @@ export class PlanService {
   }
 
   private async executePlanRebuild(
+    reason: string,
     isDryRun: boolean,
     outcome: PlanRebuildOutcome,
   ): Promise<void> {
-    const { plan, buildMs } = await this.buildPlanForRebuild();
+    const { plan, buildMs } = await this.buildPlanForRebuild(reason);
     this.latestPlanSnapshot = plan;
     const { changes, changeMs } = this.measurePlanChanges(plan);
     const { snapshotMs, snapshotWriteMs } = this.measureSnapshotUpdate(plan, changes);
@@ -513,12 +515,20 @@ export class PlanService {
     });
   }
 
-  private async buildPlanForRebuild(): Promise<{ plan: DevicePlan; buildMs: number }> {
+  private async buildPlanForRebuild(reason: string): Promise<{ plan: DevicePlan; buildMs: number }> {
     const liveDevices = this.deps.getPlanDevices() ?? [];
     this.deps.planEngine.syncPendingTargetCommands?.(liveDevices, 'rebuild');
     this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, 'rebuild');
     const buildStart = Date.now();
-    let plan = await this.buildDevicePlanSnapshot(liveDevices);
+    this.currentBuildReason = reason;
+    this.deps.planEngine.state.currentRebuildReason = this.currentBuildReason;
+    let plan: DevicePlan;
+    try {
+      plan = await this.buildDevicePlanSnapshot(liveDevices);
+    } finally {
+      this.currentBuildReason = null;
+      this.deps.planEngine.state.currentRebuildReason = null;
+    }
     this.deps.planEngine.prunePendingTargetCommands?.(plan);
     plan = this.decoratePlanWithPendingTargetCommands(plan);
     return {

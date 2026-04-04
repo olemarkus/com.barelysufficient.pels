@@ -36,7 +36,7 @@ describe('buildSwapCandidates', () => {
         buildPlanDevice({ id: 'lower-priority', name: 'LowerPriority', priority: 120, powerKw: 2 }),
       ],
       swappedOutFor: new Map(),
-      availableHeadroom: 0,
+      availableHeadroom: 0.56,
       needed: 2,
       restoredThisCycle: new Set(),
     });
@@ -60,7 +60,7 @@ describe('buildSwapCandidates', () => {
       dev: buildPlanDevice({ priority: 50 }),
       onDevices,
       swappedOutFor,
-      availableHeadroom: 0,
+      availableHeadroom: 0.55,
       needed: 3,
       restoredThisCycle,
     });
@@ -104,10 +104,33 @@ describe('buildSwapCandidates', () => {
       restoredThisCycle: new Set(),
     });
 
-    expect(result.ready).toBe(true);
+    expect(result.ready).toBe(false);
     expect(result.toShed.map((device) => device.id)).toEqual(['candidate']);
     expect(result.potentialHeadroom).toBeCloseTo(1.4, 6); // 0.2 headroom + 1.2 expectedPowerKw
+    expect(result.effectiveHeadroom).toBeCloseTo(1.1, 6); // swap reserve applied before approval
     expect(result.shedPower).toBe('1.20');
+  });
+
+  it('requires extra reserve before admitting a swap restore', () => {
+    const result = buildSwapCandidates({
+      dev: buildPlanDevice({ priority: 50 }),
+      onDevices: [
+        buildPlanDevice({
+          id: 'candidate',
+          name: 'Candidate',
+          priority: 90,
+          measuredPowerKw: 1.2,
+        }),
+      ],
+      swappedOutFor: new Map(),
+      availableHeadroom: 0.2,
+      needed: 0.8,
+      restoredThisCycle: new Set(),
+    });
+
+    expect(result.potentialHeadroom).toBeCloseTo(1.4, 6);
+    expect(result.effectiveHeadroom).toBeCloseTo(1.1, 6);
+    expect(result.ready).toBe(true);
   });
 
   it('treats explicit zero expected or configured power as zero instead of falling back to 1kW', () => {
@@ -141,7 +164,7 @@ describe('restore swap helpers', () => {
   });
 
   it('estimates restore power from expected, measured, or fallback values', () => {
-    expect(estimateRestorePower(buildPlanDevice({ expectedPowerKw: 2, measuredPowerKw: 5, powerKw: 1 }))).toBe(2);
+    expect(estimateRestorePower(buildPlanDevice({ expectedPowerKw: 2, measuredPowerKw: 5, powerKw: 1 }))).toBe(5);
     expect(estimateRestorePower(buildPlanDevice({ measuredPowerKw: 3, powerKw: 1 }))).toBe(3);
     expect(estimateRestorePower(buildPlanDevice({ powerKw: 2 }))).toBe(2);
     expect(estimateRestorePower(buildPlanDevice())).toBe(1);
@@ -184,13 +207,12 @@ describe('restore swap helpers', () => {
     expect(computeRestoreBufferKw(10)).toBeCloseTo(0.6, 5);
   });
 
-  it('prefers planningPowerKw over expectedPowerKw in estimateRestorePower', () => {
-    // planningPowerKw takes priority over expectedPowerKw for non-stepped devices
+  it('uses the highest known power source for estimateRestorePower', () => {
     expect(estimateRestorePower(buildPlanDevice({
       planningPowerKw: 3,
-      expectedPowerKw: 2,
+      expectedPowerKw: 4,
       measuredPowerKw: 5,
-    }))).toBe(3);
+    }))).toBe(5);
   });
 
   it('estimateRestorePower skips expectedPowerKw=0 and falls through to the next source', () => {
@@ -213,7 +235,15 @@ describe('resolveRestorePowerSource', () => {
     expect(resolveRestorePowerSource(buildPlanDevice({ planningPowerKw: 2 }))).toBe('planning');
   });
 
-  it('returns expected when expectedPowerKw > 0 and no planningPowerKw', () => {
+  it('returns the source with the highest known restore estimate', () => {
+    expect(resolveRestorePowerSource(buildPlanDevice({
+      planningPowerKw: 2,
+      expectedPowerKw: 3,
+      measuredPowerKw: 4,
+    }))).toBe('measured');
+  });
+
+  it('returns expected when expectedPowerKw > 0 and it is the strongest source', () => {
     expect(resolveRestorePowerSource(buildPlanDevice({ expectedPowerKw: 1.5 }))).toBe('expected');
   });
 
@@ -236,7 +266,7 @@ describe('resolveRestorePowerSource', () => {
 });
 
 describe('estimateRestorePower vs resolveCandidatePower asymmetry', () => {
-  it('shedding uses measured power first; restore admission uses planning/expected first', () => {
+  it('shedding uses measured power first; restore admission uses the most conservative known power', () => {
     // A device drawing 3kW but configured for 1kW expected:
     // shedding frees 3kW (measured), restore claims only 1kW (expected).
     // Net effect: headroom appears to grow by 3kW when shed but only shrinks by 1kW when re-admitted.
@@ -246,16 +276,17 @@ describe('estimateRestorePower vs resolveCandidatePower asymmetry', () => {
       expectedPowerKw: 1,
     });
     expect(resolveCandidatePower(device)).toBe(3);     // shedding sees 3kW
-    expect(estimateRestorePower(device)).toBe(1);       // restore admission sees 1kW
+    expect(estimateRestorePower(device)).toBe(3);       // restore admission keeps the higher known draw
 
     // Conversely, a device with accurate expected but zero measured (it is off):
     const offDevice = buildPlanDevice({
       currentState: 'off',
       measuredPowerKw: 0,
       expectedPowerKw: 2,
+      powerKw: 2.5,
     });
     expect(resolveCandidatePower(offDevice)).toBe(0);   // shedding sees 0kW (off)
-    expect(estimateRestorePower(offDevice)).toBe(2);    // restore admission sees 2kW (expected)
+    expect(estimateRestorePower(offDevice)).toBe(2.5);  // restore admission uses the higher configured demand
   });
 });
 

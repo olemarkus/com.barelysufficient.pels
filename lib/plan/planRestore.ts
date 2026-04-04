@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- restore planning keeps direct and swap admission logic together. */
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
@@ -42,6 +43,11 @@ import {
   shouldPlanRestores,
   type RestoreTiming,
 } from './planRestoreTiming';
+import {
+  canAdmitRestore,
+  resolveRestoreDecisionPhase,
+  shouldLogRestoreAdmissionAtInfo,
+} from './planRestoreAdmission';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -203,6 +209,8 @@ export function applyRestorePlan(params: {
   };
 }
 
+/* eslint-disable-next-line max-lines-per-function, max-statements --
+restore gating stays together to keep direct-vs-swap flow readable */
 function planRestoreForDevice(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -238,6 +246,7 @@ function planRestoreForDevice(params: {
   } = params;
 
   const inactiveReason = getInactiveReason(dev);
+  const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
   if (inactiveReason) {
     setDevice(deviceMap, dev.id, {
       plannedState: 'inactive',
@@ -257,6 +266,17 @@ function planRestoreForDevice(params: {
       reason: gateReason,
     });
     deps.logDebug(`Plan: blocking restore of ${dev.name} - ${gateReason}`);
+    deps.structuredLog?.debug({
+      event: 'restore_rejected',
+      restoreType: 'binary',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      reason: gateReason,
+      availableKw: availableHeadroom,
+      decision: 'rejected',
+      decisionReason: gateReason,
+    });
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -274,6 +294,17 @@ function planRestoreForDevice(params: {
       reason: waitingReason,
     });
     deps.logDebug(`Plan: blocking restore of ${dev.name} - ${waitingReason}`);
+    deps.structuredLog?.debug({
+      event: 'restore_rejected',
+      restoreType: 'binary',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      reason: waitingReason,
+      availableKw: availableHeadroom,
+      decision: 'rejected',
+      decisionReason: waitingReason,
+    });
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -290,15 +321,32 @@ function planRestoreForDevice(params: {
   }
 
   const restoreNeed = getRestoreNeed(dev, state, deps.deviceDiagnostics);
-  if (availableHeadroom >= restoreNeed.needed) {
-    deps.structuredLog?.info({
+  const admission = canAdmitRestore({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
+  if (admission.postReserveMarginKw >= 0) {
+    const powerSource = resolveRestorePowerSource(dev);
+    const logMethod = shouldLogRestoreAdmissionAtInfo({
+      restoreType: 'binary',
+      marginKw: admission.marginKw,
+      penaltyLevel: restoreNeed.penaltyLevel,
+      powerSource,
+      recentInstabilityMs: state.lastInstabilityMs,
+    }) ? 'info' : 'debug';
+    deps.structuredLog?.[logMethod]({
       event: 'restore_admitted',
+      restoreType: 'binary',
       deviceId: dev.id,
       deviceName: dev.name,
+      phase,
       estimatedPowerKw: restoreNeed.devPower,
-      powerSource: resolveRestorePowerSource(dev),
+      powerSource,
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
+      reserveKw: admission.admissionReserveKw,
+      admissionReserveKw: admission.admissionReserveKw,
+      marginKw: admission.marginKw,
+      postRestoreSlackKw: admission.postReserveMarginKw,
+      postReserveMarginKw: admission.postReserveMarginKw,
+      decision: 'admitted',
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
     });
@@ -311,6 +359,7 @@ function planRestoreForDevice(params: {
     deviceMap,
     onDevices,
     swapState,
+    phase,
     availableHeadroom,
     restoreNeed,
     measurementTs: timing.measurementTs,
@@ -323,7 +372,7 @@ function planRestoreForDevice(params: {
   };
 }
 
-function getRestoreNeed(
+export function getRestoreNeed(
   dev: DevicePlanDevice,
   state: PlanEngineState,
   diagnostics?: DeviceDiagnosticsRecorder,
@@ -366,6 +415,7 @@ function attemptSwapRestore(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   onDevices: DevicePlanDevice[];
   swapState: SwapState;
+  phase: 'startup' | 'runtime';
   availableHeadroom: number;
   restoreNeed: { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number };
   measurementTs: number | null;
@@ -377,6 +427,7 @@ function attemptSwapRestore(params: {
     deviceMap,
     onDevices,
     swapState,
+    phase,
     availableHeadroom,
     restoreNeed,
     measurementTs,
@@ -405,14 +456,25 @@ function attemptSwapRestore(params: {
   if (!swap.ready) {
     setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate(restoreNeed.needed, availableHeadroom));
     deps.structuredLog?.debug({
-      event: 'restore_skipped',
+      event: 'restore_rejected',
+      restoreType: 'swap',
       deviceId: dev.id,
       deviceName: dev.name,
+      phase,
       reason: swap.reason,
       estimatedPowerKw: restoreNeed.devPower,
       powerSource: resolveRestorePowerSource(dev),
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
+      effectiveAvailableKw: swap.effectiveHeadroom,
+      reserveKw: swap.admission.admissionReserveKw,
+      admissionReserveKw: swap.admission.admissionReserveKw,
+      marginKw: swap.admission.marginKw,
+      postRestoreSlackKw: swap.admission.postReserveMarginKw,
+      postReserveMarginKw: swap.admission.postReserveMarginKw,
+      swapReserveKw: swap.reserveKw,
+      decision: 'rejected',
+      decisionReason: swap.reason,
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
     });
@@ -421,13 +483,23 @@ function attemptSwapRestore(params: {
 
   deps.structuredLog?.info({
     event: 'restore_swap_approved',
+    restoreType: 'swap',
     deviceId: dev.id,
     deviceName: dev.name,
+    phase,
     shedDeviceIds: swap.toShed.map((d) => d.id),
     neededKw: restoreNeed.needed,
     potentialHeadroomKw: swap.potentialHeadroom,
+    effectiveHeadroomKw: swap.effectiveHeadroom,
+    reserveKw: swap.admission.admissionReserveKw,
+    admissionReserveKw: swap.admission.admissionReserveKw,
+    marginKw: swap.admission.marginKw,
+    postRestoreSlackKw: swap.admission.postReserveMarginKw,
+    postReserveMarginKw: swap.admission.postReserveMarginKw,
+    swapReserveKw: swap.reserveKw,
     estimatedPowerKw: restoreNeed.devPower,
     powerSource: resolveRestorePowerSource(dev),
+    decision: 'admitted',
     penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
     penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
   });
@@ -436,7 +508,7 @@ function attemptSwapRestore(params: {
   if (measurementTs !== null) {
     swapState.lastSwapPlanMeasurementTs.set(dev.id, measurementTs);
   }
-  const nextHeadroom = swap.potentialHeadroom;
+  const nextHeadroom = swap.effectiveHeadroom;
   for (const shedDev of swap.toShed) {
     setDevice(deviceMap, shedDev.id, {
       plannedState: 'shed',

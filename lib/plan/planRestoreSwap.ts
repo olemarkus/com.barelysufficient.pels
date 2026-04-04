@@ -2,7 +2,12 @@ import type { DevicePlanDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
-import { PENDING_RESTORE_CONFIRMED_FRACTION, PENDING_RESTORE_WINDOW_MS } from './planConstants';
+import {
+  PENDING_RESTORE_CONFIRMED_FRACTION,
+  PENDING_RESTORE_WINDOW_MS,
+  SWAP_RESTORE_RESERVE_KW,
+} from './planConstants';
+import { canAdmitRestore, type RestoreAdmissionMetrics } from './planRestoreAdmission';
 
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
@@ -32,6 +37,9 @@ export function buildSwapCandidates(params: {
   shedNames: string;
   shedPower: string;
   potentialHeadroom: number;
+  effectiveHeadroom: number;
+  admission: RestoreAdmissionMetrics;
+  reserveKw: number;
   reason: string;
 } {
   const {
@@ -57,12 +65,16 @@ export function buildSwapCandidates(params: {
     if (currentPotential >= needed) break;
   }
 
-  const ready = currentPotential >= needed;
+  const effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
+  const admission = canAdmitRestore({ availableKw: effectiveHeadroom, neededKw: needed });
+  const ready = admission.postReserveMarginKw >= 0;
   const names = toShed.map((d) => d.name).join(', ');
   const reason = ready
     ? `swapped out for ${dev.name}`
     : `insufficient headroom to swap for ${dev.name} (need ${needed.toFixed(2)}kW, `
-    + `potential ${currentPotential.toFixed(2)}kW from ${names || 'none'})`;
+    + `effective ${effectiveHeadroom.toFixed(2)}kW after ${SWAP_RESTORE_RESERVE_KW.toFixed(2)}kW reserve `
+    + `and ${admission.admissionReserveKw.toFixed(2)}kW admission reserve `
+    + `from ${names || 'none'})`;
 
   return {
     ready,
@@ -70,6 +82,9 @@ export function buildSwapCandidates(params: {
     shedNames: names,
     shedPower: (currentPotential - availableHeadroom).toFixed(2),
     potentialHeadroom: currentPotential,
+    effectiveHeadroom,
+    admission,
+    reserveKw: SWAP_RESTORE_RESERVE_KW,
     reason,
   };
 }
@@ -90,22 +105,45 @@ export function computeRestoreBufferKw(devPower: number): number {
 
 export type RestorePowerSource = 'stepped' | 'planning' | 'expected' | 'measured' | 'configured' | 'fallback';
 
+type RestorePowerCandidate = {
+  source: Exclude<RestorePowerSource, 'stepped' | 'fallback'>;
+  value: number | undefined;
+};
+
 export function resolveRestorePowerSource(dev: DevicePlanDevice): RestorePowerSource {
   if (isSteppedLoadDevice(dev) && dev.steppedLoadProfile) return 'stepped';
-  if (typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) return 'planning';
-  if (typeof dev.expectedPowerKw === 'number' && dev.expectedPowerKw > 0) return 'expected';
-  if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return 'measured';
-  return (typeof dev.powerKw === 'number' && dev.powerKw > 0) ? 'configured' : 'fallback';
+
+  const candidates: RestorePowerCandidate[] = [
+    { source: 'planning', value: dev.planningPowerKw },
+    { source: 'expected', value: dev.expectedPowerKw },
+    { source: 'measured', value: dev.measuredPowerKw },
+    { source: 'configured', value: dev.powerKw },
+  ];
+
+  let best: { source: Exclude<RestorePowerSource, 'stepped' | 'fallback'>; value: number } | null = null;
+  for (const candidate of candidates) {
+    if (typeof candidate.value !== 'number' || candidate.value <= 0) continue;
+    if (best === null || candidate.value > best.value) {
+      best = { source: candidate.source, value: candidate.value };
+    }
+  }
+
+  return best?.source ?? 'fallback';
 }
 
 export function estimateRestorePower(dev: DevicePlanDevice): number {
   const steppedPower = resolveSteppedRestorePower(dev);
   if (steppedPower !== null) return steppedPower;
 
-  if (typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) return dev.planningPowerKw;
-  if (typeof dev.expectedPowerKw === 'number' && dev.expectedPowerKw > 0) return dev.expectedPowerKw;
-  if (typeof dev.measuredPowerKw === 'number' && dev.measuredPowerKw > 0) return dev.measuredPowerKw;
-  return (typeof dev.powerKw === 'number' && dev.powerKw > 0) ? dev.powerKw : 1;
+  const candidates = [
+    dev.planningPowerKw,
+    dev.expectedPowerKw,
+    dev.measuredPowerKw,
+    dev.powerKw,
+  ].filter((value): value is number => typeof value === 'number' && value > 0);
+
+  if (candidates.length === 0) return 1;
+  return Math.max(...candidates);
 }
 
 function resolveSteppedRestorePower(dev: DevicePlanDevice): number | null {

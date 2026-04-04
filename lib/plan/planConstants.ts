@@ -19,6 +19,9 @@ export const PENDING_RESTORE_WINDOW_MS = 3 * 60 * 1000;
 // A device is considered to have confirmed its draw once it reaches this fraction of expected power.
 export const PENDING_RESTORE_CONFIRMED_FRACTION = 0.5;
 export const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
+export const RESTORE_ADMISSION_RESERVE_KW = 0.25; // Final slack required after restore admission
+// Swaps cannot rely on shed capacity becoming fully effective immediately; reserve some headroom.
+export const SWAP_RESTORE_RESERVE_KW = 0.3;
 export const BINARY_COMMAND_PENDING_MS = 15000;
 export const TARGET_COMMAND_RETRY_DELAYS_MS = [
   30 * 1000,

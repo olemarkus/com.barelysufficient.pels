@@ -13,6 +13,11 @@ import {
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
 import { computeRestoreBufferKw } from './planRestoreSwap';
+import {
+  canAdmitRestore,
+  resolveRestoreDecisionPhase,
+  shouldLogRestoreAdmissionAtInfo,
+} from './planRestoreAdmission';
 
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -272,6 +277,7 @@ export function planRestoreForSteppedDevice(params: {
     timing,
     restoredOneThisCycle,
   });
+  const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
   if (gateReason) {
     setRestorePlanDevice(deviceMap, dev.id, { reason: gateReason });
     logDebug(`Plan: blocking stepped restore of ${dev.name} - ${gateReason}`);
@@ -320,9 +326,11 @@ export function planRestoreForSteppedDevice(params: {
 
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
-  if (availableHeadroom < needed) {
+  const admission = canAdmitRestore({ availableKw: availableHeadroom, neededKw: needed });
+  if (admission.postReserveMarginKw < 0) {
     setRestorePlanDevice(deviceMap, dev.id, {
-      reason: `insufficient headroom (need ${needed.toFixed(2)}kW, headroom ${availableHeadroom.toFixed(2)}kW)`,
+      reason: `insufficient headroom (need ${admission.requiredKw.toFixed(2)}kW, `
+        + `headroom ${availableHeadroom.toFixed(2)}kW)`,
     });
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -331,15 +339,29 @@ export function planRestoreForSteppedDevice(params: {
     desiredStepId: nextStep.id,
     reason: `restore ${dev.selectedStepId} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
   });
-  structuredLog?.info({
+  const logMethod = shouldLogRestoreAdmissionAtInfo({
+    restoreType: 'stepped',
+    marginKw: admission.marginKw,
+    penaltyLevel: getActivationPenaltyLevel(state, dev.id),
+    powerSource: 'stepped',
+    recentInstabilityMs: state.lastInstabilityMs,
+  }) ? 'info' : 'debug';
+  structuredLog?.[logMethod]({
     event: 'restore_stepped_admitted',
     deviceId: dev.id,
     deviceName: dev.name,
+    phase,
     fromStepId: dev.selectedStepId,
     toStepId: nextStep.id,
     deltaKw,
     neededKw: needed,
     availableKw: availableHeadroom,
+    reserveKw: admission.admissionReserveKw,
+    admissionReserveKw: admission.admissionReserveKw,
+    marginKw: admission.marginKw,
+    postRestoreSlackKw: admission.postReserveMarginKw,
+    postReserveMarginKw: admission.postReserveMarginKw,
+    decision: 'admitted',
   });
   return {
     availableHeadroom: availableHeadroom - needed,
