@@ -223,15 +223,17 @@ See `notes/plan-module-simplification/README.md` for context.
       treated as transient/noise.
       Files: overshoot incident logging path, capacity guard tests.
 - [ ] Keep restore-admission edge cases under monitoring. The major eagerness issue looks much
-      better after the shared restore gate, explicit reserve, and target/swap fixes, but there
-      are still rare cases where a restore is later attributed in overshoot.
+      better after the shared restore gate, explicit reserve, target/swap fixes, and the 0.25 kW
+      postReserveMargin floor. Rare cases where a restore is still attributed in overshoot may
+      remain; track via telemetry.
       Files: restore telemetry review, restore planning/tests as needed.
-- [ ] Tighten restore admission further for near-zero post-reserve margin cases. Recent logs still
-      show `restore_admitted` decisions with `postReserveMarginKw` around `0.028` and `0.009`,
-      which is operationally too tight even if technically above zero. Consider a hard minimum
-      post-reserve margin, likely at least `0.15kW`, and possibly `0.20-0.25kW` for noisy/slow
-      devices.
-      Files: `lib/plan/planRestoreAdmission.ts`, restore planning/tests.
+- [x] Tighten restore admission further for near-zero post-reserve margin cases. Implemented a
+      hard minimum `postReserveMarginKw >= 0.250 kW` floor (`RESTORE_ADMISSION_FLOOR_KW`) applied
+      uniformly to binary, target, stepped, and swap restores. Also enforces the stepped-load shed
+      invariant: while any other device is shed, stepped devices may only restore to their lowest
+      non-zero step — upgrades above that are blocked until all shed devices are cleared.
+      Files: `lib/plan/planConstants.ts`, `lib/plan/planRestoreHelpers.ts`,
+      `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, `lib/plan/planRestoreSwap.ts`.
 - [ ] Audit suspicious long overshoot durations, including cases like `overshoot_cleared` with
       `durationMs=365319` (~6.1 min), to verify whether overshoot lifecycle state is lingering
       longer than intended or the event is genuinely correct.

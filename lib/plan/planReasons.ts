@@ -20,7 +20,7 @@ import {
   shouldNormalizeKeepReason as shouldNormalizeReason,
 } from './planReasonHelpers';
 import { sortByPriorityAsc } from './planSort';
-import { RESTORE_CONFIRM_RETRY_MS } from './planConstants';
+import { RESTORE_ADMISSION_FLOOR_KW, RESTORE_CONFIRM_RETRY_MS } from './planConstants';
 import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
 
 export type ShedHoldParams = {
@@ -204,7 +204,7 @@ function resolveRestoreDecision(params: {
 
   const restoreNeed = getRestoreNeed(dev, state);
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
-  if (admission.postReserveMarginKw < 0) {
+  if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
     const reason = `insufficient headroom (need ${admission.requiredKw.toFixed(2)}kW, `
       + `headroom ${availableHeadroom.toFixed(2)}kW)`;
     structuredLog?.debug({
@@ -219,6 +219,7 @@ function resolveRestoreDecision(params: {
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
       ...buildRestoreAdmissionLogFields(admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'rejected',
       decisionReason: reason,
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,

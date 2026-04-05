@@ -1031,11 +1031,11 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = 0;
 
     // Set soft limit high enough for restoration:
-    // with recent-shed backoff plus admission reserve we now need a bit more than before.
-    // Power 500W, soft limit 2.2kW => headroom 1.7kW. That clears the stricter restore gate.
-    (app as any).computeDynamicSoftLimit = () => 2.2;
+    // with recent-shed backoff (1.15×) → needed≈1.38kW, plus 0.25kW reserve + 0.25kW floor.
+    // Power 500W, soft limit 2.5kW => headroomRaw 2.0kW. That clears the stricter restore gate.
+    (app as any).computeDynamicSoftLimit = () => 2.5;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 2.2);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2.5);
     }
 
     // Soft-limit changes alone no longer trigger an immediate rebuild.
@@ -2244,9 +2244,9 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 1.1;
+    (app as any).computeDynamicSoftLimit = () => 1.4;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1.1);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1.4);
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;
@@ -3262,9 +3262,9 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 2.5;
+    (app as any).computeDynamicSoftLimit = () => 2.8;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 2.5);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 2.8);
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;
@@ -3272,7 +3272,7 @@ describe('Dry run mode', () => {
 
     const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
 
-    await (app as any).recordPowerSample(1000); // 1.0 kW total -> headroom 1.25 kW
+    await (app as any).recordPowerSample(1000); // 1.0 kW total -> headroomRaw 1.8 kW (meets floor)
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -3776,9 +3776,9 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.4; // 0.4kW limit
+    (app as any).computeDynamicSoftLimit = () => 0.7; // 0.7kW limit
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 0.4);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.7);
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;
@@ -3807,9 +3807,8 @@ describe('Dry run mode', () => {
       },
     ]);
 
-    // Headroom = 0.4 - 0.2 = 0.2kW.
-    // Spotter restore needs ~0.50kW once the explicit admission reserve is included,
-    // so restore still requires swapping out the lower-priority thermostat.
+    // Headroom = 0.7 - 0.2 = 0.5kW. Direct restore still requires swapping out the lower-priority
+    // thermostat (spotter needs ~0.25kW but the combined reserve+floor of 0.50kW makes direct fail).
     await (app as any).recordPowerSample(200);
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
@@ -3848,9 +3847,9 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    (app as any).computeDynamicSoftLimit = () => 0.4;
+    (app as any).computeDynamicSoftLimit = () => 0.7;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 0.4);
+      (app as any).capacityGuard.setSoftLimitProvider(() => 0.7);
     }
 
     (app as any).planEngine.state.lastInstabilityMs = null;

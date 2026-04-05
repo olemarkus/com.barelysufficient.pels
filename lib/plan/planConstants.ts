@@ -20,6 +20,7 @@ export const PENDING_RESTORE_WINDOW_MS = 3 * 60 * 1000;
 export const PENDING_RESTORE_CONFIRMED_FRACTION = 0.5;
 export const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 export const RESTORE_ADMISSION_RESERVE_KW = 0.25; // Final slack required after restore admission
+export const RESTORE_ADMISSION_FLOOR_KW = 0.25; // Minimum postReserveMarginKw for any restore to be admitted
 export const RESTORE_ADMISSION_INFO_MARGIN_KW = 0.3; // Escalate restore admit logs when slack is thin
 // Swaps cannot rely on shed capacity becoming fully effective immediately; reserve some headroom.
 export const SWAP_RESTORE_RESERVE_KW = 0.3;

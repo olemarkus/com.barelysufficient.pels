@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- spec-required structured log fields for restore admission events push this over 500 */
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
@@ -7,6 +8,7 @@ import {
   RECENT_SHED_EXTRA_BUFFER_KW,
   RECENT_SHED_RESTORE_BACKOFF_MS,
   RECENT_SHED_RESTORE_MULTIPLIER,
+  RESTORE_ADMISSION_FLOOR_KW,
 } from './planConstants';
 import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, exportSwapState } from './planSwapState';
 import {
@@ -322,8 +324,8 @@ function planRestoreForDevice(params: {
 
   const restoreNeed = getRestoreNeed(dev, state, deps.deviceDiagnostics);
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
-  if (admission.postReserveMarginKw >= 0) {
-    const powerSource = resolveRestorePowerSource(dev);
+  const powerSource = resolveRestorePowerSource(dev);
+  if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
     const logMethod = shouldLogRestoreAdmissionAtInfo({
       restoreType: 'binary',
       marginKw: admission.marginKw,
@@ -342,6 +344,7 @@ function planRestoreForDevice(params: {
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
       ...buildRestoreAdmissionLogFields(admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       decision: 'admitted',
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
@@ -350,7 +353,23 @@ function planRestoreForDevice(params: {
     return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
   }
 
-  const swapResult = attemptSwapRestore({
+  deps.structuredLog?.debug({
+    event: 'restore_rejected',
+    restoreType: 'binary',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    powerSource,
+    neededKw: restoreNeed.needed,
+    availableKw: availableHeadroom,
+    ...buildRestoreAdmissionLogFields(admission),
+    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    decision: 'rejected',
+    rejectionReason: 'insufficient_headroom',
+    swapAttempt: true,
+  });
+
+  return attemptSwapRestore({
     dev,
     deviceMap,
     onDevices,
@@ -362,10 +381,6 @@ function planRestoreForDevice(params: {
     restoredThisCycle,
     deps,
   });
-  return {
-    availableHeadroom: swapResult.availableHeadroom,
-    restoredOneThisCycle: swapResult.restoredOneThisCycle,
-  };
 }
 
 export function getRestoreNeed(
@@ -464,8 +479,10 @@ function attemptSwapRestore(params: {
       availableKw: availableHeadroom,
       effectiveAvailableKw: swap.effectiveHeadroom,
       ...buildRestoreAdmissionLogFields(swap.admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       swapReserveKw: swap.reserveKw,
       decision: 'rejected',
+      rejectionReason: 'insufficient_headroom',
       decisionReason: swap.reason,
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,

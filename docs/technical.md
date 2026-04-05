@@ -176,7 +176,7 @@ When headroom becomes available:
 
 1. **Highest priority first** (lowest number): Priority 1 restores before priority 3
 2. **One device per cycle**: Wait for power measurement after each restore
-3. **Hysteresis buffer**: Require extra headroom beyond the device's power draw to prevent immediate re-shedding
+3. **Hysteresis buffer**: Require extra headroom beyond the device's power draw to prevent immediate re-shedding. A hard minimum post-reserve margin of 0.25 kW is enforced on every restore regardless of device size.
 4. **Failed-activation backoff**: Devices that are restored and then quickly need to be limited again require increasingly more headroom before the next restore attempt
 5. **Respect swap targets**: If a device was swapped out for a higher-priority device, the high-priority one must restore first
 
@@ -217,7 +217,7 @@ This estimation is inherently imperfect, which is why PELS:
 
 For shedding decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
 
-For stepped-load devices, shedding relief is computed conservatively from **live measured power**, while restore/step-up budgeting uses the configured **planning power** of the target step. PELS also blocks stepped step-up while any other managed device is still shed or still waiting to recover.
+For stepped-load devices, shedding relief is computed conservatively from **live measured power**, while restore/step-up budgeting uses the configured **planning power** of the target step. While any other managed device is still shed, stepped devices are capped at their **lowest non-zero step** — restoring from off to that step is allowed, but climbing higher is blocked until all shed devices have recovered.
 
 For `meter_power`, PELS computes an average kW from the change in kWh over time and updates the peak. If the counter decreases (reset/rollover), the delta is ignored and the baseline is reset.
 

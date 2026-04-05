@@ -10,14 +10,16 @@ import {
   isSteppedLoadDevice,
   resolveSteppedLoadRestoreDeltaKw,
 } from './planSteppedLoad';
-import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
 import { computeRestoreBufferKw } from './planRestoreSwap';
+import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
   shouldLogRestoreAdmissionAtInfo,
+  type RestoreAdmissionMetrics,
 } from './planRestoreAdmission';
 
 export function setRestorePlanDevice(
@@ -228,7 +230,6 @@ function isDeviceBlockingSteppedRestore(
   lastDeviceShedMs: Record<string, number>,
 ): boolean {
   if (device.observationStale === true) return false;
-  if (device.plannedState === 'shed') return true;
   if (!lastDeviceShedMs[device.id] || device.plannedState !== 'keep') return false;
   return device.currentState === 'off'
     || device.currentState === 'unknown'
@@ -263,22 +264,10 @@ export function planRestoreForSteppedDevice(params: {
   logDebug: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const {
-    dev,
-    deviceMap,
-    state,
-    timing,
-    availableHeadroom,
-    restoredOneThisCycle,
-    logDebug,
-    structuredLog,
-  } = params;
+  const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, logDebug, structuredLog } = params;
 
-  const gateReason = resolveCapacityRestoreBlockReason({
-    timing,
-    restoredOneThisCycle,
-  });
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
+  const gateReason = resolveCapacityRestoreBlockReason({ timing, restoredOneThisCycle });
   if (gateReason) {
     setRestorePlanDevice(deviceMap, dev.id, { reason: gateReason });
     logDebug(`Plan: blocking stepped restore of ${dev.name} - ${gateReason}`);
@@ -287,11 +276,7 @@ export function planRestoreForSteppedDevice(params: {
 
   const waitingReason = resolveCapacityRestoreBlockReason({
     timing,
-    waitingForOtherRecovery: hasOtherDevicesBlockingSteppedRestore(
-      deviceMap,
-      dev.id,
-      state.lastDeviceShedMs,
-    ),
+    waitingForOtherRecovery: hasOtherDevicesBlockingSteppedRestore(deviceMap, dev.id, state.lastDeviceShedMs),
   });
   if (waitingReason) {
     setRestorePlanDevice(deviceMap, dev.id, { reason: waitingReason });
@@ -300,13 +285,7 @@ export function planRestoreForSteppedDevice(params: {
   }
 
   if (blockRestoreForRecentActivationSetback({
-    deviceMap,
-    deviceId: dev.id,
-    deviceName: dev.name,
-    state,
-    logDebug,
-    stepped: true,
-    structuredLog,
+    deviceMap, deviceId: dev.id, deviceName: dev.name, state, logDebug, stepped: true, structuredLog,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -316,26 +295,51 @@ export function planRestoreForSteppedDevice(params: {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
+  const lowestNonZeroStep = dev.steppedLoadProfile
+    ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)
+    : null;
+
+  if (blockSteppedRestoreForShedInvariant({
+    dev, deviceMap, nextStep, lowestNonZeroStep, phase, logDebug, structuredLog,
+  })) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+
   const deltaKw = resolveSteppedLoadRestoreDeltaKw({
-    device: dev,
-    fromStepId: dev.selectedStepId,
-    toStepId: nextStep.id,
+    device: dev, fromStepId: dev.selectedStepId, toStepId: nextStep.id,
   });
   if (deltaKw <= 0) {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
+  return admitSteppedRestore({
+    dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, deltaKw, availableHeadroom, structuredLog,
+  });
+}
+
+function admitSteppedRestore(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  state: PlanEngineState;
+  phase: 'startup' | 'runtime';
+  nextStep: { id: string; planningPowerW: number };
+  lowestNonZeroStep: { id: string; planningPowerW: number } | null;
+  deltaKw: number;
+  availableHeadroom: number;
+  structuredLog?: PinoLogger;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
+    deltaKw, availableHeadroom, structuredLog } = params;
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: needed });
-  if (admission.postReserveMarginKw < 0) {
-    setRestorePlanDevice(deviceMap, dev.id, {
-      reason: `insufficient headroom (need ${admission.requiredKw.toFixed(2)}kW, `
-        + `headroom ${availableHeadroom.toFixed(2)}kW)`,
+  const shedDeviceCount = countShedDevices(deviceMap, dev.id);
+  if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
+    return rejectSteppedRestoreForInsufficientHeadroom({
+      dev, deviceMap, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
+      admission, availableHeadroom, needed, structuredLog,
     });
-    return { availableHeadroom, restoredOneThisCycle };
   }
-
   setRestorePlanDevice(deviceMap, dev.id, {
     desiredStepId: nextStep.id,
     reason: `restore ${dev.selectedStepId} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
@@ -352,16 +356,99 @@ export function planRestoreForSteppedDevice(params: {
     deviceId: dev.id,
     deviceName: dev.name,
     phase,
-    fromStepId: dev.selectedStepId,
+    currentStepId: dev.selectedStepId,
     toStepId: nextStep.id,
+    lowestNonZeroStepId: lowestNonZeroStep?.id,
+    blockedByShedInvariant: false,
+    shedDeviceCount,
     deltaKw,
     neededKw: needed,
     availableKw: availableHeadroom,
     ...buildRestoreAdmissionLogFields(admission),
+    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
     decision: 'admitted',
   });
-  return {
-    availableHeadroom: availableHeadroom - needed,
-    restoredOneThisCycle: true,
-  };
+  return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
+}
+
+function countShedDevices(deviceMap: Map<string, DevicePlanDevice>, excludeId: string): number {
+  let count = 0;
+  for (const device of deviceMap.values()) {
+    if (device.id === excludeId) continue;
+    if (device.controllable === false) continue;
+    if (device.plannedState === 'shed') count += 1;
+  }
+  return count;
+}
+
+function blockSteppedRestoreForShedInvariant(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  nextStep: { id: string; planningPowerW: number };
+  lowestNonZeroStep: { id: string; planningPowerW: number } | null;
+  phase: 'startup' | 'runtime';
+  logDebug: (...args: unknown[]) => void;
+  structuredLog?: PinoLogger;
+}): boolean {
+  const { dev, deviceMap, nextStep, lowestNonZeroStep, phase, logDebug, structuredLog } = params;
+  if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
+  const shedDeviceCount = countShedDevices(deviceMap, dev.id);
+  if (shedDeviceCount === 0) return false;
+  const reason = `shed invariant: ${dev.selectedStepId ?? 'unknown'} -> ${nextStep.id} blocked `
+    + `(${shedDeviceCount} device(s) shed, max step: ${lowestNonZeroStep.id})`;
+  setRestorePlanDevice(deviceMap, dev.id, { reason });
+  logDebug(`Plan: blocking stepped restore of ${dev.name} - ${reason}`);
+  structuredLog?.info({
+    event: 'restore_stepped_rejected',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    currentStepId: dev.selectedStepId,
+    requestedStepId: nextStep.id,
+    lowestNonZeroStepId: lowestNonZeroStep.id,
+    allowedMaxStepId: lowestNonZeroStep.id,
+    blockedByShedInvariant: true,
+    shedDeviceCount,
+    decision: 'rejected',
+    rejectionReason: 'shed_invariant',
+  });
+  return true;
+}
+
+function rejectSteppedRestoreForInsufficientHeadroom(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  phase: 'startup' | 'runtime';
+  nextStep: { id: string };
+  lowestNonZeroStep: { id: string } | null;
+  shedDeviceCount: number;
+  admission: RestoreAdmissionMetrics;
+  availableHeadroom: number;
+  needed: number;
+  structuredLog?: PinoLogger;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const { dev, deviceMap, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
+    admission, availableHeadroom, needed, structuredLog } = params;
+  setRestorePlanDevice(deviceMap, dev.id, {
+    reason: `insufficient headroom (need ${admission.requiredKw.toFixed(2)}kW, `
+      + `headroom ${availableHeadroom.toFixed(2)}kW)`,
+  });
+  structuredLog?.debug({
+    event: 'restore_stepped_rejected',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    currentStepId: dev.selectedStepId,
+    requestedStepId: nextStep.id,
+    lowestNonZeroStepId: lowestNonZeroStep?.id,
+    blockedByShedInvariant: false,
+    shedDeviceCount,
+    neededKw: needed,
+    availableKw: availableHeadroom,
+    ...buildRestoreAdmissionLogFields(admission),
+    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    decision: 'rejected',
+    rejectionReason: 'insufficient_headroom',
+  });
+  return { availableHeadroom, restoredOneThisCycle: false };
 }
