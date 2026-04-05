@@ -188,62 +188,50 @@ class PelsApp extends Homey.App {
       runtimeState: this.deviceControlRuntimeState,
     }));
   }
-  private formatSteppedLoadDeviceLabel(deviceId: string, snapshot?: TargetDeviceSnapshot): string {
-    const name = snapshot?.name?.trim();
-    return name ? `${name} (${deviceId})` : deviceId;
-  }
-  private buildSteppedLoadFeedbackLogMessage(params: {
-    deviceLabel: string;
-    previousReportedStepId?: string;
-    previousDesired?: SteppedLoadDesiredRuntimeState;
+  private emitSteppedFeedbackLog(params: {
+    log: PinoLogger | undefined;
+    deviceId: string;
+    deviceName: string;
     stepId: string;
-  }): string {
-    const { deviceLabel, previousReportedStepId, previousDesired, stepId } = params;
+    previousReportedStepId: string | undefined;
+    previousDesired: SteppedLoadDesiredRuntimeState | undefined;
+  }): void {
+    const { log, deviceId, deviceName, stepId, previousReportedStepId, previousDesired } = params;
     if (previousDesired?.stepId === stepId) {
-      return this.buildDesiredStepFeedbackLogMessage({ deviceLabel, previousDesired, stepId });
-    }
-    if (previousReportedStepId && previousReportedStepId !== stepId) {
-      return this.buildReportedStepChangedLogMessage({
-        deviceLabel,
-        previousReportedStepId,
-        previousDesired,
-        stepId,
+      log?.info({
+        event: 'stepped_feedback_confirmed',
+        deviceId, deviceName,
+        reportedStepId: stepId,
+        desiredStepId: previousDesired.stepId,
+        pending: previousDesired.pending,
+        stale: previousDesired.status === 'stale',
+      });
+    } else if (previousReportedStepId && previousReportedStepId !== stepId) {
+      log?.info({
+        event: 'stepped_feedback_external_change',
+        deviceId, deviceName,
+        previousStepId: previousReportedStepId,
+        newStepId: stepId,
+        desiredStepId: previousDesired?.stepId ?? null,
+      });
+    } else if (previousDesired?.stepId && previousDesired.stepId !== stepId) {
+      log?.info({
+        event: 'stepped_feedback_mismatch',
+        deviceId, deviceName,
+        reportedStepId: stepId,
+        desiredStepId: previousDesired.stepId,
+      });
+    } else {
+      log?.info({
+        event: 'stepped_feedback_reported',
+        deviceId, deviceName,
+        reportedStepId: stepId,
       });
     }
-    if (previousDesired?.stepId && previousDesired.stepId !== stepId) {
-      return `Stepped load feedback: ${deviceLabel} reported step ${stepId} `
-        + `while PELS wanted ${previousDesired.stepId}`;
-    }
-    return `Stepped load feedback: ${deviceLabel} reported step ${stepId}`;
-  }
-  private buildDesiredStepFeedbackLogMessage(params: {
-    deviceLabel: string;
-    previousDesired: SteppedLoadDesiredRuntimeState;
-    stepId: string;
-  }): string {
-    const { deviceLabel, previousDesired, stepId } = params;
-    if (previousDesired.pending) {
-      return `Stepped load feedback: ${deviceLabel} confirmed desired step ${stepId}`;
-    }
-    const delayedSuffix = previousDesired.status === 'stale' ? ' after delayed feedback' : '';
-    return `Stepped load feedback: ${deviceLabel} reported desired step ${stepId}${delayedSuffix}`;
-  }
-  private buildReportedStepChangedLogMessage(params: {
-    deviceLabel: string;
-    previousReportedStepId: string;
-    previousDesired?: SteppedLoadDesiredRuntimeState;
-    stepId: string;
-  }): string {
-    const { deviceLabel, previousReportedStepId, previousDesired, stepId } = params;
-    const desiredSuffix = previousDesired?.stepId && previousDesired.stepId !== stepId
-      ? ` (desired ${previousDesired.stepId})`
-      : '';
-    return `Stepped load feedback: ${deviceLabel} changed step `
-      + `${previousReportedStepId} -> ${stepId} outside PELS${desiredSuffix}`;
   }
   private reportSteppedLoadActualStep(deviceId: string, stepId: string): ReportSteppedLoadActualStepResult {
     const snapshot = this.latestTargetSnapshot.find((device) => device.id === deviceId);
-    const deviceLabel = this.formatSteppedLoadDeviceLabel(deviceId, snapshot);
+    const deviceName = snapshot?.name?.trim() ?? deviceId;
     const previousReportedStepId = this.deviceControlRuntimeState.steppedLoadReportedByDeviceId[deviceId]?.stepId;
     const previousDesired = this.deviceControlRuntimeState.steppedLoadDesiredByDeviceId[deviceId];
     const changed = reportSteppedLoadActualStepHelper({
@@ -254,19 +242,17 @@ class PelsApp extends Homey.App {
     });
 
     if (changed === 'invalid') {
-      this.logDebug('devices', `Stepped load feedback ignored for ${deviceLabel}: invalid step '${stepId}'`);
+      this.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: invalid step '${stepId}'`);
       return changed;
     }
     if (changed === 'unchanged') {
-      this.logDebug('devices', `Stepped load feedback unchanged for ${deviceLabel}: ${stepId}`);
+      this.logDebug('devices', `Stepped load feedback unchanged for ${deviceName}: ${stepId}`);
       return changed;
     }
-    this.log(this.buildSteppedLoadFeedbackLogMessage({
-      deviceLabel,
-      previousReportedStepId,
-      previousDesired,
-      stepId,
-    }));
+    this.emitSteppedFeedbackLog({
+      log: this.getStructuredLogger('devices'),
+      deviceId, deviceName, stepId, previousReportedStepId, previousDesired,
+    });
     return changed;
   }
   private markSteppedLoadDesiredStepIssued(params: {
