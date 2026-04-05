@@ -1004,4 +1004,99 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.stringContaining('reconcile after drift'),
     );
   });
+
+  it('blocks keep-invariant restore when shed devices exist and desiredStepId exceeds lowestNonZeroStep', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot, { structuredLog });
+
+    const plan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'shed-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+        },
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'off',
+          desiredStepId: 'max', // above lowestNonZeroStep ('low')
+        },
+      ],
+    };
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    // Binary restore must NOT fire — shed invariant should block it
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      lowestNonZeroStepId: 'low',
+      rejectionReason: 'shed_invariant',
+    }));
+  });
+
+  it('allows keep-invariant restore when shed devices exist but desiredStepId is at lowestNonZeroStep', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    const plan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'shed-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+        },
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'off',
+          desiredStepId: 'low', // at lowestNonZeroStep — allowed
+        },
+      ],
+    };
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    // Binary restore IS allowed — desiredStepId is exactly lowestNonZeroStep
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('allows keep-invariant restore when no devices are shed', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({ currentState: 'off', selectedStepId: 'off', desiredStepId: 'max' });
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    // No shed devices → restore allowed even though desiredStepId='max'
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
 });

@@ -10,6 +10,7 @@ import {
   normalizeTargetCapabilityValue,
 } from '../utils/targetCapabilities';
 import {
+  getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
   sortSteppedLoadSteps,
@@ -531,6 +532,7 @@ export class PlanExecutor {
     dev: DevicePlan['devices'][number],
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
+    anyShedDevices: boolean,
   ): Promise<void> {
     const name = dev.name || dev.id;
 
@@ -569,6 +571,24 @@ export class PlanExecutor {
     if (!onoffViolated && !stepViolated) {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, no keep violations detected`);
       return;
+    }
+
+    if (anyShedDevices && dev.steppedLoadProfile && dev.desiredStepId) {
+      const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
+      const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.desiredStepId);
+      if (lowestNonZeroStep && desiredStep && desiredStep.planningPowerW > lowestNonZeroStep.planningPowerW) {
+        this.logDebug(`Capacity: skip stepped-load restore for ${name}, shed invariant: `
+          + `desiredStep=${dev.desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`);
+        this.deps.structuredLog?.info({
+          event: 'restore_keep_invariant_shed_blocked',
+          deviceId: dev.id,
+          deviceName: name,
+          desiredStepId: dev.desiredStepId,
+          lowestNonZeroStepId: lowestNonZeroStep.id,
+          rejectionReason: 'shed_invariant',
+        });
+        return;
+      }
     }
 
     if (!snapshot) {
@@ -1022,6 +1042,7 @@ export class PlanExecutor {
 
     const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
     const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
+    const anyShedDevices = plan.devices.some((d) => d.plannedState === 'shed');
     for (const dev of plan.devices) {
       const snapshot = snapshotMap.get(dev.id);
       try {
@@ -1042,7 +1063,7 @@ export class PlanExecutor {
         await this.applySteppedLoadCommand(dev, mode);
         if (isSteppedLoadDevice(dev)) {
           await this.applySteppedLoadShedOff(dev, snapshot, mode);
-          await this.applySteppedLoadRestore(dev, snapshot, mode);
+          await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
           await this.applyTargetUpdate(dev, snapshot, mode);
           continue;
         }
