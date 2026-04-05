@@ -86,7 +86,7 @@ describe('buildSwapCandidates', () => {
     expect(result.reason).toContain('insufficient headroom');
   });
 
-  it('uses the same effective power estimate as shedding when evaluating swap candidates', () => {
+  it('keeps swap restores blocked until the swap and admission reserves are both satisfied', () => {
     const result = buildSwapCandidates({
       dev: buildPlanDevice({ priority: 50 }),
       onDevices: [
@@ -273,17 +273,17 @@ describe('resolveRestorePowerSource', () => {
 });
 
 describe('estimateRestorePower vs resolveCandidatePower asymmetry', () => {
-  it('shedding uses measured power first; restore admission uses the most conservative known power', () => {
+  it('shedding and restore estimation intentionally diverge: restore uses the highest known demand', () => {
     // A device drawing 3kW but configured for 1kW expected:
-    // shedding frees 3kW (measured), restore claims only 1kW (expected).
-    // Net effect: headroom appears to grow by 3kW when shed but only shrinks by 1kW when re-admitted.
+    // shedding still frees the observed 3kW, while restore admission also holds the line at 3kW
+    // because admission now uses the highest known demand rather than a priority-ordered fallback.
     const device = buildPlanDevice({
       currentState: 'on',
       measuredPowerKw: 3,
       expectedPowerKw: 1,
     });
     expect(resolveCandidatePower(device)).toBe(3);     // shedding sees 3kW
-    expect(estimateRestorePower(device)).toBe(3);       // restore admission keeps the higher known draw
+    expect(estimateRestorePower(device)).toBe(3);      // restore admission keeps the higher known draw
 
     // Conversely, a device with accurate expected but zero measured (it is off):
     const offDevice = buildPlanDevice({
@@ -350,6 +350,21 @@ describe('computePendingRestorePowerKw', () => {
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 3, powerKw: 1 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBeCloseTo(2, 5); // gap: 3 - 1 (1 < 3*0.5 — not yet confirmed)
+  });
+
+  it('uses the same conservative restore estimate for pending restore reservation', () => {
+    // If a device has recently shown a higher draw than its current planning target, keep
+    // reserving against that higher draw until confirmation catches up.
+    const dev = buildPlanDevice({
+      id: 'stepper',
+      currentOn: true,
+      currentState: 'on',
+      planningPowerKw: 1.5,
+      measuredPowerKw: 3,
+    });
+    const result = computePendingRestorePowerKw([dev], { stepper: recentMs }, now);
+    expect(estimateRestorePower(dev)).toBe(3);
+    expect(result.pendingKw).toBeCloseTo(0, 5); // already confirmed against the conservative estimate
   });
 
   it('considers powerKw-only device confirmed when powerKw meets threshold', () => {

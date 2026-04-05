@@ -7,7 +7,7 @@ import {
   PENDING_RESTORE_WINDOW_MS,
   SWAP_RESTORE_RESERVE_KW,
 } from './planConstants';
-import { canAdmitRestore, type RestoreAdmissionMetrics } from './planRestoreAdmission';
+import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from './planRestoreAdmission';
 
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
@@ -53,7 +53,7 @@ export function buildSwapCandidates(params: {
   const toShed: DevicePlanDevice[] = [];
   let currentPotential = availableHeadroom;
   let effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
-  let admission = canAdmitRestore({ availableKw: effectiveHeadroom, neededKw: needed });
+  let admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });
 
   for (const onDev of onDevices) {
     if (!isViableSwapCandidate(onDev, dev, swappedOutFor, restoredThisCycle)) continue;
@@ -64,7 +64,7 @@ export function buildSwapCandidates(params: {
     toShed.push(onDev);
     currentPotential += pwr;
     effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
-    admission = canAdmitRestore({ availableKw: effectiveHeadroom, neededKw: needed });
+    admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });
 
     if (admission.postReserveMarginKw >= 0) break;
   }
@@ -138,6 +138,9 @@ export function estimateRestorePower(dev: DevicePlanDevice): number {
   const steppedPower = resolveSteppedRestorePower(dev);
   if (steppedPower !== null) return steppedPower;
 
+  // Use the highest known demand across sources. Restore admission and pending-restore
+  // reservation should bias toward over-reserving rather than underestimating a device
+  // that has recently shown a higher draw than its configured/planned target suggests.
   const candidates = [
     dev.planningPowerKw,
     dev.expectedPowerKw,

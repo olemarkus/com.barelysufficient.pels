@@ -15,7 +15,7 @@ import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from 
 import { computeRestoreBufferKw } from './planRestoreSwap';
 import {
   buildRestoreAdmissionLogFields,
-  canAdmitRestore,
+  buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
   shouldLogRestoreAdmissionAtInfo,
 } from './planRestoreAdmission';
@@ -327,7 +327,7 @@ export function planRestoreForSteppedDevice(params: {
 
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
-  const admission = canAdmitRestore({ availableKw: availableHeadroom, neededKw: needed });
+  const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: needed });
   if (admission.postReserveMarginKw < 0) {
     setRestorePlanDevice(deviceMap, dev.id, {
       reason: `insufficient headroom (need ${admission.requiredKw.toFixed(2)}kW, `

@@ -44,7 +44,7 @@ import {
 } from './planRestoreTiming';
 import {
   buildRestoreAdmissionLogFields,
-  canAdmitRestore,
+  buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
   shouldLogRestoreAdmissionAtInfo,
 } from './planRestoreAdmission';
@@ -321,7 +321,7 @@ function planRestoreForDevice(params: {
   }
 
   const restoreNeed = getRestoreNeed(dev, state, deps.deviceDiagnostics);
-  const admission = canAdmitRestore({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
+  const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   if (admission.postReserveMarginKw >= 0) {
     const powerSource = resolveRestorePowerSource(dev);
     const logMethod = shouldLogRestoreAdmissionAtInfo({

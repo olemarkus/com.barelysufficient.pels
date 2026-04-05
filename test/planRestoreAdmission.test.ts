@@ -1,7 +1,6 @@
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
-  canAdmitRestore,
   shouldLogRestoreAdmissionAtInfo,
 } from '../lib/plan/planRestoreAdmission';
 
@@ -15,9 +14,9 @@ describe('planRestoreAdmission', () => {
   });
 
   it('accepts restores only when available headroom meets needed plus reserve', () => {
-    expect(canAdmitRestore({ availableKw: 1.22, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(-0.01, 6);
-    expect(canAdmitRestore({ availableKw: 1.23, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(0, 6);
-    expect(canAdmitRestore({ availableKw: 1.4, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(0.17, 6);
+    expect(buildRestoreAdmissionMetrics({ availableKw: 1.22, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(-0.01, 6);
+    expect(buildRestoreAdmissionMetrics({ availableKw: 1.23, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(0, 6);
+    expect(buildRestoreAdmissionMetrics({ availableKw: 1.4, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(0.17, 6);
   });
 
   it('builds a canonical non-redundant set of log fields', () => {
@@ -47,24 +46,36 @@ describe('planRestoreAdmission', () => {
       marginKw: 0.29,
       penaltyLevel: 0,
       powerSource: 'planning',
+      nowTs: 1_000_000,
     })).toBe(true);
     expect(shouldLogRestoreAdmissionAtInfo({
       restoreType: 'binary',
       marginKw: 0.5,
       penaltyLevel: 1,
       powerSource: 'planning',
+      nowTs: 1_000_000,
     })).toBe(true);
     expect(shouldLogRestoreAdmissionAtInfo({
       restoreType: 'binary',
       marginKw: 0.5,
       penaltyLevel: 0,
       powerSource: 'fallback',
+      nowTs: 1_000_000,
     })).toBe(true);
     expect(shouldLogRestoreAdmissionAtInfo({
       restoreType: 'swap',
       marginKw: 0.5,
       penaltyLevel: 0,
       powerSource: 'planning',
+      nowTs: 1_000_000,
+    })).toBe(true);
+    expect(shouldLogRestoreAdmissionAtInfo({
+      restoreType: 'binary',
+      marginKw: 0.5,
+      penaltyLevel: 0,
+      powerSource: 'planning',
+      recentInstabilityMs: 999_900,
+      nowTs: 1_000_000,
     })).toBe(true);
   });
 
