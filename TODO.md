@@ -92,12 +92,11 @@ refactors.
       `stepped_feedback_mismatch` (reported != desired), `stepped_feedback_reported` (first report).
       Removed three prose builder methods. Updated app.test.ts assertions.
       Files: `app.ts`, `test/app.test.ts`.
-- [ ] Guard executor `applySteppedLoadRestore` (planExecutor.ts:530–646) against the shed
-      invariant. When `plannedState === 'keep'` but `currentState === 'off'`, the executor can
-      bypass the planner's invariant check if `desiredStepId` is stale. Add an invariant check
-      before actuation so the executor cannot restore above lowestNonZeroStep while devices are
-      shed.
-      Files: `lib/plan/planExecutor.ts`, executor tests.
+- [x] Guard executor `applySteppedLoadRestore` against the shed invariant. Compute
+      `anyShedDevices` in `applyPlanActions` and pass it down. Skip binary restore when any
+      device is shed and `desiredStepId` exceeds `lowestNonZeroStep`; emit
+      `restore_keep_invariant_shed_blocked`. Restores to lowestNonZeroStep or below are allowed.
+      Files: `lib/plan/planExecutor.ts`, `test/planExecutor.test.ts`.
 
 ### P1 Structured logging: runtime coverage and correlation
 - [ ] Keep default structured event payloads bounded. Normal diagnostics should avoid large
