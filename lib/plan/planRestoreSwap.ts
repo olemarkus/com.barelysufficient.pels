@@ -124,9 +124,10 @@ export function resolveRestorePowerSource(dev: DevicePlanDevice): RestorePowerSo
 
   let best: { source: Exclude<RestorePowerSource, 'stepped' | 'fallback'>; value: number } | null = null;
   for (const candidate of candidates) {
-    if (typeof candidate.value !== 'number' || candidate.value <= 0) continue;
-    if (best === null || candidate.value > best.value) {
-      best = { source: candidate.source, value: candidate.value };
+    const value = candidate.value;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue;
+    if (best === null || value > best.value) {
+      best = { source: candidate.source, value };
     }
   }
 

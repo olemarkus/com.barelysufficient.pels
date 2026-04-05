@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- restore planning keeps direct and swap admission logic together. */
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
@@ -44,6 +43,7 @@ import {
   type RestoreTiming,
 } from './planRestoreTiming';
 import {
+  buildRestoreAdmissionLogFields,
   canAdmitRestore,
   resolveRestoreDecisionPhase,
   shouldLogRestoreAdmissionAtInfo,
@@ -341,11 +341,7 @@ function planRestoreForDevice(params: {
       powerSource,
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
-      reserveKw: admission.admissionReserveKw,
-      admissionReserveKw: admission.admissionReserveKw,
-      marginKw: admission.marginKw,
-      postRestoreSlackKw: admission.postReserveMarginKw,
-      postReserveMarginKw: admission.postReserveMarginKw,
+      ...buildRestoreAdmissionLogFields(admission),
       decision: 'admitted',
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
@@ -467,11 +463,7 @@ function attemptSwapRestore(params: {
       neededKw: restoreNeed.needed,
       availableKw: availableHeadroom,
       effectiveAvailableKw: swap.effectiveHeadroom,
-      reserveKw: swap.admission.admissionReserveKw,
-      admissionReserveKw: swap.admission.admissionReserveKw,
-      marginKw: swap.admission.marginKw,
-      postRestoreSlackKw: swap.admission.postReserveMarginKw,
-      postReserveMarginKw: swap.admission.postReserveMarginKw,
+      ...buildRestoreAdmissionLogFields(swap.admission),
       swapReserveKw: swap.reserveKw,
       decision: 'rejected',
       decisionReason: swap.reason,
@@ -491,11 +483,7 @@ function attemptSwapRestore(params: {
     neededKw: restoreNeed.needed,
     potentialHeadroomKw: swap.potentialHeadroom,
     effectiveHeadroomKw: swap.effectiveHeadroom,
-    reserveKw: swap.admission.admissionReserveKw,
-    admissionReserveKw: swap.admission.admissionReserveKw,
-    marginKw: swap.admission.marginKw,
-    postRestoreSlackKw: swap.admission.postReserveMarginKw,
-    postReserveMarginKw: swap.admission.postReserveMarginKw,
+    ...buildRestoreAdmissionLogFields(swap.admission),
     swapReserveKw: swap.reserveKw,
     estimatedPowerKw: restoreNeed.devPower,
     powerSource: resolveRestorePowerSource(dev),

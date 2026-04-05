@@ -260,6 +260,13 @@ describe('resolveRestorePowerSource', () => {
     expect(resolveRestorePowerSource(buildPlanDevice({ powerKw: 1.5 }))).toBe('configured');
   });
 
+  it('ignores NaN power candidates and falls through to finite values', () => {
+    expect(resolveRestorePowerSource(buildPlanDevice({
+      planningPowerKw: Number.NaN,
+      expectedPowerKw: 1.5,
+    }))).toBe('expected');
+  });
+
   it('returns fallback when no power fields are set', () => {
     expect(resolveRestorePowerSource(buildPlanDevice({}))).toBe('fallback');
   });

@@ -14,6 +14,7 @@ import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
 import { computeRestoreBufferKw } from './planRestoreSwap';
 import {
+  buildRestoreAdmissionLogFields,
   canAdmitRestore,
   resolveRestoreDecisionPhase,
   shouldLogRestoreAdmissionAtInfo,
@@ -356,11 +357,7 @@ export function planRestoreForSteppedDevice(params: {
     deltaKw,
     neededKw: needed,
     availableKw: availableHeadroom,
-    reserveKw: admission.admissionReserveKw,
-    admissionReserveKw: admission.admissionReserveKw,
-    marginKw: admission.marginKw,
-    postRestoreSlackKw: admission.postReserveMarginKw,
-    postReserveMarginKw: admission.postReserveMarginKw,
+    ...buildRestoreAdmissionLogFields(admission),
     decision: 'admitted',
   });
   return {
