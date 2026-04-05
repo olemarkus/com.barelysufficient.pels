@@ -85,12 +85,13 @@ refactors.
       structured event when the rejection parameters change or on first rejection. Clear tracking
       when the device is no longer blocked.
       Files: `lib/plan/planRestoreHelpers.ts`, `lib/plan/planState.ts`, restore tests.
-- [ ] Make stepped feedback logging structured. Replace the plain-text `this.log()` calls in
-      `reportSteppedLoadActualStep` / `buildSteppedLoadFeedbackLogMessage` (app.ts:195–269) with
-      structured logger events (`stepped_feedback_confirmed`, `stepped_feedback_external_change`,
-      `stepped_feedback_mismatch`). Each event should carry `deviceId`, `deviceName`,
-      `reportedStepId`, `desiredStepId`, `previousStepId`, and `source`.
-      Files: `app.ts`, structured-log tests.
+- [x] Make stepped feedback logging structured. Replaced the plain-text `this.log()` calls in
+      `reportSteppedLoadActualStep` (app.ts) with structured logger events:
+      `stepped_feedback_confirmed` (desired step acknowledged, with `pending`/`stale` flags),
+      `stepped_feedback_external_change` (step changed outside PELS),
+      `stepped_feedback_mismatch` (reported != desired), `stepped_feedback_reported` (first report).
+      Removed three prose builder methods. Updated app.test.ts assertions.
+      Files: `app.ts`, `test/app.test.ts`.
 - [ ] Guard executor `applySteppedLoadRestore` (planExecutor.ts:530–646) against the shed
       invariant. When `plannedState === 'keep'` but `currentState === 'off'`, the executor can
       bypass the planner's invariant check if `desiredStepId` is stale. Add an invariant check

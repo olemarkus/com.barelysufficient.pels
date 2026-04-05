@@ -178,7 +178,7 @@ describe('MyApp initialization', () => {
     expect(entry?.controllable).toBe(false);
   });
 
-  it('logs generic stepped-load feedback for the first reported step', async () => {
+  it('emits stepped_feedback_reported event for the first reported step', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -190,16 +190,20 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const logSpy = jest.spyOn(app, 'log');
+    const infoSpy = jest.fn();
+    jest.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
     expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
-    expect(logSpy).toHaveBeenCalledWith('Stepped load feedback: Water heater (dev-1) reported step low');
-    expect(logSpy.mock.calls.some(
-      (call) => typeof call[0] === 'string' && call[0].includes('outside PELS'),
-    )).toBe(false);
+    expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_feedback_reported',
+      deviceId: 'dev-1',
+      deviceName: 'Water heater',
+      reportedStepId: 'low',
+    }));
+    expect(infoSpy).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'stepped_feedback_external_change' }));
   });
 
-  it('logs stepped-load confirmation when reported feedback matches a pending desired step', async () => {
+  it('emits stepped_feedback_confirmed event when reported step matches pending desired step', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -211,7 +215,8 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const logSpy = jest.spyOn(app, 'log');
+    const infoSpy = jest.fn();
+    jest.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
     (app as any).markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
@@ -220,10 +225,17 @@ describe('MyApp initialization', () => {
     });
 
     expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
-    expect(logSpy).toHaveBeenCalledWith('Stepped load feedback: Water heater (dev-1) confirmed desired step low');
+    expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_feedback_confirmed',
+      deviceId: 'dev-1',
+      deviceName: 'Water heater',
+      reportedStepId: 'low',
+      desiredStepId: 'low',
+      pending: true,
+    }));
   });
 
-  it('logs delayed stepped-load feedback as matching the desired step instead of outside PELS drift', async () => {
+  it('emits stepped_feedback_confirmed with stale=true for delayed feedback matching desired step', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -235,7 +247,8 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const logSpy = jest.spyOn(app, 'log');
+    const infoSpy = jest.fn();
+    jest.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
     (app as any).markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
@@ -253,15 +266,17 @@ describe('MyApp initialization', () => {
     };
 
     expect((app as any).reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
-    expect(logSpy).toHaveBeenCalledWith(
-      'Stepped load feedback: Water heater (dev-1) reported desired step max after delayed feedback',
-    );
-    expect(logSpy.mock.calls.some(
-      (call) => typeof call[0] === 'string' && call[0].includes('outside PELS'),
-    )).toBe(false);
+    expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_feedback_confirmed',
+      deviceId: 'dev-1',
+      reportedStepId: 'max',
+      desiredStepId: 'max',
+      stale: true,
+    }));
+    expect(infoSpy).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'stepped_feedback_external_change' }));
   });
 
-  it('logs stepped-load drift when the reported step changes outside PELS', async () => {
+  it('emits stepped_feedback_external_change when reported step changes outside PELS', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -273,13 +288,19 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const logSpy = jest.spyOn(app, 'log');
-
     expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
-    logSpy.mockClear();
+
+    const infoSpy = jest.fn();
+    jest.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
     expect((app as any).reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
-    expect(logSpy).toHaveBeenCalledWith('Stepped load feedback: Water heater (dev-1) changed step low -> max outside PELS');
+    expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_feedback_external_change',
+      deviceId: 'dev-1',
+      deviceName: 'Water heater',
+      previousStepId: 'low',
+      newStepId: 'max',
+    }));
   });
 
   it('set_capacity_mode flow card changes mode and persists to settings', async () => {
