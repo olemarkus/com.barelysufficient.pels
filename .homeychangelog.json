@@ -259,5 +259,8 @@
   },
   "2.1.11": {
     "en": "Fix bugs around overshoot instabilities."
+  },
+  "2.1.12": {
+    "en": "A larger set of bug fixes that reduce restoration/shed churn."
   }
 }
