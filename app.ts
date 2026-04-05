@@ -371,7 +371,7 @@ class PelsApp extends Homey.App {
       log: this.log.bind(this),
       debug: (...args: unknown[]) => this.logDebug('devices', ...args),
       error: this.error.bind(this),
-      structuredLog: this.structuredLogger?.child({ component: 'devices' }),
+      structuredLog: this.getStructuredLogger('devices', 'devices'),
     }, {
       getPriority: (id) => this.getPriorityForDevice(id),
       getControllable: (id) => this.isCapacityControlEnabled(id),
@@ -438,7 +438,7 @@ class PelsApp extends Homey.App {
       },
       syncLivePlanStateAfterTargetActuation: (source) => this.planService?.syncLivePlanStateInline(source) ?? false,
       deviceDiagnostics: this.deviceDiagnosticsService,
-      structuredLog: this.getStructuredLogger('plan'),
+      structuredLog: this.getStructuredLogger('plan', 'plan'),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
       error: (...args: unknown[]) => this.error(...args),
@@ -470,7 +470,7 @@ class PelsApp extends Homey.App {
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
       error: (...args: unknown[]) => this.error(...args),
-      structuredLog: this.structuredLogger,
+      structuredLog: this.getStructuredLogger('plan', 'plan'),
     };
     this.planService = createPlanService(deps);
   }

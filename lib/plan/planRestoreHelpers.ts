@@ -18,7 +18,6 @@ import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
-  shouldLogRestoreAdmissionAtInfo,
   type RestoreAdmissionMetrics,
 } from './planRestoreAdmission';
 
@@ -336,7 +335,7 @@ function admitSteppedRestore(params: {
   availableHeadroom: number;
   structuredLog?: PinoLogger;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
+  const { dev, deviceMap, phase, nextStep, lowestNonZeroStep,
     deltaKw, availableHeadroom, structuredLog } = params;
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
@@ -352,14 +351,7 @@ function admitSteppedRestore(params: {
     desiredStepId: nextStep.id,
     reason: `restore ${dev.selectedStepId} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
   });
-  const logMethod = shouldLogRestoreAdmissionAtInfo({
-    restoreType: 'stepped',
-    marginKw: admission.marginKw,
-    penaltyLevel: getActivationPenaltyLevel(state, dev.id),
-    powerSource: 'stepped',
-    recentInstabilityMs: state.lastInstabilityMs,
-  }) ? 'info' : 'debug';
-  structuredLog?.[logMethod]({
+  structuredLog?.debug({
     event: 'restore_stepped_admitted',
     deviceId: dev.id,
     deviceName: dev.name,
@@ -414,7 +406,7 @@ function blockSteppedRestoreForShedInvariant(params: {
     && prev.shedDeviceCount === shedDeviceCount;
   if (!unchanged) {
     logDebug(`Plan: blocking stepped restore of ${dev.name} - ${reason}`);
-    structuredLog?.info({
+    structuredLog?.debug({
       event: 'restore_stepped_rejected',
       deviceId: dev.id,
       deviceName: dev.name,

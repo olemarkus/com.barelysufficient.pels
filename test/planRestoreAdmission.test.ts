@@ -1,7 +1,6 @@
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
-  shouldLogRestoreAdmissionAtInfo,
 } from '../lib/plan/planRestoreAdmission';
 
 describe('planRestoreAdmission', () => {
@@ -27,66 +26,5 @@ describe('planRestoreAdmission', () => {
     expect(result.reserveKw).toBeCloseTo(0.25, 6);
     expect(result.marginKw).toBeCloseTo(0.04, 6);
     expect(result.postReserveMarginKw).toBeCloseTo(-0.21, 6);
-  });
-
-  it('logs ordinary restore admits at debug when they are not interesting', () => {
-    expect(shouldLogRestoreAdmissionAtInfo({
-      restoreType: 'binary',
-      marginKw: 0.5,
-      penaltyLevel: 0,
-      powerSource: 'planning',
-      recentInstabilityMs: null,
-      nowTs: 1_000_000,
-    })).toBe(false);
-  });
-
-  it('logs low-margin or risky restore admits at info', () => {
-    expect(shouldLogRestoreAdmissionAtInfo({
-      restoreType: 'binary',
-      marginKw: 0.29,
-      penaltyLevel: 0,
-      powerSource: 'planning',
-      nowTs: 1_000_000,
-    })).toBe(true);
-    expect(shouldLogRestoreAdmissionAtInfo({
-      restoreType: 'binary',
-      marginKw: 0.5,
-      penaltyLevel: 1,
-      powerSource: 'planning',
-      nowTs: 1_000_000,
-    })).toBe(true);
-    expect(shouldLogRestoreAdmissionAtInfo({
-      restoreType: 'binary',
-      marginKw: 0.5,
-      penaltyLevel: 0,
-      powerSource: 'fallback',
-      nowTs: 1_000_000,
-    })).toBe(true);
-    expect(shouldLogRestoreAdmissionAtInfo({
-      restoreType: 'swap',
-      marginKw: 0.5,
-      penaltyLevel: 0,
-      powerSource: 'planning',
-      nowTs: 1_000_000,
-    })).toBe(true);
-    expect(shouldLogRestoreAdmissionAtInfo({
-      restoreType: 'binary',
-      marginKw: 0.5,
-      penaltyLevel: 0,
-      powerSource: 'planning',
-      recentInstabilityMs: 999_900,
-      nowTs: 1_000_000,
-    })).toBe(true);
-  });
-
-  it('keeps the thin-margin threshold boundary explicit', () => {
-    expect(shouldLogRestoreAdmissionAtInfo({
-      restoreType: 'binary',
-      marginKw: 0.3,
-      penaltyLevel: 0,
-      powerSource: 'planning',
-      recentInstabilityMs: null,
-      nowTs: 1_000_000,
-    })).toBe(false);
   });
 });

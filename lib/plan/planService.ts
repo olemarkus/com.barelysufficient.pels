@@ -456,8 +456,9 @@ export class PlanService {
         const durationMs = Date.now() - rebuildStart;
         this.recordPlanRebuildMetrics(reason, queueWaitMs, queueDepth, rebuildStart, outcome);
         stopSpan();
-        if (shouldEmitPlanRebuildLog(reason, durationMs, outcome)) {
-          this.deps.structuredLog?.info({
+        const rebuildLogLevel = getPlanRebuildLogLevel(reason, durationMs, outcome);
+        if (rebuildLogLevel) {
+          this.deps.structuredLog?.[rebuildLogLevel]({
             event: 'plan_rebuild_completed',
             durationMs,
             buildMs: outcome.buildMs,
@@ -689,16 +690,18 @@ export class PlanService {
   }
 }
 
-function shouldEmitPlanRebuildLog(
+function getPlanRebuildLogLevel(
   reason: string,
   durationMs: number,
   outcome: PlanRebuildOutcome,
-): boolean {
-  if (outcome.failed) return true;
-  if (outcome.appliedActions || outcome.actionChanged) return true;
-  if (durationMs >= SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS) return true;
+): 'info' | 'debug' | null {
+  if (outcome.failed) return 'info';
+  if (outcome.appliedActions) return 'info';
+  if (durationMs >= SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS) return 'info';
   if (reason === 'initial' || reason === 'startup_snapshot_bootstrap' || reason.startsWith('settings:')) {
-    return true;
+    return 'info';
   }
-  return false;
+  // actionChanged-only: plan decisions changed but no commands were issued — plan debug topic
+  if (outcome.actionChanged) return 'debug';
+  return null;
 }

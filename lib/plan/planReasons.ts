@@ -9,7 +9,6 @@ import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
-  shouldLogRestoreAdmissionAtInfo,
 } from './planRestoreAdmission';
 import {
   buildBaseReason,
@@ -264,14 +263,7 @@ function resolveRestoreDecision(params: {
   }
   restoredThisCycle.add(dev.id);
   const powerSource = resolveRestorePowerSource(dev);
-  const logMethod = shouldLogRestoreAdmissionAtInfo({
-    restoreType: 'target',
-    marginKw: admission.marginKw,
-    penaltyLevel: restoreNeed.penaltyLevel,
-    powerSource,
-    recentInstabilityMs: state.lastInstabilityMs,
-  }) ? 'info' : 'debug';
-  structuredLog?.[logMethod]({
+  structuredLog?.debug({
     event: 'restore_admitted',
     restoreType: 'target',
     deviceId: dev.id,
