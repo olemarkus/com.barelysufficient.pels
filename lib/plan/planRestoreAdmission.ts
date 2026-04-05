@@ -1,4 +1,8 @@
-import { RESTORE_ADMISSION_RESERVE_KW, RESTORE_STABLE_RESET_MS } from './planConstants';
+import {
+  RESTORE_ADMISSION_INFO_MARGIN_KW,
+  RESTORE_ADMISSION_RESERVE_KW,
+  RESTORE_STABLE_RESET_MS,
+} from './planConstants';
 import type { RestorePowerSource } from './planRestoreSwap';
 
 export type RestoreAdmissionMetrics = {
@@ -9,6 +13,9 @@ export type RestoreAdmissionMetrics = {
 };
 
 export type RestoreDecisionPhase = 'startup' | 'runtime';
+export type RestoreAdmissionLogFields = Pick<RestoreAdmissionMetrics, 'marginKw' | 'postReserveMarginKw'> & {
+  reserveKw: number;
+};
 
 export function buildRestoreAdmissionMetrics(params: {
   availableKw: number;
@@ -31,6 +38,16 @@ export function canAdmitRestore(params: {
   return buildRestoreAdmissionMetrics(params);
 }
 
+export function buildRestoreAdmissionLogFields(
+  admission: RestoreAdmissionMetrics,
+): RestoreAdmissionLogFields {
+  return {
+    reserveKw: admission.admissionReserveKw,
+    marginKw: admission.marginKw,
+    postReserveMarginKw: admission.postReserveMarginKw,
+  };
+}
+
 export function shouldLogRestoreAdmissionAtInfo(params: {
   restoreType: 'binary' | 'target' | 'stepped' | 'swap';
   marginKw: number;
@@ -40,7 +57,7 @@ export function shouldLogRestoreAdmissionAtInfo(params: {
   nowTs?: number;
 }): boolean {
   if (params.restoreType === 'swap') return true;
-  if (params.marginKw < 0.30) return true;
+  if (params.marginKw < RESTORE_ADMISSION_INFO_MARGIN_KW) return true;
   if (params.penaltyLevel > 0) return true;
   if (params.powerSource === 'expected' || params.powerSource === 'configured' || params.powerSource === 'fallback') {
     return true;

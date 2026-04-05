@@ -1,4 +1,5 @@
 import {
+  buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   canAdmitRestore,
   shouldLogRestoreAdmissionAtInfo,
@@ -17,6 +18,16 @@ describe('planRestoreAdmission', () => {
     expect(canAdmitRestore({ availableKw: 1.22, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(-0.01, 6);
     expect(canAdmitRestore({ availableKw: 1.23, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(0, 6);
     expect(canAdmitRestore({ availableKw: 1.4, neededKw: 0.98 }).postReserveMarginKw).toBeCloseTo(0.17, 6);
+  });
+
+  it('builds a canonical non-redundant set of log fields', () => {
+    const result = buildRestoreAdmissionLogFields(buildRestoreAdmissionMetrics({
+      availableKw: 1.02,
+      neededKw: 0.98,
+    }));
+    expect(result.reserveKw).toBeCloseTo(0.25, 6);
+    expect(result.marginKw).toBeCloseTo(0.04, 6);
+    expect(result.postReserveMarginKw).toBeCloseTo(-0.21, 6);
   });
 
   it('logs ordinary restore admits at debug when they are not interesting', () => {
@@ -55,5 +66,16 @@ describe('planRestoreAdmission', () => {
       penaltyLevel: 0,
       powerSource: 'planning',
     })).toBe(true);
+  });
+
+  it('keeps the thin-margin threshold boundary explicit', () => {
+    expect(shouldLogRestoreAdmissionAtInfo({
+      restoreType: 'binary',
+      marginKw: 0.3,
+      penaltyLevel: 0,
+      powerSource: 'planning',
+      recentInstabilityMs: null,
+      nowTs: 1_000_000,
+    })).toBe(false);
   });
 });
