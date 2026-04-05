@@ -36,7 +36,7 @@ describe('buildSwapCandidates', () => {
         buildPlanDevice({ id: 'lower-priority', name: 'LowerPriority', priority: 120, powerKw: 2 }),
       ],
       swappedOutFor: new Map(),
-      availableHeadroom: 0.56,
+      availableHeadroom: 0.8,
       needed: 2,
       restoredThisCycle: new Set(),
     });
@@ -60,7 +60,7 @@ describe('buildSwapCandidates', () => {
       dev: buildPlanDevice({ priority: 50 }),
       onDevices,
       swappedOutFor,
-      availableHeadroom: 0.55,
+      availableHeadroom: 0.8,
       needed: 3,
       restoredThisCycle,
     });
@@ -123,13 +123,13 @@ describe('buildSwapCandidates', () => {
         }),
       ],
       swappedOutFor: new Map(),
-      availableHeadroom: 0.2,
+      availableHeadroom: 0.4,
       needed: 0.8,
       restoredThisCycle: new Set(),
     });
 
-    expect(result.potentialHeadroom).toBeCloseTo(1.4, 6);
-    expect(result.effectiveHeadroom).toBeCloseTo(1.1, 6);
+    expect(result.potentialHeadroom).toBeCloseTo(1.6, 6);
+    expect(result.effectiveHeadroom).toBeCloseTo(1.3, 6);
     expect(result.ready).toBe(true);
   });
 

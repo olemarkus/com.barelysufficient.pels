@@ -5,6 +5,7 @@ import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
 import {
   PENDING_RESTORE_CONFIRMED_FRACTION,
   PENDING_RESTORE_WINDOW_MS,
+  RESTORE_ADMISSION_FLOOR_KW,
   SWAP_RESTORE_RESERVE_KW,
 } from './planConstants';
 import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from './planRestoreAdmission';
@@ -66,10 +67,10 @@ export function buildSwapCandidates(params: {
     effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
     admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });
 
-    if (admission.postReserveMarginKw >= 0) break;
+    if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) break;
   }
 
-  const ready = admission.postReserveMarginKw >= 0;
+  const ready = admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW;
   const names = toShed.map((d) => d.name).join(', ');
   const reason = ready
     ? `swapped out for ${dev.name}`

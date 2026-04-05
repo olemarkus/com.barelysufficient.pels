@@ -375,3 +375,11 @@ availableKw: number
       before issuing a keep-invariant restore (or document the intentional bypass)
 - [x] H1: treat `expectedPowerKw === 0` as absent in `estimateRestorePower` — skips to
       `measuredPowerKw` / `powerKw` / fallback instead of making needed = 0.2kW only
+- [x] Hard admission floor: `postReserveMarginKw >= 0.250 kW` (`RESTORE_ADMISSION_FLOOR_KW`)
+      now enforced uniformly across binary, target, stepped, and swap restore paths.
+      Closes the near-zero margin cases seen in field telemetry.
+- [x] Stepped-load shed invariant: while any controllable device has `plannedState === 'shed'`,
+      stepped devices are capped at their lowest non-zero step. Upgrades above that level are
+      blocked by `blockSteppedRestoreForShedInvariant` until all shed devices are cleared.
+      Fixes the root bug where `sheddingActive` could be false while devices were still planned
+      as shed, allowing premature step-up.

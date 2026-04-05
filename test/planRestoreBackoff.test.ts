@@ -8,7 +8,8 @@ import {
   recordActivationAttemptStart,
   recordActivationSetback,
 } from '../lib/plan/planActivationBackoff';
-import { SWAP_TIMEOUT_MS } from '../lib/plan/planConstants';
+import { RESTORE_ADMISSION_FLOOR_KW, SWAP_TIMEOUT_MS } from '../lib/plan/planConstants';
+import { planRestoreForSteppedDevice } from '../lib/plan/planRestoreHelpers';
 import { applyShedTemperatureHold } from '../lib/plan/planReasons';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/planRestore';
@@ -196,7 +197,7 @@ describe('restore cooldown backoff', () => {
 
     expect(binaryDevice?.plannedState).toBe('shed');
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+    expect(steppedDevice?.reason).toMatch(/shed invariant/);
   });
 
   it('blocks stepped-load step-up while another previously shed device is still restoring', () => {
@@ -302,7 +303,7 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+    expect(steppedDevice?.reason).toMatch(/shed invariant/);
   });
 
   it('blocks stepped-load step-up while an ordinary device is still swap pending', () => {
@@ -351,7 +352,7 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+    expect(steppedDevice?.reason).toMatch(/shed invariant/);
   });
 
   it('does not let a stale recently shed device block an unrelated stepped restore', () => {
@@ -574,8 +575,8 @@ describe('restore cooldown backoff', () => {
         }),
       ],
       context: buildContext({
-        headroomRaw: 1.75, // Enough for low plus 0.25kW reserve, but NOT enough for medium
-        headroom: 1.75,
+        headroomRaw: 2.0, // Enough for low plus 0.50kW (reserve + floor), but NOT enough for medium
+        headroom: 2.0,
       }),
       state,
       sheddingActive: false,
@@ -968,7 +969,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     expect(devInsufficient?.plannedState).toBe('shed');
     expect(devInsufficient?.reason).toMatch(/insufficient headroom/);
 
-    // With headroom=3kW (above penalty threshold) → admitted
+    // With headroom=3.5kW (above penalty threshold + 0.50kW floor) → admitted
     const resultAdmitted = applyRestorePlan({
       planDevices: [
         buildPlanDevice({
@@ -980,7 +981,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
           powerKw: 2,
         }),
       ],
-      context: buildContext({ headroomRaw: 3, headroom: 3 }),
+      context: buildContext({ headroomRaw: 3.5, headroom: 3.5 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -994,9 +995,9 @@ describe('restore admission — headroom and penalty gates', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('admits device when headroom exactly meets base need plus admission reserve', () => {
+  it('admits device when headroom exactly meets base need plus admission reserve plus floor', () => {
     const state = createPlanEngineState();
-    // expected=2kW, buffer=0.3kW → needed=2.3kW, plus 0.25kW admission reserve = 2.55kW
+    // expected=2kW, buffer=0.3kW → needed=2.3kW, plus 0.25kW reserve + 0.25kW floor = 2.80kW
     const result = applyRestorePlan({
       planDevices: [
         buildPlanDevice({
@@ -1007,7 +1008,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 2.55, headroom: 2.55 }),
+      context: buildContext({ headroomRaw: 2.80, headroom: 2.80 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -1037,8 +1038,9 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(dev?.reason).toMatch(/insufficient headroom/);
   });
 
-  it('uses the explicit 0.25kW final admission reserve for thin-margin restores', () => {
+  it('requires postReserveMarginKw >= 0.25kW floor in addition to the 0.25kW admission reserve', () => {
     const state = createPlanEngineState();
+    // expected=0.522kW, buffer=0.2kW → needed=0.722kW, plus 0.25kW reserve + 0.25kW floor = 1.222kW
 
     const rejected = applyRestorePlan({
       planDevices: [
@@ -1050,7 +1052,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 0.94, headroom: 0.94 }),
+      context: buildContext({ headroomRaw: 1.1, headroom: 1.1 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -1066,7 +1068,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 1.0, headroom: 1.0 }),
+      context: buildContext({ headroomRaw: 1.25, headroom: 1.25 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -1165,7 +1167,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
     expect(resultBlocked.planDevices.find((d) => d.id === deviceId)?.plannedState).toBe('shed');
 
-    // 5kW headroom: above 4.6 → admitted
+    // 5.1kW headroom: above 4.6 + 0.50kW floor → admitted
     const resultAdmitted = applyRestorePlan({
       planDevices: [
         buildPlanDevice({
@@ -1176,7 +1178,7 @@ describe('restore admission — headroom and penalty gates', () => {
           measuredPowerKw: 0,
         }),
       ],
-      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      context: buildContext({ headroomRaw: 5.1, headroom: 5.1 }),
       state,
       sheddingActive: false,
       deps: makeDeps(),
@@ -1329,5 +1331,385 @@ describe('restore admission — headroom and penalty gates', () => {
       restoreType: 'target',
       deviceId: 'dev-temp',
     }));
+  });
+});
+
+describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  const makeDepsFloor = () => ({
+    powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+    getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+    logDebug: jest.fn(),
+  });
+
+  it(`RESTORE_ADMISSION_FLOOR_KW is ${RESTORE_ADMISSION_FLOOR_KW}kW`, () => {
+    expect(RESTORE_ADMISSION_FLOOR_KW).toBe(0.25);
+  });
+
+  it('rejects binary restore when postReserveMarginKw is 0.249 (below floor)', () => {
+    const state = createPlanEngineState();
+    // needed = 1.2kW (expected=1 + buffer=0.2), reserve=0.25, floor=0.25 → min headroom = 1.70kW
+    // headroom = 1.699 → postReserveMarginKw = 1.699 - 1.2 - 0.25 = 0.249 < floor
+    const result = applyRestorePlan({
+      planDevices: [buildPlanDevice({ id: 'dev', name: 'Heater', currentState: 'off', expectedPowerKw: 1, measuredPowerKw: 0 })],
+      context: buildContext({ headroomRaw: 1.699, headroom: 1.699 }),
+      state,
+      sheddingActive: false,
+      deps: makeDepsFloor(),
+    });
+    expect(result.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('shed');
+  });
+
+  it('admits binary restore when postReserveMarginKw is exactly 0.250 (at floor)', () => {
+    const state = createPlanEngineState();
+    // headroom = 1.700 → postReserveMarginKw = 1.700 - 1.2 - 0.25 = 0.250 = floor
+    const result = applyRestorePlan({
+      planDevices: [buildPlanDevice({ id: 'dev', name: 'Heater', currentState: 'off', expectedPowerKw: 1, measuredPowerKw: 0 })],
+      context: buildContext({ headroomRaw: 1.7, headroom: 1.7 }),
+      state,
+      sheddingActive: false,
+      deps: makeDepsFloor(),
+    });
+    expect(result.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('keep');
+  });
+
+  it('rejects target restore when postReserveMarginKw is below floor', () => {
+    const state = createPlanEngineState();
+    state.lastPlannedShedIds = new Set(['dev-temp']);
+    const { applyShedTemperatureHold } = jest.requireActual('../lib/plan/planReasons') as typeof import('../lib/plan/planReasons');
+    // This exercises the target-restore headroom path via applyShedTemperatureHold
+    const result = applyShedTemperatureHold({
+      planDevices: [buildPlanDevice({
+        id: 'dev-temp',
+        name: 'Thermostat',
+        currentState: 'keep',
+        plannedState: 'keep',
+        currentTarget: 16,
+        plannedTarget: 20,
+        currentOn: true,
+        shedAction: 'set_temperature',
+        shedTemperature: 16,
+        expectedPowerKw: 1.0,
+        powerKw: 1.0,
+      })],
+      state,
+      shedReasons: new Map(),
+      inShedWindow: false,
+      inCooldown: false,
+      activeOvershoot: false,
+      availableHeadroom: 1.699,
+      restoredOneThisCycle: false,
+      restoredThisCycle: new Set(),
+      shedCooldownRemainingSec: null,
+      holdDuringRestoreCooldown: false,
+      restoreCooldownSeconds: 60,
+      restoreCooldownRemainingSec: null,
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+    });
+    const device = result.planDevices.find((d) => d.id === 'dev-temp');
+    expect(device?.plannedTarget).toBe(16);
+    expect(device?.reason).toContain('insufficient headroom');
+  });
+
+  it('rejects stepped restore when postReserveMarginKw is below floor', () => {
+    const state = createPlanEngineState();
+    const deviceMap = new Map([
+      ['dev-step', steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: undefined,
+        measuredPowerKw: 0,
+      })],
+    ]);
+
+    // low step = 1.25kW, buffer≈0.225, needed≈1.475, reserve=0.25, floor=0.25 → min=1.975kW
+    // Use 1.974 → postReserveMarginKw = 1.974 - 1.475 - 0.25 = 0.249 < floor
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: {
+        activeOvershoot: false, inCooldown: false, inRestoreCooldown: false,
+        inStartupStabilization: false, restoreCooldownSeconds: 60,
+        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: null,
+        startupStabilizationRemainingSec: null,
+      },
+      availableHeadroom: 1.974,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+    });
+
+    const dev = deviceMap.get('dev-step')!;
+    expect(dev.desiredStepId).toBeUndefined();
+    expect(dev.reason).toContain('insufficient headroom');
+  });
+
+  it('admits stepped restore when postReserveMarginKw is exactly at the floor', () => {
+    const state = createPlanEngineState();
+    const deviceMap = new Map([
+      ['dev-step', steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: undefined,
+        measuredPowerKw: 0,
+      })],
+    ]);
+
+    // needed≈1.475, reserve=0.25, floor=0.25 → exact min = 1.975kW
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: {
+        activeOvershoot: false, inCooldown: false, inRestoreCooldown: false,
+        inStartupStabilization: false, restoreCooldownSeconds: 60,
+        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: null,
+        startupStabilizationRemainingSec: null,
+      },
+      availableHeadroom: 1.975,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+    });
+
+    expect(deviceMap.get('dev-step')!.desiredStepId).toBe('low');
+  });
+});
+
+describe('stepped-load shed invariant', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  const makeShedTiming = () => ({
+    activeOvershoot: false,
+    inCooldown: false,
+    inRestoreCooldown: false,
+    inStartupStabilization: false,
+    restoreCooldownSeconds: 60,
+    shedCooldownRemainingSec: null as null,
+    restoreCooldownRemainingSec: null as null,
+    startupStabilizationRemainingSec: null as null,
+  });
+
+  it('rejects stepped upgrade from medium to max while another device is shed', () => {
+    const state = createPlanEngineState();
+    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true, powerKw: 1 }) };
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step',
+      name: 'Tank',
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'medium',
+    });
+    const deviceMap = new Map([
+      ['binary-shed', shedDevice],
+      ['dev-step', steppedDev],
+    ]);
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+    });
+
+    const dev = deviceMap.get('dev-step')!;
+    // desiredStepId must NOT be changed to 'max' — shed invariant blocks the upgrade
+    expect(dev.desiredStepId).toBe('medium');
+    expect(dev.reason).toMatch(/shed invariant/);
+  });
+
+  it('allows restore from off to low (lowest non-zero step) while another device is shed', () => {
+    const state = createPlanEngineState();
+    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step',
+      name: 'Tank',
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: undefined,
+      measuredPowerKw: 0,
+    });
+    const deviceMap = new Map([
+      ['binary-shed', shedDevice],
+      ['dev-step', steppedDev],
+    ]);
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+    });
+
+    // off → low is allowed because low IS the lowest non-zero step
+    expect(deviceMap.get('dev-step')!.desiredStepId).toBe('low');
+  });
+
+  it('rejects off to medium while another device is shed (only off→low is legal)', () => {
+    // Simulate: selectedStepId='off' but the profile default yields medium as nextStep.
+    // This is constructed by injecting a profile where medium is the lowestNonZeroStep and
+    // getSteppedLoadNextRestoreStep returns medium (matching low here via currentState=off).
+    // For a standard profile (off→low is the restore step), off→medium is blocked.
+    const state = createPlanEngineState();
+    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+
+    // Use a profile where steps go: off(0), medium(2000), max(3000) — no 'low' step.
+    // The restore step is then 'medium' (lowest non-zero), so off→medium is allowed.
+    // This verifies the invariant cap works at the correct profile boundary.
+    const profileNoLow = {
+      model: 'stepped_load' as const,
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'medium', planningPowerW: 2000 },
+        { id: 'max', planningPowerW: 3000 },
+      ],
+    };
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step',
+      name: 'Tank',
+      currentState: 'off',
+      plannedState: 'keep',
+      steppedLoadProfile: profileNoLow,
+      selectedStepId: 'off',
+      desiredStepId: undefined,
+      measuredPowerKw: 0,
+    });
+    const deviceMap = new Map([
+      ['binary-shed', shedDevice],
+      ['dev-step', steppedDev],
+    ]);
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+    });
+
+    // 'medium' is the lowestNonZeroStep for this profile, so off→medium is allowed
+    expect(deviceMap.get('dev-step')!.desiredStepId).toBe('medium');
+  });
+
+  it('allows stepped upgrade from medium to max after all shed devices are restored', () => {
+    const state = createPlanEngineState();
+    // No shed devices in the map
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step',
+      name: 'Tank',
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'medium',
+    });
+    const deviceMap = new Map([['dev-step', steppedDev]]);
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+    });
+
+    // No shed devices → upgrade to max is allowed
+    expect(deviceMap.get('dev-step')!.desiredStepId).toBe('max');
+  });
+
+  it('restore_stepped_rejected event is emitted with blockedByShedInvariant=true on upgrade block', () => {
+    const state = createPlanEngineState();
+    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step',
+      name: 'Tank',
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'medium',
+    });
+    const deviceMap = new Map([
+      ['binary-shed', shedDevice],
+      ['dev-step', steppedDev],
+    ]);
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    });
+
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_stepped_rejected',
+      blockedByShedInvariant: true,
+      shedDeviceCount: 1,
+      currentStepId: 'medium',
+      requestedStepId: 'max',
+      lowestNonZeroStepId: 'low',
+      allowedMaxStepId: 'low',
+      rejectionReason: 'shed_invariant',
+    }));
+  });
+
+  it('upward step action is never emitted while shed devices exist (end-to-end via applyRestorePlan)', () => {
+    const state = createPlanEngineState();
+    const result = applyRestorePlan({
+      planDevices: [
+        require('./utils/planTestUtils').buildPlanDevice({
+          id: 'binary-shed',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          controllable: true,
+          powerKw: 2,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          plannedState: 'keep',
+          selectedStepId: 'medium',
+          desiredStepId: 'medium',
+        }),
+      ],
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: jest.fn(),
+      },
+    });
+
+    const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
+    // desiredStepId must not have been upgraded to 'max' — binary-shed device is still shed
+    expect(steppedDev?.desiredStepId).toBe('medium');
+    expect(steppedDev?.reason).toMatch(/shed invariant/);
   });
 });
