@@ -77,6 +77,11 @@ export type PlanEngineState = {
   overshootStartedMs: number | null;
   lastOvershootEscalationMs: number | null;
   lastOvershootMitigationMs: number | null;
+  steppedRestoreRejectedByDevice: Record<string, {
+    requestedStepId: string;
+    lowestNonZeroStepId: string;
+    shedDeviceCount: number;
+  }>;
 };
 
 export function createPlanEngineState(): PlanEngineState {
@@ -106,5 +111,6 @@ export function createPlanEngineState(): PlanEngineState {
     overshootStartedMs: null,
     lastOvershootEscalationMs: null,
     lastOvershootMitigationMs: null,
+    steppedRestoreRejectedByDevice: {},
   };
 }
