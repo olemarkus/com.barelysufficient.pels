@@ -266,6 +266,13 @@ export function planRestoreForSteppedDevice(params: {
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, logDebug, structuredLog } = params;
 
+  // Clear shed-invariant suppression tracking when no devices are shed, even if an earlier gate
+  // returns first. Without this, tracking can survive into a new shed episode and suppress the
+  // first restore_stepped_rejected log of that episode.
+  if (countShedDevices(deviceMap, dev.id) === 0) {
+    delete state.steppedRestoreRejectedByDevice[dev.id];
+  }
+
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
   const gateReason = resolveCapacityRestoreBlockReason({ timing, restoredOneThisCycle });
   if (gateReason) {
@@ -300,10 +307,11 @@ export function planRestoreForSteppedDevice(params: {
     : null;
 
   if (blockSteppedRestoreForShedInvariant({
-    dev, deviceMap, nextStep, lowestNonZeroStep, phase, logDebug, structuredLog,
+    dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, logDebug, structuredLog,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
+  delete state.steppedRestoreRejectedByDevice[dev.id];
 
   const deltaKw = resolveSteppedLoadRestoreDeltaKw({
     device: dev, fromStepId: dev.selectedStepId, toStepId: nextStep.id,
@@ -384,34 +392,48 @@ function countShedDevices(deviceMap: Map<string, DevicePlanDevice>, excludeId: s
 function blockSteppedRestoreForShedInvariant(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
+  state: PlanEngineState;
   nextStep: { id: string; planningPowerW: number };
   lowestNonZeroStep: { id: string; planningPowerW: number } | null;
   phase: 'startup' | 'runtime';
   logDebug: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
 }): boolean {
-  const { dev, deviceMap, nextStep, lowestNonZeroStep, phase, logDebug, structuredLog } = params;
+  const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, logDebug, structuredLog } = params;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (shedDeviceCount === 0) return false;
   const reason = `shed invariant: ${dev.selectedStepId ?? 'unknown'} -> ${nextStep.id} blocked `
     + `(${shedDeviceCount} device(s) shed, max step: ${lowestNonZeroStep.id})`;
   setRestorePlanDevice(deviceMap, dev.id, { reason });
-  logDebug(`Plan: blocking stepped restore of ${dev.name} - ${reason}`);
-  structuredLog?.info({
-    event: 'restore_stepped_rejected',
-    deviceId: dev.id,
-    deviceName: dev.name,
-    phase,
-    currentStepId: dev.selectedStepId,
-    requestedStepId: nextStep.id,
-    lowestNonZeroStepId: lowestNonZeroStep.id,
-    allowedMaxStepId: lowestNonZeroStep.id,
-    blockedByShedInvariant: true,
-    shedDeviceCount,
-    decision: 'rejected',
-    rejectionReason: 'shed_invariant',
-  });
+
+  const prev = state.steppedRestoreRejectedByDevice[dev.id];
+  const unchanged = prev !== undefined
+    && prev.requestedStepId === nextStep.id
+    && prev.lowestNonZeroStepId === lowestNonZeroStep.id
+    && prev.shedDeviceCount === shedDeviceCount;
+  if (!unchanged) {
+    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${reason}`);
+    structuredLog?.info({
+      event: 'restore_stepped_rejected',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      currentStepId: dev.selectedStepId,
+      requestedStepId: nextStep.id,
+      lowestNonZeroStepId: lowestNonZeroStep.id,
+      allowedMaxStepId: lowestNonZeroStep.id,
+      blockedByShedInvariant: true,
+      shedDeviceCount,
+      decision: 'rejected',
+      rejectionReason: 'shed_invariant',
+    });
+    state.steppedRestoreRejectedByDevice[dev.id] = {
+      requestedStepId: nextStep.id,
+      lowestNonZeroStepId: lowestNonZeroStep.id,
+      shedDeviceCount,
+    };
+  }
   return true;
 }
 

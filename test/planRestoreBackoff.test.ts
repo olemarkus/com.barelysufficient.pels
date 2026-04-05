@@ -1676,6 +1676,183 @@ describe('stepped-load shed invariant', () => {
     }));
   });
 
+  it('restore_stepped_rejected is suppressed when rejection params are unchanged on repeated rebuilds', () => {
+    const state = createPlanEngineState();
+    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
+      selectedStepId: 'medium', desiredStepId: 'medium',
+    });
+    const deviceMap = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+
+    const callArgs = {
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    };
+
+    // First call: emits
+    planRestoreForSteppedDevice(callArgs);
+    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+
+    // Second call with identical params: suppressed
+    planRestoreForSteppedDevice({ ...callArgs, dev: deviceMap.get('dev-step')! });
+    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+  });
+
+  it('restore_stepped_rejected re-emits when shed count changes', () => {
+    const state = createPlanEngineState();
+    const shed1 = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'shed-1', name: 'Heater1', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shed2 = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'shed-2', name: 'Heater2', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
+      selectedStepId: 'medium', desiredStepId: 'medium',
+    });
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+
+    // First call with 1 shed device
+    const map1 = new Map([['shed-1', shed1], ['dev-step', steppedDev]]);
+    planRestoreForSteppedDevice({
+      dev: map1.get('dev-step')!,
+      deviceMap: map1,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    });
+    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+
+    // Second call with 2 shed devices: different shed count → re-emits
+    const map2 = new Map([['shed-1', shed1], ['shed-2', shed2], ['dev-step', steppedDev]]);
+    planRestoreForSteppedDevice({
+      dev: map2.get('dev-step')!,
+      deviceMap: map2,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    });
+    expect(structuredLog.info).toHaveBeenCalledTimes(2);
+    expect(structuredLog.info).toHaveBeenLastCalledWith(expect.objectContaining({
+      event: 'restore_stepped_rejected',
+      shedDeviceCount: 2,
+    }));
+  });
+
+  it('restore_stepped_rejected re-emits after device was unblocked and shed resumes', () => {
+    const state = createPlanEngineState();
+    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const restoredDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
+      selectedStepId: 'medium', desiredStepId: 'medium',
+    });
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+
+    // First: blocked, emits
+    const mapShed = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
+    planRestoreForSteppedDevice({
+      dev: mapShed.get('dev-step')!,
+      deviceMap: mapShed,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    });
+    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+
+    // Second: no shed devices → not blocked, tracking cleared
+    const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
+    planRestoreForSteppedDevice({
+      dev: mapClear.get('dev-step')!,
+      deviceMap: mapClear,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    });
+
+    // Third: shed resumes → first rejection again, must re-emit
+    planRestoreForSteppedDevice({
+      dev: mapShed.get('dev-step')!,
+      deviceMap: mapShed,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    });
+    expect(structuredLog.info).toHaveBeenCalledTimes(2);
+  });
+
+  it('tracking cleared when shed resolves during cooldown, so next shed episode re-emits', () => {
+    const state = createPlanEngineState();
+    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const restoredDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
+      selectedStepId: 'medium', desiredStepId: 'medium',
+    });
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const activeCooldownTiming = { ...makeShedTiming(), inRestoreCooldown: true, restoreCooldownRemainingSec: 30 };
+
+    // Round 1: shed active, blocked by invariant → emits
+    const mapShed = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
+    planRestoreForSteppedDevice({
+      dev: mapShed.get('dev-step')!,
+      deviceMap: mapShed,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    });
+    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+
+    // Round 2: shed cleared BUT cooldown active — early return before invariant check
+    // Without the early-clear fix, tracking would survive here
+    const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
+    planRestoreForSteppedDevice({
+      dev: mapClear.get('dev-step')!,
+      deviceMap: mapClear,
+      state,
+      timing: activeCooldownTiming,
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    });
+
+    // Round 3: new shed episode starts → must re-emit (tracking was cleared in round 2)
+    planRestoreForSteppedDevice({
+      dev: mapShed.get('dev-step')!,
+      deviceMap: mapShed,
+      state,
+      timing: makeShedTiming(),
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: jest.fn(),
+      structuredLog: structuredLog as any,
+    });
+    expect(structuredLog.info).toHaveBeenCalledTimes(2);
+  });
+
   it('upward step action is never emitted while shed devices exist (end-to-end via applyRestorePlan)', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({

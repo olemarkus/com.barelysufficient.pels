@@ -371,8 +371,10 @@ availableKw: number
 
 - [x] H3: update `lastSetbackMs` in `recordActivationSetback` even when `stickReached`
       (closes the gap where post-stick sheddings leave the time block unset)
-- [ ] H4: decide whether `applySteppedLoadRestore` should check the activation setback
-      before issuing a keep-invariant restore (or document the intentional bypass)
+- [ ] H4: decide whether `applySteppedLoadRestore` should check the shed invariant and
+      activation setback before issuing a keep-invariant restore (or document the bypass).
+      Currently the executor can restore above lowestNonZeroStep when `desiredStepId` is stale
+      and the planner is gated — tracked in TODO under "P1 Stepped restore log noise".
 - [x] H1: treat `expectedPowerKw === 0` as absent in `estimateRestorePower` — skips to
       `measuredPowerKw` / `powerKw` / fallback instead of making needed = 0.2kW only
 - [x] Hard admission floor: `postReserveMarginKw >= 0.250 kW` (`RESTORE_ADMISSION_FLOOR_KW`)
@@ -383,3 +385,6 @@ availableKw: number
       blocked by `blockSteppedRestoreForShedInvariant` until all shed devices are cleared.
       Fixes the root bug where `sheddingActive` could be false while devices were still planned
       as shed, allowing premature step-up.
+- [x] Suppress repeated `restore_stepped_rejected` events during sustained shed: added
+      `steppedRestoreRejectedByDevice` to `PlanEngineState`. Only logs on first rejection or
+      when params change (step, shed count). Tracking cleared when device is no longer blocked.

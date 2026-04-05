@@ -76,6 +76,28 @@ refactors.
       kWh of budget headroom remains. Either rename to `hourCap` or show remaining budget.
       Files: `lib/core/periodicStatus.ts`, status tests.
 
+### P1 Stepped restore log noise and feedback logging
+
+- [x] Suppress repeated `restore_stepped_rejected` log events during active shed. The invariant
+      check fires on every rebuild (every 2–30s) and re-logs the identical block. Added a
+      `steppedRestoreRejectedByDevice` field to `PlanEngineState` tracking the last rejected
+      `{ requestedStepId, lowestNonZeroStepId, shedDeviceCount }` per device. Only emit the
+      structured event when the rejection parameters change or on first rejection. Clear tracking
+      when the device is no longer blocked.
+      Files: `lib/plan/planRestoreHelpers.ts`, `lib/plan/planState.ts`, restore tests.
+- [ ] Make stepped feedback logging structured. Replace the plain-text `this.log()` calls in
+      `reportSteppedLoadActualStep` / `buildSteppedLoadFeedbackLogMessage` (app.ts:195–269) with
+      structured logger events (`stepped_feedback_confirmed`, `stepped_feedback_external_change`,
+      `stepped_feedback_mismatch`). Each event should carry `deviceId`, `deviceName`,
+      `reportedStepId`, `desiredStepId`, `previousStepId`, and `source`.
+      Files: `app.ts`, structured-log tests.
+- [ ] Guard executor `applySteppedLoadRestore` (planExecutor.ts:530–646) against the shed
+      invariant. When `plannedState === 'keep'` but `currentState === 'off'`, the executor can
+      bypass the planner's invariant check if `desiredStepId` is stale. Add an invariant check
+      before actuation so the executor cannot restore above lowestNonZeroStep while devices are
+      shed.
+      Files: `lib/plan/planExecutor.ts`, executor tests.
+
 ### P1 Structured logging: runtime coverage and correlation
 - [ ] Keep default structured event payloads bounded. Normal diagnostics should avoid large
       per-device arrays and full change objects unless the event is explicitly incident/debug
@@ -171,50 +193,49 @@ refactors.
       control-model-specific fields are coupled instead of independent optionals.
       Files: `planTypes.ts`.
 
-### P1 Simplification: reduce plan module indirection
+### P1 Simplification and complexity cleanup
 
-See `notes/plan-module-simplification/README.md` for context.
+See `notes/complexity-cleanup/README.md` for the full phased plan and
+`notes/plan-module-simplification/README.md` for earlier indirection analysis.
 
-- [x] Merge `planRestoreGate.ts` (43 lines) and `planTiming.ts` (18 lines, 1 consumer) into
-      `planRestoreTiming.ts`. All three are about "should restores happen now?" and the splits
-      just add import hops.
-- [x] Merge `planSheddingStepped.ts` (41 lines, 1 consumer) into `planShedding.ts`.
-- [ ] Merge `planReasonHelpers.ts` (102 lines, 1 consumer) into `planReasons.ts`.
-      Blocked: merging would push `planReasons.ts` over the 500-line lint limit.
-      Files: `lib/plan/planReasonHelpers.ts`, `lib/plan/planReasons.ts`.
-- [ ] Merge `planServiceInternals.ts` (64 lines, 2 consumers) into `planService.ts`.
-      Blocked: creates a `planService ↔ planStatusWriter` circular dependency.
-      Files: `lib/plan/planServiceInternals.ts`, `lib/plan/planService.ts`.
-- [x] Collapse `shouldBlockRestoreForSwap` and `shouldBlockRestoreForPendingSwap` in
-      `planRestoreHelpers.ts` into one swap-blocking gate. They are two checks for the same
-      concept (is a swap in progress for this device?).
-      Files: `lib/plan/planRestoreHelpers.ts`.
-- [ ] Replace `planActivationBackoff.ts` (424 lines) with a simpler exponential timer per device.
-      The current state machine (penalty levels 0-4, stick windows, clear windows, diagnostic
-      transitions) is over-specified for the problem. A "don't retry for N minutes, double N on
-      failure, cap at 30 min" approach would cover the same cases in ~60 lines.
+**Completed merges and collapses:**
+- [x] Merge `planRestoreGate.ts` and `planTiming.ts` into `planRestoreTiming.ts`.
+- [x] Merge `planSheddingStepped.ts` into `planShedding.ts`.
+- [x] Collapse swap-blocking gates in `planRestoreHelpers.ts`.
+
+**Phase 1 — Simplify planActivationBackoff:**
+- [ ] Replace `planActivationBackoff.ts` (431 lines) with exponential timer (~60 lines).
+      "Block N min after failure, double on failure, cap 30 min, reset on success."
       Files: `lib/plan/planActivationBackoff.ts`, restore/shedding tests.
-- [ ] Separate reason-string generation from decision logic in `planReasons.ts` (468 lines).
-      Reason strings are a presentation concern currently interleaved with control flow.
-      Consider generating reasons as a post-pass over the finalized plan.
-      Files: `lib/plan/planReasons.ts`, `lib/plan/planRestore.ts`.
 
-### P1 Wiring and orchestration cleanup
+**Phase 2 — Separate decision logic from presentation in planReasons:**
+- [ ] Extract reason-string builders from `planReasons.ts` into `planReasonStrings.ts`.
+- [ ] Merge `planReasonHelpers.ts` (102 lines, 1 consumer) into the now-smaller `planReasons.ts`.
+- [ ] Move `planServiceInternals.ts` types into `planTypes.ts` (resolves circular dep).
 
-- [ ] Reduce pass-through wiring boilerplate between `app.ts` and `lib/app/appInit.ts`.
-      A meaningful share of the code is thin wrapper methods and lambda forwarding that
-      only adapts app methods into service dependencies. Trim or collapse where it does not
-      protect a real boundary; pass narrower dependency objects instead of many one-line
-      lambda wrappers.
-      Files: `app.ts`, `lib/app/appInit.ts`.
-- [ ] Reduce top-level orchestrator complexity in `app.ts`, `planExecutor.ts`, and
-      `planService.ts`. All three carry explicit size/complexity lint suppressions and act as
-      accumulation points for wiring, sequencing, and cross-cutting control logic. Track
-      shrinking them as a first-class task, not only as a side-effect of deeper planner
-      refactors. Good changes: remove thin wrappers, push mechanical wiring into better-owned
-      helpers, separate lifecycle sequencing from domain decisions. Bad changes: splitting
-      files without reducing actual orchestration load.
-      Files: `app.ts`, `lib/plan/planExecutor.ts`, `lib/plan/planService.ts`.
+**Phase 3 — Split planExecutor by control type:**
+- [ ] Extract stepped-load actuation (~240 LOC) into `planExecutorStepped.ts`.
+- [ ] Extract target-command actuation (~300 LOC) into `planExecutorTarget.ts`.
+
+**Phase 4 — Extract cohesive groups from app.ts:**
+- [ ] Extract snapshot refresh management into `appSnapshotHelpers.ts`.
+- [ ] Extract Homey Energy polling into `appHomeyEnergyHelpers.ts`.
+- [ ] Absorb stepped-load helpers into `appDeviceControlHelpers.ts`.
+- [ ] Collapse one-liner service delegates.
+
+**Phase 5 — Split planService concerns:**
+- [ ] Extract snapshot-write subsystem into `planSnapshotWriter.ts`.
+- [ ] Extract rebuild-metrics into `planRebuildMetrics.ts`.
+
+**Phase 6 — Collapse planRestore gates:**
+- [ ] Merge swap + pending-swap gates (conceptually one check).
+- [ ] Merge waiting + activation-setback gates where applicable.
+      With simplified backoff, reduces 8 gates to ~5.
+
+**Phase 7 — Split deviceManager internals:**
+- [ ] Extract device parsing pipeline (~200 LOC) into `deviceManagerParseDevice.ts`.
+- [ ] Extract capability observation tracking (~250 LOC) into `deviceManagerObservation.ts`.
+- [ ] Extract binary settle window (~100 LOC) into `deviceManagerBinarySettle.ts`.
 
 ## P2 Product and test follow-ups
 
