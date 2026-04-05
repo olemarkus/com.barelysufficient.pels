@@ -45,7 +45,9 @@ jest.mock('../src/ui/toast', () => ({
 }));
 
 jest.mock('../src/ui/logging', () => ({
+  isSettingsUiNetworkFailureLogged: jest.fn().mockReturnValue(false),
   logSettingsError: jest.fn().mockResolvedValue(undefined),
+  withSettingsUiNetworkFailureTracking: jest.fn().mockImplementation(async (_meta: unknown, operation: () => Promise<unknown>) => operation()),
 }));
 
 const getMocks = () => ({
