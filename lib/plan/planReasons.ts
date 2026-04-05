@@ -7,7 +7,7 @@ import { resolveRestorePowerSource } from './planRestoreSwap';
 import { getRestoreNeed } from './planRestore';
 import {
   buildRestoreAdmissionLogFields,
-  canAdmitRestore,
+  buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
   shouldLogRestoreAdmissionAtInfo,
 } from './planRestoreAdmission';
@@ -203,7 +203,7 @@ function resolveRestoreDecision(params: {
   }
 
   const restoreNeed = getRestoreNeed(dev, state);
-  const admission = canAdmitRestore({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
+  const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   if (admission.postReserveMarginKw < 0) {
     const reason = `insufficient headroom (need ${admission.requiredKw.toFixed(2)}kW, `
       + `headroom ${availableHeadroom.toFixed(2)}kW)`;

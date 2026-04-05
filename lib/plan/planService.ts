@@ -522,6 +522,8 @@ export class PlanService {
     const buildStart = Date.now();
     this.currentBuildReason = reason;
     if (this.deps.planEngine.state) {
+      // Restore/target planning reads the active rebuild reason from shared plan state so
+      // nested helpers do not need another plumbing parameter through the entire call stack.
       this.deps.planEngine.state.currentRebuildReason = this.currentBuildReason;
     }
     let plan: DevicePlan;

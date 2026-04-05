@@ -31,13 +31,6 @@ export function buildRestoreAdmissionMetrics(params: {
   };
 }
 
-export function canAdmitRestore(params: {
-  availableKw: number;
-  neededKw: number;
-}): RestoreAdmissionMetrics {
-  return buildRestoreAdmissionMetrics(params);
-}
-
 export function buildRestoreAdmissionLogFields(
   admission: RestoreAdmissionMetrics,
 ): RestoreAdmissionLogFields {

@@ -349,6 +349,9 @@ describe('EV charger integration', () => {
       },
     });
 
+    // 1.0kW current headroom + 1.0kW heater shed power = 2.0kW potential.
+    // After the 0.3kW swap reserve, effective headroom is 1.7kW, which still clears
+    // the charger's restore need plus the 0.25kW admission reserve.
     const plan = await rebuildPlan(app, { totalPowerKw: 1.0, softLimitKw: 2.0 });
     const heaterPlan = getPlanEntry(plan, heater.idValue);
     const evPlan = getPlanEntry(plan, charger.idValue);
