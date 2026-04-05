@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- spec-required structured log fields for restore admission events push this over 500 */
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
@@ -48,7 +47,6 @@ import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
-  shouldLogRestoreAdmissionAtInfo,
 } from './planRestoreAdmission';
 
 export type RestoreDeps = {
@@ -326,14 +324,7 @@ function planRestoreForDevice(params: {
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   const powerSource = resolveRestorePowerSource(dev);
   if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
-    const logMethod = shouldLogRestoreAdmissionAtInfo({
-      restoreType: 'binary',
-      marginKw: admission.marginKw,
-      penaltyLevel: restoreNeed.penaltyLevel,
-      powerSource,
-      recentInstabilityMs: state.lastInstabilityMs,
-    }) ? 'info' : 'debug';
-    deps.structuredLog?.[logMethod]({
+    deps.structuredLog?.debug({
       event: 'restore_admitted',
       restoreType: 'binary',
       deviceId: dev.id,
@@ -490,7 +481,7 @@ function attemptSwapRestore(params: {
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
-  deps.structuredLog?.info({
+  deps.structuredLog?.debug({
     event: 'restore_swap_approved',
     restoreType: 'swap',
     deviceId: dev.id,
@@ -519,7 +510,7 @@ function attemptSwapRestore(params: {
       plannedState: 'shed',
       reason: `swapped out for ${dev.name}`,
     });
-    deps.structuredLog?.info({
+    deps.structuredLog?.debug({
       event: 'restore_swap_shed',
       shedDeviceId: shedDev.id,
       shedDeviceName: shedDev.name,

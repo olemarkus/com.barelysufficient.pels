@@ -1664,7 +1664,7 @@ describe('stepped-load shed invariant', () => {
       structuredLog: structuredLog as any,
     });
 
-    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_stepped_rejected',
       blockedByShedInvariant: true,
       shedDeviceCount: 1,
@@ -1699,11 +1699,11 @@ describe('stepped-load shed invariant', () => {
 
     // First call: emits
     planRestoreForSteppedDevice(callArgs);
-    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
 
     // Second call with identical params: suppressed
     planRestoreForSteppedDevice({ ...callArgs, dev: deviceMap.get('dev-step')! });
-    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
   });
 
   it('restore_stepped_rejected re-emits when shed count changes', () => {
@@ -1728,7 +1728,7 @@ describe('stepped-load shed invariant', () => {
       logDebug: jest.fn(),
       structuredLog: structuredLog as any,
     });
-    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
 
     // Second call with 2 shed devices: different shed count → re-emits
     const map2 = new Map([['shed-1', shed1], ['shed-2', shed2], ['dev-step', steppedDev]]);
@@ -1742,8 +1742,8 @@ describe('stepped-load shed invariant', () => {
       logDebug: jest.fn(),
       structuredLog: structuredLog as any,
     });
-    expect(structuredLog.info).toHaveBeenCalledTimes(2);
-    expect(structuredLog.info).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(structuredLog.debug).toHaveBeenCalledTimes(2);
+    expect(structuredLog.debug).toHaveBeenLastCalledWith(expect.objectContaining({
       event: 'restore_stepped_rejected',
       shedDeviceCount: 2,
     }));
@@ -1757,7 +1757,9 @@ describe('stepped-load shed invariant', () => {
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const debugCalls: unknown[] = [];
+    const structuredLog = { info: jest.fn(), debug: (...args: unknown[]) => debugCalls.push(args[0]) };
+    const rejectedCalls = () => debugCalls.filter((c: any) => c?.event === 'restore_stepped_rejected');
 
     // First: blocked, emits
     const mapShed = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
@@ -1771,9 +1773,9 @@ describe('stepped-load shed invariant', () => {
       logDebug: jest.fn(),
       structuredLog: structuredLog as any,
     });
-    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+    expect(rejectedCalls()).toHaveLength(1);
 
-    // Second: no shed devices → not blocked, tracking cleared
+    // Second: no shed devices → not blocked, tracking cleared (restore_stepped_admitted may fire)
     const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
       dev: mapClear.get('dev-step')!,
@@ -1797,7 +1799,7 @@ describe('stepped-load shed invariant', () => {
       logDebug: jest.fn(),
       structuredLog: structuredLog as any,
     });
-    expect(structuredLog.info).toHaveBeenCalledTimes(2);
+    expect(rejectedCalls()).toHaveLength(2);
   });
 
   it('tracking cleared when shed resolves during cooldown, so next shed episode re-emits', () => {
@@ -1823,7 +1825,7 @@ describe('stepped-load shed invariant', () => {
       logDebug: jest.fn(),
       structuredLog: structuredLog as any,
     });
-    expect(structuredLog.info).toHaveBeenCalledTimes(1);
+    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
 
     // Round 2: shed cleared BUT cooldown active — early return before invariant check
     // Without the early-clear fix, tracking would survive here
@@ -1850,7 +1852,7 @@ describe('stepped-load shed invariant', () => {
       logDebug: jest.fn(),
       structuredLog: structuredLog as any,
     });
-    expect(structuredLog.info).toHaveBeenCalledTimes(2);
+    expect(structuredLog.debug).toHaveBeenCalledTimes(2);
   });
 
   it('upward step action is never emitted while shed devices exist (end-to-end via applyRestorePlan)', () => {
