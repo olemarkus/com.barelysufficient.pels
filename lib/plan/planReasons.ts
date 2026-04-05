@@ -205,7 +205,8 @@ function resolveRestoreDecision(params: {
   const restoreNeed = getRestoreNeed(dev, state);
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
-    const reason = `insufficient headroom (need ${admission.requiredKw.toFixed(2)}kW, `
+    const requiredKwWithFloor = admission.requiredKw + RESTORE_ADMISSION_FLOOR_KW;
+    const reason = `insufficient headroom (need ${requiredKwWithFloor.toFixed(2)}kW, `
       + `headroom ${availableHeadroom.toFixed(2)}kW)`;
     structuredLog?.debug({
       event: 'restore_rejected',

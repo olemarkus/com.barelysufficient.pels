@@ -1561,11 +1561,11 @@ describe('stepped-load shed invariant', () => {
     expect(deviceMap.get('dev-step')!.desiredStepId).toBe('low');
   });
 
-  it('rejects off to medium while another device is shed (only off→low is legal)', () => {
-    // Simulate: selectedStepId='off' but the profile default yields medium as nextStep.
-    // This is constructed by injecting a profile where medium is the lowestNonZeroStep and
-    // getSteppedLoadNextRestoreStep returns medium (matching low here via currentState=off).
-    // For a standard profile (off→low is the restore step), off→medium is blocked.
+  it('allows restore from off to medium when medium is the lowest non-zero step while another device is shed', () => {
+    // Simulate: selectedStepId='off' with a profile where medium is the lowestNonZeroStep.
+    // getSteppedLoadNextRestoreStep returns medium (lowest non-zero step when device is off).
+    // This verifies the invariant is enforced at the correct profile boundary:
+    // off→medium is allowed because medium IS the lowest non-zero step in this profile.
     const state = createPlanEngineState();
     const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
 

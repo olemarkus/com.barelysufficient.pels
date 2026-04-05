@@ -429,8 +429,9 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
     admission, availableHeadroom, needed, structuredLog } = params;
+  const requiredKwWithFloor = admission.requiredKw + RESTORE_ADMISSION_FLOOR_KW;
   setRestorePlanDevice(deviceMap, dev.id, {
-    reason: `insufficient headroom (need ${admission.requiredKw.toFixed(2)}kW, `
+    reason: `insufficient headroom (need ${requiredKwWithFloor.toFixed(2)}kW, `
       + `headroom ${availableHeadroom.toFixed(2)}kW)`,
   });
   structuredLog?.debug({
