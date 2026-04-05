@@ -11,7 +11,11 @@ import { renderDevices } from './devices';
 import { renderPriorities } from './modes';
 import { renderPriceOptimization } from './priceOptimization';
 import { showToast, showToastError } from './toast';
-import { logSettingsError } from './logging';
+import {
+  isSettingsUiNetworkFailureLogged,
+  logSettingsError,
+  withSettingsUiNetworkFailureTracking,
+} from './logging';
 import { state } from './state';
 import { DEVICE_CONTROL_PROFILES, OVERSHOOT_BEHAVIORS } from '../../../contracts/src/settingsKeys';
 
@@ -265,7 +269,16 @@ const setApiDeviceButtonsBusy = (busy: boolean) => {
 let apiDevicesCache: HomeyApiDevice[] = [];
 
 const fetchHomeyApiDevices = async (): Promise<HomeyApiDevice[]> => {
-  const devices = await callApi<HomeyApiDevice[] | null>('GET', '/homey_devices');
+  const devices = await withSettingsUiNetworkFailureTracking(
+    {
+      component: 'settings-ui',
+      event: 'read_model',
+      endpoint: '/homey_devices',
+      refreshLoop: 'fetchHomeyApiDevices',
+      message: 'Failed to load Homey devices',
+    },
+    async () => callApi<HomeyApiDevice[] | null>('GET', '/homey_devices'),
+  );
   if (!Array.isArray(devices)) return [];
   return devices.filter((device) => device && typeof device.id === 'string');
 };
@@ -281,7 +294,9 @@ const refreshApiDevices = async (showSuccessToast = true) => {
       await showToast(`Loaded ${devices.length} devices from Homey.`, 'ok');
     }
   } catch (error) {
-    await logSettingsError('Failed to load Homey devices', error, 'advancedDeviceLog');
+    if (!isSettingsUiNetworkFailureLogged(error)) {
+      await logSettingsError('Failed to load Homey devices', error, 'advancedDeviceLog');
+    }
     await showToastError(error, 'Failed to load Homey devices.');
   } finally {
     setApiDeviceButtonsBusy(false);

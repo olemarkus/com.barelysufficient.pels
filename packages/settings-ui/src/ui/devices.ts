@@ -13,7 +13,12 @@ import { renderPriorities } from './modes';
 import { refreshPlan } from './plan';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization';
 import { createDeviceRow, createCheckboxLabel } from './components';
-import { logSettingsError, logSettingsWarn } from './logging';
+import {
+  isSettingsUiNetworkFailureLogged,
+  logSettingsError,
+  logSettingsWarn,
+  withSettingsUiNetworkFailureTracking,
+} from './logging';
 import { debouncedSetSetting } from './utils';
 import {
   supportsManagedDevice,
@@ -22,7 +27,16 @@ import {
 } from './deviceUtils';
 
 export const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
-  const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
+  const payload = await withSettingsUiNetworkFailureTracking(
+    {
+      component: 'settings-ui',
+      event: 'read_model',
+      endpoint: SETTINGS_UI_DEVICES_PATH,
+      refreshLoop: 'getTargetDevices',
+      message: 'Failed to load devices',
+    },
+    async () => getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH),
+  );
   return Array.isArray(payload?.devices) ? payload.devices : [];
 };
 
@@ -335,7 +349,9 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
     invalidateApiCache(SETTINGS_UI_PLAN_PATH);
     await refreshPlan();
   } catch (error) {
-    await logSettingsError('Failed to refresh devices', error, 'refreshDevices');
+    if (!isSettingsUiNetworkFailureLogged(error)) {
+      await logSettingsError('Failed to refresh devices', error, 'refreshDevices');
+    }
     const message = error instanceof Error && error.message
       ? error.message
       : 'Unable to load devices. Check Homey logs for details.';

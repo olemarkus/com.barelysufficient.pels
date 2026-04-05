@@ -35,6 +35,7 @@ import {
   getWeekStartInTimeZone,
   getZonedParts,
 } from './timezone';
+import { withSettingsUiNetworkFailureTracking } from './logging';
 
 export type PowerTracker = PowerTrackerState;
 
@@ -242,7 +243,16 @@ let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () 
 let setDailyHistoryToggleActive: (range: DailyHistoryRange | null) => void = () => {};
 
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
-  const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
+  const payload = await withSettingsUiNetworkFailureTracking(
+    {
+      component: 'settings-ui',
+      event: 'read_model',
+      endpoint: SETTINGS_UI_POWER_PATH,
+      refreshLoop: 'getPowerReadModel',
+      message: 'Failed to load power data',
+    },
+    async () => getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH),
+  );
   return payload ?? { tracker: null, status: null, heartbeat: null };
 };
 

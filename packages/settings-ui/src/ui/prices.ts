@@ -64,6 +64,10 @@ import {
   type NorwayPriceModel,
   type PriceScheme,
 } from './priceSettingsPersistence';
+import {
+  isSettingsUiNetworkFailureLogged,
+  withSettingsUiNetworkFailureTracking,
+} from './logging';
 
 type GridTariffEntry = {
   time: number;
@@ -92,7 +96,16 @@ const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
 };
 
 export const getPricesReadModel = async (): Promise<SettingsUiPricesPayload> => {
-  const payload = await getApiReadModel<SettingsUiPricesPayload>(SETTINGS_UI_PRICES_PATH);
+  const payload = await withSettingsUiNetworkFailureTracking(
+    {
+      component: 'settings-ui',
+      event: 'read_model',
+      endpoint: SETTINGS_UI_PRICES_PATH,
+      refreshLoop: 'getPricesReadModel',
+      message: 'Failed to load prices',
+    },
+    async () => getApiReadModel<SettingsUiPricesPayload>(SETTINGS_UI_PRICES_PATH),
+  );
   return payload ?? EMPTY_PRICES_PAYLOAD;
 };
 
@@ -459,7 +472,9 @@ export const refreshPrices = async (overrides?: PriceOverrideOptions) => {
     await refreshFlowStatus();
     await refreshHomeyStatus();
   } catch (error) {
-    await logSettingsError('Failed to load prices', error, 'refreshPrices');
+    if (!isSettingsUiNetworkFailureLogged(error)) {
+      await logSettingsError('Failed to load prices', error, 'refreshPrices');
+    }
     if (priceStatusBadge) {
       priceStatusBadge.textContent = 'Error';
       priceStatusBadge.classList.add('warn');
@@ -545,6 +560,8 @@ export const refreshGridTariff = async () => {
   try {
     await getGridTariffData();
   } catch (error) {
-    await logSettingsError('Failed to load grid tariff data', error, 'refreshGridTariff');
+    if (!isSettingsUiNetworkFailureLogged(error)) {
+      await logSettingsError('Failed to load grid tariff data', error, 'refreshGridTariff');
+    }
   }
 };

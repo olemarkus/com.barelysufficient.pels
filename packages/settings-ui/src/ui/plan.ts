@@ -3,6 +3,7 @@ import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../cont
 import { getApiReadModel } from './homey';
 import { createMetaLine } from './components';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator';
+import { withSettingsUiNetworkFailureTracking } from './logging';
 
 type PlanDeviceSnapshot = {
   id: string;
@@ -64,7 +65,16 @@ type PlanSnapshot = {
 };
 
 const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => {
-  const payload = await getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH);
+  const payload = await withSettingsUiNetworkFailureTracking(
+    {
+      component: 'settings-ui',
+      event: 'read_model',
+      endpoint: SETTINGS_UI_PLAN_PATH,
+      refreshLoop: 'getPlanSnapshot',
+      message: 'Failed to load plan',
+    },
+    async () => getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH),
+  );
   const plan = payload?.plan;
   if (!plan || typeof plan !== 'object') return null;
   return plan as PlanSnapshot;

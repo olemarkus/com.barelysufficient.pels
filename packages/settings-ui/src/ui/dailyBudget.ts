@@ -22,7 +22,11 @@ import { createToggleGroup } from './components';
 import { callApi, getSetting } from './homey';
 import { showToast, showToastError } from './toast';
 import { pushSettingWriteIfChanged } from './settingWrites';
-import { logSettingsError } from './logging';
+import {
+  isSettingsUiNetworkFailureLogged,
+  logSettingsError,
+  withSettingsUiNetworkFailureTracking,
+} from './logging';
 import { setTooltip } from './tooltips';
 import { formatKWh, formatSignedKWh } from './dailyBudgetFormat';
 import { renderDailyBudgetChart } from './dailyBudgetChart';
@@ -330,13 +334,24 @@ export const refreshDailyBudgetPlan = async (payloadOverride?: DailyBudgetUiPayl
     const [payload, combinedPrices] = await Promise.all([
       payloadOverride !== undefined
         ? Promise.resolve(payloadOverride)
-        : callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
+        : withSettingsUiNetworkFailureTracking(
+            {
+              component: 'settings-ui',
+              event: 'read_model',
+              endpoint: '/daily_budget',
+              refreshLoop: 'refreshDailyBudgetPlan',
+              message: 'Failed to load daily budget plan',
+            },
+            async () => callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
+          ),
       getPricesReadModel().then((prices) => prices.combinedPrices).catch(() => null),
     ]);
     costDisplay = resolveCostDisplay(combinedPrices);
     renderDailyBudget(payload);
   } catch (error) {
-    await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');
+    if (!isSettingsUiNetworkFailureLogged(error)) {
+      await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');
+    }
     renderDailyBudget(null);
   }
 };

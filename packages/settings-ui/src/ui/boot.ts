@@ -104,6 +104,10 @@ import {
   showTab,
   startStaleDataRefreshInterval,
 } from './realtime';
+import {
+  isSettingsUiNetworkFailureLogged,
+  withSettingsUiNetworkFailureTracking,
+} from './logging';
 
 const initTabHandlers = () => {
   tabs.forEach((tab) => {
@@ -167,11 +171,22 @@ const initPriceHandlers = () => {
   priceSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
   priceRefreshButton?.addEventListener('click', async () => {
     try {
-      const response = await callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_PRICES_PATH, {});
+      const response = await withSettingsUiNetworkFailureTracking(
+        {
+          component: 'settings-ui',
+          event: 'refresh',
+          endpoint: SETTINGS_UI_REFRESH_PRICES_PATH,
+          refreshLoop: 'priceRefreshButton',
+          message: 'Failed to refresh spot prices',
+        },
+        async () => callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_PRICES_PATH, {}),
+      );
       primeApiCache(SETTINGS_UI_PRICES_PATH, response);
       await refreshPrices();
     } catch (error) {
-      await logSettingsError('Failed to refresh spot prices', error, 'priceRefreshButton');
+      if (!isSettingsUiNetworkFailureLogged(error)) {
+        await logSettingsError('Failed to refresh spot prices', error, 'priceRefreshButton');
+      }
       await showToastError(error, 'Failed to refresh spot prices.');
     }
   });
@@ -206,11 +221,22 @@ const initGridTariffHandlers = () => {
   });
   gridTariffRefreshButton?.addEventListener('click', async () => {
     try {
-      const response = await callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH, {});
+      const response = await withSettingsUiNetworkFailureTracking(
+        {
+          component: 'settings-ui',
+          event: 'refresh',
+          endpoint: SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
+          refreshLoop: 'gridTariffRefreshButton',
+          message: 'Failed to refresh grid tariffs',
+        },
+        async () => callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH, {}),
+      );
       primeApiCache(SETTINGS_UI_PRICES_PATH, response);
       await refreshGridTariff();
     } catch (error) {
-      await logSettingsError('Failed to refresh grid tariffs', error, 'gridTariffRefreshButton');
+      if (!isSettingsUiNetworkFailureLogged(error)) {
+        await logSettingsError('Failed to refresh grid tariffs', error, 'gridTariffRefreshButton');
+      }
       await showToastError(error, 'Failed to refresh grid tariffs.');
     }
   });
@@ -417,7 +443,9 @@ export const boot = async () => {
     markBootComplete();
     startDailyBudgetRefreshInterval();
   } catch (error) {
-    await logSettingsError('Settings UI failed to load', error, 'boot');
+    if (!isSettingsUiNetworkFailureLogged(error)) {
+      await logSettingsError('Settings UI failed to load', error, 'boot');
+    }
     await showToastError(error, 'Unable to load settings. Check Homey logs for details.');
   }
 };

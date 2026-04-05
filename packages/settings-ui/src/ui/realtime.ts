@@ -49,7 +49,7 @@ import { loadShedBehaviors } from './deviceDetail';
 import { loadDeviceControlProfiles } from './deviceControlProfiles';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
 import { state } from './state';
-import { logSettingsError } from './logging';
+import { isSettingsUiNetworkFailureLogged, logSettingsError } from './logging';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
   'daily_budget_enabled',
@@ -100,6 +100,7 @@ const PLAN_REFRESH_KEYS = new Set(['capacity_priorities', 'mode_device_targets',
 
 const runLoggedTask = (task: Promise<unknown>, message: string, context: string) => {
   task.catch((error) => {
+    if (isSettingsUiNetworkFailureLogged(error)) return;
     void logSettingsError(message, error, context);
   });
 };
@@ -153,6 +154,7 @@ const refreshDevicesForUi = () => {
   getTargetDevices()
     .then((devices) => renderLatestDevices(devices))
     .catch((error) => {
+      if (isSettingsUiNetworkFailureLogged(error)) return;
       void logSettingsError('Failed to refresh devices', error, 'settings.set');
     });
 };
@@ -165,6 +167,7 @@ const refreshModeAndDeviceControls = () => {
       renderPriceOptimization(state.latestDevices);
     })
     .catch((error) => {
+      if (isSettingsUiNetworkFailureLogged(error)) return;
       void logSettingsError('Failed to load device control settings', error, 'settings.set');
     });
 };

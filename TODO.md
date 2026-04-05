@@ -266,7 +266,7 @@ See `notes/complexity-cleanup/README.md` for the full phased plan and
 - [ ] Clean up stepped-load retry/backoff behavior so delayed feedback does not trigger clumsy
       re-requests while the previous desired step is still plausibly catching up.
       Files: `planSteppedLoad.ts`, stepped feedback/retry logic, tests.
-- [ ] Add structured observability for Settings UI network failures with stable fields such as
+- [x] Add structured observability for Settings UI network failures with stable fields such as
       `component`, `event`, `endpoint`, `refreshLoop`, `errorType`, `message`,
       `consecutiveFailureCount`, and `timeSinceLastSuccessMs`, so repeated browser-side failures
       stop surfacing only as noisy stack traces.
