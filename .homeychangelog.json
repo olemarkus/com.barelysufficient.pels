@@ -262,5 +262,8 @@
   },
   "2.1.12": {
     "en": "A larger set of bug fixes that reduce restoration/shed churn."
+  },
+  "2.1.13": {
+    "en": "Reduce redundant work when using Homey Energy power sampling."
   }
 }
