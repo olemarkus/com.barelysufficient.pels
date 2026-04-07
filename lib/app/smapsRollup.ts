@@ -5,6 +5,11 @@ const SMAPS_ROLLUP_PATH = '/proc/self/smaps_rollup';
 let smapsRollupSupported: boolean | undefined;
 let cachedInitialRollup: string | null | undefined;
 
+const isNonRetryableSmapsProbeError = (error: unknown): boolean => {
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
+  return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES' || code === 'EPERM';
+};
+
 const readSmapsRollup = (): string | null => {
   if (smapsRollupSupported === false) return null;
 
@@ -13,9 +18,11 @@ const readSmapsRollup = (): string | null => {
       const rollup = fs.readFileSync(SMAPS_ROLLUP_PATH, 'utf8');
       smapsRollupSupported = true;
       cachedInitialRollup = rollup;
-    } catch {
-      smapsRollupSupported = false;
-      cachedInitialRollup = null;
+    } catch (error) {
+      if (isNonRetryableSmapsProbeError(error)) {
+        smapsRollupSupported = false;
+        cachedInitialRollup = null;
+      }
       return null;
     }
   }

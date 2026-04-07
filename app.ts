@@ -807,25 +807,27 @@ class PelsApp extends Homey.App {
       return this.powerSampleLoop;
     }
 
-    const loopPromise = this.runCoalescedPowerSamples(request).finally(() => {
-      if (this.powerSampleLoop === loopPromise) {
-        this.powerSampleLoop = undefined;
-      }
-      this.powerSampleRerunRequested = false;
-      this.pendingPowerSampleRequest = undefined;
-    });
+    const loopPromise = this.runCoalescedPowerSamples(request);
     this.powerSampleLoop = loopPromise;
     return loopPromise;
   }
   private async runCoalescedPowerSamples(initialRequest: { currentPowerW: number; nowMs: number }): Promise<void> {
     let request = initialRequest;
-    while (true) {
+    try {
+      while (true) {
+        this.powerSampleRerunRequested = false;
+        this.pendingPowerSampleRequest = undefined;
+        await this.runPowerSample(request.currentPowerW, request.nowMs);
+        if (!this.powerSampleRerunRequested) return;
+        incPerfCounter('power_sample_rerun_executed_total');
+        request = this.pendingPowerSampleRequest ?? request;
+      }
+    } finally {
+      if (this.powerSampleLoop) {
+        this.powerSampleLoop = undefined;
+      }
       this.powerSampleRerunRequested = false;
       this.pendingPowerSampleRequest = undefined;
-      await this.runPowerSample(request.currentPowerW, request.nowMs);
-      if (!this.powerSampleRerunRequested) return;
-      incPerfCounter('power_sample_rerun_executed_total');
-      request = this.pendingPowerSampleRequest ?? request;
     }
   }
   private registerFlowCards(): void {

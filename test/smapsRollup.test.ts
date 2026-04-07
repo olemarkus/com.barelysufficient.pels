@@ -62,4 +62,28 @@ describe('smaps_rollup detection', () => {
     });
     expect(readFileSyncMock).toHaveBeenCalledTimes(2);
   });
+
+  it('retries after transient probe failures', () => {
+    readFileSyncMock
+      .mockImplementationOnce(() => {
+        throw Object.assign(new Error('temporary failure'), { code: 'EIO' });
+      })
+      .mockReturnValueOnce([
+        'Rss:                2048 kB',
+        'Pss:                1024 kB',
+        'Pss_Anon:            512 kB',
+        'Pss_File:            256 kB',
+      ].join('\n'));
+    const { resolveSmapsSummary } = loadModule();
+
+    expect(resolveSmapsSummary()).toBeNull();
+    expect(resolveSmapsSummary()).toEqual({
+      rssMb: 2,
+      pssMb: 1,
+      pssAnonMb: 1,
+      pssFileMb: 0,
+    });
+
+    expect(readFileSyncMock).toHaveBeenCalledTimes(2);
+  });
 });
