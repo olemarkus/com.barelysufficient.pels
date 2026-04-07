@@ -7,7 +7,7 @@ description: Turn your Homey Energy data into automatic capacity control and pri
 
 Homey Energy gives you the energy foundation PELS builds on: whole-home power, dynamic electricity prices, and per-device energy reporting. That is useful — but it does not act on that information. If you are approaching your hourly capacity limit, Homey Energy will not turn anything down. If electricity is cheap at 3 AM, it will not preheat your water tank.
 
-**PELS bridges that gap.** It uses the Homey Energy data Homey already has — including whole-home power, electricity prices, and device energy reporting — to automatically control your devices.
+**PELS bridges that gap.** It uses the data Homey Energy already has — including whole-home power, electricity prices, and device energy reporting — to automatically control your devices.
 
 If you want a quick overview of how Homey Energy works, see [Homey Energy management](https://homey.app/en-us/wiki/homey-energy-management/) and [Understanding the Homey Energy tab](https://support.homey.app/hc/en-us/articles/19383696079132-Understanding-the-Homey-Energy-tab).
 
@@ -49,8 +49,6 @@ The two sections below cover how to point PELS at your Homey Energy data specifi
 
 Homey Energy already knows your total home consumption. Instead of creating a Flow to feed that value to PELS, you can tell PELS to read it directly.
 
-Homey Energy is also used for per-device energy reporting. Some devices report their own power directly, while others rely on Homey's estimated usage and the values configured in the device's **Energy** settings. PELS builds on that same foundation, so incorrect Energy settings in Homey can also lead to incorrect reporting or assumptions in PELS.
-
 ### Setup
 
 1. Open **Apps > PELS > Settings**.
@@ -61,13 +59,17 @@ Homey Energy is also used for per-device energy reporting. Some devices report t
 
 PELS starts polling every 10 seconds. The Overview tab should show live power data within moments.
 
+### Per-device energy reporting
+
+Homey Energy is also used for per-device energy reporting. Some devices report their own power directly, while others rely on Homey's estimated usage and the values configured in the device's **Energy** settings. PELS builds on that same foundation, so incorrect Energy settings in Homey can also lead to incorrect reporting or assumptions in PELS.
+
+If a device's energy data looks wrong in Homey, check its **Energy** settings there first. PELS can only work from the data Homey Energy has available.
+
 ### Requirements
 
 Your power meter must be paired with Homey and have **Tracks total home energy consumption** enabled in its device settings. This is the same cumulative reading Homey shows as "Total home consumption" in the Energy dashboard.
 
 Common meters that work: Tibber Pulse, P1/HAN readers, Shelly EM, or any device Homey recognizes as a whole-home energy tracker.
-
-If a device's energy data looks wrong in Homey, check its **Energy** settings there first. PELS can only work from the data Homey Energy has available.
 
 ### When to use the Flow card instead
 
