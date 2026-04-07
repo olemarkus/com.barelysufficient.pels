@@ -2211,6 +2211,34 @@ describe('PlanService', () => {
     expect((structuredLog.info.mock.calls[0]?.[0] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(1500);
   });
 
+  it('emits plan_rebuild_completed at debug level when actionChanged but no actions applied (dry-run)', async () => {
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const { service, deps } = createPlanService({
+      structuredLog: structuredLog as any,
+      getCapacityDryRun: () => true,
+    });
+
+    // Seed
+    await service.rebuildPlanFromCache('seed');
+    structuredLog.info.mockClear();
+    structuredLog.debug.mockClear();
+
+    // Return a plan with different plannedState to trigger actionChanged
+    (deps.planEngine.buildDevicePlanSnapshot as jest.Mock).mockResolvedValueOnce(
+      buildPlan(20, 'stable', {}, { plannedState: 'shed' }),
+    );
+    await service.rebuildPlanFromCache('power_delta');
+
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_rebuild_completed',
+    }));
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_rebuild_completed',
+      actionChanged: true,
+      appliedActions: false,
+    }));
+  });
+
   it('emits structured rebuild logs for failed rebuilds', async () => {
     const structuredLog = { info: jest.fn() };
     const { service, deps } = createPlanService({

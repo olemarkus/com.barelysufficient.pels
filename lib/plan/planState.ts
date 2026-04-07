@@ -82,6 +82,10 @@ export type PlanEngineState = {
     lowestNonZeroStepId: string;
     shedDeviceCount: number;
   }>;
+  keepInvariantShedBlockedByDevice: Record<string, {
+    desiredStepId: string;
+    lowestNonZeroStepId: string;
+  }>;
 };
 
 export function createPlanEngineState(): PlanEngineState {
@@ -112,5 +116,6 @@ export function createPlanEngineState(): PlanEngineState {
     lastOvershootEscalationMs: null,
     lastOvershootMitigationMs: null,
     steppedRestoreRejectedByDevice: {},
+    keepInvariantShedBlockedByDevice: {},
   };
 }

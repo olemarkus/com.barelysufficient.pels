@@ -2411,7 +2411,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.builder.deps.structuredLog = {
       info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
       warn: jest.fn(),
-      debug: jest.fn(),
+      debug: (obj: Record<string, unknown>) => structuredEvents.push(obj),
       error: jest.fn(),
       child: () => (app as any).planEngine.builder.deps.structuredLog,
     };
@@ -2480,7 +2480,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.builder.deps.structuredLog = {
       info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
       warn: jest.fn(),
-      debug: jest.fn(),
+      debug: (obj: Record<string, unknown>) => structuredEvents.push(obj),
       error: jest.fn(),
       child: () => (app as any).planEngine.builder.deps.structuredLog,
     };

@@ -573,23 +573,9 @@ export class PlanExecutor {
       return;
     }
 
-    if (anyShedDevices && dev.steppedLoadProfile && dev.desiredStepId) {
-      const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
-      const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.desiredStepId);
-      if (lowestNonZeroStep && desiredStep && desiredStep.planningPowerW > lowestNonZeroStep.planningPowerW) {
-        this.logDebug(`Capacity: skip stepped-load restore for ${name}, shed invariant: `
-          + `desiredStep=${dev.desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`);
-        this.deps.structuredLog?.info({
-          event: 'restore_keep_invariant_shed_blocked',
-          deviceId: dev.id,
-          deviceName: name,
-          desiredStepId: dev.desiredStepId,
-          lowestNonZeroStepId: lowestNonZeroStep.id,
-          rejectionReason: 'shed_invariant',
-        });
-        return;
-      }
-    }
+    if (this.applyKeepInvariantShedBlock(dev, name, anyShedDevices)) return;
+    // Block condition no longer applies — clear dedupe state so next block re-emits
+    delete this.state.keepInvariantShedBlockedByDevice[dev.id];
 
     if (!snapshot) {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, no snapshot available`);
@@ -650,6 +636,44 @@ export class PlanExecutor {
     } finally {
       this.state.pendingRestores.delete(dev.id);
     }
+  }
+
+  /**
+   * Returns true (and records dedupe state) if the shed invariant blocks a stepped-load
+   * binary restore for this device. Emits a debug event only on transitions.
+   */
+  private applyKeepInvariantShedBlock(
+    dev: DevicePlan['devices'][number],
+    name: string,
+    anyShedDevices: boolean,
+  ): boolean {
+    if (!anyShedDevices || !dev.steppedLoadProfile || !dev.desiredStepId) return false;
+    const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
+    const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.desiredStepId);
+    if (!lowestNonZeroStep || !desiredStep || desiredStep.planningPowerW <= lowestNonZeroStep.planningPowerW) {
+      return false;
+    }
+    this.logDebug(`Capacity: skip stepped-load restore for ${name}, shed invariant: `
+      + `desiredStep=${dev.desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`);
+    const prevBlock = this.state.keepInvariantShedBlockedByDevice[dev.id];
+    const unchanged = prevBlock !== undefined
+      && prevBlock.desiredStepId === dev.desiredStepId
+      && prevBlock.lowestNonZeroStepId === lowestNonZeroStep.id;
+    if (!unchanged) {
+      this.deps.structuredLog?.debug({
+        event: 'restore_keep_invariant_shed_blocked',
+        deviceId: dev.id,
+        deviceName: name,
+        desiredStepId: dev.desiredStepId,
+        lowestNonZeroStepId: lowestNonZeroStep.id,
+        rejectionReason: 'shed_invariant',
+      });
+      this.state.keepInvariantShedBlockedByDevice[dev.id] = {
+        desiredStepId: dev.desiredStepId,
+        lowestNonZeroStepId: lowestNonZeroStep.id,
+      };
+    }
+    return true;
   }
 
   /**

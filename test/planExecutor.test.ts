@@ -1042,7 +1042,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     // Binary restore must NOT fire — shed invariant should block it
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
       deviceId: 'dev-1',
       desiredStepId: 'max',
@@ -1098,5 +1101,152 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     // No shed devices → restore allowed even though desiredStepId='max'
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('emits restore_keep_invariant_shed_blocked only once for repeated identical blocks', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const state = createPlanEngineState();
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const { executor } = buildExecutor(state, snapshot, { structuredLog });
+
+    const plan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
+          currentTarget: null, plannedTarget: null, controllable: true,
+        },
+        {
+          id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
+          currentTarget: null, plannedTarget: null, controllable: true,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'off',
+          desiredStepId: 'max',
+        },
+      ],
+    };
+
+    // First call: emits
+    await executor.applyPlanActions(plan, 'reconcile');
+    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+
+    // Second call with identical params: suppressed
+    structuredLog.debug.mockClear();
+    await executor.applyPlanActions(plan, 'reconcile');
+    expect(structuredLog.debug).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+  });
+
+  it('re-emits restore_keep_invariant_shed_blocked when desiredStepId changes', async () => {
+    // Custom profile with off/low/medium/max so we can test desiredStepId transitions
+    const multiStepProfile = {
+      model: 'stepped_load' as const,
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1250 },
+        { id: 'medium', planningPowerW: 2000 },
+        { id: 'max', planningPowerW: 3000 },
+      ],
+    };
+    const snapshot = buildSnapshot({ currentOn: false });
+    const state = createPlanEngineState();
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const { executor } = buildExecutor(state, snapshot, { structuredLog });
+
+    const shedDevice = {
+      id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
+      currentTarget: null, plannedTarget: null, controllable: true,
+    };
+    const steppedDevice = (desiredStepId: string) => ({
+      id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
+      currentTarget: null, plannedTarget: null, controllable: true,
+      controlModel: 'stepped_load' as const,
+      steppedLoadProfile: multiStepProfile,
+      selectedStepId: 'off',
+      desiredStepId,
+    });
+
+    // First call: desiredStepId='medium' (above lowestNonZeroStep='low') → blocked, emits
+    await executor.applyPlanActions(
+      { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('medium')] },
+      'reconcile',
+    );
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+      desiredStepId: 'medium',
+    }));
+
+    // Second call: desiredStepId changed to 'max' — still blocked but key differs → re-emits
+    structuredLog.debug.mockClear();
+    await executor.applyPlanActions(
+      { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('max')] },
+      'reconcile',
+    );
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+      desiredStepId: 'max',
+    }));
+  });
+
+  it('clears dedupe state and re-emits restore_keep_invariant_shed_blocked after admitted transition', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const state = createPlanEngineState();
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const { executor, deviceManager } = buildExecutor(state, snapshot, { structuredLog });
+
+    const blockedPlan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
+          currentTarget: null, plannedTarget: null, controllable: true,
+        },
+        {
+          id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
+          currentTarget: null, plannedTarget: null, controllable: true,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'off',
+          desiredStepId: 'max',
+        },
+      ],
+    };
+    const admittedPlan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
+          currentTarget: null, plannedTarget: null, controllable: true,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'off',
+          desiredStepId: 'max',
+        },
+      ],
+    };
+
+    // First call: blocked → emits
+    await executor.applyPlanActions(blockedPlan, 'reconcile');
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+
+    // Second call: no shed devices → admitted (restore fires), dedupe state cleared
+    structuredLog.debug.mockClear();
+    deviceManager.setCapability.mockClear();
+    await executor.applyPlanActions(admittedPlan, 'reconcile');
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+
+    // Third call: blocked again → re-emits because dedupe state was cleared
+    structuredLog.debug.mockClear();
+    await executor.applyPlanActions(blockedPlan, 'reconcile');
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
   });
 });
