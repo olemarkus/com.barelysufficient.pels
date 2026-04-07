@@ -773,6 +773,39 @@ describe('MyApp initialization', () => {
     }
   });
 
+  it('starts a fresh power sample loop when a new request lands right after the previous loop completes', async () => {
+    const app = createApp();
+    const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
+    let trailingRequest: Promise<void> | undefined;
+    const scheduleTrailingRequest = () => {
+      void Promise.resolve()
+        .then(() => Promise.resolve())
+        .then(() => {
+          trailingRequest = (app as any).recordPowerSample(2400, 24);
+        });
+    };
+    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+      calls.push({ currentPowerW, nowMs });
+      if (calls.length === 1) {
+        scheduleTrailingRequest();
+      }
+    });
+
+    try {
+      await (app as any).recordPowerSample(1400, 14);
+      await waitFor(() => trailingRequest !== undefined);
+      await trailingRequest;
+
+      expect(runSpy).toHaveBeenCalledTimes(2);
+      expect(calls).toEqual([
+        { currentPowerW: 1400, nowMs: 14 },
+        { currentPowerW: 2400, nowMs: 24 },
+      ]);
+    } finally {
+      runSpy.mockRestore();
+    }
+  });
+
   it('reconciles the current plan after an external target drift without rebuilding', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('measure_temperature', 21);

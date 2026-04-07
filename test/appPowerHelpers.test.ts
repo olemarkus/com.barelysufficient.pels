@@ -1,3 +1,13 @@
+const addPerfDurationMock = jest.fn();
+
+jest.mock('../lib/utils/perfCounters', () => {
+  const actual = jest.requireActual('../lib/utils/perfCounters');
+  return {
+    ...actual,
+    addPerfDuration: (...args: unknown[]) => addPerfDurationMock(...args),
+  };
+});
+
 import CapacityGuard from '../lib/core/capacityGuard';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PowerSampleRebuildState } from '../lib/app/appPowerHelpers';
@@ -74,6 +84,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    addPerfDurationMock.mockReset();
   });
 
   afterEach(() => {
@@ -500,6 +511,37 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('records rebuild timing after the async rebuild settles', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9300, lastSoftLimitKw: 9.5 };
+    let resolveRebuild: (() => void) | undefined;
+    const rebuildPlanFromCache = jest.fn().mockImplementation(() => new Promise<void>((resolve) => {
+      resolveRebuild = resolve;
+    }));
+
+    const pending = schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: jest.fn(),
+      currentPowerW: 9600,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
+    });
+
+    expect(addPerfDurationMock).not.toHaveBeenCalledWith('power_sample_rebuild_ms', expect.any(Number));
+
+    jest.advanceTimersByTime(25);
+    resolveRebuild?.();
+    await pending;
+
+    expect(addPerfDurationMock).toHaveBeenCalledWith('power_sample_rebuild_ms', 25);
   });
 });
 

@@ -373,24 +373,22 @@ export function schedulePlanRebuildFromSignal(params: {
   if (effectiveMinIntervalMs > minIntervalMs) {
     incPerfCounter('plan_rebuild_signal_stable_interval_total');
   }
-  try {
-    return schedulePlanRebuildFromPowerSample({
-      getState,
-      setState,
-      minIntervalMs: effectiveMinIntervalMs,
-      maxIntervalMs,
-      rebuildPlanFromCache,
-      logError,
-      currentPowerW,
-      powerDeltaW,
-      limitKw: capacitySettings.limitKw,
-      softLimitKw,
-      headroomKw,
-      isInShortfall,
-    });
-  } finally {
+  return schedulePlanRebuildFromPowerSample({
+    getState,
+    setState,
+    minIntervalMs: effectiveMinIntervalMs,
+    maxIntervalMs,
+    rebuildPlanFromCache,
+    logError,
+    currentPowerW,
+    powerDeltaW,
+    limitKw: capacitySettings.limitKw,
+    softLimitKw,
+    headroomKw,
+    isInShortfall,
+  }).finally(() => {
     addPerfDuration('power_sample_rebuild_ms', Date.now() - rebuildStart);
-  }
+  });
 }
 
 export async function recordPowerSampleForApp(params: {
