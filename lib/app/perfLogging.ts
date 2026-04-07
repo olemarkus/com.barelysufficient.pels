@@ -1,5 +1,6 @@
 import { getPerfSnapshotAndResetWindow, type PerfSnapshot } from '../utils/perfCounters';
 import { startCpuSpikeMonitor } from '../utils/cpuSpikeMonitor';
+import { resolveSmapsSummary } from './smapsRollup';
 
 type PerfDurationEntry = {
   totalMs: number;
@@ -47,7 +48,11 @@ const VALUE_COUNT_KEY_PATTERNS: RegExp[] = [
   /^plan_rebuild_queue_depth_ge_2_total$/,
   /^plan_rebuild_queue_depth_ge_4_total$/,
   /^plan_rebuild_queue_waited_total$/,
+  /^power_sample_requested_total$/,
   /^power_sample_total$/,
+  /^power_sample_rerun_requested_total$/,
+  /^power_sample_rerun_coalesced_total$/,
+  /^power_sample_rerun_executed_total$/,
   /^daily_budget_update_total$/,
   /^settings_set\.device_plan_snapshot/,
   /^settings_set\.pels_status/,
@@ -67,6 +72,14 @@ const VALUE_DURATION_KEYS = new Set([
   'plan_rebuild_apply_ms',
   'plan_build_ms',
   'power_sample_ms',
+  'power_sample_bookkeeping_ms',
+  'power_sample_capacity_guard_ms',
+  'power_sample_budget_ms',
+  'power_sample_rebuild_ms',
+  'power_sample_rebuild_wait_ms',
+  'power_sample_snapshot_ms',
+  'power_sample_state_ms',
+  'power_sample_ui_ms',
   'daily_budget_update_ms',
   'settings_write_ms',
   'device_fetch_ms',
@@ -179,6 +192,7 @@ const buildPerfSummary = (delta: PerfDelta): PerfSummary => {
 export const startPerfLogger = (params: {
   isEnabled: () => boolean;
   log: (...args: unknown[]) => void;
+  logStructured?: (payload: Record<string, unknown>) => void;
   logCpuSpike?: (...args: unknown[]) => void;
   error?: (...args: unknown[]) => void;
   intervalMs?: number;
@@ -214,12 +228,20 @@ export const startPerfLogger = (params: {
     const uptimeSec = Math.round((Date.now() - snapshot.startedAt) / 1000);
     const payload = {
       uptimeSec,
+      smaps: resolveSmapsSummary(),
       summary: buildPerfSummary(delta),
       delta: {
         counts: filteredDeltaCounts,
         durations: formatDurations(filteredDeltaDurations, true),
       },
     };
+    if (typeof params.logStructured === 'function') {
+      params.logStructured({
+        event: 'perf_counters',
+        ...payload,
+      });
+      return;
+    }
     params.log(`Perf counters ${JSON.stringify(payload)}`);
   };
   logCounters();

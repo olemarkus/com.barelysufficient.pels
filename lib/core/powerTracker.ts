@@ -1,5 +1,6 @@
 import CapacityGuard from './capacityGuard';
 import { truncateToUtcHour, getHourBucketKey } from '../utils/dateUtils';
+import { addPerfDuration } from '../utils/perfCounters';
 
 export const HOURLY_RETENTION_DAYS = 30; // Keep detailed hourly data for 30 days
 export const DAILY_RETENTION_DAYS = 365; // Keep daily totals for 1 year
@@ -119,9 +120,21 @@ async function persistPowerSample(params: {
     saveState,
     rebuildPlanFromCache,
   } = params;
-  if (capacityGuard) capacityGuard.reportTotalPower(currentPowerW / 1000);
+  if (capacityGuard) {
+    const capacityGuardStart = Date.now();
+    try {
+      capacityGuard.reportTotalPower(currentPowerW / 1000);
+    } finally {
+      addPerfDuration('power_sample_capacity_guard_ms', Date.now() - capacityGuardStart);
+    }
+  }
   saveState(nextState);
-  await rebuildPlanFromCache('power_tracker_persist');
+  const rebuildWaitStart = Date.now();
+  try {
+    await rebuildPlanFromCache('power_tracker_persist');
+  } finally {
+    addPerfDuration('power_sample_rebuild_wait_ms', Date.now() - rebuildWaitStart);
+  }
 }
 
 function resolveControlledSample(params: {
@@ -355,6 +368,7 @@ const calculateEnergyAcrossBoundaries = (params: {
 };
 
 export async function recordPowerSample(params: RecordPowerSampleParams): Promise<void> {
+  const bookkeepingStart = Date.now();
   const {
     state, currentPowerW, controlledPowerW, exemptPowerW, nowMs = Date.now(), capacityGuard,
     hourBudgetKWh, rebuildPlanFromCache, saveState,
@@ -393,6 +407,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
       currentUncontrolledPowerW: boundedUncontrolledPowerW,
       currentExemptPowerW: boundedExemptPowerW,
     });
+    addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
     await persistPowerSample({
       nextState, currentPowerW, capacityGuard, saveState, rebuildPlanFromCache,
     });
@@ -454,6 +469,7 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     currentExemptPowerW: boundedExemptPowerW,
     unreliablePeriods,
   });
+  addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
   await persistPowerSample({
     nextState, currentPowerW, capacityGuard, saveState, rebuildPlanFromCache,
   });

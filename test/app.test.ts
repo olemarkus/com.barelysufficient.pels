@@ -23,6 +23,7 @@ import {
 } from '../lib/plan/planConstants';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
+import { getPerfSnapshot } from '../lib/utils/perfCounters';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   if (typeof setImmediate === 'function') {
@@ -45,6 +46,16 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
 
 const waitForSnapshot = async (timeoutMs = 1000) => {
   await waitFor(() => Array.isArray(mockHomeyInstance.settings.get('target_devices_snapshot')), timeoutMs);
+};
+
+const createDeferred = () => {
+  let resolve!: () => void;
+  let reject!: (error?: unknown) => void;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 };
 
 const buildSteppedLoadProfiles = (deviceId: string) => ({
@@ -625,6 +636,141 @@ describe('MyApp initialization', () => {
 
     await (app as any).recordPowerSample(2100, baseTs + 1000);
     expect(clearSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces multiple power sample triggers into a single rerun', async () => {
+    const app = createApp();
+    const passes = [createDeferred(), createDeferred()];
+    const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
+    const beforePerf = getPerfSnapshot();
+    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+      calls.push({ currentPowerW, nowMs });
+      const pass = passes[calls.length - 1];
+      if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
+      await pass.promise;
+    });
+
+    try {
+      const first = (app as any).recordPowerSample(1000, 1);
+      await flushPromises();
+      const second = (app as any).recordPowerSample(2000, 2);
+      const third = (app as any).recordPowerSample(3000, 3);
+
+      await flushPromises();
+      expect(runSpy).toHaveBeenCalledTimes(1);
+      expect(calls).toEqual([{ currentPowerW: 1000, nowMs: 1 }]);
+
+      passes[0].resolve();
+      await flushPromises();
+
+      expect(runSpy).toHaveBeenCalledTimes(2);
+      expect(calls[1]).toEqual({ currentPowerW: 3000, nowMs: 3 });
+
+      passes[1].resolve();
+      await Promise.all([first, second, third]);
+
+      const afterPerf = getPerfSnapshot();
+      expect(runSpy).toHaveBeenCalledTimes(2);
+      expect((afterPerf.counts.power_sample_requested_total || 0) - (beforePerf.counts.power_sample_requested_total || 0)).toBe(3);
+      expect((afterPerf.counts.power_sample_rerun_requested_total || 0) - (beforePerf.counts.power_sample_rerun_requested_total || 0)).toBe(1);
+      expect((afterPerf.counts.power_sample_rerun_coalesced_total || 0) - (beforePerf.counts.power_sample_rerun_coalesced_total || 0)).toBe(1);
+      expect((afterPerf.counts.power_sample_rerun_executed_total || 0) - (beforePerf.counts.power_sample_rerun_executed_total || 0)).toBe(1);
+    } finally {
+      runSpy.mockRestore();
+    }
+  });
+
+  it('never runs power samples in parallel while reruns are pending', async () => {
+    const app = createApp();
+    const passes = [createDeferred(), createDeferred(), createDeferred()];
+    let active = 0;
+    let maxActive = 0;
+    let runIndex = 0;
+    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockImplementation(async () => {
+      const pass = passes[runIndex];
+      runIndex += 1;
+      if (!pass) throw new Error(`Unexpected power sample pass ${runIndex}`);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await pass.promise;
+      active -= 1;
+    });
+
+    try {
+      const first = (app as any).recordPowerSample(1000, 1);
+      await flushPromises();
+      const second = (app as any).recordPowerSample(2000, 2);
+      const third = (app as any).recordPowerSample(3000, 3);
+
+      await flushPromises();
+      passes[0].resolve();
+      await flushPromises();
+
+      const fourth = (app as any).recordPowerSample(4000, 4);
+      const fifth = (app as any).recordPowerSample(5000, 5);
+      await flushPromises();
+
+      passes[1].resolve();
+      await flushPromises();
+      passes[2].resolve();
+      await Promise.all([first, second, third, fourth, fifth]);
+
+      expect(runSpy).toHaveBeenCalledTimes(3);
+      expect(maxActive).toBe(1);
+    } finally {
+      runSpy.mockRestore();
+    }
+  });
+
+  it('uses the latest request state for a coalesced rerun', async () => {
+    const app = createApp();
+    const passes = [createDeferred(), createDeferred()];
+    const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
+    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+      calls.push({ currentPowerW, nowMs });
+      const pass = passes[calls.length - 1];
+      if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
+      await pass.promise;
+    });
+
+    try {
+      const first = (app as any).recordPowerSample(1200, 10);
+      await flushPromises();
+      const second = (app as any).recordPowerSample(2200, 20);
+      const third = (app as any).recordPowerSample(3200, 30);
+
+      passes[0].resolve();
+      await flushPromises();
+      expect(calls).toEqual([
+        { currentPowerW: 1200, nowMs: 10 },
+        { currentPowerW: 3200, nowMs: 30 },
+      ]);
+
+      passes[1].resolve();
+      await Promise.all([first, second, third]);
+    } finally {
+      runSpy.mockRestore();
+    }
+  });
+
+  it('keeps normal single-sample behavior unchanged when no rerun is needed', async () => {
+    const app = createApp();
+    const beforePerf = getPerfSnapshot();
+    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockResolvedValue(undefined);
+
+    try {
+      await (app as any).recordPowerSample(1500, 50);
+
+      const afterPerf = getPerfSnapshot();
+      expect(runSpy).toHaveBeenCalledTimes(1);
+      expect(runSpy).toHaveBeenCalledWith(1500, 50);
+      expect((afterPerf.counts.power_sample_requested_total || 0) - (beforePerf.counts.power_sample_requested_total || 0)).toBe(1);
+      expect((afterPerf.counts.power_sample_rerun_requested_total || 0) - (beforePerf.counts.power_sample_rerun_requested_total || 0)).toBe(0);
+      expect((afterPerf.counts.power_sample_rerun_coalesced_total || 0) - (beforePerf.counts.power_sample_rerun_coalesced_total || 0)).toBe(0);
+      expect((afterPerf.counts.power_sample_rerun_executed_total || 0) - (beforePerf.counts.power_sample_rerun_executed_total || 0)).toBe(0);
+    } finally {
+      runSpy.mockRestore();
+    }
   });
 
   it('reconciles the current plan after an external target drift without rebuilding', async () => {

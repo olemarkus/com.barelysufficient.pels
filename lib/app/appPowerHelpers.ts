@@ -345,6 +345,7 @@ export function schedulePlanRebuildFromSignal(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   capacityGuard?: CapacityGuard;
 }): Promise<void> {
+  const rebuildStart = Date.now();
   const {
     getState,
     setState,
@@ -372,20 +373,24 @@ export function schedulePlanRebuildFromSignal(params: {
   if (effectiveMinIntervalMs > minIntervalMs) {
     incPerfCounter('plan_rebuild_signal_stable_interval_total');
   }
-  return schedulePlanRebuildFromPowerSample({
-    getState,
-    setState,
-    minIntervalMs: effectiveMinIntervalMs,
-    maxIntervalMs,
-    rebuildPlanFromCache,
-    logError,
-    currentPowerW,
-    powerDeltaW,
-    limitKw: capacitySettings.limitKw,
-    softLimitKw,
-    headroomKw,
-    isInShortfall,
-  });
+  try {
+    return schedulePlanRebuildFromPowerSample({
+      getState,
+      setState,
+      minIntervalMs: effectiveMinIntervalMs,
+      maxIntervalMs,
+      rebuildPlanFromCache,
+      logError,
+      currentPowerW,
+      powerDeltaW,
+      limitKw: capacitySettings.limitKw,
+      softLimitKw,
+      headroomKw,
+      isInShortfall,
+    });
+  } finally {
+    addPerfDuration('power_sample_rebuild_ms', Date.now() - rebuildStart);
+  }
 }
 
 export async function recordPowerSampleForApp(params: {
@@ -398,6 +403,7 @@ export async function recordPowerSampleForApp(params: {
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
 }): Promise<void> {
+  const snapshotStart = Date.now();
   const {
     currentPowerW,
     nowMs = Date.now(),
@@ -414,6 +420,7 @@ export async function recordPowerSampleForApp(params: {
   const exemptKw = snapshot.length ? sumBudgetExemptLiveUsageKw(snapshot) : null;
   const controlledPowerW = totalKw !== null ? Math.max(0, totalKw * 1000) : undefined;
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
+  addPerfDuration('power_sample_snapshot_ms', Date.now() - snapshotStart);
   await recordPowerSampleCore({
     state: powerTracker,
     currentPowerW,

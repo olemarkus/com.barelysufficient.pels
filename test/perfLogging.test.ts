@@ -1,10 +1,15 @@
 import { incPerfCounter } from '../lib/utils/perfCounters';
 import { startPerfLogger } from '../lib/app/perfLogging';
 
+const resolveSmapsSummaryMock = jest.fn();
 const startCpuSpikeMonitorMock = jest.fn((params: unknown) => {
   void params;
   return jest.fn();
 });
+
+jest.mock('../lib/app/smapsRollup', () => ({
+  resolveSmapsSummary: () => resolveSmapsSummaryMock(),
+}));
 
 jest.mock('../lib/utils/cpuSpikeMonitor', () => ({
   startCpuSpikeMonitor: (params: unknown) => startCpuSpikeMonitorMock(params),
@@ -14,6 +19,13 @@ describe('startPerfLogger', () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date('2026-01-26T12:00:00Z'));
     startCpuSpikeMonitorMock.mockClear();
+    resolveSmapsSummaryMock.mockReset();
+    resolveSmapsSummaryMock.mockReturnValue({
+      rssMb: 123,
+      pssMb: 111,
+      pssAnonMb: 88,
+      pssFileMb: 23,
+    });
   });
 
   afterEach(() => {
@@ -40,9 +52,16 @@ describe('startPerfLogger', () => {
     const jsonStart = message.indexOf('{');
     expect(jsonStart).toBeGreaterThan(-1);
     const payload = JSON.parse(message.slice(jsonStart)) as {
+      smaps?: Record<string, number> | null;
       totals?: unknown;
       delta?: { counts?: Record<string, number> };
     };
+    expect(payload.smaps).toEqual({
+      rssMb: 123,
+      pssMb: 111,
+      pssAnonMb: 88,
+      pssFileMb: 23,
+    });
     expect(payload.delta?.counts?.plan_rebuild_total).toBe(1);
     expect(payload.totals).toBeUndefined();
 
