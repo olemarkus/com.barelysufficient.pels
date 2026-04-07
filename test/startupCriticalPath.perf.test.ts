@@ -29,7 +29,9 @@ const buildParams = () => ({
   startHeartbeat: jest.fn<void, []>(),
   updateOverheadToken: jest.fn<Promise<void>, []>(async () => undefined),
   refreshDailyBudgetState: jest.fn<void, []>(),
-  refreshTargetDevicesSnapshot: jest.fn<Promise<void>, []>(async () => undefined),
+  refreshTargetDevicesSnapshot: jest.fn<Promise<void>, [
+    options?: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean },
+  ]>(async () => undefined),
   rebuildPlanFromCache: jest.fn<Promise<void>, []>(async () => undefined),
   setLastNotifiedOperatingMode: jest.fn<void, [string]>(),
   getOperatingMode: jest.fn<string, []>(() => 'Home'),
@@ -118,6 +120,7 @@ describe('startup critical path perf guardrails', () => {
       jest.advanceTimersByTime(1);
       await flushMicrotasks();
       expect(params.refreshDailyBudgetState).toHaveBeenCalledTimes(1);
+      expect(params.refreshTargetDevicesSnapshot).toHaveBeenCalledWith({ recordHomeyEnergySample: false });
       expect(callOrder).toEqual(['refresh', 'rebuild']);
     } finally {
       jest.useRealTimers();

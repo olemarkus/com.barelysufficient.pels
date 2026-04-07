@@ -67,7 +67,9 @@ export async function startAppServices(params: {
   startHeartbeat: () => void;
   updateOverheadToken: () => Promise<void>;
   refreshDailyBudgetState?: () => void;
-  refreshTargetDevicesSnapshot: () => Promise<void>;
+  refreshTargetDevicesSnapshot: (
+    options?: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean },
+  ) => Promise<void>;
   rebuildPlanFromCache: () => Promise<void>;
   setLastNotifiedOperatingMode: (mode: string) => void;
   getOperatingMode: () => string;
@@ -121,7 +123,7 @@ export async function startAppServices(params: {
     if (typeof refreshDailyBudgetState === 'function') {
       refreshDailyBudgetState();
     }
-    await refreshTargetDevicesSnapshot();
+    await refreshTargetDevicesSnapshot({ recordHomeyEnergySample: false });
     incPerfCounters([
       'plan_rebuild_requested_total',
       'plan_rebuild_requested.startup_total',

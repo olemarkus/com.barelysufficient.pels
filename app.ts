@@ -314,7 +314,7 @@ class PelsApp extends Homey.App {
       startHeartbeat: () => this.startHeartbeat(),
       updateOverheadToken: () => this.updateOverheadToken(),
       refreshDailyBudgetState: () => this.dailyBudgetService.updateState({ refreshObservedStats: false }),
-      refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot({ fast: true }),
+      refreshTargetDevicesSnapshot: (options) => this.refreshTargetDevicesSnapshot({ fast: true, ...options }),
       rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache('startup_snapshot_bootstrap'),
       setLastNotifiedOperatingMode: (mode) => { this.lastNotifiedOperatingMode = mode; },
       getOperatingMode: () => this.operatingMode,
@@ -996,7 +996,8 @@ class PelsApp extends Homey.App {
   private static readonly POST_ACTUATION_REFRESH_DELAY_MS = 5_000;
   private schedulePostActuationRefresh(): void {
     if (this.postActuationRefreshTimer) {
-      clearTimeout(this.postActuationRefreshTimer);
+      this.logDebug('plan', 'Post-actuation snapshot refresh already scheduled');
+      return;
     }
     this.logDebug(
       'plan',
@@ -1006,13 +1007,15 @@ class PelsApp extends Homey.App {
       this.postActuationRefreshTimer = undefined;
       this.logDebug('plan', 'Running post-actuation targeted snapshot refresh');
       try {
-        await this.refreshTargetDevicesSnapshot({ targeted: true });
+        await this.refreshTargetDevicesSnapshot({ targeted: true, recordHomeyEnergySample: false });
       } catch (err) {
         this.error('Post-actuation snapshot refresh failed:', err);
       }
     }, PelsApp.POST_ACTUATION_REFRESH_DELAY_MS);
   }
-  private async refreshTargetDevicesSnapshot(options: { fast?: boolean; targeted?: boolean } = {}): Promise<void> {
+  private async refreshTargetDevicesSnapshot(
+    options: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean } = {},
+  ): Promise<void> {
     if (this.isSnapshotRefreshing) {
       this.snapshotRefreshPending = true;
       this.logDebug('devices', 'Snapshot refresh already in progress, queued another refresh');
@@ -1044,7 +1047,7 @@ class PelsApp extends Homey.App {
           settings: this.homey.settings,
           logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
         });
-        if (this.homey.settings.get('power_source') === 'homey_energy') {
+        if (options.recordHomeyEnergySample !== false && this.homey.settings.get('power_source') === 'homey_energy') {
           const homePowerW = this.deviceManager.getHomePowerW();
           if (typeof homePowerW === 'number') {
             await this.recordPowerSample(homePowerW);
