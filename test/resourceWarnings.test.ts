@@ -1,6 +1,12 @@
 import { mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import { cleanupApps, createApp } from './utils/appTestUtils';
 
+const resolveSmapsSummaryMock = jest.fn();
+
+jest.mock('../lib/app/smapsRollup', () => ({
+  resolveSmapsSummary: () => resolveSmapsSummaryMock(),
+}));
+
 describe('Homey resource warning perf logging', () => {
   beforeEach(() => {
     mockHomeyInstance.removeAllListeners();
@@ -13,6 +19,13 @@ describe('Homey resource warning perf logging', () => {
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     setMockDrivers({});
     jest.clearAllTimers();
+    resolveSmapsSummaryMock.mockReset();
+    resolveSmapsSummaryMock.mockReturnValue({
+      rssMb: 256,
+      pssMb: 240,
+      pssAnonMb: 180,
+      pssFileMb: 60,
+    });
   });
 
   afterEach(async () => {
@@ -70,12 +83,19 @@ describe('Homey resource warning perf logging', () => {
         durations?: Record<string, { count: number; avgMs: number; maxMs: number }>;
         rebuilds?: {
           window?: { count?: number; reasons?: Record<string, number> };
-          recent?: Array<{ reason?: string; totalMs?: number; ageMs?: number }>;
+        recent?: Array<{ reason?: string; totalMs?: number; ageMs?: number }>;
         };
         active?: string[];
         recent?: string[];
+        smaps?: Record<string, number> | null;
       };
       expect(typeof payload.uptimeSec).toBe('number');
+      expect(payload.smaps).toEqual({
+        rssMb: 256,
+        pssMb: 240,
+        pssAnonMb: 180,
+        pssFileMb: 60,
+      });
       expect(payload.counts).toEqual(expect.objectContaining({
         planRebuildRequested: expect.any(Number),
         planRebuild: expect.any(Number),

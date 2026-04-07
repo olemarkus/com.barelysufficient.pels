@@ -1,5 +1,6 @@
 import v8 from 'node:v8';
 import type Homey from 'homey';
+import { resolveSmapsSummary } from './smapsRollup';
 import { getPerfSnapshot } from '../utils/perfCounters';
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from '../utils/planRebuildTrace';
 import { listRecentRuntimeSpans, listRuntimeSpans } from '../utils/runtimeTrace';
@@ -60,25 +61,6 @@ const resolveHeapSpaces = (): Record<string, string> => {
   }
 };
 
-const resolveSmapsSummary = (): Record<string, number> | null => {
-  try {
-    const fs = require('node:fs') as typeof import('node:fs');
-    const rollup = fs.readFileSync('/proc/self/smaps_rollup', 'utf8');
-    const extract = (key: string): number => {
-      const match = rollup.match(new RegExp(`${key}:\\s+(\\d+)`));
-      return match ? Math.round(parseInt(match[1], 10) / 1024) : -1;
-    };
-    return {
-      rssMb: extract('Rss'),
-      pssMb: extract('Pss'),
-      pssAnonMb: extract('Pss_Anon'),
-      pssFileMb: extract('Pss_File'),
-    };
-  } catch {
-    return null;
-  }
-};
-
 const buildWarningPerfPayload = (nowMs: number) => {
   const snapshot = getPerfSnapshot();
   return {
@@ -87,9 +69,13 @@ const buildWarningPerfPayload = (nowMs: number) => {
     smaps: resolveSmapsSummary(),
     uptimeSec: Math.round((nowMs - snapshot.startedAt) / 1000),
     counts: {
+      powerSampleRequested: snapshot.counts.power_sample_requested_total || 0,
       planRebuildRequested: snapshot.counts.plan_rebuild_requested_total || 0,
       planRebuild: snapshot.counts.plan_rebuild_total || 0,
       planRebuildFailed: snapshot.counts.plan_rebuild_failed_total || 0,
+      powerSampleRerunRequested: snapshot.counts.power_sample_rerun_requested_total || 0,
+      powerSampleRerunCoalesced: snapshot.counts.power_sample_rerun_coalesced_total || 0,
+      powerSampleRerunExecuted: snapshot.counts.power_sample_rerun_executed_total || 0,
       dailyBudgetUpdate: snapshot.counts.daily_budget_update_total || 0,
       powerSample: snapshot.counts.power_sample_total || 0,
     },
@@ -106,6 +92,14 @@ const buildWarningPerfPayload = (nowMs: number) => {
       deviceRefresh: summarizeDuration(snapshot.durations, 'device_refresh_ms'),
       deviceFetch: summarizeDuration(snapshot.durations, 'device_fetch_ms'),
       dailyBudgetUpdate: summarizeDuration(snapshot.durations, 'daily_budget_update_ms'),
+      powerSampleBookkeeping: summarizeDuration(snapshot.durations, 'power_sample_bookkeeping_ms'),
+      powerSampleCapacityGuard: summarizeDuration(snapshot.durations, 'power_sample_capacity_guard_ms'),
+      powerSampleBudget: summarizeDuration(snapshot.durations, 'power_sample_budget_ms'),
+      powerSampleRebuild: summarizeDuration(snapshot.durations, 'power_sample_rebuild_ms'),
+      powerSampleRebuildWait: summarizeDuration(snapshot.durations, 'power_sample_rebuild_wait_ms'),
+      powerSampleSnapshot: summarizeDuration(snapshot.durations, 'power_sample_snapshot_ms'),
+      powerSampleState: summarizeDuration(snapshot.durations, 'power_sample_state_ms'),
+      powerSampleUi: summarizeDuration(snapshot.durations, 'power_sample_ui_ms'),
     },
     rebuilds: {
       window: summarizeRecentPlanRebuildTraces(120_000, nowMs),

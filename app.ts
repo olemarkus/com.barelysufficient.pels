@@ -149,6 +149,9 @@ class PelsApp extends Homey.App {
   private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
+  private powerSampleLoop?: Promise<void>;
+  private powerSampleRerunRequested = false;
+  private pendingPowerSampleRequest?: { currentPowerW: number; nowMs: number };
   private postActuationRefreshTimer?: ReturnType<typeof setTimeout>;
   private realtimeDeviceReconcileTimer?: ReturnType<typeof setTimeout>;
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
@@ -577,8 +580,10 @@ class PelsApp extends Homey.App {
     });
   }
   private startPerfLogging(): void {
+    const structuredPerfLog = this.getStructuredLogger('perf', 'perf');
     this.stopPerfLogging = startPerfLogger({
       isEnabled: () => this.debugLoggingTopics.has('perf'), log: (...args: unknown[]) => this.logDebug('perf', ...args),
+      logStructured: (payload) => structuredPerfLog?.debug(payload),
       error: (...args: unknown[]) => this.error(...args),
       logCpuSpike: (...args: unknown[]) => this.log(...args), intervalMs: 30 * 1000,
     });
@@ -721,12 +726,20 @@ class PelsApp extends Homey.App {
     );
   }
   private savePowerTracker(nextState: PowerTrackerState = this.powerTracker): void {
+    const stateStart = Date.now();
     this.powerTracker = nextState;
-    this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now() });
-    emitSettingsUiPowerUpdatedForApp(this.homey, this.powerTracker, (message, error) => this.error(message, error));
     if (!this.powerTrackerSaveTimer) {
       this.powerTrackerSaveTimer = setTimeout(() => this.persistPowerTrackerState(), POWER_TRACKER_PERSIST_DELAY_MS);
     }
+    addPerfDuration('power_sample_state_ms', Date.now() - stateStart);
+
+    const budgetStart = Date.now();
+    this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now() });
+    addPerfDuration('power_sample_budget_ms', Date.now() - budgetStart);
+
+    const uiStart = Date.now();
+    emitSettingsUiPowerUpdatedForApp(this.homey, this.powerTracker, (message, error) => this.error(message, error));
+    addPerfDuration('power_sample_ui_ms', Date.now() - uiStart);
   }
   public replacePowerTrackerForUi(nextState: PowerTrackerState): void {
     this.powerTracker = nextState;
@@ -741,7 +754,7 @@ class PelsApp extends Homey.App {
       options,
     });
   }
-  private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
+  private async runPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
     const sampleStart = Date.now();
     const previousSampleTs = this.powerTracker.lastTimestamp;
     try {
@@ -777,6 +790,42 @@ class PelsApp extends Homey.App {
     } finally {
       addPerfDuration('power_sample_ms', Date.now() - sampleStart);
       incPerfCounter('power_sample_total');
+    }
+  }
+  private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
+    incPerfCounter('power_sample_requested_total');
+    const request = { currentPowerW, nowMs };
+
+    if (this.powerSampleLoop) {
+      if (this.powerSampleRerunRequested) {
+        incPerfCounter('power_sample_rerun_coalesced_total');
+      } else {
+        incPerfCounter('power_sample_rerun_requested_total');
+      }
+      this.powerSampleRerunRequested = true;
+      this.pendingPowerSampleRequest = request;
+      return this.powerSampleLoop;
+    }
+
+    const loopPromise = this.runCoalescedPowerSamples(request).finally(() => {
+      if (this.powerSampleLoop === loopPromise) {
+        this.powerSampleLoop = undefined;
+      }
+      this.powerSampleRerunRequested = false;
+      this.pendingPowerSampleRequest = undefined;
+    });
+    this.powerSampleLoop = loopPromise;
+    return loopPromise;
+  }
+  private async runCoalescedPowerSamples(initialRequest: { currentPowerW: number; nowMs: number }): Promise<void> {
+    let request = initialRequest;
+    while (true) {
+      this.powerSampleRerunRequested = false;
+      this.pendingPowerSampleRequest = undefined;
+      await this.runPowerSample(request.currentPowerW, request.nowMs);
+      if (!this.powerSampleRerunRequested) return;
+      incPerfCounter('power_sample_rerun_executed_total');
+      request = this.pendingPowerSampleRequest ?? request;
     }
   }
   private registerFlowCards(): void {
