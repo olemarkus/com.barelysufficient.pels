@@ -2044,4 +2044,70 @@ describe('periodic snapshot refresh scheduling', () => {
     await jest.advanceTimersByTimeAsync(25 * 60 * 1000);
     expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('skips implicit Homey Energy sample recording when refresh opts out', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+
+    const app = createApp();
+    await initApp(app);
+    const recordSpy = jest.spyOn(app as any, 'recordPowerSample').mockResolvedValue(undefined);
+    const getHomePowerSpy = jest.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2100);
+
+    try {
+      await (app as any).refreshTargetDevicesSnapshot({ recordHomeyEnergySample: false });
+    } finally {
+      getHomePowerSpy.mockRestore();
+    }
+
+    expect(recordSpy).not.toHaveBeenCalled();
+  });
+
+  it('records implicit Homey Energy sample during refresh by default', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+
+    const app = createApp();
+    await initApp(app);
+    const recordSpy = jest.spyOn(app as any, 'recordPowerSample').mockResolvedValue(undefined);
+    const getHomePowerSpy = jest.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2600);
+
+    try {
+      await (app as any).refreshTargetDevicesSnapshot();
+    } finally {
+      getHomePowerSpy.mockRestore();
+    }
+
+    expect(recordSpy).toHaveBeenCalledTimes(1);
+    expect(recordSpy).toHaveBeenCalledWith(2600);
+  });
+
+  it('does not arm multiple concurrent post-actuation refresh timers', async () => {
+    const app = createApp();
+    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const logDebugSpy = jest.spyOn(app as any, 'logDebug').mockImplementation(() => undefined);
+
+    (app as any).schedulePostActuationRefresh();
+    const firstTimer = (app as any).postActuationRefreshTimer;
+    (app as any).schedulePostActuationRefresh();
+
+    expect((app as any).postActuationRefreshTimer).toBe(firstTimer);
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(logDebugSpy).toHaveBeenCalledWith('plan', 'Post-actuation snapshot refresh already scheduled');
+  });
+
+  it('runs post-actuation refresh without recording a Homey Energy sample', async () => {
+    const app = createApp();
+    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+
+    (app as any).schedulePostActuationRefresh();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(refreshSpy).toHaveBeenCalledWith({ targeted: true, recordHomeyEnergySample: false });
+  });
 });

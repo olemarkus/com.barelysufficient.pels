@@ -12,7 +12,9 @@ type SettingsUiRuntimeApp = Homey.App & {
     refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
     refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   };
-  refreshTargetDevicesSnapshot?: (options?: { fast?: boolean }) => Promise<void>;
+  refreshTargetDevicesSnapshot?: (
+    options?: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean },
+  ) => Promise<void>;
   replacePowerTrackerForUi?: (nextState: PowerTrackerState) => void;
 };
 type PelsStatus = { lastPowerUpdate?: number | null; priceLevel?: string | null };
