@@ -15,6 +15,7 @@ import {
   resolveSteppedLoadInitialDesiredStepId,
   getSteppedLoadShedTargetStep,
 } from './planSteppedLoad';
+import { getSteppedLoadLowestActiveStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -148,6 +149,21 @@ function resolveCurrentState(device: PlanInputDevice): string {
   return device.currentOn ? 'on' : 'off';
 }
 
+// For shed stepped-load devices at the off step, expectedPowerKw should reflect the lowest
+// positive step so that restore planning uses a realistic power estimate rather than zero.
+function resolveExpectedPowerKw(dev: PlanInputDevice, plannedState: 'shed' | 'keep'): number | undefined {
+  if (
+    plannedState === 'shed'
+    && isSteppedLoadDevice(dev)
+    && dev.steppedLoadProfile
+    && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
+  ) {
+    const lowestActiveStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
+    if (lowestActiveStep) return lowestActiveStep.planningPowerW / 1000;
+  }
+  return dev.expectedPowerKw;
+}
+
 function buildBasePlanDevice(params: {
   dev: PlanInputDevice;
   priority: number;
@@ -226,7 +242,7 @@ function buildBasePlanDevice(params: {
     actualStepSource: dev.actualStepSource,
     priority,
     powerKw: dev.powerKw,
-    expectedPowerKw: dev.expectedPowerKw,
+    expectedPowerKw: resolveExpectedPowerKw(dev, plannedState),
     planningPowerKw: dev.planningPowerKw,
     expectedPowerSource: dev.expectedPowerSource,
     measuredPowerKw: dev.measuredPowerKw,

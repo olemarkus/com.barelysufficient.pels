@@ -448,6 +448,19 @@ export class PlanExecutor {
       return;
     }
 
+    // Safety: never issue a step-UP for a shed device. A stale desiredStepId from an intermediate
+    // shed step must not become a restore command if the device has already reached or passed it.
+    if (dev.plannedState === 'shed') {
+      const selectedStep = dev.selectedStepId ? getSteppedLoadStep(profile, dev.selectedStepId) : null;
+      if (selectedStep && desiredStep.planningPowerW > selectedStep.planningPowerW) {
+        this.logDebug(
+          `Capacity: skip step command for ${dev.name || dev.id}, `
+          + `shed device has upward desiredStepId=${dev.desiredStepId} vs selectedStepId=${dev.selectedStepId}`,
+        );
+        return;
+      }
+    }
+
     const previousStepId = dev.selectedStepId ?? dev.lastDesiredStepId;
     if (dev.stepCommandPending && dev.lastDesiredStepId === dev.desiredStepId) {
       this.logDebug(

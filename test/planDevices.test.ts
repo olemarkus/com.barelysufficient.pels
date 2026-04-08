@@ -327,4 +327,43 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.reason).toBe('shed due to capacity');
     expect(planDevice.desiredStepId).toBe('off');
   });
+
+  it('sets desiredStepId=off and expectedPowerKw=lowest-positive-step for a turn_off shed device already at off-step', () => {
+    // Device has already arrived at the off step (selectedStepId='off', currentOn=false).
+    // The plan must normalize desiredStepId to 'off' (not an intermediate shed step)
+    // and set expectedPowerKw to the lowest positive step power (1.25 kW), not zero,
+    // so that restore planning uses a realistic power estimate.
+    const steppedDevice = steppedInputDevice({
+      id: 'dev-1',
+      name: 'Tank Heater',
+      selectedStepId: 'off',
+      currentOn: false,
+      controllable: true,
+      expectedPowerKw: 0,
+      measuredPowerKw: 0,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedDevice]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('shed');
+    expect(planDevice.desiredStepId).toBe('off');
+    // Restore expectation should be the lowest positive step (low = 1250 W = 1.25 kW), not zero
+    expect(planDevice.expectedPowerKw).toBeCloseTo(1.25);
+  });
 });
