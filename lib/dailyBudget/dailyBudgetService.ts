@@ -131,6 +131,7 @@ export class DailyBudgetService {
     const capacity = this.deps.getCapacitySettings();
     const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
     try {
+      const computeStart = Date.now();
       const update = this.manager.update({
         nowMs,
         timeZone,
@@ -144,6 +145,8 @@ export class DailyBudgetService {
         refreshConfidence: params.refreshConfidence,
         includeConfidenceBootstrapDebug: params.includeConfidenceBootstrapDebug,
       });
+      incPerfCounter('daily_budget_compute_total');
+      addPerfDuration('daily_budget_compute_ms', Date.now() - computeStart);
       this.setDaySnapshot(update.snapshot, nowMs, includeAdjacentDays);
       const snap = update.snapshot;
       if (params.emitStructuredEvent !== false && this.shouldEmitBudgetRecomputed(snap)) {
@@ -156,7 +159,11 @@ export class DailyBudgetService {
         });
       }
       if (update.shouldPersist) {
+        const persistStart = Date.now();
         this.persistState();
+        const persistMs = Date.now() - persistStart;
+        incPerfCounter('daily_budget_persist_total');
+        addPerfDuration('daily_budget_persist_ms', persistMs);
       }
     } catch (error) {
       this.logError('Daily budget: failed to update state', error);
