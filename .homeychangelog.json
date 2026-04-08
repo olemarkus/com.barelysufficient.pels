@@ -265,5 +265,8 @@
   },
   "2.1.13": {
     "en": "Reduce redundant work when using Homey Energy power sampling."
+  },
+  "2.1.14": {
+    "en": "Various bug fixes."
   }
 }
