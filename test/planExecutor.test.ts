@@ -682,6 +682,64 @@ describe('PlanExecutor stepped loads', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
 
+  it('does not issue a step-UP command for a shed device with a non-zero desiredStepId', async () => {
+    // Regression: applySteppedLoadCommand must never restore a shed device.
+    // Poisoned state: shed device has desiredStepId='low' (stale from an interrupted
+    // step-down sequence) while selectedStepId has already reached 'off'.
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'low', // intentionally illegal: shed + upward step target
+    }));
+
+    // Step trigger must not fire — that would be a restore, not a shed
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    // Binary restore must not be issued either
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('keep-invariant enforcement does not restore a shed stepped device even when desiredStepId is non-zero', async () => {
+    // Regression: applySteppedLoadRestore checks plannedState === 'keep' and must
+    // not fire for a shed device even if desiredStepId points to a non-off step.
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot, { structuredLog });
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'low', // restore-related field; must not trigger invariant restore
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(structuredLog.info).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'restore_keep_invariant_enforced' }),
+    );
+  });
+
   it('does not restore a stepped device when it is already on', async () => {
     const snapshot = [
       {

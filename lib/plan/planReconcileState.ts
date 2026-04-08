@@ -19,6 +19,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         controlModel: live.controlModel ?? device.controlModel,
         steppedLoadProfile: live.steppedLoadProfile ?? device.steppedLoadProfile,
         selectedStepId: live.selectedStepId ?? device.selectedStepId,
+        desiredStepId: clampShedDesiredStepId(device, live.selectedStepId),
         lastDesiredStepId: live.desiredStepId ?? device.lastDesiredStepId,
         actualStepId: live.actualStepId ?? device.actualStepId,
         assumedStepId: live.assumedStepId ?? device.assumedStepId,
@@ -40,6 +41,27 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       };
     }),
   };
+}
+
+// For shed stepped-load devices, clamp desiredStepId down to the live selectedStepId when the
+// device has reached or passed its planned target. Without this, a stale desiredStepId from an
+// intermediate shed step causes the executor to fire a step-UP command (inadvertent restore).
+function clampShedDesiredStepId(
+  device: DevicePlan['devices'][number],
+  liveSelectedStepId: string | undefined,
+): string | undefined {
+  if (!device.desiredStepId || !liveSelectedStepId || device.plannedState !== 'shed') {
+    return device.desiredStepId;
+  }
+  const profile = device.steppedLoadProfile;
+  if (!profile) return device.desiredStepId;
+  const desiredStep = profile.steps.find((s) => s.id === device.desiredStepId);
+  const selectedStep = profile.steps.find((s) => s.id === liveSelectedStepId);
+  if (!desiredStep || !selectedStep) return device.desiredStepId;
+  // The device has shed further than planned (selectedStep power ≤ desiredStep power).
+  // Clamp to the actual position to prevent the stale reference from becoming a restore signal.
+  if (selectedStep.planningPowerW <= desiredStep.planningPowerW) return liveSelectedStepId;
+  return device.desiredStepId;
 }
 
 export function hasPlanExecutionDrift(previousPlan: DevicePlan, livePlan: DevicePlan): boolean {

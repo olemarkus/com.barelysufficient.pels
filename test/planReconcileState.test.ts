@@ -331,5 +331,86 @@ describe('planReconcileState stepped device drift', () => {
 
       expect(result.devices[0].binaryCommandPending).toBe(false);
     });
+
+    it('clamps desiredStepId to the live selectedStepId when a shed device has jumped past its planned target', () => {
+      // Previous plan: stepping the device from max down to low (set_step shed, mid-cascade)
+      // desiredStepId='low' was the next intermediate target, selectedStepId='max' was the confirmed position
+      const plan = buildPlan([buildSteppedDevice({
+        plannedState: 'shed',
+        shedAction: 'set_step' as const,
+        currentState: 'on',
+        selectedStepId: 'max',
+        desiredStepId: 'low',
+      })]);
+      // Live: device jumped directly to 'off' (past the 'low' target — hardware overshoot or external control)
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: false,
+        selectedStepId: 'off',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      // The stale desiredStepId='low' must be clamped to 'off'.
+      // Without the fix: desiredStepId stays 'low' while selectedStepId='off',
+      // which causes the executor to fire a step-UP restore command for a shed device.
+      expect(result.devices[0].desiredStepId).toBe('off');
+      expect(result.devices[0].selectedStepId).toBe('off');
+      expect(result.devices[0].plannedState).toBe('shed');
+    });
+
+    it('does not clamp desiredStepId when the device has not yet reached the planned target', () => {
+      // Plan: stepping down from max to low — device is still at max (normal in-progress step-down)
+      const plan = buildPlan([buildSteppedDevice({
+        plannedState: 'shed',
+        shedAction: 'set_step' as const,
+        currentState: 'on',
+        selectedStepId: 'max',
+        desiredStepId: 'low',
+      })]);
+      // Live: device is still at max (has not moved yet)
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: true,
+        selectedStepId: 'max',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      // desiredStepId must stay 'low' — the step-DOWN command should still be issued
+      expect(result.devices[0].desiredStepId).toBe('low');
+      expect(result.devices[0].selectedStepId).toBe('max');
+    });
+
+    it('does not clamp desiredStepId for keep devices', () => {
+      // A keep device can legitimately have desiredStepId pointing somewhere different from selectedStepId
+      const plan = buildPlan([buildSteppedDevice({
+        plannedState: 'keep',
+        currentState: 'off',
+        selectedStepId: 'off',
+        desiredStepId: 'low',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: false,
+        selectedStepId: 'off',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0].desiredStepId).toBe('low');
+    });
   });
 });
