@@ -366,4 +366,39 @@ describe('buildInitialPlanDevices', () => {
     // Restore expectation should be the lowest positive step (low = 1250 W = 1.25 kW), not zero
     expect(planDevice.expectedPowerKw).toBeCloseTo(1.25);
   });
+
+  it('marks an EV charger inactive when plugged_out even if snapshot reports currentOn=true', () => {
+    // Simulates a stale snapshot: device capability last reported as 'on' (charging) but
+    // evChargingState was updated to 'plugged_out'. Without the fix, this would produce
+    // plannedState='keep' because applyOffStateReason skips non-off devices.
+    const charger = buildPlanInputDevice({
+      id: 'charger-1',
+      name: 'EV Charger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_out',
+      currentOn: true, // stale: device still looks 'on' in the snapshot
+      controllable: true,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([charger]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('inactive');
+    expect(planDevice.reason).toBe('inactive (charger is unplugged)');
+  });
 });

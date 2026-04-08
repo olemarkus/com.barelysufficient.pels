@@ -57,7 +57,6 @@ describe('periodic status used kWh', () => {
       capacityGuard: {
         getLastTotalPower: () => 2.48,
         getSoftLimit: () => 4,
-        getHeadroom: () => 1.52,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
@@ -77,5 +76,25 @@ describe('periodic status used kWh', () => {
     // hourCap=4.0kWh, used=2.52kWh → remaining=1.48kWh (not the full cap)
     expect(log).toContain('hourRemaining=1.5kWh');
     expect(log).not.toContain('/5.0kWh');
+  });
+
+  it('calls getSoftLimit at most once per invocation (no duplicate soft-limit provider calls)', () => {
+    const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+    let getSoftLimitCallCount = 0;
+    buildPeriodicStatusLog({
+      capacityGuard: {
+        getLastTotalPower: () => 3.0,
+        getSoftLimit: () => { getSoftLimitCallCount += 1; return 5.0; },
+        isSheddingActive: () => false,
+        isInShortfall: () => false,
+      },
+      powerTracker: {},
+      capacitySettings: { limitKw: 6, marginKw: 1 },
+      operatingMode: 'Home',
+      capacityDryRun: false,
+    });
+    nowSpy.mockRestore();
+    expect(getSoftLimitCallCount).toBe(1);
   });
 });
