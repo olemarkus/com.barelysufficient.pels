@@ -1,5 +1,6 @@
 import type { DevicePlan, PlanInputDevice } from './planTypes';
-import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import type { SteppedLoadProfile } from '../utils/types';
 import { resolveSteppedLoadCurrentState } from './planSteppedLoad';
 
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
@@ -19,6 +20,11 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         controlModel: live.controlModel ?? device.controlModel,
         steppedLoadProfile: live.steppedLoadProfile ?? device.steppedLoadProfile,
         selectedStepId: live.selectedStepId ?? device.selectedStepId,
+        desiredStepId: clampShedDesiredStepId(
+          device,
+          live.selectedStepId ?? device.selectedStepId,
+          live.steppedLoadProfile ?? device.steppedLoadProfile,
+        ),
         lastDesiredStepId: live.desiredStepId ?? device.lastDesiredStepId,
         actualStepId: live.actualStepId ?? device.actualStepId,
         assumedStepId: live.assumedStepId ?? device.assumedStepId,
@@ -40,6 +46,29 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       };
     }),
   };
+}
+
+// For shed stepped-load devices, clamp desiredStepId down to the merged selectedStepId when the
+// device has reached or passed its planned target. Without this, a stale desiredStepId from an
+// intermediate shed step causes the executor to fire a step-UP command (inadvertent restore).
+// Receives the already-merged profile and selectedStepId so the comparison uses the same values
+// as the returned plan device.
+function clampShedDesiredStepId(
+  device: DevicePlan['devices'][number],
+  mergedSelectedStepId: string | undefined,
+  mergedProfile: SteppedLoadProfile | undefined,
+): string | undefined {
+  if (!device.desiredStepId || !mergedSelectedStepId || device.plannedState !== 'shed') {
+    return device.desiredStepId;
+  }
+  if (!mergedProfile) return device.desiredStepId;
+  const desiredStep = getSteppedLoadStep(mergedProfile, device.desiredStepId);
+  const selectedStep = getSteppedLoadStep(mergedProfile, mergedSelectedStepId);
+  if (!desiredStep || !selectedStep) return device.desiredStepId;
+  // The device has shed further than planned (selectedStep power ≤ desiredStep power).
+  // Clamp to the actual position to prevent the stale reference from becoming a restore signal.
+  if (selectedStep.planningPowerW <= desiredStep.planningPowerW) return mergedSelectedStepId;
+  return device.desiredStepId;
 }
 
 export function hasPlanExecutionDrift(previousPlan: DevicePlan, livePlan: DevicePlan): boolean {
