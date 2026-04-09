@@ -21,7 +21,6 @@ export type SettingsUiSettingsPatch = {
 
 export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
   dailyBudget: DailyBudgetUiPayload | null;
-  devices: TargetDeviceSnapshot[];
   plan: SettingsUiPlanSnapshot | null;
   power: SettingsUiPowerPayload;
   prices: SettingsUiPricesPayload;

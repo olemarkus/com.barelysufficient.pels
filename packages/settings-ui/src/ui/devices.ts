@@ -325,6 +325,7 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
 
     const devices = hasDevices ? response.devices : await getTargetDevices();
     state.latestDevices = devices;
+    state.devicesLoaded = true;
     if (shouldRender) {
       renderDevices(devices);
       renderPriorities(devices);

@@ -1,9 +1,34 @@
 import { mockHomeyInstance } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
-import { resetSettingsUiPowerStatsForApp } from '../lib/app/settingsUiAppRuntime';
+import { getLatestDevicesForUiFromApp, resetSettingsUiPowerStatsForApp } from '../lib/app/settingsUiAppRuntime';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 describe('settings UI app runtime helpers', () => {
+  it('reads latestTargetSnapshot exactly once per getLatestDevicesForUiFromApp call', () => {
+    let getterCallCount = 0;
+    const devices = [{ id: 'dev-1', name: 'Heater' }];
+    const mockHomey = {
+      app: Object.defineProperty({}, 'latestTargetSnapshot', {
+        get() {
+          getterCallCount++;
+          return devices;
+        },
+        configurable: true,
+      }),
+    };
+
+    const result = getLatestDevicesForUiFromApp(mockHomey as never);
+
+    expect(getterCallCount).toBe(1);
+    expect(result).toBe(devices);
+  });
+
+  it('returns null without evaluating the getter when app is unavailable', () => {
+    expect(getLatestDevicesForUiFromApp(null as never)).toBeNull();
+    expect(getLatestDevicesForUiFromApp({} as never)).toBeNull();
+  });
+
+
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();

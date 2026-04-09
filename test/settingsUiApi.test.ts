@@ -164,7 +164,7 @@ describe('settingsUiApi', () => {
     expect(result.settings.target_devices_snapshot).toBeUndefined();
     expect(result.settings.combined_prices).toBeUndefined();
     expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
-    expect(result.devices).toEqual([{ id: 'dev-1', name: 'Heater' }]);
+    expect((result as unknown as Record<string, unknown>).devices).toBeUndefined();
     expect(result.plan).toEqual({ devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] });
     expect(result.power).toEqual({
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },

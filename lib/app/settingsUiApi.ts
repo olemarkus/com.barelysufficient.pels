@@ -112,7 +112,6 @@ export const buildSettingsUiBootstrap = ({ homey }: ApiContext): SettingsUiBoots
   return {
     settings: pickSettings(homey, SETTINGS_UI_BOOTSTRAP_KEYS),
     dailyBudget: app?.getDailyBudgetUiPayload?.() ?? null,
-    devices: getSettingsUiDevices({ homey }),
     plan: getSettingsUiPlan({ homey }),
     power: getSettingsUiPower({ homey }),
     prices: getSettingsUiPrices({ homey }),

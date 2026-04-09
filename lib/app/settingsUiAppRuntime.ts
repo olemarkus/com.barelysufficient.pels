@@ -26,7 +26,8 @@ const getRuntimeApp = (homey: Homey.App['homey']): SettingsUiRuntimeApp | null =
 
 export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetDeviceSnapshot[] | null => {
   const app = getRuntimeApp(homey);
-  return Array.isArray(app?.latestTargetSnapshot) ? app.latestTargetSnapshot : null;
+  const snapshot = app?.latestTargetSnapshot;
+  return Array.isArray(snapshot) ? snapshot : null;
 };
 
 export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): SettingsUiPlanSnapshot | null => {

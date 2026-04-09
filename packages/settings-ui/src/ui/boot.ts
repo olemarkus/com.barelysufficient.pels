@@ -27,7 +27,6 @@ import {
 } from './dom';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
-  SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
@@ -44,7 +43,7 @@ import {
   waitForHomey,
 } from './homey';
 import { showToast, showToastError } from './toast';
-import { getTargetDevices, refreshDevices, renderDevices } from './devices';
+import { refreshDevices, renderDevices } from './devices';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
 import {
@@ -83,7 +82,6 @@ import { loadDeviceControlProfiles } from './deviceControlProfiles';
 import {
   initAdvancedDeviceCleanupHandlers,
   initAdvancedDeviceLoggerHandlers,
-  refreshAdvancedDeviceCleanup,
   refreshAdvancedDeviceLogger,
 } from './advanced';
 import { state } from './state';
@@ -298,7 +296,6 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
     if (bootstrap?.settings && typeof bootstrap.settings === 'object') {
       applySettingsPatch(bootstrap.settings);
     }
-    primeApiCache(SETTINGS_UI_DEVICES_PATH, { devices: bootstrap.devices ?? [] });
     primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: bootstrap.plan ?? null });
     primeApiCache(SETTINGS_UI_POWER_PATH, bootstrap.power);
     primeApiCache(SETTINGS_UI_PRICES_PATH, bootstrap.prices);
@@ -309,14 +306,11 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
 };
 
 const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
-  // Phase 1: Load the device read model without forcing a live refresh during boot.
-  state.latestDevices = await getTargetDevices();
-
-  // Phase 2: Load mode/priorities FIRST to populate managedMap before any rendering
+  // Phase 1: Load mode/priorities FIRST to populate managedMap before any rendering
   // This prevents the race condition where users see empty checkboxes
   await loadModeAndPriorities();
 
-  // Phase 3: Load remaining settings in parallel for faster load time
+  // Phase 2: Load remaining settings in parallel for faster load time
   const [usage] = await Promise.all([
     getPowerUsage(),
     loadCapacitySettings(),
@@ -331,23 +325,26 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadAdvancedSettings(),
   ]);
 
-  // Phase 4: Render everything once with all state populated
+  // Phase 3: Render everything once with all state populated
+  // Device-dependent renders (renderPriorities, renderDevices, renderPriceOptimization)
+  // are deferred to first tab open via lazy loading in showTab().
   renderPowerUsage(usage);
   await renderPowerStats();
   renderModeOptions();
-  renderPriorities(state.latestDevices);
-  renderDevices(state.latestDevices);
-  renderPriceOptimization(state.latestDevices);
-  refreshAdvancedDeviceCleanup();
   await refreshAdvancedDeviceLogger();
   await refreshPrices();
   await refreshGridTariff();
   await refreshDailyBudgetPlan(bootstrap?.dailyBudget);
 
-  // Phase 5: Mark initial load complete - enables save operations
+  // Phase 4: Mark initial load complete - enables save operations
   state.initialLoadComplete = true;
-  // Re-render devices to enable checkboxes now that load is complete
-  renderDevices(state.latestDevices);
+  // If devices were loaded mid-boot (user visited a device tab before loadInitialData finished),
+  // re-render all device-dependent views so checkboxes are enabled and the loading notice is cleared.
+  if (state.devicesLoaded) {
+    renderDevices(state.latestDevices);
+    renderPriorities(state.latestDevices);
+    renderPriceOptimization(state.latestDevices);
+  }
 };
 
 const initializeBootHandlers = () => {
