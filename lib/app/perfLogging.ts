@@ -54,6 +54,8 @@ const VALUE_COUNT_KEY_PATTERNS: RegExp[] = [
   /^power_sample_rerun_coalesced_total$/,
   /^power_sample_rerun_executed_total$/,
   /^daily_budget_update_total$/,
+  /^daily_budget_compute_total$/,
+  /^daily_budget_persist_total$/,
   /^settings_set\.device_plan_snapshot/,
   /^settings_set\.pels_status/,
   /^device_action_total$/,
@@ -81,8 +83,12 @@ const VALUE_DURATION_KEYS = new Set([
   'power_sample_state_ms',
   'power_sample_ui_ms',
   'daily_budget_update_ms',
+  'daily_budget_compute_ms',
+  'daily_budget_persist_ms',
   'settings_write_ms',
   'device_fetch_ms',
+  'device_fetch_full_ms',
+  'device_fetch_targeted_ms',
   'device_refresh_ms',
 ]);
 
