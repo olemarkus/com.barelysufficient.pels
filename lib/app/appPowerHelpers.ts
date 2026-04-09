@@ -361,8 +361,10 @@ export function schedulePlanRebuildFromSignal(params: {
   } = params;
   const softLimitKw = capacityGuard?.getSoftLimit()
     ?? Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
-  const headroomKw = capacityGuard?.getHeadroom()
-    ?? (typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null);
+  // Derive headroom from the already-fetched softLimit to avoid a second provider call.
+  const guardPower = capacityGuard?.getLastTotalPower() ?? null;
+  const fallbackHeadroomKw = typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null;
+  const headroomKw = guardPower !== null ? softLimitKw - guardPower : fallbackHeadroomKw;
   const isInShortfall = capacityGuard?.isInShortfall() ?? false;
   const isDangerZone = resolveDangerZone(currentPowerW, capacitySettings.limitKw);
   const headroomTight = resolveHeadroomTight(headroomKw);
