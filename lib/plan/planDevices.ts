@@ -8,7 +8,7 @@ import {
   getPrimaryTargetCapability,
   normalizeTargetCapabilityValue,
 } from '../utils/targetCapabilities';
-import { getInactiveReason } from './planRestoreDevices';
+import { getInactiveReason, getEvRestoreStateBlockReason } from './planRestoreDevices';
 import {
   isSteppedLoadDevice,
   resolveSteppedLoadCurrentState,
@@ -348,18 +348,20 @@ function applyOffStateReason(params: {
 }): DevicePlanDevice {
   const { planDevice, headroomRaw, guardInShortfall } = params;
   if (!planDevice.controllable) return planDevice;
-  // Check for inactive reason before the currentState guard so that devices with stale
-  // snapshots (e.g. a charger reported as 'on' whose evChargingState is 'plugged_out')
-  // are correctly marked inactive rather than left as 'keep' in the final plan.
-  const inactiveReason = getInactiveReason(planDevice);
-  if (inactiveReason) {
-    return {
-      ...planDevice,
-      plannedState: 'inactive',
-      reason: inactiveReason,
-    };
+  // Check EV state blocks before the currentState guard so that chargers with stale snapshots
+  // (e.g. currentOn=true but evChargingState='plugged_out') are correctly marked inactive.
+  // Only the physical state block (not the power-unknown block) is safe to apply here: the
+  // power-unknown reason must not convert an actively-charging device to inactive.
+  const evStateBlock = getEvRestoreStateBlockReason(planDevice);
+  if (evStateBlock) {
+    return { ...planDevice, plannedState: 'inactive', reason: `inactive (${evStateBlock})` };
   }
   if (planDevice.currentState !== 'off') return planDevice;
+  // Full inactive check (including power-unknown) is safe once the device is confirmed off.
+  const inactiveReason = getInactiveReason(planDevice);
+  if (inactiveReason) {
+    return { ...planDevice, plannedState: 'inactive', reason: inactiveReason };
+  }
   const shouldForceOffStep = guardInShortfall && isSteppedLoadDevice(planDevice);
   const desiredStepId = shouldForceOffStep
     ? getSteppedLoadShedTargetStep({

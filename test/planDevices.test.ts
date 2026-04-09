@@ -401,4 +401,40 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.plannedState).toBe('inactive');
     expect(planDevice.reason).toBe('inactive (charger is unplugged)');
   });
+
+  it('does not mark an actively-charging EV as inactive due to unknown expected power', () => {
+    // getInactiveReason also returns a reason when expectedPowerSource==='default'.
+    // Moving that check before the currentState guard would incorrectly block shedding
+    // of a charging EV. Only the physical state block (plugged_out etc.) should pre-empt
+    // the off-state guard.
+    const charger = buildPlanInputDevice({
+      id: 'charger-1',
+      name: 'EV Charger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_charging',
+      expectedPowerSource: 'default',
+      currentOn: true,
+      controllable: true,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([charger]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('keep');
+  });
 });
