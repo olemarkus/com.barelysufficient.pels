@@ -437,4 +437,36 @@ describe('buildInitialPlanDevices', () => {
 
     expect(planDevice.plannedState).toBe('keep');
   });
+
+  it('does not mark an EV with undefined evChargingState as inactive when currently on', () => {
+    // evChargingState===undefined is ambiguous (capability not yet read). It should not
+    // pre-empt the off-state guard for an active device — defer until confirmed off.
+    const charger = buildPlanInputDevice({
+      id: 'charger-1',
+      name: 'EV Charger',
+      controlCapabilityId: 'evcharger_charging',
+      currentOn: true,
+      controllable: true,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([charger]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('keep');
+  });
 });
