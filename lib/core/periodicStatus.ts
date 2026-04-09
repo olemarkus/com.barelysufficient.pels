@@ -5,7 +5,7 @@ import { getHourBucketKey } from '../utils/dateUtils';
 
 type CapacityGuardView = Pick<
   CapacityGuard,
-  'getLastTotalPower' | 'getSoftLimit' | 'getHeadroom' | 'isSheddingActive' | 'isInShortfall'
+  'getLastTotalPower' | 'getSoftLimit' | 'isSheddingActive' | 'isInShortfall'
 >;
 
 export function buildPeriodicStatusLog(params: {
@@ -19,7 +19,9 @@ export function buildPeriodicStatusLog(params: {
   const total = capacityGuard?.getLastTotalPower() ?? null;
   const softLimit = capacityGuard?.getSoftLimit() ?? resolveCapacitySoftLimitKw(capacitySettings);
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
-  const headroom = capacityGuard?.getHeadroom() ?? null;
+  // Derive headroom from the already-fetched softLimit to avoid a second provider call.
+  // CapacityGuard.getHeadroom() is just getSoftLimit() - mainPowerKw, so this is equivalent.
+  const headroom = total !== null ? softLimit - total : null;
   const sheddingActive = capacityGuard?.isSheddingActive() ?? false;
   const inShortfall = capacityGuard?.isInShortfall() ?? false;
   const usage = getCurrentHourUsage(powerTracker);

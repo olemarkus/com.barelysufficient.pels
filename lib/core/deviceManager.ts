@@ -287,9 +287,10 @@ export class DeviceManager extends EventEmitter {
         const start = Date.now();
         try {
             const previousSnapshot = this.latestSnapshot;
+            const isTargetedRefresh = options.targetedRefresh === true && this.latestSnapshot.length > 0;
             let fetchResult: Awaited<ReturnType<typeof fetchDevicesWithFallback>>;
             try {
-                fetchResult = options.targetedRefresh && this.latestSnapshot.length > 0
+                fetchResult = isTargetedRefresh
                     ? await this.fetchDevicesByKnownIds()
                     : await this.fetchDevicesForSnapshot();
             } catch (error) {
@@ -317,6 +318,7 @@ export class DeviceManager extends EventEmitter {
                         event: 'device_snapshot_refresh_completed',
                         durationMs: Date.now() - start,
                         devicesTotal: snapshot.length,
+                        targetedRefresh: isTargetedRefresh,
                         ...metrics,
                     });
                 }
@@ -506,7 +508,9 @@ export class DeviceManager extends EventEmitter {
                 logger: this.logger,
             });
         } finally {
-            addPerfDuration('device_fetch_ms', Date.now() - start);
+            const durationMs = Date.now() - start;
+            addPerfDuration('device_fetch_ms', durationMs);
+            addPerfDuration('device_fetch_full_ms', durationMs);
         }
     }
 
@@ -522,7 +526,9 @@ export class DeviceManager extends EventEmitter {
                 logger: this.logger,
             });
         } finally {
-            addPerfDuration('device_fetch_ms', Date.now() - start);
+            const durationMs = Date.now() - start;
+            addPerfDuration('device_fetch_ms', durationMs);
+            addPerfDuration('device_fetch_targeted_ms', durationMs);
         }
     }
 

@@ -348,7 +348,9 @@ function applyOffStateReason(params: {
 }): DevicePlanDevice {
   const { planDevice, headroomRaw, guardInShortfall } = params;
   if (!planDevice.controllable) return planDevice;
-  if (planDevice.currentState !== 'off') return planDevice;
+  // Check for inactive reason before the currentState guard so that devices with stale
+  // snapshots (e.g. a charger reported as 'on' whose evChargingState is 'plugged_out')
+  // are correctly marked inactive rather than left as 'keep' in the final plan.
   const inactiveReason = getInactiveReason(planDevice);
   if (inactiveReason) {
     return {
@@ -357,6 +359,7 @@ function applyOffStateReason(params: {
       reason: inactiveReason,
     };
   }
+  if (planDevice.currentState !== 'off') return planDevice;
   const shouldForceOffStep = guardInShortfall && isSteppedLoadDevice(planDevice);
   const desiredStepId = shouldForceOffStep
     ? getSteppedLoadShedTargetStep({
