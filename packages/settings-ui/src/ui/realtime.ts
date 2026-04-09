@@ -45,6 +45,7 @@ import {
 } from './dailyBudget';
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning';
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
+import { refreshAdvancedDeviceCleanup } from './advanced';
 import { loadShedBehaviors } from './deviceDetail';
 import { loadDeviceControlProfiles } from './deviceControlProfiles';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
@@ -144,12 +145,29 @@ const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices
   renderPriorities(devices);
   renderDevices(devices);
   renderPriceOptimization(devices);
+  refreshAdvancedDeviceCleanup();
   document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
+};
+
+const loadDevicesOnce = () => {
+  state.devicesLoading = true;
+  getTargetDevices()
+    .then((devices) => {
+      state.devicesLoaded = true;
+      renderLatestDevices(devices);
+    })
+    .catch((error) => {
+      void logSettingsError('Failed to load devices', error, 'loadDevicesOnce');
+    })
+    .finally(() => {
+      state.devicesLoading = false;
+    });
 };
 
 const refreshDevicesForUi = () => {
   invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
   invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
+  if (!state.devicesLoaded || state.devicesLoading) return;
   getTargetDevices()
     .then((devices) => renderLatestDevices(devices))
     .catch((error) => {
@@ -160,6 +178,7 @@ const refreshDevicesForUi = () => {
 const refreshModeAndDeviceControls = () => {
   loadModeAndPriorities()
     .then(() => {
+      if (!state.devicesLoaded) return;
       renderPriorities(state.latestDevices);
       renderDevices(state.latestDevices);
       renderPriceOptimization(state.latestDevices);
@@ -281,6 +300,11 @@ export const showTab = (tabId: string) => {
   if (tabId === 'budget') {
     runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'showTab');
   }
+  if (tabId === 'devices' || tabId === 'modes' || tabId === 'price' || tabId === 'advanced') {
+    if (!state.devicesLoaded && !state.devicesLoading) {
+      loadDevicesOnce();
+    }
+  }
 };
 
 export const initRealtimeListeners = () => {
@@ -291,6 +315,12 @@ export const initRealtimeListeners = () => {
   homey.on('prices_updated', handlePricesUpdated);
   homey.on('power_updated', handlePowerUpdated);
   homey.on('settings.set', createSettingsSetHandler());
+
+  document.addEventListener('request-load-devices', () => {
+    if (!state.devicesLoaded && !state.devicesLoading) {
+      loadDevicesOnce();
+    }
+  });
 };
 
 export const startStaleDataRefreshInterval = () => {

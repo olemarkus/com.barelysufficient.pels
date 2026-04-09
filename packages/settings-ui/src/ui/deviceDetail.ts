@@ -780,11 +780,18 @@ const initDeviceDetailEscapeHandler = () => {
   });
 };
 
+let pendingOpenDeviceId: string | null = null;
+
 const initDeviceDetailOpenHandler = () => {
   document.addEventListener('open-device-detail', (event) => {
     const custom = event as CustomEvent<{ deviceId: string }>;
-    if (custom.detail?.deviceId) {
-      openDeviceDetail(custom.detail.deviceId);
+    const deviceId = custom.detail?.deviceId;
+    if (!deviceId) return;
+    if (getDeviceById(deviceId)) {
+      openDeviceDetail(deviceId);
+    } else {
+      pendingOpenDeviceId = deviceId;
+      document.dispatchEvent(new CustomEvent('request-load-devices'));
     }
   });
 };
@@ -824,6 +831,12 @@ const refreshOpenDeviceDetail = () => {
 
 const initDeviceDetailRefreshHandlers = () => {
   document.addEventListener('devices-updated', () => {
+    if (pendingOpenDeviceId) {
+      const idToOpen = pendingOpenDeviceId;
+      pendingOpenDeviceId = null;
+      openDeviceDetail(idToOpen);
+      return;
+    }
     if (!currentDetailDeviceId) return;
     const deviceId = currentDetailDeviceId;
     refreshOpenDeviceDetail();

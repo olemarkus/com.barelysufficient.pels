@@ -217,6 +217,13 @@ const loadSettingsScript = async () => {
     const select = document.querySelector('#mode-select') as HTMLSelectElement | null;
     return Boolean(select && select.options.length > 0);
   });
+  // Devices are lazy-loaded on first tab visit; navigate to the devices tab so tests can access device rows.
+  (document.querySelector('[data-tab="devices"]') as HTMLButtonElement | null)?.click();
+  await waitFor(() => {
+    const hasRows = document.querySelectorAll('#device-list .device-row').length > 0;
+    const emptyVisible = document.querySelector('#empty-state')?.hasAttribute('hidden') === false;
+    return hasRows || emptyVisible;
+  });
 };
 
 const buildSettingsHomeyState = (settings: Record<string, unknown> = {}) => ({
