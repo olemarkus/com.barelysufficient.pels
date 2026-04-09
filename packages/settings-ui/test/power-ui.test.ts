@@ -155,6 +155,58 @@ describe('power page stats (buckets-only)', () => {
     expect(entries[0].uncontrolledKWh).toBeCloseTo(1.4, 6);
   });
 
+  it('preserves zero-valued usage buckets as measured data', async () => {
+    const iso = '2025-01-06T00:00:00.000Z';
+    installHomeyClient({
+      buckets: { [iso]: 0 },
+      hourlySampleCounts: { [iso]: 3 },
+    });
+
+    const { getPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const entries = await getPowerUsage();
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].hour.toISOString()).toBe(iso);
+    expect(entries[0].kWh).toBe(0);
+    expect(entries[0].unreliable).toBe(false);
+  });
+
+  it('keeps a cross-hour outage unreliable when the hour only has a single zero sample', async () => {
+    const iso = '2025-01-06T08:00:00.000Z';
+    installHomeyClient({
+      buckets: { [iso]: 0 },
+      hourlySampleCounts: { [iso]: 1 },
+      unreliablePeriods: [{
+        start: Date.parse('2025-01-06T07:59:00.000Z'),
+        end: Date.parse('2025-01-06T08:01:00.000Z'),
+      }],
+    });
+
+    const { getPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const entries = await getPowerUsage();
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].unreliable).toBe(true);
+  });
+
+  it('treats repeated zero samples in an unreliable hour as valid measured data', async () => {
+    const iso = '2025-01-06T08:00:00.000Z';
+    installHomeyClient({
+      buckets: { [iso]: 0 },
+      hourlySampleCounts: { [iso]: 6 },
+      unreliablePeriods: [{
+        start: Date.parse('2025-01-06T07:59:00.000Z'),
+        end: Date.parse('2025-01-06T08:01:00.000Z'),
+      }],
+    });
+
+    const { getPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const entries = await getPowerUsage();
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].unreliable).toBe(false);
+  });
+
   it('renders the usage day chart with echarts when split usage is available', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
@@ -316,6 +368,28 @@ describe('power page stats (buckets-only)', () => {
 
     expect(capturedBars[0]?.title).toContain('Measured 2.50 kWh');
     expect(capturedBars[0]?.marker).toBeUndefined();
+    jest.useRealTimers();
+  });
+
+  it('renders consecutive zero-usage hours as valid data', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
+    installHomeyClient({}, 'UTC');
+    const { renderUsageDayView } = require('../src/ui/usageDayView') as typeof import('../src/ui/usageDayView');
+
+    renderUsageDayView([
+      { hour: new Date('2025-01-06T00:00:00.000Z'), kWh: 0 },
+      { hour: new Date('2025-01-06T01:00:00.000Z'), kWh: 0 },
+      { hour: new Date('2025-01-06T02:00:00.000Z'), kWh: 0 },
+    ]);
+
+    const empty = document.querySelector('#usage-day-empty') as HTMLElement;
+    const status = document.querySelector('#usage-day-status-pill') as HTMLElement;
+    const total = document.querySelector('#usage-day-total') as HTMLElement;
+
+    expect(empty.hidden).toBe(true);
+    expect(status.hidden).toBe(true);
+    expect(total.textContent).toBe('0.0 kWh');
     jest.useRealTimers();
   });
 

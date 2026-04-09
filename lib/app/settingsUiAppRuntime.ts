@@ -103,6 +103,7 @@ export const resetSettingsUiPowerStatsForApp = async (homey: Homey.App['homey'])
   const nextState: PowerTrackerState = {
     ...currentState,
     buckets: preserveCurrentHour(currentState.buckets),
+    hourlySampleCounts: preserveCurrentHour(currentState.hourlySampleCounts),
     controlledBuckets: preserveCurrentHour(currentState.controlledBuckets),
     uncontrolledBuckets: preserveCurrentHour(currentState.uncontrolledBuckets),
     exemptBuckets: preserveCurrentHour(currentState.exemptBuckets),

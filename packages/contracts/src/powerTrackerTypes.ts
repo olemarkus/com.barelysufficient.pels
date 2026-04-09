@@ -5,6 +5,7 @@ export type PowerTrackerState = {
   lastExemptPowerW?: number;
   lastTimestamp?: number;
   buckets?: Record<string, number>;
+  hourlySampleCounts?: Record<string, number>;
   hourlyBudgets?: Record<string, number>;
   dailyBudgetCaps?: Record<string, number>;
   dailyTotals?: Record<string, number>;

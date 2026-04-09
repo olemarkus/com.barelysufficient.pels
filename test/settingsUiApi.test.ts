@@ -223,6 +223,7 @@ describe('settingsUiApi', () => {
       uncontrolledBuckets: {},
       uncontrolledDailyTotals: {},
       uncontrolledHourlyAverages: {},
+      hourlySampleCounts: {},
       hourlyBudgets: {},
       dailyBudgetCaps: {},
       dailyTotals: {},
