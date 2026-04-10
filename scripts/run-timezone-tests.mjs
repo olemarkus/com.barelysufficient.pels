@@ -15,7 +15,7 @@ const TEST_FILES = Object.freeze([
 
 for (const timeZone of TIME_ZONES) {
   const args = [
-    './node_modules/.bin/vitest',
+    './node_modules/vitest/vitest.mjs',
     'run',
     '--config',
     'vitest.config.fast.ts',

@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import type { DeviceManager } from '../lib/core/deviceManager';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import {
@@ -25,12 +26,12 @@ const buildDeviceManager = (params: {
   } as unknown as DeviceManager;
 };
 
-const findLogPayload = (logger: vi.Mock, message: string): unknown => {
+const findLogPayload = (logger: Mock, message: string): unknown => {
   const call = logger.mock.calls.find(([entry]) => entry === message);
   return call ? call[1] : undefined;
 };
 
-const parseDumpPayload = (logger: vi.Mock): Record<string, any> => {
+const parseDumpPayload = (logger: Mock): Record<string, any> => {
   const dumpPayload = findLogPayload(logger, 'Homey device dump') as { payload?: string } | undefined;
   expect(dumpPayload?.payload).toBeDefined();
   return JSON.parse(dumpPayload?.payload ?? '{}');
@@ -362,7 +363,7 @@ describe('appDebugHelpers', () => {
     expect(ok).toBe(true);
     expect(app.error).not.toHaveBeenCalled();
 
-    const dumpPayload = parseDumpPayload(app.log as vi.Mock);
+    const dumpPayload = parseDumpPayload(app.log as Mock);
     expect(dumpPayload.pels).toEqual(expect.objectContaining({
       present: true,
       targetSnapshot: expect.objectContaining({
@@ -515,7 +516,7 @@ describe('appDebugHelpers', () => {
     });
 
     expect(ok).toBe(true);
-    const comparisonPayload = findLogPayload(app.log as vi.Mock, 'Homey/Pels device state comparison') as { payload?: string } | undefined;
+    const comparisonPayload = findLogPayload(app.log as Mock, 'Homey/Pels device state comparison') as { payload?: string } | undefined;
     expect(comparisonPayload?.payload).toBeDefined();
     expect(JSON.parse(comparisonPayload?.payload ?? '{}')).toEqual({
       reason: 'target_retry:plan:target_temperature',

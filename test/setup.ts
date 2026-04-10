@@ -31,8 +31,8 @@ const mockHttpsGetImplementation = (): typeof https.get => (
     }
 
     const request = new EventEmitter() as NodeJS.EventEmitter & {
-      setTimeout: vi.Mock;
-      destroy: vi.Mock;
+      setTimeout: MockInstance;
+      destroy: MockInstance;
     };
     request.setTimeout = vi.fn().mockReturnValue(request);
     request.destroy = vi.fn().mockReturnValue(request);

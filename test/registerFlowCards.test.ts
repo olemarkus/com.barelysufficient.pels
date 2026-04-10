@@ -63,7 +63,7 @@ describe('registerFlowCards', () => {
       'Flow: Failed to store today prices from flow tag.',
       expect.any(Error),
     );
-    expect(((deps.error as vi.Mock).mock.calls[0]?.[1] as Error).message).toBe('boom');
+    expect(((deps.error as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as Error).message).toBe('boom');
   });
 
   it('writes a clean boolean map for budget exemption flow cards without direct rebuild work', async () => {
