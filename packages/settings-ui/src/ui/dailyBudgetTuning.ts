@@ -3,21 +3,21 @@ import {
   dailyBudgetControlledWeightInput,
   dailyBudgetPriceFlexShareInput,
   dailyBudgetBreakdownInput,
-} from './dom';
-import { getSetting } from './homey';
-import { pushSettingWriteIfChanged } from './settingWrites';
-import { logSettingsError } from './logging';
-import { showToast, showToastError } from './toast';
+} from './dom.ts';
+import { getSetting } from './homey.ts';
+import { pushSettingWriteIfChanged } from './settingWrites.ts';
+import { logSettingsError } from './logging.ts';
+import { showToast, showToastError } from './toast.ts';
 import {
   CONTROLLED_USAGE_WEIGHT,
   PRICE_SHAPING_FLEX_SHARE,
-} from '../../../contracts/src/dailyBudgetConstants';
+} from '../../../contracts/src/dailyBudgetConstants.ts';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_BREAKDOWN_ENABLED,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
-} from '../../../contracts/src/settingsKeys';
-import { rerenderDailyBudget } from './dailyBudget';
+} from '../../../contracts/src/settingsKeys.ts';
+import { rerenderDailyBudget } from './dailyBudget.ts';
 
 const clampRatio = (value: number, fallback: number): number => {
   if (!Number.isFinite(value)) return fallback;

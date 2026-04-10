@@ -1,8 +1,9 @@
 // Shared test utilities for app instance cleanup
+// Use explicit .ts extension to avoid resolving app.json instead of app.ts.
+// Static import goes through Vitest's esbuild transform, which handles `export =`.
+import MyApp from '../../app.ts';
 
 let appInstances: any[] = [];
-
-const MyApp = require('../../app');
 
 type CreateAppOptions = {
   preserveStartupRestoreStabilization?: boolean;

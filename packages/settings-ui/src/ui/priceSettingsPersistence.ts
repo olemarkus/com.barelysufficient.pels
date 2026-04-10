@@ -1,5 +1,5 @@
-import { getSetting } from './homey';
-import { NORWAY_PRICE_MODEL, PRICE_SCHEME } from '../../../contracts/src/settingsKeys';
+import { getSetting } from './homey.ts';
+import { NORWAY_PRICE_MODEL, PRICE_SCHEME } from '../../../contracts/src/settingsKeys.ts';
 
 export type PriceScheme = 'norway' | 'flow' | 'homey';
 export type NorwayPriceModel = 'stromstotte' | 'norgespris';

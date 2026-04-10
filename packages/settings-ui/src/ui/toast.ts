@@ -1,5 +1,5 @@
-import { toastEl } from './dom';
-import { sleep } from './homey';
+import { toastEl } from './dom.ts';
+import { sleep } from './homey.ts';
 
 export type ToastTone = 'default' | 'ok' | 'warn';
 

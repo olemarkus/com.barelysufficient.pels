@@ -6,7 +6,7 @@ import { createApp, cleanupApps } from './utils/appTestUtils';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
-jest.useFakeTimers({ doNotFake: ['nextTick', 'Date'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 
 const buildAirconApiDevice = (overrides?: Partial<{
     id: string;
@@ -52,12 +52,12 @@ describe('Airconditioning device integration', () => {
         mockHomeyInstance.flow._triggerCardRunListeners = {};
         mockHomeyInstance.flow._triggerCardTriggers = {};
         mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-        jest.clearAllTimers();
+        vi.clearAllTimers();
     });
 
     afterEach(async () => {
         await cleanupApps();
-        jest.clearAllTimers();
+        vi.clearAllTimers();
     });
 
     it('includes airconditioning devices with meter_power', async () => {
@@ -65,7 +65,7 @@ describe('Airconditioning device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+        vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
             'aircon-a': buildAirconApiDevice(),
         });
 

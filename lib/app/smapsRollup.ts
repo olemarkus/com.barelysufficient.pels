@@ -40,6 +40,12 @@ const readSmapsRollup = (): string | null => {
   }
 };
 
+/** Reset module-level probe state. For tests only. */
+export const _resetSmapsCacheForTests = (): void => {
+  smapsRollupSupported = undefined;
+  cachedInitialRollup = undefined;
+};
+
 export const resolveSmapsSummary = (): Record<string, number> | null => {
   const rollup = readSmapsRollup();
   if (!rollup) return null;

@@ -5,7 +5,7 @@ import {
   SHED_MAX_C,
   SHED_MIN_C,
   SHED_STEP_C,
-} from './airtreatmentConstants';
+} from './airtreatmentConstants.ts';
 
 export function normalizeShedTemperature(value: number): number {
   const clamped = Math.max(SHED_MIN_C, Math.min(SHED_MAX_C, value));

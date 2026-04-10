@@ -7,9 +7,9 @@ import {
 import Homey from 'homey';
 import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
 
-const mockApiGet = jest.fn();
-const mockApiPut = jest.fn().mockResolvedValue(undefined);
-const mockGetLiveReport = jest.fn();
+const mockApiGet = vi.fn();
+const mockApiPut = vi.fn().mockResolvedValue(undefined);
+const mockGetLiveReport = vi.fn();
 const mockSdkDevicesEmitter = mockHomeyInstance.api.getApi('homey:manager:devices');
 
 const findSnapshotDevice = <T extends { id: string }>(
@@ -37,14 +37,14 @@ const buildRealtimeDevices = () => ({
 describe('DeviceManager', () => {
     let deviceManager: DeviceManager;
     let homeyMock: Homey.App;
-    let loggerMock: { log: jest.Mock; debug: jest.Mock; error: jest.Mock };
+    let loggerMock: { log: vi.Mock; debug: vi.Mock; error: vi.Mock };
 
     afterEach(() => {
-        jest.restoreAllMocks();
+        vi.restoreAllMocks();
     });
 
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         clearMockSdkDeviceListeners();
         mockGetLiveReport.mockResolvedValue({ items: [] });
         homeyMock = mockHomeyInstance as unknown as Homey.App;
@@ -52,14 +52,14 @@ describe('DeviceManager', () => {
         // Wire mock API functions via spyOn so restoreAllMocks cleans up.
         const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
         mockApiGet.mockImplementation(async (path: string) => originalGet(path));
-        jest.spyOn(mockHomeyInstance.api, 'get').mockImplementation(mockApiGet);
-        jest.spyOn(mockHomeyInstance.api, 'put').mockImplementation(mockApiPut);
-        jest.spyOn(homeyApi, 'getEnergyLiveReport').mockImplementation(() => mockGetLiveReport());
+        vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(mockApiGet);
+        vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(mockApiPut);
+        vi.spyOn(homeyApi, 'getEnergyLiveReport').mockImplementation(() => mockGetLiveReport());
 
         loggerMock = {
-            log: jest.fn(),
-            debug: jest.fn(),
-            error: jest.fn(),
+            log: vi.fn(),
+            debug: vi.fn(),
+            error: vi.fn(),
         };
         deviceManager = new DeviceManager(homeyMock, loggerMock);
     });
@@ -487,8 +487,8 @@ describe('DeviceManager', () => {
         });
 
         it('uses providers to populate priority and controllable fields', async () => {
-            const getPriority = jest.fn().mockReturnValue(1);
-            const getControllable = jest.fn().mockReturnValue(false);
+            const getPriority = vi.fn().mockReturnValue(1);
+            const getControllable = vi.fn().mockReturnValue(false);
 
             deviceManager = new DeviceManager(homeyMock, loggerMock, { getPriority, getControllable });
             await deviceManager.init();
@@ -517,8 +517,8 @@ describe('DeviceManager', () => {
         });
 
         it('uses meter_power delta when measure_power is missing', async () => {
-            jest.useFakeTimers();
-            jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
 
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -537,7 +537,7 @@ describe('DeviceManager', () => {
 
             await deviceManager.refreshSnapshot();
 
-            jest.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
+            vi.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -558,12 +558,12 @@ describe('DeviceManager', () => {
             expect(snapshot[0].measuredPowerKw).toBeCloseTo(1, 3);
             expect(snapshot[0].powerCapable).toBe(true);
 
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
 
         it('handles meter_power resets by ignoring negative deltas', async () => {
-            jest.useFakeTimers();
-            jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
 
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -582,7 +582,7 @@ describe('DeviceManager', () => {
 
             await deviceManager.refreshSnapshot();
 
-            jest.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
+            vi.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -603,7 +603,7 @@ describe('DeviceManager', () => {
             expect(snapshot[0].measuredPowerKw).toBeUndefined();
             expect(snapshot[0].expectedPowerSource).toBe('default');
 
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
     });
 
@@ -683,7 +683,7 @@ describe('DeviceManager', () => {
             });
 
             await managedDeviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             // device.update for unmanaged dev2 should be ignored
@@ -717,7 +717,7 @@ describe('DeviceManager', () => {
             await managedDeviceManager.init();
 
             await managedDeviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             // device.update should be ignored while unmanaged
@@ -843,7 +843,7 @@ describe('DeviceManager', () => {
 
         it('emits reconcile event when onoff changes via device.update', async () => {
             await deviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             emitMockSdkDeviceUpdate({
@@ -886,7 +886,7 @@ describe('DeviceManager', () => {
             });
 
             await deviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             await deviceManager.setCapability('dev1', 'onoff', true);
@@ -928,7 +928,7 @@ describe('DeviceManager', () => {
             }));
 
             await deviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             const setCapabilityPromise = deviceManager.setCapability('dev1', 'onoff', true);
@@ -954,7 +954,7 @@ describe('DeviceManager', () => {
         });
 
         it('suppresses contradictory device.update during binary settle window via local state preservation', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
                     dev1: {
@@ -970,7 +970,7 @@ describe('DeviceManager', () => {
                 });
 
                 await deviceManager.refreshSnapshot();
-                const realtimeListener = jest.fn();
+                const realtimeListener = vi.fn();
                 deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
@@ -993,17 +993,17 @@ describe('DeviceManager', () => {
                     currentOn: false,
                 }));
 
-                await jest.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(5000);
 
                 // After settle window expires, local state was preserved so no reconcile
                 expect(realtimeListener).not.toHaveBeenCalled();
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it('preserves local binary state across multiple contradictory device.update events', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
                     dev1: {
@@ -1019,7 +1019,7 @@ describe('DeviceManager', () => {
                 });
 
                 await deviceManager.refreshSnapshot();
-                const realtimeListener = jest.fn();
+                const realtimeListener = vi.fn();
                 deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
@@ -1052,7 +1052,7 @@ describe('DeviceManager', () => {
                     currentOn: false,
                 }));
 
-                await jest.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(5000);
 
                 // No reconcile because local state was preserved
                 expect(realtimeListener).not.toHaveBeenCalled();
@@ -1060,12 +1060,12 @@ describe('DeviceManager', () => {
                     currentOn: false,
                 }));
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it('confirms the local off write when the latest onoff observation before deadline is off', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
                     dev1: {
@@ -1081,7 +1081,7 @@ describe('DeviceManager', () => {
                 });
 
                 await deviceManager.refreshSnapshot();
-                const realtimeListener = jest.fn();
+                const realtimeListener = vi.fn();
                 deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
@@ -1117,19 +1117,19 @@ describe('DeviceManager', () => {
                     },
                 });
 
-                await jest.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(5000);
 
                 expect(realtimeListener).not.toHaveBeenCalled();
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     currentOn: false,
                 }));
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it('drops a pending binary settle window when the device disappears before expiry', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
                     dev1: {
@@ -1145,17 +1145,17 @@ describe('DeviceManager', () => {
                 });
 
                 await deviceManager.refreshSnapshot();
-                const realtimeListener = jest.fn();
+                const realtimeListener = vi.fn();
                 deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 deviceManager.setSnapshotForTests([]);
 
-                await jest.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(5000);
 
                 expect(realtimeListener).not.toHaveBeenCalled();
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
@@ -1298,7 +1298,7 @@ describe('DeviceManager', () => {
             });
 
             await deviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             emitMockSdkDeviceUpdate({
@@ -1396,9 +1396,9 @@ describe('DeviceManager', () => {
         });
 
         it('keeps a newer fetched target when it matches a later local write even if an older realtime target exists', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
-                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
                     dev1: {
                         id: 'dev1',
@@ -1434,7 +1434,7 @@ describe('DeviceManager', () => {
                     },
                 });
 
-                jest.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 await deviceManager.setCapability('dev1', 'target_temperature', 16);
 
                 mockApiGet.mockResolvedValue({
@@ -1463,14 +1463,14 @@ describe('DeviceManager', () => {
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 16 })],
                 }));
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it('preserves a newer local target write across a stale snapshot refresh and keeps freshness timestamps', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
-                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
                     dev1: {
                         id: 'dev1',
@@ -1498,7 +1498,7 @@ describe('DeviceManager', () => {
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 23 })],
                 }));
 
-                jest.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 await deviceManager.setCapability('dev1', 'target_temperature', 16);
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     lastLocalWriteMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
@@ -1536,15 +1536,15 @@ describe('DeviceManager', () => {
                     'Device snapshot refresh preserved newer local_write target_temperature for Heater (dev1)',
                 ));
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it('uses snapshot refresh time as the freshness baseline for stable devices', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 await deviceManager.init();
-                jest.setSystemTime(new Date('2026-03-20T06:10:00.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:10:00.000Z'));
                 mockApiGet.mockResolvedValue({
                     dev1: {
                         id: 'dev1',
@@ -1573,15 +1573,15 @@ describe('DeviceManager', () => {
                     lastUpdated: new Date('2026-03-20T06:10:00.000Z').getTime(),
                 }));
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it('preserves fresher power observed from device.update across a stale snapshot refresh', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 await deviceManager.init();
-                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
                     dev1: {
                         id: 'dev1',
@@ -1601,7 +1601,7 @@ describe('DeviceManager', () => {
 
                 await deviceManager.refreshSnapshot();
 
-                jest.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 emitMockSdkDeviceUpdate({
                     id: 'dev1',
                     name: 'Heater',
@@ -1645,7 +1645,7 @@ describe('DeviceManager', () => {
                     'Device snapshot refresh preserved newer device_update measure_power for Heater (dev1)',
                 ));
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
@@ -1666,7 +1666,7 @@ describe('DeviceManager', () => {
             });
 
             await deviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             // device.update with target changed from 20 to 18
@@ -1730,7 +1730,7 @@ describe('DeviceManager', () => {
 
         it('updates local state on generic device.update events', async () => {
             await deviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             emitMockSdkDeviceUpdate({
@@ -1753,10 +1753,10 @@ describe('DeviceManager', () => {
         });
 
         it('records device.update freshness before emitting reconcile', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 await deviceManager.init();
-                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
                     dev1: {
                         id: 'dev1',
@@ -1785,7 +1785,7 @@ describe('DeviceManager', () => {
                     freshnessSeenAtEmit.push(deviceManager.getSnapshot()[0]?.lastFreshDataMs);
                 });
 
-                jest.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
                 emitMockSdkDeviceUpdate({
                     id: 'dev1',
                     name: 'Heater',
@@ -1801,19 +1801,19 @@ describe('DeviceManager', () => {
                     new Date('2026-03-20T06:05:00.000Z').getTime(),
                 ]);
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it('treats ev state-only device.update events as fresh observations', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
                     getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
-                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
                     ev1: {
                         id: 'ev1',
@@ -1834,7 +1834,7 @@ describe('DeviceManager', () => {
 
                 await evDeviceManager.refreshSnapshot();
 
-                jest.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 emitMockSdkDeviceUpdate({
                     id: 'ev1',
                     name: 'Easee',
@@ -1854,19 +1854,19 @@ describe('DeviceManager', () => {
 
                 evDeviceManager.destroy();
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it('preserves fresher ev charger state across a stale snapshot refresh', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
                     getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
-                jest.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
                 mockApiGet.mockResolvedValue({
                     ev1: {
                         id: 'ev1',
@@ -1887,7 +1887,7 @@ describe('DeviceManager', () => {
 
                 await evDeviceManager.refreshSnapshot();
 
-                jest.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 emitMockSdkDeviceUpdate({
                     id: 'ev1',
                     name: 'Easee',
@@ -1927,7 +1927,7 @@ describe('DeviceManager', () => {
 
                 evDeviceManager.destroy();
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
@@ -1946,7 +1946,7 @@ describe('DeviceManager', () => {
             });
 
             await deviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             await deviceManager.setCapability('dev1', 'onoff', false);
@@ -1972,7 +1972,7 @@ describe('DeviceManager', () => {
         });
 
         it('suppresses device.update binary drift while a local off write is still settling', async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
                     dev1: {
@@ -1988,7 +1988,7 @@ describe('DeviceManager', () => {
                 });
 
                 await deviceManager.refreshSnapshot();
-                const realtimeListener = jest.fn();
+                const realtimeListener = vi.fn();
                 deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
@@ -2004,14 +2004,14 @@ describe('DeviceManager', () => {
                     },
                 });
 
-                await jest.advanceTimersByTimeAsync(5000);
+                await vi.advanceTimersByTimeAsync(5000);
 
                 expect(realtimeListener).not.toHaveBeenCalled();
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     currentOn: false,
                 }));
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
@@ -2023,7 +2023,7 @@ describe('DeviceManager', () => {
             );
             await managedDeviceManager.init();
             await managedDeviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             emitMockSdkDeviceUpdate({
@@ -2062,7 +2062,7 @@ describe('DeviceManager', () => {
                 },
             });
             await deviceManager.refreshSnapshot();
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             emitMockSdkDeviceUpdate({
@@ -2089,7 +2089,7 @@ describe('DeviceManager', () => {
             deviceManager.destroy();
 
             // After destroy, device.update events should not trigger handler
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             emitMockSdkDeviceUpdate({
@@ -2119,7 +2119,7 @@ describe('DeviceManager', () => {
             managedState.dev1 = false;
             await managedDeviceManager.refreshSnapshot();
 
-            const realtimeListener = jest.fn();
+            const realtimeListener = vi.fn();
             managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             emitMockSdkDeviceUpdate({

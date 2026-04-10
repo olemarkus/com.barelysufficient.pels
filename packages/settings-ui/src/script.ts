@@ -1,3 +1,3 @@
-import { boot } from './ui/boot';
+import { boot } from './ui/boot.ts';
 
 void boot();

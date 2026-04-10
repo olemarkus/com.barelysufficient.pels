@@ -1,4 +1,4 @@
-import { panels, tabs } from './dom';
+import { panels, tabs } from './dom.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
@@ -6,7 +6,7 @@ import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
   type SettingsUiPowerPayload,
-} from '../../../contracts/src/settingsUiApi';
+} from '../../../contracts/src/settingsUiApi.ts';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -23,34 +23,34 @@ import {
   OVERSHOOT_BEHAVIORS,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
-} from '../../../contracts/src/settingsKeys';
-import { getTargetDevices, renderDevices } from './devices';
-import { loadAdvancedSettings, loadCapacitySettings, loadStaleDataStatus } from './capacity';
+} from '../../../contracts/src/settingsKeys.ts';
+import { getTargetDevices, renderDevices } from './devices.ts';
+import { loadAdvancedSettings, loadCapacitySettings, loadStaleDataStatus } from './capacity.ts';
 import {
   getHomeyClient,
   invalidateApiCache,
   invalidateSettingCache,
   primeApiCache,
-} from './homey';
+} from './homey.ts';
 import {
   loadModeAndPriorities,
   refreshActiveMode,
   renderPriorities,
-} from './modes';
-import { refreshPrices, loadPriceSettings } from './prices';
-import { renderPriceOptimization } from './priceOptimization';
+} from './modes.ts';
+import { refreshPrices, loadPriceSettings } from './prices.ts';
+import { renderPriceOptimization } from './priceOptimization.ts';
 import {
   loadDailyBudgetSettings,
   refreshDailyBudgetPlan,
-} from './dailyBudget';
-import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning';
-import { refreshPlan, renderPlan, type PlanSnapshot } from './plan';
-import { refreshAdvancedDeviceCleanup } from './advanced';
-import { loadShedBehaviors } from './deviceDetail';
-import { loadDeviceControlProfiles } from './deviceControlProfiles';
-import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
-import { state } from './state';
-import { logSettingsError } from './logging';
+} from './dailyBudget.ts';
+import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
+import { refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
+import { refreshAdvancedDeviceCleanup } from './advanced.ts';
+import { loadShedBehaviors } from './deviceDetail.ts';
+import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
+import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
+import { state } from './state.ts';
+import { logSettingsError } from './logging.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
   'daily_budget_enabled',

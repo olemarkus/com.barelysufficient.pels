@@ -7,9 +7,9 @@ import {
   dryRunBanner,
   staleDataBanner,
   staleDataBannerText,
-} from './dom';
-import { getSetting } from './homey';
-import { getPowerReadModel } from './power';
+} from './dom.ts';
+import { getSetting } from './homey.ts';
+import { getPowerReadModel } from './power.ts';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -17,15 +17,15 @@ import {
   DEBUG_LOGGING_TOPICS,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   POWER_SOURCE,
-} from '../../../contracts/src/settingsKeys';
+} from '../../../contracts/src/settingsKeys.ts';
 import {
   ALL_DEBUG_LOGGING_TOPICS,
   normalizeDebugLoggingTopics,
   type DebugLoggingTopic,
-} from '../../../shared-domain/src/utils/debugLogging';
-import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi';
-import { showToast } from './toast';
-import { pushSettingWriteIfChanged } from './settingWrites';
+} from '../../../shared-domain/src/utils/debugLogging.ts';
+import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { showToast } from './toast.ts';
+import { pushSettingWriteIfChanged } from './settingWrites.ts';
 
 const STALE_DATA_THRESHOLD_MS = 60 * 1000;
 const HEARTBEAT_THRESHOLD_MS = 90 * 1000;

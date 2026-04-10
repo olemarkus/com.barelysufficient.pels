@@ -5,15 +5,15 @@ import {
   advancedApiDeviceSelect,
   advancedApiDeviceRefreshButton,
   advancedApiDeviceLogButton,
-} from './dom';
-import { callApi, setSetting } from './homey';
-import { renderDevices } from './devices';
-import { renderPriorities } from './modes';
-import { renderPriceOptimization } from './priceOptimization';
-import { showToast, showToastError } from './toast';
-import { logSettingsError } from './logging';
-import { state } from './state';
-import { DEVICE_CONTROL_PROFILES, OVERSHOOT_BEHAVIORS } from '../../../contracts/src/settingsKeys';
+} from './dom.ts';
+import { callApi, setSetting } from './homey.ts';
+import { renderDevices } from './devices.ts';
+import { renderPriorities } from './modes.ts';
+import { renderPriceOptimization } from './priceOptimization.ts';
+import { showToast, showToastError } from './toast.ts';
+import { logSettingsError } from './logging.ts';
+import { state } from './state.ts';
+import { DEVICE_CONTROL_PROFILES, OVERSHOOT_BEHAVIORS } from '../../../contracts/src/settingsKeys.ts';
 
 type HomeyApiDevice = {
   id: string;

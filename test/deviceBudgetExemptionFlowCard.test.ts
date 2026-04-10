@@ -13,12 +13,12 @@ describe('Budget exemption flow cards', () => {
     mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
     mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
     mockHomeyInstance.api.clearRealtimeEvents();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('adds a budget exemption for a device', async () => {

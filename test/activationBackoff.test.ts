@@ -44,12 +44,12 @@ const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanD
 
 describe('activation backoff', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-08T10:00:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-08T10:00:00.000Z'));
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('bumps penalty only once per activation attempt', () => {
@@ -201,8 +201,8 @@ describe('activation backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -247,8 +247,8 @@ describe('activation backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -293,8 +293,8 @@ describe('activation backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 

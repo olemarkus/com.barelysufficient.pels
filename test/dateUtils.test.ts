@@ -1,8 +1,8 @@
-const loadDateUtils = () => require('../lib/utils/dateUtils') as typeof import('../lib/utils/dateUtils');
+const loadDateUtils = () => require('../lib/utils/dateUtils.ts') as typeof import('../lib/utils/dateUtils');
 
 describe('dateUtils time zone handling', () => {
   beforeEach(() => {
-    jest.resetModules();
+    vi.resetModules();
   });
 
   it('computes offsets using the primary formatter path', () => {
@@ -13,7 +13,7 @@ describe('dateUtils time zone handling', () => {
 
   it('falls back to zero on invalid time zones and warns once', () => {
     const { getTimeZoneOffsetMinutes } = loadDateUtils();
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const date = new Date('2024-01-01T00:00:00.000Z');
 
     expect(getTimeZoneOffsetMinutes(date, 'Invalid/Zone')).toBe(0);

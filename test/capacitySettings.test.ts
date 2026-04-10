@@ -7,34 +7,34 @@ import {
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
 
 // Mock CapacityGuard to capture limit updates.
 const capacityGuardInstances: any[] = [];
-jest.mock('../lib/core/capacityGuard', () => {
-  return class MockCapacityGuard {
-    public setLimit = jest.fn();
-    public setSoftMargin = jest.fn();
-    public setSoftLimitProvider = jest.fn();
-    public setShortfallThresholdProvider = jest.fn();
-    public reportTotalPower = jest.fn();
-    public getLastTotalPower = jest.fn().mockReturnValue(null);
-    public headroom = jest.fn().mockReturnValue(0);
-    public getHeadroom = jest.fn().mockReturnValue(0);
-    public getRestoreMargin = jest.fn().mockReturnValue(0.2);
-    public isSheddingActive = jest.fn().mockReturnValue(false);
-    public isInShortfall = jest.fn().mockReturnValue(false);
-    public getSoftLimit = jest.fn().mockReturnValue(10);
-    public setSheddingActive = jest.fn();
-    public checkShortfall = jest.fn();
+vi.mock('../lib/core/capacityGuard', () => ({
+  default: class MockCapacityGuard {
+    public setLimit = vi.fn();
+    public setSoftMargin = vi.fn();
+    public setSoftLimitProvider = vi.fn();
+    public setShortfallThresholdProvider = vi.fn();
+    public reportTotalPower = vi.fn();
+    public getLastTotalPower = vi.fn().mockReturnValue(null);
+    public headroom = vi.fn().mockReturnValue(0);
+    public getHeadroom = vi.fn().mockReturnValue(0);
+    public getRestoreMargin = vi.fn().mockReturnValue(0.2);
+    public isSheddingActive = vi.fn().mockReturnValue(false);
+    public isInShortfall = vi.fn().mockReturnValue(false);
+    public getSoftLimit = vi.fn().mockReturnValue(10);
+    public setSheddingActive = vi.fn();
+    public checkShortfall = vi.fn();
     constructor(opts: any = {}) {
       // Call setters once to mirror constructor usage.
       this.setLimit(opts.limitKw ?? 10);
       this.setSoftMargin(opts.softMarginKw ?? 0);
       capacityGuardInstances.push(this);
     }
-  };
-});
+  },
+}));
 
 describe('capacity settings propagation', () => {
   beforeEach(() => {
@@ -44,12 +44,12 @@ describe('capacity settings propagation', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [new MockDevice('dev-1', 'Heater', ['target_temperature'])]),
     });
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('updates CapacityGuard when settings change', async () => {

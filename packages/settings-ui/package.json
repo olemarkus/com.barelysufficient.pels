@@ -10,8 +10,8 @@
     "copy:public": "node scripts/copy-public.mjs",
     "lint": "eslint src test tests ../contracts/src ../shared-domain/src --max-warnings=0",
     "test": "npm run build && npm run test:unit && npm run test:layout",
-    "test:unit": "jest --config jest.config.cjs",
-    "test:layout": "jest --config jest.config.layout.cjs",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:layout": "vitest run --config vitest.config.layout.ts",
     "test:e2e": "playwright test --config playwright.config.ts"
   }
 }

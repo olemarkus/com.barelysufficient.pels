@@ -19,18 +19,18 @@ const buildDeviceManager = (params: {
     observedSources = null,
   } = params;
   return {
-    getDevicesForDebug: jest.fn().mockResolvedValue(devices),
-    getSnapshot: jest.fn().mockReturnValue(snapshot),
-    getDebugObservedSources: jest.fn().mockReturnValue(observedSources),
+    getDevicesForDebug: vi.fn().mockResolvedValue(devices),
+    getSnapshot: vi.fn().mockReturnValue(snapshot),
+    getDebugObservedSources: vi.fn().mockReturnValue(observedSources),
   } as unknown as DeviceManager;
 };
 
-const findLogPayload = (logger: jest.Mock, message: string): unknown => {
+const findLogPayload = (logger: vi.Mock, message: string): unknown => {
   const call = logger.mock.calls.find(([entry]) => entry === message);
   return call ? call[1] : undefined;
 };
 
-const parseDumpPayload = (logger: jest.Mock): Record<string, any> => {
+const parseDumpPayload = (logger: vi.Mock): Record<string, any> => {
   const dumpPayload = findLogPayload(logger, 'Homey device dump') as { payload?: string } | undefined;
   expect(dumpPayload?.payload).toBeDefined();
   return JSON.parse(dumpPayload?.payload ?? '{}');
@@ -44,10 +44,10 @@ describe('appDebugHelpers', () => {
   it('routes debug device fetch failures to app error', async () => {
     const app = {
       deviceManager: {
-        getDevicesForDebug: jest.fn().mockRejectedValue({ reason: 'boom' }),
+        getDevicesForDebug: vi.fn().mockRejectedValue({ reason: 'boom' }),
       },
-      error: jest.fn(),
-      log: jest.fn(),
+      error: vi.fn(),
+      log: vi.fn(),
     };
 
     await expect(getHomeyDevicesForDebugFromApp(app as never)).resolves.toEqual([]);
@@ -68,10 +68,10 @@ describe('appDebugHelpers', () => {
     const deviceManager = buildDeviceManager({
       devices: [device],
     });
-    const log = jest.fn();
-    const error = jest.fn();
+    const log = vi.fn();
+    const error = vi.fn();
     setRestClient({
-      get: jest.fn().mockResolvedValue({
+      get: vi.fn().mockResolvedValue({
         'dev-1': {
           id: 'dev-1',
           name: 'Kitchen Socket',
@@ -85,7 +85,7 @@ describe('appDebugHelpers', () => {
           lastSeenAt: new Date('2026-03-12T10:02:30.000Z'),
         },
       }),
-      put: jest.fn(),
+      put: vi.fn(),
     });
 
     const ok = await logHomeyDeviceForDebug({
@@ -146,8 +146,8 @@ describe('appDebugHelpers', () => {
     const deviceManager = buildDeviceManager({
       devices: [device],
     });
-    const log = jest.fn();
-    const error = jest.fn();
+    const log = vi.fn();
+    const error = vi.fn();
 
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
@@ -187,8 +187,8 @@ describe('appDebugHelpers', () => {
     const deviceManager = buildDeviceManager({
       devices: [device],
     });
-    const log = jest.fn();
-    const error = jest.fn();
+    const log = vi.fn();
+    const error = vi.fn();
 
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
@@ -223,8 +223,8 @@ describe('appDebugHelpers', () => {
     const deviceManager = buildDeviceManager({
       devices: [device],
     });
-    const log = jest.fn();
-    const error = jest.fn();
+    const log = vi.fn();
+    const error = vi.fn();
 
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
@@ -335,7 +335,7 @@ describe('appDebugHelpers', () => {
     const app = {
       deviceManager,
       planService: {
-        getLatestPlanSnapshot: jest.fn().mockReturnValue({
+        getLatestPlanSnapshot: vi.fn().mockReturnValue({
           meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
           devices: [
             {
@@ -350,8 +350,8 @@ describe('appDebugHelpers', () => {
           ],
         }),
       },
-      error: jest.fn(),
-      log: jest.fn(),
+      error: vi.fn(),
+      log: vi.fn(),
     };
 
     const ok = await logHomeyDeviceForDebugFromApp({
@@ -362,7 +362,7 @@ describe('appDebugHelpers', () => {
     expect(ok).toBe(true);
     expect(app.error).not.toHaveBeenCalled();
 
-    const dumpPayload = parseDumpPayload(app.log as jest.Mock);
+    const dumpPayload = parseDumpPayload(app.log as vi.Mock);
     expect(dumpPayload.pels).toEqual(expect.objectContaining({
       present: true,
       targetSnapshot: expect.objectContaining({
@@ -486,11 +486,11 @@ describe('appDebugHelpers', () => {
           }],
         }),
       },
-      log: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      error: vi.fn(),
     };
     setRestClient({
-      get: jest.fn().mockResolvedValue({
+      get: vi.fn().mockResolvedValue({
         'dev-1': {
           id: 'dev-1',
           name: 'Kitchen Socket',
@@ -502,7 +502,7 @@ describe('appDebugHelpers', () => {
           lastSeenAt: new Date('2026-03-12T10:02:30.000Z'),
         },
       }),
-      put: jest.fn(),
+      put: vi.fn(),
     });
 
     const ok = await logHomeyDeviceComparisonForDebugFromApp({
@@ -515,7 +515,7 @@ describe('appDebugHelpers', () => {
     });
 
     expect(ok).toBe(true);
-    const comparisonPayload = findLogPayload(app.log as jest.Mock, 'Homey/Pels device state comparison') as { payload?: string } | undefined;
+    const comparisonPayload = findLogPayload(app.log as vi.Mock, 'Homey/Pels device state comparison') as { payload?: string } | undefined;
     expect(comparisonPayload?.payload).toBeDefined();
     expect(JSON.parse(comparisonPayload?.payload ?? '{}')).toEqual({
       reason: 'target_retry:plan:target_temperature',

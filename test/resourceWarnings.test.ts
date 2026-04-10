@@ -1,9 +1,9 @@
 import { mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import { cleanupApps, createApp } from './utils/appTestUtils';
 
-const resolveSmapsSummaryMock = jest.fn();
+const resolveSmapsSummaryMock = vi.fn();
 
-jest.mock('../lib/app/smapsRollup', () => ({
+vi.mock('../lib/app/smapsRollup', () => ({
   resolveSmapsSummary: () => resolveSmapsSummaryMock(),
 }));
 
@@ -18,7 +18,7 @@ describe('Homey resource warning perf logging', () => {
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     setMockDrivers({});
-    jest.clearAllTimers();
+    vi.clearAllTimers();
     resolveSmapsSummaryMock.mockReset();
     resolveSmapsSummaryMock.mockReturnValue({
       rssMb: 256,
@@ -31,13 +31,13 @@ describe('Homey resource warning perf logging', () => {
   afterEach(async () => {
     mockHomeyInstance.removeAllListeners();
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('skips first cpuwarn count/limit after startup', async () => {
     const app = createApp();
-    const logSpy = jest.spyOn(app, 'log');
-    const errorSpy = jest.spyOn(app, 'error').mockImplementation(() => undefined);
+    const logSpy = vi.spyOn(app, 'log');
+    const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
     try {
       await app.onInit();
       await (app as any).planService.rebuildPlanFromCache('test_warning_measurement');
@@ -56,8 +56,8 @@ describe('Homey resource warning perf logging', () => {
 
   it('logs cpuwarn count/limit and perf context from the second warning onward', async () => {
     const app = createApp();
-    const logSpy = jest.spyOn(app, 'log');
-    const errorSpy = jest.spyOn(app, 'error').mockImplementation(() => undefined);
+    const logSpy = vi.spyOn(app, 'log');
+    const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
     try {
       await app.onInit();
       await (app as any).planService.rebuildPlanFromCache('test_warning_measurement');
@@ -131,8 +131,8 @@ describe('Homey resource warning perf logging', () => {
 
   it('removes warning listeners on uninit', async () => {
     const app = createApp();
-    const logSpy = jest.spyOn(app, 'log');
-    const errorSpy = jest.spyOn(app, 'error').mockImplementation(() => undefined);
+    const logSpy = vi.spyOn(app, 'log');
+    const errorSpy = vi.spyOn(app, 'error').mockImplementation(() => undefined);
 
     try {
       await app.onInit();

@@ -1,11 +1,11 @@
-import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes';
+import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
-} from '../utils/dateUtils';
-import { clamp } from '../utils/math';
+} from '../utils/dateUtils.ts';
+import { clamp } from '../utils/math.ts';
 
 export type DayContext = {
   nowMs: number;

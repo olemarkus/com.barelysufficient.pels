@@ -25,34 +25,34 @@ import {
   priceHomeyCurrency,
   priceHomeyToday,
   priceHomeyTomorrow,
-} from './dom';
+} from './dom.ts';
 import {
   SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
   type SettingsUiPricesPayload,
-} from '../../../contracts/src/settingsUiApi';
-import { callApi, getApiReadModel, getHomeyTimezone, getSetting, primeApiCache, setSetting } from './homey';
-import { pushSettingWriteIfChanged } from './settingWrites';
-import { showToast } from './toast';
-import { gridCompanies } from './gridCompanies';
-import { renderPrices } from './priceRender';
-import type { CombinedPriceData, PriceEntry } from './priceTypes';
-import { logSettingsError } from './logging';
-import { getVatMultiplier } from '../../../shared-domain/src/price/priceComponents';
+} from '../../../contracts/src/settingsUiApi.ts';
+import { callApi, getApiReadModel, getHomeyTimezone, getSetting, primeApiCache, setSetting } from './homey.ts';
+import { pushSettingWriteIfChanged } from './settingWrites.ts';
+import { showToast } from './toast.ts';
+import { gridCompanies } from './gridCompanies.ts';
+import { renderPrices } from './priceRender.ts';
+import type { CombinedPriceData, PriceEntry } from './priceTypes.ts';
+import { logSettingsError } from './logging.ts';
+import { getVatMultiplier } from '../../../shared-domain/src/price/priceComponents.ts';
 import {
   NORWAY_PRICE_MODEL,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
-} from '../../../contracts/src/settingsKeys';
+} from '../../../contracts/src/settingsKeys.ts';
 import {
   buildFlowDaySlots,
   getExpectedFlowHours,
   getFlowPricePayload,
   getMissingFlowHours,
-} from '../../../shared-domain/src/price/flowPriceUtils';
-import { getTimeAgo } from './utils';
-import { applyPriceOverrides, type PriceOverrideOptions } from './priceOverrides';
-import { getDateKeyInTimeZone, shiftDateKey } from './timezone';
+} from '../../../shared-domain/src/price/flowPriceUtils.ts';
+import { getTimeAgo } from './utils.ts';
+import { applyPriceOverrides, type PriceOverrideOptions } from './priceOverrides.ts';
+import { getDateKeyInTimeZone, shiftDateKey } from './timezone.ts';
 
 import {
   normalizeNorwayPriceModel,
@@ -63,7 +63,7 @@ import {
   resolveChangedPriceSettingWrites,
   type NorwayPriceModel,
   type PriceScheme,
-} from './priceSettingsPersistence';
+} from './priceSettingsPersistence.ts';
 
 type GridTariffEntry = {
   time: number;

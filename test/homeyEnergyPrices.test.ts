@@ -62,12 +62,12 @@ describe('Homey energy price fetch', () => {
   it('calls Homey energy API with date key and resolves currency', async () => {
     const intervals = buildIntervals(localMidnightUtcMs, [2, 4], 60);
     const api: HomeyEnergyApi = {
-      fetchDynamicElectricityPrices: jest.fn().mockResolvedValue({
+      fetchDynamicElectricityPrices: vi.fn().mockResolvedValue({
         priceInterval: '60',
         pricesPerInterval: intervals,
         priceUnit: 'NOK',
       }),
-      getCurrency: jest.fn().mockResolvedValue({ currency: 'NOK' }),
+      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
     };
 
     const result = await fetchHomeyEnergyPricesForDate({ api, date, timeZone });

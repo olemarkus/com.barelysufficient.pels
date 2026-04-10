@@ -1,4 +1,4 @@
-import { setSetting } from './homey';
+import { setSetting } from './homey.ts';
 
 export const pushSettingWriteIfChanged = (
   writes: Array<Promise<void>>,

@@ -1,6 +1,6 @@
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry';
-import { resolveLabelEvery } from './dayViewChart';
-import { formatDateInTimeZone } from './timezone';
+import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import { resolveLabelEvery } from './dayViewChart.ts';
+import { formatDateInTimeZone } from './timezone.ts';
 
 type AxisFormatterParam = {
   dataIndex?: number;

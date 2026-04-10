@@ -27,22 +27,22 @@ const setupDom = () => {
 
 describe('price rendering', () => {
   beforeEach(() => {
-    jest.resetModules();
+    vi.resetModules();
     setupDom();
   });
 
-  afterEach(() => {
-    const { setHomeyClient } = require('../src/ui/homey') as typeof import('../src/ui/homey');
+  afterEach(async () => {
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
     setHomeyClient(null);
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
-  test('shows all hours for today, including past hours', () => {
-    jest.useFakeTimers().setSystemTime(new Date('2025-01-02T12:30:00Z'));
+  test('shows all hours for today, including past hours', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2025-01-02T12:30:00Z'));
 
-    const { setHomeyClient } = require('../src/ui/homey') as typeof import('../src/ui/homey');
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
     setHomeyClient({ clock: { getTimezone: () => 'UTC' } } as any);
-    const { renderPrices } = require('../src/ui/priceRender') as typeof import('../src/ui/priceRender');
+    const { renderPrices } = await import('../src/ui/priceRender.ts');
 
     const prices = buildDayPrices(2025, 0, 2);
     renderPrices(buildCombined(prices));
@@ -59,12 +59,12 @@ describe('price rendering', () => {
     expect(nowBadge?.textContent).toBe('Now');
   });
 
-  test('shows norgespris adjustment in tooltip when present', () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-01-15T10:15:00Z'));
+  test('shows norgespris adjustment in tooltip when present', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-01-15T10:15:00Z'));
 
-    const { setHomeyClient } = require('../src/ui/homey') as typeof import('../src/ui/homey');
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
     setHomeyClient({ clock: { getTimezone: () => 'UTC' } } as any);
-    const { renderPrices } = require('../src/ui/priceRender') as typeof import('../src/ui/priceRender');
+    const { renderPrices } = await import('../src/ui/priceRender.ts');
 
     const currentHourStart = new Date('2026-01-15T10:00:00.000Z').toISOString();
     const entry = {
@@ -97,12 +97,12 @@ describe('price rendering', () => {
     expect(chip?.dataset.tooltip).not.toContain('Electricity subsidy:');
   });
 
-  test('shows electricity support in tooltip when norgespris adjustment is absent', () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-01-15T10:15:00Z'));
+  test('shows electricity support in tooltip when norgespris adjustment is absent', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-01-15T10:15:00Z'));
 
-    const { setHomeyClient } = require('../src/ui/homey') as typeof import('../src/ui/homey');
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
     setHomeyClient({ clock: { getTimezone: () => 'UTC' } } as any);
-    const { renderPrices } = require('../src/ui/priceRender') as typeof import('../src/ui/priceRender');
+    const { renderPrices } = await import('../src/ui/priceRender.ts');
 
     const currentHourStart = new Date('2026-01-15T10:00:00.000Z').toISOString();
     const entry = {

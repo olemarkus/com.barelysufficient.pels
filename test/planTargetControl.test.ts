@@ -44,8 +44,8 @@ describe('syncPendingTargetCommands', () => {
       nextRetryAtMs: Date.now() + 30_000,
       status: 'waiting_confirmation',
     };
-    const log = jest.fn();
-    const logDebug = jest.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
@@ -75,8 +75,8 @@ describe('syncPendingTargetCommands', () => {
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 1_000,
     };
-    const log = jest.fn();
-    const logDebug = jest.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
@@ -106,8 +106,8 @@ describe('syncPendingTargetCommands', () => {
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 1_000,
     };
-    const log = jest.fn();
-    const logDebug = jest.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
@@ -122,10 +122,10 @@ describe('syncPendingTargetCommands', () => {
   });
 
   it('repeats the user-visible waiting log after the repeat interval even when the observation is unchanged', () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
-      jest.setSystemTime(nowMs);
+      vi.setSystemTime(nowMs);
       const state = createPlanEngineState();
       state.pendingTargetCommands['dev-1'] = {
         capabilityId: 'target_temperature',
@@ -140,8 +140,8 @@ describe('syncPendingTargetCommands', () => {
         lastObservedAtMs: nowMs - 70_000,
         lastWaitingLogAtMs: nowMs - TARGET_WAITING_LOG_REPEAT_MS - 1,
       };
-      const log = jest.fn();
-      const logDebug = jest.fn();
+      const log = vi.fn();
+      const logDebug = vi.fn();
 
       const changed = syncPendingTargetCommands({
         state,
@@ -156,7 +156,7 @@ describe('syncPendingTargetCommands', () => {
         'Target still waiting for target_temperature confirmation for Heater: observed 27°C via snapshot_refresh; expected 23°C',
       );
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 
@@ -180,8 +180,8 @@ describe('syncPendingTargetCommands', () => {
       nextRetryAtMs: Date.now() + 30_000,
       status: 'waiting_confirmation',
     };
-    const log = jest.fn();
-    const logDebug = jest.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
@@ -217,8 +217,8 @@ describe('syncPendingTargetCommands', () => {
       nextRetryAtMs: Date.now() + 30_000,
       status: 'waiting_confirmation',
     };
-    const log = jest.fn();
-    const logDebug = jest.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
@@ -247,8 +247,8 @@ describe('syncPendingTargetCommands', () => {
       nextRetryAtMs: Date.now() + 30_000,
       status: 'waiting_confirmation',
     };
-    const log = jest.fn();
-    const logDebug = jest.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
@@ -280,8 +280,8 @@ describe('syncPendingTargetCommands', () => {
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 1_000,
     };
-    const log = jest.fn();
-    const logDebug = jest.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
@@ -314,7 +314,7 @@ describe('prunePendingTargetCommandsForPlan', () => {
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 1_000,
     };
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
 
     const changed = prunePendingTargetCommandsForPlan({
       state,

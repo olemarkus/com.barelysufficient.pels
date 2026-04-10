@@ -5,7 +5,7 @@ import {
 
 describe('priceServiceFlowHelpers DST date keys', () => {
   it('keeps tomorrow payload on the spring-forward eve boundary', () => {
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const result = buildCombinedHourlyPricesFromPayloads({
       now: new Date('2024-03-30T22:30:00.000Z'),
       timeZone: 'Europe/Oslo',
@@ -32,17 +32,17 @@ describe('priceServiceFlowHelpers DST date keys', () => {
   });
 
   it('stores tomorrow under the next local date on spring-forward eve', () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
-      jest.setSystemTime(new Date('2024-03-30T22:30:00.000Z'));
-      const setSetting = jest.fn();
-      const updateCombinedPrices = jest.fn();
+      vi.setSystemTime(new Date('2024-03-30T22:30:00.000Z'));
+      const setSetting = vi.fn();
+      const updateCombinedPrices = vi.fn();
 
       const result = storeFlowPriceData({
         kind: 'tomorrow',
         raw: [1, 2, 4],
         timeZone: 'Europe/Oslo',
-        logDebug: jest.fn(),
+        logDebug: vi.fn(),
         setSetting,
         updateCombinedPrices,
       });
@@ -54,7 +54,7 @@ describe('priceServiceFlowHelpers DST date keys', () => {
       );
       expect(updateCombinedPrices).toHaveBeenCalled();
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 });

@@ -60,16 +60,16 @@ describe('flowPriceUtils', () => {
   });
 
   it('builds payload defaults and missing hours', () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
-      jest.setSystemTime(new Date('2025-01-02T03:04:05.000Z'));
+      vi.setSystemTime(new Date('2025-01-02T03:04:05.000Z'));
       const payload = getFlowPricePayload({ dateKey: '2025-01-02', pricesByHour: { '0': 1 } });
 
       expect(payload?.updatedAt).toBe(new Date('2025-01-02T03:04:05.000Z').toISOString());
       expect(getMissingFlowHours(payload?.pricesByHour ?? {})).toContain(1);
       expect(getMissingFlowHours(payload?.pricesByHour ?? {})).not.toContain(0);
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 

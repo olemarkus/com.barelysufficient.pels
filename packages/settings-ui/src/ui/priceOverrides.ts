@@ -1,6 +1,6 @@
-import { calculateAveragePrice } from '../../../shared-domain/src/price/priceMath';
-import type { CombinedPriceData } from './priceTypes';
-import { calculateThresholds } from './priceThresholds';
+import { calculateAveragePrice } from '../../../shared-domain/src/price/priceMath.ts';
+import type { CombinedPriceData } from './priceTypes.ts';
+import { calculateThresholds } from './priceThresholds.ts';
 
 export type PriceOverrideOptions = {
   thresholdPercent?: number;

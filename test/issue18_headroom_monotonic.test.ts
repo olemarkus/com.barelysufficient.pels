@@ -1,3 +1,4 @@
+import type { MockInstance } from 'vitest';
 
 import { DeviceManager } from '../lib/core/deviceManager';
 import { mockHomeyInstance } from './mocks/homey';
@@ -6,21 +7,21 @@ import Homey from 'homey';
 describe('Issue #18 Reproduction: Expected Power Overlap', () => {
     let deviceManager: DeviceManager;
     let homeyMock: Homey.App;
-    let loggerMock: { log: jest.Mock; debug: jest.Mock; error: jest.Mock };
+    let loggerMock: { log: vi.Mock; debug: vi.Mock; error: vi.Mock };
     // Shared state objects
     let expectedPowerKwOverrides: Record<string, { kw: number; ts: number }>;
     let lastKnownPowerKw: Record<string, number>;
     let lastMeasuredPowerKw: Record<string, { kw: number; ts: number }>;
-    let apiGetSpy: jest.SpyInstance;
+    let apiGetSpy: MockInstance;
 
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         homeyMock = mockHomeyInstance as unknown as Homey.App;
 
         loggerMock = {
-            log: jest.fn(),
-            debug: jest.fn(),
-            error: jest.fn(),
+            log: vi.fn(),
+            debug: vi.fn(),
+            error: vi.fn(),
         };
 
         // Initialize state objects
@@ -34,7 +35,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             lastMeasuredPowerKw,
         });
 
-        apiGetSpy = jest.spyOn(mockHomeyInstance.api, 'get');
+        apiGetSpy = vi.spyOn(mockHomeyInstance.api, 'get');
     });
 
     afterEach(() => {

@@ -31,16 +31,16 @@ import {
 import { fetchDevicesByIds } from '../lib/core/deviceManagerFetch';
 
 const createLogger = () => ({
-  log: jest.fn(),
-  debug: jest.fn(),
-  error: jest.fn(),
+  log: vi.fn(),
+  debug: vi.fn(),
+  error: vi.fn(),
 }) as unknown as Logger & {
-  log: jest.Mock;
-  debug: jest.Mock;
-  error: jest.Mock;
+  log: vi.Mock;
+  debug: vi.Mock;
+  error: vi.Mock;
 };
 
-const mockRestClient = { get: jest.fn(), put: jest.fn() };
+const mockRestClient = { get: vi.fn(), put: vi.fn() };
 
 describe('device manager support helpers', () => {
   beforeEach(() => {
@@ -50,7 +50,7 @@ describe('device manager support helpers', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
     resetRestClient();
   });
 
@@ -125,7 +125,7 @@ describe('device manager support helpers', () => {
   });
 
   it('resolves device parse capabilities and power capability lookup', () => {
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     expect(resolveDeviceCapabilities({
       deviceClassKey: 'evcharger',
       deviceId: 'ev1',
@@ -187,8 +187,8 @@ describe('device manager support helpers', () => {
     expect(state.lastMeasuredPowerKw.dev1).toEqual({ kw: 1.4, ts: 2 });
     expect(state.lastKnownPowerKw.dev1).toBe(1.4);
 
-    const mockGet = jest.fn().mockResolvedValue([{ id: 'direct' }]);
-    setRestClient({ get: mockGet, put: jest.fn() });
+    const mockGet = vi.fn().mockResolvedValue([{ id: 'direct' }]);
+    setRestClient({ get: mockGet, put: vi.fn() });
     await expect(getRawDevices('devices')).resolves.toEqual([{ id: 'direct' }]);
 
     mockGet.mockResolvedValue({ wrapped: { id: 'wrapped' } });
@@ -197,7 +197,7 @@ describe('device manager support helpers', () => {
     resetRestClient();
     await expect(getRawDevices('devices')).rejects.toThrow('REST client not initialized');
 
-    const stderrWrite = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     writeErrorToStderr('device manager failed', new Error('boom'));
     expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('device manager failed'));
 
@@ -214,15 +214,15 @@ describe('device manager support helpers', () => {
   it('hasRestClient reflects current state', () => {
     resetRestClient();
     expect(hasRestClient()).toBe(false);
-    setRestClient({ get: jest.fn(), put: jest.fn() });
+    setRestClient({ get: vi.fn(), put: vi.fn() });
     expect(hasRestClient()).toBe(true);
     resetRestClient();
     expect(hasRestClient()).toBe(false);
   });
 
   it('setRawCapabilityValue calls PUT with correct path and payload', async () => {
-    const mockPut = jest.fn().mockResolvedValue(undefined);
-    setRestClient({ get: jest.fn(), put: mockPut });
+    const mockPut = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get: vi.fn(), put: mockPut });
 
     await setRawCapabilityValue('dev-1', 'target_temperature', 22);
 
@@ -233,9 +233,9 @@ describe('device manager support helpers', () => {
   });
 
   it('setRawCapabilityValue throws and logs on PUT failure', async () => {
-    const mockPut = jest.fn().mockRejectedValue(new Error('network error'));
-    setRestClient({ get: jest.fn(), put: mockPut });
-    const stderrWrite = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const mockPut = vi.fn().mockRejectedValue(new Error('network error'));
+    setRestClient({ get: vi.fn(), put: mockPut });
+    const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     await expect(setRawCapabilityValue('dev-1', 'onoff', true)).rejects.toThrow('network error');
     expect(stderrWrite).toHaveBeenCalledWith(
@@ -251,8 +251,8 @@ describe('device manager support helpers', () => {
 
   it('getRawDevice returns a single device by ID', async () => {
     const device = { id: 'dev-1', name: 'Heater' };
-    const mockGet = jest.fn().mockResolvedValue(device);
-    setRestClient({ get: mockGet, put: jest.fn() });
+    const mockGet = vi.fn().mockResolvedValue(device);
+    setRestClient({ get: mockGet, put: vi.fn() });
 
     const result = await getRawDevice('dev-1');
     expect(result).toEqual(device);
@@ -260,8 +260,8 @@ describe('device manager support helpers', () => {
   });
 
   it('getRawDevice throws on invalid response', async () => {
-    const mockGet = jest.fn().mockResolvedValue(undefined);
-    setRestClient({ get: mockGet, put: jest.fn() });
+    const mockGet = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get: mockGet, put: vi.fn() });
 
     await expect(getRawDevice('dev-1')).rejects.toThrow('Invalid response for device dev-1');
   });
@@ -277,10 +277,10 @@ describe('device manager support helpers', () => {
       { id: 'a', name: 'A' },
       { id: 'b', name: 'B' },
     ];
-    const mockGet = jest.fn()
+    const mockGet = vi.fn()
       .mockResolvedValueOnce(devices[0])
       .mockResolvedValueOnce(devices[1]);
-    setRestClient({ get: mockGet, put: jest.fn() });
+    setRestClient({ get: mockGet, put: vi.fn() });
     const logger = createLogger();
 
     const result = await fetchDevicesByIds({
@@ -308,14 +308,14 @@ describe('device manager support helpers', () => {
       { id: 'b', name: 'B' },
       { id: 'c', name: 'C' },
     ];
-    const mockGet = jest.fn()
+    const mockGet = vi.fn()
       .mockResolvedValueOnce(allDevices[0])
       .mockRejectedValueOnce(new Error('not found'))
       // Full fetch fallback returns all devices as object
       .mockResolvedValueOnce(
         Object.fromEntries(allDevices.map((d) => [d.id, d])),
       );
-    setRestClient({ get: mockGet, put: jest.fn() });
+    setRestClient({ get: mockGet, put: vi.fn() });
     const logger = createLogger();
 
     const result = await fetchDevicesByIds({

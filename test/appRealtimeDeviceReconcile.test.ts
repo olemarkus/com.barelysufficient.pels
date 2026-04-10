@@ -7,11 +7,11 @@ import { shouldQueueRealtimeDeviceReconcile } from '../lib/app/appRealtimeDevice
 import type { Logger } from '../lib/logging/logger';
 
 describe('appRealtimeDeviceReconcile', () => {
-  const createDebugLoggerMock = (): Pick<Logger, 'debug'> => ({ debug: jest.fn() as Logger['debug'] });
-  const createWarnLoggerMock = (): Pick<Logger, 'warn'> => ({ warn: jest.fn() as Logger['warn'] });
+  const createDebugLoggerMock = (): Pick<Logger, 'debug'> => ({ debug: vi.fn() as Logger['debug'] });
+  const createWarnLoggerMock = (): Pick<Logger, 'warn'> => ({ warn: vi.fn() as Logger['warn'] });
 
   it('logs drift details when queueing realtime reconcile', () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const structuredLog = createDebugLoggerMock();
 
     const timer = scheduleRealtimeDeviceReconcile({
@@ -24,9 +24,9 @@ describe('appRealtimeDeviceReconcile', () => {
         changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
       },
       structuredLog,
-      onTimerFired: jest.fn(),
-      onFlush: jest.fn().mockResolvedValue(undefined),
-      onError: jest.fn(),
+      onTimerFired: vi.fn(),
+      onFlush: vi.fn().mockResolvedValue(undefined),
+      onError: vi.fn(),
     });
 
     expect(timer).toBeDefined();
@@ -40,7 +40,7 @@ describe('appRealtimeDeviceReconcile', () => {
     });
 
     if (timer) clearTimeout(timer);
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('skips reconcile when the live device state already matches the current plan', () => {
@@ -251,7 +251,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
     await flushRealtimeDeviceReconcileQueue({
       state,
-      reconcile: jest.fn().mockResolvedValue(true),
+      reconcile: vi.fn().mockResolvedValue(true),
       shouldRecordAttempt: (event) => event.deviceId === 'dev-2',
       structuredLog,
     });
@@ -278,7 +278,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
     await flushRealtimeDeviceReconcileQueue({
       state,
-      reconcile: jest.fn().mockResolvedValue(true),
+      reconcile: vi.fn().mockResolvedValue(true),
       shouldRecordAttempt: () => false,
       structuredLog,
     });
@@ -295,7 +295,7 @@ describe('appRealtimeDeviceReconcile', () => {
       state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
       await flushRealtimeDeviceReconcileQueue({
         state,
-        reconcile: jest.fn().mockResolvedValue(true),
+        reconcile: vi.fn().mockResolvedValue(true),
         shouldRecordAttempt: () => true,
         structuredLog,
       });
@@ -326,7 +326,7 @@ describe('appRealtimeDeviceReconcile', () => {
       });
       await flushRealtimeDeviceReconcileQueue({
         state,
-        reconcile: jest.fn().mockResolvedValue(true),
+        reconcile: vi.fn().mockResolvedValue(true),
         shouldRecordAttempt: () => true,
         structuredLog,
       });

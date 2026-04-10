@@ -1,11 +1,11 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types';
-import { createDeviceRow, createNumberInput } from './components';
-import { priceOptimizationEmpty, priceOptimizationList, priceOptimizationSection } from './dom';
-import { getSetting, setSetting } from './homey';
-import { logSettingsError } from './logging';
-import { resolveManagedState, defaultPriceOptimizationConfig, state } from './state';
-import { showToastError } from './toast';
-import { supportsTemperatureDevice } from './deviceUtils';
+import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import { createDeviceRow, createNumberInput } from './components.ts';
+import { priceOptimizationEmpty, priceOptimizationList, priceOptimizationSection } from './dom.ts';
+import { getSetting, setSetting } from './homey.ts';
+import { logSettingsError } from './logging.ts';
+import { resolveManagedState, defaultPriceOptimizationConfig, state } from './state.ts';
+import { showToastError } from './toast.ts';
+import { supportsTemperatureDevice } from './deviceUtils.ts';
 
 export const loadPriceOptimizationSettings = async () => {
   const settings = await getSetting('price_optimization_settings');

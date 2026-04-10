@@ -37,7 +37,7 @@ describe('Shed vs Restore Logic', () => {
     beforeEach(() => {
         mockHomeyInstance.settings.removeAllListeners();
         mockHomeyInstance.settings.clear();
-        jest.clearAllTimers();
+        vi.clearAllTimers();
     });
 
     afterEach(async () => {
@@ -79,8 +79,8 @@ describe('Shed vs Restore Logic', () => {
             getShortfallThreshold: () => 10,
             getLastTotalPower: () => 12,
             isSheddingActive: () => false,
-            setSheddingActive: jest.fn(),
-            checkShortfall: jest.fn(),
+            setSheddingActive: vi.fn(),
+            checkShortfall: vi.fn(),
             isInShortfall: () => false,
             getRestoreMargin: () => 0.2,
         };
@@ -124,8 +124,8 @@ describe('Shed vs Restore Logic', () => {
             getShortfallThreshold: () => 10,
             getLastTotalPower: () => 10.4,
             isSheddingActive: () => false,
-            setSheddingActive: jest.fn(),
-            checkShortfall: jest.fn(),
+            setSheddingActive: vi.fn(),
+            checkShortfall: vi.fn(),
             isInShortfall: () => false,
             getRestoreMargin: () => 0.2,
         };
@@ -164,8 +164,8 @@ describe('Shed vs Restore Logic', () => {
             getShortfallThreshold: () => 10,
             getLastTotalPower: () => 8,
             isSheddingActive: () => false,
-            setSheddingActive: jest.fn(),
-            checkShortfall: jest.fn(),
+            setSheddingActive: vi.fn(),
+            checkShortfall: vi.fn(),
             isInShortfall: () => false,
             getRestoreMargin: () => 0.2,
         };

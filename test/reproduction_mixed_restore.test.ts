@@ -7,7 +7,7 @@ const originalDateNow = Date.now;
 let currentTime = 1000000000000;
 
 beforeAll(() => {
-    global.Date.now = jest.fn(() => currentTime);
+    global.Date.now = vi.fn(() => currentTime);
 });
 
 afterAll(() => {
@@ -19,7 +19,7 @@ describe('Mixed Type Restoration Throttling', () => {
 
     beforeEach(async () => {
         currentTime = 1000000000000;
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         mockHomeyInstance.settings.clear();
         mockHomeyInstance.settings.set('operating_mode', 'Home');
         mockHomeyInstance.settings.set('capacity_limit', 10);

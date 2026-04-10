@@ -11,12 +11,12 @@ describe('Expected power flow card', () => {
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     mockHomeyInstance.api.clearRealtimeEvents();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('omits devices with settings.load from autocomplete lists', async () => {

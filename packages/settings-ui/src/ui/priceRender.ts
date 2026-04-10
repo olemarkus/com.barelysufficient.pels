@@ -1,14 +1,14 @@
-import { priceList, priceEmpty, priceStatusBadge } from './dom';
-import { getTimeAgo } from './utils';
-import { getHomeyTimezone } from './homey';
-import type { CombinedPriceData, PriceEntry } from './priceTypes';
-import { createDeviceRow } from './components';
+import { priceList, priceEmpty, priceStatusBadge } from './dom.ts';
+import { getTimeAgo } from './utils.ts';
+import { getHomeyTimezone } from './homey.ts';
+import type { CombinedPriceData, PriceEntry } from './priceTypes.ts';
+import { createDeviceRow } from './components.ts';
 import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
   getDateKeyInTimeZone,
   getHourStartInTimeZone,
-} from './timezone';
+} from './timezone.ts';
 import {
   formatChipPrice,
   formatPriceWithUnit,
@@ -20,8 +20,8 @@ import {
   resolveThresholds,
   selectDayEntries,
   type PriceScheme,
-} from './priceRenderUtils';
-import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator';
+} from './priceRenderUtils.ts';
+import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator.ts';
 
 
 const setPriceStatusBadge = (text: string, statusClass?: 'ok' | 'warn') => {

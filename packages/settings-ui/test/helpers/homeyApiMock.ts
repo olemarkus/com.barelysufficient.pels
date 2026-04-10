@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
@@ -10,8 +11,8 @@ import {
   SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
   SETTINGS_UI_REFRESH_PRICES_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
-} from '../../../contracts/src/settingsUiApi';
-import type { HomeySettingsClient } from '../../src/ui/homey';
+} from '../../../contracts/src/settingsUiApi.ts';
+import type { HomeySettingsClient } from '../../src/ui/homey.ts';
 
 const appManifest = require('../../../../app.json');
 
@@ -90,14 +91,14 @@ export type MockHomeyClient = HomeySettingsClient & {
   __listeners: Record<string, Array<(...args: unknown[]) => void>>;
   __settingsStore: Record<string, unknown>;
   __uiState: MockHomeyUiState;
-  api: jest.Mock;
-  get: jest.Mock;
+  api: Mock;
+  get: Mock;
   i18n: {
     getTimezone: () => string;
   };
-  on: jest.Mock;
-  ready: jest.Mock;
-  set: jest.Mock;
+  on: Mock;
+  ready: Mock;
+  set: Mock;
 };
 
 const buildRouteKey = (method: string, uri: string) => `${method} ${uri}`;
@@ -216,13 +217,13 @@ export const getUnhandledDeclaredHomeyApiRoutes = (): string[] => (
 export const buildHomeyApiMock = (
   homey: MockHomeyClient,
   apiHandlers: Partial<Record<string, MockHomeyApiHandler>> = {},
-): jest.Mock => {
+): Mock => {
   const handlers = {
     ...buildDefaultApiHandlers(homey),
     ...apiHandlers,
   };
 
-  return jest.fn((method, uri, bodyOrCallback, cb) => {
+  return vi.fn((method, uri, bodyOrCallback, cb) => {
   const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
   const body = typeof bodyOrCallback === 'function' ? undefined : bodyOrCallback;
   if (!callback) return;
@@ -262,19 +263,19 @@ export const createHomeyMock = (options: CreateHomeyMockOptions = {}): MockHomey
     __listeners: listeners,
     __settingsStore: settingsStore,
     __uiState: uiState,
-    ready: jest.fn().mockResolvedValue(undefined),
-    get: jest.fn((key: string, cb: (err: Error | null, value?: unknown) => void) => {
+    ready: vi.fn().mockResolvedValue(undefined),
+    get: vi.fn((key: string, cb: (err: Error | null, value?: unknown) => void) => {
       if (Object.prototype.hasOwnProperty.call(settingsStore, key)) {
         cb(null, settingsStore[key]);
         return;
       }
       cb(null, null);
     }),
-    set: jest.fn((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+    set: vi.fn((key: string, value: unknown, cb?: (err: Error | null) => void) => {
       settingsStore[key] = value;
       cb?.(null);
     }),
-    on: jest.fn((event: string, cb: (...args: unknown[]) => void) => {
+    on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
       if (!listeners[event]) listeners[event] = [];
       listeners[event].push(cb);
     }),

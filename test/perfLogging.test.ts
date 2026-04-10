@@ -1,23 +1,23 @@
 import { incPerfCounter } from '../lib/utils/perfCounters';
 import { startPerfLogger } from '../lib/app/perfLogging';
 
-const resolveSmapsSummaryMock = jest.fn();
-const startCpuSpikeMonitorMock = jest.fn((params: unknown) => {
+const resolveSmapsSummaryMock = vi.fn();
+const startCpuSpikeMonitorMock = vi.fn((params: unknown) => {
   void params;
-  return jest.fn();
+  return vi.fn();
 });
 
-jest.mock('../lib/app/smapsRollup', () => ({
+vi.mock('../lib/app/smapsRollup', () => ({
   resolveSmapsSummary: () => resolveSmapsSummaryMock(),
 }));
 
-jest.mock('../lib/utils/cpuSpikeMonitor', () => ({
+vi.mock('../lib/utils/cpuSpikeMonitor', () => ({
   startCpuSpikeMonitor: (params: unknown) => startCpuSpikeMonitorMock(params),
 }));
 
 describe('startPerfLogger', () => {
   beforeEach(() => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-01-26T12:00:00Z'));
+    vi.useFakeTimers().setSystemTime(new Date('2026-01-26T12:00:00Z'));
     startCpuSpikeMonitorMock.mockClear();
     resolveSmapsSummaryMock.mockReset();
     resolveSmapsSummaryMock.mockReturnValue({
@@ -29,11 +29,11 @@ describe('startPerfLogger', () => {
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('logs counters and deltas when enabled', () => {
-    const log = jest.fn();
+    const log = vi.fn();
     incPerfCounter('plan_rebuild_total');
 
     const stop = startPerfLogger({
@@ -45,7 +45,7 @@ describe('startPerfLogger', () => {
     expect(log).toHaveBeenCalledTimes(1);
 
     incPerfCounter('plan_rebuild_total');
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
 
     expect(log).toHaveBeenCalledTimes(2);
     const message = log.mock.calls[1][0] as string;
@@ -69,7 +69,7 @@ describe('startPerfLogger', () => {
   });
 
   it('filters out low-value counters from delta', () => {
-    const log = jest.fn();
+    const log = vi.fn();
     incPerfCounter('plan_rebuild_total');
     incPerfCounter('perf.logging.ignored');
 
@@ -81,7 +81,7 @@ describe('startPerfLogger', () => {
 
     incPerfCounter('plan_rebuild_total');
     incPerfCounter('perf.logging.ignored');
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
 
     const message = log.mock.calls[1][0] as string;
     const jsonStart = message.indexOf('{');
@@ -93,7 +93,7 @@ describe('startPerfLogger', () => {
   });
 
   it('computes rebuildSkipRate against power samples', () => {
-    const log = jest.fn();
+    const log = vi.fn();
     const stop = startPerfLogger({
       isEnabled: () => true,
       log,
@@ -103,7 +103,7 @@ describe('startPerfLogger', () => {
     incPerfCounter('power_sample_total', 4);
     incPerfCounter('plan_rebuild_skipped_total', 2);
     incPerfCounter('plan_rebuild_total', 1);
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
 
     const message = log.mock.calls[1][0] as string;
     const jsonStart = message.indexOf('{');
@@ -114,23 +114,23 @@ describe('startPerfLogger', () => {
   });
 
   it('skips logging when disabled', () => {
-    const log = jest.fn();
+    const log = vi.fn();
     const stop = startPerfLogger({
       isEnabled: () => false,
       log,
       intervalMs: 1000,
     });
 
-    jest.advanceTimersByTime(3000);
+    vi.advanceTimersByTime(3000);
     expect(log).not.toHaveBeenCalled();
 
     stop();
   });
 
   it('starts and stops cpu spike monitor when configured', () => {
-    const log = jest.fn();
-    const logCpuSpike = jest.fn();
-    const stopCpuMonitor = jest.fn();
+    const log = vi.fn();
+    const logCpuSpike = vi.fn();
+    const stopCpuMonitor = vi.fn();
     startCpuSpikeMonitorMock.mockReturnValueOnce(stopCpuMonitor);
 
     const stop = startPerfLogger({
@@ -152,7 +152,7 @@ describe('startPerfLogger', () => {
   });
 
   it('does not start cpu spike monitor when not configured', () => {
-    const log = jest.fn();
+    const log = vi.fn();
 
     const stop = startPerfLogger({
       isEnabled: () => true,
@@ -166,9 +166,9 @@ describe('startPerfLogger', () => {
   });
 
   it('starts cpu spike monitor only after perf logging becomes enabled', () => {
-    const log = jest.fn();
-    const logCpuSpike = jest.fn();
-    const stopCpuMonitor = jest.fn();
+    const log = vi.fn();
+    const logCpuSpike = vi.fn();
+    const stopCpuMonitor = vi.fn();
     let enabled = false;
     startCpuSpikeMonitorMock.mockReturnValueOnce(stopCpuMonitor);
 
@@ -182,11 +182,11 @@ describe('startPerfLogger', () => {
     expect(startCpuSpikeMonitorMock).not.toHaveBeenCalled();
 
     enabled = true;
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     expect(startCpuSpikeMonitorMock).toHaveBeenCalledTimes(1);
 
     enabled = false;
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     expect(stopCpuMonitor).toHaveBeenCalledTimes(1);
 
     stop();
