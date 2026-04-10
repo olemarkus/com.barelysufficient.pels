@@ -46,6 +46,7 @@ const DAILY_HISTORY_DAYS = 14;
 type HourlyPatternView = 'all' | 'weekday' | 'weekend';
 type DailyHistoryRange = '7' | '14';
 const MIN_RELIABLE_SAMPLES_PER_HOUR = 2;
+const ZERO_KWH_EPSILON = 1e-9;
 
 type PowerStatsSummary = {
   today: number;
@@ -489,12 +490,13 @@ export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
       const date = new Date(iso);
       const start = date.getTime();
       const end = start + 3600000;
+      const kWh = Number(value) || 0;
       const sampleCount = tracker.hourlySampleCounts?.[iso];
       const hasRepeatedSamples = typeof sampleCount === 'number'
         && Number.isFinite(sampleCount)
-        && sampleCount >= MIN_RELIABLE_SAMPLES_PER_HOUR;
+        && sampleCount >= MIN_RELIABLE_SAMPLES_PER_HOUR
+        && Math.abs(kWh) <= ZERO_KWH_EPSILON;
       const isUnreliable = unreliablePeriods.some((p) => p.start < end && p.end > start) && !hasRepeatedSamples;
-      const kWh = Number(value) || 0;
       const split = resolveUsageSplit({
         totalKWh: kWh,
         rawControlled: tracker.controlledBuckets?.[iso],
