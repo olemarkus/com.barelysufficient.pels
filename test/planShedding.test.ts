@@ -2562,7 +2562,7 @@ describe('buildSheddingPlan', () => {
     state.lastShedPlanMeasurementTs = 500;
 
     const structuredLog = {
-      warn: vi.fn(),
+      info: vi.fn(),
     };
     const capacityGuard = {
       isSheddingActive: vi.fn().mockReturnValue(true),
@@ -2606,7 +2606,7 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.size).toBe(0);
     expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
-    expect(structuredLog.warn).toHaveBeenCalledWith({
+    expect(structuredLog.info).toHaveBeenCalledWith({
       event: 'capacity_overshoot_escalation_blocked',
       incidentId: 'inc-77',
       reasonCode: 'no_candidates',
@@ -2622,7 +2622,7 @@ describe('buildSheddingPlan', () => {
     state.lastShedPlanMeasurementTs = 500;
 
     const structuredLog = {
-      warn: vi.fn(),
+      info: vi.fn(),
     };
     const capacityGuard = {
       isSheddingActive: vi.fn().mockReturnValue(true),
@@ -2665,7 +2665,7 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.size).toBe(0);
     expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
-    expect(structuredLog.warn).not.toHaveBeenCalled();
+    expect(structuredLog.info).not.toHaveBeenCalled();
   });
 
   it('does not escalate same-sample daily-budget shedding after the overshoot interval', async () => {

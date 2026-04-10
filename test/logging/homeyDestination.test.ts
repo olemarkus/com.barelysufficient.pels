@@ -30,6 +30,31 @@ describe('homeyDestination', () => {
   it('routes error-level lines to error callback', async () => {
     const log = vi.fn();
     const error = vi.fn();
+  it('routes debug-level lines to log callback', async () => {
+    const log = vi.fn();
+    const error = vi.fn();
+    const dest = createHomeyDestination({ log, error });
+
+    const line = JSON.stringify({ level: 20, pid: 1, hostname: 'homey', msg: 'debug' }) + '\n';
+    await writeChunk(dest, line);
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'debug' }));
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('routes warn-level lines to log callback', async () => {
+    const log = vi.fn();
+    const error = vi.fn();
+    const dest = createHomeyDestination({ log, error });
+
+    const line = JSON.stringify({ level: 40, pid: 1, hostname: 'homey', msg: 'warn' }) + '\n';
+    await writeChunk(dest, line);
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'warn' }));
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('routes error-level lines to error callback', async () => {
+    const log = vi.fn();
+    const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
     const line = JSON.stringify({ level: 50, pid: 1, hostname: 'homey', msg: 'fail' }) + '\n';

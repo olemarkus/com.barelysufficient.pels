@@ -1065,8 +1065,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('blocks keep-invariant restore when shed devices exist and desiredStepId exceeds lowestNonZeroStep', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
-    const { executor, deviceManager } = buildExecutor(undefined, snapshot, { structuredLog });
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
 
     const plan: DevicePlan = {
       meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
@@ -1103,7 +1107,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
       deviceId: 'dev-1',
       desiredStepId: 'max',
@@ -1164,8 +1168,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('emits restore_keep_invariant_shed_blocked only once for repeated identical blocks', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const state = createPlanEngineState();
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
-    const { executor } = buildExecutor(state, snapshot, { structuredLog });
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor } = buildExecutor(state, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
 
     const plan: DevicePlan = {
       meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
@@ -1187,15 +1195,15 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     // First call: emits
     await executor.applyPlanActions(plan, 'reconcile');
-    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).toHaveBeenCalledTimes(1);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
 
     // Second call with identical params: suppressed
-    structuredLog.debug.mockClear();
+    debugStructured.mockClear();
     await executor.applyPlanActions(plan, 'reconcile');
-    expect(structuredLog.debug).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
   });
@@ -1213,8 +1221,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     };
     const snapshot = buildSnapshot({ currentOn: false });
     const state = createPlanEngineState();
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
-    const { executor } = buildExecutor(state, snapshot, { structuredLog });
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor } = buildExecutor(state, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
 
     const shedDevice = {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
@@ -1234,18 +1246,18 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('medium')] },
       'reconcile',
     );
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
       desiredStepId: 'medium',
     }));
 
     // Second call: desiredStepId changed to 'max' — still blocked but key differs → re-emits
-    structuredLog.debug.mockClear();
+    debugStructured.mockClear();
     await executor.applyPlanActions(
       { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('max')] },
       'reconcile',
     );
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
       desiredStepId: 'max',
     }));
@@ -1254,8 +1266,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('clears dedupe state and re-emits restore_keep_invariant_shed_blocked after admitted transition', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const state = createPlanEngineState();
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
-    const { executor, deviceManager } = buildExecutor(state, snapshot, { structuredLog });
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor, deviceManager } = buildExecutor(state, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
 
     const blockedPlan: DevicePlan = {
       meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
@@ -1290,20 +1306,20 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     // First call: blocked → emits
     await executor.applyPlanActions(blockedPlan, 'reconcile');
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
 
     // Second call: no shed devices → admitted (restore fires), dedupe state cleared
-    structuredLog.debug.mockClear();
+    debugStructured.mockClear();
     deviceManager.setCapability.mockClear();
     await executor.applyPlanActions(admittedPlan, 'reconcile');
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
 
     // Third call: blocked again → re-emits because dedupe state was cleared
-    structuredLog.debug.mockClear();
+    debugStructured.mockClear();
     await executor.applyPlanActions(blockedPlan, 'reconcile');
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
   });

@@ -2408,10 +2408,10 @@ describe('Device plan snapshot', () => {
 
     // Capture structured log events from the plan engine
     const structuredEvents: Record<string, unknown>[] = [];
+    (app as any).planEngine.builder.deps.debugStructured = (obj: Record<string, unknown>) => structuredEvents.push(obj);
     (app as any).planEngine.builder.deps.structuredLog = {
       info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
       warn: vi.fn(),
-      debug: (obj: Record<string, unknown>) => structuredEvents.push(obj),
       error: vi.fn(),
       child: () => (app as any).planEngine.builder.deps.structuredLog,
     };
@@ -2477,10 +2477,10 @@ describe('Device plan snapshot', () => {
 
     // Capture structured log events from the plan engine
     const structuredEvents: Record<string, unknown>[] = [];
+    (app as any).planEngine.builder.deps.debugStructured = (obj: Record<string, unknown>) => structuredEvents.push(obj);
     (app as any).planEngine.builder.deps.structuredLog = {
       info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
       warn: vi.fn(),
-      debug: (obj: Record<string, unknown>) => structuredEvents.push(obj),
       error: vi.fn(),
       child: () => (app as any).planEngine.builder.deps.structuredLog,
     };

@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- reason normalization and shed-temperature hold decisions share stateful helpers here */
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
 import { resolveRestorePowerSource } from './planRestoreSwap';
 import { getRestoreNeed } from './planRestore';
@@ -36,7 +36,7 @@ export type ShedHoldParams = {
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
-  structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
   getShedBehavior: (deviceId: string) => {
     action: 'turn_off' | 'set_temperature' | 'set_step';
     temperature: number | null;
@@ -63,7 +63,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
-    structuredLog,
+    debugStructured,
     getShedBehavior,
   } = params;
 
@@ -90,7 +90,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
       pendingRestoreDelaySec,
-      structuredLog,
+      debugStructured,
     });
     headroom = result.availableHeadroom;
     restoredOne = result.restoredOneThisCycle;
@@ -169,7 +169,7 @@ function resolveRestoreDecision(params: {
   restoredThisCycle: Set<string>;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
-  structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 }): HoldDecision {
   const {
     dev,
@@ -179,14 +179,14 @@ function resolveRestoreDecision(params: {
     restoredThisCycle,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
-    structuredLog,
+    debugStructured,
   } = params;
 
   const setbackRemainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId: dev.id });
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
   if (setbackRemainingMs !== null) {
     const reason = `activation backoff (${Math.max(1, Math.ceil(setbackRemainingMs / 1000))}s remaining)`;
-    structuredLog?.debug({
+    debugStructured?.({
       event: 'restore_rejected',
       restoreType: 'target',
       deviceId: dev.id,
@@ -207,7 +207,7 @@ function resolveRestoreDecision(params: {
     const requiredKwWithFloor = admission.requiredKw + RESTORE_ADMISSION_FLOOR_KW;
     const reason = `insufficient headroom (need ${requiredKwWithFloor.toFixed(2)}kW, `
       + `headroom ${availableHeadroom.toFixed(2)}kW)`;
-    structuredLog?.debug({
+    debugStructured?.({
       event: 'restore_rejected',
       restoreType: 'target',
       deviceId: dev.id,
@@ -242,7 +242,7 @@ function resolveRestoreDecision(params: {
     useThrottleLabel: true,
   });
   if (gateReason) {
-    structuredLog?.debug({
+    debugStructured?.({
       event: 'restore_rejected',
       restoreType: 'target',
       deviceId: dev.id,
@@ -263,7 +263,7 @@ function resolveRestoreDecision(params: {
   }
   restoredThisCycle.add(dev.id);
   const powerSource = resolveRestorePowerSource(dev);
-  structuredLog?.debug({
+  debugStructured?.({
     event: 'restore_admitted',
     restoreType: 'target',
     deviceId: dev.id,
@@ -301,7 +301,7 @@ function resolveHoldDecision(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelaySec: number | null;
-  structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 }): HoldDecision {
   const {
     dev,
@@ -316,7 +316,7 @@ function resolveHoldDecision(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
-    structuredLog,
+    debugStructured,
   } = params;
 
   if (dev.controllable === false) {
@@ -347,7 +347,7 @@ function resolveHoldDecision(params: {
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
       pendingRestoreDelaySec,
-      structuredLog,
+      debugStructured,
     });
   }
 
@@ -371,7 +371,7 @@ function resolvePostHoldRestoreDecision(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelaySec: number | null;
-  structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 }): HoldDecision {
   const {
     dev,
@@ -382,7 +382,7 @@ function resolvePostHoldRestoreDecision(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
-    structuredLog,
+    debugStructured,
   } = params;
   if (pendingRestoreDelaySec !== null) {
     return { type: 'hold', reason: `restore pending (${pendingRestoreDelaySec}s remaining)` };
@@ -395,7 +395,7 @@ function resolvePostHoldRestoreDecision(params: {
     restoredThisCycle,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
-    structuredLog,
+    debugStructured,
   });
 }
 
@@ -415,7 +415,7 @@ function applyHoldToDevice(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelaySec: number | null;
-  structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 }): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
     dev,
@@ -433,7 +433,7 @@ function applyHoldToDevice(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
-    structuredLog,
+    debugStructured,
   } = params;
 
   const decision = resolveHoldDecision({
@@ -452,7 +452,7 @@ function applyHoldToDevice(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
-    structuredLog,
+    debugStructured,
   });
 
   if (decision.type === 'restore') {

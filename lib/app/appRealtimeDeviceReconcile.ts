@@ -1,5 +1,5 @@
 import type { RealtimeDeviceReconcileChange } from '../core/deviceManagerRuntime';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 
 export const REALTIME_DEVICE_RECONCILE_DEBOUNCE_MS = 250;
 const REALTIME_DEVICE_RECONCILE_CONFLICT_WINDOW_MS = 30 * 1000;
@@ -41,7 +41,7 @@ export function scheduleRealtimeDeviceReconcile(params: {
   state: RealtimeDeviceReconcileState;
   hasPendingTimer: boolean;
   event: RealtimeDeviceReconcileEvent;
-  structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
   onTimerFired: () => void;
   onFlush: () => Promise<void>;
   onError: (error: unknown) => void;
@@ -50,12 +50,12 @@ export function scheduleRealtimeDeviceReconcile(params: {
     state,
     hasPendingTimer,
     event,
-    structuredLog,
+    debugStructured,
     onTimerFired,
     onFlush,
     onError,
   } = params;
-  structuredLog?.debug({
+  debugStructured?.({
     event: 'realtime_reconcile_queued',
     ...toRealtimeReconcileEventPayload(event),
   });
@@ -72,12 +72,14 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
   reconcile: () => Promise<boolean>;
   shouldRecordAttempt?: (event: RealtimeDeviceReconcileEvent) => boolean;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 }): Promise<void> {
   const {
     state,
     reconcile,
     shouldRecordAttempt,
     structuredLog,
+    debugStructured,
   } = params;
   const pendingEvents = Array.from(state.pendingEvents.values());
   state.pendingEvents.clear();
@@ -88,7 +90,7 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
     state,
     event,
     now,
-    structuredLog,
+    debugStructured,
   }));
   if (eligibleEvents.length === 0) return;
 
@@ -98,7 +100,7 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
     ? eligibleEvents.filter((event) => shouldRecordAttempt(event))
     : eligibleEvents;
   if (attemptedEvents.length === 0) return;
-  structuredLog?.warn({
+  structuredLog?.info({
     event: 'realtime_reconcile_applied',
     deviceCount: attemptedEvents.length,
     devices: attemptedEvents.map((event) => toRealtimeReconcileEventSummary(event)),
@@ -115,9 +117,9 @@ function isRealtimeDeviceReconcileSuppressed(params: {
   state: RealtimeDeviceReconcileState;
   event: RealtimeDeviceReconcileEvent;
   now: number;
-  structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 }): boolean {
-  const { state, event, now, structuredLog } = params;
+  const { state, event, now, debugStructured } = params;
   const currentState = state.circuitState.get(event.deviceId);
   if (!currentState?.suppressedUntil) return false;
   if (currentState.suppressedUntil <= now) {
@@ -125,7 +127,7 @@ function isRealtimeDeviceReconcileSuppressed(params: {
     return false;
   }
   const remainingSeconds = Math.max(1, Math.ceil((currentState.suppressedUntil - now) / 1000));
-  structuredLog?.debug({
+  debugStructured?.({
     event: 'realtime_reconcile_suppressed',
     remainingSeconds,
     ...toRealtimeReconcileEventPayload(event),
@@ -156,7 +158,7 @@ function recordRealtimeDeviceReconcileAttempts(params: {
       reconcileCount: 0,
       suppressedUntil,
     });
-    structuredLog?.warn({
+    structuredLog?.info({
       event: 'realtime_reconcile_circuit_opened',
       suppressMs: REALTIME_DEVICE_RECONCILE_SUPPRESS_MS,
       ...toRealtimeReconcileEventPayload(event),

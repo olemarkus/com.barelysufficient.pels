@@ -167,6 +167,53 @@ describe('MyApp initialization', () => {
     expect(snapshotWrites).toHaveLength(1);
   });
 
+  it('builds component child loggers without debugTopic bindings', () => {
+    const app = createApp();
+    const childLogger = { info: jest.fn() };
+    const child = jest.fn().mockReturnValue(childLogger);
+
+    (app as any).structuredLogger = { child };
+
+    const logger = (app as any).getStructuredLogger('reconcile');
+
+    expect(logger).toBe(childLogger);
+    expect(child).toHaveBeenCalledWith({ component: 'reconcile' });
+  });
+
+  it('emits structured debug payloads only when the topic is enabled', () => {
+    const app = createApp();
+    const childLogger = { debug: jest.fn() };
+    const child = jest.fn().mockReturnValue(childLogger);
+
+    (app as any).structuredLogger = { child };
+    (app as any).debugLoggingTopics = new Set(['diagnostics']);
+
+    const emitDebug = (app as any).getStructuredDebugEmitter('reconcile', 'diagnostics');
+    emitDebug({ event: 'realtime_reconcile_queued', deviceId: 'dev-1' });
+
+    expect(child).toHaveBeenCalledWith({ component: 'reconcile' }, { level: 'debug' });
+    expect(childLogger.debug).toHaveBeenCalledWith({
+      event: 'realtime_reconcile_queued',
+      deviceId: 'dev-1',
+      debugTopic: 'diagnostics',
+    });
+  });
+
+  it('suppresses structured debug payloads when the topic is disabled', () => {
+    const app = createApp();
+    const childLogger = { debug: jest.fn() };
+    const child = jest.fn().mockReturnValue(childLogger);
+
+    (app as any).structuredLogger = { child };
+    (app as any).debugLoggingTopics = new Set();
+
+    const emitDebug = (app as any).getStructuredDebugEmitter('reconcile', 'diagnostics');
+    emitDebug({ event: 'realtime_reconcile_queued', deviceId: 'dev-1' });
+
+    expect(child).not.toHaveBeenCalled();
+    expect(childLogger.debug).not.toHaveBeenCalled();
+  });
+
   it('keeps devices disabled by default when no settings exist', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
 

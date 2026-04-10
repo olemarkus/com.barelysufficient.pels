@@ -47,7 +47,7 @@ import {
 } from './planExecutorSupport';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -77,6 +77,7 @@ export type PlanExecutorDeps = {
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -676,7 +677,7 @@ export class PlanExecutor {
       && prevBlock.desiredStepId === dev.desiredStepId
       && prevBlock.lowestNonZeroStepId === lowestNonZeroStep.id;
     if (!unchanged) {
-      this.deps.structuredLog?.debug({
+      this.deps.debugStructured?.({
         event: 'restore_keep_invariant_shed_blocked',
         deviceId: dev.id,
         deviceName: name,

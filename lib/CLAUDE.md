@@ -15,7 +15,7 @@
 
 Logging uses a pino-based structured logger (`lib/logging/`). Logs are JSON objects routed through a Homey-aware destination.
 
-- **New logs** go through the structured logger: `logger.info()`, `logger.warn()`, `logger.error()`, `logger.debug()`. Emit structured events with stable field names.
+- **New logs** go through the structured logger: use `logger.info()` for normal runtime events, `logger.error()` for error-sink events, and topic-gated structured debug emitters for structured debug payloads.
 - **Debug logs** are gated by topic flags (`lib/utils/debugLogging.ts`): `plan`, `diagnostics`, `price`, `daily_budget`, `devices`, `settings`, `perf`.
 - **Legacy prose logs** (`this.log()` / `this.logDebug(topic, ...)`) still exist and may be migrated incrementally. Do not add new ones.
 - Never use `console.log`.

@@ -1,4 +1,4 @@
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
@@ -58,6 +58,7 @@ export type RestoreDeps = {
   };
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
   deviceNameById?: ReadonlyMap<string, string>;
   logDebug: (...args: unknown[]) => void;
 };
@@ -85,13 +86,13 @@ function reserveHeadroomForPendingRestores(
   rawHeadroom: number,
   planDevices: DevicePlanDevice[],
   lastDeviceRestoreMs: Record<string, number>,
-  structuredLog: PinoLogger | undefined,
+  debugStructured: StructuredDebugEmitter | undefined,
   deviceNameById: ReadonlyMap<string, string> | undefined,
 ): number {
   const pending = computePendingRestorePowerKw(planDevices, lastDeviceRestoreMs, Date.now());
   if (pending.pendingKw <= 0) return rawHeadroom;
   const adjusted = rawHeadroom - pending.pendingKw;
-  structuredLog?.debug({
+  debugStructured?.({
     event: 'restore_headroom_reserved',
     pendingKw: pending.pendingKw,
     deviceIds: pending.deviceIds,
@@ -128,7 +129,7 @@ export function applyRestorePlan(params: {
     context.headroomRaw !== null ? context.headroomRaw : 0,
     planDevices,
     state.lastDeviceRestoreMs,
-    deps.structuredLog,
+    deps.debugStructured,
     deps.deviceNameById,
   );
   let restoredOneThisCycle = false;
@@ -164,7 +165,7 @@ export function applyRestorePlan(params: {
         availableHeadroom,
         restoredOneThisCycle,
         logDebug: deps.logDebug,
-        structuredLog: deps.structuredLog,
+        debugStructured: deps.debugStructured,
       });
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
@@ -266,7 +267,7 @@ function planRestoreForDevice(params: {
       reason: gateReason,
     });
     deps.logDebug(`Plan: blocking restore of ${dev.name} - ${gateReason}`);
-    deps.structuredLog?.debug({
+    deps.debugStructured?.({
       event: 'restore_rejected',
       restoreType: 'binary',
       deviceId: dev.id,
@@ -294,7 +295,7 @@ function planRestoreForDevice(params: {
       reason: waitingReason,
     });
     deps.logDebug(`Plan: blocking restore of ${dev.name} - ${waitingReason}`);
-    deps.structuredLog?.debug({
+    deps.debugStructured?.({
       event: 'restore_rejected',
       restoreType: 'binary',
       deviceId: dev.id,
@@ -315,7 +316,7 @@ function planRestoreForDevice(params: {
     state,
     logDebug: deps.logDebug,
     stepped: false,
-    structuredLog: deps.structuredLog,
+    debugStructured: deps.debugStructured,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -324,7 +325,7 @@ function planRestoreForDevice(params: {
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   const powerSource = resolveRestorePowerSource(dev);
   if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
-    deps.structuredLog?.debug({
+    deps.debugStructured?.({
       event: 'restore_admitted',
       restoreType: 'binary',
       deviceId: dev.id,
@@ -344,7 +345,7 @@ function planRestoreForDevice(params: {
     return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
   }
 
-  deps.structuredLog?.debug({
+  deps.debugStructured?.({
     event: 'restore_rejected',
     restoreType: 'binary',
     deviceId: dev.id,
@@ -457,7 +458,7 @@ function attemptSwapRestore(params: {
   });
   if (!swap.ready) {
     setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate(restoreNeed.needed, availableHeadroom));
-    deps.structuredLog?.debug({
+    deps.debugStructured?.({
       event: 'restore_rejected',
       restoreType: 'swap',
       deviceId: dev.id,
@@ -481,7 +482,7 @@ function attemptSwapRestore(params: {
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
-  deps.structuredLog?.debug({
+  deps.debugStructured?.({
     event: 'restore_swap_approved',
     restoreType: 'swap',
     deviceId: dev.id,
@@ -510,7 +511,7 @@ function attemptSwapRestore(params: {
       plannedState: 'shed',
       reason: `swapped out for ${dev.name}`,
     });
-    deps.structuredLog?.debug({
+    deps.debugStructured?.({
       event: 'restore_swap_shed',
       shedDeviceId: shedDev.id,
       shedDeviceName: shedDev.name,

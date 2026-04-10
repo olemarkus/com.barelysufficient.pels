@@ -1289,7 +1289,7 @@ describe('restore admission — headroom and penalty gates', () => {
       penaltyLevel: 1,
       lastSetbackMs: now - 1_000,
     };
-    const structuredLog = { debug: vi.fn(), info: vi.fn() };
+    const debugStructured = vi.fn();
 
     const result = applyShedTemperatureHold({
       planDevices: [
@@ -1319,14 +1319,14 @@ describe('restore admission — headroom and penalty gates', () => {
       holdDuringRestoreCooldown: false,
       restoreCooldownSeconds: 60,
       restoreCooldownRemainingSec: null,
-      structuredLog: structuredLog as any,
+      debugStructured,
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 18, stepId: null }),
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-temp');
     expect(device?.plannedTarget).toBe(18);
     expect(device?.reason).toMatch(/activation backoff/);
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_rejected',
       restoreType: 'target',
       deviceId: 'dev-temp',
@@ -1650,7 +1650,7 @@ describe('stepped-load shed invariant', () => {
       ['binary-shed', shedDevice],
       ['dev-step', steppedDev],
     ]);
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
+    const debugStructured = vi.fn();
 
     planRestoreForSteppedDevice({
       dev: deviceMap.get('dev-step')!,
@@ -1660,10 +1660,10 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     });
 
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_stepped_rejected',
       blockedByShedInvariant: true,
       shedDeviceCount: 1,
@@ -1683,7 +1683,7 @@ describe('stepped-load shed invariant', () => {
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
     const deviceMap = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
+    const debugStructured = vi.fn();
 
     const callArgs = {
       dev: deviceMap.get('dev-step')!,
@@ -1693,16 +1693,16 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     };
 
     // First call: emits
     planRestoreForSteppedDevice(callArgs);
-    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
+    expect(debugStructured).toHaveBeenCalledTimes(1);
 
     // Second call with identical params: suppressed
     planRestoreForSteppedDevice({ ...callArgs, dev: deviceMap.get('dev-step')! });
-    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
+    expect(debugStructured).toHaveBeenCalledTimes(1);
   });
 
   it('restore_stepped_rejected re-emits when shed count changes', () => {
@@ -1713,7 +1713,7 @@ describe('stepped-load shed invariant', () => {
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
+    const debugStructured = vi.fn();
 
     // First call with 1 shed device
     const map1 = new Map([['shed-1', shed1], ['dev-step', steppedDev]]);
@@ -1725,9 +1725,9 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     });
-    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
+    expect(debugStructured).toHaveBeenCalledTimes(1);
 
     // Second call with 2 shed devices: different shed count → re-emits
     const map2 = new Map([['shed-1', shed1], ['shed-2', shed2], ['dev-step', steppedDev]]);
@@ -1739,10 +1739,10 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     });
-    expect(structuredLog.debug).toHaveBeenCalledTimes(2);
-    expect(structuredLog.debug).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(debugStructured).toHaveBeenCalledTimes(2);
+    expect(debugStructured).toHaveBeenLastCalledWith(expect.objectContaining({
       event: 'restore_stepped_rejected',
       shedDeviceCount: 2,
     }));
@@ -1757,7 +1757,7 @@ describe('stepped-load shed invariant', () => {
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
     const debugCalls: unknown[] = [];
-    const structuredLog = { info: vi.fn(), debug: (...args: unknown[]) => debugCalls.push(args[0]) };
+    const debugStructured = (payload: unknown) => debugCalls.push(payload);
     const rejectedCalls = () => debugCalls.filter((c: any) => c?.event === 'restore_stepped_rejected');
 
     // First: blocked, emits
@@ -1770,7 +1770,7 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     });
     expect(rejectedCalls()).toHaveLength(1);
 
@@ -1784,7 +1784,7 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     });
 
     // Third: shed resumes → first rejection again, must re-emit
@@ -1796,7 +1796,7 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     });
     expect(rejectedCalls()).toHaveLength(2);
   });
@@ -1809,7 +1809,7 @@ describe('stepped-load shed invariant', () => {
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
+    const debugStructured = vi.fn();
     const activeCooldownTiming = { ...makeShedTiming(), inRestoreCooldown: true, restoreCooldownRemainingSec: 30 };
 
     // Round 1: shed active, blocked by invariant → emits
@@ -1822,9 +1822,9 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     });
-    expect(structuredLog.debug).toHaveBeenCalledTimes(1);
+    expect(debugStructured).toHaveBeenCalledTimes(1);
 
     // Round 2: shed cleared BUT cooldown active — early return before invariant check
     // Without the early-clear fix, tracking would survive here
@@ -1837,7 +1837,7 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     });
 
     // Round 3: new shed episode starts → must re-emit (tracking was cleared in round 2)
@@ -1849,9 +1849,9 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
       logDebug: vi.fn(),
-      structuredLog: structuredLog as any,
+      debugStructured,
     });
-    expect(structuredLog.debug).toHaveBeenCalledTimes(2);
+    expect(debugStructured).toHaveBeenCalledTimes(2);
   });
 
   it('upward step action is never emitted while shed devices exist (end-to-end via applyRestorePlan)', () => {

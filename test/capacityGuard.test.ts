@@ -165,8 +165,7 @@ describe('CapacityGuard', () => {
 
     it('does not emit duplicate structured shortfall event while in shortfall', async () => {
       const logEvents: Array<Record<string, unknown>> = [];
-      const structuredLog: Pick<import('../lib/logging/logger').Logger, 'warn' | 'info'> = {
-        warn: (obj: Record<string, unknown>) => { logEvents.push(obj); },
+      const structuredLog: Pick<import('../lib/logging/logger').Logger, 'info'> = {
         info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
       };
       const guard = new CapacityGuard({

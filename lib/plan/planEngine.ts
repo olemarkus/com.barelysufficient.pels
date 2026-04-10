@@ -22,7 +22,7 @@ import {
 } from './planTargetControl';
 import { syncPendingBinaryCommands } from './planBinaryControl';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -54,6 +54,7 @@ export type PlanEngineDeps = {
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -98,6 +99,7 @@ export class PlanEngine {
       getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
       deviceDiagnostics: deps.deviceDiagnostics,
       structuredLog: deps.structuredLog,
+      debugStructured: deps.debugStructured,
       log: deps.log,
       logDebug: deps.logDebug,
     };
@@ -115,6 +117,7 @@ export class PlanEngine {
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
       deviceDiagnostics: deps.deviceDiagnostics,
       structuredLog: deps.structuredLog,
+      debugStructured: deps.debugStructured,
       log: deps.log,
       logDebug: deps.logDebug,
       error: deps.error,
