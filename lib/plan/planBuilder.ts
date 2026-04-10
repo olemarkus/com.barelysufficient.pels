@@ -23,7 +23,7 @@ import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import {
   buildDailyBudgetContext as buildPlanDailyBudgetContext,
   extractDailyBudgetHourKWh as extractPlanDailyBudgetHourKWh,
@@ -50,6 +50,7 @@ export type PlanBuilderDeps = {
   getDynamicSoftLimitOverride?: () => number | null;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -214,7 +215,7 @@ export class PlanBuilder {
       this.state.overshootStartedMs = Date.now();
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
-      this.deps.structuredLog?.warn({ event: 'overshoot_entered', headroomKw: context.headroom });
+      this.deps.structuredLog?.info({ event: 'overshoot_entered', headroomKw: context.headroom });
       this.attributeOvershootToRecentRestores(deviceNameById);
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.state.overshootLogged = false;
@@ -247,7 +248,7 @@ export class PlanBuilder {
     const deviceName = deviceNameById.get(latestDeviceId) ?? latestDeviceId;
     const result = recordActivationSetback({ state: this.state, deviceId: latestDeviceId, nowTs });
     if (result.bumped) {
-      this.deps.structuredLog?.warn({
+      this.deps.structuredLog?.info({
         event: 'overshoot_attributed',
         deviceId: latestDeviceId,
         deviceName,
@@ -313,7 +314,7 @@ export class PlanBuilder {
       holdDuringRestoreCooldown: restoreResult.inRestoreCooldown,
       restoreCooldownSeconds: restoreResult.restoreCooldownSeconds,
       restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
-      structuredLog: this.deps.structuredLog,
+      debugStructured: this.deps.debugStructured,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
     }));
   }
@@ -478,6 +479,7 @@ export class PlanBuilder {
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         deviceDiagnostics: this.deps.deviceDiagnostics,
         structuredLog: this.deps.structuredLog,
+        debugStructured: this.deps.debugStructured,
         deviceNameById,
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       },

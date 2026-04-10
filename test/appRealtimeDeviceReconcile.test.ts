@@ -4,15 +4,15 @@ import {
   scheduleRealtimeDeviceReconcile,
 } from '../lib/app/appRealtimeDeviceReconcile';
 import { shouldQueueRealtimeDeviceReconcile } from '../lib/app/appRealtimeDeviceReconcileRuntime';
-import type { Logger } from '../lib/logging/logger';
+import type { Logger, StructuredDebugEmitter } from '../lib/logging/logger';
 
 describe('appRealtimeDeviceReconcile', () => {
-  const createDebugLoggerMock = (): Pick<Logger, 'debug'> => ({ debug: vi.fn() as Logger['debug'] });
-  const createWarnLoggerMock = (): Pick<Logger, 'warn'> => ({ warn: vi.fn() as Logger['warn'] });
+  const createDebugStructuredMock = (): StructuredDebugEmitter => vi.fn() as unknown as StructuredDebugEmitter;
+  const createInfoLoggerMock = (): Pick<Logger, 'info'> => ({ info: vi.fn() as Logger['info'] });
 
   it('logs drift details when queueing realtime reconcile', () => {
     vi.useFakeTimers();
-    const structuredLog = createDebugLoggerMock();
+    const debugStructured = createDebugStructuredMock();
 
     const timer = scheduleRealtimeDeviceReconcile({
       state: createRealtimeDeviceReconcileState(),
@@ -23,14 +23,14 @@ describe('appRealtimeDeviceReconcile', () => {
         capabilityId: 'onoff',
         changes: [{ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' }],
       },
-      structuredLog,
+      debugStructured,
       onTimerFired: vi.fn(),
       onFlush: vi.fn().mockResolvedValue(undefined),
       onError: vi.fn(),
     });
 
     expect(timer).toBeDefined();
-    expect(structuredLog.debug).toHaveBeenCalledWith({
+    expect(debugStructured).toHaveBeenCalledWith({
       event: 'realtime_reconcile_queued',
       deviceId: 'dev-1',
       deviceName: 'Heater',
@@ -44,7 +44,7 @@ describe('appRealtimeDeviceReconcile', () => {
   });
 
   it('skips reconcile when the live device state already matches the current plan', () => {
-    const structuredLog = createDebugLoggerMock();
+    const debugStructured = createDebugStructuredMock();
 
     const shouldQueue = shouldQueueRealtimeDeviceReconcile({
       event: {
@@ -73,11 +73,11 @@ describe('appRealtimeDeviceReconcile', () => {
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       }],
-      structuredLog,
+      debugStructured,
     });
 
     expect(shouldQueue).toBe(false);
-    expect(structuredLog.debug).toHaveBeenCalledWith({
+    expect(debugStructured).toHaveBeenCalledWith({
       event: 'realtime_reconcile_skipped_no_drift',
       deviceId: 'dev-1',
       deviceName: 'Heater',
@@ -121,7 +121,7 @@ describe('appRealtimeDeviceReconcile', () => {
   });
 
   it('skips reconcile while a matching binary command is still pending', () => {
-    const structuredLog = createDebugLoggerMock();
+    const debugStructured = createDebugStructuredMock();
 
     const shouldQueue = shouldQueueRealtimeDeviceReconcile({
       event: {
@@ -151,11 +151,11 @@ describe('appRealtimeDeviceReconcile', () => {
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       }],
-      structuredLog,
+      debugStructured,
     });
 
     expect(shouldQueue).toBe(false);
-    expect(structuredLog.debug).toHaveBeenCalledWith({
+    expect(debugStructured).toHaveBeenCalledWith({
       event: 'realtime_reconcile_skipped_no_drift',
       deviceId: 'dev-1',
       deviceName: 'Heater',
@@ -199,7 +199,7 @@ describe('appRealtimeDeviceReconcile', () => {
   });
 
   it('skips reconcile for target drift when a shed device is already off', () => {
-    const structuredLog = createDebugLoggerMock();
+    const debugStructured = createDebugStructuredMock();
 
     const shouldQueue = shouldQueueRealtimeDeviceReconcile({
       event: {
@@ -229,11 +229,11 @@ describe('appRealtimeDeviceReconcile', () => {
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 23.5, unit: '°C' }],
       }],
-      structuredLog,
+      debugStructured,
     });
 
     expect(shouldQueue).toBe(false);
-    expect(structuredLog.debug).toHaveBeenCalledWith({
+    expect(debugStructured).toHaveBeenCalledWith({
       event: 'realtime_reconcile_skipped_no_drift',
       deviceId: 'dev-1',
       deviceName: 'Heater',
@@ -245,7 +245,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it('records breaker attempts only for devices that still drift after reconcile', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const structuredLog = createWarnLoggerMock();
+    const structuredLog = createInfoLoggerMock();
     state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
     state.pendingEvents.set('dev-2', { deviceId: 'dev-2', name: 'Heater 2', capabilityId: 'onoff' });
 
@@ -260,7 +260,7 @@ describe('appRealtimeDeviceReconcile', () => {
     expect(state.circuitState.get('dev-2')).toEqual(expect.objectContaining({
       reconcileCount: 1,
     }));
-    expect(structuredLog.warn).toHaveBeenCalledWith({
+    expect(structuredLog.info).toHaveBeenCalledWith({
       event: 'realtime_reconcile_applied',
       deviceCount: 1,
       devices: [{
@@ -273,7 +273,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it('does not log or record attempts when shouldRecordAttempt filters out every reconciled event', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const structuredLog = createWarnLoggerMock();
+    const structuredLog = createInfoLoggerMock();
     state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
 
     await flushRealtimeDeviceReconcileQueue({
@@ -283,13 +283,13 @@ describe('appRealtimeDeviceReconcile', () => {
       structuredLog,
     });
 
-    expect(structuredLog.warn).not.toHaveBeenCalled();
+    expect(structuredLog.info).not.toHaveBeenCalled();
     expect(state.circuitState.size).toBe(0);
   });
 
   it('opens the breaker after repeated reconcile attempts for devices that still drift', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const structuredLog = createWarnLoggerMock();
+    const structuredLog = createInfoLoggerMock();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
@@ -301,7 +301,7 @@ describe('appRealtimeDeviceReconcile', () => {
       });
     }
 
-    expect(structuredLog.warn).toHaveBeenCalledWith({
+    expect(structuredLog.info).toHaveBeenCalledWith({
       event: 'realtime_reconcile_circuit_opened',
       suppressMs: 60_000,
       deviceId: 'dev-1',
@@ -314,7 +314,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
   it('opens the breaker after repeated target reconcile attempts for devices that still drift', async () => {
     const state = createRealtimeDeviceReconcileState();
-    const structuredLog = createWarnLoggerMock();
+    const structuredLog = createInfoLoggerMock();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       state.pendingEvents.set('dev-1', {
@@ -332,7 +332,7 @@ describe('appRealtimeDeviceReconcile', () => {
       });
     }
 
-    expect(structuredLog.warn).toHaveBeenCalledWith({
+    expect(structuredLog.info).toHaveBeenCalledWith({
       event: 'realtime_reconcile_circuit_opened',
       suppressMs: 60_000,
       deviceId: 'dev-1',

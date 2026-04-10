@@ -3,6 +3,7 @@ import type { Writable } from 'node:stream';
 import { getCurrentContext, runWithContext } from './alsContext';
 
 export type { Logger } from 'pino';
+export type StructuredDebugEmitter = (payload: Record<string, unknown>) => void;
 
 export const createRootLogger = (destination: Writable, level = 'info'): pino.Logger => pino(
   {

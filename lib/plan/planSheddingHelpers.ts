@@ -72,7 +72,7 @@ export function emitOvershootEscalationBlocked(params: {
     measurementTs,
     nowTs,
   } = params;
-  structuredLog?.warn({
+  structuredLog?.info({
     event: 'capacity_overshoot_escalation_blocked',
     incidentId: capacityGuard?.getCurrentIncidentId() ?? undefined,
     reasonCode: 'no_candidates',

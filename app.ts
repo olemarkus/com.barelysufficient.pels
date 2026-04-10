@@ -78,7 +78,11 @@ import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/
 import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
-import { createRootLogger, type Logger as PinoLogger } from './lib/logging/logger';
+import {
+  createRootLogger,
+  type Logger as PinoLogger,
+  type StructuredDebugEmitter,
+} from './lib/logging/logger';
 import { createHomeyDestination } from './lib/logging/homeyDestination';
 import { normalizeError } from './lib/utils/errorUtils';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
@@ -371,7 +375,7 @@ class PelsApp extends Homey.App {
       log: this.log.bind(this),
       debug: (...args: unknown[]) => this.logDebug('devices', ...args),
       error: this.error.bind(this),
-      structuredLog: this.getStructuredLogger('devices', 'devices'),
+      structuredLog: this.getStructuredLogger('devices'),
     }, {
       getPriority: (id) => this.getPriorityForDevice(id),
       getControllable: (id) => this.isCapacityControlEnabled(id),
@@ -438,7 +442,8 @@ class PelsApp extends Homey.App {
       },
       syncLivePlanStateAfterTargetActuation: (source) => this.planService?.syncLivePlanStateInline(source) ?? false,
       deviceDiagnostics: this.deviceDiagnosticsService,
-      structuredLog: this.getStructuredLogger('plan', 'plan'),
+      structuredLog: this.getStructuredLogger('plan'),
+      debugStructured: this.getStructuredDebugEmitter('plan', 'plan'),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
       error: (...args: unknown[]) => this.error(...args),
@@ -470,7 +475,7 @@ class PelsApp extends Homey.App {
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
       error: (...args: unknown[]) => this.error(...args),
-      structuredLog: this.getStructuredLogger('plan', 'plan'),
+      structuredLog: this.getStructuredLogger('plan'),
     };
     this.planService = createPlanService(deps);
   }
@@ -537,15 +542,19 @@ class PelsApp extends Homey.App {
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
     if (this.debugLoggingTopics.has(topic)) this.log(...args);
   }
-  private getStructuredLogger(component: string, debugTopic?: DebugLoggingTopic): PinoLogger | undefined {
+  private getStructuredLogger(component: string): PinoLogger | undefined {
     if (!this.structuredLogger) return undefined;
-    if (debugTopic && this.debugLoggingTopics.has(debugTopic)) {
-      return this.structuredLogger.child({ component }, { level: 'debug' });
-    }
     return this.structuredLogger.child({ component });
   }
+  private getStructuredDebugEmitter(component: string, debugTopic: DebugLoggingTopic): StructuredDebugEmitter {
+    return (payload) => {
+      if (!this.structuredLogger || !this.debugLoggingTopics.has(debugTopic)) return;
+      this.structuredLogger.child({ component }, { level: 'debug' }).debug({ ...payload, debugTopic });
+    };
+  }
   private scheduleRealtimeDeviceReconcile(event: realtimeReconcile.RealtimeDeviceReconcileEvent): void {
-    const structuredLog = this.getStructuredLogger('reconcile', 'devices');
+    const structuredLog = this.getStructuredLogger('reconcile');
+    const debugStructured = this.getStructuredDebugEmitter('reconcile', 'devices');
     const timer = scheduleAppRealtimeDeviceReconcile({
       event,
       state: this.realtimeDeviceReconcileState,
@@ -553,6 +562,7 @@ class PelsApp extends Homey.App {
       getLatestPlanSnapshot: () => this.planService?.getLatestReconcilePlanSnapshot() ?? null,
       getLiveDevices: () => this.latestTargetSnapshot,
       structuredLog,
+      debugStructured,
       reconcile: () => this.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),
       onTimerFired: () => { this.realtimeDeviceReconcileTimer = undefined; },
       onError: (error) => {
@@ -580,10 +590,9 @@ class PelsApp extends Homey.App {
     });
   }
   private startPerfLogging(): void {
-    const structuredPerfLog = this.getStructuredLogger('perf', 'perf');
     this.stopPerfLogging = startPerfLogger({
       isEnabled: () => this.debugLoggingTopics.has('perf'), log: (...args: unknown[]) => this.logDebug('perf', ...args),
-      logStructured: (payload) => structuredPerfLog?.debug(payload),
+      logStructured: this.getStructuredDebugEmitter('perf', 'perf'),
       error: (...args: unknown[]) => this.error(...args),
       logCpuSpike: (...args: unknown[]) => this.log(...args), intervalMs: 30 * 1000,
     });

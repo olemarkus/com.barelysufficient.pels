@@ -185,7 +185,7 @@ export default class CapacityGuard {
     this.incidentStartMs = Date.now();
     const thresholdW = this.getShortfallThreshold() * 1000;
     const powerW = (this.mainPowerKw ?? 0) * 1000;
-    this.structuredLog?.warn({
+    this.structuredLog?.info({
       event: 'capacity_overshoot_detected',
       incidentId: this.incidentId,
       powerW,

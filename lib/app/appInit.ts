@@ -15,7 +15,7 @@ import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { ReportSteppedLoadActualStepResult } from './appDeviceControlHelpers';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { COMBINED_PRICES } from '../utils/settingsKeys';
 import type { CapacitySettingsSnapshot } from './appSettingsHelpers';
 import { PriceCoordinator } from '../price/priceCoordinator';
@@ -75,6 +75,7 @@ export type PlanEngineInitApp = {
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
   log: (...args: unknown[]) => void;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -103,6 +104,7 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
     syncLivePlanStateAfterTargetActuation: (source) => app.syncLivePlanStateAfterTargetActuation?.(source),
     deviceDiagnostics: app.deviceDiagnostics,
     structuredLog: app.structuredLog?.child({ component: 'plan' }),
+    debugStructured: app.debugStructured,
     log: (...args: unknown[]) => app.log(...args),
     logDebug: (...args: unknown[]) => app.logDebug('plan', ...args),
     error: (...args: unknown[]) => app.error(...args),
