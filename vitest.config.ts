@@ -28,7 +28,7 @@ export default defineConfig({
     clearMocks: true,
     testTimeout: 10_000,
     pool: 'forks',
-    maxForks: 1,
+    maxWorkers: 1,
     silent: true,
     coverage: {
       enabled: true,

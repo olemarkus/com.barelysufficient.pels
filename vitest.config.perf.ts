@@ -27,10 +27,8 @@ export default defineConfig({
     clearMocks: true,
     testTimeout: 60_000,
     pool: 'forks',
-    maxForks: 1,
-    forkOptions: {
-      execArgv: ['--expose-gc'],
-    },
+    maxWorkers: 1,
+    execArgv: ['--expose-gc'],
     reporter: 'verbose',
     coverage: {
       enabled: false,
