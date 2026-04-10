@@ -261,7 +261,7 @@ export default tseslint.config(
     files: ['test/**/*.ts'],
     languageOptions: {
       globals: {
-        ...globals.jest,
+        ...globals.vitest,
       },
       parserOptions: {
         project: false,
@@ -381,7 +381,7 @@ export default tseslint.config(
     },
     languageOptions: {
       globals: {
-        ...globals.jest,
+        ...globals.vitest,
         ...globals.node,
       },
       parserOptions: {

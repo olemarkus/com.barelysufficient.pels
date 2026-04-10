@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import {
   DEVICE_DIAGNOSTICS_STATE_KEY,
   DeviceDiagnosticsService,
@@ -5,8 +6,8 @@ import {
 import type { DeviceDiagnosticsPlanObservation } from '../lib/diagnostics/deviceDiagnosticsService';
 
 type MockSettings = {
-  get: vi.Mock;
-  set: vi.Mock;
+  get: Mock;
+  set: Mock;
 };
 
 const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean } = {}) => {
