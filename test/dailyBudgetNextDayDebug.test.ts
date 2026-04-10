@@ -7,7 +7,7 @@ const TZ = 'Europe/Oslo';
 
 describe('daily budget next-day debug', () => {
   it('logs effective price shaping flex share for next-day plan debug', () => {
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const nowMs = Date.UTC(2024, 0, 15, 11, 0);
     const context = buildDayContext({
       nowMs,

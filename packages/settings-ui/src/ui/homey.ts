@@ -4,7 +4,7 @@ import {
   countHomeyGet,
   countHomeySet,
   countSettingsCacheHit,
-} from './perf';
+} from './perf.ts';
 
 export type HomeyCallback<T> = (err: Error | null, value?: T) => void;
 

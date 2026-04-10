@@ -4,8 +4,8 @@ describe('app init plan service wiring', () => {
   it('derives binary control from legacy snapshot capabilities when controlCapabilityId is missing', () => {
     const service = createPlanService({
       homey: {
-        settings: { get: jest.fn(), set: jest.fn() },
-        flow: { getTriggerCard: jest.fn() },
+        settings: { get: vi.fn(), set: vi.fn() },
+        flow: { getTriggerCard: vi.fn() },
       } as never,
       planEngine: {} as never,
       getCapacityDryRun: () => false,
@@ -32,9 +32,9 @@ describe('app init plan service wiring', () => {
       isBudgetExempt: () => false,
       isCurrentHourCheap: () => false,
       isCurrentHourExpensive: () => false,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     const planDevices = (service as unknown as {

@@ -6,7 +6,7 @@ import {
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
-jest.mock('../lib/app/appLifecycleHelpers', () => ({
+vi.mock('../lib/app/appLifecycleHelpers', () => ({
   runStartupStep: async (_label: string, work: () => unknown | Promise<unknown>) => work(),
   startAppServices: async (params: any) => {
     params.loadPowerTracker();
@@ -51,12 +51,12 @@ describe('Mode device targets', () => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.settings.set('price_scheme', 'flow');
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('applies device targets when operating_mode or mode_device_targets changes', async () => {

@@ -2,17 +2,17 @@ import {
   getSteppedLoadHighestStep,
   normalizeDeviceControlProfiles,
   resolveSteppedLoadPlanningPowerKw,
-} from '../../../contracts/src/deviceControlProfiles';
+} from '../../../contracts/src/deviceControlProfiles.ts';
 import type {
   DeviceControlModel,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
-} from '../../../contracts/src/types';
-import { DEVICE_CONTROL_PROFILES } from '../../../contracts/src/settingsKeys';
-import { getSetting, setSetting } from './homey';
-import { state } from './state';
-import { supportsTemperatureDevice } from './deviceUtils';
-import { logSettingsError } from './logging';
+} from '../../../contracts/src/types.ts';
+import { DEVICE_CONTROL_PROFILES } from '../../../contracts/src/settingsKeys.ts';
+import { getSetting, setSetting } from './homey.ts';
+import { state } from './state.ts';
+import { supportsTemperatureDevice } from './deviceUtils.ts';
+import { logSettingsError } from './logging.ts';
 
 const DEFAULT_MAX_PLANNING_POWER_W = 1500;
 const roundPowerW = (value: number): number => Math.max(0, Math.round(value / 50) * 50);

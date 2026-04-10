@@ -1,14 +1,15 @@
 import https from 'https';
 import { EventEmitter } from 'events';
+import type { MockInstance } from 'vitest';
 
 let allowConsoleError = false;
 export const setAllowConsoleError = (allow: boolean): void => {
   allowConsoleError = allow;
 };
 
-let consoleErrorSpy: jest.SpyInstance;
-let consoleLogSpy: jest.SpyInstance;
-let httpsGetSpy: jest.SpyInstance | undefined;
+let consoleErrorSpy: MockInstance;
+let consoleLogSpy: MockInstance;
+let httpsGetSpy: MockInstance | undefined;
 let originalFetch: typeof global.fetch | undefined;
 let hadOriginalFetch = false;
 let originalWindowFetch: typeof window.fetch | undefined;
@@ -25,11 +26,11 @@ const mockHttpsGetImplementation = (): typeof https.get => (
     }
 
     const request = new EventEmitter() as NodeJS.EventEmitter & {
-      setTimeout: jest.Mock;
-      destroy: jest.Mock;
+      setTimeout: ReturnType<typeof vi.fn>;
+      destroy: ReturnType<typeof vi.fn>;
     };
-    request.setTimeout = jest.fn().mockReturnValue(request);
-    request.destroy = jest.fn().mockReturnValue(request);
+    request.setTimeout = vi.fn().mockReturnValue(request);
+    request.destroy = vi.fn().mockReturnValue(request);
 
     if (callback) {
       const response = new EventEmitter() as NodeJS.EventEmitter & {
@@ -51,7 +52,7 @@ const installHttpsGetSpy = () => {
   if (httpsGetSpy) {
     httpsGetSpy.mockRestore();
   }
-  httpsGetSpy = jest.spyOn(https, 'get').mockImplementation(mockHttpsGetImplementation());
+  httpsGetSpy = vi.spyOn(https, 'get').mockImplementation(mockHttpsGetImplementation());
 };
 
 beforeAll(() => {
@@ -59,11 +60,11 @@ beforeAll(() => {
     matches: false,
     media: query,
     onchange: null,
-    addListener: jest.fn(),
-    removeListener: jest.fn(),
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
   });
 
   if (typeof window !== 'undefined' && typeof (window as unknown as { matchMedia?: unknown }).matchMedia !== 'function') {
@@ -73,7 +74,7 @@ beforeAll(() => {
     (globalThis as unknown as { matchMedia: typeof matchMediaStub }).matchMedia = matchMediaStub;
   }
 
-  const fetchStub = jest.fn().mockResolvedValue({
+  const fetchStub = vi.fn().mockResolvedValue({
     ok: true,
     status: 200,
     headers: { get: () => null },
@@ -92,12 +93,12 @@ beforeAll(() => {
 
   installHttpsGetSpy();
 
-  consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation((...args) => {
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
     if (allowConsoleError) return;
     originalConsoleError(...args);
   });
 
-  consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+  consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -123,5 +124,5 @@ afterAll(() => {
       delete (window as unknown as { fetch?: typeof window.fetch }).fetch;
     }
   }
-  jest.useRealTimers();
+  vi.useRealTimers();
 });

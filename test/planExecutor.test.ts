@@ -61,15 +61,15 @@ const buildExecutor = (
   ],
   overrides: Partial<PlanExecutorDeps> = {},
 ) => {
-  const desiredSteppedTrigger = { trigger: jest.fn().mockResolvedValue(true) };
+  const desiredSteppedTrigger = { trigger: vi.fn().mockResolvedValue(true) };
   const deviceManager = {
-    getSnapshot: jest.fn().mockReturnValue(snapshot),
-    setCapability: jest.fn().mockResolvedValue(undefined),
+    getSnapshot: vi.fn().mockReturnValue(snapshot),
+    setCapability: vi.fn().mockResolvedValue(undefined),
   };
   const deps: PlanExecutorDeps = {
     homey: {
-      settings: { set: jest.fn() },
-      flow: { getTriggerCard: jest.fn(() => desiredSteppedTrigger) },
+      settings: { set: vi.fn() },
+      flow: { getTriggerCard: vi.fn(() => desiredSteppedTrigger) },
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
     getCapacityGuard: () => undefined,
@@ -77,11 +77,11 @@ const buildExecutor = (
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-    markSteppedLoadDesiredStepIssued: jest.fn(),
-    logTargetRetryComparison: jest.fn(),
-    log: jest.fn(),
-    logDebug: jest.fn(),
-    error: jest.fn(),
+    markSteppedLoadDesiredStepIssued: vi.fn(),
+    logTargetRetryComparison: vi.fn(),
+    log: vi.fn(),
+    logDebug: vi.fn(),
+    error: vi.fn(),
     ...overrides,
   };
   return { executor: new PlanExecutor(deps, state), deps, deviceManager, state, desiredSteppedTrigger };
@@ -179,12 +179,12 @@ describe('PlanExecutor restore logging', () => {
 
 describe('PlanExecutor pending target commands', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-12T11:00:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-12T11:00:00.000Z'));
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('does not resend the same target command until the retry deadline', async () => {
@@ -213,11 +213,11 @@ describe('PlanExecutor pending target commands', () => {
       retryCount: 0,
     });
 
-    jest.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] - 1);
+    vi.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] - 1);
     await executor.applyPlanActions(plan);
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(1);
+    vi.advanceTimersByTime(1);
     await executor.applyPlanActions(plan);
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(2);
@@ -469,7 +469,7 @@ describe('PlanExecutor pending target commands', () => {
         targets: [{ id: 'target_temperature', value: 25, unit: '°C' }],
       },
     ];
-    const syncLivePlanStateAfterTargetActuation = jest.fn(() => {
+    const syncLivePlanStateAfterTargetActuation = vi.fn(() => {
       snapshot[0].targets[0].value = 23;
       return true;
     });
@@ -479,7 +479,7 @@ describe('PlanExecutor pending target commands', () => {
       { syncLivePlanStateAfterTargetActuation },
     );
 
-    jest.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] + 1);
+    vi.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] + 1);
     await executor.applyPlanActions(buildTargetPlan(25, 23));
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
@@ -523,7 +523,7 @@ describe('PlanExecutor pending target commands', () => {
       },
     ]);
 
-    jest.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] + 1);
+    vi.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] + 1);
     await executor.applyPlanActions(buildTargetPlan(18, 23));
 
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
@@ -724,7 +724,7 @@ describe('PlanExecutor stepped loads', () => {
         currentOn: false,
       },
     ];
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { executor, deviceManager } = buildExecutor(undefined, snapshot, { structuredLog });
 
     await executor.applyPlanActions(steppedPlan({
@@ -1065,7 +1065,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('blocks keep-invariant restore when shed devices exist and desiredStepId exceeds lowestNonZeroStep', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { executor, deviceManager } = buildExecutor(undefined, snapshot, { structuredLog });
 
     const plan: DevicePlan = {
@@ -1164,7 +1164,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('emits restore_keep_invariant_shed_blocked only once for repeated identical blocks', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const state = createPlanEngineState();
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { executor } = buildExecutor(state, snapshot, { structuredLog });
 
     const plan: DevicePlan = {
@@ -1213,7 +1213,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     };
     const snapshot = buildSnapshot({ currentOn: false });
     const state = createPlanEngineState();
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { executor } = buildExecutor(state, snapshot, { structuredLog });
 
     const shedDevice = {
@@ -1254,7 +1254,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('clears dedupe state and re-emits restore_keep_invariant_shed_blocked after admitted transition', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const state = createPlanEngineState();
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { executor, deviceManager } = buildExecutor(state, snapshot, { structuredLog });
 
     const blockedPlan: DevicePlan = {

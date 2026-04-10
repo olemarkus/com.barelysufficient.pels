@@ -1,5 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
-import { createHomeyMock, type MockHomeyClient } from './helpers/homeyApiMock';
+import { createHomeyMock } from './helpers/homeyApiMock';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
@@ -46,8 +46,8 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevic
 
 describe('device detail diagnostics', () => {
   afterEach(() => {
-    jest.resetModules();
-    jest.clearAllMocks();
+    vi.resetModules();
+    vi.clearAllMocks();
   });
 
   it('renders lazy-loaded diagnostics in the device detail panel', async () => {
@@ -111,40 +111,32 @@ describe('device detail diagnostics', () => {
         },
       },
     };
-    jest.doMock('../src/ui/devices', () => ({
-      renderDevices: jest.fn(),
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
     }));
-    jest.doMock('../src/ui/modes', () => ({
-      renderPriorities: jest.fn(),
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
     }));
-    jest.doMock('../src/ui/priceOptimization', () => ({
-      renderPriceOptimization: jest.fn(),
-      savePriceOptimizationSettings: jest.fn().mockResolvedValue(undefined),
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
     }));
-    jest.doMock('../src/ui/toast', () => ({
-      showToastError: jest.fn().mockResolvedValue(undefined),
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
     }));
-    jest.doMock('../src/ui/logging', () => ({
-      logSettingsError: jest.fn().mockResolvedValue(undefined),
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
     }));
 
-    let initDeviceDetailHandlers!: typeof import('../src/ui/deviceDetail').initDeviceDetailHandlers;
-    let openDeviceDetail!: typeof import('../src/ui/deviceDetail').openDeviceDetail;
-    let state!: typeof import('../src/ui/state').state;
-    let homey!: MockHomeyClient;
-
-    jest.isolateModules(() => {
-      const homeyModule = require('../src/ui/homey') as typeof import('../src/ui/homey');
-      homey = createHomeyMock({
-        uiState: {
-          deviceDiagnostics: diagnosticsPayload,
-        },
-      });
-      homeyModule.setHomeyClient(homey);
-      ({ initDeviceDetailHandlers } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
-      ({ openDeviceDetail } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
-      ({ state } = require('../src/ui/state') as typeof import('../src/ui/state'));
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      uiState: {
+        deviceDiagnostics: diagnosticsPayload,
+      },
     });
+    homeyModule.setHomeyClient(homey);
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
+    const { state } = await import('../src/ui/state.ts');
 
     state.latestDevices = [buildDevice()];
     state.managedMap = { 'heater-1': true };
@@ -179,36 +171,28 @@ describe('device detail diagnostics', () => {
 
   it('uses the device target step in the device detail modal and saves normalized values', async () => {
     buildDom();
-    jest.doMock('../src/ui/devices', () => ({
-      renderDevices: jest.fn(),
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
     }));
-    jest.doMock('../src/ui/modes', () => ({
-      renderPriorities: jest.fn(),
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
     }));
-    jest.doMock('../src/ui/priceOptimization', () => ({
-      renderPriceOptimization: jest.fn(),
-      savePriceOptimizationSettings: jest.fn().mockResolvedValue(undefined),
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
     }));
-    jest.doMock('../src/ui/toast', () => ({
-      showToastError: jest.fn().mockResolvedValue(undefined),
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
     }));
-    jest.doMock('../src/ui/logging', () => ({
-      logSettingsError: jest.fn().mockResolvedValue(undefined),
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
     }));
 
-    let initDeviceDetailHandlers!: typeof import('../src/ui/deviceDetail').initDeviceDetailHandlers;
-    let openDeviceDetail!: typeof import('../src/ui/deviceDetail').openDeviceDetail;
-    let state!: typeof import('../src/ui/state').state;
-    let homey!: MockHomeyClient;
-
-    jest.isolateModules(() => {
-      const homeyModule = require('../src/ui/homey') as typeof import('../src/ui/homey');
-      homey = createHomeyMock();
-      homeyModule.setHomeyClient(homey);
-      ({ initDeviceDetailHandlers } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
-      ({ openDeviceDetail } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
-      ({ state } = require('../src/ui/state') as typeof import('../src/ui/state'));
-    });
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock();
+    homeyModule.setHomeyClient(homey);
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
+    const { state } = await import('../src/ui/state.ts');
 
     state.latestDevices = [buildDevice({
       name: 'Connected 300',
@@ -251,40 +235,32 @@ describe('device detail diagnostics', () => {
       windowDays: 21,
       diagnosticsByDeviceId: {},
     };
-    jest.doMock('../src/ui/devices', () => ({
-      renderDevices: jest.fn(),
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
     }));
-    jest.doMock('../src/ui/modes', () => ({
-      renderPriorities: jest.fn(),
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
     }));
-    jest.doMock('../src/ui/priceOptimization', () => ({
-      renderPriceOptimization: jest.fn(),
-      savePriceOptimizationSettings: jest.fn().mockResolvedValue(undefined),
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
     }));
-    jest.doMock('../src/ui/toast', () => ({
-      showToastError: jest.fn().mockResolvedValue(undefined),
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
     }));
-    jest.doMock('../src/ui/logging', () => ({
-      logSettingsError: jest.fn().mockResolvedValue(undefined),
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
     }));
 
-    let initDeviceDetailHandlers!: typeof import('../src/ui/deviceDetail').initDeviceDetailHandlers;
-    let openDeviceDetail!: typeof import('../src/ui/deviceDetail').openDeviceDetail;
-    let state!: typeof import('../src/ui/state').state;
-    let homey!: MockHomeyClient;
-
-    jest.isolateModules(() => {
-      const homeyModule = require('../src/ui/homey') as typeof import('../src/ui/homey');
-      homey = createHomeyMock({
-        uiState: {
-          deviceDiagnostics: diagnosticsPayload,
-        },
-      });
-      homeyModule.setHomeyClient(homey);
-      ({ initDeviceDetailHandlers } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
-      ({ openDeviceDetail } = require('../src/ui/deviceDetail') as typeof import('../src/ui/deviceDetail'));
-      ({ state } = require('../src/ui/state') as typeof import('../src/ui/state'));
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      uiState: {
+        deviceDiagnostics: diagnosticsPayload,
+      },
     });
+    homeyModule.setHomeyClient(homey);
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
+    const { state } = await import('../src/ui/state.ts');
 
     state.latestDevices = [buildDevice()];
     state.managedMap = { 'heater-1': true };

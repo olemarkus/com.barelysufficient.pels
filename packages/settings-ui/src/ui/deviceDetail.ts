@@ -3,8 +3,8 @@ import {
   getSteppedLoadLowestActiveStep,
   normalizeSteppedLoadProfile,
   sortSteppedLoadSteps,
-} from '../../../contracts/src/deviceControlProfiles';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../../contracts/src/types';
+} from '../../../contracts/src/deviceControlProfiles.ts';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   deviceDetailDiagnosticsDisclosure,
   deviceDetailOverlay,
@@ -28,45 +28,45 @@ import {
   deviceDetailSteppedAddStep,
   deviceDetailSteppedSave,
   deviceDetailSteppedReset,
-} from './dom';
-import { getSetting, setSetting } from './homey';
-import { resolveManagedState, state, defaultPriceOptimizationConfig } from './state';
-import { renderDevices } from './devices';
-import { renderPriorities } from './modes';
-import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization';
-import { showToastError } from './toast';
-import { logSettingsError } from './logging';
-import { renderDeviceDetailModes } from './deviceDetailModes';
+} from './dom.ts';
+import { getSetting, setSetting } from './homey.ts';
+import { resolveManagedState, state, defaultPriceOptimizationConfig } from './state.ts';
+import { renderDevices } from './devices.ts';
+import { renderPriorities } from './modes.ts';
+import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization.ts';
+import { showToastError } from './toast.ts';
+import { logSettingsError } from './logging.ts';
+import { renderDeviceDetailModes } from './deviceDetailModes.ts';
 import {
   applyLocalDeviceControlProfile,
   createDefaultSteppedLoadProfile,
   getEffectiveControlModel,
   getStoredDeviceControlProfile,
   saveDeviceControlProfiles,
-} from './deviceControlProfiles';
+} from './deviceControlProfiles.ts';
 import {
   supportsManagedDevice,
   supportsPowerDevice,
   supportsTemperatureDevice,
-} from './deviceUtils';
+} from './deviceUtils.ts';
 import {
   AIRTREATMENT_SHED_FLOOR_C,
   NON_ONOFF_TEMPERATURE_SHED_FLOOR_C,
-} from '../../../shared-domain/src/utils/airtreatmentConstants';
+} from '../../../shared-domain/src/utils/airtreatmentConstants.ts';
 import {
   OVERSHOOT_BEHAVIORS,
-} from '../../../contracts/src/settingsKeys';
+} from '../../../contracts/src/settingsKeys.ts';
 import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
-} from '../../../shared-domain/src/utils/airtreatmentShedTemperature';
+} from '../../../shared-domain/src/utils/airtreatmentShedTemperature.ts';
 import {
   isDeviceDetailDiagnosticsExpanded,
   refreshDeviceDetailDiagnostics,
   resetDeviceDetailDiagnosticsView,
   resetDeviceDetailDiagnosticsRequests,
   showDeviceDetailDiagnosticsLoading,
-} from './deviceDetailDiagnostics';
+} from './deviceDetailDiagnostics.ts';
 
 let currentDetailDeviceId: string | null = null;
 let currentSteppedLoadDraft: SteppedLoadProfile | null = null;

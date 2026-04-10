@@ -1,4 +1,4 @@
-/** @jest-environment node */
+/** @vitest-environment node */
 
 import fs from 'node:fs/promises';
 import http from 'node:http';

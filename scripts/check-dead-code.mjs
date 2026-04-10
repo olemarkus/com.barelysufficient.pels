@@ -63,6 +63,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_LOG_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_RESET_POWER_STATS_PATH$/,
   /^packages\/contracts\/src\/targetCapabilities\.ts:\d+ - getTargetCapabilityStep$/,
+  /^lib\/app\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
 ];
 
 const orphanResult = run(

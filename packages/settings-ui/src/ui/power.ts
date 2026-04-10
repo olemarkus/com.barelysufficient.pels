@@ -13,19 +13,19 @@ import {
   usageWeekendAvg,
   hourlyPattern,
   hourlyPatternMeta,
-} from './dom';
-import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi';
-import { renderPowerWeekChart, disposePowerWeekChart } from './powerWeekChartEcharts';
-import { getApiReadModel, getHomeyTimezone } from './homey';
-import { createToggleGroup } from './components';
-import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes';
-import { buildDayContext } from '../../../shared-domain/src/dailyBudget/dayContext';
-import { initUsageDayViewHandlers, renderUsageDayView, type UsageDayEntry } from './usageDayView';
-import { resolveUsageSplit } from './powerUsageSplit';
+} from './dom.ts';
+import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { renderPowerWeekChart, disposePowerWeekChart } from './powerWeekChartEcharts.ts';
+import { getApiReadModel, getHomeyTimezone } from './homey.ts';
+import { createToggleGroup } from './components.ts';
+import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
+import { buildDayContext } from '../../../shared-domain/src/dailyBudget/dayContext.ts';
+import { initUsageDayViewHandlers, renderUsageDayView, type UsageDayEntry } from './usageDayView.ts';
+import { resolveUsageSplit } from './powerUsageSplit.ts';
 import {
   renderDailyHistoryChartEcharts,
   renderHourlyPatternChartEcharts,
-} from './usageStatsChartsEcharts';
+} from './usageStatsChartsEcharts.ts';
 import {
   formatDateInTimeZone,
   getDateKeyInTimeZone,
@@ -34,7 +34,7 @@ import {
   getStartOfDayInTimeZone,
   getWeekStartInTimeZone,
   getZonedParts,
-} from './timezone';
+} from './timezone.ts';
 
 export type PowerTracker = PowerTrackerState;
 

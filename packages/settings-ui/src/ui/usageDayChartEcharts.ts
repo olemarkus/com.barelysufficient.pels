@@ -1,5 +1,5 @@
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry';
-import { formatHourAxisLabel, resolveLabelEvery, type DayViewBar } from './dayViewChart';
+import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import { formatHourAxisLabel, resolveLabelEvery, type DayViewBar } from './dayViewChart.ts';
 
 type AxisFormatterParam = {
   dataIndex?: number;

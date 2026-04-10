@@ -18,8 +18,8 @@ const setupDailyBudgetDom = () => {
   `;
 };
 
-const installHomeyClient = (payload: unknown) => {
-  const { setHomeyClient } = require('../src/ui/homey') as typeof import('../src/ui/homey');
+const installHomeyClient = async (payload: unknown) => {
+  const { setHomeyClient } = await import('../src/ui/homey.ts');
   setHomeyClient({
     ready: async () => {},
     get: (_key, cb) => cb(null, null),
@@ -99,8 +99,8 @@ const buildDailyBudgetPayload = () => ({
 
 describe('daily budget chart render', () => {
   beforeEach(() => {
-    jest.resetModules();
-    jest.dontMock('../src/ui/dailyBudgetChartEcharts');
+    vi.unmock('../src/ui/dailyBudgetChartEcharts.ts');
+    vi.resetModules();
     setupDailyBudgetDom();
   });
 
@@ -108,9 +108,9 @@ describe('daily budget chart render', () => {
     const breakdownInput = document.querySelector('#daily-budget-breakdown') as HTMLInputElement | null;
     if (breakdownInput) breakdownInput.checked = false;
 
-    installHomeyClient(buildDailyBudgetPayload());
+    await installHomeyClient(buildDailyBudgetPayload());
 
-    const { refreshDailyBudgetPlan } = require('../src/ui/dailyBudget') as typeof import('../src/ui/dailyBudget');
+    const { refreshDailyBudgetPlan } = await import('../src/ui/dailyBudget.ts');
     await refreshDailyBudgetPlan();
 
     const chart = document.querySelector('#daily-budget-chart') as HTMLElement | null;
@@ -121,19 +121,19 @@ describe('daily budget chart render', () => {
     expect(legend).toBeNull();
   });
 
-  it('uses fallback chart width when container width is initially zero', () => {
-    const setOption = jest.fn();
-    const initEcharts = jest.fn(() => ({
+  it('uses fallback chart width when container width is initially zero', async () => {
+    const setOption = vi.fn();
+    const initEcharts = vi.fn(() => ({
       setOption,
-      resize: jest.fn(),
-      dispose: jest.fn(),
+      resize: vi.fn(),
+      dispose: vi.fn(),
     }));
-    jest.doMock('../src/ui/echartsRegistry', () => ({
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
       initEcharts,
       encodeHtml: (value: string) => value,
     }));
 
-    const { renderDailyBudgetChartEcharts } = require('../src/ui/dailyBudgetChartEcharts') as typeof import('../src/ui/dailyBudgetChartEcharts');
+    const { renderDailyBudgetChartEcharts } = await import('../src/ui/dailyBudgetChartEcharts.ts');
     const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
     const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
 
@@ -164,16 +164,16 @@ describe('daily budget chart render', () => {
     expect(setOption).toHaveBeenCalledTimes(1);
   });
 
-  it('uses explicit planned and actual labels in the tooltip title', () => {
+  it('uses explicit planned and actual labels in the tooltip title', async () => {
     const capturedArgs: Array<{ bars: Array<{ title: string }> }> = [];
-    jest.doMock('../src/ui/dailyBudgetChartEcharts', () => ({
+    vi.doMock('../src/ui/dailyBudgetChartEcharts.ts', () => ({
       renderDailyBudgetChartEcharts: (args: { bars: Array<{ title: string }> }) => {
         capturedArgs.push(args);
         return true;
       },
     }));
 
-    const { renderDailyBudgetChart } = require('../src/ui/dailyBudgetChart') as typeof import('../src/ui/dailyBudgetChart');
+    const { renderDailyBudgetChart } = await import('../src/ui/dailyBudgetChart.ts');
     const payload = buildDailyBudgetPayload().days['2026-02-01'];
     const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
     const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
@@ -186,20 +186,41 @@ describe('daily budget chart render', () => {
     );
   });
 
-  it('stack OFF: renders Actual and Budget as two grouped series per hour', () => {
-    const setOption = jest.fn();
-    const initEcharts = jest.fn(() => ({ setOption, resize: jest.fn(), dispose: jest.fn() }));
-    jest.doMock('../src/ui/echartsRegistry', () => ({
+  it('stack OFF: renders Actual and Budget as two grouped series per hour', async () => {
+    const setOption = vi.fn();
+    const initEcharts = vi.fn(() => ({ setOption, resize: vi.fn(), dispose: vi.fn() }));
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
       initEcharts,
       encodeHtml: (value: string) => value,
     }));
-
-    const { renderDailyBudgetChart } = require('../src/ui/dailyBudgetChart') as typeof import('../src/ui/dailyBudgetChart');
+    // vi.unmock in beforeEach flags dailyBudgetChartEcharts.ts as "bypass mocks".
+    // Re-enter the mock system via vi.importActual so echartsRegistry mock applies.
+    vi.doMock('../src/ui/dailyBudgetChartEcharts.ts', async () =>
+      vi.importActual('../src/ui/dailyBudgetChartEcharts.ts'),
+    );
+    vi.resetModules();
+    const { renderDailyBudgetChartEcharts } = await import('../src/ui/dailyBudgetChartEcharts.ts');
     const payload = buildDailyBudgetPayload().days['2026-02-01'];
     const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
     const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
 
-    renderDailyBudgetChart({ payload, showActual: true, showBreakdown: false, barsEl, labelsEl });
+    renderDailyBudgetChartEcharts({
+      bars: [{ label: '00:00', value: 1, title: '00:00' }],
+      planned: payload.buckets.plannedKWh,
+      actual: payload.buckets.actualKWh,
+      actualUncontrolled: payload.buckets.actualUncontrolledKWh,
+      actualControlled: payload.buckets.actualControlledKWh,
+      plannedUncontrolled: payload.buckets.plannedUncontrolledKWh,
+      plannedControlled: payload.buckets.plannedControlledKWh,
+      labels: payload.buckets.startLocalLabels,
+      currentBucketIndex: payload.currentBucketIndex,
+      actualUpToIndex: payload.currentBucketIndex,
+      showActual: true,
+      showBreakdown: false,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
 
     expect(setOption).toHaveBeenCalledTimes(1);
     const option = setOption.mock.calls[0][0] as { series: Array<{ name: string }> };
@@ -208,20 +229,39 @@ describe('daily budget chart render', () => {
     expect(names).toContain('Budget');
   });
 
-  it('stack ON: renders four grouped stacked series (actual + plan breakdown)', () => {
-    const setOption = jest.fn();
-    const initEcharts = jest.fn(() => ({ setOption, resize: jest.fn(), dispose: jest.fn() }));
-    jest.doMock('../src/ui/echartsRegistry', () => ({
+  it('stack ON: renders four grouped stacked series (actual + plan breakdown)', async () => {
+    const setOption = vi.fn();
+    const initEcharts = vi.fn(() => ({ setOption, resize: vi.fn(), dispose: vi.fn() }));
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
       initEcharts,
       encodeHtml: (value: string) => value,
     }));
-
-    const { renderDailyBudgetChart } = require('../src/ui/dailyBudgetChart') as typeof import('../src/ui/dailyBudgetChart');
+    vi.doMock('../src/ui/dailyBudgetChartEcharts.ts', async () =>
+      vi.importActual('../src/ui/dailyBudgetChartEcharts.ts'),
+    );
+    vi.resetModules();
+    const { renderDailyBudgetChartEcharts } = await import('../src/ui/dailyBudgetChartEcharts.ts');
     const payload = buildDailyBudgetPayload().days['2026-02-01'];
     const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
     const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
 
-    renderDailyBudgetChart({ payload, showActual: true, showBreakdown: true, barsEl, labelsEl });
+    renderDailyBudgetChartEcharts({
+      bars: [{ label: '00:00', value: 1, title: '00:00' }],
+      planned: payload.buckets.plannedKWh,
+      actual: payload.buckets.actualKWh,
+      actualUncontrolled: payload.buckets.actualUncontrolledKWh,
+      actualControlled: payload.buckets.actualControlledKWh,
+      plannedUncontrolled: payload.buckets.plannedUncontrolledKWh,
+      plannedControlled: payload.buckets.plannedControlledKWh,
+      labels: payload.buckets.startLocalLabels,
+      currentBucketIndex: payload.currentBucketIndex,
+      actualUpToIndex: payload.currentBucketIndex,
+      showActual: true,
+      showBreakdown: true,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
 
     expect(setOption).toHaveBeenCalledTimes(1);
     const option = setOption.mock.calls[0][0] as { series: Array<{ name: string; stack?: string }> };
@@ -237,21 +277,41 @@ describe('daily budget chart render', () => {
     expect(actualStack).not.toBe(planStack);
   });
 
-  it('tomorrow view: only Budget series is rendered (no Actual)', () => {
-    const setOption = jest.fn();
-    const initEcharts = jest.fn(() => ({ setOption, resize: jest.fn(), dispose: jest.fn() }));
-    jest.doMock('../src/ui/echartsRegistry', () => ({
+  it('tomorrow view: only Budget series is rendered (no Actual)', async () => {
+    const setOption = vi.fn();
+    const initEcharts = vi.fn(() => ({ setOption, resize: vi.fn(), dispose: vi.fn() }));
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
       initEcharts,
       encodeHtml: (value: string) => value,
     }));
-
-    const { renderDailyBudgetChart } = require('../src/ui/dailyBudgetChart') as typeof import('../src/ui/dailyBudgetChart');
+    vi.doMock('../src/ui/dailyBudgetChartEcharts.ts', async () =>
+      vi.importActual('../src/ui/dailyBudgetChartEcharts.ts'),
+    );
+    vi.resetModules();
+    const { renderDailyBudgetChartEcharts } = await import('../src/ui/dailyBudgetChartEcharts.ts');
     const payload = buildDailyBudgetPayload().days['2026-02-01'];
     const barsEl = document.querySelector('#daily-budget-bars') as HTMLElement;
     const labelsEl = document.querySelector('#daily-budget-labels') as HTMLElement;
 
-    renderDailyBudgetChart({ payload, showActual: false, showBreakdown: false, barsEl, labelsEl });
+    renderDailyBudgetChartEcharts({
+      bars: [{ label: '00:00', value: 1, title: '00:00' }],
+      planned: payload.buckets.plannedKWh,
+      actual: [],
+      actualUncontrolled: [],
+      actualControlled: [],
+      plannedUncontrolled: payload.buckets.plannedUncontrolledKWh,
+      plannedControlled: payload.buckets.plannedControlledKWh,
+      labels: payload.buckets.startLocalLabels,
+      currentBucketIndex: -1,
+      actualUpToIndex: -1,
+      showActual: false,
+      showBreakdown: false,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
 
+    expect(setOption).toHaveBeenCalledTimes(1);
     const option = setOption.mock.calls[0][0] as { series: Array<{ name: string }> };
     const names = option.series.map((s) => s.name);
     expect(names).not.toContain('Actual');

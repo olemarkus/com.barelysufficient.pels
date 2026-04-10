@@ -3,8 +3,8 @@ import {
     PowerTrackerState,
 } from '../lib/core/powerTracker';
 
-const mockRebuildPlan = jest.fn().mockResolvedValue(undefined);
-const mockSaveState = jest.fn();
+const mockRebuildPlan = vi.fn().mockResolvedValue(undefined);
+const mockSaveState = vi.fn();
 
 describe('PowerTracker Outage Tracking', () => {
     let state: PowerTrackerState;
@@ -20,7 +20,7 @@ describe('PowerTracker Outage Tracking', () => {
             hourlyAverages: {},
             unreliablePeriods: [],
         };
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     test('should not record outage for short gaps within same hour', async () => {

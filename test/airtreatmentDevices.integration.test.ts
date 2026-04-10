@@ -13,7 +13,7 @@ import type { TargetDeviceSnapshot } from '../lib/utils/types';
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
-jest.useFakeTimers({ doNotFake: ['nextTick', 'Date'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 
 const buildTemperatureApiDevice = (overrides?: Partial<{
   id: string;
@@ -77,12 +77,12 @@ describe('Airtreatment device integration', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('builds a snapshot entry for an airtreatment temperature device', async () => {
@@ -91,7 +91,7 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'airtreatment-1': buildTemperatureApiDevice(),
     });
 
@@ -117,7 +117,7 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'airtreatment-1': buildTemperatureApiDevice({ targetTemperature: 19 }),
     });
 
@@ -141,10 +141,10 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'airtreatment-1': buildTemperatureApiDevice({ targetTemperature: 19, measurePower: 245.73 }),
     });
-    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -154,7 +154,7 @@ describe('Airtreatment device integration', () => {
     }
 
     await (app as any).recordPowerSample(5000);
-    jest.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
     await flushPromises();
 
     expect(setCapSpy).toHaveBeenCalledWith(
@@ -182,7 +182,7 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'thermostat-1': buildTemperatureApiDevice({
         id: 'thermostat-1',
         name: 'Hall Thermostat',
@@ -192,7 +192,7 @@ describe('Airtreatment device integration', () => {
         measurePower: 245.73,
       }),
     });
-    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -202,7 +202,7 @@ describe('Airtreatment device integration', () => {
     }
 
     await (app as any).recordPowerSample(5000);
-    jest.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
     await flushPromises();
 
     expect(setCapSpy).toHaveBeenCalledWith(
@@ -237,7 +237,7 @@ describe('Airtreatment device integration', () => {
     const reportedTargets: Record<string, number> = { 'flexit-1': 19, 'flexit-2': 19 };
     const samplePowerW = 2500;
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async () => ({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async () => ({
       'flexit-1': buildTemperatureApiDevice({
         id: 'flexit-1',
         name: 'Nordic S4 REL A',
@@ -252,7 +252,7 @@ describe('Airtreatment device integration', () => {
       }),
     }));
 
-    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path: string, body?: any) => {
+    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path: string, body?: any) => {
       // Simulate Flexit accepting shed-temp writes but not persisting restore writes.
       const capMatch = path.match(/^manager\/devices\/device\/(.+?)\/capability\/(.+)$/);
       if (capMatch) {
@@ -266,7 +266,7 @@ describe('Airtreatment device integration', () => {
 
     const runCycle = async () => {
       await (app as any).recordPowerSample(samplePowerW);
-      jest.advanceTimersByTime(100);
+      vi.advanceTimersByTime(100);
       await flushPromises();
       return mockHomeyInstance.settings.get('device_plan_snapshot') as {
         devices: Array<{ id: string; reason?: string; plannedState: string }>;
@@ -342,7 +342,7 @@ describe('Airtreatment device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'airtreatment-onoff-1': buildTemperatureApiDevice({
         id: 'airtreatment-onoff-1',
         class: 'airtreatment',
@@ -352,7 +352,7 @@ describe('Airtreatment device integration', () => {
         measurePower: 245.73,
       }),
     });
-    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).refreshTargetDevicesSnapshot();
 
@@ -367,7 +367,7 @@ describe('Airtreatment device integration', () => {
     }
 
     await (app as any).recordPowerSample(5000);
-    jest.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
     await flushPromises();
 
     expect(setCapSpy).toHaveBeenCalledWith(

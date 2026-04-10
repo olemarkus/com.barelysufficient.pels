@@ -76,14 +76,14 @@ describe('extractLiveHomePowerWatts', () => {
 });
 
 describe('fetchLivePowerReport', () => {
-  const logger = { log: jest.fn(), debug: jest.fn(), error: jest.fn() };
+  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() };
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('returns both device power and home power from the REST API', async () => {
-    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
         { type: 'device', id: 'dev1', values: { W: 800 } },
         { type: 'cumulative', values: { W: 3200 } },
@@ -97,7 +97,7 @@ describe('fetchLivePowerReport', () => {
   });
 
   it('returns empty results when REST client is not initialized', async () => {
-    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
 
     const result = await fetchLivePowerReport({ logger });
 
@@ -106,7 +106,7 @@ describe('fetchLivePowerReport', () => {
   });
 
   it('returns empty results on API error', async () => {
-    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockRejectedValue(new Error('API down'));
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockRejectedValue(new Error('API down'));
 
     const result = await fetchLivePowerReport({ logger });
 

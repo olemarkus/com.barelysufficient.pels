@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import {
   DEVICE_DIAGNOSTICS_STATE_KEY,
   DeviceDiagnosticsService,
@@ -5,8 +6,8 @@ import {
 import type { DeviceDiagnosticsPlanObservation } from '../lib/diagnostics/deviceDiagnosticsService';
 
 type MockSettings = {
-  get: jest.Mock;
-  set: jest.Mock;
+  get: Mock;
+  set: Mock;
 };
 
 const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean } = {}) => {
@@ -16,13 +17,13 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
     store.set(DEVICE_DIAGNOSTICS_STATE_KEY, initialState);
   }
   const settings: MockSettings = {
-    get: jest.fn((key: string) => store.get(key)),
-    set: jest.fn((key: string, value: unknown) => {
+    get: vi.fn((key: string) => store.get(key)),
+    set: vi.fn((key: string, value: unknown) => {
       store.set(key, value);
     }),
   };
-  const logDebug = jest.fn();
-  const error = jest.fn();
+  const logDebug = vi.fn();
+  const error = vi.fn();
   const service = new DeviceDiagnosticsService({
     homey: { settings } as never,
     getTimeZone: () => 'Europe/Oslo',
@@ -80,12 +81,12 @@ const getStarvationState = (service: DeviceDiagnosticsService, deviceId = 'heate
 
 describe('DeviceDiagnosticsService', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-09T10:00:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-09T10:00:00.000Z'));
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('aggregates starvation, hysteresis, and penalty metrics into the UI payload', () => {
@@ -595,11 +596,11 @@ describe('DeviceDiagnosticsService', () => {
       origin: 'pels',
       deviceId: 'heater-1',
     });
-    jest.runOnlyPendingTimers();
+    vi.runOnlyPendingTimers();
     expect(settings.set).toHaveBeenCalledTimes(1);
 
     const secondTs = start + (60 * 1000);
-    jest.setSystemTime(new Date(secondTs));
+    vi.setSystemTime(new Date(secondTs));
     service.recordControlEvent({
       nowTs: secondTs,
       kind: 'restore',
@@ -607,18 +608,18 @@ describe('DeviceDiagnosticsService', () => {
       deviceId: 'heater-1',
     });
 
-    jest.advanceTimersByTime((4 * 60 * 1000) - 1);
+    vi.advanceTimersByTime((4 * 60 * 1000) - 1);
     expect(settings.set).toHaveBeenCalledTimes(1);
 
-    jest.setSystemTime(new Date(start + (5 * 60 * 1000)));
-    jest.advanceTimersByTime(1);
+    vi.setSystemTime(new Date(start + (5 * 60 * 1000)));
+    vi.advanceTimersByTime(1);
     expect(settings.set).toHaveBeenCalledTimes(2);
   });
 
   it('unrefs throttled flush timers so diagnostics persistence does not block process exit', () => {
-    jest.useRealTimers();
-    const unref = jest.fn();
-    const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((handler: TimerHandler) => {
+    vi.useRealTimers();
+    const unref = vi.fn();
+    const setTimeoutSpy = vi.spyOn(global, 'setTimeout').mockImplementation(((handler: TimerHandler) => {
       void handler;
       return { unref } as never;
     }) as typeof setTimeout);
@@ -635,14 +636,14 @@ describe('DeviceDiagnosticsService', () => {
       expect(unref).toHaveBeenCalledTimes(1);
     } finally {
       setTimeoutSpy.mockRestore();
-      jest.useFakeTimers();
-      jest.setSystemTime(new Date('2026-03-09T10:00:00.000Z'));
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-03-09T10:00:00.000Z'));
     }
   });
 
   it('skips persisted payload serialization in flush logs when diagnostics debug is disabled', () => {
     const { service, logDebug } = createDeps({ isDebugEnabled: false });
-    const stringifySpy = jest.spyOn(JSON, 'stringify');
+    const stringifySpy = vi.spyOn(JSON, 'stringify');
 
     try {
       service.recordControlEvent({
@@ -652,7 +653,7 @@ describe('DeviceDiagnosticsService', () => {
         deviceId: 'heater-1',
       });
 
-      jest.runOnlyPendingTimers();
+      vi.runOnlyPendingTimers();
 
       expect(stringifySpy).not.toHaveBeenCalled();
       const flushMessage = logDebug.mock.calls

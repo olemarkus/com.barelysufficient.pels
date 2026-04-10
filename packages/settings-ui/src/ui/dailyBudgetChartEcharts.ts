@@ -1,6 +1,6 @@
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from './echartsRegistry';
-import { formatKWh } from './dailyBudgetFormat';
-import { formatHourAxisLabel, resolveLabelEvery, type DayViewBar } from './dayViewChart';
+import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from './echartsRegistry.ts';
+import { formatKWh } from './dailyBudgetFormat.ts';
+import { formatHourAxisLabel, resolveLabelEvery, type DayViewBar } from './dayViewChart.ts';
 
 type AxisFormatterParam = {
   dataIndex?: number;

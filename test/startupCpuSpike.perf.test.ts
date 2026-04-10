@@ -167,14 +167,14 @@ describe('startup cpu spike perf reproduction', () => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     setMockDrivers({});
-    jest.clearAllMocks();
-    jest.useRealTimers();
+    vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   afterEach(async () => {
     delete process.env.PELS_ASYNC_STARTUP;
     await cleanupApps();
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('shows materially higher startup work for heavy fixtures vs light fixtures', async () => {
@@ -196,11 +196,11 @@ describe('startup cpu spike perf reproduction', () => {
   }, 60_000);
 
   it('skips live power fetch during startup bootstrap snapshot', async () => {
-    const liveReportSpy = jest.fn(async () => {
+    const liveReportSpy = vi.fn(async () => {
       await wait(250);
       return {};
     });
-    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockImplementation(liveReportSpy);
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockImplementation(liveReportSpy);
 
     const deviceCount = 1800;
     setMockDrivers(buildHeavyDriverFixture(deviceCount));

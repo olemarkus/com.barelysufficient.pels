@@ -9,8 +9,8 @@ import type { TargetDeviceSnapshot } from '../lib/utils/types';
 const makeSettings = (initial: Record<string, unknown>) => {
   const store: Record<string, unknown> = { ...initial };
   return {
-    get: jest.fn((key: string) => store[key]),
-    set: jest.fn((key: string, value: unknown) => {
+    get: vi.fn((key: string) => store[key]),
+    set: vi.fn((key: string, value: unknown) => {
       store[key] = value;
     }),
   };
@@ -50,7 +50,7 @@ describe('disableUnsupportedDevices', () => {
         'vt-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
       },
     });
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
@@ -70,7 +70,7 @@ describe('disableUnsupportedDevices', () => {
         'vt-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
       },
     });
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
@@ -94,7 +94,7 @@ describe('disableUnsupportedDevices', () => {
         'socket-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
       },
     });
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice(), buildFullyUnsupportedDevice()],
@@ -115,7 +115,7 @@ describe('disableManagedEvDevices', () => {
       [MANAGED_DEVICES]: { 'ev-1': true },
       [CONTROLLABLE_DEVICES]: { 'ev-1': true },
     });
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
 
     disableManagedEvDevices({
       snapshot: [buildEvDevice()],

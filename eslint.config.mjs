@@ -109,6 +109,8 @@ export default tseslint.config(
       'packages/settings-ui/test/screenshots/**',
       'echarts-modules.d.ts',
       'playwright.config.ts',
+      'vitest.config*.ts',
+      'vitest-env.d.ts',
       'tmp/**',
     ],
   },
@@ -259,7 +261,7 @@ export default tseslint.config(
     files: ['test/**/*.ts'],
     languageOptions: {
       globals: {
-        ...globals.jest,
+        ...globals.vitest,
       },
       parserOptions: {
         project: false,
@@ -379,7 +381,7 @@ export default tseslint.config(
     },
     languageOptions: {
       globals: {
-        ...globals.jest,
+        ...globals.vitest,
         ...globals.node,
       },
       parserOptions: {

@@ -27,8 +27,8 @@ const buildPowerDom = () => {
   `;
 };
 
-const installHomeyClient = (tracker: unknown, timeZone = 'UTC') => {
-  const { setHomeyClient } = require('../src/ui/homey') as typeof import('../src/ui/homey');
+const installHomeyClient = async (tracker: unknown, timeZone = 'UTC') => {
+  const { setHomeyClient } = await import('../src/ui/homey.ts');
   setHomeyClient({
     ready: async () => { },
     get: (key, cb) => {
@@ -67,15 +67,15 @@ const buildBuckets = (startIso: string, hours: number, kWh: number) => {
 
 describe('power page stats (buckets-only)', () => {
   beforeEach(() => {
-    jest.resetModules();
+    vi.resetModules();
     buildPowerDom();
   });
 
   it('computes weekday/weekend averages from buckets when dailyTotals are missing', async () => {
     const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 7 * 24, 1.2);
-    installHomeyClient({ buckets });
+    await installHomeyClient({ buckets });
 
-    const { renderPowerStats } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const { renderPowerStats } = await import('../src/ui/power.ts');
     await renderPowerStats();
 
     const weekdayEl = document.querySelector('#usage-weekday-avg') as HTMLElement;
@@ -86,9 +86,9 @@ describe('power page stats (buckets-only)', () => {
 
   it('renders hourly pattern chart with echarts when hourlyAverages are missing', async () => {
     const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 24, 1.2);
-    installHomeyClient({ buckets });
+    await installHomeyClient({ buckets });
 
-    const { renderPowerStats } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const { renderPowerStats } = await import('../src/ui/power.ts');
     await renderPowerStats();
 
     const chartRoot = document.querySelector('#hourly-pattern') as HTMLElement | null;
@@ -99,9 +99,9 @@ describe('power page stats (buckets-only)', () => {
 
   it('renders daily history chart from buckets when dailyTotals are missing', async () => {
     const buckets = buildBuckets('2025-01-01T00:00:00.000Z', 5 * 24, 0.6);
-    installHomeyClient({ buckets });
+    await installHomeyClient({ buckets });
 
-    const { renderPowerStats } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const { renderPowerStats } = await import('../src/ui/power.ts');
     await renderPowerStats();
 
     const chartRoot = document.querySelector('#daily-list') as HTMLElement | null;
@@ -112,21 +112,21 @@ describe('power page stats (buckets-only)', () => {
 
   it('limits hourly detail to the current UTC week by default', async () => {
     const buckets = buildBuckets('2025-01-01T00:00:00.000Z', 14 * 24, 0.4);
-    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 10, 12, 0, 0));
-    const { renderPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 10, 12, 0, 0));
+    const { renderPowerUsage } = await import('../src/ui/power.ts');
     const entries = Object.entries(buckets).map(([iso, kWh]) => ({ hour: new Date(iso), kWh }));
     renderPowerUsage(entries);
     const powerList = document.querySelector('#power-list') as HTMLElement;
     expect(powerList.querySelector('svg')).not.toBeNull();
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('renders heatmap chart when hourly budget is present', async () => {
     const buckets = buildBuckets('2025-01-13T00:00:00.000Z', 2, 1.2);
     const hourlyBudgets = Object.fromEntries(Object.keys(buckets).map((iso) => [iso, 1.0]));
     // Jan 15 (Wednesday) — current week (Jan 13–19) contains the Jan 13 bucket data
-    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 15, 12, 0, 0));
-    const { renderPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 15, 12, 0, 0));
+    const { renderPowerUsage } = await import('../src/ui/power.ts');
     const entries = Object.entries(buckets).map(([iso, kWh]) => ({
       hour: new Date(iso),
       kWh,
@@ -136,17 +136,17 @@ describe('power page stats (buckets-only)', () => {
     const powerList = document.querySelector('#power-list') as HTMLElement;
     expect(powerList.querySelector('svg')).not.toBeNull();
     expect(powerList.style.height).toBe('240px');
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('maps controlled and uncontrolled split from tracker buckets', async () => {
     const iso = '2025-01-06T00:00:00.000Z';
-    installHomeyClient({
+    await installHomeyClient({
       buckets: { [iso]: 2.5 },
       controlledBuckets: { [iso]: 1.1 },
     });
 
-    const { getPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const { getPowerUsage } = await import('../src/ui/power.ts');
     const entries = await getPowerUsage();
 
     expect(entries.length).toBe(1);
@@ -157,12 +157,12 @@ describe('power page stats (buckets-only)', () => {
 
   it('preserves zero-valued usage buckets as measured data', async () => {
     const iso = '2025-01-06T00:00:00.000Z';
-    installHomeyClient({
+    await installHomeyClient({
       buckets: { [iso]: 0 },
       hourlySampleCounts: { [iso]: 3 },
     });
 
-    const { getPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const { getPowerUsage } = await import('../src/ui/power.ts');
     const entries = await getPowerUsage();
 
     expect(entries).toHaveLength(1);
@@ -173,7 +173,7 @@ describe('power page stats (buckets-only)', () => {
 
   it('keeps a cross-hour outage unreliable when the hour only has a single zero sample', async () => {
     const iso = '2025-01-06T08:00:00.000Z';
-    installHomeyClient({
+    await installHomeyClient({
       buckets: { [iso]: 0 },
       hourlySampleCounts: { [iso]: 1 },
       unreliablePeriods: [{
@@ -182,7 +182,7 @@ describe('power page stats (buckets-only)', () => {
       }],
     });
 
-    const { getPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const { getPowerUsage } = await import('../src/ui/power.ts');
     const entries = await getPowerUsage();
 
     expect(entries).toHaveLength(1);
@@ -191,7 +191,7 @@ describe('power page stats (buckets-only)', () => {
 
   it('treats repeated zero samples in an unreliable hour as valid measured data', async () => {
     const iso = '2025-01-06T08:00:00.000Z';
-    installHomeyClient({
+    await installHomeyClient({
       buckets: { [iso]: 0 },
       hourlySampleCounts: { [iso]: 6 },
       unreliablePeriods: [{
@@ -200,7 +200,7 @@ describe('power page stats (buckets-only)', () => {
       }],
     });
 
-    const { getPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const { getPowerUsage } = await import('../src/ui/power.ts');
     const entries = await getPowerUsage();
 
     expect(entries).toHaveLength(1);
@@ -209,7 +209,7 @@ describe('power page stats (buckets-only)', () => {
 
   it('keeps repeated non-zero samples unreliable when the hour overlaps an outage', async () => {
     const iso = '2025-01-06T08:00:00.000Z';
-    installHomeyClient({
+    await installHomeyClient({
       buckets: { [iso]: 1.2 },
       hourlySampleCounts: { [iso]: 6 },
       unreliablePeriods: [{
@@ -218,18 +218,18 @@ describe('power page stats (buckets-only)', () => {
       }],
     });
 
-    const { getPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const { getPowerUsage } = await import('../src/ui/power.ts');
     const entries = await getPowerUsage();
 
     expect(entries).toHaveLength(1);
     expect(entries[0].unreliable).toBe(true);
   });
 
-  it('renders the usage day chart with echarts when split usage is available', () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
-    installHomeyClient({}, 'UTC');
-    const { renderUsageDayView } = require('../src/ui/usageDayView') as typeof import('../src/ui/usageDayView');
+  it('renders the usage day chart with echarts when split usage is available', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
+    await installHomeyClient({}, 'UTC');
+    const { renderUsageDayView } = await import('../src/ui/usageDayView.ts');
 
     renderUsageDayView([{
       hour: new Date('2025-01-06T00:00:00.000Z'),
@@ -244,21 +244,21 @@ describe('power page stats (buckets-only)', () => {
     expect(chartRoot?.classList.contains('usage-day-bars--echarts')).toBe(true);
     expect(chartRoot?.querySelector('svg')).not.toBeNull();
     expect(document.querySelector('.day-view-bar')).toBeNull();
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
-  it('renders a single bar series in usage day echarts', () => {
-    const setOption = jest.fn();
-    const initEcharts = jest.fn(() => ({
+  it('renders a single bar series in usage day echarts', async () => {
+    const setOption = vi.fn();
+    const initEcharts = vi.fn(() => ({
       setOption,
-      resize: jest.fn(),
-      dispose: jest.fn(),
+      resize: vi.fn(),
+      dispose: vi.fn(),
     }));
-    jest.doMock('../src/ui/echartsRegistry', () => ({
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
       initEcharts,
       encodeHtml: (value: string) => value,
     }));
-    const { renderUsageDayChartEcharts } = require('../src/ui/usageDayChartEcharts') as typeof import('../src/ui/usageDayChartEcharts');
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
     const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
     const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
 
@@ -287,18 +287,18 @@ describe('power page stats (buckets-only)', () => {
     expect(option.series?.find((series) => series.type === 'scatter')).toBeUndefined();
   });
 
-  it('clears stale usage day chart DOM when bars are empty', () => {
-    const dispose = jest.fn();
-    const initEcharts = jest.fn(() => ({
-      setOption: jest.fn(),
-      resize: jest.fn(),
+  it('clears stale usage day chart DOM when bars are empty', async () => {
+    const dispose = vi.fn();
+    const initEcharts = vi.fn(() => ({
+      setOption: vi.fn(),
+      resize: vi.fn(),
       dispose,
     }));
-    jest.doMock('../src/ui/echartsRegistry', () => ({
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
       initEcharts,
       encodeHtml: (value: string) => value,
     }));
-    const { renderUsageDayChartEcharts } = require('../src/ui/usageDayChartEcharts') as typeof import('../src/ui/usageDayChartEcharts');
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
     const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
     const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
 
@@ -329,21 +329,21 @@ describe('power page stats (buckets-only)', () => {
     expect(labelsEl.hidden).toBe(true);
   });
 
-  it('hides usage day labels when echarts rendering fails', () => {
-    const dispose = jest.fn();
-    const initEcharts = jest.fn(() => ({
-      setOption: jest.fn(() => {
+  it('hides usage day labels when echarts rendering fails', async () => {
+    const dispose = vi.fn();
+    const initEcharts = vi.fn(() => ({
+      setOption: vi.fn(() => {
         throw new Error('render failed');
       }),
-      resize: jest.fn(),
+      resize: vi.fn(),
       dispose,
     }));
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    jest.doMock('../src/ui/echartsRegistry', () => ({
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
       initEcharts,
       encodeHtml: (value: string) => value,
     }));
-    const { renderUsageDayChartEcharts } = require('../src/ui/usageDayChartEcharts') as typeof import('../src/ui/usageDayChartEcharts');
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
     const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
     const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
 
@@ -366,17 +366,17 @@ describe('power page stats (buckets-only)', () => {
     }
   });
 
-  it('includes measured value in usage day tooltip text', () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
-    installHomeyClient({}, 'UTC');
+  it('includes measured value in usage day tooltip text', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
+    await installHomeyClient({}, 'UTC');
     let capturedBars: Array<{ title: string; marker?: { value: number } }> = [];
-    const renderUsageDayChartEcharts = jest.fn((params: { bars: Array<{ title: string; marker?: { value: number } }> }) => {
+    const renderUsageDayChartEcharts = vi.fn((params: { bars: Array<{ title: string; marker?: { value: number } }> }) => {
       capturedBars = params.bars;
       return true;
     });
-    jest.doMock('../src/ui/usageDayChartEcharts', () => ({ renderUsageDayChartEcharts }));
-    const { renderUsageDayView } = require('../src/ui/usageDayView') as typeof import('../src/ui/usageDayView');
+    vi.doMock('../src/ui/usageDayChartEcharts.ts', () => ({ renderUsageDayChartEcharts }));
+    const { renderUsageDayView } = await import('../src/ui/usageDayView.ts');
 
     renderUsageDayView([{
       hour: new Date('2025-01-06T00:00:00.000Z'),
@@ -386,14 +386,14 @@ describe('power page stats (buckets-only)', () => {
 
     expect(capturedBars[0]?.title).toContain('Measured 2.50 kWh');
     expect(capturedBars[0]?.marker).toBeUndefined();
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
-  it('renders consecutive zero-usage hours as valid data', () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
-    installHomeyClient({}, 'UTC');
-    const { renderUsageDayView } = require('../src/ui/usageDayView') as typeof import('../src/ui/usageDayView');
+  it('renders consecutive zero-usage hours as valid data', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
+    await installHomeyClient({}, 'UTC');
+    const { renderUsageDayView } = await import('../src/ui/usageDayView.ts');
 
     renderUsageDayView([
       { hour: new Date('2025-01-06T00:00:00.000Z'), kWh: 0 },
@@ -408,28 +408,28 @@ describe('power page stats (buckets-only)', () => {
     expect(empty.hidden).toBe(true);
     expect(status.hidden).toBe(true);
     expect(total.textContent).toBe('0.0 kWh');
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('matches daily budget today usage with the power summary total', async () => {
-    const { buildDayContext } = require('../../shared-domain/src/dailyBudget/dayContext') as typeof import('../../shared-domain/src/dailyBudget/dayContext');
-    const { getDateKeyInTimeZone, getDateKeyStartMs } = require('../../shared-domain/src/utils/dateUtils') as typeof import('../../shared-domain/src/utils/dateUtils');
-    const { getPowerStats } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const { buildDayContext } = await import('../../shared-domain/src/dailyBudget/dayContext.ts');
+    const { getDateKeyInTimeZone, getDateKeyStartMs } = await import('../../shared-domain/src/utils/dateUtils.ts');
+    const { getPowerStats } = await import('../src/ui/power.ts');
 
     const timeZone = 'Europe/Oslo';
     const nowMs = Date.UTC(2025, 0, 15, 12, 0, 0);
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date(nowMs));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(nowMs));
 
     const dateKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
     const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
     const buckets = buildBuckets(new Date(dayStartMs).toISOString(), 6, 1.25);
-    installHomeyClient({ buckets }, timeZone);
+    await installHomeyClient({ buckets }, timeZone);
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker: { buckets } });
     const { stats } = await getPowerStats();
 
     expect(stats.today).toBeCloseTo(context.usedNowKWh, 6);
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 });

@@ -1,13 +1,13 @@
-import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
+import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
   type SettingsUiResetPowerStatsResponse,
-} from '../../../contracts/src/settingsUiApi';
-import { callApi, primeApiCache } from './homey';
-import { showToast, showToastError } from './toast';
-import { logSettingsError, logSettingsInfo } from './logging';
-import { refreshDailyBudgetPlan } from './dailyBudget';
+} from '../../../contracts/src/settingsUiApi.ts';
+import { callApi, primeApiCache } from './homey.ts';
+import { showToast, showToastError } from './toast.ts';
+import { logSettingsError, logSettingsInfo } from './logging.ts';
+import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 
 let resetTimeout: ReturnType<typeof setTimeout> | null = null;
 

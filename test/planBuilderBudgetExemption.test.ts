@@ -48,12 +48,12 @@ const buildDailyBudgetSnapshot = (params: {
 
 describe('PlanBuilder budget exemption handling', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-11T10:30:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-11T10:30:00.000Z'));
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('does not shed other devices only because exempt load keeps the daily budget over plan', async () => {
@@ -87,7 +87,7 @@ describe('PlanBuilder budget exemption handling', () => {
     const builder = new PlanBuilder({
       homey: {
         settings: {
-          set: jest.fn(),
+          set: vi.fn(),
         },
       } as never,
       getCapacityGuard: () => capacityGuard,
@@ -117,8 +117,8 @@ describe('PlanBuilder budget exemption handling', () => {
       getPriorityForDevice: (deviceId: string) => (deviceId === 'budget-exempt' ? 100 : 10),
       getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
       getDynamicSoftLimitOverride: () => 10,
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot(devices);

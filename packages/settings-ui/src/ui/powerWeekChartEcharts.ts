@@ -1,6 +1,6 @@
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry';
-import { formatDateInTimeZone } from './timezone';
-import type { UsageDayEntry } from './usageDayView';
+import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import { formatDateInTimeZone } from './timezone.ts';
+import type { UsageDayEntry } from './usageDayView.ts';
 
 type PowerUsageEntry = UsageDayEntry;
 

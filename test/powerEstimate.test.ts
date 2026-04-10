@@ -2,9 +2,9 @@ import { estimatePower } from '../lib/core/powerEstimate';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 
 const logger = {
-  log: jest.fn(),
-  debug: jest.fn(),
-  error: jest.fn(),
+  log: vi.fn(),
+  debug: vi.fn(),
+  error: vi.fn(),
 };
 
 const buildState = () => ({
@@ -44,7 +44,7 @@ const buildSocketDevice = (params?: {
 
 describe('estimatePower', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('treats settings.load=0 as unset', () => {
@@ -58,8 +58,8 @@ describe('estimatePower', () => {
       state: buildState(),
       logger,
       minSignificantPowerW: 5,
-      updateLastKnownPower: jest.fn(),
-      applyMeasurementUpdates: jest.fn(),
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.loadKw).toBeUndefined();
@@ -68,7 +68,7 @@ describe('estimatePower', () => {
   });
 
   it('uses settings.load when value is greater than zero', () => {
-    const updateLastKnownPower = jest.fn();
+    const updateLastKnownPower = vi.fn();
     const result = estimatePower({
       device: buildDevice(650),
       deviceId: 'dev-1',
@@ -80,7 +80,7 @@ describe('estimatePower', () => {
       logger,
       minSignificantPowerW: 5,
       updateLastKnownPower,
-      applyMeasurementUpdates: jest.fn(),
+      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.loadKw).toBeCloseTo(0.65, 3);
@@ -109,8 +109,8 @@ describe('estimatePower', () => {
       state: buildState(),
       logger,
       minSignificantPowerW: 5,
-      updateLastKnownPower: jest.fn(),
-      applyMeasurementUpdates: jest.fn(),
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('homey-energy');
@@ -143,8 +143,8 @@ describe('estimatePower', () => {
       state: buildState(),
       logger,
       minSignificantPowerW: 5,
-      updateLastKnownPower: jest.fn(),
-      applyMeasurementUpdates: jest.fn(),
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('homey-energy');
@@ -172,8 +172,8 @@ describe('estimatePower', () => {
       state: buildState(),
       logger,
       minSignificantPowerW: 5,
-      updateLastKnownPower: jest.fn(),
-      applyMeasurementUpdates: jest.fn(),
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('default');
@@ -196,8 +196,8 @@ describe('estimatePower', () => {
       state: buildState(),
       logger,
       minSignificantPowerW: 5,
-      updateLastKnownPower: jest.fn(),
-      applyMeasurementUpdates: jest.fn(),
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('homey-energy');
@@ -220,8 +220,8 @@ describe('estimatePower', () => {
       state: buildState(),
       logger,
       minSignificantPowerW: 5,
-      updateLastKnownPower: jest.fn(),
-      applyMeasurementUpdates: jest.fn(),
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('default');

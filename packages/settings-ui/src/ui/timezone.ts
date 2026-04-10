@@ -12,4 +12,4 @@ export {
   getWeekStartInTimeZone,
   shiftDateKey,
   getZonedParts,
-} from '../../../shared-domain/src/utils/dateUtils';
+} from '../../../shared-domain/src/utils/dateUtils.ts';

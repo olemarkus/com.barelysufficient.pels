@@ -6,7 +6,7 @@ import { createApp, cleanupApps } from './utils/appTestUtils';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import { CAPACITY_DRY_RUN } from '../lib/utils/settingsKeys';
 
-jest.useFakeTimers({ doNotFake: ['nextTick', 'Date'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 const buildVThermoApiDevice = (overrides?: Partial<{
@@ -58,13 +58,13 @@ describe('VThermo device integration', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.restoreAllMocks();
-    jest.clearAllTimers();
+    vi.restoreAllMocks();
+    vi.clearAllTimers();
   });
 
   it('keeps VThermo managed for price-only control but disables capacity control when no power capability exists', async () => {
@@ -78,7 +78,7 @@ describe('VThermo device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'vthermo-1': buildVThermoApiDevice(),
     });
 
@@ -111,10 +111,10 @@ describe('VThermo device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'vthermo-1': buildVThermoApiDevice({ targetTemperature: 22 }),
     });
-    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).refreshTargetDevicesSnapshot();
 

@@ -11,7 +11,8 @@
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "types": ["jest", "node"]
+    "types": ["node", "vitest/globals"],
+    "allowImportingTsExtensions": true
   },
   "include": [
     "src/**/*.ts",

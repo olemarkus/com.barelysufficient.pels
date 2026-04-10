@@ -31,11 +31,11 @@ describe('Homey price service', () => {
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('stores Homey energy prices and currency when scheme is homey', async () => {
-    jest.useFakeTimers().setSystemTime(fixedNow);
+    vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
     const tomorrowKey = shiftDateKey(todayKey, 1);
     const todayStartMs = getDateKeyStartMs(todayKey, timeZone);
@@ -45,7 +45,7 @@ describe('Homey price service', () => {
     const tomorrowIntervals = buildIntervals(tomorrowStartMs, [3.3, 4.4], 60);
 
     const energyApi: HomeyEnergyApi = {
-      fetchDynamicElectricityPrices: jest.fn().mockImplementation(async ({ date }) => {
+      fetchDynamicElectricityPrices: vi.fn().mockImplementation(async ({ date }) => {
         if (date === todayKey) {
           return { interval: 60, pricesPerInterval: todayIntervals, priceUnit: 'NOK' };
         }
@@ -54,7 +54,7 @@ describe('Homey price service', () => {
         }
         return { interval: 60, pricesPerInterval: [], priceUnit: 'NOK' };
       }),
-      getCurrency: jest.fn().mockResolvedValue({ currency: 'NOK' }),
+      getCurrency: vi.fn().mockResolvedValue({ currency: 'NOK' }),
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
@@ -81,7 +81,7 @@ describe('Homey price service', () => {
   });
 
   it('uses cached Homey price payloads when available', async () => {
-    jest.useFakeTimers().setSystemTime(fixedNow);
+    vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
     const tomorrowKey = shiftDateKey(todayKey, 1);
 
@@ -90,10 +90,10 @@ describe('Homey price service', () => {
     mockHomeyInstance.settings.set(HOMEY_PRICES_TOMORROW, { dateKey: tomorrowKey, pricesByHour: { '0': 2 }, updatedAt: new Date().toISOString() });
 
     const energyApi: HomeyEnergyApi = {
-      fetchDynamicElectricityPrices: jest.fn().mockResolvedValue([]),
+      fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]),
     };
 
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       () => {},
@@ -110,7 +110,7 @@ describe('Homey price service', () => {
 
   it('logs when Homey energy API is unavailable', async () => {
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const log = jest.fn();
+    const log = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       log,
@@ -125,11 +125,11 @@ describe('Homey price service', () => {
   });
 
   it('logs an error when Homey price fetch fails', async () => {
-    jest.useFakeTimers().setSystemTime(fixedNow);
+    vi.useFakeTimers().setSystemTime(fixedNow);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const errorLog = jest.fn();
+    const errorLog = vi.fn();
     const energyApi: HomeyEnergyApi = {
-      fetchDynamicElectricityPrices: jest.fn().mockRejectedValue(new Error('boom')),
+      fetchDynamicElectricityPrices: vi.fn().mockRejectedValue(new Error('boom')),
     };
 
     const service = new PriceService(
@@ -147,25 +147,25 @@ describe('Homey price service', () => {
   });
 
   it('stores only today and uses price unit when currency lookup fails', async () => {
-    jest.useFakeTimers().setSystemTime(fixedNow);
+    vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
     const todayStartMs = getDateKeyStartMs(todayKey, timeZone);
     const todayIntervals = buildIntervals(todayStartMs, [1.1, 2.2], 60);
 
     const energyApi: HomeyEnergyApi = {
-      fetchDynamicElectricityPrices: jest.fn().mockImplementation(async ({ date }) => {
+      fetchDynamicElectricityPrices: vi.fn().mockImplementation(async ({ date }) => {
         if (date === todayKey) {
           return { interval: 60, pricesPerInterval: todayIntervals, priceUnit: 'NOK' };
         }
         return { interval: 60, pricesPerInterval: [] };
       }),
-      getCurrency: jest.fn().mockRejectedValue('nope'),
+      getCurrency: vi.fn().mockRejectedValue('nope'),
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const log = jest.fn();
-    const logDebug = jest.fn();
-    const errorLog = jest.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
+    const errorLog = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       log,
@@ -187,11 +187,11 @@ describe('Homey price service', () => {
   });
 
   it('logs when no Homey price data is available', async () => {
-    jest.useFakeTimers().setSystemTime(fixedNow);
+    vi.useFakeTimers().setSystemTime(fixedNow);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const log = jest.fn();
+    const log = vi.fn();
     const energyApi: HomeyEnergyApi = {
-      fetchDynamicElectricityPrices: jest.fn().mockResolvedValue([]),
+      fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]),
     };
 
     const service = new PriceService(
@@ -208,7 +208,7 @@ describe('Homey price service', () => {
   });
 
   it('ignores cached Homey data with mismatched date keys', () => {
-    jest.useFakeTimers().setSystemTime(fixedNow);
+    vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
     const wrongKey = shiftDateKey(todayKey, -1);
 
@@ -219,7 +219,7 @@ describe('Homey price service', () => {
       updatedAt: new Date().toISOString(),
     });
 
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       () => {},
@@ -236,7 +236,7 @@ describe('Homey price service', () => {
   });
 
   it('persists refreshed lastFetched when combined prices are otherwise unchanged', () => {
-    jest.useFakeTimers().setSystemTime(fixedNow);
+    vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
     mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
@@ -251,10 +251,10 @@ describe('Homey price service', () => {
       () => {},
       () => {},
     );
-    const setSpy = jest.spyOn(mockHomeyInstance.settings, 'set');
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
     service.updateCombinedPrices();
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     service.updateCombinedPrices();
 
     const combinedWrites = setSpy.mock.calls.filter(([key]) => key === COMBINED_PRICES);
@@ -267,7 +267,7 @@ describe('Homey price service', () => {
   });
 
   it('rewrites combined prices when underlying values change', () => {
-    jest.useFakeTimers().setSystemTime(fixedNow);
+    vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
     mockHomeyInstance.settings.set(FLOW_PRICES_TODAY, {
@@ -282,7 +282,7 @@ describe('Homey price service', () => {
       () => {},
       () => {},
     );
-    const setSpy = jest.spyOn(mockHomeyInstance.settings, 'set');
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
     service.updateCombinedPrices();
 
@@ -291,7 +291,7 @@ describe('Homey price service', () => {
       pricesByHour: { '0': 2.5, '1': 2.7 },
       updatedAt: new Date(fixedNow.getTime() + 1000).toISOString(),
     });
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     service.updateCombinedPrices();
 
     const combinedWrites = setSpy.mock.calls.filter(([key]) => key === COMBINED_PRICES);

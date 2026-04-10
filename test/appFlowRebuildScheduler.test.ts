@@ -7,22 +7,22 @@ const flushMicrotasks = async () => {
 
 describe('createFlowRebuildScheduler', () => {
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('runs the first flow rebuild immediately and coalesces bursty trailing requests', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     let resolveFirstRebuild: (() => void) | null = null;
     const firstRebuildPromise = new Promise<void>((resolve) => {
       resolveFirstRebuild = resolve;
     });
-    const rebuildPlanFromCache = jest.fn()
+    const rebuildPlanFromCache = vi.fn()
       .mockImplementationOnce(() => firstRebuildPromise)
       .mockResolvedValue(undefined);
     const scheduler = createFlowRebuildScheduler({
       rebuildPlanFromCache,
-      logDebug: jest.fn(),
-      logError: jest.fn(),
+      logDebug: vi.fn(),
+      logError: vi.fn(),
     });
 
     scheduler.requestRebuild('daily_budget_action');
@@ -37,11 +37,11 @@ describe('createFlowRebuildScheduler', () => {
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
-    await jest.advanceTimersByTimeAsync(999);
+    await vi.advanceTimersByTimeAsync(999);
     await flushMicrotasks();
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
-    await jest.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(1);
     await flushMicrotasks();
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
@@ -49,15 +49,15 @@ describe('createFlowRebuildScheduler', () => {
   });
 
   it('logs rebuild failures without dropping later requests', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const error = new Error('boom');
-    const rebuildPlanFromCache = jest.fn()
+    const rebuildPlanFromCache = vi.fn()
       .mockRejectedValueOnce(error)
       .mockResolvedValue(undefined);
-    const logError = jest.fn();
+    const logError = vi.fn();
     const scheduler = createFlowRebuildScheduler({
       rebuildPlanFromCache,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       logError,
     });
 
@@ -67,7 +67,7 @@ describe('createFlowRebuildScheduler', () => {
     expect(logError).toHaveBeenCalledWith('Flow rebuild scheduler failed for flow_card:failing_source', error);
 
     scheduler.requestRebuild('recovery_source');
-    await jest.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
     await flushMicrotasks();
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);

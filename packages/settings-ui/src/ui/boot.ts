@@ -24,7 +24,7 @@ import {
   capacityDryRunInput,
   powerSourceSelect,
   priorityForm,
-} from './dom';
+} from './dom.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_PLAN_PATH,
@@ -34,29 +34,29 @@ import {
   SETTINGS_UI_REFRESH_PRICES_PATH,
   type SettingsUiBootstrap,
   type SettingsUiPricesPayload,
-} from '../../../contracts/src/settingsUiApi';
+} from '../../../contracts/src/settingsUiApi.ts';
 import {
   applySettingsPatch,
   callApi,
   primeApiCache,
   setSetting,
   waitForHomey,
-} from './homey';
-import { showToast, showToastError } from './toast';
-import { refreshDevices, renderDevices } from './devices';
-import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power';
-import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity';
+} from './homey.ts';
+import { showToast, showToastError } from './toast.ts';
+import { refreshDevices, renderDevices } from './devices.ts';
+import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
+import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity.ts';
 import {
   DEBUG_LOGGING_TOPICS,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   PRICE_OPTIMIZATION_ENABLED,
-} from '../../../contracts/src/settingsKeys';
+} from '../../../contracts/src/settingsKeys.ts';
 import {
   initModeHandlers,
   loadModeAndPriorities,
   renderModeOptions,
   renderPriorities,
-} from './modes';
+} from './modes.ts';
 import {
   loadPriceSettings,
   refreshPrices,
@@ -66,42 +66,42 @@ import {
   saveGridTariffSettings,
   updateGridCompanyOptions,
   updatePriceSchemeUiFromSelection,
-} from './prices';
-import { loadPriceOptimizationSettings, renderPriceOptimization } from './priceOptimization';
+} from './prices.ts';
+import { loadPriceOptimizationSettings, renderPriceOptimization } from './priceOptimization.ts';
 import {
   initDailyBudgetHandlers,
   loadDailyBudgetSettings,
   refreshDailyBudgetPlan,
-} from './dailyBudget';
+} from './dailyBudget.ts';
 import {
   initDailyBudgetTuningHandlers,
   loadDailyBudgetTuningSettings,
-} from './dailyBudgetTuning';
-import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail';
-import { loadDeviceControlProfiles } from './deviceControlProfiles';
+} from './dailyBudgetTuning.ts';
+import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail.ts';
+import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import {
   initAdvancedDeviceCleanupHandlers,
   initAdvancedDeviceLoggerHandlers,
   refreshAdvancedDeviceLogger,
-} from './advanced';
-import { state } from './state';
-import { flushSettingsLogs, logSettingsError, logSettingsWarn } from './logging';
+} from './advanced.ts';
+import { state } from './state.ts';
+import { flushSettingsLogs, logSettingsError, logSettingsWarn } from './logging.ts';
 import {
   markSettingsUi,
   markSettingsUiReady,
   measureSettingsUi,
   resetSettingsUiPerf,
-} from './perf';
-import { initTooltips } from './tooltips';
-import { initDebouncedSaveFlush } from './utils';
-import { handleResetStats } from './resetStats';
-import { createCheckboxField } from './components';
+} from './perf.ts';
+import { initTooltips } from './tooltips.ts';
+import { initDebouncedSaveFlush } from './utils.ts';
+import { handleResetStats } from './resetStats.ts';
+import { createCheckboxField } from './components.ts';
 import {
   initRealtimeListeners,
   refreshPlanForUi,
   showTab,
   startStaleDataRefreshInterval,
-} from './realtime';
+} from './realtime.ts';
 
 const initTabHandlers = () => {
   tabs.forEach((tab) => {

@@ -14,7 +14,7 @@ import {
 import { getHourBucketKey, truncateToUtcHour } from '../lib/utils/dateUtils';
 
 // Use fake timers to control throttling, but keep real Date behavior
-jest.useFakeTimers({ doNotFake: ['Date'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 
 describe('power tracker integration', () => {
   beforeEach(() => {
@@ -23,12 +23,12 @@ describe('power tracker integration', () => {
     setMockDrivers({
       driverA: new MockDriver('driverA', [new MockDevice('dev-1', 'Heater', ['onoff'])]),
     });
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('accumulates kWh from W samples correctly', async () => {
@@ -43,7 +43,7 @@ describe('power tracker integration', () => {
     await app['recordPowerSample'](1000, start + 30 * 60 * 1000);
 
     const bucketKey = getHourBucketKey(start);
-    jest.advanceTimersByTime(60000);
+    vi.advanceTimersByTime(60000);
     const state = mockHomeyInstance.settings.get('power_tracker_state');
     expect(state.buckets[bucketKey]).toBeCloseTo(0.5, 3);
   });
@@ -55,7 +55,7 @@ describe('power tracker integration', () => {
     // Simulate persisted state being cleared via settings UI.
     mockHomeyInstance.settings.set('power_tracker_state', {});
 
-    jest.advanceTimersByTime(10);
+    vi.advanceTimersByTime(10);
     expect(app['powerTracker'].buckets).toBeUndefined();
   });
 
@@ -131,8 +131,8 @@ describe('power tracker integration', () => {
       lastPowerW: 500,
       buckets: {},
     };
-    const saveState = jest.fn();
-    const rebuildPlanFromCache = jest.fn();
+    const saveState = vi.fn();
+    const rebuildPlanFromCache = vi.fn();
     const nowMs = 1700000000000;
 
     await recordPowerSample({
@@ -156,7 +156,7 @@ describe('power tracker integration', () => {
   it('splits energy across hour boundary when samples are delayed', async () => {
     const state = {};
     const saveState = (nextState: any) => Object.assign(state, nextState);
-    const rebuildPlanFromCache = jest.fn();
+    const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 50, 0);
 
     await recordPowerSample({
@@ -189,7 +189,7 @@ describe('power tracker integration', () => {
   it('tracks controlled and uncontrolled buckets when provided', async () => {
     const state = {};
     const saveState = (nextState: any) => Object.assign(state, nextState);
-    const rebuildPlanFromCache = jest.fn();
+    const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({
@@ -223,7 +223,7 @@ describe('power tracker integration', () => {
   it('tracks exempt buckets when provided', async () => {
     const state = {};
     const saveState = (nextState: any) => Object.assign(state, nextState);
-    const rebuildPlanFromCache = jest.fn();
+    const rebuildPlanFromCache = vi.fn();
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
 
     await recordPowerSample({

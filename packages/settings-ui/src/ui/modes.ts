@@ -1,10 +1,10 @@
 import Sortable from 'sortablejs';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types';
+import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   getPrimaryTargetCapability,
   getTargetCapabilityStep,
   normalizeTargetCapabilityValue,
-} from '../../../contracts/src/targetCapabilities';
+} from '../../../contracts/src/targetCapabilities.ts';
 import {
   modeSelect,
   activeModeSelect,
@@ -14,13 +14,13 @@ import {
   addModeButton,
   deleteModeButton,
   renameModeButton,
-} from './dom';
-import { getSetting, setSetting } from './homey';
-import { OPERATING_MODE_SETTING } from '../../../contracts/src/settingsKeys';
-import { showToast, showToastError } from './toast';
-import { resolveManagedState, state } from './state';
-import { createDragHandle } from './components';
-import { logSettingsError } from './logging';
+} from './dom.ts';
+import { getSetting, setSetting } from './homey.ts';
+import { OPERATING_MODE_SETTING } from '../../../contracts/src/settingsKeys.ts';
+import { showToast, showToastError } from './toast.ts';
+import { resolveManagedState, state } from './state.ts';
+import { createDragHandle } from './components.ts';
+import { logSettingsError } from './logging.ts';
 
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0

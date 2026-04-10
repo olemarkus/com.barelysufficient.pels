@@ -31,15 +31,15 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
 });
 
 const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
-  const desiredSteppedTrigger = { trigger: jest.fn().mockResolvedValue(true) };
+  const desiredSteppedTrigger = { trigger: vi.fn().mockResolvedValue(true) };
   const deviceManager = {
-    getSnapshot: jest.fn().mockReturnValue(snapshot),
-    setCapability: jest.fn().mockResolvedValue(undefined),
+    getSnapshot: vi.fn().mockReturnValue(snapshot),
+    setCapability: vi.fn().mockResolvedValue(undefined),
   };
   const deps: PlanExecutorDeps = {
     homey: {
       ...mockHomeyInstance,
-      flow: { getTriggerCard: jest.fn(() => desiredSteppedTrigger) },
+      flow: { getTriggerCard: vi.fn(() => desiredSteppedTrigger) },
     } as never,
     deviceManager: deviceManager as never,
     getCapacityGuard: () => undefined,
@@ -47,12 +47,12 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-    updateLocalSnapshot: jest.fn(),
-    markSteppedLoadDesiredStepIssued: jest.fn(),
-    logTargetRetryComparison: jest.fn(),
-    log: jest.fn(),
-    logDebug: jest.fn(),
-    error: jest.fn(),
+    updateLocalSnapshot: vi.fn(),
+    markSteppedLoadDesiredStepIssued: vi.fn(),
+    logTargetRetryComparison: vi.fn(),
+    log: vi.fn(),
+    logDebug: vi.fn(),
+    error: vi.fn(),
   };
   return {
     executor: new PlanExecutor(deps, createPlanEngineState()),
@@ -61,7 +61,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
 };
 
 describe('P1 bug proofs', () => {
-  it.failing('uses one power resolution model for an off keep device across restore, shedding, and live usage accounting', () => {
+  it.fails('uses one power resolution model for an off keep device across restore, shedding, and live usage accounting', () => {
     const device = buildPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
@@ -79,18 +79,18 @@ describe('P1 bug proofs', () => {
     expect(liveUsage).toBe(candidatePower);
   });
 
-  it.failing('keeps shedding active after a single sample just above the restore margin', async () => {
+  it.fails('keeps shedding active after a single sample just above the restore margin', async () => {
     let active = false;
     const transitions: boolean[] = [];
     const capacityGuard = {
-      isSheddingActive: jest.fn(() => active),
-      setSheddingActive: jest.fn(async (next: boolean) => {
+      isSheddingActive: vi.fn(() => active),
+      setSheddingActive: vi.fn(async (next: boolean) => {
         active = next;
         transitions.push(next);
       }),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      getRestoreMargin: jest.fn().mockReturnValue(0.2),
-      getShortfallThreshold: jest.fn().mockReturnValue(5),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     await updateGuardState({
@@ -128,7 +128,7 @@ describe('P1 bug proofs', () => {
     expect(active).toBe(true);
   });
 
-  it.failing('applies the same unknown-state restore eligibility rules to stepped and non-stepped devices', () => {
+  it.fails('applies the same unknown-state restore eligibility rules to stepped and non-stepped devices', () => {
     const devices = [
       buildPlanDevice({
         id: 'binary',
@@ -159,7 +159,7 @@ describe('P1 bug proofs', () => {
     expect(getSteppedRestoreCandidates(devices)).toHaveLength(0);
   });
 
-  it.failing('uses the same controlled/uncontrolled split in planning and power tracking for stepped off-step devices', async () => {
+  it.fails('uses the same controlled/uncontrolled split in planning and power tracking for stepped off-step devices', async () => {
     let tracker = {};
     const rawDevice = steppedInputDevice({
       id: 'dev-step',
@@ -195,7 +195,7 @@ describe('P1 bug proofs', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot: () => [rawDevice],
       powerTracker: tracker,
-      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
       },
@@ -208,7 +208,7 @@ describe('P1 bug proofs', () => {
     );
   });
 
-  it.failing('uses raw onoff state, not stale currentState, when deciding whether a shed device still needs an off command', async () => {
+  it.fails('uses raw onoff state, not stale currentState, when deciding whether a shed device still needs an off command', async () => {
     const { executor, deviceManager } = buildExecutor([{
       id: 'dev-1',
       name: 'Heater',

@@ -15,7 +15,7 @@ import {
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
-jest.useFakeTimers({ doNotFake: ['nextTick', 'Date'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 
 const buildOnOffDevice = async (options?: { id?: string; name?: string; on?: boolean; powerW?: number }) => {
   const deviceId = options?.id ?? 'device-a';
@@ -66,14 +66,14 @@ describe('On/off device integration', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
-    jest.clearAllTimers();
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.restoreAllMocks();
-    jest.clearAllTimers();
+    vi.restoreAllMocks();
+    vi.clearAllTimers();
   });
 
   it('builds a snapshot entry for a socket-class on/off device', async () => {
@@ -116,7 +116,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Home' });
@@ -130,7 +130,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['onoff'],
       }),
@@ -149,7 +149,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['onoff'],
         energyObj: {
@@ -185,7 +185,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['onoff'],
         onoff: false,
@@ -224,12 +224,12 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['onoff'],
       }),
     });
-    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
         {
           type: 'device',
@@ -263,7 +263,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['onoff'],
         onoff: true,
@@ -298,7 +298,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['onoff'],
         onoff: false,
@@ -329,7 +329,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['onoff'],
         onoff: true,
@@ -364,7 +364,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['onoff'],
         onoff: false,
@@ -401,7 +401,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const apiGetSpy = jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    const apiGetSpy = vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['onoff'],
         onoff: false,
@@ -453,7 +453,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': {
         ...buildOnOffApiDevice({
           class: 'socket',
@@ -476,7 +476,7 @@ describe('On/off device integration', () => {
         },
       },
     });
-    jest.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       zoneId: 'zone-1',
       items: [
         { type: 'zone', id: 'z1', values: { W: 10 } },
@@ -513,7 +513,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         capabilities: ['measure_power'],
       }),
@@ -530,7 +530,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': buildOnOffApiDevice({
         class: 'light',
       }),
@@ -547,7 +547,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'device-a': {
         ...buildOnOffApiDevice({
           class: '',
@@ -578,7 +578,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).computeDynamicSoftLimit = () => 1;
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
@@ -586,7 +586,7 @@ describe('On/off device integration', () => {
     }
 
     await (app as any).recordPowerSample(5000);
-    jest.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
     await flushPromises();
 
     expect(setCapSpy).toHaveBeenCalledWith(
@@ -624,7 +624,7 @@ describe('On/off device integration', () => {
     }
 
     await (app as any).recordPowerSample(5000);
-    jest.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
     await flushPromises();
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');

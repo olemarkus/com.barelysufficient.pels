@@ -31,18 +31,18 @@ describe('settingsUiApi', () => {
       ['price_area', 'NO1'],
     ]);
 
-    const log = jest.fn();
-    const error = jest.fn();
+    const log = vi.fn();
+    const error = vi.fn();
     let latestDevices = [{ id: 'dev-1', name: 'Heater' }];
     let powerTracker: Record<string, unknown> = { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } };
-    const refreshTargetDevicesSnapshot = jest.fn().mockImplementation(async () => {
+    const refreshTargetDevicesSnapshot = vi.fn().mockImplementation(async () => {
       latestDevices = [{ id: 'dev-2', name: 'Pump' }];
     });
-    const refreshSpotPrices = jest.fn().mockResolvedValue(undefined);
-    const refreshGridTariffData = jest.fn().mockResolvedValue(undefined);
-    const updateDailyBudgetAndRecordCap = jest.fn();
-    const persistPowerTrackerState = jest.fn();
-    const replacePowerTrackerForUi = jest.fn().mockImplementation((nextState: Record<string, unknown>) => {
+    const refreshSpotPrices = vi.fn().mockResolvedValue(undefined);
+    const refreshGridTariffData = vi.fn().mockResolvedValue(undefined);
+    const updateDailyBudgetAndRecordCap = vi.fn();
+    const persistPowerTrackerState = vi.fn();
+    const replacePowerTrackerForUi = vi.fn().mockImplementation((nextState: Record<string, unknown>) => {
       powerTracker = nextState;
       updateDailyBudgetAndRecordCap({
         nowMs: Date.now(),
@@ -50,8 +50,8 @@ describe('settingsUiApi', () => {
       });
       persistPowerTrackerState();
     });
-    const getDailyBudgetUiPayload = jest.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
-    const getDeviceDiagnosticsUiPayload = jest.fn().mockReturnValue({
+    const getDailyBudgetUiPayload = vi.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
+    const getDeviceDiagnosticsUiPayload = vi.fn().mockReturnValue({
       generatedAt: 123456,
       windowDays: 21,
       diagnosticsByDeviceId: {

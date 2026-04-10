@@ -1,16 +1,15 @@
-import { jest } from '@jest/globals';
 import { computeShortfallThreshold } from '../lib/plan/planBudget';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 describe('shortfall threshold', () => {
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('uses hard cap budget, not soft margin budget', () => {
     const nowMs = Date.UTC(2025, 0, 15, 12, 0, 0);
-    jest.useFakeTimers();
-    jest.setSystemTime(nowMs);
+    vi.useFakeTimers();
+    vi.setSystemTime(nowMs);
 
     const bucketKey = getHourBucketKey(nowMs);
     const threshold = computeShortfallThreshold({
@@ -24,8 +23,8 @@ describe('shortfall threshold', () => {
 
   it('tracks remaining hourly hard-cap energy budget', () => {
     const nowMs = Date.UTC(2025, 0, 15, 12, 30, 0);
-    jest.useFakeTimers();
-    jest.setSystemTime(nowMs);
+    vi.useFakeTimers();
+    vi.setSystemTime(nowMs);
 
     const bucketKey = getHourBucketKey(nowMs);
     const threshold = computeShortfallThreshold({

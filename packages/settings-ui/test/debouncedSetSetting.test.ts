@@ -3,44 +3,37 @@ const flushMicrotasks = async () => {
   await Promise.resolve();
 };
 
-const loadUtils = () => {
-  jest.resetModules();
+const loadUtils = async () => {
+  vi.resetModules();
 
-  const setSetting = jest.fn().mockResolvedValue(undefined);
-  jest.doMock('../src/ui/homey', () => ({
+  const setSetting = vi.fn().mockResolvedValue(undefined);
+  vi.doMock('../src/ui/homey.ts', () => ({
     setSetting,
   }));
 
-  let utils: typeof import('../src/ui/utils') | undefined;
-  jest.isolateModules(() => {
-    utils = require('../src/ui/utils') as typeof import('../src/ui/utils');
-  });
-
-  if (!utils) {
-    throw new Error('Failed to load settings UI utils');
-  }
+  const utils = await import('../src/ui/utils.ts');
 
   return { setSetting, ...utils };
 };
 
 describe('debouncedSetSetting', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
-    jest.clearAllMocks();
+    vi.useRealTimers();
+    vi.clearAllMocks();
   });
 
   it('coalesces rapid calls and saves the latest value', async () => {
-    const { debouncedSetSetting, setSetting } = loadUtils();
+    const { debouncedSetSetting, setSetting } = await loadUtils();
     const first = debouncedSetSetting('managed_devices', () => ({ value: 1 }));
     const second = debouncedSetSetting('managed_devices', () => ({ value: 2 }));
 
     expect(first).toBe(second);
 
-    jest.advanceTimersByTime(300);
+    vi.advanceTimersByTime(300);
     await flushMicrotasks();
 
     await expect(first).resolves.toBeUndefined();
@@ -49,12 +42,12 @@ describe('debouncedSetSetting', () => {
   });
 
   it('rejects when the save fails', async () => {
-    const { debouncedSetSetting, setSetting } = loadUtils();
+    const { debouncedSetSetting, setSetting } = await loadUtils();
     setSetting.mockRejectedValueOnce(new Error('boom'));
 
     const promise = debouncedSetSetting('managed_devices', () => 'value');
 
-    jest.advanceTimersByTime(300);
+    vi.advanceTimersByTime(300);
     await flushMicrotasks();
 
     await expect(promise).rejects.toThrow('boom');
@@ -62,7 +55,7 @@ describe('debouncedSetSetting', () => {
   });
 
   it('allows retry after a failed flush', async () => {
-    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = loadUtils();
+    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = await loadUtils();
     setSetting
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValueOnce(undefined);
@@ -83,7 +76,7 @@ describe('debouncedSetSetting', () => {
     const retry = debouncedSetSetting('managed_devices', () => 'value2');
     expect(retry).not.toBe(first);
 
-    jest.advanceTimersByTime(300);
+    vi.advanceTimersByTime(300);
     await flushMicrotasks();
 
     await expect(retry).resolves.toBeUndefined();
@@ -92,7 +85,7 @@ describe('debouncedSetSetting', () => {
   });
 
   it('flushes pending saves immediately', async () => {
-    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = loadUtils();
+    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = await loadUtils();
     const promise = debouncedSetSetting('managed_devices', () => 'value');
 
     await flushDebouncedSettingSaves();
@@ -102,13 +95,13 @@ describe('debouncedSetSetting', () => {
     expect(setSetting).toHaveBeenCalledTimes(1);
     expect(setSetting).toHaveBeenCalledWith('managed_devices', 'value');
 
-    jest.runOnlyPendingTimers();
+    vi.runOnlyPendingTimers();
     await flushMicrotasks();
     expect(setSetting).toHaveBeenCalledTimes(1);
   });
 
   it('flushes on beforeunload', async () => {
-    const { debouncedSetSetting, initDebouncedSaveFlush, setSetting } = loadUtils();
+    const { debouncedSetSetting, initDebouncedSaveFlush, setSetting } = await loadUtils();
     const cleanup = initDebouncedSaveFlush();
     const promise = debouncedSetSetting('managed_devices', () => 'value');
 
@@ -118,7 +111,7 @@ describe('debouncedSetSetting', () => {
     await expect(promise).resolves.toBeUndefined();
     expect(setSetting).toHaveBeenCalledTimes(1);
 
-    jest.runOnlyPendingTimers();
+    vi.runOnlyPendingTimers();
     await flushMicrotasks();
     expect(setSetting).toHaveBeenCalledTimes(1);
 
@@ -126,7 +119,7 @@ describe('debouncedSetSetting', () => {
   });
 
   it('flushes on pagehide', async () => {
-    const { debouncedSetSetting, initDebouncedSaveFlush, setSetting } = loadUtils();
+    const { debouncedSetSetting, initDebouncedSaveFlush, setSetting } = await loadUtils();
     const cleanup = initDebouncedSaveFlush();
     const promise = debouncedSetSetting('managed_devices', () => 'value');
 
@@ -140,7 +133,7 @@ describe('debouncedSetSetting', () => {
   });
 
   it('flushes multiple keys independently', async () => {
-    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = loadUtils();
+    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = await loadUtils();
     const managed = debouncedSetSetting('managed_devices', () => 'managed');
     const controllable = debouncedSetSetting('controllable_devices', () => 'controllable');
 
@@ -155,7 +148,7 @@ describe('debouncedSetSetting', () => {
   });
 
   it('flushes the latest value for a key', async () => {
-    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = loadUtils();
+    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = await loadUtils();
     const first = debouncedSetSetting('managed_devices', () => 'value1');
     const second = debouncedSetSetting('managed_devices', () => 'value2');
 

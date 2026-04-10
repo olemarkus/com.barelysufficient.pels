@@ -1,7 +1,7 @@
-const addPerfDurationMock = jest.fn();
+const addPerfDurationMock = vi.fn();
 
-jest.mock('../lib/utils/perfCounters', () => {
-  const actual = jest.requireActual('../lib/utils/perfCounters');
+vi.mock('../lib/utils/perfCounters', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/utils/perfCounters')>();
   return {
     ...actual,
     addPerfDuration: (...args: unknown[]) => addPerfDurationMock(...args),
@@ -82,18 +82,18 @@ describe('recordDailyBudgetCap', () => {
 
 describe('schedulePlanRebuildFromPowerSample', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
     addPerfDurationMock.mockReset();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('rebuilds immediately when interval has elapsed', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 0 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -103,7 +103,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       minIntervalMs: 500,
       maxIntervalMs: 10000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 1000,
       limitKw: 10,
       softLimitKw: 9,
@@ -117,8 +117,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('schedules and coalesces rebuilds when called too soon', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
-    const logError = jest.fn();
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const logError = vi.fn();
 
     const first = schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -150,7 +150,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     });
 
     expect(second).toBe(first);
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     await first;
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -160,7 +160,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('creates a pending rebuild when within the min interval', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     const pending = schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -170,7 +170,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       minIntervalMs: 1000,
       maxIntervalMs: 10000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 1000,
       limitKw: 10,
       softLimitKw: 9,
@@ -179,13 +179,13 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
     expect(pending).toBe(state.pending);
     expect(state.timer).toBeDefined();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('logs errors from scheduled rebuilds', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
-    const rebuildPlanFromCache = jest.fn().mockRejectedValue(new Error('boom'));
-    const logError = jest.fn();
+    const rebuildPlanFromCache = vi.fn().mockRejectedValue(new Error('boom'));
+    const logError = vi.fn();
 
     const pending = schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -202,7 +202,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       headroomKw: 8,
     });
 
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     await pending;
 
     expect(logError).toHaveBeenCalledWith(expect.any(Error));
@@ -210,7 +210,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('skips rebuild when power change is below threshold and soft limit is stable', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 9 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -220,7 +220,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       minIntervalMs: 500,
       maxIntervalMs: 10000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 5050,
       limitKw: 10,
       softLimitKw: 9,
@@ -232,7 +232,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('does not rebuild only because the soft limit changes', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 8 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -242,7 +242,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       minIntervalMs: 500,
       maxIntervalMs: 10000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 5000,
       limitKw: 10,
       softLimitKw: 8.2,
@@ -255,7 +255,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('rebuilds in danger zone regardless of delta', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 9000, lastSoftLimitKw: 9 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -265,7 +265,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       minIntervalMs: 500,
       maxIntervalMs: 10000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 9050,
       limitKw: 10,
       softLimitKw: 9,
@@ -278,7 +278,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('rebuilds after max interval even if delta is small', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 20000, lastRebuildPowerW: 5000, lastSoftLimitKw: 9 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -288,7 +288,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       minIntervalMs: 500,
       maxIntervalMs: 1000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 5050,
       limitKw: 10,
       softLimitKw: 9,
@@ -300,7 +300,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('uses last rebuild power when current power is missing', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 9 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -310,7 +310,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       minIntervalMs: 0,
       maxIntervalMs: 10000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       powerDeltaW: 200,
       limitKw: 10,
       softLimitKw: 9,
@@ -323,7 +323,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('keeps last soft limit when soft limit is missing', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 8 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -333,7 +333,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       minIntervalMs: 0,
       maxIntervalMs: 10000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 5200,
       powerDeltaW: 200,
       limitKw: 10,
@@ -347,12 +347,12 @@ describe('schedulePlanRebuildFromPowerSample', () => {
   it('clears pending sample values after timed rebuild completes', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 1000, lastSoftLimitKw: 9 };
     let resolveRebuild: (() => void) | undefined;
-    const rebuildPlanFromCache = jest.fn().mockImplementation(
+    const rebuildPlanFromCache = vi.fn().mockImplementation(
       () => new Promise<void>((resolve) => {
         resolveRebuild = resolve;
       }),
     );
-    const logError = jest.fn();
+    const logError = vi.fn();
 
     const first = schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -369,7 +369,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       headroomKw: 7.9,
     });
 
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
     const second = schedulePlanRebuildFromPowerSample({
@@ -403,8 +403,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
   it('cancels pending timer and performs an immediate rebuild when interval is exceeded', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 1000, lastSoftLimitKw: 9 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
-    const logError = jest.fn();
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const logError = vi.fn();
 
     const first = schedulePlanRebuildFromPowerSample({
       getState: () => state,
@@ -443,7 +443,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     await second;
     await first;
 
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     expect(logError).not.toHaveBeenCalled();
@@ -454,17 +454,17 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
 describe('schedulePlanRebuildFromSignal', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('uses the stable interval for non-urgent power deltas', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 5000, lastSoftLimitKw: 9.5 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     const pending = schedulePlanRebuildFromSignal({
       getState: () => state,
@@ -475,17 +475,17 @@ describe('schedulePlanRebuildFromSignal', () => {
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 5300,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 }),
     });
 
-    jest.advanceTimersByTime(14999);
+    vi.advanceTimersByTime(14999);
     await Promise.resolve();
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
 
-    jest.advanceTimersByTime(1);
+    vi.advanceTimersByTime(1);
     await pending;
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -493,7 +493,7 @@ describe('schedulePlanRebuildFromSignal', () => {
 
   it('bypasses the stable interval when headroom is tight', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9300, lastSoftLimitKw: 9.5 };
-    const rebuildPlanFromCache = jest.fn().mockResolvedValue(undefined);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromSignal({
       getState: () => state,
@@ -504,7 +504,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
@@ -516,7 +516,7 @@ describe('schedulePlanRebuildFromSignal', () => {
   it('records rebuild timing after the async rebuild settles', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9300, lastSoftLimitKw: 9.5 };
     let resolveRebuild: (() => void) | undefined;
-    const rebuildPlanFromCache = jest.fn().mockImplementation(() => new Promise<void>((resolve) => {
+    const rebuildPlanFromCache = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
       resolveRebuild = resolve;
     }));
 
@@ -529,7 +529,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       stableMinIntervalMs: 15000,
       maxIntervalMs: 30000,
       rebuildPlanFromCache,
-      logError: jest.fn(),
+      logError: vi.fn(),
       currentPowerW: 9600,
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
@@ -537,7 +537,7 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     expect(addPerfDurationMock).not.toHaveBeenCalledWith('power_sample_rebuild_ms', expect.any(Number));
 
-    jest.advanceTimersByTime(25);
+    vi.advanceTimersByTime(25);
     resolveRebuild?.();
     await pending;
 
@@ -573,7 +573,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
 
-      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
       },
@@ -586,7 +586,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
 
-      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
       },
@@ -616,7 +616,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
 
-      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
       },
@@ -629,7 +629,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
 
-      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
       },
@@ -660,7 +660,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
 
-      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
       },
@@ -673,7 +673,7 @@ describe('recordPowerSampleForApp', () => {
       getLatestTargetSnapshot,
       powerTracker: tracker,
 
-      schedulePlanRebuild: jest.fn().mockResolvedValue(undefined),
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;
       },

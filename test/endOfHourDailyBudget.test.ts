@@ -19,7 +19,7 @@ describe('End-of-Hour Mode', () => {
 
       const plannedKWh = 100; // Daily budget: 100 kWh
       const usedKWh = 95; // Used 95 kWh so far
-      const logDebug = jest.fn();
+      const logDebug = vi.fn();
 
       const result = computeDailyUsageSoftLimit({
         plannedKWh,
@@ -44,7 +44,7 @@ describe('End-of-Hour Mode', () => {
 
       const plannedKWh = 100;
       const usedKWh = 50;
-      const logDebug = jest.fn();
+      const logDebug = vi.fn();
 
       const result = computeDailyUsageSoftLimit({
         plannedKWh,
@@ -67,7 +67,7 @@ describe('End-of-Hour Mode', () => {
 
       const plannedKWh = 100;
       const usedKWh = 99; // Only 1 kWh remaining
-      const logDebug = jest.fn();
+      const logDebug = vi.fn();
 
       const result = computeDailyUsageSoftLimit({
         plannedKWh,

@@ -53,11 +53,11 @@ describe('mock Homey backend', () => {
 
     const devices = await mockHomeyInstance.api.get('manager/devices') as Record<string, any>;
     const payload = devices['dev-1'];
-    const capabilityListener = jest.fn();
+    const capabilityListener = vi.fn();
     const capabilityInstance = payload.makeCapabilityInstance('onoff', capabilityListener);
 
     const sdkDevicesApi = mockHomeyInstance.api.getApi('homey:manager:devices');
-    const realtimeListener = jest.fn();
+    const realtimeListener = vi.fn();
     sdkDevicesApi.on('realtime', realtimeListener);
 
     device.tapTile();

@@ -3,7 +3,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   getZonedParts,
-} from '../utils/dateUtils';
+} from '../utils/dateUtils.ts';
 
 export type FlowHourlyPrice = {
   startsAt: string;

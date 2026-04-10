@@ -1,8 +1,8 @@
-import { planList, planEmpty, planMeta } from './dom';
-import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../contracts/src/settingsUiApi';
-import { getApiReadModel } from './homey';
-import { createMetaLine } from './components';
-import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator';
+import { planList, planEmpty, planMeta } from './dom.ts';
+import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { getApiReadModel } from './homey.ts';
+import { createMetaLine } from './components.ts';
+import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator.ts';
 
 type PlanDeviceSnapshot = {
   id: string;

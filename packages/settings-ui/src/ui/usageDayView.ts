@@ -10,11 +10,11 @@ import {
   usageDayLabels,
   usageDayEmpty,
   usageDayMeta,
-} from './dom';
-import { getHomeyTimezone } from './homey';
-import { createToggleGroup } from './components';
-import type { DayViewBar } from './dayViewChart';
-import { renderUsageDayChartEcharts } from './usageDayChartEcharts';
+} from './dom.ts';
+import { getHomeyTimezone } from './homey.ts';
+import { createToggleGroup } from './components.ts';
+import type { DayViewBar } from './dayViewChart.ts';
+import { renderUsageDayChartEcharts } from './usageDayChartEcharts.ts';
 import {
   buildLocalDayBuckets,
   formatDateInTimeZone,
@@ -22,7 +22,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   getStartOfDayInTimeZone,
-} from './timezone';
+} from './timezone.ts';
 
 type UsageDayView = 'today' | 'yesterday';
 

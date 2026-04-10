@@ -1,7 +1,7 @@
-import type { DailyBudgetDayPayload } from '../../../contracts/src/dailyBudgetTypes';
-import { formatKWh } from './dailyBudgetFormat';
-import type { DayViewBar } from './dayViewChart';
-import { renderDailyBudgetChartEcharts } from './dailyBudgetChartEcharts';
+import type { DailyBudgetDayPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
+import { formatKWh } from './dailyBudgetFormat.ts';
+import type { DayViewBar } from './dayViewChart.ts';
+import { renderDailyBudgetChartEcharts } from './dailyBudgetChartEcharts.ts';
 
 const buildDailyBudgetBarTitle = (params: {
   label: string;

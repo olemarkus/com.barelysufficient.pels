@@ -19,44 +19,44 @@ const flushMicrotasks = async () => {
 const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandlerDeps => {
   const homey = {
     settings: {
-      get: jest.fn(),
-      set: jest.fn(),
+      get: vi.fn(),
+      set: vi.fn(),
     },
   } as unknown as SettingsHandlerDeps['homey'];
 
   return {
     homey,
-    loadCapacitySettings: jest.fn(),
-    rebuildPlanFromCache: jest.fn().mockResolvedValue(undefined),
-    refreshTargetDevicesSnapshot: jest.fn().mockResolvedValue(undefined),
-    loadPowerTracker: jest.fn(),
-    getCapacityGuard: jest.fn().mockReturnValue(undefined),
-    getCapacitySettings: jest.fn().mockReturnValue({ limitKw: 10, marginKw: 1 }),
-    getCapacityDryRun: jest.fn().mockReturnValue(false),
-    loadPriceOptimizationSettings: jest.fn(),
-    loadDailyBudgetSettings: jest.fn(),
-    updateDailyBudgetState: jest.fn(),
-    resetDailyBudgetLearning: jest.fn(),
+    loadCapacitySettings: vi.fn(),
+    rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
+    refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
+    loadPowerTracker: vi.fn(),
+    getCapacityGuard: vi.fn().mockReturnValue(undefined),
+    getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1 }),
+    getCapacityDryRun: vi.fn().mockReturnValue(false),
+    loadPriceOptimizationSettings: vi.fn(),
+    loadDailyBudgetSettings: vi.fn(),
+    updateDailyBudgetState: vi.fn(),
+    resetDailyBudgetLearning: vi.fn(),
     priceService: {
-      refreshGridTariffData: jest.fn().mockResolvedValue(undefined),
-      refreshSpotPrices: jest.fn().mockResolvedValue(undefined),
-      updateCombinedPrices: jest.fn(),
+      refreshGridTariffData: vi.fn().mockResolvedValue(undefined),
+      refreshSpotPrices: vi.fn().mockResolvedValue(undefined),
+      updateCombinedPrices: vi.fn(),
     },
-    updatePriceOptimizationEnabled: jest.fn(),
-    updateOverheadToken: jest.fn().mockResolvedValue(undefined),
-    updateDebugLoggingEnabled: jest.fn(),
-    getExperimentalEvSupportEnabled: jest.fn().mockReturnValue(false),
-    disableManagedEvDevices: jest.fn(),
-    restartHomeyEnergyPoll: jest.fn(),
-    log: jest.fn(),
-    errorLog: jest.fn(),
+    updatePriceOptimizationEnabled: vi.fn(),
+    updateOverheadToken: vi.fn().mockResolvedValue(undefined),
+    updateDebugLoggingEnabled: vi.fn(),
+    getExperimentalEvSupportEnabled: vi.fn().mockReturnValue(false),
+    disableManagedEvDevices: vi.fn(),
+    restartHomeyEnergyPoll: vi.fn(),
+    log: vi.fn(),
+    errorLog: vi.fn(),
     ...overrides,
   };
 };
 
 describe('createSettingsHandler', () => {
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('ignores unknown keys', async () => {
@@ -82,7 +82,7 @@ describe('createSettingsHandler', () => {
 
   it('logs and still rebuilds if mode target refresh fails', async () => {
     const deps = buildDeps({
-      refreshTargetDevicesSnapshot: jest.fn().mockRejectedValue(new Error('fail')),
+      refreshTargetDevicesSnapshot: vi.fn().mockRejectedValue(new Error('fail')),
     });
     const handler = createSettingsHandler(deps);
 
@@ -97,12 +97,12 @@ describe('createSettingsHandler', () => {
 
   it('updates capacity limit settings and overhead token', async () => {
     const guard = {
-      setLimit: jest.fn(),
-      setSoftMargin: jest.fn(),
+      setLimit: vi.fn(),
+      setSoftMargin: vi.fn(),
     };
     const deps = buildDeps({
-      getCapacityGuard: jest.fn().mockReturnValue(guard),
-      getCapacitySettings: jest.fn().mockReturnValue({ limitKw: 12, marginKw: 0.5 }),
+      getCapacityGuard: vi.fn().mockReturnValue(guard),
+      getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 12, marginKw: 0.5 }),
     });
     const handler = createSettingsHandler(deps);
 
@@ -128,7 +128,7 @@ describe('createSettingsHandler', () => {
 
   it('logs when a refresh snapshot fails', async () => {
     const deps = buildDeps({
-      refreshTargetDevicesSnapshot: jest.fn().mockRejectedValue(new Error('fail')),
+      refreshTargetDevicesSnapshot: vi.fn().mockRejectedValue(new Error('fail')),
     });
     const handler = createSettingsHandler(deps);
 
@@ -143,9 +143,9 @@ describe('createSettingsHandler', () => {
   it('logs when grid tariff refresh fails', async () => {
     const deps = buildDeps({
       priceService: {
-        refreshGridTariffData: jest.fn().mockRejectedValue(new Error('fail')),
-        refreshSpotPrices: jest.fn().mockResolvedValue(undefined),
-        updateCombinedPrices: jest.fn(),
+        refreshGridTariffData: vi.fn().mockRejectedValue(new Error('fail')),
+        refreshSpotPrices: vi.fn().mockResolvedValue(undefined),
+        updateCombinedPrices: vi.fn(),
       },
     });
     const handler = createSettingsHandler(deps);
@@ -156,9 +156,9 @@ describe('createSettingsHandler', () => {
   });
 
   it('routes settings UI log entries by level', async () => {
-    const errorLog = jest.fn() as jest.MockedFunction<SettingsHandlerDeps['errorLog']>;
+    const errorLog = vi.fn() as vi.MockedFunction<SettingsHandlerDeps['errorLog']>;
     const deps = buildDeps({ errorLog });
-    deps.homey.settings.get = jest.fn()
+    deps.homey.settings.get = vi.fn()
       .mockReturnValueOnce({ level: 'error', message: 'Bad', detail: 'Detail', context: 'Form' })
       .mockReturnValueOnce({ level: 'warn', message: 'Heads up' })
       .mockReturnValueOnce({ level: 'info', message: 'Ok', detail: 'Done' });
@@ -181,7 +181,7 @@ describe('createSettingsHandler', () => {
 
   it('ignores invalid settings UI log payloads', async () => {
     const deps = buildDeps();
-    deps.homey.settings.get = jest.fn()
+    deps.homey.settings.get = vi.fn()
       .mockReturnValueOnce(null)
       .mockReturnValueOnce({ level: 'warn' });
     const handler = createSettingsHandler(deps);
@@ -196,7 +196,7 @@ describe('createSettingsHandler', () => {
 
   it('logs handler failures and continues', async () => {
     const deps = buildDeps({
-      rebuildPlanFromCache: jest.fn().mockRejectedValue(new Error('fail')),
+      rebuildPlanFromCache: vi.fn().mockRejectedValue(new Error('fail')),
     });
     const handler = createSettingsHandler(deps);
 
@@ -250,7 +250,7 @@ describe('createSettingsHandler', () => {
 
   it('skips repeated no-op writes for deduped settings keys', async () => {
     const deps = buildDeps();
-    deps.homey.settings.get = jest.fn().mockReturnValue(25);
+    deps.homey.settings.get = vi.fn().mockReturnValue(25);
     const handler = createSettingsHandler(deps);
 
     await handler('price_threshold_percent');
@@ -264,7 +264,7 @@ describe('createSettingsHandler', () => {
   it('processes deduped settings keys again when value changes', async () => {
     const deps = buildDeps();
     const values = [25, 30];
-    deps.homey.settings.get = jest.fn(() => values.shift());
+    deps.homey.settings.get = vi.fn(() => values.shift());
     const handler = createSettingsHandler(deps);
 
     await handler('price_threshold_percent');
@@ -276,7 +276,7 @@ describe('createSettingsHandler', () => {
   });
 
   it('debounces combined price updates into one daily budget sync', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);
 
@@ -286,7 +286,7 @@ describe('createSettingsHandler', () => {
     expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
 
-    await jest.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
     await Promise.resolve();
     await Promise.resolve();
 
@@ -296,20 +296,20 @@ describe('createSettingsHandler', () => {
   });
 
   it('coalesces combined price updates while a sync is still running', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     let resolveFirstRebuild: (() => void) | null = null;
     const firstRebuildPromise = new Promise<void>((resolve) => {
       resolveFirstRebuild = resolve;
     });
     const deps = buildDeps({
-      rebuildPlanFromCache: jest.fn()
+      rebuildPlanFromCache: vi.fn()
         .mockImplementationOnce(() => firstRebuildPromise)
         .mockResolvedValue(undefined),
     });
     const handler = createSettingsHandler(deps);
 
     const first = handler(COMBINED_PRICES);
-    await jest.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
     await flushMicrotasks();
 
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
@@ -318,7 +318,7 @@ describe('createSettingsHandler', () => {
     const second = handler(COMBINED_PRICES);
     const third = handler(COMBINED_PRICES);
 
-    await jest.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
     await flushMicrotasks();
 
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
@@ -329,10 +329,10 @@ describe('createSettingsHandler', () => {
 
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
-    await jest.advanceTimersByTimeAsync(999);
+    await vi.advanceTimersByTimeAsync(999);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
 
-    await jest.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(1);
     await flushMicrotasks();
     await Promise.all([first, second, third]);
 
@@ -341,13 +341,13 @@ describe('createSettingsHandler', () => {
   });
 
   it('debounces daily budget setting writes into one sync and rebuild', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const settingsStore: Record<string, unknown> = {
       [DAILY_BUDGET_KWH]: 40,
       [DAILY_BUDGET_ENABLED]: true,
     };
     const deps = buildDeps();
-    deps.homey.settings.get = jest.fn((key: string) => settingsStore[key]);
+    deps.homey.settings.get = vi.fn((key: string) => settingsStore[key]);
     const handler = createSettingsHandler(deps);
 
     const first = handler(DAILY_BUDGET_KWH);
@@ -358,11 +358,11 @@ describe('createSettingsHandler', () => {
     expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
 
-    await jest.advanceTimersByTimeAsync(499);
+    await vi.advanceTimersByTimeAsync(499);
     await flushMicrotasks();
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
 
-    await jest.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(1);
     await flushMicrotasks();
 
     expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(1);
@@ -373,31 +373,31 @@ describe('createSettingsHandler', () => {
   });
 
   it('resets the daily budget debounce window when another write arrives later', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const settingsStore: Record<string, unknown> = {
       [DAILY_BUDGET_KWH]: 40,
       [DAILY_BUDGET_ENABLED]: false,
     };
     const deps = buildDeps();
-    deps.homey.settings.get = jest.fn((key: string) => settingsStore[key]);
+    deps.homey.settings.get = vi.fn((key: string) => settingsStore[key]);
     const handler = createSettingsHandler(deps);
 
     await handler(DAILY_BUDGET_KWH);
-    await jest.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(300);
     await flushMicrotasks();
 
     settingsStore[DAILY_BUDGET_ENABLED] = true;
     await handler(DAILY_BUDGET_ENABLED);
 
-    await jest.advanceTimersByTimeAsync(199);
+    await vi.advanceTimersByTimeAsync(199);
     await flushMicrotasks();
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
 
-    await jest.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(1);
     await flushMicrotasks();
     expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
 
-    await jest.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(300);
     await flushMicrotasks();
 
     expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(1);
@@ -406,7 +406,7 @@ describe('createSettingsHandler', () => {
   });
 
   it('reruns daily budget sync once after in-flight writes finish', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     let resolveFirstRebuild: (() => void) | null = null;
     const firstRebuildPromise = new Promise<void>((resolve) => {
       resolveFirstRebuild = resolve;
@@ -415,15 +415,15 @@ describe('createSettingsHandler', () => {
       [DAILY_BUDGET_KWH]: 40,
     };
     const deps = buildDeps({
-      rebuildPlanFromCache: jest.fn()
+      rebuildPlanFromCache: vi.fn()
         .mockImplementationOnce(() => firstRebuildPromise)
         .mockResolvedValue(undefined),
     });
-    deps.homey.settings.get = jest.fn((key: string) => settingsStore[key]);
+    deps.homey.settings.get = vi.fn((key: string) => settingsStore[key]);
     const handler = createSettingsHandler(deps);
 
     const first = handler(DAILY_BUDGET_KWH);
-    await jest.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(500);
     await flushMicrotasks();
 
     expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(1);
@@ -445,22 +445,22 @@ describe('createSettingsHandler', () => {
     expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(2);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
-    expect((deps.rebuildPlanFromCache as jest.Mock).mock.calls[1]?.[0]).toBe('settings:daily_budget_settings');
+    expect((deps.rebuildPlanFromCache as vi.Mock).mock.calls[1]?.[0]).toBe('settings:daily_budget_settings');
   });
 
   it('cancels pending debounced daily budget syncs on stop', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const settingsStore: Record<string, unknown> = {
       [DAILY_BUDGET_KWH]: 40,
     };
     const deps = buildDeps();
-    deps.homey.settings.get = jest.fn((key: string) => settingsStore[key]);
+    deps.homey.settings.get = vi.fn((key: string) => settingsStore[key]);
     const handler = createSettingsHandler(deps);
 
     await handler(DAILY_BUDGET_KWH);
     handler.stop();
 
-    await jest.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(500);
     await flushMicrotasks();
 
     expect(deps.loadDailyBudgetSettings).not.toHaveBeenCalled();

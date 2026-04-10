@@ -6,10 +6,10 @@ const setupPlanDom = () => {
   `;
 };
 
-const renderPlanSnapshot = (plan: unknown) => {
-  jest.resetModules();
+const renderPlanSnapshot = async (plan: unknown) => {
+  vi.resetModules();
   setupPlanDom();
-  const { renderPlan } = require('../src/ui/plan') as typeof import('../src/ui/plan');
+  const { renderPlan } = await import('../src/ui/plan.ts');
   renderPlan(plan as Parameters<typeof renderPlan>[0]);
 };
 
@@ -60,8 +60,8 @@ const getPlanMetaText = () => {
 };
 
 describe('plan usage line', () => {
-  it('shows Measured and Expected when measured matches Expected', () => {
-    renderPlanSnapshot({
+  it('shows Measured and Expected when measured matches Expected', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-1',
@@ -77,8 +77,8 @@ describe('plan usage line', () => {
     expect(getUsageText()).toBe('Measured: 1.23 kW / Expected: 1.23 kW');
   });
 
-  it('shows Measured and Expected when values differ', () => {
-    renderPlanSnapshot({
+  it('shows Measured and Expected when values differ', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-2',
@@ -94,8 +94,8 @@ describe('plan usage line', () => {
     expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 1.20 kW');
   });
 
-  it('shows Measured 0 when measured is zero and Expected is positive', () => {
-    renderPlanSnapshot({
+  it('shows Measured 0 when measured is zero and Expected is positive', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-3',
@@ -111,8 +111,8 @@ describe('plan usage line', () => {
     expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 1.00 kW');
   });
 
-  it('shows stepped-load planning and live usage in the overview row', () => {
-    renderPlanSnapshot({
+  it('shows stepped-load planning and live usage in the overview row', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-step-1',
@@ -132,8 +132,8 @@ describe('plan usage line', () => {
     expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 3.00 kW (max)');
   });
 
-  it('shows stepped-load usage without extra assumption labels', () => {
-    renderPlanSnapshot({
+  it('shows stepped-load usage without extra assumption labels', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-step-assumed',
@@ -156,8 +156,8 @@ describe('plan usage line', () => {
 });
 
 describe('plan meta usage summary', () => {
-  it('shows controlled and uncontrolled usage when total is known', () => {
-    renderPlanSnapshot({
+  it('shows controlled and uncontrolled usage when total is known', async () => {
+    await renderPlanSnapshot({
       meta: {
         totalKw: 3.5,
         softLimitKw: 5,
@@ -189,8 +189,8 @@ describe('plan meta usage summary', () => {
     expect(metaLines.some((line) => line === 'Capacity-controlled 2.00kW / Other load 1.50kW')).toBe(true);
   });
 
-  it('shows meta lines even when no devices are managed', () => {
-    renderPlanSnapshot({
+  it('shows meta lines even when no devices are managed', async () => {
+    await renderPlanSnapshot({
       meta: {
         totalKw: 3.5,
         softLimitKw: 5,
@@ -209,8 +209,8 @@ describe('plan meta usage summary', () => {
 });
 
 describe('plan device state', () => {
-  it('shows capacity control off state for non-controllable devices', () => {
-    renderPlanSnapshot({
+  it('shows capacity control off state for non-controllable devices', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-1',
@@ -225,8 +225,8 @@ describe('plan device state', () => {
     expect(getStateText()).toBe('Capacity control off');
   });
 
-  it('renders badge color classes per device plan state', () => {
-    renderPlanSnapshot({
+  it('renders badge color classes per device plan state', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-active',
@@ -281,8 +281,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-off-controllable')?.contains('neutral')).toBe(true);
   });
 
-  it('shows a budget exempt chip next to the device name', () => {
-    renderPlanSnapshot({
+  it('shows a budget exempt chip next to the device name', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-budget',
@@ -299,8 +299,8 @@ describe('plan device state', () => {
     expect(chip?.textContent?.trim()).toBe('Budget exempt');
   });
 
-  it('shows pending confirmation text while a target write is still unconfirmed', () => {
-    renderPlanSnapshot({
+  it('shows pending confirmation text while a target write is still unconfirmed', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-temp-pending',
@@ -323,8 +323,8 @@ describe('plan device state', () => {
     expect(getTemperatureText()).toBe('21.0° / target 18° → 23° (waiting for confirmation)');
   });
 
-  it('shows temporary unavailable text while target retries are backed off', () => {
-    renderPlanSnapshot({
+  it('shows temporary unavailable text while target retries are backed off', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-temp-unavailable',
@@ -347,8 +347,8 @@ describe('plan device state', () => {
     expect(getTemperatureText()).toBe('21.0° / target 18° → 23° (temporarily unavailable)');
   });
 
-  it('shows stepped-load restore state and step transition in the overview row', () => {
-    renderPlanSnapshot({
+  it('shows stepped-load restore state and step transition in the overview row', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-step-restore',
@@ -371,8 +371,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-step-restore')?.contains('neutral')).toBe(true);
   });
 
-  it('shows the shed target step for stepped-load devices', () => {
-    renderPlanSnapshot({
+  it('shows the shed target step for stepped-load devices', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-step-shed',
@@ -396,8 +396,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-step-shed')?.contains('expensive')).toBe(true);
   });
 
-  it('renders inactive EV state without a fake restore power transition', () => {
-    renderPlanSnapshot({
+  it('renders inactive EV state without a fake restore power transition', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-ev-inactive',
@@ -416,8 +416,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-ev-inactive')?.contains('neutral')).toBe(true);
   });
 
-  it('renders restore cooldown as restoring when the device is currently off', () => {
-    renderPlanSnapshot({
+  it('renders restore cooldown as restoring when the device is currently off', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-restore-off',
@@ -435,8 +435,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-restore-off')?.contains('neutral')).toBe(true);
   });
 
-  it('renders restore cooldown as active when the device is already back on', () => {
-    renderPlanSnapshot({
+  it('renders restore cooldown as active when the device is already back on', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-restore-on',
@@ -454,8 +454,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-restore-on')?.contains('cheap')).toBe(true);
   });
 
-  it('shows restore requested when binary command is pending and device is off', () => {
-    renderPlanSnapshot({
+  it('shows restore requested when binary command is pending and device is off', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-pending',
@@ -472,8 +472,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-pending')?.contains('neutral')).toBe(true);
   });
 
-  it('shows active when binary command is pending but device is already on', () => {
-    renderPlanSnapshot({
+  it('shows active when binary command is pending but device is already on', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-confirmed',
@@ -490,8 +490,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-confirmed')?.contains('cheap')).toBe(true);
   });
 
-  it('shows active when binary command is pending for a temperature-managed device with not_applicable state', () => {
-    renderPlanSnapshot({
+  it('shows active when binary command is pending for a temperature-managed device with not_applicable state', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-temp-pending',
@@ -508,8 +508,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-temp-pending')?.contains('cheap')).toBe(true);
   });
 
-  it('renders temperature-managed state without a misleading power row for devices without onoff power state', () => {
-    renderPlanSnapshot({
+  it('renders temperature-managed state without a misleading power row for devices without onoff power state', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-temp-only',
@@ -526,8 +526,8 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-temp-only')?.contains('cheap')).toBe(true);
   });
 
-  it('renders headroom cooldown status text without changing the active state UI', () => {
-    renderPlanSnapshot({
+  it('renders headroom cooldown status text without changing the active state UI', async () => {
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-1',
@@ -547,8 +547,8 @@ describe('plan device state', () => {
 });
 
 describe('plan meta budget display', () => {
-  it('shows daily budget allocation when limited by daily budget', () => {
-    renderPlanSnapshot({
+  it('shows daily budget allocation when limited by daily budget', async () => {
+    await renderPlanSnapshot({
       meta: {
         totalKw: 3.6,
         softLimitKw: 3.8,
@@ -568,8 +568,8 @@ describe('plan meta budget display', () => {
     expect(metaLines.some((line) => line?.includes('of 9.5'))).toBe(false);
   });
 
-  it('shows hourly capacity budget when limited by capacity', () => {
-    renderPlanSnapshot({
+  it('shows hourly capacity budget when limited by capacity', async () => {
+    await renderPlanSnapshot({
       meta: {
         totalKw: 5.0,
         softLimitKw: 8.0,
@@ -588,8 +588,8 @@ describe('plan meta budget display', () => {
     expect(metaLines.some((line) => line?.includes('Used 3.50 of 9.5'))).toBe(true);
   });
 
-  it('shows hourly capacity budget when no daily budget is active', () => {
-    renderPlanSnapshot({
+  it('shows hourly capacity budget when no daily budget is active', async () => {
+    await renderPlanSnapshot({
       meta: {
         totalKw: 5.0,
         softLimitKw: 8.0,
@@ -607,11 +607,11 @@ describe('plan meta budget display', () => {
 });
 
 describe('plan row interactions', () => {
-  it('opens device detail when clicking a device in the overview plan', () => {
-    const openListener = jest.fn();
+  it('opens device detail when clicking a device in the overview plan', async () => {
+    const openListener = vi.fn();
     document.addEventListener('open-device-detail', openListener as EventListener, { once: true });
 
-    renderPlanSnapshot({
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-overview-1',
@@ -641,11 +641,11 @@ describe('plan row interactions', () => {
     expect(event.detail).toEqual({ deviceId: 'dev-overview-1' });
   });
 
-  it('opens device detail from keyboard activation on the overview row', () => {
-    const openListener = jest.fn();
+  it('opens device detail from keyboard activation on the overview row', async () => {
+    const openListener = vi.fn();
     document.addEventListener('open-device-detail', openListener as EventListener, { once: true });
 
-    renderPlanSnapshot({
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-overview-2',
@@ -669,11 +669,11 @@ describe('plan row interactions', () => {
     expect(event.detail).toEqual({ deviceId: 'dev-overview-2' });
   });
 
-  it('opens device detail on Space key release, matching button semantics', () => {
-    const openListener = jest.fn();
+  it('opens device detail on Space key release, matching button semantics', async () => {
+    const openListener = vi.fn();
     document.addEventListener('open-device-detail', openListener as EventListener, { once: true });
 
-    renderPlanSnapshot({
+    await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-overview-3',

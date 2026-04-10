@@ -34,11 +34,11 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
 
 describe('restore cooldown backoff', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('backs off restore cooldown from 60 to 120, 240, then caps at 300 seconds', () => {
@@ -48,13 +48,13 @@ describe('restore cooldown backoff', () => {
     const deps = {
       powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
       getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
     };
 
     const step = (advanceMs: number): number => {
       now += advanceMs;
-      jest.setSystemTime(now);
+      vi.setSystemTime(now);
       state.lastRestoreMs = now - 2 * 60 * 1000;
       state.lastInstabilityMs = now - 1000;
 
@@ -84,8 +84,8 @@ describe('restore cooldown backoff', () => {
     const deps = {
       powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
       getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
     };
 
     const triggerInstability = (): void => {
@@ -94,7 +94,7 @@ describe('restore cooldown backoff', () => {
     };
 
     triggerInstability();
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     let result = applyRestorePlan({
       planDevices: [],
       context: buildContext(),
@@ -109,7 +109,7 @@ describe('restore cooldown backoff', () => {
 
     now += 6 * 60 * 1000;
     state.lastInstabilityMs = now - 6 * 60 * 1000;
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     result = applyRestorePlan({
       planDevices: [],
       context: buildContext(),
@@ -123,7 +123,7 @@ describe('restore cooldown backoff', () => {
 
   it('uses in-cycle cleaned swap state when selecting swap candidates', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.swapByDevice = {
       'dev-on': { swappedOutFor: 'stale-target' },
@@ -133,8 +133,8 @@ describe('restore cooldown backoff', () => {
     const deps = {
       powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
       getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
     };
 
     const result = applyRestorePlan({
@@ -187,8 +187,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -233,8 +233,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -248,7 +248,7 @@ describe('restore cooldown backoff', () => {
 
   it('blocks stepped-load step-up while another ordinary device is swapped out', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.swapByDevice = {
       'dev-swapped': { swappedOutFor: 'dev-target' },
@@ -295,8 +295,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -308,7 +308,7 @@ describe('restore cooldown backoff', () => {
 
   it('blocks stepped-load step-up while an ordinary device is still swap pending', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.swapByDevice = {
       'dev-target': { pendingTarget: true, timestamp: now },
@@ -344,8 +344,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -389,8 +389,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -442,8 +442,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -492,8 +492,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -548,8 +548,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -583,8 +583,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -597,7 +597,7 @@ describe('restore cooldown backoff', () => {
 
   it('applies shedding cooldown reason to stepped restore candidates as well as off devices', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.lastRecoveryMs = now - 5_000;
 
@@ -629,8 +629,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -644,7 +644,7 @@ describe('restore cooldown backoff', () => {
 
   it('applies restore cooldown reason to stepped restore candidates during recent restore cooldown', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.lastRestoreMs = now - 5_000;
 
@@ -669,8 +669,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -682,7 +682,7 @@ describe('restore cooldown backoff', () => {
 
   it('blocks binary restores during startup stabilization', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.startupRestoreBlockedUntilMs = now + 60_000;
 
@@ -706,8 +706,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -718,7 +718,7 @@ describe('restore cooldown backoff', () => {
 
   it('blocks stepped restore during startup stabilization', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.startupRestoreBlockedUntilMs = now + 60_000;
 
@@ -742,8 +742,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -754,7 +754,7 @@ describe('restore cooldown backoff', () => {
 
   it('does not block non-capacity restores during startup stabilization', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.startupRestoreBlockedUntilMs = now + 60_000;
 
@@ -779,8 +779,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -791,7 +791,7 @@ describe('restore cooldown backoff', () => {
 
   it('returns effective timing for non-capacity restores during startup stabilization', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.startupRestoreBlockedUntilMs = now + 60_000;
 
@@ -816,8 +816,8 @@ describe('restore cooldown backoff', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 15, stepId: null }),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     });
 
@@ -830,21 +830,21 @@ describe('restore cooldown backoff', () => {
 const makeDeps = () => ({
   powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
   getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-  log: jest.fn(),
-  logDebug: jest.fn(),
+  log: vi.fn(),
+  logDebug: vi.fn(),
 });
 
 
 describe('restore → overshoot attribution → penalty → re-restore block', () => {
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
 
   it('pre-stick shed writes lastSetbackMs and blocks restore for 10 minutes', () => {
     // §3.1: Prove restore→overshoot→shed loop is broken when shed happens before stick window.
     const state = createPlanEngineState();
     const deviceId = 'dev-heater';
     const T0 = Date.UTC(2024, 0, 1, 10, 0, 0);
-    jest.setSystemTime(T0);
+    vi.setSystemTime(T0);
 
     // T=0: restore actuation — attempt started
     recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 });
@@ -860,7 +860,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
 
     // T=60s: restore cooldown expires — device should be blocked by activation setback
     const T60s = T0 + 60_000;
-    jest.setSystemTime(T60s);
+    vi.setSystemTime(T60s);
     const blockRemaining = getActivationRestoreBlockRemainingMs({
       state,
       deviceId,
@@ -928,7 +928,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     const state = createPlanEngineState();
     const deviceId = 'dev-heater';
     const T0 = Date.UTC(2024, 0, 1, 10, 0, 0);
-    jest.setSystemTime(T0);
+    vi.setSystemTime(T0);
 
     // Simulate: restore attempted, overshoot attributed (pre-stick)
     recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 });
@@ -943,7 +943,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
 
     // Block expires 10min after lastSetbackMs (T0+14s), not T0
     const TAfterBlock = T0 + 14_000 + ACTIVATION_SETBACK_RESTORE_BLOCK_MS + 1_000;
-    jest.setSystemTime(TAfterBlock);
+    vi.setSystemTime(TAfterBlock);
     expect(getActivationRestoreBlockRemainingMs({ state, deviceId, nowTs: TAfterBlock })).toBeNull();
 
     // Device needs penalty headroom: L1 adds ~15% extra above base
@@ -992,8 +992,8 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
 });
 
 describe('restore admission — headroom and penalty gates', () => {
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
 
   it('admits device when headroom exactly meets base need plus admission reserve plus floor', () => {
     const state = createPlanEngineState();
@@ -1106,7 +1106,7 @@ describe('restore admission — headroom and penalty gates', () => {
 
   it('recently shed device needs extra headroom via recent-shed multiplier', () => {
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     // Shed 20s ago — within the recent-shed backoff window
     state.lastDeviceShedMs['dev'] = now - 20_000;
@@ -1137,7 +1137,7 @@ describe('restore admission — headroom and penalty gates', () => {
   it('penalty L4 requires approximately double the base needed headroom', () => {
     // §3.4: penalty L4 → applyActivationPenalty gives max(base*2, base+1.2kW)
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     const deviceId = 'dev';
 
@@ -1189,7 +1189,7 @@ describe('restore admission — headroom and penalty gates', () => {
   it('active setback blocks device before swap phase is reached', () => {
     // §3.4: when setback is active, planRestoreForDevice returns early — swap is never attempted
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     const deviceId = 'dev-off';
 
@@ -1282,14 +1282,14 @@ describe('restore admission — headroom and penalty gates', () => {
 
   it('blocks target-based restore on activation setback and logs the rejection', () => {
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
-    jest.setSystemTime(now);
+    vi.setSystemTime(now);
     const state = createPlanEngineState();
     state.lastPlannedShedIds = new Set(['dev-temp']);
     state.activationAttemptByDevice['dev-temp'] = {
       penaltyLevel: 1,
       lastSetbackMs: now - 1_000,
     };
-    const structuredLog = { debug: jest.fn(), info: jest.fn() };
+    const structuredLog = { debug: vi.fn(), info: vi.fn() };
 
     const result = applyShedTemperatureHold({
       planDevices: [
@@ -1335,13 +1335,13 @@ describe('restore admission — headroom and penalty gates', () => {
 });
 
 describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () => {
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
 
   const makeDepsFloor = () => ({
     powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-    logDebug: jest.fn(),
+    logDebug: vi.fn(),
   });
 
   it(`RESTORE_ADMISSION_FLOOR_KW is ${RESTORE_ADMISSION_FLOOR_KW}kW`, () => {
@@ -1378,7 +1378,6 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
   it('rejects target restore when postReserveMarginKw is below floor', () => {
     const state = createPlanEngineState();
     state.lastPlannedShedIds = new Set(['dev-temp']);
-    const { applyShedTemperatureHold } = jest.requireActual('../lib/plan/planReasons') as typeof import('../lib/plan/planReasons');
     // This exercises the target-restore headroom path via applyShedTemperatureHold
     const result = applyShedTemperatureHold({
       planDevices: [buildPlanDevice({
@@ -1441,7 +1440,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       },
       availableHeadroom: 1.974,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
     });
 
     const dev = deviceMap.get('dev-step')!;
@@ -1476,7 +1475,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
       },
       availableHeadroom: 1.975,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
     });
 
     expect(deviceMap.get('dev-step')!.desiredStepId).toBe('low');
@@ -1484,8 +1483,8 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
 });
 
 describe('stepped-load shed invariant', () => {
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
 
   const makeShedTiming = () => ({
     activeOvershoot: false,
@@ -1500,7 +1499,7 @@ describe('stepped-load shed invariant', () => {
 
   it('rejects stepped upgrade from medium to max while another device is shed', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true, powerKw: 1 }) };
+    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true, powerKw: 1 }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step',
       name: 'Tank',
@@ -1521,7 +1520,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
     });
 
     const dev = deviceMap.get('dev-step')!;
@@ -1532,7 +1531,7 @@ describe('stepped-load shed invariant', () => {
 
   it('allows restore from off to low (lowest non-zero step) while another device is shed', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step',
       name: 'Tank',
@@ -1554,7 +1553,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
     });
 
     // off → low is allowed because low IS the lowest non-zero step
@@ -1567,7 +1566,7 @@ describe('stepped-load shed invariant', () => {
     // This verifies the invariant is enforced at the correct profile boundary:
     // off→medium is allowed because medium IS the lowest non-zero step in this profile.
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
 
     // Use a profile where steps go: off(0), medium(2000), max(3000) — no 'low' step.
     // The restore step is then 'medium' (lowest non-zero), so off→medium is allowed.
@@ -1602,7 +1601,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
     });
 
     // 'medium' is the lowestNonZeroStep for this profile, so off→medium is allowed
@@ -1629,7 +1628,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
     });
 
     // No shed devices → upgrade to max is allowed
@@ -1638,7 +1637,7 @@ describe('stepped-load shed invariant', () => {
 
   it('restore_stepped_rejected event is emitted with blockedByShedInvariant=true on upgrade block', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step',
       name: 'Tank',
@@ -1651,7 +1650,7 @@ describe('stepped-load shed invariant', () => {
       ['binary-shed', shedDevice],
       ['dev-step', steppedDev],
     ]);
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
 
     planRestoreForSteppedDevice({
       dev: deviceMap.get('dev-step')!,
@@ -1660,7 +1659,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     });
 
@@ -1678,13 +1677,13 @@ describe('stepped-load shed invariant', () => {
 
   it('restore_stepped_rejected is suppressed when rejection params are unchanged on repeated rebuilds', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
     const deviceMap = new Map([['binary-shed', shedDevice], ['dev-step', steppedDev]]);
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
 
     const callArgs = {
       dev: deviceMap.get('dev-step')!,
@@ -1693,7 +1692,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     };
 
@@ -1708,13 +1707,13 @@ describe('stepped-load shed invariant', () => {
 
   it('restore_stepped_rejected re-emits when shed count changes', () => {
     const state = createPlanEngineState();
-    const shed1 = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'shed-1', name: 'Heater1', currentState: 'off', plannedState: 'shed', controllable: true }) };
-    const shed2 = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'shed-2', name: 'Heater2', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shed1 = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'shed-1', name: 'Heater1', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shed2 = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'shed-2', name: 'Heater2', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
 
     // First call with 1 shed device
     const map1 = new Map([['shed-1', shed1], ['dev-step', steppedDev]]);
@@ -1725,7 +1724,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     });
     expect(structuredLog.debug).toHaveBeenCalledTimes(1);
@@ -1739,7 +1738,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     });
     expect(structuredLog.debug).toHaveBeenCalledTimes(2);
@@ -1751,14 +1750,14 @@ describe('stepped-load shed invariant', () => {
 
   it('restore_stepped_rejected re-emits after device was unblocked and shed resumes', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
-    const restoredDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
+    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const restoredDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
     const debugCalls: unknown[] = [];
-    const structuredLog = { info: jest.fn(), debug: (...args: unknown[]) => debugCalls.push(args[0]) };
+    const structuredLog = { info: vi.fn(), debug: (...args: unknown[]) => debugCalls.push(args[0]) };
     const rejectedCalls = () => debugCalls.filter((c: any) => c?.event === 'restore_stepped_rejected');
 
     // First: blocked, emits
@@ -1770,7 +1769,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     });
     expect(rejectedCalls()).toHaveLength(1);
@@ -1784,7 +1783,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     });
 
@@ -1796,7 +1795,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     });
     expect(rejectedCalls()).toHaveLength(2);
@@ -1804,13 +1803,13 @@ describe('stepped-load shed invariant', () => {
 
   it('tracking cleared when shed resolves during cooldown, so next shed episode re-emits', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
-    const restoredDevice = { ...require('./utils/planTestUtils').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
+    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const restoredDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
     });
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const activeCooldownTiming = { ...makeShedTiming(), inRestoreCooldown: true, restoreCooldownRemainingSec: 30 };
 
     // Round 1: shed active, blocked by invariant → emits
@@ -1822,7 +1821,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     });
     expect(structuredLog.debug).toHaveBeenCalledTimes(1);
@@ -1837,7 +1836,7 @@ describe('stepped-load shed invariant', () => {
       timing: activeCooldownTiming,
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     });
 
@@ -1849,7 +1848,7 @@ describe('stepped-load shed invariant', () => {
       timing: makeShedTiming(),
       availableHeadroom: 5,
       restoredOneThisCycle: false,
-      logDebug: jest.fn(),
+      logDebug: vi.fn(),
       structuredLog: structuredLog as any,
     });
     expect(structuredLog.debug).toHaveBeenCalledTimes(2);
@@ -1859,7 +1858,7 @@ describe('stepped-load shed invariant', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
       planDevices: [
-        require('./utils/planTestUtils').buildPlanDevice({
+        require('./utils/planTestUtils.ts').buildPlanDevice({
           id: 'binary-shed',
           name: 'Heater',
           currentState: 'off',
@@ -1882,7 +1881,7 @@ describe('stepped-load shed invariant', () => {
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
-        logDebug: jest.fn(),
+        logDebug: vi.fn(),
       },
     });
 

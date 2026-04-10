@@ -15,10 +15,11 @@ const TEST_FILES = Object.freeze([
 
 for (const timeZone of TIME_ZONES) {
   const args = [
-    './node_modules/jest/bin/jest.js',
+    './node_modules/vitest/vitest.mjs',
+    'run',
     '--config',
-    'jest.config.fast.cjs',
-    '--runInBand',
+    'vitest.config.fast.ts',
+    '--reporter=verbose',
     ...TEST_FILES,
   ];
 
