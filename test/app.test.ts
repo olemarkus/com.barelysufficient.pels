@@ -169,8 +169,8 @@ describe('MyApp initialization', () => {
 
   it('builds component child loggers without debugTopic bindings', () => {
     const app = createApp();
-    const childLogger = { info: jest.fn() };
-    const child = jest.fn().mockReturnValue(childLogger);
+    const childLogger = { info: vi.fn() };
+    const child = vi.fn().mockReturnValue(childLogger);
 
     (app as any).structuredLogger = { child };
 
@@ -182,8 +182,8 @@ describe('MyApp initialization', () => {
 
   it('emits structured debug payloads only when the topic is enabled', () => {
     const app = createApp();
-    const childLogger = { debug: jest.fn() };
-    const child = jest.fn().mockReturnValue(childLogger);
+    const childLogger = { debug: vi.fn() };
+    const child = vi.fn().mockReturnValue(childLogger);
 
     (app as any).structuredLogger = { child };
     (app as any).debugLoggingTopics = new Set(['diagnostics']);
@@ -201,8 +201,8 @@ describe('MyApp initialization', () => {
 
   it('suppresses structured debug payloads when the topic is disabled', () => {
     const app = createApp();
-    const childLogger = { debug: jest.fn() };
-    const child = jest.fn().mockReturnValue(childLogger);
+    const childLogger = { debug: vi.fn() };
+    const child = vi.fn().mockReturnValue(childLogger);
 
     (app as any).structuredLogger = { child };
     (app as any).debugLoggingTopics = new Set();
