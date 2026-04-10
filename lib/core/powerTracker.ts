@@ -38,8 +38,7 @@ export type RecordPowerSampleParams = {
   rebuildPlanFromCache: (reason?: string) => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
 };
-const MIN_VALID_TIMESTAMP_MS = 100000000000;
-const MAX_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
+const MIN_VALID_TIMESTAMP_MS = 100000000000, MAX_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
 const ZERO_HOURS = Array.from({ length: 24 }, () => 0);
 
 type ControlledSample = {
@@ -478,7 +477,8 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     return;
   }
 
-  const previousTs = state.lastTimestamp as number; const previousPower = state.lastPowerW as number;
+  const previousTs = state.lastTimestamp as number;
+  const previousPower = state.lastPowerW as number;
   const unreliablePeriods = resolveUnreliablePeriods({ state, previousTs, nowMs });
 
   calculateEnergyAcrossBoundaries({

@@ -207,6 +207,24 @@ describe('power page stats (buckets-only)', () => {
     expect(entries[0].unreliable).toBe(false);
   });
 
+  it('keeps repeated non-zero samples unreliable when the hour overlaps an outage', async () => {
+    const iso = '2025-01-06T08:00:00.000Z';
+    installHomeyClient({
+      buckets: { [iso]: 1.2 },
+      hourlySampleCounts: { [iso]: 6 },
+      unreliablePeriods: [{
+        start: Date.parse('2025-01-06T07:59:00.000Z'),
+        end: Date.parse('2025-01-06T08:01:00.000Z'),
+      }],
+    });
+
+    const { getPowerUsage } = require('../src/ui/power') as typeof import('../src/ui/power');
+    const entries = await getPowerUsage();
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].unreliable).toBe(true);
+  });
+
   it('renders the usage day chart with echarts when split usage is available', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
