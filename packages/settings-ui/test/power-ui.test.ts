@@ -389,11 +389,11 @@ describe('power page stats (buckets-only)', () => {
     vi.useRealTimers();
   });
 
-  it('renders consecutive zero-usage hours as valid data', () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
-    installHomeyClient({}, 'UTC');
-    const { renderUsageDayView } = require('../src/ui/usageDayView') as typeof import('../src/ui/usageDayView');
+  it('renders consecutive zero-usage hours as valid data', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
+    await installHomeyClient({}, 'UTC');
+    const { renderUsageDayView } = await import('../src/ui/usageDayView.ts');
 
     renderUsageDayView([
       { hour: new Date('2025-01-06T00:00:00.000Z'), kWh: 0 },
@@ -408,7 +408,7 @@ describe('power page stats (buckets-only)', () => {
     expect(empty.hidden).toBe(true);
     expect(status.hidden).toBe(true);
     expect(total.textContent).toBe('0.0 kWh');
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('matches daily budget today usage with the power summary total', async () => {
