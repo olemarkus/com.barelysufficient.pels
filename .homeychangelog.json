@@ -268,5 +268,8 @@
   },
   "2.1.14": {
     "en": "Various bug fixes."
+  },
+  "2.1.15": {
+    "en": "Fixes that an hour transition can have zero-value samples without being marked as unreliable."
   }
 }
