@@ -27,9 +27,6 @@ describe('homeyDestination', () => {
     expect(error).not.toHaveBeenCalled();
   });
 
-  it('routes error-level lines to error callback', async () => {
-    const log = vi.fn();
-    const error = vi.fn();
   it('routes debug-level lines to log callback', async () => {
     const log = vi.fn();
     const error = vi.fn();
