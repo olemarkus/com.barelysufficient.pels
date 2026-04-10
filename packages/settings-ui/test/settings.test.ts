@@ -197,6 +197,12 @@ const buildDom = () => {
         <input id="device-detail-overshoot-temp">
         <div id="device-detail-overshoot-step-row"></div>
         <select id="device-detail-overshoot-step"></select>
+        <section id="device-detail-stepped-section" hidden>
+          <div id="device-detail-stepped-steps"></div>
+          <button id="device-detail-stepped-add-step" type="button"></button>
+          <button id="device-detail-stepped-save" type="button"></button>
+          <button id="device-detail-stepped-reset" type="button"></button>
+        </section>
         <details id="device-detail-diagnostics-disclosure">
           <summary>Advanced diagnostics</summary>
           <div id="device-detail-diagnostics-status"></div>
@@ -331,9 +337,11 @@ describe('settings script', () => {
     const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
     const stepRow = document.querySelector('#device-detail-overshoot-step-row') as HTMLElement;
     const tempOption = shedAction.querySelector('option[value="set_temperature"]') as HTMLOptionElement;
+    const stepOption = shedAction.querySelector('option[value="set_step"]') as HTMLOptionElement;
 
     expect(shedAction.value).toBe('set_step');
     expect(tempOption.hidden).toBe(false);
+    expect(stepOption.textContent).toBe('Set to step "low"');
     expect(tempRow.hidden).toBe(true);
     expect(stepRow.hidden).toBe(true); // Step selection removed - always uses lowest active step
   });
@@ -445,6 +453,53 @@ describe('settings script', () => {
     expect(stepRow.hidden).toBe(true);
     expect(tempInput.disabled).toBe(true);
     expect(stepInput.disabled).toBe(true);
+  });
+
+  it('updates the set-step label when the draft lowest active step changes', async () => {
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      device_control_profiles: {
+        'dev-1': {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'eco', planningPowerW: 900 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+      },
+      overshoot_behaviors: {
+        'dev-1': { action: 'set_step' },
+      },
+    });
+    await loadSettingsScript();
+
+    (document.querySelector('#device-list .device-row') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+    await flushPromises();
+
+    const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+    const stepOption = shedAction.querySelector('option[value="set_step"]') as HTMLOptionElement;
+    const planningInputs = Array.from(
+      document.querySelectorAll('#device-detail-stepped-steps [data-step-field="planningPowerW"]'),
+    ) as HTMLInputElement[];
+
+    expect(stepOption.textContent).toBe('Set to step "eco"');
+
+    planningInputs[1].value = '0';
+    planningInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(stepOption.textContent).toBe('Set to step "max"');
   });
 
   it('hides both shed temperature and shed step rows when shed mode is turn off', async () => {

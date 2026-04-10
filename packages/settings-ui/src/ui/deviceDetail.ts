@@ -70,6 +70,7 @@ import {
 
 let currentDetailDeviceId: string | null = null;
 let currentSteppedLoadDraft: SteppedLoadProfile | null = null;
+const DEFAULT_SET_STEP_OPTION_LABEL = 'Set to step';
 
 type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
@@ -84,6 +85,10 @@ const resolveSavedSteppedLoadProfile = (device: TargetDeviceSnapshot): SteppedLo
   if (stored?.model === 'stepped_load') return stored;
   return device.steppedLoadProfile?.model === 'stepped_load' ? device.steppedLoadProfile : null;
 };
+
+const getSetStepOption = (): HTMLOptionElement | null => (
+  deviceDetailShedAction?.querySelector<HTMLOptionElement>('option[value="set_step"]') ?? null
+);
 
 const isTemperatureDeviceWithoutOnOff = (device: TargetDeviceSnapshot | null): boolean => (
   Boolean(
@@ -187,6 +192,26 @@ const syncSteppedLoadDraftState = () => {
     ?? currentSteppedLoadDraft
     ?? getDraftProfileFromCurrentDevice(device);
   currentSteppedLoadDraft = profile;
+  updateSetStepOptionLabel(device, profile);
+};
+
+const updateSetStepOptionLabel = (
+  device: TargetDeviceSnapshot | null,
+  profileOverride?: SteppedLoadProfile | null,
+) => {
+  const setStepOption = getSetStepOption();
+  if (!setStepOption) return;
+  if (!device || !isSteppedLoadControlModel(device)) {
+    setStepOption.textContent = DEFAULT_SET_STEP_OPTION_LABEL;
+    return;
+  }
+  const profile = profileOverride
+    ?? currentSteppedLoadDraft
+    ?? resolveSavedSteppedLoadProfile(device);
+  const lowestActiveStepId = profile ? getSteppedLoadLowestActiveStep(profile)?.id : null;
+  setStepOption.textContent = lowestActiveStepId
+    ? `Set to step "${lowestActiveStepId}"`
+    : DEFAULT_SET_STEP_OPTION_LABEL;
 };
 
 const buildSteppedLoadStepRow = (step: SteppedLoadProfile['steps'][number]): HTMLElement => {
@@ -252,11 +277,13 @@ const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
   if (!steppedEnabled) {
     currentSteppedLoadDraft = null;
     deviceDetailSteppedSteps.replaceChildren();
+    updateSetStepOptionLabel(device, null);
     return;
   }
 
   const profile = getDraftProfileFromCurrentDevice(device);
   currentSteppedLoadDraft = profile;
+  updateSetStepOptionLabel(device, profile);
   const rows = sortSteppedLoadSteps(profile.steps).map((step) => buildSteppedLoadStepRow(step));
   deviceDetailSteppedSteps.replaceChildren(...rows);
 };
@@ -291,6 +318,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
 
 const setDeviceDetailShedBehavior = (deviceId: string) => {
   const device = getDeviceById(deviceId);
+  updateSetStepOptionLabel(device);
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
   const supportsStep = isSteppedLoadControlModel(device);
