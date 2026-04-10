@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 import {
   computeDailyUsageSoftLimit,
@@ -8,7 +7,7 @@ import {
 
 describe('planBudget', () => {
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   describe('computeDynamicSoftLimit', () => {
@@ -16,21 +15,21 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 5, marginKw: 5 },
         powerTracker: {},
-        logDebug: jest.fn(),
+        logDebug: vi.fn(),
       });
       expect(result).toEqual({ allowedKw: 0, hourlyBudgetExhausted: false });
     });
 
     it('allows burst rate mid-hour when under budget', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 30, 0);
-      jest.useFakeTimers();
-      jest.setSystemTime(nowMs);
+      vi.useFakeTimers();
+      vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 7, marginKw: 0.3 },
         powerTracker: { buckets: { [bucketKey]: 1.5 } },
-        logDebug: jest.fn(),
+        logDebug: vi.fn(),
       });
 
       // Soft budget = 6.7 kWh. Remaining = 5.2 kWh over 0.5h => 10.4 kW burst.
@@ -40,14 +39,14 @@ describe('planBudget', () => {
 
     it('caps to sustainable rate in last 10 minutes when burst is higher', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 55, 0);
-      jest.useFakeTimers();
-      jest.setSystemTime(nowMs);
+      vi.useFakeTimers();
+      vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 5, marginKw: 0 },
         powerTracker: { buckets: { [bucketKey]: 0.5 } },
-        logDebug: jest.fn(),
+        logDebug: vi.fn(),
       });
 
       // Remaining = 4.5 kWh, remaining time clamps to 10m => burst 27 kW.
@@ -58,14 +57,14 @@ describe('planBudget', () => {
 
     it('uses 10-minute minimum remaining time near hour end', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 59, 0);
-      jest.useFakeTimers();
-      jest.setSystemTime(nowMs);
+      vi.useFakeTimers();
+      vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 5, marginKw: 0 },
         powerTracker: { buckets: { [bucketKey]: 4.8 } },
-        logDebug: jest.fn(),
+        logDebug: vi.fn(),
       });
 
       // Remaining = 0.2 kWh; with 10-minute minimum => 0.2 / (10/60) = 1.2 kW.
@@ -75,14 +74,14 @@ describe('planBudget', () => {
 
     it('marks hourly budget exhausted when usage exceeds soft budget', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 20, 0);
-      jest.useFakeTimers();
-      jest.setSystemTime(nowMs);
+      vi.useFakeTimers();
+      vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 5, marginKw: 0 },
         powerTracker: { buckets: { [bucketKey]: 6 } },
-        logDebug: jest.fn(),
+        logDebug: vi.fn(),
       });
 
       expect(result.allowedKw).toBe(0);
@@ -145,8 +144,8 @@ describe('planBudget', () => {
 
     it('returns 0 when hard-cap budget for the hour is already exhausted', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 30, 0);
-      jest.useFakeTimers();
-      jest.setSystemTime(nowMs);
+      vi.useFakeTimers();
+      vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
       const threshold = computeShortfallThreshold({
@@ -158,8 +157,8 @@ describe('planBudget', () => {
 
     it('uses 0.01h minimum remaining time at end of hour', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 59, 59, 999);
-      jest.useFakeTimers();
-      jest.setSystemTime(nowMs);
+      vi.useFakeTimers();
+      vi.setSystemTime(nowMs);
 
       const bucketKey = getHourBucketKey(nowMs);
       const threshold = computeShortfallThreshold({

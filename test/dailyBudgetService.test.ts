@@ -65,8 +65,8 @@ function buildService(): DailyBudgetService {
   return new DailyBudgetService({
     homey: {
       settings: {
-        get: jest.fn(() => null),
-        set: jest.fn(),
+        get: vi.fn(() => null),
+        set: vi.fn(),
       },
       clock: {
         getTimezone: () => TZ,
@@ -101,8 +101,8 @@ describe('DailyBudgetService', () => {
       confidenceDebug: buildConfidenceDebug({ profileBlendConfidence: 0.2 }),
     });
 
-    (service as any).buildTomorrowPreview = jest.fn(() => tomorrow);
-    (service as any).buildYesterdayHistory = jest.fn(() => yesterday);
+    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
+    (service as any).buildYesterdayHistory = vi.fn(() => yesterday);
 
     (service as any).setDaySnapshot(today, NOW_MS, true);
 
@@ -116,7 +116,7 @@ describe('DailyBudgetService', () => {
 
   it('refreshes confidence explicitly when fetching the UI payload', () => {
     const service = buildService();
-    const updateSpy = jest.fn(() => ({
+    const updateSpy = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -124,7 +124,7 @@ describe('DailyBudgetService', () => {
       }),
       shouldPersist: false,
     }));
-    (service as any).deps.homey.settings.get = jest.fn((key: string) => (
+    (service as any).deps.homey.settings.get = vi.fn((key: string) => (
       key === 'debug_logging_enabled' ? true : null
     ));
     (service as any).manager.update = updateSpy;
@@ -139,7 +139,7 @@ describe('DailyBudgetService', () => {
 
   it('does not enable confidence bootstrap debug for unrelated topic filters', () => {
     const service = buildService();
-    const updateSpy = jest.fn(() => ({
+    const updateSpy = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -147,7 +147,7 @@ describe('DailyBudgetService', () => {
       }),
       shouldPersist: false,
     }));
-    (service as any).deps.homey.settings.get = jest.fn((key: string) => (
+    (service as any).deps.homey.settings.get = vi.fn((key: string) => (
       key === DEBUG_LOGGING_TOPICS ? ['plan'] : null
     ));
     (service as any).manager.update = updateSpy;
@@ -162,7 +162,7 @@ describe('DailyBudgetService', () => {
 
   it('enables confidence bootstrap debug for legacy object-form daily_budget topic settings', () => {
     const service = buildService();
-    const updateSpy = jest.fn(() => ({
+    const updateSpy = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -170,7 +170,7 @@ describe('DailyBudgetService', () => {
       }),
       shouldPersist: false,
     }));
-    (service as any).deps.homey.settings.get = jest.fn((key: string) => (
+    (service as any).deps.homey.settings.get = vi.fn((key: string) => (
       key === DEBUG_LOGGING_TOPICS ? { plan: true, daily_budget: true } : null
     ));
     (service as any).manager.update = updateSpy;
@@ -184,25 +184,25 @@ describe('DailyBudgetService', () => {
   });
 
   it('logs daily budget update failures to error', () => {
-    const error = jest.fn();
+    const error = vi.fn();
     const service = new DailyBudgetService({
       homey: {
         settings: {
-          get: jest.fn(() => null),
-          set: jest.fn(),
+          get: vi.fn(() => null),
+          set: vi.fn(),
         },
         clock: {
           getTimezone: () => TZ,
         },
       } as any,
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
       error,
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
     });
-    (service as any).manager.update = jest.fn(() => {
+    (service as any).manager.update = vi.fn(() => {
       throw 'boom';
     });
 
@@ -213,26 +213,26 @@ describe('DailyBudgetService', () => {
   });
 
   it('does not emit budget_recomputed when refreshing for periodic status only', () => {
-    const info = jest.fn();
+    const info = vi.fn();
     const service = new DailyBudgetService({
       homey: {
         settings: {
-          get: jest.fn(() => null),
-          set: jest.fn(),
+          get: vi.fn(() => null),
+          set: vi.fn(),
         },
         clock: {
           getTimezone: () => TZ,
         },
       } as any,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
       structuredLog: { info } as any,
     });
-    (service as any).manager.update = jest.fn(() => ({
+    (service as any).manager.update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -248,26 +248,26 @@ describe('DailyBudgetService', () => {
   });
 
   it('emits budget_recomputed during normal updates', () => {
-    const info = jest.fn();
+    const info = vi.fn();
     const service = new DailyBudgetService({
       homey: {
         settings: {
-          get: jest.fn(() => null),
-          set: jest.fn(),
+          get: vi.fn(() => null),
+          set: vi.fn(),
         },
         clock: {
           getTimezone: () => TZ,
         },
       } as any,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
       structuredLog: { info } as any,
     });
-    (service as any).manager.update = jest.fn(() => ({
+    (service as any).manager.update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -288,26 +288,26 @@ describe('DailyBudgetService', () => {
   });
 
   it('does not emit budget_recomputed repeatedly for unchanged steady-state updates', () => {
-    const info = jest.fn();
+    const info = vi.fn();
     const service = new DailyBudgetService({
       homey: {
         settings: {
-          get: jest.fn(() => null),
-          set: jest.fn(),
+          get: vi.fn(() => null),
+          set: vi.fn(),
         },
         clock: {
           getTimezone: () => TZ,
         },
       } as any,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
       structuredLog: { info } as any,
     });
-    (service as any).manager.update = jest.fn(() => ({
+    (service as any).manager.update = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,
@@ -323,20 +323,20 @@ describe('DailyBudgetService', () => {
   });
 
   it('emits budget_recomputed when exceeded state changes', () => {
-    const info = jest.fn();
+    const info = vi.fn();
     const service = new DailyBudgetService({
       homey: {
         settings: {
-          get: jest.fn(() => null),
-          set: jest.fn(),
+          get: vi.fn(() => null),
+          set: vi.fn(),
         },
         clock: {
           getTimezone: () => TZ,
         },
       } as any,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
@@ -364,7 +364,7 @@ describe('DailyBudgetService', () => {
         },
       },
     ];
-    (service as any).manager.update = jest
+    (service as any).manager.update = vi
       .fn()
       .mockReturnValueOnce({ snapshot: snapshots[0], shouldPersist: false })
       .mockReturnValueOnce({ snapshot: snapshots[1], shouldPersist: false });
@@ -383,21 +383,21 @@ describe('DailyBudgetService', () => {
     const service = new DailyBudgetService({
       homey: {
         settings: {
-          get: jest.fn(() => null),
-          set: jest.fn(),
+          get: vi.fn(() => null),
+          set: vi.fn(),
         },
         clock: {
           getTimezone: () => TZ,
         },
       } as any,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 5, marginKw: 1 }),
     });
-    const updateSpy = jest.fn(() => ({
+    const updateSpy = vi.fn(() => ({
       snapshot: buildDayPayload({
         dateKey: '2025-03-15',
         confidence: 0.72,

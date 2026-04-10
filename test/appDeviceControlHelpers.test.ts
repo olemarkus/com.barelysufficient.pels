@@ -235,7 +235,7 @@ describe('appDeviceControlHelpers', () => {
 
   it('handles default timestamps, off-step reports, repeated reports, and invalid reported steps', () => {
     const runtimeState = createDeviceControlRuntimeState();
-    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(4242);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(4242);
 
     markSteppedLoadDesiredStepIssued({
       runtimeState,

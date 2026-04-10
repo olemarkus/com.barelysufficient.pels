@@ -13,13 +13,13 @@ describe('Headroom for device condition', () => {
     mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
     mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
     mockHomeyInstance.api.clearRealtimeEvents();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
-    jest.useRealTimers();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   it('returns true only when headroom plus device estimate meets the required kW', async () => {
@@ -96,8 +96,8 @@ describe('Headroom for device condition', () => {
   });
 
   it('keeps headroom blocked for 60 seconds after expected power is lowered, even if measured draw rises again', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-03T14:07:20.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-03T14:07:20.000Z'));
 
     const device = new MockDevice('dev-1', 'Connected 300', ['measure_power', 'onoff']);
     await device.setCapabilityValue('measure_power', 1190);
@@ -148,13 +148,13 @@ describe('Headroom for device condition', () => {
 
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(false);
 
-    jest.advanceTimersByTime(60 * 1000);
+    vi.advanceTimersByTime(60 * 1000);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
   });
 
   it('blocks even when the first headroom check happens only after expected power was lowered and measurement rose again', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-03T14:36:40.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-03T14:36:40.000Z'));
 
     const device = new MockDevice('dev-1', 'Connected 300', ['measure_power', 'onoff']);
     await device.setCapabilityValue('measure_power', 1190);
@@ -193,8 +193,8 @@ describe('Headroom for device condition', () => {
   });
 
   it('blocks after lowering expected power late in the session, even if a later measured-peak check would otherwise pass', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-03T14:51:45.274Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-03T14:51:45.274Z'));
 
     const device = new MockDevice('dev-1', 'Connected 300', ['measure_power', 'onoff']);
     await device.setCapabilityValue('measure_power', 1670);
@@ -218,31 +218,31 @@ describe('Headroom for device condition', () => {
 
     await expect(runSetExpected({ device: { id: 'dev-1' }, power_w: 3000 })).resolves.toBe(true);
 
-    jest.advanceTimersByTime(2389);
+    vi.advanceTimersByTime(2389);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(false);
 
     currentPowerKw = 3.02;
-    jest.advanceTimersByTime(5049);
+    vi.advanceTimersByTime(5049);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
 
     currentPowerKw = 4.21;
-    jest.advanceTimersByTime(53985);
+    vi.advanceTimersByTime(53985);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(false);
 
-    jest.advanceTimersByTime(1468);
+    vi.advanceTimersByTime(1468);
     await expect(runSetExpected({ device: { id: 'dev-1' }, power_w: 1750 })).resolves.toBe(true);
 
     await device.setCapabilityValue('measure_power', 2870);
     await (app as any).refreshTargetDevicesSnapshot();
     currentPowerKw = 4.23;
 
-    jest.advanceTimersByTime(2721);
+    vi.advanceTimersByTime(2721);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(false);
   });
 
   it('blocks only the same device during recent PELS shed or restore cooldowns', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-03T12:00:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-03T12:00:00.000Z'));
 
     const deviceA = new MockDevice('dev-1', 'Heater A', ['measure_power', 'onoff']);
     const deviceB = new MockDevice('dev-2', 'Heater B', ['measure_power', 'onoff']);

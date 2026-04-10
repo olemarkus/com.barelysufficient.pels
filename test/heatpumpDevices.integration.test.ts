@@ -15,7 +15,7 @@ import type { TargetDeviceSnapshot } from '../lib/utils/types';
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
-jest.useFakeTimers({ doNotFake: ['nextTick', 'Date'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 
 const buildHeatpumpDevice = async (options?: {
     id?: string;
@@ -90,12 +90,12 @@ describe('Heatpump device integration', () => {
         mockHomeyInstance.flow._triggerCardRunListeners = {};
         mockHomeyInstance.flow._triggerCardTriggers = {};
         mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-        jest.clearAllTimers();
+        vi.clearAllTimers();
     });
 
     afterEach(async () => {
         await cleanupApps();
-        jest.clearAllTimers();
+        vi.clearAllTimers();
     });
 
     it('builds a snapshot entry for a heatpump device', async () => {
@@ -148,7 +148,7 @@ describe('Heatpump device integration', () => {
         mockHomeyInstance.settings.set('managed_devices', { 'heatpump-a': true });
 
         const app = createApp();
-        const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+        const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
         await app.onInit();
         await flushPromises();
 
@@ -177,7 +177,7 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        const setCapSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+        const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
         (app as any).computeDynamicSoftLimit = () => 1;
         if ((app as any).capacityGuard?.setSoftLimitProvider) {
@@ -185,7 +185,7 @@ describe('Heatpump device integration', () => {
         }
 
         await (app as any).recordPowerSample(5000);
-        jest.advanceTimersByTime(100);
+        vi.advanceTimersByTime(100);
         await flushPromises();
 
         expect(setCapSpy).toHaveBeenCalledWith(
@@ -223,7 +223,7 @@ describe('Heatpump device integration', () => {
         }
 
         await (app as any).recordPowerSample(5000);
-        jest.advanceTimersByTime(100);
+        vi.advanceTimersByTime(100);
         await flushPromises();
 
         const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
@@ -237,7 +237,7 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+        vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
             'heatpump-a': buildHeatpumpApiDevice({
                 capabilities: ['onoff', 'target_temperature', 'measure_temperature'],
             }),

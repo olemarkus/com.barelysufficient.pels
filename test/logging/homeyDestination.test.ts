@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @vitest-environment node
  */
 import { createHomeyDestination } from '../../lib/logging/homeyDestination';
 
@@ -9,82 +9,76 @@ function writeChunk(dest: ReturnType<typeof createHomeyDestination>, chunk: stri
   });
 }
 
+function endChunk(dest: ReturnType<typeof createHomeyDestination>, chunk: string): Promise<void> {
+  return new Promise((resolve) => {
+    dest.end(chunk, 'utf8', () => resolve());
+  });
+}
+
 describe('homeyDestination', () => {
-  it('routes info-level lines to log callback', (done) => {
-    const log = jest.fn();
-    const error = jest.fn();
+  it('routes info-level lines to log callback', async () => {
+    const log = vi.fn();
+    const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
     const line = JSON.stringify({ level: 30, pid: 1, hostname: 'homey', msg: 'hello' }) + '\n';
-    dest.write(line, 'utf8', () => {
-      expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'hello' }));
-      expect(error).not.toHaveBeenCalled();
-      done();
-    });
+    await writeChunk(dest, line);
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'hello' }));
+    expect(error).not.toHaveBeenCalled();
   });
 
-  it('routes error-level lines to error callback', (done) => {
-    const log = jest.fn();
-    const error = jest.fn();
+  it('routes error-level lines to error callback', async () => {
+    const log = vi.fn();
+    const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
     const line = JSON.stringify({ level: 50, pid: 1, hostname: 'homey', msg: 'fail' }) + '\n';
-    dest.write(line, 'utf8', () => {
-      expect(error).toHaveBeenCalledWith(JSON.stringify({ msg: 'fail' }));
-      expect(log).not.toHaveBeenCalled();
-      done();
-    });
+    await writeChunk(dest, line);
+    expect(error).toHaveBeenCalledWith(JSON.stringify({ msg: 'fail' }));
+    expect(log).not.toHaveBeenCalled();
   });
 
-  it('routes fatal-level lines to error callback', (done) => {
-    const log = jest.fn();
-    const error = jest.fn();
+  it('routes fatal-level lines to error callback', async () => {
+    const log = vi.fn();
+    const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
     const line = JSON.stringify({ level: 60, pid: 1, hostname: 'homey', msg: 'fatal' }) + '\n';
-    dest.write(line, 'utf8', () => {
-      expect(error).toHaveBeenCalledWith(JSON.stringify({ msg: 'fatal' }));
-      done();
-    });
+    await writeChunk(dest, line);
+    expect(error).toHaveBeenCalledWith(JSON.stringify({ msg: 'fatal' }));
   });
 
-  it('handles lines without trailing newline', (done) => {
-    const log = jest.fn();
-    const error = jest.fn();
+  it('handles lines without trailing newline', async () => {
+    const log = vi.fn();
+    const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
     const line = JSON.stringify({ level: 30, pid: 1, hostname: 'homey', msg: 'no newline' });
-    dest.end(line, 'utf8', () => {
-      expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'no newline' }));
-      done();
-    });
+    await endChunk(dest, line);
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ msg: 'no newline' }));
   });
 
-  it('handles unparseable lines as info level', (done) => {
-    const log = jest.fn();
-    const error = jest.fn();
+  it('handles unparseable lines as info level', async () => {
+    const log = vi.fn();
+    const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
 
-    dest.write('not json\n', 'utf8', () => {
-      expect(log).toHaveBeenCalledWith('not json');
-      expect(error).not.toHaveBeenCalled();
-      done();
-    });
+    await writeChunk(dest, 'not json\n');
+    expect(log).toHaveBeenCalledWith('not json');
+    expect(error).not.toHaveBeenCalled();
   });
 
-  it('never throws when callback throws', (done) => {
-    const throwing = jest.fn(() => { throw new Error('boom'); });
-    const dest = createHomeyDestination({ log: throwing, error: jest.fn() });
+  it('never throws when callback throws', async () => {
+    const throwing = vi.fn(() => { throw new Error('boom'); });
+    const dest = createHomeyDestination({ log: throwing, error: vi.fn() });
 
-    dest.write(JSON.stringify({ level: 30 }) + '\n', 'utf8', () => {
-      // If we reach here, no uncaught exception was thrown
-      done();
-    });
+    await writeChunk(dest, JSON.stringify({ level: 30 }) + '\n');
+    // If we reach here, no uncaught exception was thrown
   });
 
   it('buffers partial chunks until a full line is available', async () => {
-    const log = jest.fn();
-    const error = jest.fn();
+    const log = vi.fn();
+    const error = vi.fn();
     const dest = createHomeyDestination({ log, error });
     const line = JSON.stringify({ level: 50, pid: 1, hostname: 'homey', msg: 'split' }) + '\n';
     const mid = Math.floor(line.length / 2);

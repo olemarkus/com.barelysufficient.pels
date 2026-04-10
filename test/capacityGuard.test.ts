@@ -7,11 +7,11 @@ describe('CapacityGuard', () => {
   beforeEach(() => {
     originalNow = Date.now;
     mockTime = originalNow();
-    jest.spyOn(Date, 'now').mockImplementation(() => mockTime);
+    vi.spyOn(Date, 'now').mockImplementation(() => mockTime);
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   const advanceTime = (ms: number) => {

@@ -37,18 +37,18 @@ const buildPlan = (
 const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanService>[0]> = {}) => {
   const deps = {
     homey: {
-      settings: { set: jest.fn() },
-      api: { realtime: jest.fn().mockResolvedValue(undefined) },
+      settings: { set: vi.fn() },
+      api: { realtime: vi.fn().mockResolvedValue(undefined) },
       flow: {},
     } as any,
     planEngine: {
-      buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(20, 'stable')),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-      applyPlanActions: jest.fn().mockResolvedValue(undefined),
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     } as any,
     getPlanDevices: () => [],
     getCapacityDryRun: () => false,
@@ -56,9 +56,9 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     isCurrentHourExpensive: () => false,
     getCombinedPrices: () => null,
     getLastPowerUpdate: () => null,
-    log: jest.fn(),
-    logDebug: jest.fn(),
-    error: jest.fn(),
+    log: vi.fn(),
+    logDebug: vi.fn(),
+    error: vi.fn(),
     ...overrides,
   };
 
@@ -67,28 +67,28 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
 
 describe('PlanService', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-02-07T00:00:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-07T00:00:00.000Z'));
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('writes detail-only snapshot changes immediately', async () => {
-    const settingsSet = jest.fn();
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
-      buildDevicePlanSnapshot: jest
+      buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(19, 'stable'))
         .mockResolvedValueOnce(buildPlan(21, 'sensor_update')),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-      applyPlanActions: jest.fn().mockResolvedValue(undefined),
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
     const service = new PlanService({
@@ -104,9 +104,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -124,19 +124,19 @@ describe('PlanService', () => {
   });
 
   it('writes a fresh snapshot when priority changes without action changes', async () => {
-    const settingsSet = jest.fn();
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
-      buildDevicePlanSnapshot: jest
+      buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { priority: 10 }))
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { priority: 1 })),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-      applyPlanActions: jest.fn().mockResolvedValue(undefined),
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
     const service = new PlanService({
@@ -152,9 +152,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -172,22 +172,22 @@ describe('PlanService', () => {
   });
 
   it('normalizes plan_updated emission failures before logging', async () => {
-    const realtime = jest.fn().mockRejectedValue('boom');
-    const error = jest.fn();
+    const realtime = vi.fn().mockRejectedValue('boom');
+    const error = vi.fn();
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(19, 'stable')),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-        applyPlanActions: jest.fn().mockResolvedValue(undefined),
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(19, 'stable')),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [],
       getCapacityDryRun: () => false,
@@ -195,8 +195,8 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
       error,
     });
 
@@ -208,19 +208,19 @@ describe('PlanService', () => {
   });
 
   it('flushes throttled meta-only snapshot without requiring another rebuild', async () => {
-    const settingsSet = jest.fn();
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
-      buildDevicePlanSnapshot: jest
+      buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.0 }))
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.2 })),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-      applyPlanActions: jest.fn().mockResolvedValue(undefined),
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
     const service = new PlanService({
@@ -236,9 +236,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -253,7 +253,7 @@ describe('PlanService', () => {
     const realtimeAfterThrottle = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(realtimeAfterThrottle).toHaveLength(2);
 
-    jest.advanceTimersByTime(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
+    vi.advanceTimersByTime(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
 
     const snapshotWritesAfterFlush = settingsSet.mock.calls
       .filter((call: unknown[]) => call[0] === 'device_plan_snapshot')
@@ -266,19 +266,19 @@ describe('PlanService', () => {
   });
 
   it('keeps the latest in-memory plan snapshot fresh while snapshot writes are throttled', async () => {
-    const settingsSet = jest.fn();
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
-      buildDevicePlanSnapshot: jest
+      buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.0 }))
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.2 })),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-      applyPlanActions: jest.fn().mockResolvedValue(undefined),
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
     const service = new PlanService({
@@ -294,9 +294,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -311,22 +311,22 @@ describe('PlanService', () => {
   });
 
   it('reapplies the current plan when the live onoff state drifts', async () => {
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -342,9 +342,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
@@ -381,22 +381,22 @@ describe('PlanService', () => {
   });
 
   it('reapplies the current plan when the live target drifts', async () => {
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -412,9 +412,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
@@ -451,9 +451,9 @@ describe('PlanService', () => {
   });
 
   it('keeps the observed target stale while exposing pending confirmation state', async () => {
-    const settingsSet = jest.fn();
-    const realtime = jest.fn().mockResolvedValue(undefined);
-    const decoratePlanWithPendingTargetCommands = jest.fn((plan: DevicePlan) => ({
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const decoratePlanWithPendingTargetCommands = vi.fn((plan: DevicePlan) => ({
       ...plan,
       devices: plan.devices.map((device) => ({
         ...device,
@@ -475,15 +475,15 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-        applyPlanActions: jest.fn().mockResolvedValue(undefined),
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
-        hasPendingTargetCommands: jest.fn(() => true),
-        syncPendingTargetCommands: jest.fn(() => true),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+        hasPendingTargetCommands: vi.fn(() => true),
+        syncPendingTargetCommands: vi.fn(() => true),
         decoratePlanWithPendingTargetCommands,
       } as any,
       getPlanDevices: () => [{
@@ -500,9 +500,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(18, 'stable');
@@ -534,10 +534,10 @@ describe('PlanService', () => {
   });
 
   it('refreshes the stored current target when a pending target command is confirmed', async () => {
-    const settingsSet = jest.fn();
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
     let hasPendingTargetCommands = true;
-    const decoratePlanWithPendingTargetCommands = jest.fn((plan: DevicePlan) => ({
+    const decoratePlanWithPendingTargetCommands = vi.fn((plan: DevicePlan) => ({
       ...plan,
       devices: plan.devices.map((device) => ({
         ...device,
@@ -561,15 +561,15 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-        applyPlanActions: jest.fn().mockResolvedValue(undefined),
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
-        hasPendingTargetCommands: jest.fn(() => hasPendingTargetCommands),
-        syncPendingTargetCommands: jest.fn(() => {
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+        hasPendingTargetCommands: vi.fn(() => hasPendingTargetCommands),
+        syncPendingTargetCommands: vi.fn(() => {
           hasPendingTargetCommands = false;
           return true;
         }),
@@ -589,9 +589,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = decoratePlanWithPendingTargetCommands(buildPlan(18, 'stable'));
@@ -614,21 +614,21 @@ describe('PlanService', () => {
   });
 
   it('skips plan reconcile for power-only drift', async () => {
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -647,9 +647,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
@@ -667,21 +667,21 @@ describe('PlanService', () => {
   });
 
   it('skips plan reconcile for target-only drift while a shed device is already off', async () => {
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -697,9 +697,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(21, 'shed', {}, {
@@ -715,21 +715,21 @@ describe('PlanService', () => {
   });
 
   it('reapplies shed-off intent when live binary state is still on', async () => {
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -745,9 +745,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(21, 'shed', {}, {
@@ -773,23 +773,23 @@ describe('PlanService', () => {
 
   it('refreshes the stored plan snapshot when a pending binary command is confirmed by live state', async () => {
     let hasPendingBinaryCommands = true;
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-        applyPlanActions: jest.fn().mockResolvedValue(undefined),
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
-        hasPendingBinaryCommands: jest.fn(() => hasPendingBinaryCommands),
-        syncPendingBinaryCommands: jest.fn(() => {
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+        hasPendingBinaryCommands: vi.fn(() => hasPendingBinaryCommands),
+        syncPendingBinaryCommands: vi.fn(() => {
           hasPendingBinaryCommands = false;
           return true;
         }),
@@ -808,9 +808,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'cooldown', {}, {
@@ -838,26 +838,26 @@ describe('PlanService', () => {
 
   it('does not replace the stored plan snapshot with drifted live state before reconcile actuation completes', async () => {
     let resolveApply: (() => void) | undefined;
-    const realtime = jest.fn().mockResolvedValue(undefined);
-    const applyPlanActions = jest.fn().mockImplementation(
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockImplementation(
       () => new Promise<void>((resolve) => {
         resolveApply = resolve;
       }),
     );
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -873,9 +873,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
@@ -913,21 +913,21 @@ describe('PlanService', () => {
   });
 
   it('reapplies the current plan when reconcile runs from a stale keep/off snapshot', async () => {
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -943,9 +943,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
@@ -968,22 +968,22 @@ describe('PlanService', () => {
   });
 
   it('does not refresh the stored plan snapshot from stale live state immediately after reconcile actuation', async () => {
-    const realtime = jest.fn().mockResolvedValue(undefined);
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -999,9 +999,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
@@ -1042,8 +1042,8 @@ describe('PlanService', () => {
       'dev-1': false,
       'dev-2': false,
     };
-    const realtime = jest.fn().mockResolvedValue(undefined);
-    const applyPlanActions = jest.fn().mockImplementation(async () => {
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockImplementation(async () => {
       liveCurrentOnById = {
         'dev-1': true,
         'dev-2': false,
@@ -1051,12 +1051,12 @@ describe('PlanService', () => {
     });
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn().mockResolvedValue({
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
           meta: {
             totalKw: 1,
             softLimitKw: 5,
@@ -1085,12 +1085,12 @@ describe('PlanService', () => {
             },
           ],
         }),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [
         {
@@ -1117,9 +1117,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -1158,29 +1158,29 @@ describe('PlanService', () => {
 
   it('refreshes the stored plan snapshot after rebuild actuation once all live state has settled', async () => {
     let currentOn = false;
-    const realtime = jest.fn().mockResolvedValue(undefined);
-    const applyPlanActions = jest.fn().mockImplementation(async () => {
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockImplementation(async () => {
       currentOn = true;
     });
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
           currentState: 'off',
           currentTarget: 20,
           plannedState: 'keep',
           plannedTarget: 20,
         })),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -1196,9 +1196,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -1229,8 +1229,8 @@ describe('PlanService', () => {
       'dev-1': false,
       'dev-2': false,
     };
-    const realtime = jest.fn().mockResolvedValue(undefined);
-    const applyPlanActions = jest.fn().mockImplementation(async () => {
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockImplementation(async () => {
       liveCurrentOnById = {
         'dev-1': true,
         'dev-2': false,
@@ -1238,12 +1238,12 @@ describe('PlanService', () => {
     });
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn().mockResolvedValue({
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
           meta: {
             totalKw: 1,
             softLimitKw: 5,
@@ -1272,12 +1272,12 @@ describe('PlanService', () => {
             },
           ],
         }),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [
         {
@@ -1306,9 +1306,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -1344,8 +1344,8 @@ describe('PlanService', () => {
       'dev-1': false,
       'dev-2': false,
     };
-    const realtime = jest.fn().mockResolvedValue(undefined);
-    const applyPlanActions = jest.fn().mockImplementation(async () => {
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockImplementation(async () => {
       liveCurrentOnById = {
         'dev-1': true,
         'dev-2': false,
@@ -1353,12 +1353,12 @@ describe('PlanService', () => {
     });
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn().mockResolvedValue({
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
           meta: {
             totalKw: 1,
             softLimitKw: 5,
@@ -1389,12 +1389,12 @@ describe('PlanService', () => {
             },
           ],
         }),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [
         {
@@ -1425,9 +1425,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -1462,30 +1462,30 @@ describe('PlanService', () => {
 
   it('refreshes the stored plan snapshot after a settled shed-off even if the target remains unchanged', async () => {
     let currentOn = true;
-    const realtime = jest.fn().mockResolvedValue(undefined);
-    const applyPlanActions = jest.fn().mockImplementation(async () => {
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockImplementation(async () => {
       currentOn = false;
     });
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(21, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(21, 'stable', {}, {
           currentState: 'on',
           currentTarget: 21,
           plannedState: 'shed',
           plannedTarget: 18,
           shedAction: 'turn_off',
         })),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -1501,9 +1501,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -1531,24 +1531,24 @@ describe('PlanService', () => {
   });
   it('refreshes the live plan snapshot after reconcile re-applies a restore', async () => {
     let currentOn = false;
-    const applyPlanActions = jest.fn().mockImplementation(async () => {
+    const applyPlanActions = vi.fn().mockImplementation(async () => {
       currentOn = true;
     });
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: { realtime },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -1564,9 +1564,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
@@ -1605,7 +1605,7 @@ describe('PlanService', () => {
   it('queues reconcile behind an in-flight rebuild and avoids double actuation once the rebuild fixes drift', async () => {
     let currentOn = false;
     let resolveApply: (() => void) | undefined;
-    const applyPlanActions = jest.fn().mockImplementation(async () => new Promise<void>((resolve) => {
+    const applyPlanActions = vi.fn().mockImplementation(async () => new Promise<void>((resolve) => {
       resolveApply = () => {
         currentOn = true;
         resolve();
@@ -1613,23 +1613,23 @@ describe('PlanService', () => {
     }));
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
           currentState: 'off',
           plannedState: 'keep',
           currentTarget: 20,
           plannedTarget: 20,
         })),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -1645,9 +1645,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
@@ -1668,22 +1668,22 @@ describe('PlanService', () => {
 
   it('queues external shedding behind an in-flight rebuild', async () => {
     let resolveApply: (() => void) | undefined;
-    const applyPlanActions = jest.fn().mockImplementation(async () => new Promise<void>((resolve) => {
+    const applyPlanActions = vi.fn().mockImplementation(async () => new Promise<void>((resolve) => {
       resolveApply = resolve;
     }));
-    const applySheddingToDevice = jest.fn().mockResolvedValue(undefined);
+    const applySheddingToDevice = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(20, 'stable')),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
         applySheddingToDevice,
       } as any,
@@ -1693,9 +1693,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
@@ -1721,27 +1721,27 @@ describe('PlanService', () => {
 
   it('queues external live plan sync behind an in-flight rebuild', async () => {
     let resolveBuild: (() => void) | undefined;
-    const syncPendingTargetCommands = jest.fn(() => true);
+    const syncPendingTargetCommands = vi.fn(() => true);
     const planEngine = {
-      buildDevicePlanSnapshot: jest.fn().mockImplementation(
+      buildDevicePlanSnapshot: vi.fn().mockImplementation(
         async () => new Promise<DevicePlan>((resolve) => {
           resolveBuild = () => resolve(buildPlan(20, 'stable'));
         }),
       ),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-      applyPlanActions: jest.fn().mockResolvedValue(undefined),
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
-      hasPendingTargetCommands: jest.fn(() => true),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      hasPendingTargetCommands: vi.fn(() => true),
       syncPendingTargetCommands,
-      decoratePlanWithPendingTargetCommands: jest.fn((plan: DevicePlan) => plan),
+      decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
     };
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: planEngine as any,
@@ -1759,9 +1759,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
@@ -1790,33 +1790,33 @@ describe('PlanService', () => {
       currentOn: true,
       currentTemperature: 21,
     }];
-    const getPlanDevices = jest.fn()
+    const getPlanDevices = vi.fn()
       .mockReturnValueOnce(firstLiveDevices)
       .mockReturnValueOnce([{
         ...firstLiveDevices[0],
         targets: [{ id: 'target_temperature', value: 26, unit: '°C' }],
       }]);
-    const syncPendingTargetCommands = jest.fn(() => false);
-    const syncPendingBinaryCommands = jest.fn(() => false);
-    const buildDevicePlanSnapshot = jest.fn().mockResolvedValue(buildPlan(20, 'stable'));
+    const syncPendingTargetCommands = vi.fn(() => false);
+    const syncPendingBinaryCommands = vi.fn(() => false);
+    const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'stable'));
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
         buildDevicePlanSnapshot,
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-        applyPlanActions: jest.fn().mockResolvedValue(undefined),
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
         syncPendingTargetCommands,
         syncPendingBinaryCommands,
-        prunePendingTargetCommands: jest.fn(() => false),
-        decoratePlanWithPendingTargetCommands: jest.fn((plan: DevicePlan) => plan),
+        prunePendingTargetCommands: vi.fn(() => false),
+        decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
       } as any,
       getPlanDevices,
       getCapacityDryRun: () => true,
@@ -1824,9 +1824,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache('capture_live_devices_once');
@@ -1838,24 +1838,24 @@ describe('PlanService', () => {
   });
 
   it('clears pending throttled snapshot timer on destroy', async () => {
-    const settingsSet = jest.fn();
+    const settingsSet = vi.fn();
     const planEngine = {
-      buildDevicePlanSnapshot: jest
+      buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.0 }))
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.2 })),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-      applyPlanActions: jest.fn().mockResolvedValue(undefined),
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
     const service = new PlanService({
       homey: {
         settings: { set: settingsSet },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: planEngine as any,
@@ -1865,9 +1865,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -1876,36 +1876,36 @@ describe('PlanService', () => {
     const snapshotWritesAfterThrottle = settingsSet.mock.calls
       .filter((call: unknown[]) => call[0] === 'device_plan_snapshot');
     expect(snapshotWritesAfterThrottle).toHaveLength(1);
-    expect(jest.getTimerCount()).toBeGreaterThan(0);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
 
     service.destroy();
-    expect(jest.getTimerCount()).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
 
-    jest.advanceTimersByTime(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
+    vi.advanceTimersByTime(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
     const snapshotWritesAfterDestroy = settingsSet.mock.calls
       .filter((call: unknown[]) => call[0] === 'device_plan_snapshot');
     expect(snapshotWritesAfterDestroy).toHaveLength(1);
   });
 
   it('skips applyPlanActions on identical rebuilds', async () => {
-    const settingsSet = jest.fn();
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const settingsSet = vi.fn();
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
-      buildDevicePlanSnapshot: jest
+      buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValue(buildPlan(20, 'stable')),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions,
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
     const service = new PlanService({
       homey: {
         settings: { set: settingsSet },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: planEngine as any,
@@ -1915,9 +1915,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache('test_identical.first');
@@ -1927,7 +1927,7 @@ describe('PlanService', () => {
   });
 
   it('preserves reconcile drift across detail-only rebuilds', async () => {
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const liveDeviceBase = {
       id: 'dev-1',
       name: 'Heater',
@@ -1942,7 +1942,7 @@ describe('PlanService', () => {
     }];
 
     const planEngine = {
-      buildDevicePlanSnapshot: jest
+      buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'stable', {}, {
           currentState: 'on',
@@ -1954,18 +1954,18 @@ describe('PlanService', () => {
           plannedState: 'keep',
           plannedTarget: 20,
         })),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions,
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: planEngine as any,
@@ -1975,9 +1975,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache('seed_expected_on_state');
@@ -2007,10 +2007,10 @@ describe('PlanService', () => {
   });
 
   it('reuses cached pels status computation when inputs are unchanged', () => {
-    const buildPelsStatusSpy = jest.spyOn(pelsStatusModule, 'buildPelsStatus');
+    const buildPelsStatusSpy = vi.spyOn(pelsStatusModule, 'buildPelsStatus');
     const planService = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
+        settings: { set: vi.fn() },
         api: {},
         flow: {},
       } as any,
@@ -2021,9 +2021,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => ({ prices: [{ total: 10 }] }),
       getLastPowerUpdate: () => 123456,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     const plan = {
@@ -2044,23 +2044,23 @@ describe('PlanService', () => {
   });
 
   it('records recent rebuild phase timings with reason', async () => {
-    const settingsSet = jest.fn(() => {
-      jest.advanceTimersByTime(7);
+    const settingsSet = vi.fn(() => {
+      vi.advanceTimersByTime(7);
     });
-    const realtime = jest.fn().mockResolvedValue(undefined);
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
-      buildDevicePlanSnapshot: jest.fn().mockImplementation(async () => {
-        jest.advanceTimersByTime(11);
+      buildDevicePlanSnapshot: vi.fn().mockImplementation(async () => {
+        vi.advanceTimersByTime(11);
         return buildPlan(20, 'stable');
       }),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-      applyPlanActions: jest.fn().mockImplementation(async () => {
-        jest.advanceTimersByTime(13);
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockImplementation(async () => {
+        vi.advanceTimersByTime(13);
       }),
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
     const service = new PlanService({
@@ -2076,9 +2076,9 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache('test_reason.phase_trace');
@@ -2100,25 +2100,25 @@ describe('PlanService', () => {
   });
 
   it('records failed rebuild attempts in perf counters and traces', async () => {
-    const error = jest.fn();
-    const settingsSet = jest.fn();
+    const error = vi.fn();
+    const settingsSet = vi.fn();
     const planEngine = {
-      buildDevicePlanSnapshot: jest.fn().mockImplementation(async () => {
-        jest.advanceTimersByTime(17);
+      buildDevicePlanSnapshot: vi.fn().mockImplementation(async () => {
+        vi.advanceTimersByTime(17);
         throw new Error('plan exploded');
       }),
-      computeDynamicSoftLimit: jest.fn(() => 0),
-      computeShortfallThreshold: jest.fn(() => 0),
-      handleShortfall: jest.fn().mockResolvedValue(undefined),
-      handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-      applyPlanActions: jest.fn().mockResolvedValue(undefined),
-      applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
     const service = new PlanService({
       homey: {
         settings: { set: settingsSet },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: planEngine as any,
@@ -2128,8 +2128,8 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
       error,
     });
 
@@ -2152,7 +2152,7 @@ describe('PlanService', () => {
   });
 
   it('suppresses structured rebuild logs for unchanged no-op rebuilds', async () => {
-    const structuredLog = { info: jest.fn() };
+    const structuredLog = { info: vi.fn() };
     const { service } = createPlanService({
       structuredLog: structuredLog as any,
     });
@@ -2166,7 +2166,7 @@ describe('PlanService', () => {
   });
 
   it('emits structured rebuild logs for initial rebuild reasons even without action changes', async () => {
-    const structuredLog = { info: jest.fn() };
+    const structuredLog = { info: vi.fn() };
     const { service } = createPlanService({
       structuredLog: structuredLog as any,
     });
@@ -2186,15 +2186,15 @@ describe('PlanService', () => {
   });
 
   it('emits structured rebuild logs for slow rebuilds even without action changes', async () => {
-    const structuredLog = { info: jest.fn() };
+    const structuredLog = { info: vi.fn() };
     const { service, deps } = createPlanService({
       structuredLog: structuredLog as any,
     });
 
     await service.rebuildPlanFromCache('seed');
     structuredLog.info.mockClear();
-    (deps.planEngine.buildDevicePlanSnapshot as jest.Mock).mockImplementation(async () => {
-      jest.advanceTimersByTime(1501);
+    (deps.planEngine.buildDevicePlanSnapshot as vi.Mock).mockImplementation(async () => {
+      vi.advanceTimersByTime(1501);
       return buildPlan(20, 'stable');
     });
 
@@ -2212,7 +2212,7 @@ describe('PlanService', () => {
   });
 
   it('emits plan_rebuild_completed at debug level when actionChanged but no actions applied (dry-run)', async () => {
-    const structuredLog = { info: jest.fn(), debug: jest.fn() };
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
       structuredLog: structuredLog as any,
       getCapacityDryRun: () => true,
@@ -2224,7 +2224,7 @@ describe('PlanService', () => {
     structuredLog.debug.mockClear();
 
     // Return a plan with different plannedState to trigger actionChanged
-    (deps.planEngine.buildDevicePlanSnapshot as jest.Mock).mockResolvedValueOnce(
+    (deps.planEngine.buildDevicePlanSnapshot as vi.Mock).mockResolvedValueOnce(
       buildPlan(20, 'stable', {}, { plannedState: 'shed' }),
     );
     await service.rebuildPlanFromCache('power_delta');
@@ -2240,12 +2240,12 @@ describe('PlanService', () => {
   });
 
   it('emits structured rebuild logs for failed rebuilds', async () => {
-    const structuredLog = { info: jest.fn() };
+    const structuredLog = { info: vi.fn() };
     const { service, deps } = createPlanService({
       structuredLog: structuredLog as any,
     });
-    (deps.planEngine.buildDevicePlanSnapshot as jest.Mock).mockImplementation(async () => {
-      jest.advanceTimersByTime(17);
+    (deps.planEngine.buildDevicePlanSnapshot as vi.Mock).mockImplementation(async () => {
+      vi.advanceTimersByTime(17);
       throw new Error('plan exploded');
     });
 
@@ -2259,25 +2259,25 @@ describe('PlanService', () => {
   });
 
   it('calls schedulePostActuationRefresh after rebuild actuation', async () => {
-    const schedulePostActuationRefresh = jest.fn();
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const schedulePostActuationRefresh = vi.fn();
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
           currentState: 'off',
           plannedState: 'keep',
         })),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -2294,9 +2294,9 @@ describe('PlanService', () => {
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.rebuildPlanFromCache();
@@ -2305,22 +2305,22 @@ describe('PlanService', () => {
   });
 
   it('calls schedulePostActuationRefresh after reconcile actuation', async () => {
-    const schedulePostActuationRefresh = jest.fn();
-    const applyPlanActions = jest.fn().mockResolvedValue(undefined);
+    const schedulePostActuationRefresh = vi.fn();
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         applyPlanActions,
-        applySheddingToDevice: jest.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
       getPlanDevices: () => [{
         id: 'dev-1',
@@ -2337,9 +2337,9 @@ describe('PlanService', () => {
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
@@ -2355,21 +2355,21 @@ describe('PlanService', () => {
   });
 
   it('calls schedulePostActuationRefresh after direct shedding actuation', async () => {
-    const schedulePostActuationRefresh = jest.fn();
-    const applySheddingToDevice = jest.fn().mockResolvedValue(undefined);
+    const schedulePostActuationRefresh = vi.fn();
+    const applySheddingToDevice = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
       homey: {
-        settings: { set: jest.fn() },
-        api: { realtime: jest.fn().mockResolvedValue(undefined) },
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: jest.fn(),
-        computeDynamicSoftLimit: jest.fn(() => 0),
-        computeShortfallThreshold: jest.fn(() => 0),
-        handleShortfall: jest.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: jest.fn().mockResolvedValue(undefined),
-        applyPlanActions: jest.fn().mockResolvedValue(undefined),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
         applySheddingToDevice,
       } as any,
       getPlanDevices: () => [],
@@ -2379,9 +2379,9 @@ describe('PlanService', () => {
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     await service.applySheddingToDevice('dev-1', 'Heater');

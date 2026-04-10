@@ -28,7 +28,7 @@ describe('periodic status used kWh', () => {
       capacityGuard: undefined,
     });
 
-    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(sampleStart + 15 * 60 * 1000);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(sampleStart + 15 * 60 * 1000);
     const log = buildPeriodicStatusLog({
       capacityGuard: undefined,
       powerTracker: state,
@@ -52,7 +52,7 @@ describe('periodic status used kWh', () => {
 
   it('labels soft limit separately from hourly usage budget', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 55, 0);
-    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     const log = buildPeriodicStatusLog({
       capacityGuard: {
         getLastTotalPower: () => 2.48,
@@ -80,7 +80,7 @@ describe('periodic status used kWh', () => {
 
   it('calls getSoftLimit at most once per invocation (no duplicate soft-limit provider calls)', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
-    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     let getSoftLimitCallCount = 0;
     buildPeriodicStatusLog({
       capacityGuard: {

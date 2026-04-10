@@ -1,4 +1,4 @@
-import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../../contracts/src/types';
+import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 export type ShedBehavior = {

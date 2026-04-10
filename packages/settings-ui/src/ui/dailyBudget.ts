@@ -1,4 +1,4 @@
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
 import {
   dailyBudgetForm,
   dailyBudgetEnabledInput,
@@ -17,22 +17,22 @@ import {
   dailyBudgetEmpty,
   dailyBudgetConfidence,
   dailyBudgetBreakdownInput,
-} from './dom';
-import { createToggleGroup } from './components';
-import { callApi, getSetting } from './homey';
-import { showToast, showToastError } from './toast';
-import { pushSettingWriteIfChanged } from './settingWrites';
-import { logSettingsError } from './logging';
-import { setTooltip } from './tooltips';
-import { formatKWh, formatSignedKWh } from './dailyBudgetFormat';
-import { renderDailyBudgetChart } from './dailyBudgetChart';
-import { getPricesReadModel } from './prices';
+} from './dom.ts';
+import { createToggleGroup } from './components.ts';
+import { callApi, getSetting } from './homey.ts';
+import { showToast, showToastError } from './toast.ts';
+import { pushSettingWriteIfChanged } from './settingWrites.ts';
+import { logSettingsError } from './logging.ts';
+import { setTooltip } from './tooltips.ts';
+import { formatKWh, formatSignedKWh } from './dailyBudgetFormat.ts';
+import { renderDailyBudgetChart } from './dailyBudgetChart.ts';
+import { getPricesReadModel } from './prices.ts';
 import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-} from '../../../contracts/src/settingsKeys';
-import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../../contracts/src/dailyBudgetConstants';
+} from '../../../contracts/src/settingsKeys.ts';
+import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../../contracts/src/dailyBudgetConstants.ts';
 const DEFAULT_COST_UNIT = 'kr';
 const DEFAULT_COST_DIVISOR = 100;
 

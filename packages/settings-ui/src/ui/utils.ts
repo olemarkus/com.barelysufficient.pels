@@ -1,4 +1,4 @@
-import { setSetting } from './homey';
+import { setSetting } from './homey.ts';
 
 /**
  * Get a human-readable "time ago" string.

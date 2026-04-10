@@ -145,7 +145,7 @@ class EaseeMockCharger extends MockDevice {
 }
 
 beforeAll(() => {
-  global.Date.now = jest.fn(() => currentTimeMs);
+  global.Date.now = vi.fn(() => currentTimeMs);
 });
 
 afterAll(() => {
@@ -164,7 +164,7 @@ describe('EV charger integration', () => {
     mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
     mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   afterEach(async () => {

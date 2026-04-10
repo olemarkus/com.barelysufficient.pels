@@ -36,7 +36,7 @@ const flushPromises = async (): Promise<void> => {
 
 describe('plan budget widget browser', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     window.history.replaceState({}, '', '/');
     delete (window as WidgetWindow).Homey;
     delete (window as WidgetWindow).onHomeyReady;
@@ -44,10 +44,10 @@ describe('plan budget widget browser', () => {
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
     document.body.className = '';
     document.body.innerHTML = '';
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   test('renders empty state with accessible text', () => {
@@ -151,8 +151,8 @@ describe('plan budget widget browser', () => {
 
   test('boots with Homey data and calls ready once', async () => {
     const chartEl = setDocumentMarkup();
-    const ready = jest.fn();
-    const api = jest.fn().mockResolvedValue(PREVIEW_TODAY_PAYLOAD);
+    const ready = vi.fn();
+    const api = vi.fn().mockResolvedValue(PREVIEW_TODAY_PAYLOAD);
     const homey: WidgetHomey = {
       api,
       getSettings: () => ({ day: 'today' }),
@@ -171,7 +171,7 @@ describe('plan budget widget browser', () => {
     expect(api).toHaveBeenCalledWith('GET', '/chart?day=today');
     expect(ready).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(60 * 1000);
+    vi.advanceTimersByTime(60 * 1000);
     await flushPromises();
 
     expect(api).toHaveBeenCalledTimes(2);
@@ -181,9 +181,9 @@ describe('plan budget widget browser', () => {
 
   test('renders a load error when the Homey API call fails', async () => {
     const chartEl = setDocumentMarkup();
-    const ready = jest.fn();
+    const ready = vi.fn();
     const homey: WidgetHomey = {
-      api: jest.fn().mockRejectedValue(new Error('boom')),
+      api: vi.fn().mockRejectedValue(new Error('boom')),
       ready,
     };
 
@@ -211,9 +211,9 @@ describe('plan budget widget browser', () => {
     expect(typeof (window as WidgetWindow).onHomeyReady).toBe('function');
     controller?.destroy();
 
-    jest.resetModules();
+    vi.resetModules();
     setDocumentMarkup();
-    const entryModule = require('../widgets/plan_budget/src/public/index') as {
+    const entryModule = await import('../widgets/plan_budget/src/public/index.ts') as {
       widgetController?: { destroy: () => void } | null;
     };
 

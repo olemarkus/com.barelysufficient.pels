@@ -2,15 +2,15 @@ import type {
   DeviceDiagnosticsSummary,
   DeviceDiagnosticsWindowKey,
   SettingsUiDeviceDiagnosticsPayload,
-} from '../../../contracts/src/deviceDiagnosticsTypes';
-import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../contracts/src/settingsUiApi';
+} from '../../../contracts/src/deviceDiagnosticsTypes.ts';
+import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import {
   deviceDetailDiagnosticsCards,
   deviceDetailDiagnosticsDisclosure,
   deviceDetailDiagnosticsStatus,
-} from './dom';
-import { getApiReadModel } from './homey';
-import { logSettingsError } from './logging';
+} from './dom.ts';
+import { getApiReadModel } from './homey.ts';
+import { logSettingsError } from './logging.ts';
 
 const DIAGNOSTICS_WINDOW_LABELS: Record<DeviceDiagnosticsWindowKey, string> = {
   '1d': '1 day',

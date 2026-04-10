@@ -132,11 +132,11 @@ describe('plan restore device helpers', () => {
         expectedPowerSource: 'load-setting',
       })],
     ]);
-    const setDevice = jest.fn((id: string, updates: Partial<DevicePlanDevice>) => {
+    const setDevice = vi.fn((id: string, updates: Partial<DevicePlanDevice>) => {
       const current = deviceMap.get(id);
       if (current) deviceMap.set(id, { ...current, ...updates });
     });
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
 
     markOffDevicesStayOff({
       deviceMap,

@@ -5,9 +5,9 @@ import { DEBUG_LOGGING_TOPICS } from '../lib/utils/settingsKeys';
 describe('buildDebugLoggingTopics', () => {
   it('uses explicit topics and logs when requested', () => {
     const settings = {
-      get: jest.fn((key: string) => (key === DEBUG_LOGGING_TOPICS ? ['plan', 'price'] : undefined)),
+      get: vi.fn((key: string) => (key === DEBUG_LOGGING_TOPICS ? ['plan', 'price'] : undefined)),
     } as any;
-    const log = jest.fn();
+    const log = vi.fn();
 
     const result = buildDebugLoggingTopics({ settings, log, logChange: true });
 
@@ -17,18 +17,18 @@ describe('buildDebugLoggingTopics', () => {
 
   it('falls back to legacy toggle when no topics are configured', () => {
     const settings = {
-      get: jest.fn((key: string) => (key === DEBUG_LOGGING_TOPICS ? [] : true)),
+      get: vi.fn((key: string) => (key === DEBUG_LOGGING_TOPICS ? [] : true)),
     } as any;
-    const result = buildDebugLoggingTopics({ settings, log: jest.fn() });
+    const result = buildDebugLoggingTopics({ settings, log: vi.fn() });
 
     expect(result.size).toBe(ALL_DEBUG_LOGGING_TOPICS.length);
   });
 
   it('logs disabled when nothing is enabled', () => {
     const settings = {
-      get: jest.fn((key: string) => (key === DEBUG_LOGGING_TOPICS ? [] : false)),
+      get: vi.fn((key: string) => (key === DEBUG_LOGGING_TOPICS ? [] : false)),
     } as any;
-    const log = jest.fn();
+    const log = vi.fn();
 
     const result = buildDebugLoggingTopics({ settings, log, logChange: true });
 

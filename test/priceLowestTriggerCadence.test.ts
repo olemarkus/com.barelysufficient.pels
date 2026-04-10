@@ -23,7 +23,7 @@ describe('Lowest price trigger cadence', () => {
   const originalGetTimezone = mockHomeyInstance.clock.getTimezone;
 
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     mockHomeyInstance.clock.getTimezone = () => 'UTC';
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
@@ -40,8 +40,8 @@ describe('Lowest price trigger cadence', () => {
   afterEach(async () => {
     await cleanupApps();
     mockHomeyInstance.clock.getTimezone = originalGetTimezone;
-    jest.clearAllTimers();
-    jest.useRealTimers();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   const setupApp = () => {
@@ -57,16 +57,16 @@ describe('Lowest price trigger cadence', () => {
   };
 
   it('triggers at most once per local hour', () => {
-    jest.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
+    vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     const app = setupApp();
 
     (app as any).startPriceLowestTriggerChecker();
 
-    jest.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
-    jest.advanceTimersByTime(30_000);
+    vi.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
+    vi.advanceTimersByTime(30_000);
 
-    jest.setSystemTime(new Date('2026-03-03T12:00:00.000Z'));
-    jest.advanceTimersByTime(30_000);
+    vi.setSystemTime(new Date('2026-03-03T12:00:00.000Z'));
+    vi.advanceTimersByTime(30_000);
 
     const beforeTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_before ?? [];
     const todayTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_today ?? [];
@@ -76,13 +76,13 @@ describe('Lowest price trigger cadence', () => {
   });
 
   it('invokes both lowest-price trigger cards on hour change with current_price', () => {
-    jest.setSystemTime(new Date('2026-03-03T10:30:00.000Z'));
+    vi.setSystemTime(new Date('2026-03-03T10:30:00.000Z'));
     const app = setupApp();
 
     (app as any).startPriceLowestTriggerChecker();
 
-    jest.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
-    jest.advanceTimersByTime(30_000);
+    vi.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
+    vi.advanceTimersByTime(30_000);
 
     const beforeTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_before ?? [];
     const todayTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_today ?? [];
@@ -94,17 +94,17 @@ describe('Lowest price trigger cadence', () => {
   });
 
   it('does not retrigger repeatedly within the same hour', () => {
-    jest.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
+    vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     const app = setupApp();
 
     (app as any).startPriceLowestTriggerChecker();
 
-    jest.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
-    jest.advanceTimersByTime(30_000);
+    vi.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
+    vi.advanceTimersByTime(30_000);
 
-    jest.setSystemTime(new Date('2026-03-03T11:30:00.000Z'));
-    jest.advanceTimersByTime(30_000);
-    jest.advanceTimersByTime(30_000);
+    vi.setSystemTime(new Date('2026-03-03T11:30:00.000Z'));
+    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(30_000);
 
     const beforeTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_before ?? [];
     const todayTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_today ?? [];
@@ -114,7 +114,7 @@ describe('Lowest price trigger cadence', () => {
   });
 
   it('treats repeated fall-back occurrences as separate local hours', () => {
-    jest.setSystemTime(new Date('2024-10-27T00:30:00.000Z'));
+    vi.setSystemTime(new Date('2024-10-27T00:30:00.000Z'));
     mockHomeyInstance.clock.getTimezone = () => 'Europe/Oslo';
 
     const app = createApp();
@@ -124,11 +124,11 @@ describe('Lowest price trigger cadence', () => {
 
     (app as any).startPriceLowestTriggerChecker();
 
-    jest.setSystemTime(new Date('2024-10-27T01:00:00.000Z'));
-    jest.advanceTimersByTime(30_000);
+    vi.setSystemTime(new Date('2024-10-27T01:00:00.000Z'));
+    vi.advanceTimersByTime(30_000);
 
-    jest.setSystemTime(new Date('2024-10-27T02:00:00.000Z'));
-    jest.advanceTimersByTime(30_000);
+    vi.setSystemTime(new Date('2024-10-27T02:00:00.000Z'));
+    vi.advanceTimersByTime(30_000);
 
     const beforeTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_before ?? [];
     const todayTriggers = mockHomeyInstance.flow._triggerCardTriggers.price_lowest_today ?? [];

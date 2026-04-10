@@ -109,6 +109,8 @@ export default tseslint.config(
       'packages/settings-ui/test/screenshots/**',
       'echarts-modules.d.ts',
       'playwright.config.ts',
+      'vitest.config*.ts',
+      'vitest-env.d.ts',
       'tmp/**',
     ],
   },

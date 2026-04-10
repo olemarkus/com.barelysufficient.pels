@@ -1,12 +1,12 @@
 const setupDom = () => {
-  document.body.innerHTML = `
-    <select id="advanced-device-select"></select>
-    <button id="advanced-device-clear"></button>
-    <button id="advanced-device-clear-unknown"></button>
-    <select id="advanced-api-device-select"></select>
-    <button id="advanced-api-device-refresh"></button>
-    <button id="advanced-api-device-log"></button>
-  `;
+  document.body.innerHTML = [
+    '<select id="advanced-device-select"></select>',
+    '<button id="advanced-device-clear"></button>',
+    '<button id="advanced-device-clear-unknown"></button>',
+    '<select id="advanced-api-device-select"></select>',
+    '<button id="advanced-api-device-refresh"></button>',
+    '<button id="advanced-api-device-log"></button>',
+  ].join('');
 };
 
 const flushPromises = async () => new Promise<void>((resolve) => {
@@ -22,57 +22,47 @@ const flushPromises = async () => new Promise<void>((resolve) => {
   setTimeout(() => resolve(), 0);
 });
 
-jest.mock('../src/ui/homey', () => ({
-  callApi: jest.fn(),
-  setSetting: jest.fn(),
+vi.mock('../src/ui/homey.ts', () => ({
+  callApi: vi.fn(),
+  setSetting: vi.fn(),
 }));
 
-jest.mock('../src/ui/devices', () => ({
-  renderDevices: jest.fn(),
+vi.mock('../src/ui/devices.ts', () => ({
+  renderDevices: vi.fn(),
 }));
 
-jest.mock('../src/ui/modes', () => ({
-  renderPriorities: jest.fn(),
+vi.mock('../src/ui/modes.ts', () => ({
+  renderPriorities: vi.fn(),
 }));
 
-jest.mock('../src/ui/priceOptimization', () => ({
-  renderPriceOptimization: jest.fn(),
+vi.mock('../src/ui/priceOptimization.ts', () => ({
+  renderPriceOptimization: vi.fn(),
 }));
 
-jest.mock('../src/ui/toast', () => ({
-  showToast: jest.fn().mockResolvedValue(undefined),
-  showToastError: jest.fn().mockResolvedValue(undefined),
+vi.mock('../src/ui/toast.ts', () => ({
+  showToast: vi.fn().mockResolvedValue(undefined),
+  showToastError: vi.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('../src/ui/logging', () => ({
-  logSettingsError: jest.fn().mockResolvedValue(undefined),
+vi.mock('../src/ui/logging.ts', () => ({
+  logSettingsError: vi.fn().mockResolvedValue(undefined),
 }));
-
-const getMocks = () => ({
-  homey: jest.requireMock('../src/ui/homey') as {
-    callApi: jest.Mock;
-    setSetting: jest.Mock;
-  },
-  toast: jest.requireMock('../src/ui/toast') as {
-    showToast: jest.Mock;
-    showToastError: jest.Mock;
-  },
-});
 
 describe('advanced device logger', () => {
   beforeEach(() => {
-    jest.resetModules();
-    jest.clearAllMocks();
+    vi.resetModules();
+    vi.clearAllMocks();
     setupDom();
   });
 
   it('loads Homey devices into the logger select', async () => {
-    const { homey, toast } = getMocks();
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    const toast = await import('../src/ui/toast.ts') as unknown as { showToast: ReturnType<typeof vi.fn>; showToastError: ReturnType<typeof vi.fn> };
     homey.callApi.mockResolvedValue([
       { id: 'dev-1', name: 'Pump', class: 'pump' },
     ]);
 
-    const advanced = require('../src/ui/advanced') as typeof import('../src/ui/advanced');
+    const advanced = await import('../src/ui/advanced.ts');
     await advanced.refreshAdvancedDeviceLogger();
 
     const select = document.querySelector('#advanced-api-device-select') as HTMLSelectElement;
@@ -87,10 +77,11 @@ describe('advanced device logger', () => {
   });
 
   it('warns when no device is selected', async () => {
-    const { homey, toast } = getMocks();
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    const toast = await import('../src/ui/toast.ts') as unknown as { showToast: ReturnType<typeof vi.fn>; showToastError: ReturnType<typeof vi.fn> };
     homey.callApi.mockResolvedValue([{ id: 'dev-1', name: 'Pump' }]);
 
-    const advanced = require('../src/ui/advanced') as typeof import('../src/ui/advanced');
+    const advanced = await import('../src/ui/advanced.ts');
     advanced.initAdvancedDeviceLoggerHandlers();
     await advanced.refreshAdvancedDeviceLogger();
 
@@ -103,10 +94,11 @@ describe('advanced device logger', () => {
   });
 
   it('warns when device is missing from cache', async () => {
-    const { homey, toast } = getMocks();
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    const toast = await import('../src/ui/toast.ts') as unknown as { showToast: ReturnType<typeof vi.fn>; showToastError: ReturnType<typeof vi.fn> };
     homey.callApi.mockResolvedValue([{ id: 'dev-1', name: 'Pump' }]);
 
-    const advanced = require('../src/ui/advanced') as typeof import('../src/ui/advanced');
+    const advanced = await import('../src/ui/advanced.ts');
     advanced.initAdvancedDeviceLoggerHandlers();
     await advanced.refreshAdvancedDeviceLogger();
 
@@ -125,7 +117,8 @@ describe('advanced device logger', () => {
   });
 
   it('logs the selected Homey device', async () => {
-    const { homey, toast } = getMocks();
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    const toast = await import('../src/ui/toast.ts') as unknown as { showToast: ReturnType<typeof vi.fn>; showToastError: ReturnType<typeof vi.fn> };
     homey.callApi.mockImplementation((method: string) => {
       if (method === 'GET') {
         return Promise.resolve([{ id: 'dev-1', name: 'Pump' }]);
@@ -136,7 +129,7 @@ describe('advanced device logger', () => {
       return Promise.resolve(null);
     });
 
-    const advanced = require('../src/ui/advanced') as typeof import('../src/ui/advanced');
+    const advanced = await import('../src/ui/advanced.ts');
     advanced.initAdvancedDeviceLoggerHandlers();
     await advanced.refreshAdvancedDeviceLogger();
 
@@ -155,7 +148,8 @@ describe('advanced device logger', () => {
   });
 
   it('shows an error when the API call fails', async () => {
-    const { homey, toast } = getMocks();
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    const toast = await import('../src/ui/toast.ts') as unknown as { showToast: ReturnType<typeof vi.fn>; showToastError: ReturnType<typeof vi.fn> };
     homey.callApi.mockImplementation((method: string) => {
       if (method === 'GET') {
         return Promise.resolve([{ id: 'dev-1', name: 'Pump' }]);
@@ -166,7 +160,7 @@ describe('advanced device logger', () => {
       return Promise.resolve(null);
     });
 
-    const advanced = require('../src/ui/advanced') as typeof import('../src/ui/advanced');
+    const advanced = await import('../src/ui/advanced.ts');
     advanced.initAdvancedDeviceLoggerHandlers();
     await advanced.refreshAdvancedDeviceLogger();
 
@@ -182,13 +176,13 @@ describe('advanced device logger', () => {
 
 describe('advanced device cleanup', () => {
   beforeEach(() => {
-    jest.resetModules();
-    jest.clearAllMocks();
+    vi.resetModules();
+    vi.clearAllMocks();
     setupDom();
   });
 
-  const seedState = () => {
-    const { state } = require('../src/ui/state') as typeof import('../src/ui/state');
+  const seedState = async () => {
+    const { state } = await import('../src/ui/state.ts');
     state.latestDevices = [
       { id: 'dev-1', name: 'Device One' } as typeof state.latestDevices[number],
     ];
@@ -221,10 +215,10 @@ describe('advanced device cleanup', () => {
   };
 
   it('clears selected device settings after confirmation', async () => {
-    const { homey } = getMocks();
-    seedState();
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    await seedState();
 
-    const advanced = require('../src/ui/advanced') as typeof import('../src/ui/advanced');
+    const advanced = await import('../src/ui/advanced.ts');
     advanced.initAdvancedDeviceCleanupHandlers();
     advanced.refreshAdvancedDeviceCleanup();
 
@@ -254,10 +248,10 @@ describe('advanced device cleanup', () => {
   });
 
   it('clears unknown devices after confirmation', async () => {
-    const { homey } = getMocks();
-    seedState();
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    await seedState();
 
-    const advanced = require('../src/ui/advanced') as typeof import('../src/ui/advanced');
+    const advanced = await import('../src/ui/advanced.ts');
     advanced.initAdvancedDeviceCleanupHandlers();
     advanced.refreshAdvancedDeviceCleanup();
 

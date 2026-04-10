@@ -1,19 +1,16 @@
-const readFileSyncMock = jest.fn();
+const readFileSyncMock = vi.fn();
 
-jest.mock('node:fs', () => ({
-  __esModule: true,
+vi.mock('node:fs', () => ({
   default: {
     readFileSync: (...args: unknown[]) => readFileSyncMock(...args),
   },
 }));
 
-describe('smaps_rollup detection', () => {
-  const loadModule = () => require('../lib/app/smapsRollup') as {
-    resolveSmapsSummary: () => Record<string, number> | null;
-  };
+import { resolveSmapsSummary, _resetSmapsCacheForTests } from '../lib/app/smapsRollup.ts';
 
+describe('smaps_rollup detection', () => {
   beforeEach(() => {
-    jest.resetModules();
+    _resetSmapsCacheForTests();
     readFileSyncMock.mockReset();
   });
 
@@ -21,7 +18,6 @@ describe('smaps_rollup detection', () => {
     readFileSyncMock.mockImplementation(() => {
       throw Object.assign(new Error('not supported'), { code: 'ENOENT' });
     });
-    const { resolveSmapsSummary } = loadModule();
 
     expect(resolveSmapsSummary()).toBeNull();
     expect(resolveSmapsSummary()).toBeNull();
@@ -44,7 +40,6 @@ describe('smaps_rollup detection', () => {
         'Pss_Anon:           2048 kB',
         'Pss_File:           1024 kB',
       ].join('\n'));
-    const { resolveSmapsSummary } = loadModule();
 
     expect(resolveSmapsSummary()).toEqual({
       rssMb: 2,
@@ -74,7 +69,6 @@ describe('smaps_rollup detection', () => {
         'Pss_Anon:            512 kB',
         'Pss_File:            256 kB',
       ].join('\n'));
-    const { resolveSmapsSummary } = loadModule();
 
     expect(resolveSmapsSummary()).toBeNull();
     expect(resolveSmapsSummary()).toEqual({

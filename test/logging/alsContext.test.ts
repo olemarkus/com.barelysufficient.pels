@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @vitest-environment node
  */
 import { getCurrentContext, runWithContext } from '../../lib/logging/alsContext';
 

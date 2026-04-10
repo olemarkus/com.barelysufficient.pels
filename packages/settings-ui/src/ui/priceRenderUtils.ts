@@ -1,10 +1,10 @@
-import type { CombinedPriceData, PriceEntry } from './priceTypes';
+import type { CombinedPriceData, PriceEntry } from './priceTypes.ts';
 import {
   formatDateInTimeZone,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
-} from './timezone';
-import { calculateThresholds } from './priceThresholds';
+} from './timezone.ts';
+import { calculateThresholds } from './priceThresholds.ts';
 
 export type PriceScheme = 'norway' | 'flow' | 'homey';
 

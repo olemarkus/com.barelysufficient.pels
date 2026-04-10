@@ -1,12 +1,13 @@
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import type { Mock } from 'vitest';
 
 type Harness = {
   managedCheckbox: HTMLInputElement;
   controllableCheckbox: HTMLInputElement;
   priceOptCheckbox: HTMLInputElement;
-  debouncedSetSetting: jest.Mock;
-  logSettingsWarn: jest.Mock;
-  savePriceOptimizationSettings: jest.Mock;
+  debouncedSetSetting: Mock;
+  logSettingsWarn: Mock;
+  savePriceOptimizationSettings: Mock;
 };
 
 const setupDom = () => {
@@ -32,41 +33,36 @@ const setupHarness = async (options: {
   deviceOverrides?: Partial<TargetDeviceSnapshot>;
 }): Promise<Harness> => {
   setupDom();
-  jest.resetModules();
+  vi.resetModules();
 
-  const debouncedSetSetting = jest.fn().mockResolvedValue(undefined);
-  const logSettingsWarn = jest.fn().mockResolvedValue(undefined);
-  const savePriceOptimizationSettings = jest.fn().mockResolvedValue(undefined);
+  const debouncedSetSetting = vi.fn().mockResolvedValue(undefined);
+  const logSettingsWarn = vi.fn().mockResolvedValue(undefined);
+  const savePriceOptimizationSettings = vi.fn().mockResolvedValue(undefined);
 
-  jest.doMock('../src/ui/utils', () => ({
+  vi.doMock('../src/ui/utils.ts', () => ({
     debouncedSetSetting,
   }));
-  jest.doMock('../src/ui/logging', () => ({
+  vi.doMock('../src/ui/logging.ts', () => ({
     logSettingsWarn,
-    logSettingsError: jest.fn().mockResolvedValue(undefined),
+    logSettingsError: vi.fn().mockResolvedValue(undefined),
   }));
-  jest.doMock('../src/ui/modes', () => ({
-    renderPriorities: jest.fn(),
+  vi.doMock('../src/ui/modes.ts', () => ({
+    renderPriorities: vi.fn(),
   }));
-  jest.doMock('../src/ui/priceOptimization', () => ({
-    renderPriceOptimization: jest.fn(),
+  vi.doMock('../src/ui/priceOptimization.ts', () => ({
+    renderPriceOptimization: vi.fn(),
     savePriceOptimizationSettings,
   }));
-  jest.doMock('../src/ui/plan', () => ({
-    refreshPlan: jest.fn(),
+  vi.doMock('../src/ui/plan.ts', () => ({
+    refreshPlan: vi.fn(),
   }));
-  jest.doMock('../src/ui/toast', () => ({
-    showToast: jest.fn(),
-    showToastError: jest.fn(),
+  vi.doMock('../src/ui/toast.ts', () => ({
+    showToast: vi.fn(),
+    showToastError: vi.fn(),
   }));
 
-  let renderDevices!: typeof import('../src/ui/devices').renderDevices;
-  let state!: typeof import('../src/ui/state').state;
-
-  jest.isolateModules(() => {
-    ({ renderDevices } = require('../src/ui/devices') as typeof import('../src/ui/devices'));
-    ({ state } = require('../src/ui/state') as typeof import('../src/ui/state'));
-  });
+  const { renderDevices } = await import('../src/ui/devices.ts');
+  const { state } = await import('../src/ui/state.ts');
 
   const device = buildDevice(options.deviceOverrides);
   state.initialLoadComplete = options.initialLoadComplete;
@@ -101,8 +97,8 @@ const setupHarness = async (options: {
 
 describe('device settings initial load guard', () => {
   afterEach(() => {
-    jest.resetModules();
-    jest.clearAllMocks();
+    vi.resetModules();
+    vi.clearAllMocks();
   });
 
   it('blocks managed toggle before initial load completes', async () => {

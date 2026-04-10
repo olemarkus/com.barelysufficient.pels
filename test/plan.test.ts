@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @vitest-environment node
  */
 import {
   mockHomeyInstance,
@@ -11,7 +11,7 @@ import {
 import { createApp, cleanupApps } from './utils/appTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
 
 const flushPromises = (): Promise<void> => new Promise((resolve) => { setImmediate(resolve); });
 const setManagedControllableDevices = (devices: Record<string, boolean>) => {
@@ -21,7 +21,7 @@ const setManagedControllableDevices = (devices: Record<string, boolean>) => {
 };
 
 async function advanceTimeAndRecordPower(app: any, advanceMs: number, powerW: number): Promise<void> {
-  jest.advanceTimersByTime(advanceMs);
+  vi.advanceTimersByTime(advanceMs);
   await app.recordPowerSample(powerW);
 }
 
@@ -63,13 +63,13 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     mockHomeyInstance.api.clearRealtimeEvents();
     setAutoEnableMockDevices(true);
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
     setAutoEnableMockDevices(false);
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('emits plan_updated realtime event when plan changes', async () => {
@@ -819,7 +819,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const spy = jest
+    const spy = vi
       .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
       .mockResolvedValue(undefined);
 
@@ -1079,7 +1079,7 @@ describe('Device plan snapshot', () => {
       ],
     };
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).applyPlanActions(plan);
     expect(putSpy).toHaveBeenCalledWith(
@@ -1173,7 +1173,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    const shedSpy = jest
+    const shedSpy = vi
       .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
       .mockResolvedValue(undefined);
 
@@ -1210,7 +1210,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 3.1);
     }
 
-    const shedSpy = jest
+    const shedSpy = vi
       .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
       .mockResolvedValue(undefined);
 
@@ -1369,7 +1369,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Keep an onoff-capable snapshot entry so turn_off is attempted, then force a second attempt.
     (app as any).deviceManager.setSnapshotForTests([{
@@ -1403,7 +1403,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-1',
@@ -1468,7 +1468,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Force a low soft limit so the device must be shed.
     (app as any).computeDynamicSoftLimit = () => 1;
@@ -1534,7 +1534,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 3);
     }
 
-    const shedSpy = jest
+    const shedSpy = vi
       .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
       .mockResolvedValue(undefined);
 
@@ -1557,7 +1557,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 5); // Low limit ensures threshold is exceeded
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
-    const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
+    const triggerSpy = vi.fn().mockReturnValue({ catch: vi.fn() });
     const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
     mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
       if (id === 'capacity_shortfall') {
@@ -1605,7 +1605,7 @@ describe('Device plan snapshot', () => {
     });
     setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
 
-    const triggerSpy = jest.fn();
+    const triggerSpy = vi.fn();
     const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
     mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
       if (id === 'capacity_shortfall') return { trigger: triggerSpy } as any;
@@ -1628,8 +1628,8 @@ describe('Device plan snapshot', () => {
   });
 
   it('does not trigger capacity_shortfall repeatedly while already in shortfall state', async () => {
-    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate'] });
-    jest.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1]),
@@ -1638,7 +1638,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
-    const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
+    const triggerSpy = vi.fn().mockReturnValue({ catch: vi.fn() });
     const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
     mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
       if (id === 'capacity_shortfall') {
@@ -1671,12 +1671,12 @@ describe('Device plan snapshot', () => {
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('triggers capacity_shortfall again after shortfall is resolved and re-enters', async () => {
-    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate'] });
-    jest.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 0, 0)));
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 500);
     await dev1.setCapabilityValue('onoff', true);
@@ -1688,7 +1688,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('capacity_limit_kw', 5);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0);
 
-    const triggerSpy = jest.fn().mockReturnValue({ catch: jest.fn() });
+    const triggerSpy = vi.fn().mockReturnValue({ catch: vi.fn() });
     const originalGetTrigger = mockHomeyInstance.flow.getTriggerCard as any;
     mockHomeyInstance.flow.getTriggerCard = ((id: string) => {
       if (id === 'capacity_shortfall') {
@@ -1727,7 +1727,7 @@ describe('Device plan snapshot', () => {
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
 
@@ -1752,7 +1752,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.isSheddingActive = () => false;
     }
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     const plan = {
       devices: [
@@ -1800,7 +1800,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.isInShortfall = () => true; // still in shortfall, waiting for sustained period
     }
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     const plan = {
       devices: [
@@ -1886,7 +1886,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Force very low soft limit
     (app as any).computeDynamicSoftLimit = () => 1;
@@ -1923,7 +1923,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Trigger mode change via flow card
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
@@ -2410,9 +2410,9 @@ describe('Device plan snapshot', () => {
     const structuredEvents: Record<string, unknown>[] = [];
     (app as any).planEngine.builder.deps.structuredLog = {
       info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
-      warn: jest.fn(),
+      warn: vi.fn(),
       debug: (obj: Record<string, unknown>) => structuredEvents.push(obj),
-      error: jest.fn(),
+      error: vi.fn(),
       child: () => (app as any).planEngine.builder.deps.structuredLog,
     };
 
@@ -2470,18 +2470,18 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    const errorSpy = jest.spyOn(Object.getPrototypeOf(app), 'error').mockImplementation(() => { });
+    const errorSpy = vi.spyOn(Object.getPrototypeOf(app), 'error').mockImplementation(() => { });
 
     // Mock api.put to simulate timeout (shedding fails)
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put').mockRejectedValue(new Error('Timeout after 10000ms'));
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put').mockRejectedValue(new Error('Timeout after 10000ms'));
 
     // Capture structured log events from the plan engine
     const structuredEvents: Record<string, unknown>[] = [];
     (app as any).planEngine.builder.deps.structuredLog = {
       info: (obj: Record<string, unknown>) => structuredEvents.push(obj),
-      warn: jest.fn(),
+      warn: vi.fn(),
       debug: (obj: Record<string, unknown>) => structuredEvents.push(obj),
-      error: jest.fn(),
+      error: vi.fn(),
       child: () => (app as any).planEngine.builder.deps.structuredLog,
     };
 
@@ -2618,12 +2618,12 @@ describe('Dry run mode', () => {
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     mockHomeyInstance.api.clearRealtimeEvents();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('defaults to dry run mode when capacity_dry_run setting is not configured', async () => {
@@ -2678,7 +2678,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Spy on applyPlanActions
-    const applyPlanSpy = jest.spyOn(app as any, 'applyPlanActions');
+    const applyPlanSpy = vi.spyOn(app as any, 'applyPlanActions');
 
     // Rebuild plan with shedding needed
     (app as any).deviceManager.setSnapshotForTests([
@@ -2718,7 +2718,7 @@ describe('Dry run mode', () => {
 
     // Capture log calls
     const logCalls: string[] = [];
-    jest.spyOn(app as any, 'log').mockImplementation((...args: unknown[]) => {
+    vi.spyOn(app as any, 'log').mockImplementation((...args: unknown[]) => {
       logCalls.push(String(args[0]));
     });
 
@@ -3171,7 +3171,7 @@ describe('Dry run mode', () => {
     expect(dev1Plan.plannedState).toBe('shed');
     expect(dev1Plan.reason).toContain('shortfall');
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).applyPlanActions(plan);
 
@@ -3227,7 +3227,7 @@ describe('Dry run mode', () => {
     expect(dev1Plan.reason).toContain('restore'); // Plan says "restore"
 
     // Now try to apply the plan
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).applyPlanActions(plan);
 
@@ -3270,7 +3270,7 @@ describe('Dry run mode', () => {
     (app as any).planEngine.state.lastInstabilityMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     await (app as any).recordPowerSample(1000); // 1.0 kW total -> headroomRaw 1.8 kW (meets floor)
 
@@ -3416,7 +3416,7 @@ describe('Dry run mode', () => {
     // Expected: No shed (positive headroom), but NO restore either (below margin).
     // Current Bug: App subtracts margin: 0.1 - 0.5 = -0.4 -> OVERSHOOT! -> Sheds dev-1.
 
-    const logSpy = jest.spyOn((app as any), 'log');
+    const logSpy = vi.spyOn((app as any), 'log');
 
     await (app as any).recordPowerSample(1000);
 
@@ -3433,7 +3433,7 @@ describe('Dry run mode', () => {
 
 
   it('should throttle restoration of set_temperature devices to one per cycle', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       // Detects bug where multiple devices shed via set_temperature restore simultaneously
       const dev1 = new MockDevice('dev-1', 'Heater 1', ['target_temperature', 'measure_power', 'onoff']);
@@ -3462,7 +3462,7 @@ describe('Dry run mode', () => {
       });
       mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-      jest.setSystemTime(new Date('2023-01-01T12:00:00Z'));
+      vi.setSystemTime(new Date('2023-01-01T12:00:00Z'));
 
       const app = createApp();
       await app.onInit();
@@ -3493,8 +3493,8 @@ describe('Dry run mode', () => {
       }
 
       // Advance time to bypass cooldowns if any
-      jest.advanceTimersByTime(10 * 60 * 1000);
-      jest.setSystemTime(new Date('2023-01-01T12:10:00Z'));
+      vi.advanceTimersByTime(10 * 60 * 1000);
+      vi.setSystemTime(new Date('2023-01-01T12:10:00Z'));
 
       // Explicitly clear cooldowns to avoid test flakiness with Date mocking
       (app as any).planEngine.state.lastInstabilityMs = 0;
@@ -3519,7 +3519,7 @@ describe('Dry run mode', () => {
       // Also verify that at least one IS restored (not both shed)
       expect(shedDevicesAfterRestore.length).toBeLessThan(2);
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 
@@ -3530,7 +3530,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-1',
@@ -3569,7 +3569,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-unavailable',
@@ -3628,7 +3628,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-unavailable',
@@ -3707,7 +3707,7 @@ describe('Dry run mode', () => {
       available: true,
     }] as any);
 
-    const callback = jest.fn().mockImplementation(async (deviceId: string) => {
+    const callback = vi.fn().mockImplementation(async (deviceId: string) => {
       if (deviceId === 'dev-1') {
         const err = new Error('This device is currently unavailable.') as Error & { statusCode?: number };
         err.statusCode = 500;
@@ -3716,7 +3716,7 @@ describe('Dry run mode', () => {
       return undefined;
     });
 
-    jest.spyOn((app as any).planEngine.executor, 'applySheddingToDevice').mockImplementation(callback);
+    vi.spyOn((app as any).planEngine.executor, 'applySheddingToDevice').mockImplementation(callback);
 
     const plan = {
       devices: [

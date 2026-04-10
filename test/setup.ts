@@ -1,7 +1,8 @@
 // Global test setup and teardown
 import https from 'https';
 import { EventEmitter } from 'events';
-import { clearPlanRebuildTracesForTests } from '../lib/utils/planRebuildTrace';
+import type { MockInstance } from 'vitest';
+import { clearPlanRebuildTracesForTests } from '../lib/utils/planRebuildTrace.ts';
 
 // Flag to temporarily allow console.error in tests that intentionally trigger errors
 let allowConsoleError = false;
@@ -10,9 +11,10 @@ export const setAllowConsoleError = (allow: boolean): void => {
 };
 
 // Fail fast on any console.error during tests to catch unexpected errors
-let consoleErrorSpy: jest.SpyInstance;
-let consoleLogSpy: jest.SpyInstance;
-let httpsGetSpy: jest.SpyInstance | undefined;
+let consoleErrorSpy: MockInstance;
+export const getConsoleErrorSpy = (): MockInstance => consoleErrorSpy;
+let consoleLogSpy: MockInstance;
+let httpsGetSpy: MockInstance | undefined;
 let originalFetch: typeof global.fetch | undefined;
 let hadOriginalFetch = false;
 let originalWindowFetch: typeof window.fetch | undefined;
@@ -29,11 +31,11 @@ const mockHttpsGetImplementation = (): typeof https.get => (
     }
 
     const request = new EventEmitter() as NodeJS.EventEmitter & {
-      setTimeout: jest.Mock;
-      destroy: jest.Mock;
+      setTimeout: vi.Mock;
+      destroy: vi.Mock;
     };
-    request.setTimeout = jest.fn().mockReturnValue(request);
-    request.destroy = jest.fn().mockReturnValue(request);
+    request.setTimeout = vi.fn().mockReturnValue(request);
+    request.destroy = vi.fn().mockReturnValue(request);
 
     if (callback) {
       const response = new EventEmitter() as NodeJS.EventEmitter & {
@@ -55,7 +57,7 @@ const installHttpsGetSpy = () => {
   if (httpsGetSpy) {
     httpsGetSpy.mockRestore();
   }
-  httpsGetSpy = jest.spyOn(https, 'get').mockImplementation(mockHttpsGetImplementation());
+  httpsGetSpy = vi.spyOn(https, 'get').mockImplementation(mockHttpsGetImplementation());
 };
 
 beforeAll(() => {
@@ -64,11 +66,11 @@ beforeAll(() => {
     matches: false,
     media: query,
     onchange: null,
-    addListener: jest.fn(), // deprecated
-    removeListener: jest.fn(), // deprecated
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
+    addListener: vi.fn(), // deprecated
+    removeListener: vi.fn(), // deprecated
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
   });
   if (typeof window !== 'undefined' && typeof (window as unknown as { matchMedia?: unknown }).matchMedia !== 'function') {
     (window as unknown as { matchMedia: typeof matchMediaStub }).matchMedia = matchMediaStub;
@@ -78,7 +80,7 @@ beforeAll(() => {
   }
 
   // Use deterministic network stubs in tests to avoid real outbound calls.
-  const fetchStub = jest.fn().mockResolvedValue({
+  const fetchStub = vi.fn().mockResolvedValue({
     ok: true,
     status: 200,
     headers: { get: () => null },
@@ -96,19 +98,18 @@ beforeAll(() => {
 
   installHttpsGetSpy();
 
-  consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation((...args) => {
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
     // Suppress known/expected console errors when explicitly allowed.
     if (allowConsoleError) return;
     originalConsoleError(...args);
   });
 
-  consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+  consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 
 beforeEach(() => {
-  // Some tests call jest.restoreAllMocks(); make sure the global no-network guard is reinstalled.
-  const getFn = https.get as unknown as { _isMockFunction?: boolean };
-  if (getFn._isMockFunction !== true) {
+  // Some tests call vi.restoreAllMocks(); make sure the global no-network guard is reinstalled.
+  if (!vi.isMockFunction(https.get)) {
     installHttpsGetSpy();
   }
   clearPlanRebuildTracesForTests();
@@ -131,5 +132,5 @@ afterAll(() => {
     }
   }
   // Ensure all timers are cleaned up after all tests complete
-  jest.useRealTimers();
+  vi.useRealTimers();
 });

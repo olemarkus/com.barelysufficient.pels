@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @vitest-environment node
  *
  * Memory profile: measures RSS cost of loading each major module.
  * Run with:  npm run test:perf -- --testPathPatterns='memoryProfile'

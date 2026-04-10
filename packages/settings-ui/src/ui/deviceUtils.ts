@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types';
+import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 
 export const supportsPowerDevice = (device?: TargetDeviceSnapshot | null): boolean => {
   if (!device) return false;

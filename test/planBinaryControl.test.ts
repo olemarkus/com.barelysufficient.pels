@@ -9,23 +9,23 @@ import {
 
 describe('plan binary control helpers', () => {
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('keeps a slow Connected 300 restore pending for 60s before confirmative telemetry arrives', async () => {
     const state = createPlanEngineState();
 
-    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000);
     await expect(setBinaryControl({
       state,
       deviceManager: {
-        setCapability: jest.fn().mockResolvedValue(undefined),
-        getSnapshot: jest.fn().mockReturnValue([]),
+        setCapability: vi.fn().mockResolvedValue(undefined),
+        getSnapshot: vi.fn().mockReturnValue([]),
       } as never,
-      updateLocalSnapshot: jest.fn(),
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       deviceId: 'connected-300',
       name: 'Connected 300',
       desired: true,
@@ -41,7 +41,7 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(true);
 
     nowSpy.mockReturnValue(61_000);
-    const waitingLog = jest.fn();
+    const waitingLog = vi.fn();
     const changed = syncPendingBinaryCommands({
       state,
       liveDevices: [{
@@ -68,7 +68,7 @@ describe('plan binary control helpers', () => {
     );
 
     nowSpy.mockReturnValue(77_000);
-    const timeoutLog = jest.fn();
+    const timeoutLog = vi.fn();
     const timedOut = syncPendingBinaryCommands({
       state,
       liveDevices: [{
@@ -117,13 +117,13 @@ describe('plan binary control helpers', () => {
 
   it('handles EV and standard binary control actions', async () => {
     const state = createPlanEngineState();
-    const updateLocalSnapshot = jest.fn();
-    const log = jest.fn();
-    const logDebug = jest.fn();
-    const error = jest.fn();
+    const updateLocalSnapshot = vi.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
+    const error = vi.fn();
     const deviceManager = {
-      setCapability: jest.fn().mockResolvedValue(undefined),
-      getSnapshot: jest.fn().mockReturnValue([
+      setCapability: vi.fn().mockResolvedValue(undefined),
+      getSnapshot: vi.fn().mockReturnValue([
         { id: 'ev1', name: 'EV', currentOn: true, evChargingState: 'plugged_in_charging', controlCapabilityId: 'evcharger_charging' },
       ]),
     };
@@ -173,7 +173,7 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(false);
     expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('already pending'));
 
-    jest.spyOn(Date, 'now').mockReturnValue(state.pendingBinaryCommands.ev1.startedMs + 20_000);
+    vi.spyOn(Date, 'now').mockReturnValue(state.pendingBinaryCommands.ev1.startedMs + 20_000);
     await expect(setBinaryControl({
       state,
       deviceManager: deviceManager as never,
@@ -199,19 +199,19 @@ describe('plan binary control helpers', () => {
 
   it('does not resend the same standard binary command while it is pending', async () => {
     const state = createPlanEngineState();
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const deviceManager = {
-      setCapability: jest.fn().mockResolvedValue(undefined),
-      getSnapshot: jest.fn().mockReturnValue([]),
+      setCapability: vi.fn().mockResolvedValue(undefined),
+      getSnapshot: vi.fn().mockReturnValue([]),
     };
 
     await expect(setBinaryControl({
       state,
       deviceManager: deviceManager as never,
-      updateLocalSnapshot: jest.fn(),
-      log: jest.fn(),
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
       logDebug,
-      error: jest.fn(),
+      error: vi.fn(),
       deviceId: 'socket1',
       name: 'Socket',
       desired: false,
@@ -228,10 +228,10 @@ describe('plan binary control helpers', () => {
     await expect(setBinaryControl({
       state,
       deviceManager: deviceManager as never,
-      updateLocalSnapshot: jest.fn(),
-      log: jest.fn(),
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
       logDebug,
-      error: jest.fn(),
+      error: vi.fn(),
       deviceId: 'socket1',
       name: 'Socket',
       desired: false,
@@ -251,11 +251,11 @@ describe('plan binary control helpers', () => {
 
   it('skips a standard binary command when the latest snapshot already matches the desired state', async () => {
     const state = createPlanEngineState();
-    const log = jest.fn();
-    const logDebug = jest.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
     const deviceManager = {
-      setCapability: jest.fn().mockResolvedValue(undefined),
-      getSnapshot: jest.fn().mockReturnValue([{
+      setCapability: vi.fn().mockResolvedValue(undefined),
+      getSnapshot: vi.fn().mockReturnValue([{
         id: 'socket1',
         name: 'Socket',
         currentOn: true,
@@ -267,10 +267,10 @@ describe('plan binary control helpers', () => {
     await expect(setBinaryControl({
       state,
       deviceManager: deviceManager as never,
-      updateLocalSnapshot: jest.fn(),
+      updateLocalSnapshot: vi.fn(),
       log,
       logDebug,
-      error: jest.fn(),
+      error: vi.fn(),
       deviceId: 'socket1',
       name: 'Socket',
       desired: true,
@@ -298,13 +298,13 @@ describe('plan binary control helpers', () => {
     await expect(setBinaryControl({
       state,
       deviceManager: {
-        setCapability: jest.fn().mockResolvedValue(undefined),
-        getSnapshot: jest.fn().mockReturnValue([]),
+        setCapability: vi.fn().mockResolvedValue(undefined),
+        getSnapshot: vi.fn().mockReturnValue([]),
       } as never,
-      updateLocalSnapshot: jest.fn(),
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       deviceId: 'socket1',
       name: 'Socket',
       desired: false,
@@ -323,7 +323,7 @@ describe('plan binary control helpers', () => {
       desired: false,
     });
 
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const changed = syncPendingBinaryCommands({
       state,
       liveDevices: [{
@@ -350,13 +350,13 @@ describe('plan binary control helpers', () => {
     await expect(setBinaryControl({
       state,
       deviceManager: {
-        setCapability: jest.fn().mockResolvedValue(undefined),
-        getSnapshot: jest.fn().mockReturnValue([]),
+        setCapability: vi.fn().mockResolvedValue(undefined),
+        getSnapshot: vi.fn().mockReturnValue([]),
       } as never,
-      updateLocalSnapshot: jest.fn(),
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       deviceId: 'socket1',
       name: 'Socket',
       desired: true,
@@ -370,7 +370,7 @@ describe('plan binary control helpers', () => {
       logContext: 'capacity',
     })).resolves.toBe(true);
 
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const changed = syncPendingBinaryCommands({
       state,
       liveDevices: [{
@@ -402,13 +402,13 @@ describe('plan binary control helpers', () => {
     await expect(setBinaryControl({
       state,
       deviceManager: {
-        setCapability: jest.fn().mockResolvedValue(undefined),
-        getSnapshot: jest.fn().mockReturnValue([]),
+        setCapability: vi.fn().mockResolvedValue(undefined),
+        getSnapshot: vi.fn().mockReturnValue([]),
       } as never,
-      updateLocalSnapshot: jest.fn(),
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       deviceId: 'socket1',
       name: 'Socket',
       desired: true,
@@ -422,7 +422,7 @@ describe('plan binary control helpers', () => {
       logContext: 'capacity',
     })).resolves.toBe(true);
 
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const changed = syncPendingBinaryCommands({
       state,
       liveDevices: [{
@@ -454,13 +454,13 @@ describe('plan binary control helpers', () => {
     await expect(setBinaryControl({
       state,
       deviceManager: {
-        setCapability: jest.fn().mockResolvedValue(undefined),
-        getSnapshot: jest.fn().mockReturnValue([]),
+        setCapability: vi.fn().mockResolvedValue(undefined),
+        getSnapshot: vi.fn().mockReturnValue([]),
       } as never,
-      updateLocalSnapshot: jest.fn(),
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
       deviceId: 'ev1',
       name: 'EV',
       desired: false,
@@ -475,7 +475,7 @@ describe('plan binary control helpers', () => {
       logContext: 'capacity',
     })).resolves.toBe(true);
 
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const changed = syncPendingBinaryCommands({
       state,
       liveDevices: [{
@@ -500,13 +500,13 @@ describe('plan binary control helpers', () => {
 
   it('handles missing, blocked, and failing binary control requests', async () => {
     const state = createPlanEngineState();
-    const updateLocalSnapshot = jest.fn();
-    const log = jest.fn();
-    const logDebug = jest.fn();
-    const error = jest.fn();
+    const updateLocalSnapshot = vi.fn();
+    const log = vi.fn();
+    const logDebug = vi.fn();
+    const error = vi.fn();
     const failingManager = {
-      setCapability: jest.fn().mockRejectedValue(new Error('kaput')),
-      getSnapshot: jest.fn().mockReturnValue([]),
+      setCapability: vi.fn().mockRejectedValue(new Error('kaput')),
+      getSnapshot: vi.fn().mockReturnValue([]),
     };
 
     await expect(setBinaryControl({
@@ -573,9 +573,9 @@ describe('plan binary control helpers', () => {
       desired: false,
       startedMs: 1_000,
     };
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
 
-    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000 + 20_000);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000 + 20_000);
     const changed = syncPendingBinaryCommands({
       state,
       liveDevices: [],
@@ -593,17 +593,17 @@ describe('plan binary control helpers', () => {
 
   it('clears pending EV commands after a failed capability write', async () => {
     const state = createPlanEngineState();
-    const error = jest.fn();
+    const error = vi.fn();
 
     await expect(setBinaryControl({
       state,
       deviceManager: {
-        setCapability: jest.fn().mockRejectedValue(new Error('kaput')),
-        getSnapshot: jest.fn().mockReturnValue([]),
+        setCapability: vi.fn().mockRejectedValue(new Error('kaput')),
+        getSnapshot: vi.fn().mockReturnValue([]),
       } as never,
-      updateLocalSnapshot: jest.fn(),
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
       error,
       deviceId: 'ev1',
       name: 'EV',

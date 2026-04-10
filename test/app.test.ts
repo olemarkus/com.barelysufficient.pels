@@ -112,7 +112,7 @@ const clearRecentLocalCapabilityWrites = (app: any) => {
 
 describe('MyApp initialization', () => {
   beforeEach(() => {
-    jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     clearMockHomeyApiDeviceListeners();
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
@@ -123,13 +123,13 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
-    jest.restoreAllMocks();
+    vi.clearAllTimers();
+    vi.restoreAllMocks();
   });
 
   it('initializes and creates device snapshot', async () => {
@@ -156,7 +156,7 @@ describe('MyApp initialization', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    const setSpy = jest.spyOn(mockHomeyInstance.settings, 'set');
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const app = createApp();
     await initApp(app);
     await waitForSnapshot();
@@ -201,8 +201,8 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const infoSpy = jest.fn();
-    jest.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
+    const infoSpy = vi.fn();
+    vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
     expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
@@ -226,8 +226,8 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const infoSpy = jest.fn();
-    jest.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
+    const infoSpy = vi.fn();
+    vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
     (app as any).markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
@@ -258,8 +258,8 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const infoSpy = jest.fn();
-    jest.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
+    const infoSpy = vi.fn();
+    vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
     (app as any).markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
@@ -301,8 +301,8 @@ describe('MyApp initialization', () => {
 
     expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 
-    const infoSpy = jest.fn();
-    jest.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
+    const infoSpy = vi.fn();
+    vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
     expect((app as any).reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
@@ -364,7 +364,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
 
     const capacityGuard = (app as any).capacityGuard;
-    const setLimitSpy = jest.spyOn(capacityGuard, 'setLimit');
+    const setLimitSpy = vi.spyOn(capacityGuard, 'setLimit');
 
     const setLimitListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_limit'];
     expect(setLimitListener).toBeDefined();
@@ -424,7 +424,7 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    const rebuildSpy = jest.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
     const setBudgetListener = mockHomeyInstance.flow._actionCardListeners['set_daily_budget_kwh'];
     const result = await setBudgetListener({ budget_kwh: 40 });
     expect(result).toBe(true);
@@ -441,9 +441,9 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    const loadSettingsSpy = jest.spyOn((app as any).dailyBudgetService, 'loadSettings');
-    const updateStateSpy = jest.spyOn((app as any).dailyBudgetService, 'updateState');
-    const rebuildSpy = jest.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const loadSettingsSpy = vi.spyOn((app as any).dailyBudgetService, 'loadSettings');
+    const updateStateSpy = vi.spyOn((app as any).dailyBudgetService, 'updateState');
+    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
     loadSettingsSpy.mockClear();
     updateStateSpy.mockClear();
     rebuildSpy.mockClear();
@@ -627,7 +627,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const clearSpy = jest.spyOn((app as any).planEngine, 'clearStartupRestoreStabilization');
+    const clearSpy = vi.spyOn((app as any).planEngine, 'clearStartupRestoreStabilization');
     const baseTs = new Date('2026-03-03T10:20:00.000Z').getTime();
 
     (app as any).powerTracker.lastTimestamp = baseTs;
@@ -643,7 +643,7 @@ describe('MyApp initialization', () => {
     const passes = [createDeferred(), createDeferred()];
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
     const beforePerf = getPerfSnapshot();
-    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
       calls.push({ currentPowerW, nowMs });
       const pass = passes[calls.length - 1];
       if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
@@ -686,7 +686,7 @@ describe('MyApp initialization', () => {
     let active = 0;
     let maxActive = 0;
     let runIndex = 0;
-    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockImplementation(async () => {
+    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockImplementation(async () => {
       const pass = passes[runIndex];
       runIndex += 1;
       if (!pass) throw new Error(`Unexpected power sample pass ${runIndex}`);
@@ -726,7 +726,7 @@ describe('MyApp initialization', () => {
     const app = createApp();
     const passes = [createDeferred(), createDeferred()];
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
-    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
       calls.push({ currentPowerW, nowMs });
       const pass = passes[calls.length - 1];
       if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
@@ -756,7 +756,7 @@ describe('MyApp initialization', () => {
   it('keeps normal single-sample behavior unchanged when no rerun is needed', async () => {
     const app = createApp();
     const beforePerf = getPerfSnapshot();
-    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockResolvedValue(undefined);
+    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockResolvedValue(undefined);
 
     try {
       await (app as any).recordPowerSample(1500, 50);
@@ -784,7 +784,7 @@ describe('MyApp initialization', () => {
           trailingRequest = (app as any).recordPowerSample(2400, 24);
         });
     };
-    const runSpy = jest.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
       calls.push({ currentPowerW, nowMs });
       if (calls.length === 1) {
         scheduleTrailingRequest();
@@ -823,8 +823,8 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
     clearRecentLocalCapabilityWrites(app);
-    const reconcileSpy = jest.spyOn((app as any).planService, 'reconcileLatestPlanState');
-    const rebuildSpy = jest.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    const reconcileSpy = vi.spyOn((app as any).planService, 'reconcileLatestPlanState');
+    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
 
     emitMockHomeyApiDeviceUpdate({
       id: 'dev-1',
@@ -890,8 +890,8 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const setCapabilitySpy = jest.spyOn(mockHomeyInstance.api, 'put');
-    const logSpy = jest.spyOn(app, 'log');
+    const setCapabilitySpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const logSpy = vi.spyOn(app, 'log');
 
     let fightBackTimer: ReturnType<typeof setTimeout> | null = null;
     const onoffFlow = heater.makeCapabilityInstance('onoff', (value: unknown) => {
@@ -979,7 +979,7 @@ describe('MyApp initialization', () => {
 
     const app = createApp();
     await initApp(app);
-    const reconcileSpy = jest.spyOn((app as any).planService, 'reconcileLatestPlanState');
+    const reconcileSpy = vi.spyOn((app as any).planService, 'reconcileLatestPlanState');
 
     emitMockHomeyApiDeviceUpdate({
       id: 'dev-1',
@@ -1101,7 +1101,7 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Away' });
@@ -1127,7 +1127,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Changing the operating_mode setting should not apply targets in dry run
     mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Away');
@@ -1150,7 +1150,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     (app as any).deviceManager.setSnapshotForTests([
       {
@@ -1191,10 +1191,10 @@ describe('MyApp initialization', () => {
     heater.configureCapabilityBehavior('target_temperature', {
       onApiWrite: { accept: true, updateActual: true, updateApi: false },
     });
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     (app as any).modeDeviceTargets = { Home: { 'dev-1': 20 } };
 
-    const nowSpy = jest.spyOn(Date, 'now');
+    const nowSpy = vi.spyOn(Date, 'now');
     try {
       const baseNow = new Date('2026-03-12T11:00:00.000Z').getTime();
       nowSpy.mockReturnValue(baseNow);
@@ -1325,8 +1325,8 @@ describe('MyApp initialization', () => {
       lastObservedValue: 23,
       lastObservedSource: 'snapshot_refresh',
     };
-    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
-    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
       await (app as any).pollStuckTargetConfirmations();
     } finally {
@@ -1356,12 +1356,12 @@ describe('MyApp initialization', () => {
     // Simulate drift away from the target
     await heater.setCapabilityValue('target_temperature', 21);
 
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     const setModeListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_mode'];
     await setModeListener({ mode: 'Home' });
     await flushPromises();
-    jest.runOnlyPendingTimers();
+    vi.runOnlyPendingTimers();
     await flushPromises();
 
     expect(putSpy).not.toHaveBeenCalled();
@@ -1515,8 +1515,8 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const nowSpy = jest.spyOn(Date, 'now');
-    const putSpy = jest.spyOn(mockHomeyInstance.api, 'put');
+    const nowSpy = vi.spyOn(Date, 'now');
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     try {
       const baseNow = Date.now();
 
@@ -1580,11 +1580,11 @@ describe('computeDynamicSoftLimit', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(() => {
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('caps soft limit to sustainable rate in last 10 minutes even when burst rate is higher', async () => {
@@ -1610,7 +1610,7 @@ describe('computeDynamicSoftLimit', () => {
     now.setMinutes(55, 0, 0);
     const hourStart = new Date(now);
     hourStart.setMinutes(0, 0, 0);
-    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+    vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker to simulate some usage
     (app as any).powerTracker = {
@@ -1626,7 +1626,7 @@ describe('computeDynamicSoftLimit', () => {
     expect(softLimit).toBeLessThanOrEqual(5);
     expect(softLimit).toBeGreaterThan(0);
 
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('allows lower soft limit when budget is exhausted', async () => {
@@ -1649,7 +1649,7 @@ describe('computeDynamicSoftLimit', () => {
 
     const now = new Date();
     const nowMs = now.getTime();
-    jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+    vi.spyOn(Date, 'now').mockReturnValue(nowMs);
 
     // Set the bucket to have 4.9 kWh used (almost exhausted budget)
     const bucketKey = getHourBucketKey(nowMs);
@@ -1662,7 +1662,7 @@ describe('computeDynamicSoftLimit', () => {
     // The cap (5 kW) doesn't apply because burst rate is already lower
     expect(softLimit).toBeLessThan(5);
     expect(softLimit).toBeGreaterThanOrEqual(0);
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('returns sustainable rate at start of hour with full budget', async () => {
@@ -1681,7 +1681,7 @@ describe('computeDynamicSoftLimit', () => {
     // Mock Date.now to be at :00 (start of hour)
     const now = new Date();
     now.setMinutes(0, 0, 0);
-    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+    vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker with empty bucket (start of hour)
     (app as any).powerTracker = {
@@ -1696,7 +1696,7 @@ describe('computeDynamicSoftLimit', () => {
     // Not in last 10 minutes, so no cap - but burst = sustainable = 5 kW
     expect(softLimit).toBe(5);
 
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('allows burst rate above sustainable rate mid-hour when under budget', async () => {
@@ -1719,7 +1719,7 @@ describe('computeDynamicSoftLimit', () => {
     now.setMinutes(30, 0, 0);
     const hourStart = new Date(now);
     hourStart.setMinutes(0, 0, 0);
-    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+    vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker - only used 1.5 kWh (should have used ~3.35 kWh by now)
     (app as any).powerTracker = {
@@ -1734,7 +1734,7 @@ describe('computeDynamicSoftLimit', () => {
     // Mid-hour should allow burst rate (10.4 kW), not cap to sustainable (6.7 kW)
     expect(softLimit).toBeGreaterThan(6.7);
 
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('caps to sustainable rate in the last 10 minutes of the hour', async () => {
@@ -1756,7 +1756,7 @@ describe('computeDynamicSoftLimit', () => {
     now.setMinutes(52, 0, 0);
     const hourStart = new Date(now);
     hourStart.setMinutes(0, 0, 0);
-    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+    vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker - only used 3 kWh (under budget)
     (app as any).powerTracker = {
@@ -1770,7 +1770,7 @@ describe('computeDynamicSoftLimit', () => {
     // In last 10 minutes, should cap to sustainable rate = 6.7 kW
     expect(softLimit).toBeLessThanOrEqual(6.7);
 
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('caps to sustainable rate at :59 to prevent next-hour overshoot', async () => {
@@ -1792,7 +1792,7 @@ describe('computeDynamicSoftLimit', () => {
     now.setMinutes(59, 0, 0);
     const hourStart = new Date(now);
     hourStart.setMinutes(0, 0, 0);
-    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+    vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
 
     // Mock the power tracker - only used 2 kWh (lots of remaining budget)
     (app as any).powerTracker = {
@@ -1806,7 +1806,7 @@ describe('computeDynamicSoftLimit', () => {
     // At :59, must cap to sustainable rate = 6.7 kW to avoid next-hour overshoot
     expect(softLimit).toBeLessThanOrEqual(6.7);
 
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('sets pels_status even with no devices so stale data banner shows', async () => {
@@ -1969,7 +1969,7 @@ describe('computeDynamicSoftLimit', () => {
 
 describe('periodic snapshot refresh scheduling', () => {
   beforeEach(() => {
-    jest.useFakeTimers({ doNotFake: ['setImmediate', 'clearImmediate', 'setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     clearMockHomeyApiDeviceListeners();
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
@@ -1984,49 +1984,49 @@ describe('periodic snapshot refresh scheduling', () => {
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
-    jest.useRealTimers();
-    jest.restoreAllMocks();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('fires refresh at minute :25 and :55', async () => {
-    jest.setSystemTime(new Date('2026-03-21T10:00:00Z'));
+    vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
 
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     const app = createApp();
     await initApp(app);
-    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
-    const logSpy = jest.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
+    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
 
     (app as any).startPeriodicSnapshotRefresh();
 
     // Advance to :25 — should fire
-    await jest.advanceTimersByTimeAsync(25 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenCalledTimes(1);
 
     // Advance to :55 — should fire again
-    await jest.advanceTimersByTimeAsync(30 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
     expect(refreshSpy).toHaveBeenCalledTimes(2);
     expect(logSpy).toHaveBeenCalledTimes(2);
   });
 
   it('waits for periodic snapshot refresh completion before logging periodic status', async () => {
     const app = createApp();
-    jest.spyOn(app as any, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
+    vi.spyOn(app as any, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
 
     let resolveRefresh: (() => void) | undefined;
-    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
+    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
       new Promise<void>((resolve) => { resolveRefresh = resolve; })
     ));
-    const logSpy = jest.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
-    const rescheduleSpy = jest.spyOn(app as any, 'scheduleNextSnapshotRefresh');
+    const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
+    const rescheduleSpy = vi.spyOn(app as any, 'scheduleNextSnapshotRefresh');
 
     (app as any).scheduleNextSnapshotRefresh();
 
-    jest.advanceTimersByTime(25 * 60 * 1000);
+    vi.advanceTimersByTime(25 * 60 * 1000);
     await Promise.resolve();
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(logSpy).not.toHaveBeenCalled();
@@ -2041,40 +2041,40 @@ describe('periodic snapshot refresh scheduling', () => {
   });
 
   it('does not fire at other minutes', async () => {
-    jest.setSystemTime(new Date('2026-03-21T10:00:00Z'));
+    vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
 
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     const app = createApp();
     await initApp(app);
-    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
     (app as any).startPeriodicSnapshotRefresh();
 
     // Advance 10 minutes — no scheduled refresh
-    await jest.advanceTimersByTimeAsync(10 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
     expect(refreshSpy).not.toHaveBeenCalled();
   });
 
   it('wraps to next hour when past :55', async () => {
-    jest.setSystemTime(new Date('2026-03-21T10:56:00Z'));
+    vi.setSystemTime(new Date('2026-03-21T10:56:00Z'));
 
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
 
     const app = createApp();
     await initApp(app);
-    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
     (app as any).startPeriodicSnapshotRefresh();
 
     // Should not fire during remaining 4 minutes of the hour
-    await jest.advanceTimersByTimeAsync(4 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
     expect(refreshSpy).not.toHaveBeenCalled();
 
     // Advance to next hour :25 (29 minutes from :56)
-    await jest.advanceTimersByTimeAsync(25 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
     expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -2086,8 +2086,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const recordSpy = jest.spyOn(app as any, 'recordPowerSample').mockResolvedValue(undefined);
-    const getHomePowerSpy = jest.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2100);
+    const recordSpy = vi.spyOn(app as any, 'recordPowerSample').mockResolvedValue(undefined);
+    const getHomePowerSpy = vi.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2100);
 
     try {
       await (app as any).refreshTargetDevicesSnapshot({ recordHomeyEnergySample: false });
@@ -2106,8 +2106,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const recordSpy = jest.spyOn(app as any, 'recordPowerSample').mockResolvedValue(undefined);
-    const getHomePowerSpy = jest.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2600);
+    const recordSpy = vi.spyOn(app as any, 'recordPowerSample').mockResolvedValue(undefined);
+    const getHomePowerSpy = vi.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2600);
 
     try {
       await (app as any).refreshTargetDevicesSnapshot();
@@ -2121,8 +2121,8 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('does not arm multiple concurrent post-actuation refresh timers', async () => {
     const app = createApp();
-    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
-    const logDebugSpy = jest.spyOn(app as any, 'logDebug').mockImplementation(() => undefined);
+    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const logDebugSpy = vi.spyOn(app as any, 'logDebug').mockImplementation(() => undefined);
 
     (app as any).schedulePostActuationRefresh();
     const firstTimer = (app as any).postActuationRefreshTimer;
@@ -2135,10 +2135,10 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('runs post-actuation refresh without recording a Homey Energy sample', async () => {
     const app = createApp();
-    const refreshSpy = jest.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
     (app as any).schedulePostActuationRefresh();
-    await jest.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5_000);
 
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(refreshSpy).toHaveBeenCalledWith({ targeted: true, recordHomeyEnergySample: false });

@@ -1,10 +1,9 @@
 import { buildHomeyApiMock, installHomeyMock } from './helpers/homeyApiMock';
+import { getDateKeyInTimeZone } from '../src/ui/timezone.ts';
 
-const { getDateKeyInTimeZone } = require('../src/ui/timezone');
-
-jest.mock('../src/ui/toast', () => ({
-  showToast: jest.fn().mockResolvedValue(undefined),
-  showToastError: jest.fn().mockResolvedValue(undefined),
+vi.mock('../src/ui/toast.ts', () => ({
+  showToast: vi.fn().mockResolvedValue(undefined),
+  showToastError: vi.fn().mockResolvedValue(undefined),
 }));
 
 const flushPromises = () => new Promise<void>((resolve) => {
@@ -210,13 +209,8 @@ const buildDom = () => {
 };
 
 const loadSettingsScript = async () => {
-  // Use require to avoid Node --experimental-vm-modules requirement for dynamic import under Jest 30
-  require('../dist/script.js');
-  await flushPromises();
-  await waitFor(() => {
-    const select = document.querySelector('#mode-select') as HTMLSelectElement | null;
-    return Boolean(select && select.options.length > 0);
-  });
+  const { boot } = await import('../src/ui/boot.ts');
+  await boot();
   // Devices are lazy-loaded on first tab visit; navigate to the devices tab so tests can access device rows.
   (document.querySelector('[data-tab="devices"]') as HTMLButtonElement | null)?.click();
   await waitFor(() => {
@@ -249,7 +243,7 @@ const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => ins
 
 describe('settings script', () => {
   beforeEach(() => {
-    jest.resetModules();
+    vi.resetModules();
     buildDom();
     installSettingsHomeyMock();
   });
@@ -493,9 +487,9 @@ describe('settings script', () => {
 
   it('shows empty state when no devices support target temperature', async () => {
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => cb(null, []));
+    global.Homey.get = vi.fn((key, cb) => cb(null, []));
     // @ts-ignore mutate mock
-    global.Homey.set = jest.fn((key, val, cb) => cb && cb(null));
+    global.Homey.set = vi.fn((key, val, cb) => cb && cb(null));
     await loadSettingsScript();
 
     expect(document.querySelectorAll('#device-list .device-row').length).toBe(0);
@@ -503,11 +497,11 @@ describe('settings script', () => {
   });
 
   it('allows toggling managed and capacity control for a socket device', async () => {
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'target_devices_snapshot') {
         return cb(null, [
           {
@@ -565,11 +559,11 @@ describe('settings script', () => {
   });
 
   it('allows toggling managed and capacity control for an off socket with Homey energy metadata', async () => {
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'target_devices_snapshot') {
         return cb(null, [
           {
@@ -627,11 +621,11 @@ describe('settings script', () => {
   });
 
   it('renames a mode and updates settings', async () => {
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -662,11 +656,11 @@ describe('settings script', () => {
   });
 
   it('keeps active mode separate from editing mode when saving priorities', async () => {
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -713,14 +707,14 @@ describe('settings script', () => {
 
   it('copies priorities and targets from the active mode when adding a new mode', async () => {
     const store: Record<string, any> = {};
-    const setSpy = jest.fn((key, val, cb) => {
+    const setSpy = vi.fn((key, val, cb) => {
       store[key] = val;
       if (cb) cb(null);
     });
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1, 'dev-2': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -758,11 +752,11 @@ describe('settings script', () => {
   });
 
   it('changes active mode when selection changes (auto-save)', async () => {
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -789,11 +783,11 @@ describe('settings script', () => {
   });
 
   it('shows different selected values in editing vs active mode dropdowns', async () => {
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 }, Away: { 'dev-1': 2 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 }, Away: { 'dev-1': 16 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -822,11 +816,11 @@ describe('settings script', () => {
   });
 
   it('updates active mode dropdown when renaming the active mode', async () => {
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
       if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
       if (key === 'operating_mode') return cb(null, 'Home');
@@ -898,11 +892,11 @@ describe('settings script', () => {
       highThreshold: 125,
     };
 
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'combined_prices') return cb(null, combinedPrices);
       if (key === 'electricity_prices') return cb(null, []);
       if (key === 'target_devices_snapshot') return cb(null, []);
@@ -984,11 +978,11 @@ describe('settings script', () => {
       highThreshold: 125,
     };
 
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'combined_prices') return cb(null, combinedPrices);
       if (key === 'electricity_prices') return cb(null, []);
       if (key === 'target_devices_snapshot') return cb(null, []);
@@ -1057,11 +1051,11 @@ describe('settings script', () => {
       priceUnit: 'price units',
     };
 
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'combined_prices') return cb(null, combinedPrices);
       if (key === 'electricity_prices') return cb(null, []);
       if (key === 'target_devices_snapshot') return cb(null, []);
@@ -1098,14 +1092,14 @@ describe('settings script', () => {
       target_devices_snapshot: [],
       price_optimization_settings: {},
     };
-    const setSpy = jest.fn((key, val, cb) => {
+    const setSpy = vi.fn((key, val, cb) => {
       settingsStore[key] = val;
       if (cb) cb(null);
     });
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (Object.prototype.hasOwnProperty.call(settingsStore, key)) {
         return cb(null, settingsStore[key]);
       }
@@ -1174,11 +1168,11 @@ describe('settings script', () => {
       priceUnit: 'price units',
     };
 
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'combined_prices') return cb(null, combinedPrices);
       if (key === 'electricity_prices') return cb(null, []);
       if (key === 'target_devices_snapshot') return cb(null, []);
@@ -1245,11 +1239,11 @@ describe('settings script', () => {
       });
     }
 
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'combined_prices') return cb(null, null); // No combined prices
       if (key === 'electricity_prices') return cb(null, spotPrices);
       if (key === 'target_devices_snapshot') return cb(null, []);
@@ -1314,7 +1308,7 @@ describe('settings script', () => {
     };
 
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'combined_prices') {
         return cb(null, { priceScheme: 'norway', priceUnit: 'øre/kWh' });
       }
@@ -1323,7 +1317,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
     // @ts-ignore mutate mock
-    global.Homey.api = jest.fn((method, uri, bodyOrCallback, cb) => {
+    global.Homey.api = vi.fn((method, uri, bodyOrCallback, cb) => {
       const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
       if (!callback) return;
       if (method === 'GET' && uri === '/daily_budget') {
@@ -1397,7 +1391,7 @@ describe('settings script', () => {
     };
 
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'combined_prices') {
         return cb(null, { priceScheme: 'flow', priceUnit: 'price units' });
       }
@@ -1406,7 +1400,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
     // @ts-ignore mutate mock
-    global.Homey.api = jest.fn((method, uri, bodyOrCallback, cb) => {
+    global.Homey.api = vi.fn((method, uri, bodyOrCallback, cb) => {
       const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
       if (!callback) return;
       if (method === 'GET' && uri === '/daily_budget') {
@@ -1482,7 +1476,7 @@ describe('settings script', () => {
     };
 
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'daily_budget_breakdown_enabled') return cb(null, false);
       if (key === 'combined_prices') {
         return cb(null, { priceScheme: 'flow', priceUnit: 'price units' });
@@ -1492,7 +1486,7 @@ describe('settings script', () => {
       return cb(null, null);
     });
     // @ts-ignore mutate mock
-    global.Homey.api = jest.fn((method, uri, bodyOrCallback, cb) => {
+    global.Homey.api = vi.fn((method, uri, bodyOrCallback, cb) => {
       const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
       if (!callback) return;
       if (method === 'GET' && uri === '/daily_budget') {
@@ -1524,10 +1518,10 @@ describe('settings script', () => {
 
     expect(document.querySelector('#daily-budget-legend')).toBeNull();
 
-    const { dailyBudgetBreakdownInput } = require('../src/ui/dom');
+    const { dailyBudgetBreakdownInput } = await import('../src/ui/dom.ts');
     dailyBudgetBreakdownInput.checked = true;
     dailyBudgetBreakdownInput.dispatchEvent(new Event('change', { bubbles: true }));
-    const { rerenderDailyBudget } = require('../src/ui/dailyBudget');
+    const { rerenderDailyBudget } = await import('../src/ui/dailyBudget.ts');
     rerenderDailyBudget();
     await flushPromises();
 
@@ -1597,13 +1591,13 @@ describe('settings script', () => {
     };
 
     await loadSettingsScript();
-    (global.Homey.api as jest.Mock).mockClear();
+    (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
 
     await waitFor(() => document.querySelector('[data-device-id="dev-1"]') !== null);
     const deviceRow = document.querySelector('[data-device-id="dev-1"]') as HTMLElement | null;
     deviceRow?.click();
 
-    expect((global.Homey.api as jest.Mock).mock.calls.some(
+    expect((global.Homey.api as ReturnType<typeof vi.fn>).mock.calls.some(
       (call) => call[0] === 'GET' && call[1] === '/ui_device_diagnostics',
     )).toBe(false);
 
@@ -1616,7 +1610,7 @@ describe('settings script', () => {
         === true
     ));
 
-    expect((global.Homey.api as jest.Mock).mock.calls).toEqual(expect.arrayContaining([
+    expect((global.Homey.api as ReturnType<typeof vi.fn>).mock.calls).toEqual(expect.arrayContaining([
       expect.arrayContaining(['GET', '/ui_device_diagnostics']),
     ]));
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
@@ -1625,7 +1619,7 @@ describe('settings script', () => {
 
   it('shows a diagnostics unavailable state when the Homey API route fails', async () => {
     const baseApi = buildHomeyApiMock(global.Homey);
-    global.Homey.api = jest.fn((method, uri, bodyOrCallback, cb) => {
+    global.Homey.api = vi.fn((method, uri, bodyOrCallback, cb) => {
       const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : cb;
       if (method === 'GET' && uri === '/ui_device_diagnostics') {
         callback?.(new Error('Cannot GET /api/app/com.barelysufficient.pels/ui_device_diagnostics'));
@@ -1652,7 +1646,7 @@ describe('settings script', () => {
 
 describe('Plan sorting', () => {
   beforeEach(() => {
-    jest.resetModules();
+    vi.resetModules();
     buildDom();
     installSettingsHomeyMock({
       device_plan_snapshot: null,
@@ -1858,7 +1852,7 @@ describe('Plan sorting', () => {
 
   it('refreshes plan when capacity priorities change via settings event', async () => {
     const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
-    const getSpy = jest.fn((key, cb) => {
+    const getSpy = vi.fn((key, cb) => {
       if (key === 'device_plan_snapshot') {
         return cb(null, {
           meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
@@ -1885,7 +1879,7 @@ describe('Plan sorting', () => {
       mode_device_targets: { Home: {} },
     });
     global.Homey.get = getSpy;
-    global.Homey.on = jest.fn((event, cb) => {
+    global.Homey.on = vi.fn((event, cb) => {
       if (!listeners[event]) listeners[event] = [];
       listeners[event].push(cb);
     });
@@ -1944,7 +1938,7 @@ describe('Plan sorting', () => {
     };
 
     global.Homey.__uiState = { power: stalePower };
-    global.Homey.on = jest.fn((event, cb) => {
+    global.Homey.on = vi.fn((event, cb) => {
       if (!listeners[event]) listeners[event] = [];
       listeners[event].push(cb);
     });
@@ -1955,7 +1949,7 @@ describe('Plan sorting', () => {
     const banner = document.querySelector('#stale-data-banner') as HTMLDivElement;
     expect(banner.hidden).toBe(false);
 
-    (global.Homey.api as jest.Mock).mockClear();
+    (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
     const freshPower = {
       tracker: { lastTimestamp: Date.now() - 5_000 },
       status: { lastPowerUpdate: Date.now() - 2 * 60_000, priceLevel: 'cheap' },
@@ -1966,14 +1960,14 @@ describe('Plan sorting', () => {
     await flushPromises();
 
     expect(banner.hidden).toBe(true);
-    const powerGetCalls = (global.Homey.api as jest.Mock).mock.calls
+    const powerGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
     expect(powerGetCalls).toHaveLength(0);
   });
 
   it('invalidates /ui_power cache before periodic stale-data checks', async () => {
     const intervalCallbacks = new Map<number, () => void>();
-    const setIntervalSpy = jest.spyOn(global, 'setInterval').mockImplementation(((callback, ms) => {
+    const setIntervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((callback, ms) => {
       intervalCallbacks.set(ms as number, callback as () => void);
       return 1 as unknown as ReturnType<typeof setInterval>;
     }) as typeof setInterval);
@@ -1997,14 +1991,14 @@ describe('Plan sorting', () => {
         heartbeat: now,
       };
 
-      (global.Homey.api as jest.Mock).mockClear();
+      (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
       const staleInterval = intervalCallbacks.get(30 * 1000);
       expect(typeof staleInterval).toBe('function');
       staleInterval?.();
       await flushPromises();
 
       expect(banner.hidden).toBe(false);
-      const powerGetCalls = (global.Homey.api as jest.Mock).mock.calls
+      const powerGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
         .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
       expect(powerGetCalls.length).toBeGreaterThan(0);
     } finally {
@@ -2015,7 +2009,7 @@ describe('Plan sorting', () => {
   it('invalidates /ui_plan cache when reopening overview and when using Refresh plan', async () => {
     await loadSettingsScript();
 
-    (global.Homey.api as jest.Mock).mockClear();
+    (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
 
     const devicesTab = document.querySelector('[data-tab="devices"]') as HTMLButtonElement;
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
@@ -2028,7 +2022,7 @@ describe('Plan sorting', () => {
     refreshPlanButton.click();
     await flushPromises();
 
-    const planGetCalls = (global.Homey.api as jest.Mock).mock.calls
+    const planGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_plan');
     expect(planGetCalls).toHaveLength(2);
   });
@@ -2062,11 +2056,11 @@ describe('Plan sorting', () => {
   });
 
   it('uses the device target step for mode inputs and saves normalized values', async () => {
-    const setSpy = jest.fn((key, val, cb) => cb && cb(null));
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
     // @ts-ignore mutate mock
-    global.Homey.get = jest.fn((key, cb) => {
+    global.Homey.get = vi.fn((key, cb) => {
       if (key === 'target_devices_snapshot') {
         return cb(null, [
           {

@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @vitest-environment node
  */
 import { PassThrough } from 'node:stream';
 import { createRootLogger, withRebuildContext } from '../../lib/logging/logger';

@@ -98,12 +98,12 @@ describe('Norway norgespris pricing', () => {
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('applies full norgespris adjustment below household cap', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     setNorwayNorgesprisSettings({
       now,
       monthUsageKwh: 4200,
@@ -122,7 +122,7 @@ describe('Norway norgespris pricing', () => {
 
   it('applies partial norgespris adjustment during household cap transition', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     setNorwayNorgesprisSettings({
       now,
       monthUsageKwh: NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH - 1,
@@ -141,7 +141,7 @@ describe('Norway norgespris pricing', () => {
 
   it('uses non-support behavior when household month usage is above cap', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     setNorwayNorgesprisSettings({
       now,
       monthUsageKwh: NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH + 1,
@@ -157,7 +157,7 @@ describe('Norway norgespris pricing', () => {
 
   it('uses cabin cap from tariff group instead of configurable cap setting', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     // Legacy settings should be ignored.
     mockHomeyInstance.settings.set('norgespris_target_price', 999);
     mockHomeyInstance.settings.set('norgespris_monthly_cap_kwh', 1);
@@ -175,7 +175,7 @@ describe('Norway norgespris pricing', () => {
 
   it('uses 40 øre/kWh target in no-VAT area (NO4)', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     setNorwayNorgesprisSettings({
       now,
       monthUsageKwh: 0,
@@ -191,7 +191,7 @@ describe('Norway norgespris pricing', () => {
 
   it('omits norgespris adjustment fields when strømstøtte model is active', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     setNorwayNorgesprisSettings({
       now,
       monthUsageKwh: 0,
@@ -208,7 +208,7 @@ describe('Norway norgespris pricing', () => {
 
   it('does not consume current-month cap from past hours', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 15, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     const previousHour = new Date(Date.UTC(2026, 0, 15, 9, 0, 0));
     const currentHour = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
     setNorwayNorgesprisSettings({
@@ -230,7 +230,7 @@ describe('Norway norgespris pricing', () => {
 
   it('uses Homey timezone month boundaries for norgespris cap', () => {
     const now = new Date('2026-01-31T23:30:00.000Z'); // Europe/Oslo: 2026-02-01 00:30
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     const boundaryHour = new Date('2026-01-31T23:00:00.000Z'); // Europe/Oslo: 2026-02-01 00:00
     setNorwayNorgesprisSettings({
       now,
@@ -250,7 +250,7 @@ describe('Norway norgespris pricing', () => {
 
   it('does not overcount UTC daily totals that only partially overlap local month', () => {
     const now = new Date('2026-01-31T23:30:00.000Z'); // Europe/Oslo: 2026-02-01 00:30
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     const boundaryHour = new Date('2026-01-31T23:00:00.000Z'); // Europe/Oslo: 2026-02-01 00:00
     setNorwayNorgesprisSettings({
       now,
@@ -268,7 +268,7 @@ describe('Norway norgespris pricing', () => {
 
   it('includes dailyTotals usage even when the same UTC day also has bucket entries', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     setNorwayNorgesprisSettings({
       now,
       monthUsageKwh: 0,
@@ -296,7 +296,7 @@ describe('Norway norgespris pricing', () => {
 
   it('ignores spot entries with invalid startsAt timestamps', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     setNorwayNorgesprisSettings({
       now,
       monthUsageKwh: 0,
@@ -314,7 +314,7 @@ describe('Norway norgespris pricing', () => {
 
   it('uses Homey timezone hour for grid tariff matching', () => {
     const now = new Date('2026-01-31T23:30:00.000Z'); // Europe/Oslo: 00:30 next day
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     const boundaryHour = new Date('2026-01-31T23:00:00.000Z'); // Europe/Oslo: 00:00
     setNorwayNorgesprisSettings({
       now,
@@ -333,7 +333,7 @@ describe('Norway norgespris pricing', () => {
 
   it('resets norgespris cap at month boundary', () => {
     const now = new Date(Date.UTC(2026, 0, 31, 21, 15, 0)); // Europe/Oslo: 22:15 Jan 31
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     const januaryHour = new Date(Date.UTC(2026, 0, 31, 22, 0, 0)); // Europe/Oslo: 23:00 Jan 31
     const februaryHour = new Date(Date.UTC(2026, 0, 31, 23, 0, 0)); // Europe/Oslo: 00:00 Feb 1
     setNorwayNorgesprisSettings({
@@ -359,7 +359,7 @@ describe('Norway norgespris pricing', () => {
 
   it('applies cap eligibility in chronological order when spot list is unsorted', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
-    jest.useFakeTimers().setSystemTime(now);
+    vi.useFakeTimers().setSystemTime(now);
     const currentHour = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
     const nextHour = new Date(Date.UTC(2026, 0, 15, 11, 0, 0));
     setNorwayNorgesprisSettings({

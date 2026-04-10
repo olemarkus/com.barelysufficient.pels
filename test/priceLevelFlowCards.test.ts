@@ -29,7 +29,7 @@ describe('Price level flow cards', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
@@ -77,9 +77,9 @@ describe('Price level flow cards', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => mockHomeyInstance.settings.get('combined_prices'),
       getLastPowerUpdate: () => null,
-      log: jest.fn(),
-      logDebug: jest.fn(),
-      error: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
     });
 
     planService.updatePelsStatus({

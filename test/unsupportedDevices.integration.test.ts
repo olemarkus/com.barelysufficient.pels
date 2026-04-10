@@ -6,7 +6,7 @@ import { createApp, cleanupApps } from './utils/appTestUtils';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
-jest.useFakeTimers({ doNotFake: ['nextTick', 'Date'] });
+vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 
 const buildVentilationApiDevice = (overrides?: Partial<{
     id: string;
@@ -39,13 +39,13 @@ describe('Unsupported device handling', () => {
         mockHomeyInstance.flow._triggerCardRunListeners = {};
         mockHomeyInstance.flow._triggerCardTriggers = {};
         mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-        jest.clearAllTimers();
+        vi.clearAllTimers();
     });
 
     afterEach(async () => {
         await cleanupApps();
-        jest.restoreAllMocks();
-        jest.clearAllTimers();
+        vi.restoreAllMocks();
+        vi.clearAllTimers();
     });
 
     it('forces devices without power capability to remain unmanaged', async () => {
@@ -59,7 +59,7 @@ describe('Unsupported device handling', () => {
         const app = createApp();
         await app.onInit();
 
-        jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+        vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
             'vent-1': buildVentilationApiDevice(),
         });
 
@@ -90,7 +90,7 @@ describe('Unsupported device handling', () => {
         const app = createApp();
         await app.onInit();
 
-        jest.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+        vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
             'vent-1': buildVentilationApiDevice({
                 energyObj: {
                     approximation: {

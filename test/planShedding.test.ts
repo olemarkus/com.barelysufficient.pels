@@ -31,12 +31,12 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
 
 describe('buildSheddingPlan', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('deprioritizes recently restored devices when same-priority alternatives exist', async () => {
@@ -69,11 +69,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -98,8 +98,8 @@ describe('buildSheddingPlan', () => {
         getPriorityForDevice: (deviceId: string) => (
           { 'dev-nonrecent': 100, 'dev-recent': 100, 'dev-at-temp': 80 }[deviceId] ?? 100
         ),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -107,7 +107,7 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('dev-recent')).toBe(false);
     expect(result.shedSet.has('dev-at-temp')).toBe(false);
     expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
-    const [hasCandidates, deficitKw] = (capacityGuard.checkShortfall as unknown as jest.Mock).mock.calls[0];
+    const [hasCandidates, deficitKw] = (capacityGuard.checkShortfall as unknown as vi.Mock).mock.calls[0];
     expect(hasCandidates).toBe(true);
     expect(deficitKw).toBeCloseTo(0.4, 6);
   });
@@ -134,11 +134,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4.5),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4.5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -157,8 +157,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 789 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'dev-high' ? 1 : 3),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -188,11 +188,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -211,8 +211,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 456 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'dev-restore' ? 100 : 50),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -224,11 +224,11 @@ describe('buildSheddingPlan', () => {
   it('keeps stale off observations eligible for shedding so stale snapshots do not hide live load', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -256,8 +256,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -291,11 +291,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -314,8 +314,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -368,11 +368,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -395,8 +395,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -448,11 +448,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -475,8 +475,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -509,11 +509,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -532,8 +532,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 600 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 18, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -577,11 +577,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -600,8 +600,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 111 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -644,11 +644,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -667,8 +667,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 113 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -703,11 +703,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -726,8 +726,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 115 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 1,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -773,11 +773,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -796,8 +796,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 114 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -838,11 +838,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -865,8 +865,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -907,11 +907,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -934,8 +934,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -977,11 +977,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1004,8 +1004,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1047,11 +1047,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1074,8 +1074,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1115,11 +1115,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1142,8 +1142,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1175,11 +1175,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1198,8 +1198,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 334 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1244,11 +1244,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1271,8 +1271,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1317,11 +1317,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1344,8 +1344,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1391,11 +1391,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1418,8 +1418,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1465,11 +1465,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1492,8 +1492,8 @@ describe('buildSheddingPlan', () => {
             : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1533,11 +1533,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(10),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(10),
     } as unknown as CapacityGuard;
 
     // Need 0.5kW of relief. The binary device has higher priority (sheds first
@@ -1560,8 +1560,8 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         // Binary device has higher priority (10 > 1) so would normally shed first
         getPriorityForDevice: (deviceId: string) => (deviceId === 'heater' ? 1 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1613,11 +1613,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(10),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(10),
     } as unknown as CapacityGuard;
 
     // Need 1.5kW relief. heater-high is above lowest active and should step down
@@ -1638,8 +1638,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 10,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1677,11 +1677,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1700,8 +1700,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 666 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'bath' ? 10 : 5),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1719,11 +1719,11 @@ describe('buildSheddingPlan', () => {
     };
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1752,8 +1752,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 1_000 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1765,11 +1765,11 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
@@ -1788,8 +1788,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1801,11 +1801,11 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
@@ -1833,8 +1833,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 1001 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1845,11 +1845,11 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4.5),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4.5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1884,8 +1884,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 1002 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1897,11 +1897,11 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(8),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(8),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1936,8 +1936,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -1950,11 +1950,11 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(2.5),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(2.5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -1989,8 +1989,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -2002,11 +2002,11 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(2.5),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(2.5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2041,8 +2041,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -2077,11 +2077,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(6),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2100,8 +2100,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 1,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -2137,11 +2137,11 @@ describe('buildSheddingPlan', () => {
     ];
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(2),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(2),
     } as unknown as CapacityGuard;
 
     await buildSheddingPlan(
@@ -2160,8 +2160,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 1,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -2174,14 +2174,14 @@ describe('buildSheddingPlan', () => {
     let sheddingActive = true;
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockImplementation(() => sheddingActive),
-      setSheddingActive: jest.fn().mockImplementation(async (active: boolean) => {
+      isSheddingActive: vi.fn().mockImplementation(() => sheddingActive),
+      setSheddingActive: vi.fn().mockImplementation(async (active: boolean) => {
         sheddingActive = active;
       }),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getRestoreMargin: jest.fn().mockReturnValue(0.2),
-      getShortfallThreshold: jest.fn().mockReturnValue(5),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2199,8 +2199,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -2212,12 +2212,12 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getRestoreMargin: jest.fn().mockReturnValue(0.2),
-      getShortfallThreshold: jest.fn().mockReturnValue(5),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+      getShortfallThreshold: vi.fn().mockReturnValue(5),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2235,8 +2235,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -2288,11 +2288,11 @@ describe('buildSheddingPlan', () => {
     };
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(false),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(10),
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(10),
     } as unknown as CapacityGuard;
 
     const baseDeps = {
@@ -2306,8 +2306,8 @@ describe('buildSheddingPlan', () => {
         if (deviceId === 'stepped-a') return 15;
         return 10;
       },
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
     };
 
     // Shared state across cycles — carries forward lastShedPlanMeasurementTs.
@@ -2396,12 +2396,12 @@ describe('buildSheddingPlan', () => {
     state.lastShedPlanMeasurementTs = 500;
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(true),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
-      getCurrentIncidentId: jest.fn().mockReturnValue('inc-1'),
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
+      getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2428,8 +2428,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -2442,19 +2442,19 @@ describe('buildSheddingPlan', () => {
     state.overshootStartedMs = Date.now() - 31_000;
 
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(true),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const deps = {
       capacityGuard,
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       getPriorityForDevice: () => 100,
-      log: jest.fn(),
-      logDebug: jest.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
     };
 
     const context = buildContext({
@@ -2490,7 +2490,7 @@ describe('buildSheddingPlan', () => {
 
     Object.assign(state, freshResult.updates);
 
-    jest.setSystemTime(new Date(Date.now() + 5_000));
+    vi.setSystemTime(new Date(Date.now() + 5_000));
 
     const sameSampleResult = await buildSheddingPlan(
       context,
@@ -2513,13 +2513,13 @@ describe('buildSheddingPlan', () => {
     state.overshootStartedMs = Date.now() - 10_000;
     state.lastShedPlanMeasurementTs = 500;
 
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(true),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2546,7 +2546,7 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
+        log: vi.fn(),
         logDebug,
       },
     );
@@ -2562,15 +2562,15 @@ describe('buildSheddingPlan', () => {
     state.lastShedPlanMeasurementTs = 500;
 
     const structuredLog = {
-      warn: jest.fn(),
+      warn: vi.fn(),
     };
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(true),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
-      getCurrentIncidentId: jest.fn().mockReturnValue('inc-77'),
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
+      getCurrentIncidentId: vi.fn().mockReturnValue('inc-77'),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2598,8 +2598,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
         structuredLog: structuredLog as any,
       },
     );
@@ -2622,15 +2622,15 @@ describe('buildSheddingPlan', () => {
     state.lastShedPlanMeasurementTs = 500;
 
     const structuredLog = {
-      warn: jest.fn(),
+      warn: vi.fn(),
     };
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(true),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
-      getCurrentIncidentId: jest.fn().mockReturnValue('inc-88'),
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
+      getCurrentIncidentId: vi.fn().mockReturnValue('inc-88'),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2657,8 +2657,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
         structuredLog: structuredLog as any,
       },
     );
@@ -2673,13 +2673,13 @@ describe('buildSheddingPlan', () => {
     state.overshootStartedMs = Date.now() - 31_000;
     state.lastShedPlanMeasurementTs = 500;
 
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(true),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2706,7 +2706,7 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
+        log: vi.fn(),
         logDebug,
       },
     );
@@ -2721,13 +2721,13 @@ describe('buildSheddingPlan', () => {
     state.overshootStartedMs = Date.now() - 31_000;
     state.lastShedPlanMeasurementTs = 500;
 
-    const logDebug = jest.fn();
+    const logDebug = vi.fn();
     const capacityGuard = {
-      isSheddingActive: jest.fn().mockReturnValue(true),
-      setSheddingActive: jest.fn().mockResolvedValue(undefined),
-      checkShortfall: jest.fn().mockResolvedValue(undefined),
-      isInShortfall: jest.fn().mockReturnValue(false),
-      getShortfallThreshold: jest.fn().mockReturnValue(4),
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
     const result = await buildSheddingPlan(
@@ -2754,7 +2754,7 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
+        log: vi.fn(),
         logDebug,
       },
     );
@@ -2789,8 +2789,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -2823,8 +2823,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 
@@ -2857,8 +2857,8 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 801 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
-        log: jest.fn(),
-        logDebug: jest.fn(),
+        log: vi.fn(),
+        logDebug: vi.fn(),
       },
     );
 

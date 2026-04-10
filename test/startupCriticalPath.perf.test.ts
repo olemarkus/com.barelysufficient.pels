@@ -23,25 +23,25 @@ const flushMicrotasks = async (iterations = 8): Promise<void> => {
 };
 
 const buildParams = () => ({
-  loadPowerTracker: jest.fn<void, [options?: { skipDailyBudgetUpdate?: boolean }]>(),
-  loadPriceOptimizationSettings: jest.fn<void, []>(),
-  initOptimizer: jest.fn<void, []>(),
-  startHeartbeat: jest.fn<void, []>(),
-  updateOverheadToken: jest.fn<Promise<void>, []>(async () => undefined),
-  refreshDailyBudgetState: jest.fn<void, []>(),
-  refreshTargetDevicesSnapshot: jest.fn<Promise<void>, [
+  loadPowerTracker: vi.fn<(options?: { skipDailyBudgetUpdate?: boolean }) => void>(),
+  loadPriceOptimizationSettings: vi.fn<() => void>(),
+  initOptimizer: vi.fn<() => void>(),
+  startHeartbeat: vi.fn<() => void>(),
+  updateOverheadToken: vi.fn<() => Promise<void>>(async () => undefined),
+  refreshDailyBudgetState: vi.fn<() => void>(),
+  refreshTargetDevicesSnapshot: vi.fn<(
     options?: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean },
-  ]>(async () => undefined),
-  rebuildPlanFromCache: jest.fn<Promise<void>, []>(async () => undefined),
-  setLastNotifiedOperatingMode: jest.fn<void, [string]>(),
-  getOperatingMode: jest.fn<string, []>(() => 'Home'),
-  registerFlowCards: jest.fn<void, []>(),
-  startPeriodicSnapshotRefresh: jest.fn<void, []>(),
-  refreshSpotPrices: jest.fn<Promise<void>, []>(async () => undefined),
-  refreshGridTariffData: jest.fn<Promise<void>, []>(async () => undefined),
-  startPriceRefresh: jest.fn<void, []>(),
-  startPriceOptimization: jest.fn<Promise<void>, [boolean?]>(async () => undefined),
-  logError: jest.fn<void, [string, Error]>(),
+  ) => Promise<void>>(async () => undefined),
+  rebuildPlanFromCache: vi.fn<() => Promise<void>>(async () => undefined),
+  setLastNotifiedOperatingMode: vi.fn<(mode: string) => void>(),
+  getOperatingMode: vi.fn<() => string>(() => 'Home'),
+  registerFlowCards: vi.fn<() => void>(),
+  startPeriodicSnapshotRefresh: vi.fn<() => void>(),
+  refreshSpotPrices: vi.fn<() => Promise<void>>(async () => undefined),
+  refreshGridTariffData: vi.fn<() => Promise<void>>(async () => undefined),
+  startPriceRefresh: vi.fn<() => void>(),
+  startPriceOptimization: vi.fn<(arg?: boolean) => Promise<void>>(async () => undefined),
+  logError: vi.fn<(msg: string, err: Error) => void>(),
 });
 
 describe('startup critical path perf guardrails', () => {
@@ -92,7 +92,7 @@ describe('startup critical path perf guardrails', () => {
   });
 
   it('defers snapshot and plan bootstrap when delay is configured', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const params = buildParams();
     const callOrder: string[] = [];
 
@@ -112,18 +112,18 @@ describe('startup critical path perf guardrails', () => {
       expect(callOrder).toEqual([]);
       expect(params.refreshDailyBudgetState).not.toHaveBeenCalled();
 
-      jest.advanceTimersByTime(99);
+      vi.advanceTimersByTime(99);
       await flushMicrotasks();
       expect(callOrder).toEqual([]);
       expect(params.refreshDailyBudgetState).not.toHaveBeenCalled();
 
-      jest.advanceTimersByTime(1);
+      vi.advanceTimersByTime(1);
       await flushMicrotasks();
       expect(params.refreshDailyBudgetState).toHaveBeenCalledTimes(1);
       expect(params.refreshTargetDevicesSnapshot).toHaveBeenCalledWith({ recordHomeyEnergySample: false });
       expect(callOrder).toEqual(['refresh', 'rebuild']);
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 

@@ -13,12 +13,12 @@ describe('Managed device condition', () => {
     mockHomeyInstance.flow._actionCardAutocompleteListeners = {};
     mockHomeyInstance.flow._conditionCardAutocompleteListeners = {};
     mockHomeyInstance.api.clearRealtimeEvents();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
   });
 
   it('returns true when the device is managed by PELS', async () => {

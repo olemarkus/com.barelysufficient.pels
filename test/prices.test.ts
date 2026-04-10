@@ -22,22 +22,24 @@ import {
 } from '../lib/utils/dateUtils';
 
 // Mock the https module
-jest.mock('https', () => ({
-  get: jest.fn(),
+vi.mock('https', () => ({
+  default: {
+    get: vi.fn(),
+  },
 }));
 
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
-jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate', 'clearTimeout', 'clearImmediate', 'Date', 'nextTick'] });
+vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
 
 // Helper to wait for async operations
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 const createErroringRequest = () => {
   const req: any = {
-    on: jest.fn(),
-    setTimeout: jest.fn(),
-    destroy: jest.fn(),
+    on: vi.fn(),
+    setTimeout: vi.fn(),
+    destroy: vi.fn(),
   };
   req.on.mockImplementation((event: string, handler: Function) => {
     if (event === 'error') {
@@ -197,7 +199,7 @@ const createMockHttpsResponse = (statusCode: number, data: any) => {
   const mockResponse: any = {
     statusCode,
     statusMessage: statusCode === 200 ? 'OK' : 'Error',
-    on: jest.fn((event: string, callback: Function) => {
+    on: vi.fn((event: string, callback: Function) => {
       if (event === 'data') {
         callback(JSON.stringify(data));
       }
@@ -211,10 +213,10 @@ const createMockHttpsResponse = (statusCode: number, data: any) => {
 };
 
 describe('Spot price fetching', () => {
-  let mockHttpsGet: jest.Mock;
+  let mockHttpsGet: vi.Mock;
   let allowConsoleErrorUntilCleanup = false;
   // Use require to avoid ESM extension issues in TS tests
-  const { setAllowConsoleError } = require('./setup');
+  const { setAllowConsoleError } = require('./setup.ts');
 
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
@@ -224,14 +226,14 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.clearAllTimers();
-    mockHttpsGet = https.get as jest.Mock;
+    vi.clearAllTimers();
+    mockHttpsGet = https.get as vi.Mock;
     mockHttpsGet.mockReset();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
     if (allowConsoleErrorUntilCleanup) {
       setAllowConsoleError(false);
       allowConsoleErrorUntilCleanup = false;
@@ -252,9 +254,9 @@ describe('Spot price fetching', () => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
-        on: jest.fn(),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
+        on: vi.fn(),
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
       };
     });
 
@@ -293,9 +295,9 @@ describe('Spot price fetching', () => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
-        on: jest.fn(),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
+        on: vi.fn(),
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
       };
     });
 
@@ -333,9 +335,9 @@ describe('Spot price fetching', () => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
-        on: jest.fn(),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
+        on: vi.fn(),
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
       };
     });
 
@@ -365,9 +367,9 @@ describe('Spot price fetching', () => {
       const response = createMockHttpsResponse(404, null);
       callback(response);
       return {
-        on: jest.fn(),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
+        on: vi.fn(),
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
       };
     });
 
@@ -421,9 +423,9 @@ describe('Spot price fetching', () => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
-        on: jest.fn(),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
+        on: vi.fn(),
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
       };
     });
 
@@ -482,9 +484,9 @@ describe('Spot price fetching', () => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
-        on: jest.fn(),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
+        on: vi.fn(),
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
       };
     });
 
@@ -526,9 +528,9 @@ describe('Spot price fetching', () => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
-        on: jest.fn(),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
+        on: vi.fn(),
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
       };
     });
 
@@ -549,7 +551,7 @@ describe('Spot price fetching', () => {
     } as DateConstructor;
     const originalDate = global.Date;
     global.Date = MockDate;
-    const { setAllowConsoleError } = require('./setup');
+    const { setAllowConsoleError } = require('./setup.ts');
     setAllowConsoleError(true);
 
     try {
@@ -598,9 +600,9 @@ describe('Spot price fetching', () => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
-        on: jest.fn(),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
+        on: vi.fn(),
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
       };
     });
 
@@ -660,9 +662,9 @@ describe('Spot price fetching', () => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
       return {
-        on: jest.fn(),
-        setTimeout: jest.fn(),
-        destroy: jest.fn(),
+        on: vi.fn(),
+        setTimeout: vi.fn(),
+        destroy: vi.fn(),
       };
     });
 
@@ -708,16 +710,16 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.clearAllTimers();
+    vi.clearAllTimers();
 
     // Mock global fetch for grid tariffs (uses fetch, not https)
     originalFetch = global.fetch;
-    global.fetch = jest.fn();
+    global.fetch = vi.fn();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
     global.fetch = originalFetch;
   });
 
@@ -733,7 +735,7 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
 
     // Mock fetch response
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as vi.Mock).mockResolvedValue({
       ok: true,
       json: async () => mockNveGridTariffResponse,
     });
@@ -792,13 +794,13 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
 
     // Mock fetch to return error
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (global.fetch as vi.Mock).mockResolvedValue({
       ok: false,
       status: 500,
       statusText: 'Internal Server Error',
     });
 
-    const { setAllowConsoleError } = require('./setup');
+    const { setAllowConsoleError } = require('./setup.ts');
     setAllowConsoleError(true);
     try {
       const app = createApp();
@@ -827,7 +829,7 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Hytter og fritidshus');
 
     let capturedUrl = '';
-    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+    (global.fetch as vi.Mock).mockImplementation((url: string) => {
       capturedUrl = url;
       return Promise.resolve({
         ok: true,
@@ -880,7 +882,7 @@ describe('Grid tariff fetching', () => {
     try {
       const { today, yesterday, week } = buildExpectedGridTariffDates(now);
       const requestedDates: string[] = [];
-      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      (global.fetch as vi.Mock).mockImplementation((url: string) => {
         const date = new URL(url).searchParams.get('ValgtDato') ?? '';
         requestedDates.push(date);
         const payload = date === week ? mockNveGridTariffResponse : [];
@@ -893,7 +895,7 @@ describe('Grid tariff fetching', () => {
       const app = createApp();
       await app.onInit();
       requestedDates.length = 0;
-      (global.fetch as jest.Mock).mockClear();
+      (global.fetch as vi.Mock).mockClear();
 
       mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
       await flushPromises();
@@ -935,12 +937,12 @@ describe('Grid tariff fetching', () => {
     const originalDate = global.Date;
     global.Date = MockDate;
 
-    const { setAllowConsoleError } = require('./setup');
-    setAllowConsoleError(true);
+    // Capture console.error calls with a local spy (setup.ts spy not reachable via require)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const { today, yesterday, week, month } = buildExpectedGridTariffDates(now);
       const requestedDates: string[] = [];
-      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      (global.fetch as vi.Mock).mockImplementation((url: string) => {
         const date = new URL(url).searchParams.get('ValgtDato') ?? '';
         requestedDates.push(date);
         return Promise.resolve({
@@ -952,13 +954,13 @@ describe('Grid tariff fetching', () => {
       const app = createApp();
       await app.onInit();
       requestedDates.length = 0;
-      (global.fetch as jest.Mock).mockClear();
+      (global.fetch as vi.Mock).mockClear();
 
       mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
       await flushPromises();
 
       expect(requestedDates).toEqual([today, yesterday, week, month]);
-      const errorCalls = (console.error as jest.Mock).mock.calls;
+      const errorCalls = errorSpy.mock.calls;
       const cachedCall = errorCalls.find(([message]) => (
         typeof message === 'string'
         && message.includes('Keeping cached tariff data (NVE returned empty list)')
@@ -972,7 +974,7 @@ describe('Grid tariff fetching', () => {
         { label: 'month', date: month },
       ]);
     } finally {
-      setAllowConsoleError(false);
+      errorSpy.mockRestore();
       global.Date = originalDate;
     }
   });
@@ -1013,7 +1015,7 @@ describe('Price data structures', () => {
 });
 
 describe('Price optimization', () => {
-  let mockHttpsGet: jest.Mock;
+  let mockHttpsGet: vi.Mock;
   let originalFetch: typeof global.fetch;
   const HOUR_MS = 60 * 60 * 1000;
   const MINUTE_MS = 60 * 1000;
@@ -1239,16 +1241,16 @@ describe('Price optimization', () => {
     mockHomeyInstance.flow._triggerCardRunListeners = {};
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
-    jest.clearAllTimers();
-    mockHttpsGet = https.get as jest.Mock;
+    vi.clearAllTimers();
+    mockHttpsGet = https.get as vi.Mock;
     mockHttpsGet.mockReset();
     originalFetch = global.fetch;
-    global.fetch = jest.fn();
+    global.fetch = vi.fn();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.clearAllTimers();
+    vi.clearAllTimers();
     global.fetch = originalFetch;
   });
 
@@ -1277,7 +1279,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(now));
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1339,7 +1341,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1373,7 +1375,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1424,7 +1426,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1486,7 +1488,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, rawPrices);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1547,7 +1549,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(new Date(now.getFullYear(), now.getMonth(), now.getDate())));
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1596,7 +1598,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(new Date(now.getFullYear(), now.getMonth(), now.getDate())));
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1637,7 +1639,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(now));
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1671,7 +1673,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1690,7 +1692,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1749,7 +1751,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1772,7 +1774,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     // Start with global price optimization DISABLED
@@ -1813,7 +1815,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, generateMockPricesForAppDay(now));
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
 
@@ -1860,7 +1862,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -1930,7 +1932,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     // Set up mock driver for the device so DeviceManager can find it
@@ -1996,7 +1998,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -2074,7 +2076,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -2152,7 +2154,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     const app = createApp();
@@ -2223,7 +2225,7 @@ describe('Price optimization', () => {
         const response = createMockHttpsResponse(200, []);
         callback(response);
       }
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     // Set up settings - price optimization enabled with -5 delta for expensive hours
@@ -2292,7 +2294,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     await withMockedNow(now, async () => {
@@ -2323,7 +2325,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     await withMockedNow(now, async () => {
@@ -2351,7 +2353,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     await withMockedNow(now, async () => {
@@ -2384,7 +2386,7 @@ describe('Price optimization', () => {
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
       const response = createMockHttpsResponse(200, []);
       callback(response);
-      return { on: jest.fn(), setTimeout: jest.fn(), destroy: jest.fn() };
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
     await withMockedNow(now, async () => {
@@ -2451,14 +2453,14 @@ describe('Price optimization', () => {
   );
 
   it('emits structured failure events for direct grid tariff refreshes', async () => {
-    const error = jest.fn();
-    const structuredLog: Pick<import('../lib/logging/logger').Logger, 'error'> = { error: jest.fn() };
+    const error = vi.fn();
+    const structuredLog: Pick<import('../lib/logging/logger').Logger, 'error'> = { error: vi.fn() };
     const coordinator = createPriceCoordinatorForTest({
       error,
       structuredLog: structuredLog as unknown as import('../lib/logging/logger').Logger,
     });
     const refreshError = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
-    (coordinator as any).priceService.refreshGridTariffData = jest.fn().mockRejectedValue(refreshError);
+    (coordinator as any).priceService.refreshGridTariffData = vi.fn().mockRejectedValue(refreshError);
 
     await expect(coordinator.refreshGridTariffData(true)).rejects.toThrow('socket hang up');
 
@@ -2471,13 +2473,13 @@ describe('Price optimization', () => {
   });
 
   it('normalizes non-Error spot refresh failures before rethrowing', async () => {
-    const error = jest.fn();
-    const structuredLog: Pick<import('../lib/logging/logger').Logger, 'error'> = { error: jest.fn() };
+    const error = vi.fn();
+    const structuredLog: Pick<import('../lib/logging/logger').Logger, 'error'> = { error: vi.fn() };
     const coordinator = createPriceCoordinatorForTest({
       error,
       structuredLog: structuredLog as unknown as import('../lib/logging/logger').Logger,
     });
-    (coordinator as any).priceService.refreshSpotPrices = jest.fn().mockRejectedValue('timeout');
+    (coordinator as any).priceService.refreshSpotPrices = vi.fn().mockRejectedValue('timeout');
 
     await expect(coordinator.refreshSpotPrices(true)).rejects.toThrow('timeout');
 

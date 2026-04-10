@@ -32,12 +32,12 @@ describe('settings UI app runtime helpers', () => {
   beforeEach(() => {
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   afterEach(async () => {
     await cleanupApps();
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('resets power tracker history without keeping stale breakdown buckets', async () => {
@@ -47,9 +47,9 @@ describe('settings UI app runtime helpers', () => {
     const currentHourKey = getHourBucketKey(nowMs);
     const previousHourKey = getHourBucketKey(nowMs - 3600_000);
 
-    jest.spyOn(Date, 'now').mockReturnValue(nowMs);
-    const updateDailyBudgetAndRecordCap = jest.spyOn(app as never, 'updateDailyBudgetAndRecordCap').mockImplementation(() => {});
-    const persistPowerTrackerState = jest.spyOn(app as never, 'persistPowerTrackerState').mockImplementation(() => {});
+    vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const updateDailyBudgetAndRecordCap = vi.spyOn(app as never, 'updateDailyBudgetAndRecordCap').mockImplementation(() => {});
+    const persistPowerTrackerState = vi.spyOn(app as never, 'persistPowerTrackerState').mockImplementation(() => {});
 
     (app as { powerTracker: Record<string, unknown> }).powerTracker = {
       lastPowerW: 4300,

@@ -17,8 +17,8 @@ describe('Lowest price flow cards', () => {
   const originalGetTimezone = mockHomeyInstance.clock.getTimezone;
 
   beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     mockHomeyInstance.clock.getTimezone = () => 'UTC';
 
     mockHomeyInstance.settings.removeAllListeners();
@@ -36,8 +36,8 @@ describe('Lowest price flow cards', () => {
   afterEach(async () => {
     await cleanupApps();
     mockHomeyInstance.clock.getTimezone = originalGetTimezone;
-    jest.clearAllTimers();
-    jest.useRealTimers();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   const setupApp = (combinedPrices: PriceEntry[]) => {

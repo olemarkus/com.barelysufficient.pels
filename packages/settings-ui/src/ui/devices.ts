@@ -1,25 +1,25 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types';
-import { deviceList, emptyState, refreshButton } from './dom';
+import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import { deviceList, emptyState, refreshButton } from './dom.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_REFRESH_DEVICES_PATH,
   type SettingsUiDevicesPayload,
-} from '../../../contracts/src/settingsUiApi';
-import { callApi, getApiReadModel, invalidateApiCache, primeApiCache } from './homey';
-import { showToast, showToastError } from './toast';
-import { resolveManagedState, state } from './state';
-import { renderPriorities } from './modes';
-import { refreshPlan } from './plan';
-import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization';
-import { createDeviceRow, createCheckboxLabel } from './components';
-import { logSettingsError, logSettingsWarn } from './logging';
-import { debouncedSetSetting } from './utils';
+} from '../../../contracts/src/settingsUiApi.ts';
+import { callApi, getApiReadModel, invalidateApiCache, primeApiCache } from './homey.ts';
+import { showToast, showToastError } from './toast.ts';
+import { resolveManagedState, state } from './state.ts';
+import { renderPriorities } from './modes.ts';
+import { refreshPlan } from './plan.ts';
+import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization.ts';
+import { createDeviceRow, createCheckboxLabel } from './components.ts';
+import { logSettingsError, logSettingsWarn } from './logging.ts';
+import { debouncedSetSetting } from './utils.ts';
 import {
   supportsManagedDevice,
   supportsPowerDevice,
   supportsTemperatureDevice,
-} from './deviceUtils';
+} from './deviceUtils.ts';
 
 export const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);

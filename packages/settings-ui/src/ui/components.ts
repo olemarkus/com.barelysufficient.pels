@@ -4,8 +4,8 @@
  * Shared component factory functions for consistent UI across all tabs.
  */
 
-import { logSettingsError } from './logging';
-import { setTooltip } from './tooltips';
+import { logSettingsError } from './logging.ts';
+import { setTooltip } from './tooltips.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

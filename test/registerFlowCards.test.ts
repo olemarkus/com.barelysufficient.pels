@@ -6,8 +6,8 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     registerRunListener: (listener: (args: unknown, state?: unknown) => Promise<unknown>) => {
       actionListeners[cardId] = (args) => listener(args);
     },
-    registerArgumentAutocompleteListener: jest.fn(),
-    trigger: jest.fn(),
+    registerArgumentAutocompleteListener: vi.fn(),
+    trigger: vi.fn(),
   });
   const deps: FlowCardDeps = {
     homey: {
@@ -16,33 +16,33 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
         getConditionCard: (_cardId: string) => createCard('condition'),
         getTriggerCard: (_cardId: string) => createCard('trigger'),
       },
-      settings: { get: jest.fn(), set: jest.fn() },
+      settings: { get: vi.fn(), set: vi.fn() },
     },
     resolveModeName: (mode) => mode,
     getAllModes: () => new Set(['Home']),
     getCurrentOperatingMode: () => 'Home',
-    handleOperatingModeChange: jest.fn().mockResolvedValue(undefined),
-    getCurrentPriceLevel: jest.fn() as never,
-    recordPowerSample: jest.fn().mockResolvedValue(undefined),
-    getCapacityGuard: jest.fn(),
-    getHeadroom: jest.fn(() => null),
-    setCapacityLimit: jest.fn(),
-    getSnapshot: jest.fn().mockResolvedValue([]),
-    refreshSnapshot: jest.fn().mockResolvedValue(undefined),
-    reportSteppedLoadActualStep: jest.fn(() => 'changed'),
-    getDeviceLoadSetting: jest.fn().mockResolvedValue(null),
-    setExpectedOverride: jest.fn(() => false),
-    storeFlowPriceData: jest.fn(),
-    rebuildPlan: jest.fn(),
-    evaluateHeadroomForDevice: jest.fn(() => null),
-    loadDailyBudgetSettings: jest.fn(),
-    updateDailyBudgetState: jest.fn(),
-    getCombinedHourlyPrices: jest.fn(() => []),
-    getTimeZone: jest.fn(() => 'Europe/Oslo'),
-    getNow: jest.fn(() => new Date('2026-03-11T10:00:00Z')),
-    log: jest.fn(),
-    logDebug: jest.fn(),
-    error: jest.fn(),
+    handleOperatingModeChange: vi.fn().mockResolvedValue(undefined),
+    getCurrentPriceLevel: vi.fn() as never,
+    recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    getCapacityGuard: vi.fn(),
+    getHeadroom: vi.fn(() => null),
+    setCapacityLimit: vi.fn(),
+    getSnapshot: vi.fn().mockResolvedValue([]),
+    refreshSnapshot: vi.fn().mockResolvedValue(undefined),
+    reportSteppedLoadActualStep: vi.fn(() => 'changed'),
+    getDeviceLoadSetting: vi.fn().mockResolvedValue(null),
+    setExpectedOverride: vi.fn(() => false),
+    storeFlowPriceData: vi.fn(),
+    rebuildPlan: vi.fn(),
+    evaluateHeadroomForDevice: vi.fn(() => null),
+    loadDailyBudgetSettings: vi.fn(),
+    updateDailyBudgetState: vi.fn(),
+    getCombinedHourlyPrices: vi.fn(() => []),
+    getTimeZone: vi.fn(() => 'Europe/Oslo'),
+    getNow: vi.fn(() => new Date('2026-03-11T10:00:00Z')),
+    log: vi.fn(),
+    logDebug: vi.fn(),
+    error: vi.fn(),
     ...overrides,
   };
   return { deps, actionListeners };
@@ -51,7 +51,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
 describe('registerFlowCards', () => {
   it('normalizes non-Error failures from external price flow cards', async () => {
     const { deps, actionListeners } = buildDeps({
-      storeFlowPriceData: jest.fn(() => {
+      storeFlowPriceData: vi.fn(() => {
         throw 'boom';
       }),
     });
@@ -63,15 +63,15 @@ describe('registerFlowCards', () => {
       'Flow: Failed to store today prices from flow tag.',
       expect.any(Error),
     );
-    expect(((deps.error as jest.Mock).mock.calls[0]?.[1] as Error).message).toBe('boom');
+    expect(((deps.error as vi.Mock).mock.calls[0]?.[1] as Error).message).toBe('boom');
   });
 
   it('writes a clean boolean map for budget exemption flow cards without direct rebuild work', async () => {
-    const settingsGet = jest.fn((key: string) => {
+    const settingsGet = vi.fn((key: string) => {
       if (key === 'budget_exempt_devices') return [true];
       return undefined;
     });
-    const settingsSet = jest.fn();
+    const settingsSet = vi.fn();
     const { deps, actionListeners } = buildDeps({
       homey: {
         flow: {
@@ -79,23 +79,23 @@ describe('registerFlowCards', () => {
             registerRunListener: (listener: (args: unknown, state?: unknown) => Promise<unknown>) => {
               actionListeners[cardId] = (args) => listener(args);
             },
-            registerArgumentAutocompleteListener: jest.fn(),
-            trigger: jest.fn(),
+            registerArgumentAutocompleteListener: vi.fn(),
+            trigger: vi.fn(),
           }),
           getConditionCard: (_cardId: string) => ({
-            registerRunListener: jest.fn(),
-            registerArgumentAutocompleteListener: jest.fn(),
-            trigger: jest.fn(),
+            registerRunListener: vi.fn(),
+            registerArgumentAutocompleteListener: vi.fn(),
+            trigger: vi.fn(),
           }),
           getTriggerCard: (_cardId: string) => ({
-            registerRunListener: jest.fn(),
-            registerArgumentAutocompleteListener: jest.fn(),
-            trigger: jest.fn(),
+            registerRunListener: vi.fn(),
+            registerArgumentAutocompleteListener: vi.fn(),
+            trigger: vi.fn(),
           }),
         },
         settings: { get: settingsGet, set: settingsSet },
       } as FlowCardDeps['homey'],
-      getSnapshot: jest.fn().mockResolvedValue([{ id: 'dev-1', name: 'Heater' }]),
+      getSnapshot: vi.fn().mockResolvedValue([{ id: 'dev-1', name: 'Heater' }]),
     });
 
     registerFlowCards(deps);
@@ -110,7 +110,7 @@ describe('registerFlowCards', () => {
 
   it('reports stepped-load actual step and requests a snapshot refresh plus plan rebuild', async () => {
     const { deps, actionListeners } = buildDeps({
-      getSnapshot: jest.fn().mockResolvedValue([
+      getSnapshot: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Tank',
@@ -140,8 +140,8 @@ describe('registerFlowCards', () => {
 
   it('treats an echoed stepped-load step report as a successful no-op', async () => {
     const { deps, actionListeners } = buildDeps({
-      reportSteppedLoadActualStep: jest.fn(() => 'unchanged'),
-      getSnapshot: jest.fn().mockResolvedValue([
+      reportSteppedLoadActualStep: vi.fn(() => 'unchanged'),
+      getSnapshot: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Tank',
@@ -171,7 +171,7 @@ describe('registerFlowCards', () => {
 
   it('maps stepped-load power text to a configured step and strips a trailing W', async () => {
     const { deps, actionListeners } = buildDeps({
-      getSnapshot: jest.fn().mockResolvedValue([
+      getSnapshot: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
           name: 'Tank',
