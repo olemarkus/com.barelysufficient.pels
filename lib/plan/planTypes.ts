@@ -91,6 +91,9 @@ export type DevicePlan = {
     dailySoftLimitKw?: number | null;
     softLimitSource?: 'capacity' | 'daily' | 'both';
     headroomKw: number | null;
+    capacityShortfall?: boolean;
+    shortfallThresholdKw?: number;
+    hardCapHeadroomKw?: number | null;
     hourlyBudgetExhausted?: boolean;
     usedKWh?: number;
     budgetKWh?: number;

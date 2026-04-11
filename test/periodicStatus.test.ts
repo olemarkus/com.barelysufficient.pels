@@ -57,6 +57,7 @@ describe('periodic status used kWh', () => {
       capacityGuard: {
         getLastTotalPower: () => 2.48,
         getSoftLimit: () => 4,
+        getShortfallThreshold: () => 5,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
@@ -72,6 +73,7 @@ describe('periodic status used kWh', () => {
     nowSpy.mockRestore();
 
     expect(log).toContain('softLimit=4.00kW');
+    expect(log).toContain('hardCapHeadroom=2.52kW');
     expect(log).toContain('used=2.52kWh');
     // hourCap=4.0kWh, used=2.52kWh → remaining=1.48kWh (not the full cap)
     expect(log).toContain('hourRemaining=1.5kWh');
@@ -86,6 +88,7 @@ describe('periodic status used kWh', () => {
       capacityGuard: {
         getLastTotalPower: () => 3.0,
         getSoftLimit: () => { getSoftLimitCallCount += 1; return 5.0; },
+        getShortfallThreshold: () => 6,
         isSheddingActive: () => false,
         isInShortfall: () => false,
       },
@@ -96,5 +99,27 @@ describe('periodic status used kWh', () => {
     });
     nowSpy.mockRestore();
     expect(getSoftLimitCallCount).toBe(1);
+  });
+
+  it('reports hard-cap breach amount in periodic status', () => {
+    const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const log = buildPeriodicStatusLog({
+      capacityGuard: {
+        getLastTotalPower: () => 7.4,
+        getSoftLimit: () => 4.8,
+        getShortfallThreshold: () => 6,
+        isSheddingActive: () => true,
+        isInShortfall: () => false,
+      },
+      powerTracker: {},
+      capacitySettings: { limitKw: 6, marginKw: 1.2 },
+      operatingMode: 'Home',
+      capacityDryRun: false,
+    });
+    nowSpy.mockRestore();
+
+    expect(log).toContain('headroom=-2.60kW');
+    expect(log).toContain('hardCapBreachedBy=1.40kW');
   });
 });

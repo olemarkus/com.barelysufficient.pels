@@ -1,3 +1,6 @@
+/* eslint-disable max-lines, max-lines-per-function, max-statements --
+ * Power sample scheduling, backoff, and persistence are kept together for shared state handling.
+ */
 import type Homey from 'homey';
 import type CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
@@ -12,6 +15,9 @@ export type PowerSampleRebuildState = {
   lastMs: number;
   lastRebuildPowerW?: number;
   lastSoftLimitKw?: number;
+  tightNoopStreak?: number;
+  backoffUntilMs?: number;
+  mitigationHoldoffUntilMs?: number;
   pending?: Promise<void>;
   pendingResolve?: () => void;
   timer?: ReturnType<typeof setTimeout>;
@@ -26,6 +32,18 @@ type RebuildDecision = {
   deltaMeaningful: boolean;
   maxIntervalExceeded: boolean;
   headroomTight: boolean;
+  backoffActive: boolean;
+};
+
+type RebuildOutcome = {
+  actionChanged: boolean;
+  appliedActions: boolean;
+  failed: boolean;
+};
+
+type HardCapBreach = {
+  breached: boolean;
+  deficitKw: number;
 };
 
 export function recordDailyBudgetCap(params: {
@@ -49,6 +67,9 @@ export function recordDailyBudgetCap(params: {
 
 const MIN_REBUILD_DELTA_W = 100;
 const MIN_REBUILD_DELTA_RATIO = 0.005; // 0.5% of limit
+const TIGHT_NOOP_BACKOFF_MS = [15_000, 30_000, 60_000];
+const TIGHT_NOOP_BACKOFF_MAX_MS = 120_000;
+const TIGHT_MITIGATION_HOLDOFF_MS = 15_000;
 
 const resolveHeadroomTight = (headroomKw: number | null | undefined): boolean => {
   return typeof headroomKw === 'number' && headroomKw <= 0;
@@ -98,17 +119,27 @@ const resolveRebuildDecision = (params: {
     limitKw,
   });
   const maxIntervalExceeded = maxIntervalMs > 0 && elapsedMs >= maxIntervalMs;
+  const backoffActive = isTightNoopBackoffActive({
+    state,
+    nowMs: Date.now(),
+    headroomTight,
+    isInShortfall,
+    deltaMeaningful,
+  });
   const shouldRebuild = state.lastMs === 0
-    || headroomTight
-    || isInShortfall
-    || deltaMeaningful
-    || maxIntervalExceeded;
+    || (!backoffActive && (
+      headroomTight
+      || isInShortfall
+      || deltaMeaningful
+      || maxIntervalExceeded
+    ));
   return {
     shouldRebuild,
     deltaW,
     deltaMeaningful,
     maxIntervalExceeded,
     headroomTight,
+    backoffActive,
   };
 };
 
@@ -119,12 +150,106 @@ const resolveRebuildReason = (params: {
 }): string => {
   const { state, decision, isInShortfall } = params;
   if (state.lastMs === 0) return 'initial';
-  if (decision.headroomTight) return 'headroom_tight';
   if (isInShortfall) return 'shortfall';
+  if (decision.headroomTight) return 'headroom_tight';
   if (decision.deltaMeaningful) return 'power_delta';
   if (decision.maxIntervalExceeded) return 'max_interval';
   return 'unknown';
 };
+
+const isTightReason = (reason: string): boolean => (
+  reason === 'headroom_tight' || reason === 'shortfall'
+);
+
+function isTightNoopBackoffActive(params: {
+  state: PowerSampleRebuildState;
+  nowMs: number;
+  headroomTight: boolean;
+  isInShortfall?: boolean;
+  deltaMeaningful: boolean;
+}): boolean {
+  const { state, nowMs, headroomTight, isInShortfall, deltaMeaningful } = params;
+  if (!headroomTight && !isInShortfall) return false;
+  if (deltaMeaningful) return false;
+  return isFutureMs(state.backoffUntilMs, nowMs)
+    || isFutureMs(state.mitigationHoldoffUntilMs, nowMs);
+}
+
+const isFutureMs = (value: number | undefined, nowMs: number): boolean => (
+  typeof value === 'number' && nowMs < value
+);
+
+const resolveTightNoopBackoffMs = (streak: number): number => {
+  const index = Math.max(0, streak - 1);
+  return Math.min(
+    TIGHT_NOOP_BACKOFF_MAX_MS,
+    TIGHT_NOOP_BACKOFF_MS[index] ?? TIGHT_NOOP_BACKOFF_MAX_MS,
+  );
+};
+
+const shouldApplyTightNoopBackoff = (reason: string, outcome: RebuildOutcome | void): boolean => {
+  if (!isTightReason(reason) || !outcome) return false;
+  return outcome.actionChanged === false
+    && outcome.appliedActions === false
+    && outcome.failed === false;
+};
+
+const isTightNoopOutcome = (reason: string, outcome: RebuildOutcome | void): boolean => (
+  shouldApplyTightNoopBackoff(reason, outcome)
+);
+
+const shouldApplyTightMitigationHoldoff = (
+  reason: string,
+  outcome: RebuildOutcome | void,
+): boolean => {
+  if (!isTightReason(reason) || !outcome || outcome.failed) return false;
+  return outcome.actionChanged || outcome.appliedActions;
+};
+
+const hasTightNoopBackoffState = (state: PowerSampleRebuildState): boolean => (
+  (state.tightNoopStreak ?? 0) > 0
+  || state.backoffUntilMs !== undefined
+  || state.mitigationHoldoffUntilMs !== undefined
+);
+
+const updateTightRebuildSuppression = (
+  snapshot: PowerSampleRebuildState,
+  reason: string,
+  outcome: RebuildOutcome | void,
+  nowMs: number,
+): PowerSampleRebuildState => {
+  if (shouldApplyTightMitigationHoldoff(reason, outcome)) {
+    return {
+      ...resetTightNoopBackoff(snapshot),
+      mitigationHoldoffUntilMs: nowMs + TIGHT_MITIGATION_HOLDOFF_MS,
+    };
+  }
+  if (!shouldApplyTightNoopBackoff(reason, outcome)) {
+    return resetTightNoopBackoff(snapshot);
+  }
+  const tightNoopStreak = (snapshot.tightNoopStreak ?? 0) + 1;
+  const backoffMs = resolveTightNoopBackoffMs(tightNoopStreak);
+  incPerfCounter('plan_rebuild_tight_noop_total');
+  incPerfCounter(`plan_rebuild_tight_noop_streak.${Math.min(tightNoopStreak, 4)}_total`);
+  return {
+    ...snapshot,
+    tightNoopStreak,
+    backoffUntilMs: nowMs + backoffMs,
+    mitigationHoldoffUntilMs: undefined,
+  };
+};
+
+function resetTightNoopBackoff(snapshot: PowerSampleRebuildState): PowerSampleRebuildState {
+  if (hasTightNoopBackoffState(snapshot)) {
+    incPerfCounter('plan_rebuild_tight_noop_backoff_reset_total');
+  }
+  return {
+    ...snapshot,
+    tightNoopStreak: 0,
+    backoffUntilMs: undefined,
+    mitigationHoldoffUntilMs: undefined,
+  };
+}
 
 const incReasonCounter = (base: string, reason: string): void => {
   incPerfCounter(`${base}.${reason}_total`);
@@ -204,7 +329,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
   setState: (state: PowerSampleRebuildState) => void;
   minIntervalMs: number;
   maxIntervalMs: number;
-  rebuildPlanFromCache: (reason?: string) => Promise<void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<RebuildOutcome | void>;
   logError: (error: Error) => void;
   currentPowerW?: number;
   powerDeltaW?: number;
@@ -212,6 +337,8 @@ export function schedulePlanRebuildFromPowerSample(params: {
   softLimitKw?: number;
   headroomKw?: number | null;
   isInShortfall?: boolean;
+  hardCapBreach?: HardCapBreach;
+  onTightNoopHardCapBreach?: (deficitKw: number) => Promise<void>;
 }): Promise<void> {
   const {
     getState,
@@ -226,6 +353,8 @@ export function schedulePlanRebuildFromPowerSample(params: {
     softLimitKw,
     headroomKw,
     isInShortfall,
+    hardCapBreach,
+    onTightNoopHardCapBreach,
   } = params;
   const state = getState();
   const now = Date.now();
@@ -248,12 +377,24 @@ export function schedulePlanRebuildFromPowerSample(params: {
   });
 
   if (!decision.shouldRebuild) {
+    if (!decision.headroomTight && !isInShortfall && hasTightNoopBackoffState(state)) {
+      setState(resetTightNoopBackoff(state));
+    }
     incPerfCounters([
       'plan_rebuild_skipped_total',
       'plan_rebuild_skipped_insignificant_total',
     ]);
+    if (decision.backoffActive) {
+      incPerfCounter('plan_rebuild_skipped_tight_noop_backoff_total');
+      if (isFutureMs(state.mitigationHoldoffUntilMs, now)) {
+        incPerfCounter('plan_rebuild_skipped_tight_mitigation_holdoff_total');
+      }
+    }
     // Skip rebuild, but don't update lastMs or state, so we stay ready.
     return Promise.resolve();
+  }
+  if (decision.deltaMeaningful && hasTightNoopBackoffState(state)) {
+    setState(resetTightNoopBackoff(state));
   }
   recordPowerSampleRebuildRequest(triggerReason);
 
@@ -261,8 +402,22 @@ export function schedulePlanRebuildFromPowerSample(params: {
     recordPowerSampleRebuildExecution(reason);
     const nextPowerW = resolvePendingPowerW(snapshot, currentPowerW);
     const nextSoftLimitKw = resolvePendingSoftLimitKw(snapshot, softLimitKw);
-    setState(buildPostRebuildState(snapshot, nextPowerW, nextSoftLimitKw));
-    return rebuildPlanFromCache(reason);
+    const postRebuildState = buildPostRebuildState(snapshot, nextPowerW, nextSoftLimitKw);
+    setState(postRebuildState);
+    try {
+      const outcome = await rebuildPlanFromCache(reason);
+      if (
+        isTightNoopOutcome(reason, outcome)
+        && hardCapBreach?.breached
+        && !isInShortfall
+      ) {
+        await onTightNoopHardCapBreach?.(hardCapBreach.deficitKw);
+      }
+      setState(updateTightRebuildSuppression(getState(), reason, outcome, Date.now()));
+    } catch (error) {
+      setState(resetTightNoopBackoff(getState()));
+      throw error;
+    }
   };
 
   if (elapsedMs >= minIntervalMs) {
@@ -325,7 +480,7 @@ export function schedulePlanRebuildFromSignal(params: {
   minIntervalMs: number;
   stableMinIntervalMs?: number;
   maxIntervalMs: number;
-  rebuildPlanFromCache: (reason?: string) => Promise<void>;
+  rebuildPlanFromCache: (reason?: string) => Promise<RebuildOutcome | void>;
   logError: (error: Error) => void;
   currentPowerW?: number;
   powerDeltaW?: number;
@@ -353,6 +508,12 @@ export function schedulePlanRebuildFromSignal(params: {
   const fallbackHeadroomKw = typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null;
   const headroomKw = guardPower !== null ? softLimitKw - guardPower : fallbackHeadroomKw;
   const isInShortfall = capacityGuard?.isInShortfall() ?? false;
+  const hardCapBreach = resolveHardCapBreachFromSignal({
+    capacityGuard,
+    capacitySettings,
+    currentPowerW,
+    guardPower,
+  });
   const headroomTight = resolveHeadroomTight(headroomKw);
   const stableIntervalMs = typeof stableMinIntervalMs === 'number' ? stableMinIntervalMs : minIntervalMs;
   const effectiveMinIntervalMs = (!headroomTight && !isInShortfall)
@@ -374,10 +535,39 @@ export function schedulePlanRebuildFromSignal(params: {
     softLimitKw,
     headroomKw,
     isInShortfall,
+    hardCapBreach,
+    onTightNoopHardCapBreach: async (deficitKw) => {
+      await capacityGuard?.checkShortfall(false, deficitKw);
+    },
   }).finally(() => {
     addPerfDuration('power_sample_rebuild_ms', Date.now() - rebuildStart);
   });
 }
+
+const resolveHardCapBreach = (
+  totalPowerKw: number | null,
+  shortfallThresholdKw: number,
+): HardCapBreach => {
+  if (totalPowerKw === null || !Number.isFinite(totalPowerKw)) {
+    return { breached: false, deficitKw: 0 };
+  }
+  const deficitKw = Math.max(0, totalPowerKw - shortfallThresholdKw);
+  return { breached: deficitKw > 0, deficitKw };
+};
+
+const resolveHardCapBreachFromSignal = (params: {
+  capacityGuard?: CapacityGuard;
+  capacitySettings: { limitKw: number };
+  currentPowerW?: number;
+  guardPower: number | null;
+}): HardCapBreach => {
+  const { capacityGuard, capacitySettings, currentPowerW, guardPower } = params;
+  const shortfallThresholdKw = capacityGuard?.getShortfallThreshold() ?? capacitySettings.limitKw;
+  const totalPowerKw = guardPower ?? (
+    typeof currentPowerW === 'number' ? currentPowerW / 1000 : null
+  );
+  return resolveHardCapBreach(totalPowerKw, shortfallThresholdKw);
+};
 
 export async function recordPowerSampleForApp(params: {
   currentPowerW: number;

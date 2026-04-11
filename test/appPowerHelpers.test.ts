@@ -519,6 +519,222 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(state.pending).toBeUndefined();
     expect(state.timer).toBeUndefined();
   });
+
+  it('backs off repeated tight-headroom no-op rebuilds', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 9500, lastSoftLimitKw: 9 };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9500,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.5,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(state.tightNoopStreak).toBe(1);
+    expect(state.backoffUntilMs).toBe(Date.now() + 15_000);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9500,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.5,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets meaningful power deltas bypass tight-headroom no-op backoff', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now(),
+      lastRebuildPowerW: 9500,
+      lastSoftLimitKw: 9,
+      tightNoopStreak: 1,
+      backoffUntilMs: Date.now() + 15_000,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9700,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.7,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets tight-headroom no-op backoff when a rebuild applies actions', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now(),
+      lastRebuildPowerW: 9500,
+      lastSoftLimitKw: 9,
+      tightNoopStreak: 1,
+      backoffUntilMs: Date.now() - 1,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: true,
+      appliedActions: true,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9500,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.5,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(state.tightNoopStreak).toBe(0);
+    expect(state.backoffUntilMs).toBeUndefined();
+    expect(state.mitigationHoldoffUntilMs).toBe(Date.now() + 15_000);
+  });
+
+  it('holds off the first unchanged shortfall sample after mitigation applies', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 9500, lastSoftLimitKw: 9 };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: true,
+      appliedActions: true,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9500,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.5,
+      isInShortfall: true,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9500,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.5,
+      isInShortfall: true,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets meaningful power deltas bypass post-mitigation holdoff', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now(),
+      lastRebuildPowerW: 9500,
+      lastSoftLimitKw: 9,
+      mitigationHoldoffUntilMs: Date.now() + 15_000,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9700,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.7,
+      isInShortfall: true,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses shortfall as the rebuild reason while shortfall is active', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 9500, lastSoftLimitKw: 9 };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9500,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.5,
+      isInShortfall: true,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('shortfall');
+  });
 });
 
 describe('schedulePlanRebuildFromSignal', () => {
@@ -580,6 +796,74 @@ describe('schedulePlanRebuildFromSignal', () => {
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('enters shortfall when a tight no-op rebuild leaves the hard cap breached', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 11_000, lastSoftLimitKw: 9.5 };
+    const onShortfall = vi.fn();
+    const capacityGuard = new CapacityGuard({
+      limitKw: 10,
+      softMarginKw: 0.5,
+      onShortfall,
+    });
+    capacityGuard.reportTotalPower(11);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 11_000,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard,
+    });
+
+    expect(onShortfall).toHaveBeenCalledWith(1);
+    expect(capacityGuard.isInShortfall()).toBe(true);
+  });
+
+  it('does not enter shortfall for soft-limit-only no-op rebuilds', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9600, lastSoftLimitKw: 9.5 };
+    const onShortfall = vi.fn();
+    const capacityGuard = new CapacityGuard({
+      limitKw: 10,
+      softMarginKw: 0.5,
+      onShortfall,
+    });
+    capacityGuard.reportTotalPower(9.6);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9600,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard,
+    });
+
+    expect(onShortfall).not.toHaveBeenCalled();
+    expect(capacityGuard.isInShortfall()).toBe(false);
   });
 
   it('records rebuild timing after the async rebuild settles', async () => {
