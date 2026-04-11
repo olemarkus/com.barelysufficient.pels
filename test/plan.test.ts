@@ -2486,27 +2486,30 @@ describe('Device plan snapshot', () => {
       child: () => (app as any).planEngine.builder.deps.structuredLog,
     };
 
-    // First power sample - should plan the swap
-    await (app as any).recordPowerSample(3000);
-    await flushPromises(); // Let async shedding attempt complete
+    try {
+      // First power sample - should plan the swap
+      await (app as any).recordPowerSample(3000);
+      await flushPromises(); // Let async shedding attempt complete
 
-    expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(1);
+      expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(1);
 
-    // Clear events for second sample
-    structuredEvents.length = 0;
+      // Clear events for second sample
+      structuredEvents.length = 0;
 
-    // Second power sample - should NOT re-plan the same swap
-    // The swap is already pending (dev-high in pendingSwapTargets)
-    await (app as any).recordPowerSample(3000);
-    await flushPromises();
+      // Second power sample - should NOT re-plan the same swap
+      // The swap is already pending (dev-high in pendingSwapTargets)
+      await (app as any).recordPowerSample(3000);
+      await flushPromises();
 
-    // BUG: Without the fix, this would be 1 (re-planning the same swap)
-    // With the fix, this should be 0 (swap already pending)
-    expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(0);
-    expect(stderrSpy).toHaveBeenCalled();
-    stderrSpy.mockRestore();
-    putSpy.mockRestore();
-    errorSpy.mockRestore();
+      // BUG: Without the fix, this would be 1 (re-planning the same swap)
+      // With the fix, this should be 0 (swap already pending)
+      expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(0);
+      expect(stderrSpy).toHaveBeenCalled();
+    } finally {
+      stderrSpy.mockRestore();
+      putSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   it('does not attempt another swap for the same target without a new measurement', async () => {

@@ -29,8 +29,6 @@ const settingsPrefixes = [
 ];
 
 const runtimeFiles = unique(files.filter((file) => matches(file, runtimePrefixes)));
-const runtimeDomFiles = runtimeFiles.filter((file) => file === 'test/planPriceWidgetBrowser.test.ts');
-const runtimeNodeFiles = runtimeFiles.filter((file) => file !== 'test/planPriceWidgetBrowser.test.ts');
 const settingsFiles = unique(files.filter((file) => matches(file, settingsPrefixes)))
   .map((file) => file.startsWith('packages/settings-ui/')
     ? file.slice('packages/settings-ui/'.length)
@@ -43,24 +41,23 @@ const run = (command, args, options = {}) => {
   if (typeof result.status === 'number' && result.status !== 0) process.exit(result.status);
 };
 
-if (runtimeNodeFiles.length > 0) {
+if (runtimeFiles.length > 0) {
   run('npx', [
     'vitest',
     'related',
     '--config',
     'vitest.config.fast.ts',
     '--passWithNoTests',
-    ...runtimeNodeFiles,
+    ...runtimeFiles,
   ]);
-}
 
-if (runtimeDomFiles.length > 0) {
   run('npx', [
     'vitest',
-    'run',
+    'related',
     '--config',
     'vitest.config.dom.fast.ts',
-    ...runtimeDomFiles,
+    '--passWithNoTests',
+    ...runtimeFiles,
   ]);
 }
 
