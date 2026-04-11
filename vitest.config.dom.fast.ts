@@ -1,37 +1,3 @@
-import { defineConfig } from 'vitest/config';
-import { resolve } from 'node:path';
+import domConfig from './vitest.config.dom';
 
-export default defineConfig({
-  resolve: {
-    alias: {
-      homey: resolve(__dirname, 'test/mocks/homey.ts'),
-      '../../packages/contracts/src/targetCapabilities': resolve(
-        __dirname,
-        'test/mocks/contracts-targetCapabilities.ts',
-      ),
-      'echarts/core.js': resolve(__dirname, 'test/mocks/echarts-subpath-shim.ts'),
-      'echarts/core': resolve(__dirname, 'test/mocks/echarts-subpath-shim.ts'),
-      'echarts/charts.js': resolve(__dirname, 'test/mocks/echarts-subpath-shim.ts'),
-      'echarts/charts': resolve(__dirname, 'test/mocks/echarts-subpath-shim.ts'),
-      'echarts/components.js': resolve(__dirname, 'test/mocks/echarts-subpath-shim.ts'),
-      'echarts/components': resolve(__dirname, 'test/mocks/echarts-subpath-shim.ts'),
-      'echarts/renderers.js': resolve(__dirname, 'test/mocks/echarts-subpath-shim.ts'),
-      'echarts/renderers': resolve(__dirname, 'test/mocks/echarts-subpath-shim.ts'),
-    },
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    include: ['test/planPriceWidgetBrowser.test.ts'],
-    setupFiles: ['test/setup.ts'],
-    clearMocks: true,
-    testTimeout: 10_000,
-    pool: 'forks',
-    maxWorkers: 1,
-    execArgv: ['--disable-warning=MODULE_TYPELESS_PACKAGE_JSON'],
-    silent: true,
-    coverage: {
-      enabled: false,
-    },
-  },
-});
+export default domConfig;

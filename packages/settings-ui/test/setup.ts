@@ -1,6 +1,7 @@
 import https from 'https';
 import { EventEmitter } from 'events';
 import type { MockInstance } from 'vitest';
+import { installCanvasContextStub } from '../../../test/utils/canvasContextStub.ts';
 
 let allowConsoleError = false;
 export const setAllowConsoleError = (allow: boolean): void => {
@@ -16,25 +17,6 @@ let hadOriginalFetch = false;
 let originalWindowFetch: typeof window.fetch | undefined;
 let hadOriginalWindowFetch = false;
 const originalConsoleError = console.error;
-const canvasContextStubMarker = Symbol.for('pels.test.canvasContextStub');
-
-const installCanvasContextStub = () => {
-  if (typeof HTMLCanvasElement === 'undefined') return;
-  const current = HTMLCanvasElement.prototype.getContext as typeof HTMLCanvasElement.prototype.getContext & {
-    [canvasContextStubMarker]?: boolean;
-  };
-  if (current[canvasContextStubMarker]) return;
-  const getContext = Object.assign(
-    () => ({
-      measureText: (text: string) => ({ width: text.length * 8 }),
-    }),
-    { [canvasContextStubMarker]: true },
-  );
-  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
-    configurable: true,
-    value: getContext,
-  });
-};
 
 const mockHttpsGetImplementation = (): typeof https.get => (
   ((url: unknown, optionsOrCallback?: unknown, callbackMaybe?: unknown) => {
