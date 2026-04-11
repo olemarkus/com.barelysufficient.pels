@@ -7,11 +7,12 @@ const echarts = require('echarts') as {
 };
 
 const noopInstaller = () => {
-  // Jest runtime already loads full ECharts CJS bundle; installers can be no-op.
+  // Vitest aliases ECharts subpath modules to the CJS bundle; installers can be no-op.
 };
 
 export const init = echarts.init;
 export const use = echarts.use;
+
 const fallbackEncodeHtml = (value: string): string => (
   value
     .replace(/&/g, '&amp;')
@@ -20,6 +21,7 @@ const fallbackEncodeHtml = (value: string): string => (
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 );
+
 const encodeHTML = echarts.format?.encodeHTML ?? fallbackEncodeHtml;
 export const format = { encodeHTML };
 

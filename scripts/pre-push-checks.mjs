@@ -32,6 +32,27 @@ const QUICK_PLAYWRIGHT_PATHS = [
   'tokens/',
 ];
 
+const RUNTIME_PATHS = [
+  'app.ts',
+  'api.ts',
+  'drivers/',
+  'flowCards/',
+  'lib/',
+  'test/',
+  'packages/contracts/src/',
+  'packages/shared-domain/src/',
+];
+
+const VALIDATE_PATHS = [
+  '.homeycompose/',
+  'app.json',
+  'drivers/',
+  'flowCards/',
+  'settings/',
+  'widgets/',
+  'scripts/check-homey-packaging.mjs',
+];
+
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 
 const tryGit = (...args) => {
@@ -123,6 +144,16 @@ const runCommand = (command, args) => {
   }
 };
 
+const runCommands = (commands) => {
+  const seen = new Set();
+  for (const [command, args] of commands) {
+    const key = `${command}\0${args.join('\0')}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    runCommand(command, args);
+  }
+};
+
 const main = () => {
   const pushRefs = parsePushRefs();
   if (pushRefs.length === 0) {
@@ -143,17 +174,38 @@ const main = () => {
     return;
   }
 
+  const commands = [];
+
   if (matchesAnyPath(changedFiles, FULL_PLAYWRIGHT_PATHS)) {
-    runCommand('npm', ['run', 'ci:test:playwright']);
+    commands.push(
+      ['npm', ['run', 'ci:test:settings-ui']],
+      ['npm', ['run', 'ci:test:playwright']],
+    );
+  } else if (matchesAnyPath(changedFiles, QUICK_PLAYWRIGHT_PATHS)) {
+    commands.push(
+      ['npm', ['run', 'ci:test:settings-ui']],
+      ['npm', ['run', 'ci:test:playwright:quick']],
+    );
+  }
+
+  if (matchesAnyPath(changedFiles, RUNTIME_PATHS)) {
+    commands.push(
+      ['npm', ['run', 'lint:runtime']],
+      ['npm', ['run', 'typecheck:unused']],
+      ['npm', ['run', 'ci:test:runtime']],
+    );
+  }
+
+  if (matchesAnyPath(changedFiles, VALIDATE_PATHS)) {
+    commands.push(['npm', ['run', 'validate']]);
+  }
+
+  if (commands.length > 0) {
+    runCommands(commands);
     return;
   }
 
-  if (matchesAnyPath(changedFiles, QUICK_PLAYWRIGHT_PATHS)) {
-    runCommand('npm', ['run', 'ci:test:playwright:quick']);
-    return;
-  }
-
-  console.log('pre-push: no settings UI or CI wiring changes detected; skipping extra local checks');
+  console.log('pre-push: no runtime, settings UI, packaging, or CI wiring changes detected; skipping extra local checks');
 };
 
 main();

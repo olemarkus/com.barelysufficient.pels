@@ -106,11 +106,13 @@ describe('fetchLivePowerReport', () => {
   });
 
   it('returns empty results on API error', async () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockRejectedValue(new Error('API down'));
 
     const result = await fetchLivePowerReport({ logger });
 
     expect(result.byDeviceId).toEqual({});
     expect(result.homePowerW).toBeNull();
+    expect(stderrSpy).toHaveBeenCalled();
   });
 });

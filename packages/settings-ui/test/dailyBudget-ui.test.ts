@@ -99,7 +99,7 @@ const buildDailyBudgetPayload = () => ({
 
 describe('daily budget chart render', () => {
   beforeEach(() => {
-    vi.unmock('../src/ui/dailyBudgetChartEcharts.ts');
+    vi.doUnmock('../src/ui/dailyBudgetChartEcharts.ts');
     vi.resetModules();
     setupDailyBudgetDom();
   });

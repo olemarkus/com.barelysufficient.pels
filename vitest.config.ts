@@ -21,14 +21,19 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'jsdom',
+    environment: 'node',
     include: ['test/**/*.test.ts'],
-    exclude: ['test/settings-ui.test.ts', 'test/**/*.perf.test.ts'],
+    exclude: [
+      'test/settings-ui.test.ts',
+      'test/planPriceWidgetBrowser.test.ts',
+      'test/**/*.perf.test.ts',
+    ],
     setupFiles: ['test/setup.ts'],
     clearMocks: true,
     testTimeout: 10_000,
     pool: 'forks',
     maxWorkers: 1,
+    execArgv: ['--disable-warning=MODULE_TYPELESS_PACKAGE_JSON'],
     silent: true,
     coverage: {
       enabled: true,

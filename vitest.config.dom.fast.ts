@@ -21,13 +21,8 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'node',
-    include: ['test/**/*.test.ts'],
-    exclude: [
-      'test/settings-ui.test.ts',
-      'test/planPriceWidgetBrowser.test.ts',
-      'test/**/*.perf.test.ts',
-    ],
+    environment: 'jsdom',
+    include: ['test/planPriceWidgetBrowser.test.ts'],
     setupFiles: ['test/setup.ts'],
     clearMocks: true,
     testTimeout: 10_000,
