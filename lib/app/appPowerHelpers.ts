@@ -12,6 +12,7 @@ export type PowerSampleRebuildState = {
   lastMs: number;
   lastRebuildPowerW?: number;
   lastSoftLimitKw?: number;
+  lastRebuildReason?: string;
   pending?: Promise<void>;
   pendingResolve?: () => void;
   timer?: ReturnType<typeof setTimeout>;
@@ -26,6 +27,7 @@ type RebuildDecision = {
   deltaMeaningful: boolean;
   maxIntervalExceeded: boolean;
   isDangerZone: boolean;
+  isDangerZoneEntry: boolean;
   headroomTight: boolean;
 };
 
@@ -107,8 +109,14 @@ const resolveRebuildDecision = (params: {
     limitKw,
   });
   const maxIntervalExceeded = maxIntervalMs > 0 && elapsedMs >= maxIntervalMs;
+  // Only treat danger_zone as an unconditional rebuild trigger when entering it for the
+  // first time (previous rebuild was not already danger_zone). If we are already rebuilding
+  // in danger_zone every cycle but taking no action, subsequent samples fall through to the
+  // deltaMeaningful / maxIntervalExceeded gates, which limits repeated no-op rebuilds to at
+  // most one per maxIntervalMs rather than one per power sample.
+  const isDangerZoneEntry = isDangerZone && state.lastRebuildReason !== 'danger_zone';
   const shouldRebuild = state.lastMs === 0
-    || isDangerZone
+    || isDangerZoneEntry
     || headroomTight
     || isInShortfall
     || deltaMeaningful
@@ -119,6 +127,7 @@ const resolveRebuildDecision = (params: {
     deltaMeaningful,
     maxIntervalExceeded,
     isDangerZone,
+    isDangerZoneEntry,
     headroomTight,
   };
 };
@@ -164,10 +173,12 @@ const buildPostRebuildState = (
   snapshot: PowerSampleRebuildState,
   nextPowerW: number | undefined,
   nextSoftLimitKw: number | undefined,
+  reason: string,
 ): PowerSampleRebuildState => ({
   ...snapshot,
   lastRebuildPowerW: typeof nextPowerW === 'number' ? nextPowerW : snapshot.lastRebuildPowerW,
   lastSoftLimitKw: typeof nextSoftLimitKw === 'number' ? nextSoftLimitKw : snapshot.lastSoftLimitKw,
+  lastRebuildReason: reason,
   pendingPowerW: undefined,
   pendingSoftLimitKw: undefined,
   pendingReason: undefined,
@@ -263,7 +274,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
     incPerfCounters([
       'plan_rebuild_skipped_total',
       'plan_rebuild_skipped_insignificant_total',
-      'plan_rebuild_skipped_reason.stable_total',
+      `plan_rebuild_skipped_reason.${decision.isDangerZone ? 'danger_zone_sustained' : 'stable'}_total`,
     ]);
     // Skip rebuild, but don't update lastMs or state, so we stay ready.
     return Promise.resolve();
@@ -274,7 +285,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
     recordPowerSampleRebuildExecution(reason);
     const nextPowerW = resolvePendingPowerW(snapshot, currentPowerW);
     const nextSoftLimitKw = resolvePendingSoftLimitKw(snapshot, softLimitKw);
-    setState(buildPostRebuildState(snapshot, nextPowerW, nextSoftLimitKw));
+    setState(buildPostRebuildState(snapshot, nextPowerW, nextSoftLimitKw, reason));
     return rebuildPlanFromCache(reason);
   };
 

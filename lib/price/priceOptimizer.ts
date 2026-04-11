@@ -33,6 +33,7 @@ export type PriceOptimizerDeps = {
 export class PriceOptimizer {
   private interval?: ReturnType<typeof setInterval>;
   private startTimeout?: ReturnType<typeof setTimeout>;
+  private lastMode: string | null = null;
 
   constructor(private deps: PriceOptimizerDeps) {}
 
@@ -72,8 +73,11 @@ export class PriceOptimizer {
       } else if (isExpensive) {
         hourLabel = 'expensive';
       }
+      const previousMode = this.lastMode;
+      this.lastMode = hourLabel;
       this.deps.structuredLog?.info({
         event: 'price_optimization_completed',
+        previousMode,
         mode: hourLabel,
         devicesCount: Object.keys(settings).length,
         currentPriceAvailable: currentPrice != null,
