@@ -26,7 +26,6 @@ type RebuildDecision = {
   deltaMeaningful: boolean;
   maxIntervalExceeded: boolean;
   isDangerZone: boolean;
-  isDangerZoneEntry: boolean;
   headroomTight: boolean;
 };
 
@@ -108,17 +107,7 @@ const resolveRebuildDecision = (params: {
     limitKw,
   });
   const maxIntervalExceeded = maxIntervalMs > 0 && elapsedMs >= maxIntervalMs;
-  // Only treat danger_zone as an unconditional rebuild trigger on entry. "Entry" is defined
-  // as: the current sample is in danger_zone but the last rebuild was not. This means a brief
-  // sub-threshold dip that doesn't trigger its own rebuild will not be detected as re-entry —
-  // power must stay sub-threshold long enough to produce a rebuild before we recognise the
-  // next crossing as a new entry. That trade-off is acceptable: the fallback deltaMeaningful /
-  // maxIntervalExceeded guards still fire within 30 s.
-  const wasPreviouslyInDangerZone = state.lastRebuildPowerW !== undefined
-    && resolveDangerZone(state.lastRebuildPowerW, limitKw);
-  const isDangerZoneEntry = isDangerZone && !wasPreviouslyInDangerZone;
   const shouldRebuild = state.lastMs === 0
-    || isDangerZoneEntry
     || headroomTight
     || isInShortfall
     || deltaMeaningful
@@ -129,7 +118,6 @@ const resolveRebuildDecision = (params: {
     deltaMeaningful,
     maxIntervalExceeded,
     isDangerZone,
-    isDangerZoneEntry,
     headroomTight,
   };
 };
