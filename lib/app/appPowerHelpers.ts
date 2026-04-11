@@ -25,7 +25,6 @@ type RebuildDecision = {
   deltaW: number;
   deltaMeaningful: boolean;
   maxIntervalExceeded: boolean;
-  isDangerZone: boolean;
   headroomTight: boolean;
 };
 
@@ -48,15 +47,8 @@ export function recordDailyBudgetCap(params: {
   return { ...powerTracker, dailyBudgetCaps: nextCaps };
 }
 
-const DANGER_ZONE_MARGIN_RATIO = 0.1; // 10%
 const MIN_REBUILD_DELTA_W = 100;
 const MIN_REBUILD_DELTA_RATIO = 0.005; // 0.5% of limit
-
-const resolveDangerZone = (currentPowerW: number | undefined, limitKw: number): boolean => {
-  if (typeof currentPowerW !== 'number') return false;
-  const dangerLimitW = (limitKw * (1 - DANGER_ZONE_MARGIN_RATIO)) * 1000;
-  return currentPowerW >= dangerLimitW;
-};
 
 const resolveHeadroomTight = (headroomKw: number | null | undefined): boolean => {
   return typeof headroomKw === 'number' && headroomKw <= 0;
@@ -98,7 +90,6 @@ const resolveRebuildDecision = (params: {
     headroomKw,
     isInShortfall,
   } = params;
-  const isDangerZone = resolveDangerZone(currentPowerW, limitKw);
   const headroomTight = resolveHeadroomTight(headroomKw);
   const { deltaW, deltaMeaningful } = resolvePowerDelta({
     currentPowerW,
@@ -117,7 +108,6 @@ const resolveRebuildDecision = (params: {
     deltaW,
     deltaMeaningful,
     maxIntervalExceeded,
-    isDangerZone,
     headroomTight,
   };
 };
@@ -129,7 +119,6 @@ const resolveRebuildReason = (params: {
 }): string => {
   const { state, decision, isInShortfall } = params;
   if (state.lastMs === 0) return 'initial';
-  if (decision.isDangerZone) return 'danger_zone';
   if (decision.headroomTight) return 'headroom_tight';
   if (isInShortfall) return 'shortfall';
   if (decision.deltaMeaningful) return 'power_delta';
@@ -262,7 +251,6 @@ export function schedulePlanRebuildFromPowerSample(params: {
     incPerfCounters([
       'plan_rebuild_skipped_total',
       'plan_rebuild_skipped_insignificant_total',
-      `plan_rebuild_skipped_reason.${decision.isDangerZone ? 'danger_zone_sustained' : 'stable'}_total`,
     ]);
     // Skip rebuild, but don't update lastMs or state, so we stay ready.
     return Promise.resolve();
@@ -365,10 +353,9 @@ export function schedulePlanRebuildFromSignal(params: {
   const fallbackHeadroomKw = typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null;
   const headroomKw = guardPower !== null ? softLimitKw - guardPower : fallbackHeadroomKw;
   const isInShortfall = capacityGuard?.isInShortfall() ?? false;
-  const isDangerZone = resolveDangerZone(currentPowerW, capacitySettings.limitKw);
   const headroomTight = resolveHeadroomTight(headroomKw);
   const stableIntervalMs = typeof stableMinIntervalMs === 'number' ? stableMinIntervalMs : minIntervalMs;
-  const effectiveMinIntervalMs = (!isDangerZone && !headroomTight && !isInShortfall)
+  const effectiveMinIntervalMs = (!headroomTight && !isInShortfall)
     ? Math.max(minIntervalMs, stableIntervalMs)
     : minIntervalMs;
   if (effectiveMinIntervalMs > minIntervalMs) {
