@@ -44,6 +44,9 @@ export type SettingsUiDevicesPayload = {
 export type SettingsUiPowerStatus = {
   lastPowerUpdate?: number | null;
   priceLevel?: string | null;
+  capacityShortfall?: boolean;
+  shortfallThresholdKw?: number;
+  hardCapHeadroomKw?: number | null;
 };
 
 export type SettingsUiPowerPayload = {

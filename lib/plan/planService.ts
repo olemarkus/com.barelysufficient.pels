@@ -35,6 +35,22 @@ import type { PlanActuationMode } from './planExecutor';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
+const buildPlanHeadroomLogFields = (plan: DevicePlan | null): Record<string, number | boolean | null> => {
+  const meta = plan?.meta;
+  if (!meta) return {};
+  const softHeadroomKw = typeof meta.headroomKw === 'number' ? meta.headroomKw : null;
+  const hardCapHeadroomKw = typeof meta.hardCapHeadroomKw === 'number' ? meta.hardCapHeadroomKw : null;
+  return {
+    totalKw: typeof meta.totalKw === 'number' ? meta.totalKw : null,
+    softLimitKw: typeof meta.softLimitKw === 'number' ? meta.softLimitKw : null,
+    softHeadroomKw,
+    shortfallThresholdKw: typeof meta.shortfallThresholdKw === 'number' ? meta.shortfallThresholdKw : null,
+    hardCapHeadroomKw,
+    hardCapBreached: hardCapHeadroomKw !== null ? hardCapHeadroomKw < 0 : false,
+    capacityShortfall: meta.capacityShortfall === true,
+  };
+};
+
 export type PlanServiceDeps = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;
@@ -209,7 +225,7 @@ export class PlanService {
     return this.deps.planEngine.syncHeadroomCardTrackedUsage(params);
   }
 
-  async rebuildPlanFromCache(reason = 'unspecified'): Promise<void> {
+  async rebuildPlanFromCache(reason = 'unspecified'): Promise<PlanRebuildOutcome> {
     const enqueuedAt = Date.now();
     this.queuedRebuilds += 1;
     const queueDepth = this.queuedRebuilds;
@@ -221,17 +237,21 @@ export class PlanService {
       incPerfCounter('plan_rebuild_queue_depth_ge_4_total');
     }
 
-    await this.enqueuePlanOperation(
+    const fallbackOutcome = {
+      ...createPlanRebuildOutcome(this.deps.getCapacityDryRun()),
+      failed: true,
+    };
+    return this.enqueuePlanOperation(
       async () => {
         const waitMs = Date.now() - enqueuedAt;
         addPerfDuration('plan_rebuild_queue_wait_ms', waitMs);
         if (waitMs > 0) {
           incPerfCounter('plan_rebuild_queue_waited_total');
         }
-        await this.performPlanRebuild({ reason, queueWaitMs: waitMs, queueDepth });
+        return this.performPlanRebuild({ reason, queueWaitMs: waitMs, queueDepth });
       },
       'Failed to rebuild plan',
-      undefined,
+      fallbackOutcome,
       () => {
         this.queuedRebuilds = Math.max(0, this.queuedRebuilds - 1);
       },
@@ -437,7 +457,7 @@ export class PlanService {
     reason: string;
     queueWaitMs: number;
     queueDepth: number;
-  }): Promise<void> {
+  }): Promise<PlanRebuildOutcome> {
     const { reason, queueWaitMs, queueDepth } = params;
     const isDryRun = this.deps.getCapacityDryRun();
     const rebuildId = `rb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -472,12 +492,14 @@ export class PlanService {
             hadShedding: outcome.hadShedding,
             appliedActions: outcome.appliedActions,
             failed: outcome.failed,
+            ...buildPlanHeadroomLogFields(this.latestPlanSnapshot),
           });
         }
       }
     };
 
     await withRebuildContext(rebuildId, run);
+    return outcome;
   }
 
   private async executePlanRebuild(

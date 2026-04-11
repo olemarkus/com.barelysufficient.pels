@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Plan building keeps context, overshoot tracking, and meta construction together. */
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
@@ -32,6 +33,11 @@ import {
 } from './planDailyBudgetWindow';
 import { recordActivationSetback } from './planActivationBackoff';
 import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
+
+type ShortfallMeta = Pick<
+  DevicePlan['meta'],
+  'capacityShortfall' | 'shortfallThresholdKw' | 'hardCapHeadroomKw'
+>;
 
 export type PlanBuilderDeps = {
   homey: Homey.App['homey'];
@@ -215,7 +221,11 @@ export class PlanBuilder {
       this.state.overshootStartedMs = Date.now();
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
-      this.deps.structuredLog?.info({ event: 'overshoot_entered', headroomKw: context.headroom });
+      this.deps.structuredLog?.info({
+        event: 'overshoot_entered',
+        headroomKw: context.headroom,
+        ...buildPlanContextHeadroomLogFields(context, this.capacityGuard),
+      });
       this.attributeOvershootToRecentRestores(deviceNameById);
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.state.overshootLogged = false;
@@ -223,7 +233,11 @@ export class PlanBuilder {
       this.state.overshootStartedMs = null;
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
-      this.deps.structuredLog?.info({ event: 'overshoot_cleared', durationMs });
+      this.deps.structuredLog?.info({
+        event: 'overshoot_cleared',
+        durationMs,
+        ...buildPlanContextHeadroomLogFields(context, this.capacityGuard),
+      });
     } else if (overshootActive && this.state.overshootStartedMs === null) {
       this.state.overshootStartedMs = Date.now();
     }
@@ -500,6 +514,7 @@ export class PlanBuilder {
       ? Math.max(0, context.total - controlledKw)
       : undefined;
     const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
+    const shortfallMeta = buildShortfallMeta(this.capacityGuard, context.total);
     return {
       totalKw: context.total,
       softLimitKw: context.softLimit,
@@ -507,6 +522,7 @@ export class PlanBuilder {
       dailySoftLimitKw: context.dailySoftLimit,
       softLimitSource: context.softLimitSource,
       headroomKw: context.headroom,
+      ...shortfallMeta,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       usedKWh: context.usedKWh,
       budgetKWh: context.budgetKWh,
@@ -522,4 +538,34 @@ export class PlanBuilder {
         ? this.powerTracker.lastTimestamp : undefined,
     };
   }
+}
+
+function buildShortfallMeta(capacityGuard: CapacityGuard | undefined, totalKw: number | null): ShortfallMeta {
+  const shortfallThresholdKw = capacityGuard?.getShortfallThreshold();
+  const hardCapHeadroomKw = typeof totalKw === 'number' && typeof shortfallThresholdKw === 'number'
+    ? shortfallThresholdKw - totalKw
+    : null;
+  return {
+    capacityShortfall: capacityGuard?.isInShortfall() ?? false,
+    shortfallThresholdKw,
+    hardCapHeadroomKw,
+  };
+}
+
+function buildPlanContextHeadroomLogFields(
+  context: PlanContext,
+  capacityGuard: CapacityGuard | undefined,
+): Record<string, number | boolean | null> {
+  const shortfallThresholdKw = capacityGuard?.getShortfallThreshold();
+  const hardCapHeadroomKw = typeof context.total === 'number' && typeof shortfallThresholdKw === 'number'
+    ? shortfallThresholdKw - context.total
+    : null;
+  return {
+    totalKw: context.total,
+    softLimitKw: context.softLimit,
+    softHeadroomKw: context.headroom,
+    shortfallThresholdKw: shortfallThresholdKw ?? null,
+    hardCapHeadroomKw,
+    hardCapBreached: hardCapHeadroomKw !== null ? hardCapHeadroomKw < 0 : false,
+  };
 }

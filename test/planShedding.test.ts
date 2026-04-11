@@ -2169,6 +2169,62 @@ describe('buildSheddingPlan', () => {
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 0.5);
   });
 
+  it('does not count zero-power stepped-load devices as remaining shortfall candidates', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'stepped-zero',
+        name: 'Stepped zero',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'max',
+        expectedPowerKw: 0,
+        powerKw: 0,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(2),
+    } as unknown as CapacityGuard;
+
+    await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 2.5,
+        softLimit: 2,
+        capacitySoftLimit: 2,
+        headroomRaw: -0.5,
+        headroom: -0.5,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 1,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    );
+
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 0.5);
+  });
+
   it('emits lastRecoveryMs when guard transitions from active to inactive', async () => {
     const state = createPlanEngineState();
     let sheddingActive = true;

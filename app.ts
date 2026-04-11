@@ -14,7 +14,7 @@ import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PowerTrackerState } from './lib/core/powerTracker';
 import { PriceLevel } from './lib/price/priceLevels';
-import { buildPeriodicStatusLog } from './lib/core/periodicStatus';
+import { buildPeriodicStatusLog, buildPeriodicStatusLogFields } from './lib/core/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
@@ -319,7 +319,7 @@ class PelsApp extends Homey.App {
       updateOverheadToken: () => this.updateOverheadToken(),
       refreshDailyBudgetState: () => this.dailyBudgetService.updateState({ refreshObservedStats: false }),
       refreshTargetDevicesSnapshot: (options) => this.refreshTargetDevicesSnapshot({ fast: true, ...options }),
-      rebuildPlanFromCache: () => this.planService.rebuildPlanFromCache('startup_snapshot_bootstrap'),
+      rebuildPlanFromCache: async () => { await this.planService.rebuildPlanFromCache('startup_snapshot_bootstrap'); },
       setLastNotifiedOperatingMode: (mode) => { this.lastNotifiedOperatingMode = mode; },
       getOperatingMode: () => this.operatingMode,
       registerFlowCards: () => this.registerFlowCards(),
@@ -349,7 +349,7 @@ class PelsApp extends Homey.App {
       homey: this.homey,
       getHomeyEnergyApi: () => this.getHomeyEnergyApi(),
       getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
-      rebuildPlanFromCache: (reason?: string) => this.planService?.rebuildPlanFromCache(reason) ?? Promise.resolve(),
+      rebuildPlanFromCache: async (reason?: string) => { await this.planService?.rebuildPlanFromCache(reason); },
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (...args: unknown[]) => this.logDebug('price', ...args),
       error: (...args: unknown[]) => this.error(...args),
@@ -491,7 +491,7 @@ class PelsApp extends Homey.App {
       getOperatingMode: () => this.operatingMode,
       notifyOperatingModeChanged: (mode) => this.notifyOperatingModeChanged(mode),
       loadCapacitySettings: () => this.loadCapacitySettings(),
-      rebuildPlanFromCache: (reason?: string) => this.planService.rebuildPlanFromCache(reason),
+      rebuildPlanFromCache: async (reason?: string) => { await this.planService.rebuildPlanFromCache(reason); },
       refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
       loadPowerTracker: () => this.loadPowerTracker(),
       getCapacityGuard: () => this.capacityGuard,
@@ -841,7 +841,7 @@ class PelsApp extends Homey.App {
   }
   private registerFlowCards(): void {
     this.flowRebuildScheduler ??= createFlowRebuildScheduler({
-      rebuildPlanFromCache: (reason) => this.planService.rebuildPlanFromCache(reason),
+      rebuildPlanFromCache: async (reason) => { await this.planService.rebuildPlanFromCache(reason); },
       logDebug: (...args: unknown[]) => this.logDebug('settings', ...args),
       logError: (message, error) => this.error(message, error),
     });
@@ -976,13 +976,15 @@ class PelsApp extends Homey.App {
     await this.refreshTargetDevicesSnapshot({ targeted: true });
   }
   private logPeriodicStatus(options: { includeDeviceHealth?: boolean } = {}): void {
-    this.log(buildPeriodicStatusLog({
+    const periodicStatusParams = {
       capacityGuard: this.capacityGuard,
       powerTracker: this.powerTracker,
       capacitySettings: this.capacitySettings,
       operatingMode: this.operatingMode,
       capacityDryRun: this.capacityDryRun,
-    }));
+    };
+    this.getStructuredLogger('status')?.info(buildPeriodicStatusLogFields(periodicStatusParams));
+    this.log(buildPeriodicStatusLog(periodicStatusParams));
     if (options.includeDeviceHealth === true) {
       const deviceStatus = this.deviceManager.getPeriodicStatusMetrics();
       if (deviceStatus) {

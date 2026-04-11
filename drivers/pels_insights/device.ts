@@ -8,6 +8,9 @@ type StatusData = {
   dailyBudgetRemainingKwh?: number;
   dailyBudgetExceeded?: boolean;
   limitReason?: 'none' | 'hourly' | 'daily' | 'both';
+  capacityShortfall?: boolean;
+  shortfallThresholdKw?: number;
+  hardCapHeadroomKw?: number | null;
   controlledKw?: number;
   uncontrolledKw?: number;
   priceLevel?: 'cheap' | 'normal' | 'expensive' | 'unknown';

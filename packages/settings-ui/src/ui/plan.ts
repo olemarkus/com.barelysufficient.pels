@@ -1,3 +1,6 @@
+/* eslint-disable max-lines --
+ * Plan rendering remains centralized because device rows and meta share formatting helpers.
+ */
 import { planList, planEmpty, planMeta } from './dom.ts';
 import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel } from './homey.ts';
@@ -50,6 +53,9 @@ type PlanSnapshot = {
     dailySoftLimitKw?: number | null;
     softLimitSource?: 'capacity' | 'daily' | 'both';
     headroomKw?: number;
+    capacityShortfall?: boolean;
+    shortfallThresholdKw?: number;
+    hardCapHeadroomKw?: number | null;
     usedKWh?: number;
     budgetKWh?: number;
     minutesRemaining?: number;
@@ -94,9 +100,18 @@ type ValidatedMeta = {
   totalKw: number;
   softLimitKw: number;
   headroomKw: number;
+  capacityShortfall?: boolean;
+  shortfallThresholdKw?: number;
+  hardCapHeadroomKw?: number | null;
   controlledKw?: number;
   uncontrolledKw?: number;
   lastPowerUpdateMs?: number;
+};
+
+type HardCapDisplay = {
+  breached: boolean;
+  breachText: string | null;
+  remainingText: string | null;
 };
 
 const formatRelativeTime = (timestampMs: number): string => {
@@ -108,13 +123,48 @@ const formatRelativeTime = (timestampMs: number): string => {
   return `${Math.round(minutes / 60)}h ago`;
 };
 
+const buildHardCapDisplay = (meta: ValidatedMeta): HardCapDisplay => {
+  const { capacityShortfall, hardCapHeadroomKw } = meta;
+  if (typeof hardCapHeadroomKw !== 'number') {
+    return { breached: Boolean(capacityShortfall), breachText: null, remainingText: null };
+  }
+  if (hardCapHeadroomKw < 0 || capacityShortfall) {
+    const breachKw = Math.abs(Math.min(0, hardCapHeadroomKw));
+    return {
+      breached: true,
+      breachText: `Hard cap breached by ${breachKw.toFixed(1)}kW`,
+      remainingText: null,
+    };
+  }
+  return {
+    breached: false,
+    breachText: null,
+    remainingText: `${hardCapHeadroomKw.toFixed(1)}kW before hard cap`,
+  };
+};
+
 const buildNowLines = (meta: ValidatedMeta): string[] => {
-  const { totalKw, softLimitKw, headroomKw, controlledKw, uncontrolledKw, lastPowerUpdateMs } = meta;
+  const {
+    totalKw,
+    softLimitKw,
+    headroomKw,
+    shortfallThresholdKw,
+    controlledKw,
+    uncontrolledKw,
+    lastPowerUpdateMs,
+  } = meta;
   const headroomAbs = Math.abs(headroomKw).toFixed(1);
-  const headroomText = headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over soft limit`;
+  const hardCap = buildHardCapDisplay(meta);
+  const headroomText = hardCap.breachText
+    ?? (headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over soft limit`);
   const ageText = typeof lastPowerUpdateMs === 'number' ? ` (${formatRelativeTime(lastPowerUpdateMs)})` : '';
   const powerText = `Now ${totalKw.toFixed(1)}kW${ageText} (soft limit ${softLimitKw.toFixed(1)}kW)`;
   const lines = [powerText, headroomText];
+  if (hardCap.breached && typeof shortfallThresholdKw === 'number') {
+    lines.push(`Hard-cap threshold ${shortfallThresholdKw.toFixed(1)}kW`);
+  } else if (headroomKw < 0 && hardCap.remainingText) {
+    lines.push(hardCap.remainingText);
+  }
   if (typeof controlledKw === 'number' && typeof uncontrolledKw === 'number') {
     lines.push(`Capacity-controlled ${controlledKw.toFixed(2)}kW / Other load ${uncontrolledKw.toFixed(2)}kW`);
   }
@@ -152,6 +202,9 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
     totalKw,
     softLimitKw,
     headroomKw,
+    capacityShortfall: meta.capacityShortfall,
+    shortfallThresholdKw: meta.shortfallThresholdKw,
+    hardCapHeadroomKw: meta.hardCapHeadroomKw,
     controlledKw: meta.controlledKw,
     uncontrolledKw: meta.uncontrolledKw,
     lastPowerUpdateMs: meta.lastPowerUpdateMs as number | undefined,

@@ -206,6 +206,78 @@ describe('plan meta usage summary', () => {
     const empty = document.querySelector('#plan-empty') as HTMLElement | null;
     expect(empty?.textContent?.trim()).toBe('No managed devices.');
   });
+
+  it('shows hard-cap breach text for capacity shortfall', async () => {
+    await renderPlanSnapshot({
+      meta: {
+        totalKw: 7.2,
+        softLimitKw: 4.8,
+        headroomKw: -2.4,
+        capacityShortfall: true,
+        shortfallThresholdKw: 6,
+        hardCapHeadroomKw: -1.2,
+      },
+      devices: [],
+    });
+
+    const metaLines = getPlanMetaText();
+    expect(metaLines.some((line) => line === 'Hard cap breached by 1.2kW')).toBe(true);
+    expect(metaLines.some((line) => line === 'Hard-cap threshold 6.0kW')).toBe(true);
+    expect(metaLines.some((line) => line === '2.4kW over soft limit')).toBe(false);
+  });
+
+  it('keeps soft-limit text when negative headroom is not a hard-cap shortfall', async () => {
+    await renderPlanSnapshot({
+      meta: {
+        totalKw: 5.2,
+        softLimitKw: 4.8,
+        headroomKw: -0.4,
+        capacityShortfall: false,
+      },
+      devices: [],
+    });
+
+    const metaLines = getPlanMetaText();
+    expect(metaLines.some((line) => line === '0.4kW over soft limit')).toBe(true);
+    expect(metaLines.some((line) => line.startsWith('Hard cap breached'))).toBe(false);
+  });
+
+  it('shows remaining hard-cap headroom while above soft limit', async () => {
+    await renderPlanSnapshot({
+      meta: {
+        totalKw: 5.2,
+        softLimitKw: 4.8,
+        headroomKw: -0.4,
+        capacityShortfall: false,
+        shortfallThresholdKw: 6,
+        hardCapHeadroomKw: 0.8,
+      },
+      devices: [],
+    });
+
+    const metaLines = getPlanMetaText();
+    expect(metaLines.some((line) => line === '0.4kW over soft limit')).toBe(true);
+    expect(metaLines.some((line) => line === '0.8kW before hard cap')).toBe(true);
+  });
+
+  it('shows hard-cap breach text before shortfall state is entered', async () => {
+    await renderPlanSnapshot({
+      meta: {
+        totalKw: 7.4,
+        softLimitKw: 4.8,
+        headroomKw: -2.6,
+        capacityShortfall: false,
+        shortfallThresholdKw: 4.8,
+        hardCapHeadroomKw: -2.6,
+      },
+      devices: [],
+    });
+
+    const metaLines = getPlanMetaText();
+    expect(metaLines.some((line) => line === 'Hard cap breached by 2.6kW')).toBe(true);
+    expect(metaLines.some((line) => line === 'Hard-cap threshold 4.8kW')).toBe(true);
+    expect(metaLines.some((line) => line === '2.6kW over soft limit')).toBe(false);
+  });
 });
 
 describe('plan device state', () => {

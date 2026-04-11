@@ -142,4 +142,31 @@ describe('pels status limit reason', () => {
     expect(status.devicesOn).toBe(0);
     expect(status.devicesOff).toBe(0);
   });
+
+  it('copies hard-cap shortfall fields into status', () => {
+    const plan: DevicePlan = {
+      meta: {
+        totalKw: 7.2,
+        softLimitKw: 4.8,
+        softLimitSource: 'capacity',
+        headroomKw: -2.4,
+        capacityShortfall: true,
+        shortfallThresholdKw: 6,
+        hardCapHeadroomKw: -1.2,
+      },
+      devices: [],
+    };
+
+    const { status } = buildPelsStatus({
+      plan,
+      isCheap: false,
+      isExpensive: false,
+      combinedPrices: { prices: [{ total: 1.2 }] },
+      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+    });
+
+    expect(status.capacityShortfall).toBe(true);
+    expect(status.shortfallThresholdKw).toBe(6);
+    expect(status.hardCapHeadroomKw).toBe(-1.2);
+  });
 });

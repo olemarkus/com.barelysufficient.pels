@@ -17,6 +17,11 @@ function computeShortfallDeficitKw(total: number | null, shortfallThreshold: num
   return Math.max(0, total - shortfallThreshold);
 }
 
+function hasReduciblePower(device: PlanInputDevice): boolean {
+  const power = resolveCandidatePower(device);
+  return power !== null && power > 0;
+}
+
 export function shouldActivateShedding(headroom: number | null, shedSet: Set<string>): boolean {
   if (shedSet.size > 0) return true;
   return headroom !== null && headroom < 0;
@@ -38,12 +43,10 @@ export function countRemainingCandidates(params: {
     .filter((d) => d.controllable !== false && d.currentOn !== false && !shedSet.has(d.id))
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
     .filter((d) => {
+      if (!hasReduciblePower(d)) return false;
       if (isSteppedLoadDevice(d)) {
         const shedBehavior = getShedBehavior(d.id);
-        if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
-          const power = resolveCandidatePower(d);
-          return power !== null && power > 0;
-        }
+        if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) return true;
         const targetStep = getSteppedLoadShedTargetStep({
           device: d,
           shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
@@ -51,8 +54,7 @@ export function countRemainingCandidates(params: {
         });
         return Boolean(targetStep && targetStep.id !== d.selectedStepId);
       }
-      const power = resolveCandidatePower(d);
-      return power !== null && power > 0;
+      return true;
     })
     .length;
 }
