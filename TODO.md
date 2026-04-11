@@ -164,11 +164,10 @@ refactors.
 - [x] Suppress danger-zone rebuilds when no new information has arrived. Field logs (2026-04-11)
       show 20–22 consecutive danger-zone rebuilds per cpuwarn window, all with
       `actionChanged=false` and `appliedActions=false`. Fixed: danger_zone now forces a rebuild
-      only on entry (when `lastRebuildReason !== 'danger_zone'`). Sustained danger_zone samples
-      fall back to `deltaMeaningful` (100 W) or `maxIntervalExceeded` (30 s), capping repeated
-      no-op rebuilds to at most one per 30 s. Adds `lastRebuildReason` to
-      `PowerSampleRebuildState` and a `plan_rebuild_skipped_reason.danger_zone_sustained_total`
-      perf counter.
+      only on entry (current sample in danger_zone but last rebuild was not, detected via
+      `lastRebuildPowerW`). Sustained danger_zone samples fall back to `deltaMeaningful` (100 W)
+      or `maxIntervalExceeded` (30 s), capping repeated no-op rebuilds to at most one per 30 s.
+      Adds a `plan_rebuild_skipped_reason.danger_zone_sustained_total` perf counter.
       Files: `lib/app/appPowerHelpers.ts`, `test/appPowerHelpers.test.ts`.
 - [ ] Avoid full plan rebuilds on every power sample. Sample updates should normally refresh
       headroom/status only, and trigger a full rebuild only when PELS crosses a control boundary

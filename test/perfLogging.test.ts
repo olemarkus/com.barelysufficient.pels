@@ -68,10 +68,10 @@ describe('startPerfLogger', () => {
     stop();
   });
 
-  it('filters out low-value counters from delta', () => {
+  it('emits all non-zero counters in delta', () => {
     const log = vi.fn();
     incPerfCounter('plan_rebuild_total');
-    incPerfCounter('perf.logging.ignored');
+    incPerfCounter('plan_rebuild_skipped_reason.danger_zone_sustained_total');
 
     const stop = startPerfLogger({
       isEnabled: () => true,
@@ -80,14 +80,14 @@ describe('startPerfLogger', () => {
     });
 
     incPerfCounter('plan_rebuild_total');
-    incPerfCounter('perf.logging.ignored');
+    incPerfCounter('plan_rebuild_skipped_reason.danger_zone_sustained_total');
     vi.advanceTimersByTime(1000);
 
     const message = log.mock.calls[1][0] as string;
     const jsonStart = message.indexOf('{');
     const payload = JSON.parse(message.slice(jsonStart)) as { delta?: { counts?: Record<string, number> } };
     expect(payload.delta?.counts?.plan_rebuild_total).toBe(1);
-    expect(payload.delta?.counts?.['perf.logging.ignored']).toBeUndefined();
+    expect(payload.delta?.counts?.['plan_rebuild_skipped_reason.danger_zone_sustained_total']).toBe(1);
 
     stop();
   });
