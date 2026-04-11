@@ -159,6 +159,20 @@ refactors.
 - [x] Cache snapshot lookup by device ID in `applyPlanActions` instead of repeating
       `latestTargetSnapshot.find(...)` across action paths.
       Files: `planExecutor.ts`.
+- [ ] Suppress danger-zone rebuilds when no new information has arrived. Field logs (2026-04-11)
+      show 20–22 consecutive danger-zone rebuilds per cpuwarn window, all with
+      `actionChanged=false` and `appliedActions=false`. The planner re-enters the same
+      unactionable path on every power sample while already in danger_zone, which is the primary
+      driver of cpuwarn events. Gate danger-zone re-entry on meaningful state change: a headroom
+      crossing, a device state change, or a minimum time interval. A danger-zone rebuild that
+      takes no action should not immediately schedule another danger-zone rebuild.
+      Files: `lib/plan/planService.ts`, rebuild scheduler, power update pipeline.
+- [ ] Avoid full plan rebuilds on every power sample. Sample updates should normally refresh
+      headroom/status only, and trigger a full rebuild only when PELS crosses a control boundary
+      (entering/leaving danger_zone, overshoot, price mode transition, or enough headroom to
+      recover a device). Field-confirmed as the root cause of repeated cpuwarn accumulation even
+      when average rebuild cost is ~600–800 ms.
+      Files: power update pipeline, rebuild scheduler, plan status/headroom path.
 - [ ] Debounce or batch `settings:capacity_priorities` changes so one editing session produces
       one effective rebuild instead of several rapid rebuilds and log bursts.
       Files: settings write path, `lib/plan/planService.ts`, settings/rebuild tests.
@@ -243,11 +257,15 @@ See `notes/complexity-cleanup/README.md` for the full phased plan and
       say whether a culprit was attributed, mitigation was intentionally skipped, or the event was
       treated as transient/noise.
       Files: overshoot incident logging path, capacity guard tests.
-- [ ] Keep restore-admission edge cases under monitoring. The major eagerness issue looks much
-      better after the shared restore gate, explicit reserve, target/swap fixes, and the 0.25 kW
-      postReserveMargin floor. Rare cases where a restore is still attributed in overshoot may
-      remain; track via telemetry.
-      Files: restore telemetry review, restore planning/tests as needed.
+- [ ] Restore admission is still too optimistic in some conditions. Field logs (2026-04-11) show
+      recurring restore → overshoot → shed cycles for both thermostat and stepped-load devices,
+      with overshoot attribution confirming a recently restored device as the cause within 67–93 s
+      of restore. The prior "rare cases" assessment should be revised upward: this is a consistent
+      pattern, not an edge case. Investigate whether the pending-restore power estimate covers the
+      actual draw delta for heating elements that take time to ramp, and whether the admission
+      reserve is high enough relative to realistic ramp variance.
+      Files: `lib/plan/planRestoreAdmission.ts`, `lib/plan/planRestoreSwap.ts`,
+      `lib/plan/planConstants.ts`, restore admission tests.
 - [x] Tighten restore admission further for near-zero post-reserve margin cases. Implemented a
       hard minimum `postReserveMarginKw >= 0.250 kW` floor (`RESTORE_ADMISSION_FLOOR_KW`) applied
       uniformly to binary, target, stepped, and swap restores. Also enforces the stepped-load shed
@@ -255,16 +273,26 @@ See `notes/complexity-cleanup/README.md` for the full phased plan and
       non-zero step — upgrades above that are blocked until all shed devices are cleared.
       Files: `lib/plan/planConstants.ts`, `lib/plan/planRestoreHelpers.ts`,
       `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, `lib/plan/planRestoreSwap.ts`.
-- [ ] Audit suspicious long overshoot durations, including cases like `overshoot_cleared` with
-      `durationMs=365319` (~6.1 min), to verify whether overshoot lifecycle state is lingering
-      longer than intended or the event is genuinely correct.
+- [ ] Audit suspicious long overshoot durations. Known cases: `durationMs=365319` (~6.1 min)
+      from earlier logs; `durationMs=63984` (~64 s) from 2026-04-11 where most clears in the
+      same session resolved in ~15 s. Verify whether lifecycle state lingers longer than intended
+      or corrective action was genuinely slow. The 64 s case is especially worth checking: typical
+      same-session overshoots cleared in 15 s, so a 4× outlier suggests either a missed shed
+      opportunity or a stale overshoot state.
       Files: overshoot lifecycle/state handling, overshoot tests/log review.
 - [ ] Make target-based restore execution as explicit as binary restore execution. Admission now
       logs `restoreType: "target"`, but the actual capacity action path still lacks a clearly
       equivalent execution log/event to binary `turning on ...` restores.
       Files: target control execution/logging paths, tests.
 - [ ] Clean up stepped-load retry/backoff behavior so delayed feedback does not trigger clumsy
-      re-requests while the previous desired step is still plausibly catching up.
+      re-requests while the previous desired step is still plausibly catching up. Field logs
+      (2026-04-11) show a specific race: PELS requests `Medium → Max`, then sheds to `Medium →
+      Low`; device feedback reports `stepped_feedback_external_change` with `newStepId=Max` and
+      `desiredStepId=Low` — the feedback is the belated acknowledgement of the first request
+      arriving after the second request was already issued. PELS then escalates to Off, and again
+      gets a feedback mismatch (`newStepId=Low`, `desiredStepId=Off`). The device is not
+      fighting PELS; the feedback is simply slow. The controller should hold off on escalation
+      while a prior request is still plausibly in flight.
       Files: `planSteppedLoad.ts`, stepped feedback/retry logic, tests.
 - [ ] Add structured observability for Settings UI network failures with stable fields such as
       `component`, `event`, `endpoint`, `refreshLoop`, `errorType`, `message`,
@@ -405,11 +433,6 @@ See `notes/complexity-cleanup/README.md` for the full phased plan and
       delayed refreshes, and local sequencing bottlenecks before they distort cooldown and control
       timing.
       Files: apply path instrumentation, perf logging, executor / plan service timing.
-- [ ] Avoid full plan rebuilds on every power sample. Sample updates should normally refresh
-      headroom/status only, and rebuild the full plan only when PELS crosses a control boundary
-      (over a limit, into another protection mode, or enough headroom exists to recover another
-      device).
-      Files: power update pipeline, rebuild scheduler, plan status/headroom path.
 - [ ] Add per-phase ampere limit support. A single-phase circuit can be overloaded while total
       household kW is within the global limit. Blocked until Homey Energy exposes per-phase
       current data; reading directly from HAN device capabilities is too fragile.
