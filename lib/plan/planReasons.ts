@@ -3,24 +3,103 @@ import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
-import { resolveRestorePowerSource } from './planRestoreSwap';
+import { computeBaseRestoreNeed, resolveRestorePowerSource } from './planRestoreSwap';
 import { getRestoreNeed } from './planRestore';
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
 } from './planRestoreAdmission';
-import {
-  buildBaseReason,
-  getBaseShedReason,
-  getReasonFlags,
-  maybeApplyCooldownReason,
-  maybeApplyShortfallReason,
-  shouldNormalizeKeepReason as shouldNormalizeReason,
-} from './planReasonHelpers';
 import { sortByPriorityAsc } from './planSort';
 import { RESTORE_ADMISSION_FLOOR_KW, RESTORE_CONFIRM_RETRY_MS } from './planConstants';
 import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
+
+function shouldNormalizeReason(reason: string | undefined): boolean {
+  if (!reason) return true;
+  return reason === 'keep'
+    || reason.startsWith('keep (')
+    || reason.startsWith('restore (need')
+    || reason.startsWith('set to ');
+}
+
+function getBaseShedReason(params: {
+  dev: DevicePlanDevice;
+  shedReasons: Map<string, string>;
+}): string {
+  const { dev, shedReasons } = params;
+  const isSwapReason = typeof dev.reason === 'string'
+    && (dev.reason.includes('swapped out') || dev.reason.includes('swap pending'));
+  const hasSpecialReason = typeof dev.reason === 'string'
+    && (dev.reason.includes('shortfall')
+      || isSwapReason
+      || dev.reason.includes('hourly budget')
+      || dev.reason.includes('daily budget'));
+  return shedReasons.get(dev.id) || (hasSpecialReason && dev.reason) || 'shed due to capacity';
+}
+
+function buildBaseReason(dev: DevicePlanDevice, shedReasons: Map<string, string>): string {
+  const keepReason = dev.reason
+    && dev.reason !== 'keep'
+    && !dev.reason.startsWith('keep (')
+    && !dev.reason.startsWith('restore (need')
+    && !dev.reason.startsWith('set to ')
+    ? dev.reason
+    : null;
+  return shedReasons.get(dev.id) || keepReason || 'shed due to capacity';
+}
+
+function getReasonFlags(reason: string | undefined): {
+  isSwapReason: boolean;
+  isBudgetReason: boolean;
+  isShortfallReason: boolean;
+} {
+  return {
+    isSwapReason: Boolean(reason && (reason.includes('swap pending') || reason.includes('swapped out'))),
+    isBudgetReason: Boolean(reason && (reason.includes('hourly budget') || reason.includes('daily budget'))),
+    isShortfallReason: Boolean(reason && reason.includes('shortfall')),
+  };
+}
+
+function maybeApplyShortfallReason(params: {
+  dev: DevicePlanDevice;
+  guardInShortfall: boolean;
+  reasonFlags: { isSwapReason: boolean; isBudgetReason: boolean; isShortfallReason: boolean };
+  headroomRaw: number | null;
+}): string | null {
+  const { dev, guardInShortfall, reasonFlags, headroomRaw } = params;
+  if (!guardInShortfall || reasonFlags.isSwapReason || reasonFlags.isBudgetReason) return null;
+  if (dev.reason?.startsWith('shortfall (')) return null;
+  const { needed: estimatedNeed } = computeBaseRestoreNeed(dev);
+  return `shortfall (need ${estimatedNeed.toFixed(2)}kW, headroom `
+    + `${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`;
+}
+
+function maybeApplyCooldownReason(params: {
+  reasonFlags: { isSwapReason: boolean; isBudgetReason: boolean; isShortfallReason: boolean };
+  inCooldown: boolean;
+  activeOvershoot: boolean;
+  shedCooldownRemainingSec: number | null;
+  inRestoreCooldown: boolean;
+  restoreCooldownRemainingSec: number | null;
+}): string | null {
+  const {
+    reasonFlags, inCooldown, activeOvershoot, shedCooldownRemainingSec,
+    inRestoreCooldown, restoreCooldownRemainingSec,
+  } = params;
+  if (inCooldown && !activeOvershoot && !reasonFlags.isSwapReason) {
+    return `cooldown (shedding, ${shedCooldownRemainingSec ?? 0}s remaining)`;
+  }
+  if (
+    inRestoreCooldown
+    && !activeOvershoot
+    && !reasonFlags.isSwapReason
+    && !reasonFlags.isBudgetReason
+    && !reasonFlags.isShortfallReason
+  ) {
+    return `cooldown (restore, ${restoreCooldownRemainingSec ?? 0}s remaining)`;
+  }
+  return null;
+}
 
 export type ShedHoldParams = {
   planDevices: DevicePlanDevice[];

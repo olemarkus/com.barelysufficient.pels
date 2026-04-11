@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
 
 type TriggerCallback = () => Promise<void> | void;
@@ -181,7 +182,7 @@ export default class CapacityGuard {
   }
 
   private async enterShortfall(deficitKw: number): Promise<void> {
-    this.incidentId = `inc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.incidentId = `inc_${randomUUID()}`;
     this.incidentStartMs = Date.now();
     const thresholdW = this.getShortfallThreshold() * 1000;
     const powerW = (this.mainPowerKw ?? 0) * 1000;

@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- plan service keeps rebuild/reconcile sequencing in one place. */
+import { randomUUID } from 'node:crypto';
 import type Homey from 'homey';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
@@ -460,7 +461,7 @@ export class PlanService {
   }): Promise<PlanRebuildOutcome> {
     const { reason, queueWaitMs, queueDepth } = params;
     const isDryRun = this.deps.getCapacityDryRun();
-    const rebuildId = `rb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const rebuildId = `rb_${randomUUID()}`;
     const rebuildStart = Date.now();
     const stopSpan = startRuntimeSpan(`plan_rebuild(${reason})`);
     const outcome = createPlanRebuildOutcome(isDryRun);
