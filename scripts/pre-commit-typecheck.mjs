@@ -17,6 +17,8 @@ if (matches([
   'flowCards/',
   'lib/',
   'test/',
+  'packages/contracts/src/',
+  'packages/shared-domain/src/',
 ])) {
   commands.push(['npx', ['tsc', '--noEmit']]);
 }
