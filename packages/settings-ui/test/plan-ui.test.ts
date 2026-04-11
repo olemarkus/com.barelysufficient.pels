@@ -49,6 +49,11 @@ const getBadgeClassList = (deviceId: string): DOMTokenList | null => {
   return dot.classList;
 };
 
+const getBadgeTitle = (deviceId: string): string | null => {
+  const dot = document.querySelector(`[data-device-id="${deviceId}"] .plan-state-indicator`) as HTMLElement | null;
+  return dot?.title ?? null;
+};
+
 const getPlanMetaText = () => {
   const meta = document.querySelector('#plan-meta') as HTMLElement | null;
   if (!meta) return [];
@@ -295,6 +300,25 @@ describe('plan device state', () => {
     });
 
     expect(getStateText()).toBe('Capacity control off');
+  });
+
+  it('shows stale unknown live state without calling it restoring', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-stale',
+          name: 'Stale socket',
+          currentState: 'unknown',
+          plannedState: 'keep',
+          observationStale: true,
+          controllable: true,
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Live state stale');
+    expect(getBadgeTitle('dev-stale')).toBe('State unknown');
+    expect(getBadgeClassList('dev-stale')?.contains('neutral')).toBe(true);
   });
 
   it('renders badge color classes per device plan state', async () => {

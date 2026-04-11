@@ -113,13 +113,17 @@ export async function getEnergyLiveReport(): Promise<unknown> {
   return restClient.get(ENERGY_LIVE_API_PATH);
 }
 
-export function getSdkDevicesApi(homey: Homey.App): EventEmitter | null {
+export function getSdkDevicesApi(
+  homey: Homey.App,
+  logger?: Pick<Logger, 'error'>,
+): EventEmitter | null {
   const homeyInstance = resolveHomeyInstance(homey);
   const api = (homeyInstance as { api?: SdkApi }).api;
   if (!api || typeof api.getApi !== 'function') return null;
   try {
     return api.getApi('homey:manager:devices');
-  } catch {
+  } catch (error) {
+    logger?.error('Failed to attach Homey devices realtime API', normalizeError(error));
     return null;
   }
 }

@@ -266,6 +266,12 @@ export class DeviceManager extends EventEmitter {
             || !homeyInstance.platform
             || !homeyInstance.platformVersion
         ) {
+            this.logger.log('Device API unavailable from SDK, running without realtime device updates');
+            this.logger.structuredLog?.info({
+                event: 'device_api_unavailable',
+                realtimeListenerAttached: false,
+                reason: 'sdk_api_missing',
+            });
             this.logger.debug('Homey SDK API unavailable, skipping init');
             return;
         }
@@ -274,11 +280,19 @@ export class DeviceManager extends EventEmitter {
             await initHomeyHttpClient(this.homey);
         } catch (error) {
             this.logger.error('Failed to initialize HTTP client, continuing in degraded mode', error);
+            this.logger.structuredLog?.error({
+                event: 'device_api_http_client_init_failed',
+                realtimeListenerAttached: false,
+            });
             return;
         }
 
         this.sdkReady = true;
-        this.attachSdkRealtimeListener();
+        const realtimeListenerAttached = this.attachSdkRealtimeListener();
+        this.logger.structuredLog?.info({
+            event: 'device_api_initialized',
+            realtimeListenerAttached,
+        });
         this.logger.log('Device API initialized from SDK');
     }
 
@@ -538,23 +552,39 @@ export class DeviceManager extends EventEmitter {
         });
     }
 
-    private attachSdkRealtimeListener(): void {
-        const devicesApi = getSdkDevicesApi(this.homey);
+    private attachSdkRealtimeListener(): boolean {
+        const devicesApi = getSdkDevicesApi(this.homey, this.logger);
         if (!devicesApi) {
+            this.logger.log('SDK devices realtime listener unavailable; device freshness depends on snapshot refresh');
+            this.logger.structuredLog?.info({
+                event: 'device_realtime_listener_unavailable',
+                realtimeListenerAttached: false,
+            });
             this.logger.debug('SDK devices API not available for realtime events');
-            return;
+            return false;
         }
         this.sdkDevicesApi = devicesApi;
         devicesApi.on('realtime', this.handleSdkRealtimeEvent);
         this.hasRealtimeDeviceUpdateListener = true;
+        this.logger.log('SDK realtime device listener attached');
+        this.logger.structuredLog?.info({
+            event: 'device_realtime_listener_attached',
+            realtimeListenerAttached: true,
+        });
         this.logger.debug('SDK realtime device listener attached');
+        return true;
     }
 
     private detachSdkRealtimeListener(): void {
         if (!this.sdkDevicesApi) return;
         try {
             this.sdkDevicesApi.off('realtime', this.handleSdkRealtimeEvent);
-        } catch (_) { /* ignore */ }
+        } catch (error) {
+            this.logger.error('Failed to detach SDK realtime device listener', error);
+            this.logger.structuredLog?.error({
+                event: 'device_realtime_listener_detach_failed',
+            });
+        }
         this.sdkDevicesApi = null;
         this.hasRealtimeDeviceUpdateListener = false;
     }
