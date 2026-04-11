@@ -253,9 +253,11 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(state.lastSoftLimitKw).toBe(8);
   });
 
-  it('rebuilds when entering danger zone regardless of delta', async () => {
-    // lastRebuildPowerW below danger threshold (5 kW << 9 kW), so this is treated as entry
-    let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 5000, lastSoftLimitKw: 9 };
+  it('does not rebuild on danger zone entry with a small power delta', async () => {
+    // Power crosses the 9 kW danger threshold with only a 30 W delta — below the 100 W
+    // meaningful-delta threshold. Without headroom pressure or an exceeded max interval
+    // there is no reason to rebuild; the previous plan is still valid.
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 8980, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
     await schedulePlanRebuildFromPowerSample({
@@ -267,14 +269,13 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       maxIntervalMs: 10000,
       rebuildPlanFromCache,
       logError: vi.fn(),
-      currentPowerW: 9050,
+      currentPowerW: 9010,  // 30 W above danger threshold, but only 30 W delta
       limitKw: 10,
       softLimitKw: 9,
-      headroomKw: 0.95,
+      headroomKw: 0.99,
     });
 
-    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
-    expect(state.lastRebuildPowerW).toBe(9050);
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 
   it('does not rebuild when already in danger zone with no meaningful power change', async () => {
