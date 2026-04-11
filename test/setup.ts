@@ -14,12 +14,32 @@ export const setAllowConsoleError = (allow: boolean): void => {
 let consoleErrorSpy: MockInstance;
 export const getConsoleErrorSpy = (): MockInstance => consoleErrorSpy;
 let consoleLogSpy: MockInstance;
+let consoleWarnSpy: MockInstance;
 let httpsGetSpy: MockInstance | undefined;
 let originalFetch: typeof global.fetch | undefined;
 let hadOriginalFetch = false;
 let originalWindowFetch: typeof window.fetch | undefined;
 let hadOriginalWindowFetch = false;
 const originalConsoleError = console.error;
+const canvasContextStubMarker = Symbol.for('pels.test.canvasContextStub');
+
+const installCanvasContextStub = () => {
+  if (typeof HTMLCanvasElement === 'undefined') return;
+  const current = HTMLCanvasElement.prototype.getContext as typeof HTMLCanvasElement.prototype.getContext & {
+    [canvasContextStubMarker]?: boolean;
+  };
+  if (current[canvasContextStubMarker]) return;
+  const getContext = Object.assign(
+    () => ({
+      measureText: (text: string) => ({ width: text.length * 8 }),
+    }),
+    { [canvasContextStubMarker]: true },
+  );
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: getContext,
+  });
+};
 
 const mockHttpsGetImplementation = (): typeof https.get => (
   ((url: unknown, optionsOrCallback?: unknown, callbackMaybe?: unknown) => {
@@ -78,6 +98,7 @@ beforeAll(() => {
   if (typeof (globalThis as unknown as { matchMedia?: unknown }).matchMedia !== 'function') {
     (globalThis as unknown as { matchMedia: typeof matchMediaStub }).matchMedia = matchMediaStub;
   }
+  installCanvasContextStub();
 
   // Use deterministic network stubs in tests to avoid real outbound calls.
   const fetchStub = vi.fn().mockResolvedValue({
@@ -105,6 +126,7 @@ beforeAll(() => {
   });
 
   consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 beforeEach(() => {
@@ -118,6 +140,7 @@ beforeEach(() => {
 afterAll(() => {
   consoleErrorSpy.mockRestore();
   consoleLogSpy.mockRestore();
+  consoleWarnSpy.mockRestore();
   httpsGetSpy?.mockRestore();
   if (hadOriginalFetch) {
     global.fetch = originalFetch as typeof global.fetch;

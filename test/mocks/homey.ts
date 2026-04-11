@@ -457,6 +457,9 @@ export const mockHomeyInstance = {
         }
         return devices;
       }
+      if (path === 'manager/energy/live') {
+        return { items: [] };
+      }
       throw new Error(`Mock API GET not implemented for: ${path}`);
     },
     put: async (path: string, body?: any) => {

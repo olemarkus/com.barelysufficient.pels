@@ -2474,6 +2474,7 @@ describe('Device plan snapshot', () => {
 
     // Mock api.put to simulate timeout (shedding fails)
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put').mockRejectedValue(new Error('Timeout after 10000ms'));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     // Capture structured log events from the plan engine
     const structuredEvents: Record<string, unknown>[] = [];
@@ -2502,6 +2503,8 @@ describe('Device plan snapshot', () => {
     // BUG: Without the fix, this would be 1 (re-planning the same swap)
     // With the fix, this should be 0 (swap already pending)
     expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(0);
+    expect(stderrSpy).toHaveBeenCalled();
+    stderrSpy.mockRestore();
     putSpy.mockRestore();
     errorSpy.mockRestore();
   });
