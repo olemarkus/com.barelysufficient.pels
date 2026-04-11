@@ -56,6 +56,9 @@
       "node scripts/pre-commit-typecheck.mjs",
       "node scripts/pre-commit-tests.mjs"
     ],
+    "**/*.{js,mjs,cjs}": [
+      "eslint --max-warnings=0 --no-warn-ignored"
+    ],
     "**/*.css": [
       "stylelint --max-warnings=0"
     ],
