@@ -10,6 +10,14 @@ const unique = (values) => [...new Set(values)];
 
 const matches = (file, prefixes) => prefixes.some((prefix) => file === prefix || file.startsWith(prefix));
 
+const runtimeTestWiringFiles = [
+  'vitest.config.ts',
+  'vitest.config.fast.ts',
+  'vitest.config.dom.ts',
+  'vitest.config.dom.fast.ts',
+  'vitest-env.d.ts',
+];
+
 const runtimePrefixes = [
   'app.ts',
   'api.ts',
@@ -29,6 +37,7 @@ const settingsPrefixes = [
   'packages/shared-domain/src/',
 ];
 
+const hasRuntimeTestWiringChange = files.some((file) => runtimeTestWiringFiles.includes(file));
 const runtimeFiles = unique(files.filter((file) => matches(file, runtimePrefixes)));
 const settingsFiles = unique(files.filter((file) => matches(file, settingsPrefixes)))
   .map((file) => file.startsWith('packages/settings-ui/')
@@ -42,7 +51,10 @@ const run = (command, args, options = {}) => {
   if (typeof result.status === 'number' && result.status !== 0) process.exit(result.status);
 };
 
-if (runtimeFiles.length > 0) {
+if (hasRuntimeTestWiringChange) {
+  run('npx', ['vitest', 'run', '--config', 'vitest.config.fast.ts']);
+  run('npx', ['vitest', 'run', '--config', 'vitest.config.dom.fast.ts']);
+} else if (runtimeFiles.length > 0) {
   run('npx', [
     'vitest',
     'related',

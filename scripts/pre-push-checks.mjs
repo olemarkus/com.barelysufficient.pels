@@ -42,6 +42,11 @@ const RUNTIME_PATHS = [
   'packages/contracts/src/',
   'packages/shared-domain/src/',
   'widgets/',
+  'vitest.config.ts',
+  'vitest.config.fast.ts',
+  'vitest.config.dom.ts',
+  'vitest.config.dom.fast.ts',
+  'vitest-env.d.ts',
 ];
 
 const VALIDATE_PATHS = [
