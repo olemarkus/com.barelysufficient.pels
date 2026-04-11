@@ -19,6 +19,7 @@ const runtimePrefixes = [
   'test/',
   'packages/contracts/src/',
   'packages/shared-domain/src/',
+  'widgets/',
 ];
 
 const settingsPrefixes = [
