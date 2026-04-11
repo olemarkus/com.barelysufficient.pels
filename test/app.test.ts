@@ -2104,6 +2104,32 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(refreshSpy).not.toHaveBeenCalled();
   });
 
+  it('runs a targeted fallback refresh when managed device observations become stale', async () => {
+    vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
+
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+
+    const app = createApp();
+    await initApp(app);
+    (app as any).managedDevices = { 'dev-1': true };
+    const staleSnapshot = (app as any).deviceManager.getSnapshot().map((device: any) => ({
+      ...device,
+      lastFreshDataMs: new Date('2026-03-21T09:54:00Z').getTime(),
+      lastUpdated: new Date('2026-03-21T09:54:00Z').getTime(),
+    }));
+    (app as any).deviceManager.setSnapshotForTests(staleSnapshot);
+
+    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+
+    (app as any).startPeriodicSnapshotRefresh();
+
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(refreshSpy).toHaveBeenCalledWith({ targeted: true });
+  });
+
   it('wraps to next hour when past :55', async () => {
     vi.setSystemTime(new Date('2026-03-21T10:56:00Z'));
 

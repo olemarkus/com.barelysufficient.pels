@@ -10,6 +10,7 @@ import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from './lib/plan/planConstants';
+import { isDeviceObservationStale } from './lib/plan/planObservationPolicy';
 import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PowerTrackerState } from './lib/core/powerTracker';
@@ -94,6 +95,7 @@ import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/sr
 import type { DeviceControlProfiles, SteppedLoadProfile } from './lib/utils/types';
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
+const STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS = 60 * 1000;
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
@@ -144,6 +146,7 @@ class PelsApp extends Homey.App {
   private planService!: PlanService;
   private defaultComputeDynamicSoftLimit?: () => number;
   private snapshotRefreshTimer?: ReturnType<typeof setTimeout>;
+  private staleObservationRefreshTimer?: ReturnType<typeof setTimeout>;
   private targetConfirmationPollInterval?: ReturnType<typeof setInterval>;
   private isSnapshotRefreshing = false;
   private snapshotRefreshPending = false;
@@ -528,6 +531,7 @@ class PelsApp extends Homey.App {
     if (this.powerTrackerPruneTimer) clearTimeout(this.powerTrackerPruneTimer);
     if (this.powerTrackerPruneInterval) clearInterval(this.powerTrackerPruneInterval);
     if (this.snapshotRefreshTimer) clearTimeout(this.snapshotRefreshTimer);
+    if (this.staleObservationRefreshTimer) clearTimeout(this.staleObservationRefreshTimer);
     if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
     if (this.powerSampleRebuildState.timer) clearTimeout(this.powerSampleRebuildState.timer);
     if (this.realtimeDeviceReconcileTimer) clearTimeout(this.realtimeDeviceReconcileTimer);
@@ -933,12 +937,48 @@ class PelsApp extends Homey.App {
   private startPeriodicSnapshotRefresh(): void {
     if (this.snapshotRefreshTimer) clearTimeout(this.snapshotRefreshTimer);
     this.scheduleNextSnapshotRefresh();
+    this.startStaleObservationRefreshFallback();
 
     if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
     this.targetConfirmationPollInterval = setInterval(() => {
       this.pollStuckTargetConfirmations()
         .catch((e) => this.error('Pending target confirmation poll failed', e));
     }, TARGET_CONFIRMATION_POLL_INTERVAL_MS);
+  }
+
+  private startStaleObservationRefreshFallback(): void {
+    if (this.staleObservationRefreshTimer) clearTimeout(this.staleObservationRefreshTimer);
+    this.scheduleStaleObservationRefreshFallback();
+  }
+
+  private scheduleStaleObservationRefreshFallback(): void {
+    this.staleObservationRefreshTimer = setTimeout(async () => {
+      try {
+        await this.refreshStaleDeviceObservations();
+      } catch (e) {
+        this.error('Stale device observation refresh failed', e);
+      } finally {
+        this.scheduleStaleObservationRefreshFallback();
+      }
+    }, STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS);
+  }
+
+  private async refreshStaleDeviceObservations(): Promise<void> {
+    if (!this.deviceManager || this.isSnapshotRefreshing) return;
+    const snapshot = this.latestTargetSnapshot.filter((device) => this.resolveManagedState(device.id) !== false);
+    const staleDevices = snapshot.filter((device) => isDeviceObservationStale(device));
+    if (staleDevices.length === 0) return;
+
+    this.getStructuredLogger('devices')?.info({
+      event: 'stale_device_observation_refresh',
+      staleDevices: staleDevices.length,
+      devicesTotal: snapshot.length,
+    });
+    this.logDebug(
+      'devices',
+      `Refreshing target devices snapshot because ${staleDevices.length}/${snapshot.length} managed devices are stale`,
+    );
+    await this.refreshTargetDevicesSnapshot({ targeted: true });
   }
 
   private scheduleNextSnapshotRefresh(): void {

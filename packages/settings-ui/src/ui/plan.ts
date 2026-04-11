@@ -32,6 +32,7 @@ type PlanDeviceSnapshot = {
   actualStepId?: string;
   assumedStepId?: string;
   binaryCommandPending?: boolean;
+  observationStale?: boolean;
   headroomCardBlocked?: boolean;
   headroomCardCooldownSec?: number | null;
   headroomCardCooldownSource?: 'step_down' | 'pels_shed' | 'pels_restore';
@@ -374,6 +375,10 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
     stateText = 'Capacity control off';
     return createMetaLine('State', stateText);
   }
+  if (dev.observationStale === true) {
+    stateText = 'Live state stale';
+    return createMetaLine('State', stateText);
+  }
   if (isRestoreCooldownState(dev)) {
     stateText = isOffLikeState(dev.currentState)
       ? 'Shed (restore cooldown)'
@@ -453,15 +458,14 @@ const isOffLikeState = (state?: string): boolean =>
 
 const resolvePlanBadgeState = (
   dev: PlanDeviceSnapshot,
-): 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring' => {
+): 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring' | 'unknown' => {
   const steppedRestorePending = isSteppedLoadDevice(dev)
     && Boolean(dev.selectedStepId && dev.desiredStepId && dev.selectedStepId !== dev.desiredStepId);
   if (dev.controllable === false) return 'uncontrolled';
+  if (dev.observationStale === true) return 'unknown';
   if (dev.plannedState === 'inactive') return 'inactive';
-  if (isRestoreCooldownState(dev)) {
-    if (dev.currentState === 'not_applicable' || isOnLikeState(dev.currentState)) return 'active';
-    return 'restoring';
-  }
+  const restoreCooldownState = resolveRestoreCooldownBadgeState(dev);
+  if (restoreCooldownState) return restoreCooldownState;
   if (dev.plannedState === 'shed') return 'shed';
   if (dev.binaryCommandPending && isOffLikeState(dev.currentState)) return 'restoring';
   if (steppedRestorePending) return 'restoring';
@@ -470,9 +474,19 @@ const resolvePlanBadgeState = (
   return 'restoring';
 };
 
-const getPlanStateTone = (state: 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring'): PriceIndicatorTone => {
+const resolveRestoreCooldownBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'restoring' | null => {
+  if (!isRestoreCooldownState(dev)) return null;
+  if (dev.currentState === 'not_applicable' || isOnLikeState(dev.currentState)) return 'active';
+  return 'restoring';
+};
+
+const getPlanStateTone = (
+  state: 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring' | 'unknown',
+): PriceIndicatorTone => {
   if (state === 'shed') return 'expensive';
-  if (state === 'inactive' || state === 'uncontrolled' || state === 'restoring') return 'neutral';
+  if (state === 'inactive' || state === 'uncontrolled' || state === 'restoring' || state === 'unknown') {
+    return 'neutral';
+  }
   return 'cheap';
 };
 
@@ -489,6 +503,8 @@ const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
     label = 'Uncontrolled';
   } else if (state === 'restoring') {
     label = 'Restoring';
+  } else if (state === 'unknown') {
+    label = 'State unknown';
   }
   badge.className = `plan-state-indicator price-indicator ${tone}`;
   badge.dataset.icon = getPriceIndicatorIcon(tone);
