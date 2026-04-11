@@ -274,5 +274,8 @@
   },
   "2.1.16": {
     "en": "The label for the 'set to lowest step' shed action should now be more clear."
+  },
+  "2.1.17": {
+    "en": "Improves stability and performance."
   }
 }
