@@ -2130,6 +2130,32 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(refreshSpy).toHaveBeenCalledWith({ targeted: true });
   });
 
+  it('does not reschedule stale observation fallback after uninit during an in-flight refresh', async () => {
+    vi.setSystemTime(new Date('2026-03-21T10:00:00Z'));
+
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+
+    const app = createApp();
+    await initApp(app);
+
+    let resolveRefresh: (() => void) | undefined;
+    const refreshSpy = vi.spyOn(app as any, 'refreshStaleDeviceObservations').mockImplementation(() => (
+      new Promise<void>((resolve) => { resolveRefresh = resolve; })
+    ));
+
+    (app as any).startPeriodicSnapshotRefresh();
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    await (app as any).onUninit();
+    resolveRefresh?.();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('wraps to next hour when past :55', async () => {
     vi.setSystemTime(new Date('2026-03-21T10:56:00Z'));
 
