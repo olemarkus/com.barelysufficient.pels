@@ -36,31 +36,6 @@ type PerfSummary = {
   settingsWriteAvgMs: number;
 };
 
-const VALUE_COUNT_KEY_PATTERNS: RegExp[] = [
-  /^plan_rebuild_requested_total$/,
-  /^plan_rebuild_total$/,
-  /^plan_rebuild_failed_total$/,
-  /^plan_rebuild_skipped_total$/,
-  /^plan_rebuild_no_change_total$/,
-  /^plan_rebuild_action_signature_changed_total$/,
-  /^plan_rebuild_reason_or_state_only_changed_total$/,
-  /^plan_rebuild_meta_only_changed_total$/,
-  /^plan_rebuild_queue_depth_ge_2_total$/,
-  /^plan_rebuild_queue_depth_ge_4_total$/,
-  /^plan_rebuild_queue_waited_total$/,
-  /^power_sample_requested_total$/,
-  /^power_sample_total$/,
-  /^power_sample_rerun_requested_total$/,
-  /^power_sample_rerun_coalesced_total$/,
-  /^power_sample_rerun_executed_total$/,
-  /^daily_budget_update_total$/,
-  /^daily_budget_compute_total$/,
-  /^daily_budget_persist_total$/,
-  /^settings_set\.device_plan_snapshot/,
-  /^settings_set\.pels_status/,
-  /^device_action_total$/,
-  /^device_action\.capability\.(onoff|target_temperature)$/,
-];
 
 const VALUE_DURATION_KEYS = new Set([
   'plan_rebuild_ms',
@@ -133,14 +108,6 @@ const formatDurations = (durations: Record<string, PerfDurationEntry>, useProvid
     return `${key}: count=${value.count} totalMs=${value.totalMs.toFixed(1)} `
       + `avgMs=${avgMs.toFixed(1)} maxMs=${value.maxMs.toFixed(1)}`;
   })
-);
-
-const isValuableCountKey = (key: string): boolean => VALUE_COUNT_KEY_PATTERNS.some((pattern) => pattern.test(key));
-
-const filterDeltaCounts = (counts: PerfDelta['counts']): PerfDelta['counts'] => (
-  Object.fromEntries(
-    Object.entries(counts).filter(([key]) => isValuableCountKey(key)),
-  )
 );
 
 const filterDeltaDurations = (durations: PerfDelta['durations']): PerfDelta['durations'] => (
@@ -229,7 +196,6 @@ export const startPerfLogger = (params: {
     const snapshot = getPerfSnapshotAndResetWindow();
     const delta = buildPerfDelta(snapshot, lastSnapshot);
     lastSnapshot = snapshot;
-    const filteredDeltaCounts = filterDeltaCounts(delta.counts);
     const filteredDeltaDurations = filterDeltaDurations(delta.durations);
     const uptimeSec = Math.round((Date.now() - snapshot.startedAt) / 1000);
     const payload = {
@@ -237,7 +203,7 @@ export const startPerfLogger = (params: {
       smaps: resolveSmapsSummary(),
       summary: buildPerfSummary(delta),
       delta: {
-        counts: filteredDeltaCounts,
+        counts: delta.counts,
         durations: formatDurations(filteredDeltaDurations, true),
       },
     };
