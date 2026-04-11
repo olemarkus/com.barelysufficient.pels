@@ -253,7 +253,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(state.lastSoftLimitKw).toBe(8);
   });
 
-  it('rebuilds in danger zone regardless of delta', async () => {
+  it('rebuilds when entering danger zone regardless of delta', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 9000, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
 
@@ -274,6 +274,89 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     expect(state.lastRebuildPowerW).toBe(9050);
+    expect(state.lastRebuildReason).toBe('danger_zone');
+  });
+
+  it('does not rebuild when already in danger zone with no meaningful power change', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 1000,
+      lastRebuildPowerW: 9050,
+      lastSoftLimitKw: 9,
+      lastRebuildReason: 'danger_zone',
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 500,
+      maxIntervalMs: 10000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9060,  // only 10 W delta — below 100 W threshold
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: 0.94,
+    });
+
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds when sustained in danger zone after max interval', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 11000,
+      lastRebuildPowerW: 9050,
+      lastSoftLimitKw: 9,
+      lastRebuildReason: 'danger_zone',
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 500,
+      maxIntervalMs: 10000,  // 10 s elapsed > 10 s max
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9060,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: 0.94,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('rebuilds when sustained in danger zone but power changes meaningfully', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 1000,
+      lastRebuildPowerW: 9000,
+      lastSoftLimitKw: 9,
+      lastRebuildReason: 'danger_zone',
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 500,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9200,  // 200 W delta — above 100 W threshold
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: 0.8,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(state.lastRebuildReason).toBe('danger_zone');
   });
 
   it('rebuilds after max interval even if delta is small', async () => {
