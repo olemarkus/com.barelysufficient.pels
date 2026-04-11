@@ -67,9 +67,11 @@ refactors.
       `reasonCode="price optimization (expensive hour)"` while behavior is actually exiting the
       expensive-hour path into normal-hour targets.
       Files: price optimization transition logic, reason logging, hour-boundary tests.
-- [ ] Log both previous and new optimization state for price-optimization transitions so
+- [x] Log both previous and new optimization state for price-optimization transitions so
       expensive -> normal and normal -> expensive boundaries are unambiguous in diagnostics.
-      Files: price optimization logging path, tests.
+      Fixed: `price_optimization_completed` now emits `previousMode` alongside `mode`. Tracks
+      `lastMode` on the `PriceOptimizer` instance; first call emits `previousMode: null`.
+      Files: `lib/price/priceOptimizer.ts`, `test/priceOptimizer.test.ts`.
 - [x] Fix `hourBudget` label in periodic status output. `hourBudget=4.0kWh` reads as "remaining
       feasible target for this hour" but actually means "full-hour configured budget." At 17:55
       with 3.17 kWh already used, the label implies 4.0 kWh is still achievable when only ~0.83
@@ -159,14 +161,15 @@ refactors.
 - [x] Cache snapshot lookup by device ID in `applyPlanActions` instead of repeating
       `latestTargetSnapshot.find(...)` across action paths.
       Files: `planExecutor.ts`.
-- [ ] Suppress danger-zone rebuilds when no new information has arrived. Field logs (2026-04-11)
+- [x] Suppress danger-zone rebuilds when no new information has arrived. Field logs (2026-04-11)
       show 20–22 consecutive danger-zone rebuilds per cpuwarn window, all with
-      `actionChanged=false` and `appliedActions=false`. The planner re-enters the same
-      unactionable path on every power sample while already in danger_zone, which is the primary
-      driver of cpuwarn events. Gate danger-zone re-entry on meaningful state change: a headroom
-      crossing, a device state change, or a minimum time interval. A danger-zone rebuild that
-      takes no action should not immediately schedule another danger-zone rebuild.
-      Files: `lib/plan/planService.ts`, rebuild scheduler, power update pipeline.
+      `actionChanged=false` and `appliedActions=false`. Fixed: danger_zone now forces a rebuild
+      only on entry (when `lastRebuildReason !== 'danger_zone'`). Sustained danger_zone samples
+      fall back to `deltaMeaningful` (100 W) or `maxIntervalExceeded` (30 s), capping repeated
+      no-op rebuilds to at most one per 30 s. Adds `lastRebuildReason` to
+      `PowerSampleRebuildState` and a `plan_rebuild_skipped_reason.danger_zone_sustained_total`
+      perf counter.
+      Files: `lib/app/appPowerHelpers.ts`, `test/appPowerHelpers.test.ts`.
 - [ ] Avoid full plan rebuilds on every power sample. Sample updates should normally refresh
       headroom/status only, and trigger a full rebuild only when PELS crosses a control boundary
       (entering/leaving danger_zone, overshoot, price mode transition, or enough headroom to
