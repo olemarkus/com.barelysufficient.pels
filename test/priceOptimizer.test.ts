@@ -5,11 +5,6 @@ import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 const makeHour = (startsAt: string, totalPrice: number): CombinedHourlyPrice => ({
   startsAt,
   totalPrice,
-  spotPrice: totalPrice,
-  energyTax: 0,
-  vatFactor: 1,
-  gridTariff: 0,
-  source: 'nordpool',
 });
 
 const makeDeps = (overrides: {

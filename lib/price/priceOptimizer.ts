@@ -42,12 +42,14 @@ export class PriceOptimizer {
     try {
       if (!this.deps.isEnabled()) {
         this.deps.logDebug('Price optimization: Disabled globally');
+        this.lastMode = null;
         return;
       }
 
       const settings = this.deps.getSettings();
       if (!settings || Object.keys(settings).length === 0) {
         this.deps.log('Price optimization: No devices configured');
+        this.lastMode = null;
         return;
       }
 
@@ -67,12 +69,7 @@ export class PriceOptimizer {
         + `threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, `
         + `isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`,
       );
-      let hourLabel = 'normal';
-      if (isCheap) {
-        hourLabel = 'cheap';
-      } else if (isExpensive) {
-        hourLabel = 'expensive';
-      }
+      const hourLabel = PriceOptimizer.resolveHourLabel(isCheap, isExpensive);
       const previousMode = this.lastMode;
       this.lastMode = hourLabel;
       this.deps.structuredLog?.info({
@@ -103,6 +100,12 @@ export class PriceOptimizer {
       await this.applyOnce();
     }
     this.scheduleHourly();
+  }
+
+  private static resolveHourLabel(isCheap: boolean, isExpensive: boolean): string {
+    if (isCheap) return 'cheap';
+    if (isExpensive) return 'expensive';
+    return 'normal';
   }
 
   stop(): void {
