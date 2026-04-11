@@ -69,6 +69,7 @@ import {
     type ObservedDeviceStateEvent,
 } from './deviceManagerRealtimeHandlers';
 import type { DeviceFetchSource } from './deviceManagerFetch';
+import { normalizeError } from '../utils/errorUtils';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const LOCAL_BINARY_SETTLE_WINDOW_MS = 5 * 1000;
@@ -279,10 +280,12 @@ export class DeviceManager extends EventEmitter {
         try {
             await initHomeyHttpClient(this.homey);
         } catch (error) {
-            this.logger.error('Failed to initialize HTTP client, continuing in degraded mode', error);
+            const normalizedError = normalizeError(error);
+            this.logger.error('Failed to initialize HTTP client, continuing in degraded mode', normalizedError);
             this.logger.structuredLog?.error({
                 event: 'device_api_http_client_init_failed',
                 realtimeListenerAttached: false,
+                err: normalizedError,
             });
             return;
         }
@@ -580,9 +583,11 @@ export class DeviceManager extends EventEmitter {
         try {
             this.sdkDevicesApi.off('realtime', this.handleSdkRealtimeEvent);
         } catch (error) {
-            this.logger.error('Failed to detach SDK realtime device listener', error);
+            const normalizedError = normalizeError(error);
+            this.logger.error('Failed to detach SDK realtime device listener', normalizedError);
             this.logger.structuredLog?.error({
                 event: 'device_realtime_listener_detach_failed',
+                err: normalizedError,
             });
         }
         this.sdkDevicesApi = null;

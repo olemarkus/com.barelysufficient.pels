@@ -147,6 +147,7 @@ class PelsApp extends Homey.App {
   private defaultComputeDynamicSoftLimit?: () => number;
   private snapshotRefreshTimer?: ReturnType<typeof setTimeout>;
   private staleObservationRefreshTimer?: ReturnType<typeof setTimeout>;
+  private staleObservationRefreshStopped = true;
   private targetConfirmationPollInterval?: ReturnType<typeof setInterval>;
   private isSnapshotRefreshing = false;
   private snapshotRefreshPending = false;
@@ -517,6 +518,7 @@ class PelsApp extends Homey.App {
     this.stopSettingsHandler = settingsHandler.stop;
   }
   async onUninit(): Promise<void> {
+    this.staleObservationRefreshStopped = true;
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
     this.stopUninitServices();
@@ -947,25 +949,29 @@ class PelsApp extends Homey.App {
   }
 
   private startStaleObservationRefreshFallback(): void {
+    this.staleObservationRefreshStopped = false;
     if (this.staleObservationRefreshTimer) clearTimeout(this.staleObservationRefreshTimer);
     this.scheduleStaleObservationRefreshFallback();
   }
 
   private scheduleStaleObservationRefreshFallback(): void {
+    if (this.staleObservationRefreshStopped) return;
     this.staleObservationRefreshTimer = setTimeout(async () => {
       try {
         await this.refreshStaleDeviceObservations();
       } catch (e) {
         this.error('Stale device observation refresh failed', e);
       } finally {
-        this.scheduleStaleObservationRefreshFallback();
+        if (!this.staleObservationRefreshStopped) {
+          this.scheduleStaleObservationRefreshFallback();
+        }
       }
     }, STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS);
   }
 
   private async refreshStaleDeviceObservations(): Promise<void> {
     if (!this.deviceManager || this.isSnapshotRefreshing) return;
-    const snapshot = this.latestTargetSnapshot.filter((device) => this.resolveManagedState(device.id) !== false);
+    const snapshot = this.latestTargetSnapshot.filter((device) => this.resolveManagedState(device.id));
     const staleDevices = snapshot.filter((device) => isDeviceObservationStale(device));
     if (staleDevices.length === 0) return;
 
