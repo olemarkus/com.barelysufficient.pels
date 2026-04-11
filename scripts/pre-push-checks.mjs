@@ -41,6 +41,7 @@ const RUNTIME_PATHS = [
   'test/',
   'packages/contracts/src/',
   'packages/shared-domain/src/',
+  'widgets/',
 ];
 
 const VALIDATE_PATHS = [

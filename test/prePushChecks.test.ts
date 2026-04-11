@@ -156,4 +156,21 @@ describe('pre-push checks script', () => {
     expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
     expect(result.stdout).toContain('pre-push: running npm run validate');
   });
+
+  it('runs runtime checks and validation for widget source changes', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'widgets/plan_budget/src/public/chart.ts',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npm run lint:runtime');
+    expect(result.stdout).toContain('pre-push: running npm run typecheck:unused');
+    expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
+    expect(result.stdout).toContain('pre-push: running npm run validate');
+  });
 });
