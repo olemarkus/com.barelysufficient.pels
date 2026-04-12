@@ -1,7 +1,6 @@
 import type Homey from 'homey';
 import http from 'http';
 import https from 'https';
-import type { EventEmitter } from 'events';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { normalizeError } from '../utils/errorUtils';
 
@@ -9,9 +8,6 @@ export const DEVICES_API_PATH = 'manager/devices/device';
 
 const HTTP_TIMEOUT_MS = 30_000;
 
-type SdkApi = {
-  getApi?: (uri: string) => EventEmitter;
-};
 
 export type RestClient = {
   get: (path: string) => Promise<unknown>;
@@ -111,21 +107,6 @@ export const ENERGY_LIVE_API_PATH = 'manager/energy/live';
 export async function getEnergyLiveReport(): Promise<unknown> {
   if (!restClient) return null;
   return restClient.get(ENERGY_LIVE_API_PATH);
-}
-
-export function getSdkDevicesApi(
-  homey: Homey.App,
-  logger?: Pick<Logger, 'error'>,
-): EventEmitter | null {
-  const homeyInstance = resolveHomeyInstance(homey);
-  const api = (homeyInstance as { api?: SdkApi }).api;
-  if (!api || typeof api.getApi !== 'function') return null;
-  try {
-    return api.getApi('homey:manager:devices');
-  } catch (error) {
-    logger?.error('Failed to attach Homey devices realtime API', normalizeError(error));
-    return null;
-  }
 }
 
 export function writeErrorToStderr(message: string, error: unknown): void {

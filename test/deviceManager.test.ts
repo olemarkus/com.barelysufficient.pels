@@ -1,16 +1,36 @@
 import { DeviceManager, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../lib/core/deviceManager';
+import type { LiveFeedHealth } from '../lib/core/deviceLiveFeed';
 import {
     mockHomeyInstance,
-    clearMockSdkDeviceListeners,
-    emitMockSdkDeviceUpdate,
 } from './mocks/homey';
 import Homey from 'homey';
 import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
 
+// Mock the live feed so tests don't attempt a real socket.io connection.
+vi.mock('../lib/core/deviceLiveFeed', () => {
+    const mockHealth: LiveFeedHealth = {
+        subscriptionState: 'subscribed',
+        lastLiveEventMs: null,
+        liveEventCount: 0,
+        ignoredLiveEventCount: 0,
+        reconnectCount: 0,
+        lastReconnectMs: null,
+        lastSuccessfulSubscriptionMs: null,
+    };
+    return {
+        createDeviceLiveFeed: vi.fn(() => ({
+            start: vi.fn().mockResolvedValue(undefined),
+            stop: vi.fn().mockResolvedValue(undefined),
+            isHealthy: vi.fn().mockReturnValue(true),
+            getHealth: vi.fn().mockReturnValue(mockHealth),
+            updateTrackedDevices: vi.fn(),
+        })),
+    };
+});
+
 const mockApiGet = vi.fn();
 const mockApiPut = vi.fn().mockResolvedValue(undefined);
 const mockGetLiveReport = vi.fn();
-const mockSdkDevicesEmitter = mockHomeyInstance.api.getApi('homey:manager:devices');
 
 const findSnapshotDevice = <T extends { id: string }>(
     snapshot: T[],
@@ -45,7 +65,6 @@ describe('DeviceManager', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        clearMockSdkDeviceListeners();
         mockGetLiveReport.mockResolvedValue({ items: [] });
         homeyMock = mockHomeyInstance as unknown as Homey.App;
 
@@ -644,11 +663,9 @@ describe('DeviceManager', () => {
             await deviceManager.init();
         });
 
-        it('attaches SDK realtime listener after init', async () => {
+        it('reports live feed as healthy after init', async () => {
             await deviceManager.refreshSnapshot();
-            // Verify the SDK realtime listener is attached by checking that
-            // device.update events are handled (the listener count on the emitter)
-            expect(mockSdkDevicesEmitter.listenerCount('realtime')).toBeGreaterThanOrEqual(1);
+            expect(deviceManager.getLiveFeedHealth()?.subscriptionState).toBe('subscribed');
         });
 
         it('ignores device.update events for unmanaged devices', async () => {
@@ -687,7 +704,7 @@ describe('DeviceManager', () => {
             managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             // device.update for unmanaged dev2 should be ignored
-            emitMockSdkDeviceUpdate({
+            managedDeviceManager.injectDeviceUpdateForTest({
                 id: 'dev2',
                 name: 'Unmanaged heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -721,7 +738,7 @@ describe('DeviceManager', () => {
             managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             // device.update should be ignored while unmanaged
-            emitMockSdkDeviceUpdate({
+            managedDeviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -737,7 +754,7 @@ describe('DeviceManager', () => {
             await managedDeviceManager.refreshSnapshot();
 
             // Now device.update should be handled
-            emitMockSdkDeviceUpdate({
+            managedDeviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -762,7 +779,7 @@ describe('DeviceManager', () => {
             expect(deviceManager.getSnapshot()[0].measuredPowerKw).toBe(1);
 
             // Trigger update 2000W via device.update
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -790,7 +807,7 @@ describe('DeviceManager', () => {
                 }),
             }));
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -827,7 +844,7 @@ describe('DeviceManager', () => {
 
             expect(deviceManager.getDebugObservedSources('dev1')).toBeNull();
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -846,7 +863,7 @@ describe('DeviceManager', () => {
             const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -891,7 +908,7 @@ describe('DeviceManager', () => {
 
             await deviceManager.setCapability('dev1', 'onoff', true);
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -933,7 +950,7 @@ describe('DeviceManager', () => {
 
             const setCapabilityPromise = deviceManager.setCapability('dev1', 'onoff', true);
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -976,7 +993,7 @@ describe('DeviceManager', () => {
                 await deviceManager.setCapability('dev1', 'onoff', false);
 
                 // Contradictory device.update (fight-back from device)
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
@@ -1025,7 +1042,7 @@ describe('DeviceManager', () => {
                 await deviceManager.setCapability('dev1', 'onoff', false);
 
                 // First echo confirms the local write
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
@@ -1036,7 +1053,7 @@ describe('DeviceManager', () => {
                     },
                 });
                 // Second update fights back
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
@@ -1086,7 +1103,7 @@ describe('DeviceManager', () => {
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
 
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
@@ -1096,7 +1113,7 @@ describe('DeviceManager', () => {
                         onoff: { value: true, id: 'onoff' },
                     },
                 });
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
@@ -1106,7 +1123,7 @@ describe('DeviceManager', () => {
                         onoff: { value: true, id: 'onoff' },
                     },
                 });
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
@@ -1301,7 +1318,7 @@ describe('DeviceManager', () => {
             const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
@@ -1352,7 +1369,7 @@ describe('DeviceManager', () => {
             await deviceManager.refreshSnapshot();
 
             // device.update changes target to 26.5
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
@@ -1421,7 +1438,7 @@ describe('DeviceManager', () => {
 
                 await deviceManager.refreshSnapshot();
 
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
@@ -1602,7 +1619,7 @@ describe('DeviceManager', () => {
                 await deviceManager.refreshSnapshot();
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
@@ -1670,7 +1687,7 @@ describe('DeviceManager', () => {
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             // device.update with target changed from 20 to 18
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
@@ -1699,7 +1716,7 @@ describe('DeviceManager', () => {
 
             // Subsequent device.update with same value does not trigger reconcile
             realtimeListener.mockClear();
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
@@ -1733,7 +1750,7 @@ describe('DeviceManager', () => {
             const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -1786,7 +1803,7 @@ describe('DeviceManager', () => {
                 });
 
                 vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
@@ -1835,7 +1852,7 @@ describe('DeviceManager', () => {
                 await evDeviceManager.refreshSnapshot();
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
-                emitMockSdkDeviceUpdate({
+                evDeviceManager.injectDeviceUpdateForTest({
                     id: 'ev1',
                     name: 'Easee',
                     class: 'evcharger',
@@ -1888,7 +1905,7 @@ describe('DeviceManager', () => {
                 await evDeviceManager.refreshSnapshot();
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
-                emitMockSdkDeviceUpdate({
+                evDeviceManager.injectDeviceUpdateForTest({
                     id: 'ev1',
                     name: 'Easee',
                     class: 'evcharger',
@@ -1954,7 +1971,7 @@ describe('DeviceManager', () => {
                 currentOn: false,
             }));
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -1993,7 +2010,7 @@ describe('DeviceManager', () => {
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
 
-                emitMockSdkDeviceUpdate({
+                deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
@@ -2026,7 +2043,7 @@ describe('DeviceManager', () => {
             const realtimeListener = vi.fn();
             managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],
@@ -2065,7 +2082,7 @@ describe('DeviceManager', () => {
             const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff', 'measure_temperature', 'target_temperature'],
@@ -2081,29 +2098,132 @@ describe('DeviceManager', () => {
             expect(realtimeListener).not.toHaveBeenCalled();
         });
 
-        it('cleans up listeners on destroy', async () => {
+        it('cleans up live feed and EventEmitter listeners on destroy', async () => {
             await deviceManager.refreshSnapshot();
-            const listenersBefore = mockSdkDevicesEmitter.listenerCount('realtime');
-            expect(listenersBefore).toBeGreaterThanOrEqual(1);
+
+            const planListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, planListener);
+            expect(deviceManager.listenerCount(PLAN_RECONCILE_REALTIME_UPDATE_EVENT)).toBe(1);
 
             deviceManager.destroy();
 
-            // After destroy, device.update events should not trigger handler
-            const realtimeListener = vi.fn();
-            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            // EventEmitter listeners are removed
+            expect(deviceManager.listenerCount(PLAN_RECONCILE_REALTIME_UPDATE_EVENT)).toBe(0);
+            // Live feed health is gone after destroy
+            expect(deviceManager.getLiveFeedHealth()).toBeNull();
+        });
 
-            emitMockSdkDeviceUpdate({
-                id: 'dev1',
-                name: 'Heater',
-                capabilities: ['measure_power', 'onoff'],
-                class: 'heater',
-                capabilitiesObj: {
-                    measure_power: { value: 5000, id: 'measure_power' },
-                    onoff: { value: false, id: 'onoff' },
+        describe('per-capability realtime updates', () => {
+            const buildOnoffDevice = () => ({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['onoff', 'measure_power'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 500, id: 'measure_power' },
+                    },
+                },
+            });
+            const buildTempDevice = () => ({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Thermostat',
+                    capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
+                    class: 'thermostat',
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        target_temperature: { value: 20, id: 'target_temperature', units: '°C', min: 5, max: 40, step: 0.5 },
+                        measure_temperature: { value: 20, id: 'measure_temperature' },
+                        measure_power: { value: 360, id: 'measure_power' },
+                    },
                 },
             });
 
-            expect(realtimeListener).not.toHaveBeenCalled();
+            it('triggers reconcile when onoff is changed externally via capability event', async () => {
+                mockApiGet.mockResolvedValue(buildOnoffDevice());
+                await deviceManager.refreshSnapshot();
+
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+
+                expect(realtimeListener).toHaveBeenCalledOnce();
+                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                    deviceId: 'dev1',
+                    changes: expect.arrayContaining([
+                        expect.objectContaining({ capabilityId: 'onoff' }),
+                    ]),
+                }));
+                expect(deviceManager.getSnapshot().find((d) => d.id === 'dev1')?.currentOn).toBe(false);
+            });
+
+            it('triggers reconcile when target_temperature is changed externally via capability event', async () => {
+                mockApiGet.mockResolvedValue(buildTempDevice());
+                await deviceManager.refreshSnapshot();
+
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 23.5);
+
+                expect(realtimeListener).toHaveBeenCalledOnce();
+                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                    deviceId: 'dev1',
+                    changes: expect.arrayContaining([
+                        expect.objectContaining({ capabilityId: 'target_temperature' }),
+                    ]),
+                }));
+                expect(
+                    deviceManager.getSnapshot()
+                        .find((d) => d.id === 'dev1')
+                        ?.targets.find((t) => t.id === 'target_temperature')?.value,
+                ).toBe(23.5);
+            });
+
+            it('suppresses capability echo for own recent writes', async () => {
+                mockApiGet.mockResolvedValue(buildTempDevice());
+                await deviceManager.refreshSnapshot();
+
+                // Simulate PELS writing target_temperature (records a local write)
+                mockApiPut.mockResolvedValue({});
+                await deviceManager.setCapability('dev1', 'target_temperature', 16);
+
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                // Same value echoed back from the live feed — should be suppressed
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 16);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+            });
+
+            it('ignores capability events for untracked devices', async () => {
+                mockApiGet.mockResolvedValue(buildOnoffDevice());
+                await deviceManager.refreshSnapshot();
+
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                deviceManager.injectCapabilityUpdateForTest('unknown-device', 'onoff', false);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+            });
+
+            it('ignores capability events when value is unchanged', async () => {
+                mockApiGet.mockResolvedValue(buildOnoffDevice());
+                await deviceManager.refreshSnapshot();
+
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                // Same value as current snapshot state
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+            });
         });
 
         it('ignores device.update events for a device that stops being managed', async () => {
@@ -2122,7 +2242,7 @@ describe('DeviceManager', () => {
             const realtimeListener = vi.fn();
             managedDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
-            emitMockSdkDeviceUpdate({
+            deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
                 capabilities: ['measure_power', 'onoff'],

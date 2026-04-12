@@ -53,27 +53,30 @@ import {
 import {
     clearLocalCapabilityWrite,
     formatBinaryState,
+    formatTargetValue,
+    getRecentLocalCapabilityWrite,
     recordLocalCapabilityWrite,
     type RecentLocalCapabilityWrites,
 } from './deviceManagerRealtimeSupport';
 import {
-    getSdkDevicesApi,
     hasRestClient,
     initHomeyHttpClient,
     resolveHomeyInstance,
     setRawCapabilityValue,
 } from './deviceManagerHomeyApi';
+import type { StructuredDebugEmitter } from '../logging/logger';
+import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './deviceLiveFeed';
 import {
     type HandleRealtimeDeviceUpdateResult,
     handleRealtimeDeviceUpdate,
     type ObservedDeviceStateEvent,
+    type PlanRealtimeUpdateEvent,
 } from './deviceManagerRealtimeHandlers';
 import type { DeviceFetchSource } from './deviceManagerFetch';
 import { normalizeError } from '../utils/errorUtils';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const LOCAL_BINARY_SETTLE_WINDOW_MS = 5 * 1000;
-export const HOMEY_DEVICE_UPDATE_EVENT = 'device.update';
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
 
@@ -86,7 +89,7 @@ type PendingBinarySettleWindow = {
     timer: ReturnType<typeof setTimeout>;
 };
 
-type CapabilityObservationSource = 'device_update' | 'local_write';
+type CapabilityObservationSource = 'device_update' | 'realtime_capability' | 'local_write';
 
 type CapabilityObservation = {
     value: unknown;
@@ -156,13 +159,13 @@ function createEmptyObservedSources(): DeviceDebugObservedSources {
 
 export class DeviceManager extends EventEmitter {
     private sdkReady = false;
-    private sdkDevicesApi: EventEmitter | null = null;
+    private liveFeed: DeviceLiveFeed | null = null;
     private logger: Logger;
     private homey: Homey.App;
     private latestSnapshot: TargetDeviceSnapshot[] = [];
     private latestHomePowerW: number | null = null;
     private powerState: Required<PowerEstimateState>;
-    private hasRealtimeDeviceUpdateListener = false;
+    private hasLiveFeed = false;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private pendingBinarySettleWindows: Map<string, PendingBinarySettleWindow> = new Map();
     private debugObservedSourcesByDeviceId: Map<string, DeviceDebugObservedSources> = new Map();
@@ -177,6 +180,108 @@ export class DeviceManager extends EventEmitter {
         getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
         getExperimentalEvSupportEnabled?: () => boolean;
     } = {};
+    private readonly handleRealtimeCapabilityUpdate = (
+        deviceId: string,
+        capabilityId: string,
+        value: unknown,
+    ): void => {
+        if (!this.shouldTrackRealtimeDevice(deviceId)) return;
+        const snapshotIndex = this.latestSnapshot.findIndex((entry) => entry.id === deviceId);
+        if (snapshotIndex < 0) return;
+
+        const snapshot = this.latestSnapshot[snapshotIndex];
+        if (!this.isTrackedCapability(snapshot, capabilityId)) return;
+
+        this.debugStructured?.({
+            event: 'device_capability_event_received',
+            source: 'web_api_subscription',
+            deviceId,
+            capabilityId,
+            value,
+        });
+
+        const recentWrite = getRecentLocalCapabilityWrite({
+            recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
+            deviceId,
+            capabilityId,
+        });
+        if (recentWrite && recentWrite.value === value) return;
+
+        const changes: PlanRealtimeUpdateEvent['changes'] = [];
+
+        if (capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean') {
+            const settled = this.applyBinaryCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value, changes);
+            if (settled) return;
+        }
+
+        for (const target of snapshot.targets) {
+            if (target.id === capabilityId && target.value !== value) {
+                const previousValue = target.value;
+                target.value = value;
+                changes.push({
+                    capabilityId,
+                    previousValue: formatTargetValue(previousValue, target.unit),
+                    nextValue: formatTargetValue(value, target.unit),
+                });
+                break;
+            }
+        }
+
+        if (changes.length === 0) return;
+
+        this.logger.structuredLog?.info({
+            event: 'realtime_capability_drift',
+            deviceId,
+            capabilityId,
+            changes,
+        });
+        this.recordSnapshotCapabilityObservations(deviceId, 'realtime_capability', [capabilityId]);
+        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
+            source: 'realtime_capability',
+            deviceId,
+            capabilityId,
+        } satisfies ObservedDeviceStateEvent);
+        this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+            deviceId,
+            name: snapshot.name,
+            changes,
+        } satisfies PlanRealtimeUpdateEvent);
+    };
+
+    private isTrackedCapability(snapshot: TargetDeviceSnapshot, capabilityId: string): boolean {
+        return capabilityId === snapshot.controlCapabilityId
+            || snapshot.targets.some((t) => t.id === capabilityId);
+    }
+
+    /** Returns true if the change was deferred by the binary settle window. */
+    private applyBinaryCapabilityUpdate(
+        snapshotIndex: number,
+        deviceId: string,
+        capabilityId: string,
+        value: boolean,
+        changes: NonNullable<PlanRealtimeUpdateEvent['changes']>,
+    ): boolean {
+        const snapshot = this.latestSnapshot[snapshotIndex];
+        if (snapshot.currentOn === value) return false;
+        if (this.notePendingBinarySettleObservation(deviceId, capabilityId, value)) {
+            this.logger.structuredLog?.info({
+                event: 'realtime_capability_binary_settling',
+                deviceId,
+                capabilityId,
+                currentOn: snapshot.currentOn,
+                incomingValue: value,
+            });
+            return true;
+        }
+        this.latestSnapshot[snapshotIndex].currentOn = value;
+        changes.push({
+            capabilityId,
+            previousValue: formatBinaryState(!value),
+            nextValue: formatBinaryState(value),
+        });
+        return false;
+    }
+
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
         const deviceId = getDeviceId(device);
         const result = handleRealtimeDeviceUpdate({
@@ -200,6 +305,8 @@ export class DeviceManager extends EventEmitter {
         }
     };
 
+    private debugStructured: StructuredDebugEmitter | undefined;
+
     constructor(homey: Homey.App, logger: Logger, providers?: {
         getPriority?: (deviceId: string) => number;
         getControllable?: (deviceId: string) => boolean;
@@ -207,10 +314,11 @@ export class DeviceManager extends EventEmitter {
         getBudgetExempt?: (deviceId: string) => boolean;
         getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
         getExperimentalEvSupportEnabled?: () => boolean;
-    }, powerState?: PowerEstimateState) {
+    }, powerState?: PowerEstimateState, options?: { debugStructured?: StructuredDebugEmitter }) {
         super();
         this.homey = homey;
         this.logger = logger;
+        this.debugStructured = options?.debugStructured;
         if (providers) this.providers = providers;
         this.powerState = {
             expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
@@ -229,6 +337,12 @@ export class DeviceManager extends EventEmitter {
     }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.setSnapshot(snapshot); }
     setSnapshot(snapshot: TargetDeviceSnapshot[]): void { this.latestSnapshot = snapshot; }
+    /** Inject a device update directly into the reconcile path. Test-only. */
+    injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
+    /** Inject a per-capability event directly into the reconcile path. Test-only. */
+    injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {
+        this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value);
+    }
     parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] { return this.parseDeviceList(list); }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return this.fetchDevices(); }
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
@@ -291,10 +405,21 @@ export class DeviceManager extends EventEmitter {
         }
 
         this.sdkReady = true;
-        const realtimeListenerAttached = this.attachSdkRealtimeListener();
+        this.liveFeed = createDeviceLiveFeed({
+            homey: this.homey,
+            logger: this.logger,
+            callbacks: {
+                onDeviceUpdate: (device) => this.handleRealtimeDeviceUpdate(device),
+                onCapabilityUpdate: (deviceId, capabilityId, value) => (
+                    this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value)
+                ),
+            },
+        });
+        await this.liveFeed.start();
+        this.hasLiveFeed = this.liveFeed.isHealthy();
         this.logger.structuredLog?.info({
+            component: 'devices',
             event: 'device_api_initialized',
-            realtimeListenerAttached,
         });
         this.logger.log('Device API initialized from SDK');
     }
@@ -326,6 +451,7 @@ export class DeviceManager extends EventEmitter {
                 devices: list,
             });
             this.latestSnapshot = snapshot;
+            this.liveFeed?.updateTrackedDevices(snapshot.map((d) => d.id));
             this.recordSnapshotRefreshObservations(snapshot, fetchSource);
             this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
             if (this.logger.structuredLog) {
@@ -555,59 +681,18 @@ export class DeviceManager extends EventEmitter {
         });
     }
 
-    private attachSdkRealtimeListener(): boolean {
-        const devicesApi = getSdkDevicesApi(this.homey, this.logger);
-        if (!devicesApi) {
-            this.logger.log('SDK devices realtime listener unavailable; device freshness depends on snapshot refresh');
-            this.logger.structuredLog?.info({
-                event: 'device_realtime_listener_unavailable',
-                realtimeListenerAttached: false,
-            });
-            this.logger.debug('SDK devices API not available for realtime events');
-            return false;
-        }
-        this.sdkDevicesApi = devicesApi;
-        devicesApi.on('realtime', this.handleSdkRealtimeEvent);
-        this.hasRealtimeDeviceUpdateListener = true;
-        this.logger.log('SDK realtime device listener attached');
-        this.logger.structuredLog?.info({
-            event: 'device_realtime_listener_attached',
-            realtimeListenerAttached: true,
-        });
-        this.logger.debug('SDK realtime device listener attached');
-        return true;
+    getLiveFeedHealth(): LiveFeedHealth | null {
+        return this.liveFeed?.getHealth() ?? null;
     }
-
-    private detachSdkRealtimeListener(): void {
-        if (!this.sdkDevicesApi) return;
-        try {
-            this.sdkDevicesApi.off('realtime', this.handleSdkRealtimeEvent);
-        } catch (error) {
-            const normalizedError = normalizeError(error);
-            this.logger.error('Failed to detach SDK realtime device listener', normalizedError);
-            this.logger.structuredLog?.error({
-                event: 'device_realtime_listener_detach_failed',
-                err: normalizedError,
-            });
-        }
-        this.sdkDevicesApi = null;
-        this.hasRealtimeDeviceUpdateListener = false;
-    }
-
-    private readonly handleSdkRealtimeEvent = (event: string, data: unknown): void => {
-        if (event === HOMEY_DEVICE_UPDATE_EVENT && data && typeof data === 'object') {
-            this.handleRealtimeDeviceUpdate(data as HomeyDeviceLike);
-            return;
-        }
-        // Future: handle other event types if needed
-    };
 
     private shouldTrackRealtimeDevice(deviceId: string): boolean {
         return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
     }
 
     public destroy(): void {
-        this.detachSdkRealtimeListener();
+        void this.liveFeed?.stop();
+        this.liveFeed = null;
+        this.hasLiveFeed = false;
         for (const pending of this.pendingBinarySettleWindows.values()) {
             clearTimeout(pending.timer);
         }
@@ -623,7 +708,7 @@ export class DeviceManager extends EventEmitter {
     ): void {
         if (typeof value !== 'boolean') return;
         if (!isRealtimeControlCapability(capabilityId)) return;
-        if (!this.hasRealtimeDeviceUpdateListener) return;
+        if (!this.hasLiveFeed) return;
 
         this.clearPendingBinarySettleWindow(deviceId, capabilityId);
         const key = this.buildPendingBinarySettleKey(deviceId, capabilityId);

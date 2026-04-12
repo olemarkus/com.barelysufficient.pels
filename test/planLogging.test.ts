@@ -1,4 +1,8 @@
-import { buildPlanChangeLines, buildPlanSignature } from '../lib/plan/planLogging';
+import {
+  buildPlanCapacityStateSummary,
+  buildPlanChangeLines,
+  buildPlanSignature,
+} from '../lib/plan/planLogging';
 import type { DevicePlan } from '../lib/plan/planTypes';
 
 describe('plan logging helpers', () => {
@@ -191,5 +195,93 @@ describe('plan logging helpers', () => {
 
     const lines = buildPlanChangeLines(plan);
     expect(lines).toEqual([]);
+  });
+
+  it('builds capacity state summary counts with stable zero fields', () => {
+    const plan = {
+      meta: { headroomKw: -0.5 },
+      devices: [
+        {
+          id: 'shed',
+          name: 'Shed',
+          plannedState: 'shed',
+          currentOn: true,
+          currentState: 'on',
+          measuredPowerKw: 0,
+          binaryCommandPending: true,
+          controllable: true,
+        },
+        {
+          id: 'stale',
+          name: 'Stale',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'unknown',
+          observationStale: true,
+          controllable: true,
+        },
+        {
+          id: 'cooldown',
+          name: 'Cooldown',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          reason: 'cooldown (restore, 10s remaining)',
+          controllable: true,
+        },
+        {
+          id: 'penalty',
+          name: 'Penalty',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          reason: 'activation backoff (30s remaining)',
+          controllable: true,
+        },
+        {
+          id: 'invariant',
+          name: 'Invariant',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          reason: 'shed invariant: low -> max blocked (1 device(s) shed, max step: low)',
+          controllable: true,
+        },
+        {
+          id: 'manual',
+          name: 'Manual',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          controllable: false,
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    expect(buildPlanCapacityStateSummary(plan)).toEqual({
+      controlledDevices: 5,
+      shedDevices: 1,
+      activeControlledDevices: 4,
+      zeroDrawControlledDevices: 1,
+      staleControlledDevices: 1,
+      pendingControlledDevices: 1,
+      blockedByCooldownDevices: 1,
+      blockedByPenaltyDevices: 1,
+      blockedByInvariantDevices: 1,
+    });
+  });
+
+  it('returns explicit null summary fields when no plan is available', () => {
+    expect(buildPlanCapacityStateSummary(null)).toEqual({
+      controlledDevices: null,
+      shedDevices: null,
+      activeControlledDevices: null,
+      zeroDrawControlledDevices: null,
+      staleControlledDevices: null,
+      pendingControlledDevices: null,
+      blockedByCooldownDevices: null,
+      blockedByPenaltyDevices: null,
+      blockedByInvariantDevices: null,
+    });
   });
 });

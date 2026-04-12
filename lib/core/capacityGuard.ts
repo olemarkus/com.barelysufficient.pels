@@ -1,10 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
+import {
+  buildNullCapacityStateSummary,
+  type PlanCapacityStateSummary,
+} from './capacityStateSummary';
 
 type TriggerCallback = () => Promise<void> | void;
 type ShortfallCallback = (deficitKw: number) => Promise<void> | void;
 type SoftLimitProvider = () => number | null;
 type ShortfallThresholdProvider = () => number | null;
+type CapacityStateSummaryProvider = () => PlanCapacityStateSummary;
 
 export type CapacityGuardOptions = {
   limitKw?: number;
@@ -15,6 +20,7 @@ export type CapacityGuardOptions = {
   onShortfall?: ShortfallCallback;
   onShortfallCleared?: TriggerCallback;
   structuredLog?: PinoLogger;
+  capacityStateSummaryProvider?: CapacityStateSummaryProvider;
 };
 
 /**
@@ -46,6 +52,7 @@ export default class CapacityGuard {
   // Providers
   private softLimitProvider?: SoftLimitProvider;
   private shortfallThresholdProvider?: ShortfallThresholdProvider;
+  private capacityStateSummaryProvider: CapacityStateSummaryProvider;
 
   private structuredLog?: PinoLogger;
   private incidentId: string | null = null;
@@ -60,6 +67,8 @@ export default class CapacityGuard {
     this.onSheddingEnd = options.onSheddingEnd;
     this.onShortfall = options.onShortfall;
     this.onShortfallCleared = options.onShortfallCleared;
+    this.capacityStateSummaryProvider = options.capacityStateSummaryProvider
+      ?? buildNullCapacityStateSummary;
   }
 
   // --- Configuration ---
@@ -165,13 +174,17 @@ export default class CapacityGuard {
    * @param hasCandidates - Whether there are still devices that could be shed
    * @param deficitKw - Current kW above the shortfall threshold
    */
-  async checkShortfall(hasCandidates: boolean, deficitKw: number): Promise<void> {
+  async checkShortfall(
+    hasCandidates: boolean,
+    deficitKw: number,
+    capacityStateSummary?: PlanCapacityStateSummary,
+  ): Promise<void> {
     const shortfallThreshold = this.getShortfallThreshold();
     const thresholdExceeded = this.mainPowerKw !== null && this.mainPowerKw > shortfallThreshold;
 
     // Enter shortfall if over threshold AND no candidates left
     if (thresholdExceeded && !hasCandidates && !this.inShortfall) {
-      await this.enterShortfall(deficitKw);
+      await this.enterShortfall(deficitKw, capacityStateSummary);
       return;
     }
 
@@ -181,11 +194,15 @@ export default class CapacityGuard {
     }
   }
 
-  private async enterShortfall(deficitKw: number): Promise<void> {
+  private async enterShortfall(
+    deficitKw: number,
+    capacityStateSummary?: PlanCapacityStateSummary,
+  ): Promise<void> {
     this.incidentId = `inc_${randomUUID()}`;
     this.incidentStartMs = Date.now();
     const thresholdW = this.getShortfallThreshold() * 1000;
     const powerW = (this.mainPowerKw ?? 0) * 1000;
+    const summary = capacityStateSummary ?? this.capacityStateSummaryProvider();
     this.structuredLog?.info({
       event: 'capacity_overshoot_detected',
       incidentId: this.incidentId,
@@ -193,6 +210,7 @@ export default class CapacityGuard {
       limitW: thresholdW,
       headroomW: thresholdW - powerW,
       excessW: powerW - thresholdW,
+      ...summary,
     });
     this.inShortfall = true;
     this.shortfallClearStartTime = null;

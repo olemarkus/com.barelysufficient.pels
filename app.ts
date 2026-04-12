@@ -10,7 +10,8 @@ import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from './lib/plan/planConstants';
-import { isDeviceObservationStale } from './lib/plan/planObservationPolicy';
+import { getLatestDeviceObservationMs, isDeviceObservationStale } from './lib/plan/planObservationPolicy';
+import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
 import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PowerTrackerState } from './lib/core/powerTracker';
@@ -163,6 +164,7 @@ class PelsApp extends Homey.App {
   private postActuationRefreshTimer?: ReturnType<typeof setTimeout>;
   private realtimeDeviceReconcileTimer?: ReturnType<typeof setTimeout>;
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
+  private deviceObservationStaleById = new Map<string, boolean>();
   private heartbeatInterval?: ReturnType<typeof setInterval>;
   private homeyEnergyPollInterval?: ReturnType<typeof setInterval>;
   private stopPriceLowestTriggerChecker?: () => void;
@@ -391,6 +393,8 @@ class PelsApp extends Homey.App {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
       lastKnownPowerKw: this.lastKnownPowerKw,
       lastMeasuredPowerKw: this.lastMeasuredPowerKw,
+    }, {
+      debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     });
     await this.deviceManager.init();
     this.deviceManager.on(
@@ -413,6 +417,7 @@ class PelsApp extends Homey.App {
       onShortfall: async (deficitKw) => this.handleShortfall(deficitKw),
       onShortfallCleared: async () => this.handleShortfallCleared(),
       structuredLog: this.structuredLogger?.child({ component: 'capacity' }),
+      capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(this.planService?.getLatestPlanSnapshot()),
     });
   }
   private initPlanEngine(): void {
@@ -972,19 +977,69 @@ class PelsApp extends Homey.App {
   private async refreshStaleDeviceObservations(): Promise<void> {
     if (!this.deviceManager || this.isSnapshotRefreshing) return;
     const snapshot = this.latestTargetSnapshot.filter((device) => this.resolveManagedState(device.id));
+    this.logDeviceFreshnessTransitions(snapshot, 'stale_observation_check');
     const staleDevices = snapshot.filter((device) => isDeviceObservationStale(device));
     if (staleDevices.length === 0) return;
 
-    this.getStructuredLogger('devices')?.info({
-      event: 'stale_device_observation_refresh',
-      staleDevices: staleDevices.length,
-      devicesTotal: snapshot.length,
-    });
     this.logDebug(
       'devices',
       `Refreshing target devices snapshot because ${staleDevices.length}/${snapshot.length} managed devices are stale`,
     );
+    const staleDeviceIds = new Set(staleDevices.map((device) => device.id));
     await this.refreshTargetDevicesSnapshot({ targeted: true });
+    const refreshedSnapshot = this.latestTargetSnapshot.filter((device) => this.resolveManagedState(device.id));
+    const refreshedById = new Map(refreshedSnapshot.map((device) => [device.id, device]));
+    let freshAfterRefreshDevices = 0;
+    let stillStaleAfterRefreshDevices = 0;
+    for (const deviceId of staleDeviceIds) {
+      const refreshedDevice = refreshedById.get(deviceId);
+      if (!refreshedDevice || isDeviceObservationStale(refreshedDevice)) {
+        stillStaleAfterRefreshDevices += 1;
+      } else {
+        freshAfterRefreshDevices += 1;
+      }
+    }
+    this.getStructuredLogger('devices')?.info({
+      event: 'stale_device_observation_refresh',
+      staleDevices: staleDevices.length,
+      devicesTotal: snapshot.length,
+      refreshedDevices: staleDevices.length,
+      freshAfterRefreshDevices,
+      stillStaleAfterRefreshDevices,
+    });
+  }
+
+  private logDeviceFreshnessTransitions(
+    snapshot: TargetDeviceSnapshot[],
+    source: string,
+  ): void {
+    const activeDeviceIds = new Set(snapshot.map((device) => device.id));
+    for (const deviceId of this.deviceObservationStaleById.keys()) {
+      if (!activeDeviceIds.has(deviceId)) this.deviceObservationStaleById.delete(deviceId);
+    }
+
+    const nowMs = Date.now();
+    for (const device of snapshot) {
+      const isStale = isDeviceObservationStale(device);
+      const wasStale = this.deviceObservationStaleById.get(device.id);
+      this.deviceObservationStaleById.set(device.id, isStale);
+      if (wasStale === undefined || wasStale === isStale) continue;
+
+      const lastObservationMs = getLatestDeviceObservationMs(device);
+      const ageMs = typeof lastObservationMs === 'number' ? Math.max(0, nowMs - lastObservationMs) : null;
+      const planDevice = this.planService?.getLatestPlanSnapshot()?.devices.find((d) => d.id === device.id);
+      this.getStructuredLogger('devices')?.info({
+        event: isStale ? 'device_became_stale' : 'device_became_fresh',
+        deviceId: device.id,
+        deviceName: device.name,
+        ageMs,
+        lastObservationAt: typeof lastObservationMs === 'number' ? new Date(lastObservationMs).toISOString() : null,
+        source,
+        currentPowerW: resolveSnapshotPowerW(device),
+        isControlled: this.isCapacityControlEnabled(device.id),
+        isShed: planDevice ? planDevice.plannedState === 'shed' : null,
+      });
+    }
   }
 
   private scheduleNextSnapshotRefresh(): void {
@@ -1090,6 +1145,10 @@ class PelsApp extends Homey.App {
           targetedRefresh: options.targeted,
         });
         const snapshot = this.latestTargetSnapshot;
+        this.logDeviceFreshnessTransitions(
+          snapshot.filter((device) => this.resolveManagedState(device.id)),
+          'snapshot_refresh',
+        );
         await this.planService?.syncLivePlanState('snapshot_refresh');
         this.planService?.syncHeadroomCardState({
           devices: snapshot,
@@ -1171,4 +1230,12 @@ class PelsApp extends Homey.App {
   public applySheddingToDevice = (deviceId: string, deviceName?: string, reason?: string) =>
     this.planService.applySheddingToDevice(deviceId, deviceName, reason);
 }
+
+function resolveSnapshotPowerW(device: TargetDeviceSnapshot): number | null {
+  const kw = typeof device.measuredPowerKw === 'number'
+    ? device.measuredPowerKw
+    : device.powerKw;
+  return typeof kw === 'number' && Number.isFinite(kw) ? kw * 1000 : null;
+}
+
 export = PelsApp;

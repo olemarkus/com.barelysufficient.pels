@@ -7,6 +7,7 @@ import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './planShedding';
+import { buildPlanCapacityStateSummary } from './planLogging';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
 import { sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from './planUsage';
@@ -142,7 +143,6 @@ export class PlanBuilder {
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const { context, dailyBudgetSnapshot, sheddingPlan } = await this.buildContextAndShedding(devices);
     const deviceNameById = new Map(devices.map((d) => [d.id, d.name]));
-    this.updateOvershootState(context, deviceNameById);
 
     let planDevices = this.buildPlanDevices(context, sheddingPlan);
     const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan, deviceNameById);
@@ -155,6 +155,7 @@ export class PlanBuilder {
     planDevices = this.applyHeadroomCooldownOverlayWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
+    this.updateOvershootState(context, deviceNameById, finalized.planDevices);
 
     const meta = this.trackDuration('plan_meta_ms', () => (
       this.buildPlanMeta(context, finalized.planDevices, dailyBudgetSnapshot)
@@ -213,7 +214,11 @@ export class PlanBuilder {
     return { context, dailyBudgetSnapshot, sheddingPlan };
   }
 
-  private updateOvershootState(context: PlanContext, deviceNameById: ReadonlyMap<string, string>): void {
+  private updateOvershootState(
+    context: PlanContext,
+    deviceNameById: ReadonlyMap<string, string>,
+    planDevices: DevicePlanDevice[],
+  ): void {
     const overshootActive = context.headroom !== null && context.headroom < 0;
     const prevOvershoot = this.state.wasOvershoot;
     if (overshootActive && !prevOvershoot) {
@@ -225,6 +230,14 @@ export class PlanBuilder {
         event: 'overshoot_entered',
         headroomKw: context.headroom,
         ...buildPlanContextHeadroomLogFields(context, this.capacityGuard),
+        ...buildPlanCapacityStateSummary({
+          meta: {
+            totalKw: context.total,
+            softLimitKw: context.softLimit,
+            headroomKw: context.headroom,
+          },
+          devices: planDevices,
+        }),
       });
       this.attributeOvershootToRecentRestores(deviceNameById);
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
