@@ -3,12 +3,24 @@ import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanContext } from './planContext';
 import { resolveCandidatePower } from './planCandidatePower';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
+import { buildPlanInputCapacityStateSummary } from './planLogging';
 
 function handleShortfallCheck(
-  capacityGuard: CapacityGuard | undefined, remaining: number, deficitKw: number,
+  params: {
+    capacityGuard: CapacityGuard | undefined;
+    remaining: number;
+    deficitKw: number;
+    devices: PlanInputDevice[];
+    shedSet: Set<string>;
+  },
 ): Promise<void> {
+  const { capacityGuard, remaining, deficitKw, devices, shedSet } = params;
   return deficitKw > 0
-    ? (capacityGuard?.checkShortfall(remaining > 0, deficitKw) ?? Promise.resolve())
+    ? (capacityGuard?.checkShortfall(
+      remaining > 0,
+      deficitKw,
+      buildPlanInputCapacityStateSummary(devices, shedSet),
+    ) ?? Promise.resolve())
     : (capacityGuard?.checkShortfall(true, 0) ?? Promise.resolve());
 }
 
@@ -96,7 +108,13 @@ export async function updateGuardState(params: {
     const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
     const deficitKw = computeShortfallDeficitKw(total, shortfallThreshold);
     await capacityGuard?.setSheddingActive(true);
-    await handleShortfallCheck(capacityGuard, remainingCandidates, deficitKw);
+    await handleShortfallCheck({
+      capacityGuard,
+      remaining: remainingCandidates,
+      deficitKw,
+      devices,
+      shedSet,
+    });
     return { sheddingActive: true };
   }
 

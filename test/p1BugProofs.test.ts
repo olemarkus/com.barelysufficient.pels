@@ -128,6 +128,54 @@ describe('P1 bug proofs', () => {
     expect(active).toBe(true);
   });
 
+  it('passes the in-flight shed summary to shortfall logging', async () => {
+    const capacityGuard = {
+      isSheddingActive: vi.fn(() => false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+      getShortfallThreshold: vi.fn().mockReturnValue(5),
+    } as unknown as CapacityGuard;
+
+    await updateGuardState({
+      headroom: -1,
+      capacitySoftLimit: 5,
+      total: 6,
+      devices: [
+        {
+          id: 'shed',
+          name: 'Shed',
+          targets: [],
+          currentOn: true,
+          controllable: true,
+          measuredPowerKw: 0,
+          binaryCommandPending: true,
+        },
+        {
+          id: 'stale',
+          name: 'Stale',
+          targets: [],
+          currentOn: true,
+          controllable: true,
+          observationStale: true,
+        },
+      ],
+      shedSet: new Set(['shed']),
+      softLimitSource: 'capacity',
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      capacityGuard,
+    });
+
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 1, expect.objectContaining({
+      controlledDevices: 2,
+      shedDevices: 1,
+      activeControlledDevices: 1,
+      zeroDrawControlledDevices: 1,
+      staleControlledDevices: 1,
+      pendingControlledDevices: 1,
+    }));
+  });
+
   it.fails('applies the same unknown-state restore eligibility rules to stepped and non-stepped devices', () => {
     const devices = [
       buildPlanDevice({

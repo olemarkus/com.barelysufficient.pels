@@ -1,5 +1,4 @@
 import {
-  clearMockSdkDeviceListeners,
   MockDevice,
   MockDriver,
   mockHomeyInstance,
@@ -8,7 +7,6 @@ import {
 
 describe('mock Homey backend', () => {
   beforeEach(() => {
-    clearMockSdkDeviceListeners();
     setMockDrivers({});
   });
 

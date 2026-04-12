@@ -1,11 +1,32 @@
 import {
-  clearMockHomeyApiDeviceListeners,
-  emitMockHomeyApiDeviceUpdate,
   mockHomeyInstance,
   setMockDrivers,
   MockDevice,
   MockDriver,
 } from './mocks/homey';
+import type { LiveFeedHealth } from '../lib/core/deviceLiveFeed';
+
+// Prevent real socket.io connections in app tests.
+vi.mock('../lib/core/deviceLiveFeed', () => {
+  const mockHealth: LiveFeedHealth = {
+    subscriptionState: 'subscribed',
+    lastLiveEventMs: null,
+    liveEventCount: 0,
+    ignoredLiveEventCount: 0,
+    reconnectCount: 0,
+    lastReconnectMs: null,
+    lastSuccessfulSubscriptionMs: null,
+  };
+  return {
+    createDeviceLiveFeed: vi.fn(() => ({
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      isHealthy: vi.fn().mockReturnValue(true),
+      getHealth: vi.fn().mockReturnValue(mockHealth),
+      updateTrackedDevices: vi.fn(),
+    })),
+  };
+});
 import { createApp, cleanupApps } from './utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
@@ -113,7 +134,7 @@ const clearRecentLocalCapabilityWrites = (app: any) => {
 describe('MyApp initialization', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-    clearMockHomeyApiDeviceListeners();
+
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.settings.set('price_scheme', 'flow');
@@ -873,7 +894,7 @@ describe('MyApp initialization', () => {
     const reconcileSpy = vi.spyOn((app as any).planService, 'reconcileLatestPlanState');
     const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
 
-    emitMockHomeyApiDeviceUpdate({
+    (app as any).deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
@@ -1028,7 +1049,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     const reconcileSpy = vi.spyOn((app as any).planService, 'reconcileLatestPlanState');
 
-    emitMockHomeyApiDeviceUpdate({
+    (app as any).deviceManager.injectDeviceUpdateForTest({
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
@@ -1328,7 +1349,7 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     heater.setApiCapabilityValue('target_temperature', 26.5);
-    heater.emitDeviceUpdate();
+    (app as any).deviceManager.injectDeviceUpdateForTest(heater.toHomeyApiDevice());
     await waitFor(() => (
       (app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')
         ?.targets?.[0]?.value === 26.5
@@ -2017,7 +2038,7 @@ describe('computeDynamicSoftLimit', () => {
 describe('periodic snapshot refresh scheduling', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
-    clearMockHomeyApiDeviceListeners();
+
     mockHomeyInstance.settings.removeAllListeners();
     mockHomeyInstance.settings.clear();
     mockHomeyInstance.settings.set('price_scheme', 'flow');
