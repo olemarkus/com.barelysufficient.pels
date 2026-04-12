@@ -41,6 +41,7 @@ const DEVICE_URI_PREFIX = 'homey:device:';
 const HANDSHAKE_TIMEOUT_MS = 15_000;
 const SUBSCRIBE_TIMEOUT_MS = 15_000;
 const RECONNECT_DELAY_MS = 5_000;
+const RECONNECT_DELAY_MAX_MS = 60_000;
 const QUIET_FEED_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 const QUIET_CHECK_INTERVAL_MS = 60 * 1000;
 
@@ -212,6 +213,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: RECONNECT_DELAY_MS,
+      reconnectionDelayMax: RECONNECT_DELAY_MAX_MS,
     });
 
     this.rootSocket.on('disconnect', (reason: string) => {
@@ -270,12 +272,15 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
 
   private async handshakeAndSubscribe(args: { token: string; homeyId: string }): Promise<void> {
     const handshake = await this.emitHandshake(args);
-    const sub = this.openNamespacedSocket(handshake.namespace);
+    // Tear down the old socket BEFORE opening a new one — Manager caches sockets by namespace,
+    // so disconnecting after would kill the newly created socket.
     if (this.namespacedSocket) {
       this.subscribedDeviceIds.clear();
       this.namespacedSocket.removeAllListeners();
       this.namespacedSocket.disconnect();
+      this.namespacedSocket = null;
     }
+    const sub = this.openNamespacedSocket(handshake.namespace);
     this.namespacedSocket = sub;
     await this.waitForNamespaceConnect(sub, handshake.namespace);
     if (this.stopped) return;
@@ -367,7 +372,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
     sub.on(DEVICES_URI, (eventName: string, data: unknown) => {
       this.health.lastLiveEventMs = Date.now();
       this.quietEmittedAt = null;
-      this.logger.structuredLog?.info({
+      this.logger.structuredLog?.debug({
         component: 'devices', source: 'web_api_subscription',
         event: 'device_live_feed_event_received',
         eventName, deviceId: extractDeviceId(data),

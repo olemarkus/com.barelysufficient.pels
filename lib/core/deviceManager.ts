@@ -165,7 +165,6 @@ export class DeviceManager extends EventEmitter {
     private latestSnapshot: TargetDeviceSnapshot[] = [];
     private latestHomePowerW: number | null = null;
     private powerState: Required<PowerEstimateState>;
-    private hasLiveFeed = false;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private pendingBinarySettleWindows: Map<string, PendingBinarySettleWindow> = new Map();
     private debugObservedSourcesByDeviceId: Map<string, DeviceDebugObservedSources> = new Map();
@@ -416,7 +415,6 @@ export class DeviceManager extends EventEmitter {
             },
         });
         await this.liveFeed.start();
-        this.hasLiveFeed = this.liveFeed.isHealthy();
         this.logger.structuredLog?.info({
             component: 'devices',
             event: 'device_api_initialized',
@@ -692,7 +690,6 @@ export class DeviceManager extends EventEmitter {
     public destroy(): void {
         void this.liveFeed?.stop();
         this.liveFeed = null;
-        this.hasLiveFeed = false;
         for (const pending of this.pendingBinarySettleWindows.values()) {
             clearTimeout(pending.timer);
         }
@@ -708,7 +705,7 @@ export class DeviceManager extends EventEmitter {
     ): void {
         if (typeof value !== 'boolean') return;
         if (!isRealtimeControlCapability(capabilityId)) return;
-        if (!this.hasLiveFeed) return;
+        if (this.liveFeed?.isHealthy() !== true) return;
 
         this.clearPendingBinarySettleWindow(deviceId, capabilityId);
         const key = this.buildPendingBinarySettleKey(deviceId, capabilityId);
