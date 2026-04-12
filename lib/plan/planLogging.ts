@@ -1,17 +1,143 @@
-import type { DevicePlan, DevicePlanDevice } from './planTypes';
+import {
+  buildEmptyCapacityStateSummary,
+  buildNullCapacityStateSummary,
+  type PlanCapacityStateSummary,
+} from '../core/capacityStateSummary';
+import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
+
+export type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
+
+export function buildPlanCapacityStateSummary(plan: DevicePlan | null | undefined): PlanCapacityStateSummary {
+  if (!plan) {
+    return buildNullCapacityStateSummary();
+  }
+
+  const summary = buildEmptyCapacityStateSummary();
+  for (const device of plan.devices) {
+    if (device.controllable === false) continue;
+    summary.controlledDevices += 1;
+    summary.shedDevices += Number(device.plannedState === 'shed');
+    summary.activeControlledDevices += Number(isActiveControlledDevice(device));
+    summary.zeroDrawControlledDevices += Number(isZeroDrawControlledDevice(device));
+    summary.staleControlledDevices += Number(device.observationStale === true);
+    summary.pendingControlledDevices += Number(hasPendingCommand(device));
+    summary.blockedByCooldownDevices += Number(isBlockedByCooldown(device));
+    summary.blockedByPenaltyDevices += Number(isBlockedByPenalty(device));
+    summary.blockedByInvariantDevices += Number(isBlockedByInvariant(device));
+  }
+
+  return summary;
+}
+
+export function buildPlanInputCapacityStateSummary(
+  devices: PlanInputDevice[],
+  shedSet: ReadonlySet<string>,
+): PlanCapacityStateSummary {
+  const summary = buildEmptyCapacityStateSummary();
+  for (const device of devices) {
+    if (device.controllable === false) continue;
+    summary.controlledDevices += 1;
+    summary.shedDevices += Number(shedSet.has(device.id));
+    summary.activeControlledDevices += Number(isActiveInputDevice(device));
+    summary.zeroDrawControlledDevices += Number(isZeroDrawInputDevice(device));
+    summary.staleControlledDevices += Number(device.observationStale === true);
+    summary.pendingControlledDevices += Number(hasPendingInputCommand(device));
+  }
+  return summary;
+}
+
+function matchesAnyReason(reason: string | undefined, patterns: RegExp[]): boolean {
+  if (!reason) return false;
+  return patterns.some((pattern) => pattern.test(reason));
+}
+
+const COOLDOWN_REASON_PATTERNS = [
+  /^cooldown \(shedding, \d+s remaining\)$/,
+  /^cooldown \(restore, \d+s remaining\)$/,
+  new RegExp(
+    '^headroom cooldown \\(\\d+s remaining; '
+    + '(?:usage (?:unknown|-?\\d+(?:\\.\\d+)?) -> (?:unknown|-?\\d+(?:\\.\\d+)?)kW'
+    + '|recent PELS shed|recent PELS restore)\\)$',
+  ),
+  /^restore pending \(\d+s remaining\)$/,
+];
+
+const PENALTY_REASON_PATTERNS = [
+  /^activation backoff \(\d+s remaining\)$/,
+];
+
+const INVARIANT_REASON_PATTERNS = [
+  /^shed invariant: .+ -> .+ blocked \(\d+ device\(s\) shed, max step: .+\)$/,
+];
+
+function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unknown> {
+  return {
+    id: device.id,
+    controlModel: device.controlModel,
+    plannedState: device.plannedState,
+    plannedTarget: device.plannedTarget,
+    desiredStepId: device.desiredStepId,
+    shedAction: device.shedAction,
+    controllable: device.controllable,
+  };
+}
 
 export function buildPlanSignature(plan: DevicePlan): string {
   return JSON.stringify(
-    plan.devices.map((d) => ({
-      id: d.id,
-      controlModel: d.controlModel,
-      plannedState: d.plannedState,
-      plannedTarget: d.plannedTarget,
-      desiredStepId: d.desiredStepId,
-      shedAction: d.shedAction,
-      controllable: d.controllable,
-    })),
+    plan.devices.map((device) => buildPlanSignatureDevice(device)),
   );
+}
+
+function isActiveControlledDevice(device: DevicePlanDevice): boolean {
+  if (device.observationStale === true) return false;
+  if (device.controlModel === 'stepped_load') {
+    return device.currentState !== 'off'
+      && device.currentState !== 'unknown'
+      && device.currentState !== 'not_applicable';
+  }
+  return device.currentOn === true || device.currentState === 'on';
+}
+
+function isActiveInputDevice(device: PlanInputDevice): boolean {
+  if (device.observationStale === true) return false;
+  return device.currentOn === true;
+}
+
+function isZeroDrawControlledDevice(device: DevicePlanDevice): boolean {
+  return isActiveControlledDevice(device)
+    && typeof device.measuredPowerKw === 'number'
+    && Number.isFinite(device.measuredPowerKw)
+    && device.measuredPowerKw <= 0;
+}
+
+function isZeroDrawInputDevice(device: PlanInputDevice): boolean {
+  return isActiveInputDevice(device)
+    && typeof device.measuredPowerKw === 'number'
+    && Number.isFinite(device.measuredPowerKw)
+    && device.measuredPowerKw <= 0;
+}
+
+function hasPendingCommand(device: DevicePlanDevice): boolean {
+  return device.binaryCommandPending === true
+    || device.stepCommandPending === true
+    || device.pendingTargetCommand !== undefined;
+}
+
+function hasPendingInputCommand(device: PlanInputDevice): boolean {
+  return device.binaryCommandPending === true || device.stepCommandPending === true;
+}
+
+function isBlockedByCooldown(device: DevicePlanDevice): boolean {
+  return device.headroomCardBlocked === true
+    || matchesAnyReason(device.reason, COOLDOWN_REASON_PATTERNS);
+}
+
+function isBlockedByPenalty(device: DevicePlanDevice): boolean {
+  return matchesAnyReason(device.reason, PENALTY_REASON_PATTERNS);
+}
+
+function isBlockedByInvariant(device: DevicePlanDevice): boolean {
+  return matchesAnyReason(device.reason, INVARIANT_REASON_PATTERNS);
 }
 
 export function buildPlanDetailSignature(plan: DevicePlan): string {

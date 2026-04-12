@@ -7,6 +7,7 @@ import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
   buildPlanChangeLines,
+  buildPlanCapacityStateSummary,
   buildPlanDetailSignature,
   buildPlanSignature,
 } from './planLogging';
@@ -494,6 +495,7 @@ export class PlanService {
             appliedActions: outcome.appliedActions,
             failed: outcome.failed,
             ...buildPlanHeadroomLogFields(this.latestPlanSnapshot),
+            ...buildPlanCapacityStateSummary(this.latestPlanSnapshot),
           });
         }
       }
