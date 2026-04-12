@@ -283,5 +283,8 @@
   },
   "2.1.19": {
     "en": "Improves performance and stability."
+  },
+  "2.1.20": {
+    "en": "Improve real-time update of devices."
   }
 }
