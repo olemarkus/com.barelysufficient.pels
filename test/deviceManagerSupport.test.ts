@@ -14,6 +14,7 @@ import {
   getCurrentTemperature,
   resolveDeviceCapabilities,
 } from '../lib/core/deviceManagerParse';
+import { getBinaryControlPlan } from '../lib/plan/planBinaryControl';
 import {
   applyMeasurementUpdates,
   updateLastKnownPower,
@@ -328,5 +329,71 @@ describe('device manager support helpers', () => {
     expect(logger.debug).toHaveBeenCalledWith(
       expect.stringContaining('falling back to full device fetch'),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 1.4 / Regression 5.4: parser acceptance ≠ turn_off actuation eligibility
+//
+// A temperature-capable stepped device may be accepted by the parser even when
+// it lacks an onoff capability. However, parser acceptance does NOT mean the
+// device is eligible for turn_off actuation: getBinaryControlPlan returns null
+// without onoff, so no binary command can be issued.
+// ---------------------------------------------------------------------------
+
+describe('parser-valid device without onoff is not eligible for turn_off actuation (Test 1.4 / Regression 5.4)', () => {
+  it('resolveDeviceCapabilities accepts a temperature-capable device even without onoff', () => {
+    // A stepped temperature water heater with target_temperature + measure_temperature
+    // but no onoff capability — the parser accepts it because it has a target.
+    const result = resolveDeviceCapabilities({
+      deviceClassKey: 'thermostat',
+      deviceId: 'dev-temp',
+      deviceLabel: 'Hot Water Tank',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
+      logDebug: vi.fn(),
+    });
+
+    // Parser accepts the device (returns non-null)
+    expect(result).not.toBeNull();
+    expect(result?.targetCaps).toContain('target_temperature');
+  });
+
+  it('getBinaryControlPlan returns null for a snapshot without onoff — turn_off cannot actuate', () => {
+    // Same device as above, represented as a runtime snapshot without onoff.
+    // getBinaryControlPlan is the actuation gate: null means no binary command is possible.
+    const result = getBinaryControlPlan({
+      id: 'dev-temp',
+      name: 'Hot Water Tank',
+      // No controlCapabilityId, no 'onoff' in capabilities
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
+      canSetControl: true,
+      currentOn: false,
+    } as never);
+
+    // Null = no binary control plan = turn_off cannot actuate even though parser accepted.
+    expect(result).toBeNull();
+  });
+
+  it('a parser-valid temperature device without onoff is rejected at the actuation gate', () => {
+    // This is the combined assertion: the two facts above form a deliberate invariant.
+    // Parser acceptance and actuation eligibility are distinct properties.
+    const parseResult = resolveDeviceCapabilities({
+      deviceClassKey: 'thermostat',
+      deviceId: 'dev-temp',
+      deviceLabel: 'Hot Water Tank',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
+      logDebug: vi.fn(),
+    });
+    const actuationGate = getBinaryControlPlan({
+      id: 'dev-temp',
+      name: 'Hot Water Tank',
+      capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
+      canSetControl: true,
+      currentOn: false,
+    } as never);
+
+    // Parser accepts; actuation gate rejects.
+    expect(parseResult).not.toBeNull();
+    expect(actuationGate).toBeNull();
   });
 });

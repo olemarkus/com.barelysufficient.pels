@@ -15,7 +15,12 @@ import {
   resolveSteppedLoadInitialDesiredStepId,
   getSteppedLoadShedTargetStep,
 } from './planSteppedLoad';
-import { getSteppedLoadLowestActiveStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadLowestStep,
+  getSteppedLoadOffStep,
+  isSteppedLoadOffStep,
+} from '../utils/deviceControlProfiles';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -149,6 +154,19 @@ function resolveCurrentState(device: PlanInputDevice): string {
   return device.currentOn ? 'on' : 'off';
 }
 
+// For keep/restore devices at off-step, normalize desired step to lowest non-zero.
+// Computed after plannedState to avoid a circular effect on isSteppedShed.
+function resolveSteppedKeepDesiredStepId(
+  dev: PlanInputDevice,
+  desiredStepId: string | undefined,
+  plannedState: 'shed' | 'keep',
+): string | undefined {
+  if (plannedState !== 'keep') return desiredStepId;
+  if (!dev.steppedLoadProfile || !desiredStepId) return desiredStepId;
+  if (!isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId)) return desiredStepId;
+  return getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id ?? desiredStepId;
+}
+
 // For shed stepped-load devices at the off step, expectedPowerKw should reflect the lowest
 // positive step so that restore planning uses a realistic power estimate rather than zero.
 function resolveExpectedPowerKw(dev: PlanInputDevice, plannedState: 'shed' | 'keep'): number | undefined {
@@ -207,6 +225,9 @@ function buildBasePlanDevice(params: {
     && desiredStepId !== undefined
     && desiredStepId !== dev.selectedStepId;
   const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id) || isSteppedShed);
+  // For keep/restore devices at off-step, normalize desired step to lowest non-zero.
+  // Computed after plannedState to avoid a circular effect on isSteppedShed.
+  const effectiveDesiredStepId = resolveSteppedKeepDesiredStepId(dev, desiredStepId, plannedState);
   const baseReason = controllable
     ? shedReasons.get(dev.id) || (recentlyRestored ? 'keep (recently restored)' : 'keep')
     : 'capacity control off';
@@ -235,7 +256,7 @@ function buildBasePlanDevice(params: {
     controlModel: dev.controlModel,
     steppedLoadProfile: dev.steppedLoadProfile,
     selectedStepId: dev.selectedStepId,
-    desiredStepId,
+    desiredStepId: effectiveDesiredStepId,
     lastDesiredStepId: dev.desiredStepId,
     actualStepId: dev.actualStepId,
     assumedStepId: dev.assumedStepId,
@@ -294,7 +315,7 @@ function resolveShedAction(params: {
     }
   }
   if (isSteppedLoadDevice(dev)) {
-    return resolveSteppedShedAction({ controllable, shedBehavior });
+    return resolveSteppedShedAction({ controllable, hasBinaryControl: dev.hasBinaryControl, shedBehavior });
   }
   // Non-stepped temperature devices: fall back to shedBehavior when not in temperatureShedTargets
   if (controllable && shouldShed
@@ -311,10 +332,15 @@ function resolveShedAction(params: {
 
 function resolveSteppedShedAction(params: {
   controllable: boolean;
+  hasBinaryControl: boolean | undefined;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
 }): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
-  const { controllable, shedBehavior } = params;
+  const { controllable, hasBinaryControl, shedBehavior } = params;
   if (controllable && shedBehavior.action === 'set_step') {
+    return { shedAction: 'set_step', shedTemperature: null, shedStepId: null };
+  }
+  // turn_off requires binary control; normalize to set_step when missing
+  if (hasBinaryControl === false) {
     return { shedAction: 'set_step', shedTemperature: null, shedStepId: null };
   }
   return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
@@ -332,7 +358,14 @@ function resolveSteppedLoadDirectShedStepId(params: {
     shouldShed,
     currentDesiredStepId,
   } = params;
-  if (!shouldShed || !isSteppedLoadDevice(dev) || shedBehavior.action !== 'set_step') return undefined;
+  if (!shouldShed || !isSteppedLoadDevice(dev)) return undefined;
+  if (shedBehavior.action === 'turn_off') {
+    const profile = dev.steppedLoadProfile;
+    if (!profile) return undefined;
+    // turn_off targets the off-step (zero-usage) directly, not gradual stepping
+    return (getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile))?.id;
+  }
+  if (shedBehavior.action !== 'set_step') return undefined;
   const targetStep = getSteppedLoadShedTargetStep({
     device: dev,
     shedAction: 'set_step',
