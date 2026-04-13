@@ -206,6 +206,37 @@ export class DeviceManager extends EventEmitter {
         });
         if (recentWrite && recentWrite.value === value) return;
 
+        if (this.isFreshnessOnlyCapability(capabilityId)) {
+            this.handleFreshnessOnlyCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value);
+            return;
+        }
+
+        this.handleReconcileCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value, snapshot);
+    };
+
+    private handleFreshnessOnlyCapabilityUpdate(
+        snapshotIndex: number,
+        deviceId: string,
+        capabilityId: string,
+        value: unknown,
+    ): void {
+        const result = this.applyFreshnessOnlyCapabilityUpdate(snapshotIndex, capabilityId, value);
+        if (!result.changed) return;
+        this.recordCapabilityObservation(deviceId, capabilityId, result.normalizedValue, 'realtime_capability');
+        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
+            source: 'realtime_capability',
+            deviceId,
+            capabilityId,
+        } satisfies ObservedDeviceStateEvent);
+    }
+
+    private handleReconcileCapabilityUpdate(
+        snapshotIndex: number,
+        deviceId: string,
+        capabilityId: string,
+        value: unknown,
+        snapshot: TargetDeviceSnapshot,
+    ): void {
         const changes: PlanRealtimeUpdateEvent['changes'] = [];
 
         if (capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean') {
@@ -245,11 +276,39 @@ export class DeviceManager extends EventEmitter {
             name: snapshot.name,
             changes,
         } satisfies PlanRealtimeUpdateEvent);
-    };
+    }
 
     private isTrackedCapability(snapshot: TargetDeviceSnapshot, capabilityId: string): boolean {
+        return this.isReconcileCapability(snapshot, capabilityId) || this.isFreshnessOnlyCapability(capabilityId);
+    }
+
+    private isReconcileCapability(snapshot: TargetDeviceSnapshot, capabilityId: string): boolean {
         return capabilityId === snapshot.controlCapabilityId
             || snapshot.targets.some((t) => t.id === capabilityId);
+    }
+
+    private isFreshnessOnlyCapability(capabilityId: string): boolean {
+        return capabilityId === 'measure_power' || capabilityId === 'measure_temperature';
+    }
+
+    private applyFreshnessOnlyCapabilityUpdate(
+        snapshotIndex: number,
+        capabilityId: string,
+        value: unknown,
+    ): { readonly changed: boolean; readonly normalizedValue: unknown } {
+        const snapshot = this.latestSnapshot[snapshotIndex];
+        if (capabilityId === 'measure_power' && typeof value === 'number') {
+            const kw = value / 1000;
+            if (Object.is(snapshot.measuredPowerKw, kw)) return { changed: false, normalizedValue: kw };
+            snapshot.measuredPowerKw = kw;
+            return { changed: true, normalizedValue: kw };
+        }
+        if (capabilityId === 'measure_temperature' && typeof value === 'number') {
+            if (Object.is(snapshot.currentTemperature, value)) return { changed: false, normalizedValue: value };
+            snapshot.currentTemperature = value;
+            return { changed: true, normalizedValue: value };
+        }
+        return { changed: false, normalizedValue: undefined };
     }
 
     /** Returns true if the change was deferred by the binary settle window. */
@@ -861,8 +920,13 @@ export class DeviceManager extends EventEmitter {
         const available = getIsAvailable(device);
         const deviceType = this.resolveTargetDeviceType(targetCaps);
         const powerCapable = this.isPowerCapable(device, capsStatus, powerEstimate);
-        const capabilityLastUpdatedMs = this.getLatestCapabilityLastUpdatedMs(capabilityObj);
-        const lastFreshDataMs = Math.max(capabilityLastUpdatedMs ?? 0, now) || undefined;
+        const lastFreshDataMs = this.getTrackedCapabilityLastUpdatedMs(capabilityObj, [
+            ...(controlCapabilityId ? [controlCapabilityId] : []),
+            ...targetCaps,
+            'measure_power',
+            'measure_temperature',
+            'evcharger_charging_state',
+        ]);
         const deviceSettings = this.resolveParsedDeviceSettings(deviceId);
 
         return {
@@ -1024,6 +1088,14 @@ export class DeviceManager extends EventEmitter {
                 previous.lastLocalWriteMs ?? 0,
             ) || undefined;
 
+            // Preserve lastFreshDataMs from the previous snapshot so a refresh never moves
+            // freshness backwards when the fetched capability timestamps are identical or absent.
+            snapshot.lastFreshDataMs = Math.max(
+                snapshot.lastFreshDataMs ?? 0,
+                previous.lastFreshDataMs ?? 0,
+            ) || undefined;
+            snapshot.lastUpdated = snapshot.lastFreshDataMs;
+
             if (snapshot.controlCapabilityId) {
                 this.mergeCapabilityObservation({
                     deviceId: snapshot.id,
@@ -1059,7 +1131,27 @@ export class DeviceManager extends EventEmitter {
                 sourceDevice,
                 nextSnapshot: snapshot,
             });
+
+            // If retained realtime observations exist, cap freshness to their timestamps.
+            // This prevents a snapshot refresh from advancing lastFreshDataMs forward via
+            // wall-clock time alone when the fetched capability timestamps are stale.
+            const maxRetainedMs = this.getMaxRetainedObservationTimeMs(snapshot.id);
+            if (maxRetainedMs > 0) {
+                snapshot.lastFreshDataMs = maxRetainedMs;
+                snapshot.lastUpdated = maxRetainedMs;
+            }
         }
+    }
+
+    private getMaxRetainedObservationTimeMs(deviceId: string): number {
+        const prefix = `${deviceId}:`;
+        let max = 0;
+        for (const [key, obs] of this.capabilityObservations) {
+            if (key.startsWith(prefix) && obs.source !== 'local_write') {
+                max = Math.max(max, obs.observedAt);
+            }
+        }
+        return max;
     }
 
     private mergeCapabilityObservation(params: {
@@ -1345,10 +1437,13 @@ export class DeviceManager extends EventEmitter {
         return `${deviceId}:${capabilityId}`;
     }
 
-    private getLatestCapabilityLastUpdatedMs(capabilityObj: DeviceCapabilityMap): number | undefined {
+    private getTrackedCapabilityLastUpdatedMs(
+        capabilityObj: DeviceCapabilityMap,
+        trackedIds: readonly string[],
+    ): number | undefined {
         let latest = 0;
-        for (const capability of Object.values(capabilityObj)) {
-            const rawValue = capability?.lastUpdated;
+        for (const id of trackedIds) {
+            const rawValue = capabilityObj[id]?.lastUpdated;
             let parsed: number | undefined;
             if (rawValue instanceof Date) parsed = rawValue.getTime();
             else if (typeof rawValue === 'number' && Number.isFinite(rawValue)) parsed = rawValue;
@@ -1356,7 +1451,7 @@ export class DeviceManager extends EventEmitter {
                 const nextParsed = Date.parse(rawValue);
                 if (Number.isFinite(nextParsed)) parsed = nextParsed;
             }
-            if (parsed) latest = Math.max(latest, parsed);
+            if (parsed !== undefined) latest = Math.max(latest, parsed);
         }
         return latest || undefined;
     }
