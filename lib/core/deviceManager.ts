@@ -1083,71 +1083,84 @@ export class DeviceManager extends EventEmitter {
             const previous = previousById.get(snapshot.id);
             const sourceDevice = devicesById.get(snapshot.id);
             if (!previous || !sourceDevice) continue;
-            snapshot.lastLocalWriteMs = Math.max(
-                snapshot.lastLocalWriteMs ?? 0,
-                previous.lastLocalWriteMs ?? 0,
-            ) || undefined;
-
-            // Preserve lastFreshDataMs from the previous snapshot so a refresh never moves
-            // freshness backwards when the fetched capability timestamps are identical or absent.
-            snapshot.lastFreshDataMs = Math.max(
-                snapshot.lastFreshDataMs ?? 0,
-                previous.lastFreshDataMs ?? 0,
-            ) || undefined;
-            snapshot.lastUpdated = snapshot.lastFreshDataMs;
-
-            if (snapshot.controlCapabilityId) {
-                this.mergeCapabilityObservation({
-                    deviceId: snapshot.id,
-                    deviceName: snapshot.name,
-                    capabilityId: snapshot.controlCapabilityId,
-                    sourceDevice,
-                    nextSnapshot: snapshot,
-                });
-            }
-
-            for (const target of snapshot.targets) {
-                this.mergeCapabilityObservation({
-                    deviceId: snapshot.id,
-                    deviceName: snapshot.name,
-                    capabilityId: target.id,
-                    sourceDevice,
-                    nextSnapshot: snapshot,
-                });
-            }
-
-            this.mergeCapabilityObservation({
-                deviceId: snapshot.id,
-                deviceName: snapshot.name,
-                capabilityId: 'measure_power',
-                sourceDevice,
-                nextSnapshot: snapshot,
-            });
-
-            this.mergeCapabilityObservation({
-                deviceId: snapshot.id,
-                deviceName: snapshot.name,
-                capabilityId: 'evcharger_charging_state',
-                sourceDevice,
-                nextSnapshot: snapshot,
-            });
-
-            // If retained realtime observations exist, cap freshness to their timestamps.
-            // This prevents a snapshot refresh from advancing lastFreshDataMs forward via
-            // wall-clock time alone when the fetched capability timestamps are stale.
-            const maxRetainedMs = this.getMaxRetainedObservationTimeMs(snapshot.id);
-            if (maxRetainedMs > 0) {
-                snapshot.lastFreshDataMs = maxRetainedMs;
-                snapshot.lastUpdated = maxRetainedMs;
-            }
+            this.mergeSnapshotObservationsForDevice(snapshot, previous, sourceDevice);
         }
     }
 
-    private getMaxRetainedObservationTimeMs(deviceId: string): number {
-        const prefix = `${deviceId}:`;
+    private mergeSnapshotObservationsForDevice(
+        nextSnapshot: TargetDeviceSnapshot,
+        previous: TargetDeviceSnapshot,
+        sourceDevice: HomeyDeviceLike,
+    ): void {
+        const snapshot = nextSnapshot;
+        snapshot.lastLocalWriteMs = Math.max(
+            snapshot.lastLocalWriteMs ?? 0,
+            previous.lastLocalWriteMs ?? 0,
+        ) || undefined;
+
+        // Preserve lastFreshDataMs from the previous snapshot so a refresh never moves
+        // freshness backwards when the fetched capability timestamps are identical or absent.
+        snapshot.lastFreshDataMs = Math.max(
+            snapshot.lastFreshDataMs ?? 0,
+            previous.lastFreshDataMs ?? 0,
+        ) || undefined;
+        snapshot.lastUpdated = snapshot.lastFreshDataMs;
+
+        if (snapshot.controlCapabilityId) {
+            this.mergeCapabilityObservation({
+                deviceId: snapshot.id,
+                deviceName: snapshot.name,
+                capabilityId: snapshot.controlCapabilityId,
+                sourceDevice,
+                nextSnapshot: snapshot,
+            });
+        }
+
+        for (const target of snapshot.targets) {
+            this.mergeCapabilityObservation({
+                deviceId: snapshot.id,
+                deviceName: snapshot.name,
+                capabilityId: target.id,
+                sourceDevice,
+                nextSnapshot: snapshot,
+            });
+        }
+
+        for (const capabilityId of ['measure_power', 'measure_temperature', 'evcharger_charging_state']) {
+            this.mergeCapabilityObservation({
+                deviceId: snapshot.id,
+                deviceName: snapshot.name,
+                capabilityId,
+                sourceDevice,
+                nextSnapshot: snapshot,
+            });
+        }
+
+        // Advance freshness to the max retained realtime observation timestamp.
+        // applyCapabilityObservation already does Math.max when applying, so this
+        // is a safety net for retained-but-not-applied observations (e.g. where the
+        // fetched snapshot had a fresh-enough lastUpdated but the values diverged).
+        const maxRetainedMs = this.getMaxRetainedObservationTimeMs(snapshot);
+        if (maxRetainedMs > 0) {
+            snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, maxRetainedMs) || undefined;
+            snapshot.lastUpdated = snapshot.lastFreshDataMs;
+        }
+    }
+
+    private getMaxRetainedObservationTimeMs(snapshot: TargetDeviceSnapshot): number {
+        const capabilityIds = [
+            'measure_power',
+            'measure_temperature',
+            'evcharger_charging_state',
+            ...(snapshot.controlCapabilityId ? [snapshot.controlCapabilityId] : []),
+            ...snapshot.targets.map((t) => t.id),
+        ];
         let max = 0;
-        for (const [key, obs] of this.capabilityObservations) {
-            if (key.startsWith(prefix) && obs.source !== 'local_write') {
+        for (const capabilityId of capabilityIds) {
+            const obs = this.capabilityObservations.get(
+                this.buildCapabilityObservationKey(snapshot.id, capabilityId),
+            );
+            if (obs && obs.source !== 'local_write') {
                 max = Math.max(max, obs.observedAt);
             }
         }
@@ -1207,6 +1220,9 @@ export class DeviceManager extends EventEmitter {
         if (capabilityId === 'measure_power') {
             return this.applyMeasuredPowerObservation(nextSnapshot, observation);
         }
+        if (capabilityId === 'measure_temperature') {
+            return this.applyMeasuredTemperatureObservation(nextSnapshot, observation);
+        }
         return this.applyTargetCapabilityObservation(nextSnapshot, capabilityId, observation);
     }
 
@@ -1252,6 +1268,20 @@ export class DeviceManager extends EventEmitter {
         return true;
     }
 
+    private applyMeasuredTemperatureObservation(
+        nextSnapshot: TargetDeviceSnapshot,
+        observation: CapabilityObservation,
+    ): boolean {
+        const snapshot = nextSnapshot;
+        if (typeof observation.value !== 'number' || Object.is(snapshot.currentTemperature, observation.value)) {
+            return false;
+        }
+        snapshot.currentTemperature = observation.value;
+        snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
+        snapshot.lastUpdated = snapshot.lastFreshDataMs;
+        return true;
+    }
+
     private applyTargetCapabilityObservation(
         nextSnapshot: TargetDeviceSnapshot,
         capabilityId: string,
@@ -1286,6 +1316,12 @@ export class DeviceManager extends EventEmitter {
         }
         if (capabilityId === 'measure_power') {
             if (snapshot.measuredPowerKw === observation.value) {
+                this.capabilityObservations.delete(key);
+            }
+            return;
+        }
+        if (capabilityId === 'measure_temperature') {
+            if (snapshot.currentTemperature === observation.value) {
                 this.capabilityObservations.delete(key);
             }
             return;
