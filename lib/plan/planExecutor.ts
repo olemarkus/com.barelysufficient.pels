@@ -436,15 +436,26 @@ export class PlanExecutor {
     mode: PlanActuationMode,
   ): Promise<void> {
     if (!isSteppedLoadDevice(dev)) return;
-    if (!dev.desiredStepId || dev.desiredStepId === dev.selectedStepId) return;
 
     const profile = dev.steppedLoadProfile;
     if (!profile) return;
-    const desiredStep = getSteppedLoadStep(profile, dev.desiredStepId);
+
+    // For keep intent, normalize off-step desiredStepId to the lowest non-zero step.
+    // This ensures a device restored from binary-off always gets a step command to a
+    // non-zero step, even when the planner could not normalize (e.g. stale desiredStepId).
+    const isKeepAtOffStep = dev.plannedState === 'keep'
+      && Boolean(dev.desiredStepId && isSteppedLoadOffStep(profile, dev.desiredStepId));
+    const desiredStepId = isKeepAtOffStep
+      ? getSteppedLoadLowestActiveStep(profile)?.id ?? dev.desiredStepId
+      : dev.desiredStepId;
+
+    if (!desiredStepId || desiredStepId === dev.selectedStepId) return;
+
+    const desiredStep = getSteppedLoadStep(profile, desiredStepId);
     if (!desiredStep) {
       this.logDebug(
         `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
-        + `desired step ${dev.desiredStepId} is not in profile`,
+        + `desired step ${desiredStepId} is not in profile`,
       );
       return;
     }
@@ -458,7 +469,7 @@ export class PlanExecutor {
       if (desiredStep.planningPowerW > selectedPowerW) {
         this.logDebug(
           `Capacity: skip step command for ${dev.name || dev.id}, shed device has upward`
-          + ` desiredStepId=${dev.desiredStepId} vs selectedStepId=${dev.selectedStepId ?? 'unknown'}`
+          + ` desiredStepId=${desiredStepId} vs selectedStepId=${dev.selectedStepId ?? 'unknown'}`
           + ` (power ${selectedPowerW}W)`,
         );
         return;
@@ -466,10 +477,10 @@ export class PlanExecutor {
     }
 
     const previousStepId = dev.selectedStepId ?? dev.lastDesiredStepId;
-    if (dev.stepCommandPending && dev.lastDesiredStepId === dev.desiredStepId) {
+    if (dev.stepCommandPending && dev.lastDesiredStepId === desiredStepId) {
       this.logDebug(
         `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
-        + `awaiting confirmation of ${dev.desiredStepId}`,
+        + `awaiting confirmation of ${desiredStepId}`,
       );
       return;
     }
@@ -694,16 +705,11 @@ export class PlanExecutor {
   }
 
   /**
-   * For a stepped device with `shed` intent whose selected step is already the
-   * off-step, also set `onoff=false` so the device is fully turned off.  This
-   * covers the dual-control case where the step command alone leaves the binary
-   * power state on.
-   *
-   * Note: `dev.currentState` is derived from the decorated snapshot (which
-   * forces `currentOn=false` at the off-step), so it is always `'off'` here.
-   * We skip the `currentState` check and rely on `setBinaryControl`'s own
-   * "already off" guard, which operates on the raw device snapshot where
-   * `currentOn` reflects the actual `onoff` capability value.
+   * For a stepped device with `shed` intent, send `onoff=false` when appropriate:
+   * - For `turn_off` shed action: binary off fires immediately (not waiting for off-step).
+   * - For any shed device that has already reached the off-step: also fire binary off
+   *   as a finalization step (covers the `set_step` path once it steps down to zero).
+   * `setBinaryControl` has its own "already off" guard, so duplicate calls are safe.
    */
   private async applySteppedLoadShedOff(
     dev: DevicePlan['devices'][number],
@@ -711,9 +717,9 @@ export class PlanExecutor {
     mode: PlanActuationMode,
   ): Promise<void> {
     if (dev.plannedState !== 'shed') return;
-    const profile = dev.steppedLoadProfile;
-    if (!profile || !dev.selectedStepId) return;
-    if (!isSteppedLoadOffStep(profile, dev.selectedStepId)) return;
+    const atOffStep = dev.steppedLoadProfile && dev.selectedStepId
+      && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId);
+    if (dev.shedAction !== 'turn_off' && !atOffStep) return;
     if (!snapshot) return;
     const name = dev.name || dev.id;
     try {
@@ -727,7 +733,7 @@ export class PlanExecutor {
         actuationMode: mode,
       });
       if (applied) {
-        this.logDebug(`Capacity: set onoff=false for stepped device ${name} at off-step (shedding)`);
+        this.logDebug(`Capacity: set onoff=false for stepped device ${name} (turn_off shed)`);
       }
     } catch (error) {
       this.error(`Failed to turn off stepped-load device ${name} via binary control`, error);

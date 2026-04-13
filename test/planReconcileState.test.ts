@@ -414,3 +414,152 @@ describe('planReconcileState stepped device drift', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Group 4: expected binary state for stepped turn_off / turn_on
+// Tests probe expected-binary-state logic indirectly through drift detection.
+// hasPlanExecutionDriftForDevice returns true when the live state does not
+// match the expected binary state derived from the plan.
+// ---------------------------------------------------------------------------
+
+describe('expected binary state for stepped turn_off / turn_on (Group 4)', () => {
+  const buildSteppedShedDevice = (
+    overrides: Partial<DevicePlan['devices'][number]> = {},
+  ): DevicePlan['devices'][number] => ({
+    id: 'dev-1',
+    name: 'Tank',
+    currentState: 'on',
+    plannedState: 'shed',
+    currentTarget: null,
+    plannedTarget: null,
+    controllable: true,
+    controlModel: 'stepped_load',
+    steppedLoadProfile: steppedProfile,
+    selectedStepId: 'low',
+    desiredStepId: 'low',
+    shedAction: 'turn_off',
+    ...overrides,
+  });
+
+  const buildKeepDevice = (
+    overrides: Partial<DevicePlan['devices'][number]> = {},
+  ): DevicePlan['devices'][number] => ({
+    id: 'dev-1',
+    name: 'Tank',
+    currentState: 'off',
+    plannedState: 'keep',
+    currentTarget: null,
+    plannedTarget: null,
+    controllable: true,
+    controlModel: 'stepped_load',
+    steppedLoadProfile: steppedProfile,
+    selectedStepId: 'low',
+    desiredStepId: 'low',
+    ...overrides,
+  });
+
+  const buildLiveInput = (
+    overrides: Partial<PlanInputDevice> = {},
+  ): PlanInputDevice => ({
+    id: 'dev-1',
+    name: 'Tank',
+    targets: [],
+    currentOn: true,
+    controlModel: 'stepped_load',
+    steppedLoadProfile: steppedProfile,
+    selectedStepId: 'low',
+    ...overrides,
+  });
+
+  const buildPlanWith = (device: DevicePlan['devices'][number]): DevicePlan => ({
+    meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+    devices: [device],
+  });
+
+  // Test 4.1: stepped turn_off shed → expected binary state is always 'off'.
+  // Detected as drift when live state is 'on'; no drift when live state is 'off'.
+  it('expectedBinaryState is off for stepped turn_off shed (detected via drift)', () => {
+    const plan = buildPlanWith(buildSteppedShedDevice({ shedAction: 'turn_off', selectedStepId: 'low' }));
+
+    // Live currentOn=true → current state is 'on' → differs from expected 'off' → drift
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+      .toBe(true);
+
+    // Live currentOn=false → current state is 'off' → matches expected 'off' → no binary drift
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: false, selectedStepId: 'low' })], 'dev-1'))
+      .toBe(false);
+  });
+
+  // Test 4.2: stepped keep (turn_on intent) → expected binary state is always 'on'.
+  // Detected as drift when live state is 'off'; no drift when live state is 'on'.
+  it('expectedBinaryState is on for stepped keep (turn_on intent), detected via drift', () => {
+    const plan = buildPlanWith(buildKeepDevice({ currentState: 'off', selectedStepId: 'low' }));
+
+    // Live currentOn=false → current state is 'off' → differs from expected 'on' → drift
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: false, selectedStepId: 'low' })], 'dev-1'))
+      .toBe(true);
+
+    // Live currentOn=true → current state is 'on' → matches expected 'on' → no binary drift
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+      .toBe(false);
+  });
+
+  // Test 4.4 / Regression 5.3: for set_step shed, expected binary state follows the
+  // desired step: 'off' when at off-step, 'on' when at non-off step.
+  // Critically, turn_off must NOT route through this set_step logic — it must always
+  // resolve to 'off' directly.
+  it('set_step shed expectedBinaryState is on for non-off step, off for off step', () => {
+    // set_step shed at non-off step → expected 'on'
+    const setStepAtLow = buildPlanWith(buildSteppedShedDevice({
+      shedAction: 'set_step',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    }));
+    // Live currentOn=true (step at 'low', non-off) → liveCurrentState='on' → no drift
+    expect(hasPlanExecutionDriftForDevice(setStepAtLow, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+      .toBe(false);
+    // Live currentOn=false (step at 'low', non-off) → liveCurrentState='off' → drift
+    // (expected='on' from set_step at non-off, live='off')
+    expect(hasPlanExecutionDriftForDevice(setStepAtLow, [buildLiveInput({ currentOn: false, selectedStepId: 'low' })], 'dev-1'))
+      .toBe(true);
+
+    // set_step shed at off-step → expected 'off'.
+    // Note: for stepped devices, resolveSteppedLoadCurrentState returns 'off' for
+    // the off-step regardless of currentOn, so both currentOn=true and currentOn=false
+    // produce liveCurrentState='off' when selectedStepId='off'. Binary drift cannot
+    // be triggered by toggling currentOn alone at the off-step.
+    // Instead, test that step drift is detected when selectedStepId changes.
+    const setStepAtOff = buildPlanWith(buildSteppedShedDevice({
+      shedAction: 'set_step',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+    // Live at off-step with binary off → no drift (expected='off', live='off')
+    expect(hasPlanExecutionDriftForDevice(setStepAtOff, [buildLiveInput({ currentOn: false, selectedStepId: 'off' })], 'dev-1'))
+      .toBe(false);
+    // Live step changed to 'low' → step drift (live selectedStepId ≠ previous selectedStepId)
+    expect(hasPlanExecutionDriftForDevice(setStepAtOff, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+      .toBe(true);
+  });
+
+  // Regression 5.3: turn_off shed with a non-off desiredStepId must still resolve to
+  // expected binary state 'off' — it must never be contaminated by the set_step logic
+  // that would return 'on' for a non-off desiredStep.
+  it('turn_off shed is never treated as set_step for expected binary state: always resolves to off', () => {
+    // Device has turn_off but desiredStepId is 'low' (non-off). If the code accidentally
+    // routed this through resolveSteppedShedBinaryState, it would return 'on'. It must not.
+    const plan = buildPlanWith(buildSteppedShedDevice({
+      shedAction: 'turn_off',
+      selectedStepId: 'low',
+      desiredStepId: 'low', // non-off desiredStep — must not contaminate the 'off' result
+    }));
+
+    // Expected binary is 'off' for turn_off regardless of desiredStepId.
+    // Live currentOn=true → drift (expected='off', observed='on')
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+      .toBe(true);
+    // Live currentOn=false → no drift (expected='off', observed='off')
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: false, selectedStepId: 'low' })], 'dev-1'))
+      .toBe(false);
+  });
+});

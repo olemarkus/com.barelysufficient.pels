@@ -1323,4 +1323,205 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       event: 'restore_keep_invariant_shed_blocked',
     }));
   });
+
+  // -------------------------------------------------------------------------
+  // Group 3: stepped-load turn_on (keep) actuation semantics
+  // Tests marked it.fails() document desired behavior not yet implemented.
+  // -------------------------------------------------------------------------
+
+  describe('turn_on (keep) actuation semantics (Group 3)', () => {
+    // Test 3.1: device has a non-zero step but onoff is false — only binary on needed,
+    // no step change. The step is already non-zero so it must not be overwritten.
+    it('sends onoff=true without changing step when step is already non-zero', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false,
+        },
+      ];
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        desiredStepId: 'low', // non-zero, matches selected — no step change
+      }));
+
+      // Binary must be restored
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      // Step must not be changed — desired already equals selected
+      expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    });
+
+    // Test 3.2: desiredStepId has been pre-normalized to 'low' (lowest non-zero) before
+    // the executor runs. With the correct desiredStepId in place, the executor must issue
+    // BOTH the binary on AND the step-up command.
+    // Note: this passes because desiredStepId is explicitly set to 'low' here.
+    // The companion planDevices test (it.fails) covers the normalization gap.
+    it('issues onoff=true and step command when desiredStepId is pre-normalized to lowest non-zero and step is at off-step', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false,
+        },
+      ];
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: 'low', // pre-normalized to lowest non-zero
+      }));
+
+      // Binary restore
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      // Step command from off → low
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+        expect.objectContaining({ step_id: 'low' }),
+        expect.objectContaining({ deviceId: 'dev-1' }),
+      );
+    });
+
+    // Test 3.3: selectedStepId is unknown but desiredStepId is non-zero ('max').
+    // Binary must be restored AND the step command must use the intended step —
+    // it must not be replaced with a different non-zero step (e.g. lowest non-zero).
+    it('preserves non-zero intended step and restores binary when selectedStepId is unknown', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false,
+        },
+      ];
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: undefined as unknown as string, // unknown
+        desiredStepId: 'max', // non-zero intended step
+      }));
+
+      // Binary must be restored
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      // Step command must use the non-zero intended step 'max', not the lowest non-zero.
+      // This guards against an over-eager normalization that would reset it to 'low'.
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+        expect.objectContaining({ step_id: 'max' }),
+        expect.objectContaining({ deviceId: 'dev-1' }),
+      );
+    });
+
+    // Test 3.4 / Regression 5.2 (executor layer): when both desiredStepId and selectedStepId
+    // are the off-step, the executor must still issue a step command to the lowest non-zero
+    // step — it must not leave the device at zero-step after turning binary on.
+    // Current: only binary on is sent because desiredStepId='off'=selectedStepId, so
+    // applySteppedLoadCommand sees no change and skips.
+    it('issues step command to lowest non-zero step when both desiredStepId and selectedStepId are zero-usage', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false,
+        },
+      ];
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      // Both desiredStepId and selectedStepId are off-step — un-normalized state
+      // that planDevices currently produces for a restored device shed to off-step.
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: 'off', // un-normalized: should still trigger step command to 'low'
+      }));
+
+      // Binary must be restored
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      // A step command to the lowest non-zero step must also be issued
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+        expect.objectContaining({ step_id: 'low' }),
+        expect.objectContaining({ deviceId: 'dev-1' }),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Group 2 executor + Regression 5.1: stepped-load turn_off actuation
+  // -------------------------------------------------------------------------
+
+  describe('turn_off shed actuation (Group 2 executor / Regression 5.1)', () => {
+    // Test 2.4: binary is already off; the executor must not re-enable it.
+    it('does not re-enable binary when device is already off at a non-lowest step', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false, // binary already off
+        },
+      ];
+      const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+      // Device is shed with turn_off at a non-off step; binary is already off.
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',  // off because binary is false
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+        selectedStepId: 'low', // not at off-step yet
+        desiredStepId: 'off',  // intended lowest
+      }));
+
+      // Binary must NOT be re-enabled (no onoff=true)
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    });
+
+    // Regression 5.1: turn_off shed must send onoff=false immediately, even before the
+    // step has reached the off-step. Current: applySteppedLoadShedOff only fires once
+    // selectedStepId is already the off-step — binary off is deferred too long.
+    it('sends onoff=false immediately, without waiting to reach off-step (Regression 5.1)', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: true, // binary still on
+        },
+      ];
+      const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+      // Device is planned to shed with turn_off. It is currently at a non-off step.
+      // The contract says onoff=false must be sent as part of the turn_off action,
+      // not only after the step has already stepped down to the off-step.
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'on',
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+        selectedStepId: 'low', // NOT at off-step
+        desiredStepId: 'off',  // intended lowest step (per contract)
+      }));
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    });
+  });
 });

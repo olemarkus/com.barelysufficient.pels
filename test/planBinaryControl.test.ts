@@ -624,3 +624,58 @@ describe('plan binary control helpers', () => {
     expect(error).toHaveBeenCalledWith('Failed to resume EV charging for EV via DeviceManager', expect.any(Error));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Group 1.3 & 1.4: turn_off eligibility requires onoff capability
+// These tests prove that binary control (and therefore turn_off actuation) is
+// unavailable when the device snapshot lacks onoff or evcharger_charging.
+// ---------------------------------------------------------------------------
+
+describe('binary control plan requires onoff capability (Group 1.3)', () => {
+  // Test 1.3: A device without any binary control capability cannot get a binary
+  // control plan. getBinaryControlPlan is the runtime gate for turn_off actuation.
+  it('getBinaryControlPlan returns null for a snapshot with no onoff or evcharger_charging capability', () => {
+    expect(getBinaryControlPlan({
+      id: 'dev-1',
+      name: 'No-Onoff Device',
+      capabilities: ['measure_power', 'target_temperature'],
+      // No 'onoff', no 'evcharger_charging', no controlCapabilityId
+    } as never)).toBeNull();
+  });
+
+  it('getBinaryControlPlan returns null for an undefined snapshot', () => {
+    expect(getBinaryControlPlan(undefined)).toBeNull();
+  });
+
+  // Test 1.3 (actuation path): setBinaryControl returns false and skips the command
+  // when the snapshot has no onoff capability, proving turn_off cannot actuate.
+  it('setBinaryControl returns false and skips binary command when snapshot has no onoff', async () => {
+    const state = createPlanEngineState();
+    const setCapability = vi.fn();
+
+    const result = await setBinaryControl({
+      state,
+      deviceManager: {
+        setCapability,
+        getSnapshot: vi.fn().mockReturnValue([]),
+      } as never,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      deviceId: 'dev-1',
+      name: 'No-Onoff Device',
+      desired: false,
+      snapshot: {
+        id: 'dev-1',
+        name: 'No-Onoff Device',
+        // No controlCapabilityId, no onoff in capabilities
+        canSetControl: true,
+        currentOn: true,
+      } as never,
+      logContext: 'capacity',
+    });
+
+    expect(result).toBe(false);
+    expect(setCapability).not.toHaveBeenCalled();
+  });
+});

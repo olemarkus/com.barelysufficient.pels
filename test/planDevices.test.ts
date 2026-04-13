@@ -1,6 +1,7 @@
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanContext } from '../lib/plan/planContext';
+import type { PlanDevicesDeps } from '../lib/plan/planDevices';
 import { buildPlanInputDevice, steppedInputDevice } from './utils/planTestUtils';
 
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
@@ -468,5 +469,180 @@ describe('buildInitialPlanDevices', () => {
     });
 
     expect(planDevice.plannedState).toBe('keep');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Group 1 & 2 & 3: turn_off / turn_on actuation semantics
+// These tests lock in the intended shed action selection and step intent rules
+// for stepped-load devices. Tests marked it.fails() document desired behavior
+// that is not yet implemented.
+// ---------------------------------------------------------------------------
+
+const buildTurnOffDeps = (overrides: Partial<PlanDevicesDeps> = {}): PlanDevicesDeps => ({
+  getPriorityForDevice: () => 100,
+  getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+  isCurrentHourCheap: () => false,
+  isCurrentHourExpensive: () => false,
+  getPriceOptimizationEnabled: () => false,
+  getPriceOptimizationSettings: () => ({}),
+  ...overrides,
+});
+
+describe('stepped-load turn_off shed action selection (Group 1)', () => {
+  // Test 1.1: turn_off is valid for a stepped device that has binary control.
+  it('turn_off is a valid shed action for a stepped device with onoff', () => {
+    const device = steppedInputDevice({
+      id: 'dev-1',
+      hasBinaryControl: true,
+      selectedStepId: 'max',
+      currentOn: true,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'capacity']]),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.shedAction).toBe('turn_off');
+  });
+
+  // Test 1.2: turn_off must be rejected when the device has no binary control.
+  // Current: shedAction resolves to 'turn_off' regardless of hasBinaryControl.
+  it('turn_off must not be selected as shed action for a stepped device without binary control', () => {
+    const device = steppedInputDevice({
+      id: 'dev-1',
+      hasBinaryControl: false,
+      selectedStepId: 'max',
+      currentOn: true,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'capacity']]),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.shedAction).not.toBe('turn_off');
+  });
+});
+
+describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', () => {
+  // Test 2.1: turn_off shed must set desiredStepId to the lowest (off) step, not the
+  // current step. Current: desiredStepId stays at the current selectedStepId for turn_off.
+  it('turn_off shed sets desiredStepId to the lowest step, not the current medium step', () => {
+    const device = steppedInputDevice({
+      id: 'dev-1',
+      hasBinaryControl: true,
+      selectedStepId: 'medium',
+      currentOn: true,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'capacity']]),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.shedAction).toBe('turn_off');
+    // Lowest step is 'off' (planningPowerW=0); desiredStepId must be 'off', not 'medium'.
+    expect(planDevice.desiredStepId).toBe('off');
+  });
+
+  // Test 2.2: same assertion when the lowest step is the zero-usage off step.
+  it('turn_off shed targets the zero-usage off step when starting from max step', () => {
+    const device = steppedInputDevice({
+      id: 'dev-1',
+      hasBinaryControl: true,
+      selectedStepId: 'max',
+      currentOn: true,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'capacity']]),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.shedAction).toBe('turn_off');
+    // steppedProfile has 'off' at 0 W — that must be the target for turn_off.
+    expect(planDevice.desiredStepId).toBe('off');
+  });
+
+  // Test 2.3: device is already at the lowest step — desiredStepId must stay 'off'.
+  // This passes because initialDesiredStepId returns the current step ('off') which
+  // happens to already be correct. The test guards against a regression that over-corrects.
+  it('turn_off shed keeps desiredStepId=off when device is already at the lowest step', () => {
+    const device = steppedInputDevice({
+      id: 'dev-1',
+      hasBinaryControl: true,
+      selectedStepId: 'off',
+      currentOn: false,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'capacity']]),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.shedAction).toBe('turn_off');
+    expect(planDevice.desiredStepId).toBe('off');
+  });
+});
+
+describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevices side)', () => {
+  // Test 3.4 / Regression 5.2 (planDevices layer): a keep device whose selectedStepId
+  // is the off-step must have its desiredStepId normalized to the lowest non-zero step.
+  // Current: desiredStepId echoes selectedStepId ('off') because
+  // resolveSteppedLoadInitialDesiredStepId just reflects the current step.
+  it('restore (keep) normalizes off-step desiredStepId to lowest non-zero step', () => {
+    const device = steppedInputDevice({
+      id: 'dev-1',
+      hasBinaryControl: true,
+      selectedStepId: 'off',
+      currentOn: false,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.plannedState).toBe('keep');
+    // Off-step desiredStepId must be normalized to the lowest non-zero step ('low').
+    expect(planDevice.desiredStepId).toBe('low');
   });
 });
