@@ -286,5 +286,8 @@
   },
   "2.1.20": {
     "en": "Improve real-time update of devices."
+  },
+  "2.1.21": {
+    "en": "Adds stability improvements of stepped load devices and real-time updates."
   }
 }
