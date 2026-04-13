@@ -506,6 +506,7 @@ export class DeviceManager extends EventEmitter {
                 previousSnapshot,
                 nextSnapshot: snapshot,
                 devices: list,
+                targetedRefreshPollMs: isTargetedRefresh ? start : undefined,
             });
             this.latestSnapshot = snapshot;
             this.liveFeed?.updateTrackedDevices(snapshot.map((d) => d.id));
@@ -1069,8 +1070,9 @@ export class DeviceManager extends EventEmitter {
         previousSnapshot: TargetDeviceSnapshot[];
         nextSnapshot: TargetDeviceSnapshot[];
         devices: HomeyDeviceLike[];
+        targetedRefreshPollMs?: number;
     }): void {
-        const { previousSnapshot, nextSnapshot, devices } = params;
+        const { previousSnapshot, nextSnapshot, devices, targetedRefreshPollMs } = params;
         const previousById = new Map(previousSnapshot.map((device) => [device.id, device]));
         const devicesById = new Map<string, HomeyDeviceLike>();
         for (const device of devices) {
@@ -1084,6 +1086,16 @@ export class DeviceManager extends EventEmitter {
             const sourceDevice = devicesById.get(snapshot.id);
             if (!previous || !sourceDevice) continue;
             this.mergeSnapshotObservationsForDevice(snapshot, previous, sourceDevice);
+            // A targeted refresh is an explicit liveness poll: if we got a successful response
+            // for this device, advance freshness to the poll timestamp regardless of whether
+            // the tracked capability timestamps changed.
+            if (targetedRefreshPollMs) {
+                snapshot.lastFreshDataMs = Math.max(
+                    snapshot.lastFreshDataMs ?? 0,
+                    targetedRefreshPollMs,
+                ) || undefined;
+                snapshot.lastUpdated = snapshot.lastFreshDataMs;
+            }
         }
     }
 

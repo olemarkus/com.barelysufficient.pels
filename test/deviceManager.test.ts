@@ -2638,6 +2638,63 @@ describe('DeviceManager', () => {
             });
         });
 
+        describe('stale-targeted refresh freshness policy', () => {
+            // Builds a mock that returns the right shape for both the full-device-list path
+            // (manager/devices/device → Record<id, device>) and the per-device path used by
+            // targeted fetch (manager/devices/device/{id} → device object directly).
+            const buildPathAwareMock = (deviceData: Record<string, unknown>) =>
+                async (path: string) => {
+                    const perDevicePrefix = 'manager/devices/device/';
+                    if (path.startsWith(perDevicePrefix)) {
+                        const id = path.slice(perDevicePrefix.length);
+                        return deviceData[id] ?? null;
+                    }
+                    return deviceData;
+                };
+
+            it('marks device fresh at poll time even when tracked capability timestamps are unchanged', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+
+                    const deviceData = {
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            class: 'heater',
+                            capabilities: ['onoff', 'measure_power'],
+                            capabilitiesObj: {
+                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:55:00.000Z' },
+                                measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:55:00.000Z' },
+                            },
+                        },
+                    };
+                    mockApiGet.mockImplementation(buildPathAwareMock(deviceData));
+
+                    // Initial refresh — freshness comes from tracked capability timestamps
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    await deviceManager.refreshSnapshot();
+                    const freshnessAfterInit = deviceManager.getSnapshot()[0].lastFreshDataMs;
+                    expect(freshnessAfterInit).toBe(new Date('2026-04-01T11:55:00.000Z').getTime());
+
+                    // Advance 6 minutes — device is now stale (threshold is 5 minutes)
+                    vi.setSystemTime(new Date('2026-04-01T12:06:00.000Z'));
+
+                    // Normal refresh with unchanged timestamps: freshness must NOT advance
+                    await deviceManager.refreshSnapshot();
+                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAfterInit);
+
+                    // Stale-targeted refresh: freshness MUST advance to the poll time
+                    await deviceManager.refreshSnapshot({ targetedRefresh: true });
+                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(
+                        new Date('2026-04-01T12:06:00.000Z').getTime(),
+                    );
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+        });
+
         it('ignores device.update events for a device that stops being managed', async () => {
             const managedState: Record<string, boolean> = { dev1: true };
             const managedDeviceManager = new DeviceManager(
