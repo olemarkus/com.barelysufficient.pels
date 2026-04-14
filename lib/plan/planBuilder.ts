@@ -113,7 +113,6 @@ export class PlanBuilder {
     const result = computeDynamicSoftLimit({
       capacitySettings: this.capacitySettings,
       powerTracker: this.powerTracker,
-      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
     });
     this.state.hourlyBudgetExhausted = result.hourlyBudgetExhausted;
     return result.allowedKw;
@@ -462,7 +461,6 @@ export class PlanBuilder {
     // run rate so the effective daily limit still allows that load to remain on.
     return computeDailyUsageSoftLimit({
       ...bucket,
-      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
     }) + Math.max(0, exemptKw);
   }
 

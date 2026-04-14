@@ -90,7 +90,6 @@ export function markOffDevicesStayOff(params: {
     shedCooldownRemainingSec: number | null;
     startupStabilizationRemainingSec: number | null;
   };
-  logDebug: (...args: unknown[]) => void;
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
   reasonOverride?: (dev: DevicePlanDevice) => string;
 }): void {

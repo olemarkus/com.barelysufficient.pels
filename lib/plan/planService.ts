@@ -8,7 +8,7 @@ import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
   buildPlanChangeLines,
   buildPlanCapacityStateSummary,
-  buildPlanDebugSummary,
+  buildPlanDebugSummaryEvent,
   buildPlanDebugSummarySignature,
   buildPlanDetailSignature,
   buildPlanSignature,
@@ -23,7 +23,7 @@ import {
 } from './planServiceInternals';
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { withRebuildContext } from '../logging/logger';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
@@ -69,6 +69,7 @@ export type PlanServiceDeps = {
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 };
 
 export class PlanService {
@@ -305,11 +306,13 @@ export class PlanService {
   private trackPlanChanges(plan: DevicePlan, metaSignature: string): PlanChangeSet {
     const actionSignature = buildPlanSignature(plan);
     const detailSignature = buildPlanDetailSignature(plan);
-    const debugSummarySignature = buildPlanDebugSummarySignature(plan);
     const actionChanged = actionSignature !== this.lastActionPlanSignature;
     const detailChanged = detailSignature !== this.lastDetailPlanSignature;
     const metaChanged = metaSignature !== this.lastPlanMetaSignature;
-    const debugSummaryChanged = debugSummarySignature !== this.lastPlanDebugSummarySignature;
+    const shouldCheckDebugSummary = actionChanged || detailChanged || metaChanged;
+    const debugSummarySignature = shouldCheckDebugSummary ? buildPlanDebugSummarySignature(plan) : null;
+    const debugSummaryChanged = debugSummarySignature !== null
+      && debugSummarySignature !== this.lastPlanDebugSummarySignature;
 
     if (actionChanged) {
       try {
@@ -333,14 +336,16 @@ export class PlanService {
       incPerfCounter('plan_rebuild_no_change_total');
     }
 
-    if ((actionChanged || detailChanged || metaChanged) && debugSummaryChanged) {
-      this.deps.logDebug(buildPlanDebugSummary(plan));
+    if (debugSummaryChanged) {
+      this.deps.debugStructured?.(buildPlanDebugSummaryEvent(plan));
     }
 
     this.lastActionPlanSignature = actionSignature;
     this.lastDetailPlanSignature = detailSignature;
     this.lastPlanMetaSignature = metaSignature;
-    this.lastPlanDebugSummarySignature = debugSummarySignature;
+    if (debugSummarySignature !== null) {
+      this.lastPlanDebugSummarySignature = debugSummarySignature;
+    }
 
     return {
       actionSignature,

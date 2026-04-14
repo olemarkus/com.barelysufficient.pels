@@ -169,60 +169,44 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
   );
 }
 
-type PlanReasonGroup = {
+export type PlanReasonGroup = {
   reason: string;
   count: number;
 };
 
-export function buildPlanDebugSummary(plan: DevicePlan): string {
-  const parts = [
-    `Plan debug: total=${formatKw(plan.meta.totalKw)}`,
-    `soft=${formatKw(plan.meta.softLimitKw)}`,
-  ];
+export type PlanDebugSummaryEvent = {
+  event: 'plan_debug_summary';
+  totalKw: number | null;
+  softLimitKw: number | null;
+  capacitySoftLimitKw: number | null;
+  dailySoftLimitKw: number | null;
+  softLimitSource: DevicePlan['meta']['softLimitSource'] | null;
+  headroomKw: number | null;
+  restoreBlockedCount: number;
+  restoreBlockedReasons: PlanReasonGroup[];
+  inactiveCount: number;
+  inactiveReasons: PlanReasonGroup[];
+};
 
-  if (typeof plan.meta.capacitySoftLimitKw === 'number') {
-    parts.push(`capacity=${formatKw(plan.meta.capacitySoftLimitKw)}`);
-  }
-  if (typeof plan.meta.dailySoftLimitKw === 'number') {
-    parts.push(`daily=${formatKw(plan.meta.dailySoftLimitKw)}`);
-  }
-  if (plan.meta.softLimitSource) {
-    parts.push(`source=${plan.meta.softLimitSource}`);
-  }
-  parts.push(`headroom=${formatKw(plan.meta.headroomKw)}`);
-
-  const blockedRestoreGroups = buildPlanReasonGroups(plan.devices.filter((device) => (
-    device.plannedState === 'shed'
-    && device.currentState === 'off'
-    && device.controllable !== false
-  )));
-  const inactiveGroups = buildPlanReasonGroups(plan.devices.filter((device) => device.plannedState === 'inactive'));
-
-  if (blockedRestoreGroups.length > 0) {
-    parts.push(`restoreBlocked=${formatReasonGroups(blockedRestoreGroups)}`);
-  }
-  if (inactiveGroups.length > 0) {
-    parts.push(`inactive=${formatReasonGroups(inactiveGroups)}`);
-  }
-
-  return parts.join(' ');
-}
-
-export function buildPlanDebugSummarySignature(plan: DevicePlan): string {
-  return JSON.stringify({
+export function buildPlanDebugSummaryEvent(plan: DevicePlan): PlanDebugSummaryEvent {
+  const categories = categorizePlanDebugDevices(plan.devices);
+  return {
+    event: 'plan_debug_summary',
     totalKw: roundPlanDebugNumber(plan.meta.totalKw),
     softLimitKw: roundPlanDebugNumber(plan.meta.softLimitKw),
     capacitySoftLimitKw: roundPlanDebugNumber(plan.meta.capacitySoftLimitKw),
     dailySoftLimitKw: roundPlanDebugNumber(plan.meta.dailySoftLimitKw),
     softLimitSource: plan.meta.softLimitSource ?? null,
     headroomKw: roundPlanDebugNumber(plan.meta.headroomKw),
-    restoreBlocked: buildPlanReasonGroups(plan.devices.filter((device) => (
-      device.plannedState === 'shed'
-      && device.currentState === 'off'
-      && device.controllable !== false
-    ))),
-    inactive: buildPlanReasonGroups(plan.devices.filter((device) => device.plannedState === 'inactive')),
-  });
+    restoreBlockedCount: categories.restoreBlockedCount,
+    restoreBlockedReasons: categories.restoreBlockedReasons,
+    inactiveCount: categories.inactiveCount,
+    inactiveReasons: categories.inactiveReasons,
+  };
+}
+
+export function buildPlanDebugSummarySignature(plan: DevicePlan): string {
+  return JSON.stringify(buildPlanDebugSummaryEvent(plan));
 }
 
 export function buildPlanChangeLines(plan: DevicePlan): string[] {
@@ -284,22 +268,34 @@ function normalizePlanReason(reason: string | undefined): string {
   return trimmed;
 }
 
-function formatReasonGroups(groups: PlanReasonGroup[]): string {
-  const total = groups.reduce((sum, group) => sum + group.count, 0);
-  const details = groups
-    .slice(0, 3)
-    .map((group) => `${group.reason} x${group.count}`)
-    .join(', ');
-  return `${total} [${details}]`;
-}
-
-function formatKw(value: number | null | undefined): string {
-  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(2)}kW` : 'unknown';
+function categorizePlanDebugDevices(devices: DevicePlanDevice[]): {
+  restoreBlockedCount: number;
+  restoreBlockedReasons: PlanReasonGroup[];
+  inactiveCount: number;
+  inactiveReasons: PlanReasonGroup[];
+} {
+  const restoreBlockedDevices: DevicePlanDevice[] = [];
+  const inactiveDevices: DevicePlanDevice[] = [];
+  for (const device of devices) {
+    if (device.plannedState === 'inactive') {
+      inactiveDevices.push(device);
+      continue;
+    }
+    if (device.plannedState === 'shed' && device.currentState === 'off' && device.controllable !== false) {
+      restoreBlockedDevices.push(device);
+    }
+  }
+  return {
+    restoreBlockedCount: restoreBlockedDevices.length,
+    restoreBlockedReasons: buildPlanReasonGroups(restoreBlockedDevices),
+    inactiveCount: inactiveDevices.length,
+    inactiveReasons: buildPlanReasonGroups(inactiveDevices),
+  };
 }
 
 function roundPlanDebugNumber(value: number | null | undefined): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  return Math.round(value * 1000) / 1000;
+  return Math.round(value * 100) / 100;
 }
 
 function formatPlanChange(device: DevicePlanDevice, headroom: number | null): string {
