@@ -1,6 +1,8 @@
 import {
   buildPlanCapacityStateSummary,
   buildPlanChangeLines,
+  buildPlanDebugSummary,
+  buildPlanDebugSummarySignature,
   buildPlanSignature,
 } from '../lib/plan/planLogging';
 import type { DevicePlan } from '../lib/plan/planTypes';
@@ -283,5 +285,60 @@ describe('plan logging helpers', () => {
       blockedByPenaltyDevices: null,
       blockedByInvariantDevices: null,
     });
+  });
+
+  it('builds grouped debug summaries for restore-blocked and inactive devices', () => {
+    const plan = {
+      meta: {
+        totalKw: 3.97,
+        softLimitKw: 3.0,
+        capacitySoftLimitKw: 4.0,
+        dailySoftLimitKw: 3.0,
+        softLimitSource: 'daily',
+        headroomKw: -0.97,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater 1',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'insufficient headroom (need 0.98kW, headroom -0.97kW)',
+        },
+        {
+          id: 'dev-2',
+          name: 'Heater 2',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'insufficient headroom (need 1.10kW, headroom -0.97kW)',
+        },
+        {
+          id: 'ev-1',
+          name: 'EV',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'inactive',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'inactive (charger is unplugged)',
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    expect(buildPlanDebugSummary(plan)).toBe(
+      'Plan debug: total=3.97kW soft=3.00kW capacity=4.00kW daily=3.00kW '
+      + 'source=daily headroom=-0.97kW restoreBlocked=2 [insufficient headroom x2] '
+      + 'inactive=1 [charger is unplugged x1]',
+    );
+    expect(buildPlanDebugSummarySignature(plan)).toContain('"reason":"insufficient headroom"');
   });
 });

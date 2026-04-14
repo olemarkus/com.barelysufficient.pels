@@ -170,6 +170,6 @@ describe('plan restore device helpers', () => {
       reasonOverride: (device) => `blocked ${device.id}`,
     });
     expect(setDevice).toHaveBeenCalledWith('dev2', expect.objectContaining({ reason: 'blocked dev2' }));
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('Plan: skipping restore of Device 1'));
+    expect(logDebug).not.toHaveBeenCalled();
   });
 });
