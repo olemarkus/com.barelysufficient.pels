@@ -4,7 +4,7 @@ import type { PlanEngineState } from './planState';
 export const CLOUD_BINARY_COMMAND_PENDING_MS = 75 * 1000;
 export const LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS = 90 * 1000;
 export const CLOUD_STEPPED_LOAD_COMMAND_PENDING_MS = 3 * 60 * 1000;
-export const STALE_DEVICE_OBSERVATION_MS = 5 * 60 * 1000;
+export const STALE_DEVICE_OBSERVATION_MS = 40 * 60 * 1000;
 
 type CommunicationModel = 'local' | 'cloud' | undefined;
 type DeviceObservationLike = {
