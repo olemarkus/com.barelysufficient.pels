@@ -205,10 +205,6 @@ export function buildPlanDebugSummaryEvent(plan: DevicePlan): PlanDebugSummaryEv
   };
 }
 
-export function buildPlanDebugSummarySignature(plan: DevicePlan): string {
-  return JSON.stringify(buildPlanDebugSummaryEvent(plan));
-}
-
 export function buildPlanDebugSummarySignatureFromEvent(event: PlanDebugSummaryEvent): string {
   return JSON.stringify(event);
 }
