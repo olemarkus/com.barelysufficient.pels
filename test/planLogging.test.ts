@@ -2,7 +2,7 @@ import {
   buildPlanCapacityStateSummary,
   buildPlanChangeLines,
   buildPlanDebugSummaryEvent,
-  buildPlanDebugSummarySignature,
+  buildPlanDebugSummarySignatureFromEvent,
   buildPlanSignature,
 } from '../lib/plan/planLogging';
 import type { DevicePlan } from '../lib/plan/planTypes';
@@ -347,6 +347,7 @@ describe('plan logging helpers', () => {
       inactiveCount: 1,
       inactiveReasons: [{ reason: 'charger is unplugged', count: 1 }],
     });
-    expect(buildPlanDebugSummarySignature(plan)).toBe(JSON.stringify(buildPlanDebugSummaryEvent(plan)));
+    expect(buildPlanDebugSummarySignatureFromEvent(buildPlanDebugSummaryEvent(plan)))
+      .toBe(JSON.stringify(buildPlanDebugSummaryEvent(plan)));
   });
 });
