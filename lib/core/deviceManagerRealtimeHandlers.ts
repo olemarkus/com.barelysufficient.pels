@@ -43,7 +43,6 @@ export function handleRealtimeDeviceUpdate(params: {
     capabilityId: string,
     value: boolean,
   ) => boolean;
-  logDebug: (message: string) => void;
   emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
   emitObservedState: (event: ObservedDeviceStateEvent) => void;
 }): HandleRealtimeDeviceUpdateResult {
@@ -55,7 +54,6 @@ export function handleRealtimeDeviceUpdate(params: {
     parseDevice,
     recordObservedCapabilities,
     notePendingBinarySettleObservation,
-    logDebug,
     emitPlanReconcile,
     emitObservedState,
   } = params;
@@ -86,13 +84,6 @@ export function handleRealtimeDeviceUpdate(params: {
   if (result.observedCapabilityIds.length > 0) {
     recordObservedCapabilities?.(deviceId, result.observedCapabilityIds);
   }
-  let reconcileSuffix = '';
-  if (settleResult.binaryChangeDeferred) {
-    reconcileSuffix = ' [binary settling]';
-  } else if (shouldReconcilePlan) {
-    reconcileSuffix = ' [drift detected]';
-  }
-  logDebug(`Realtime device.update received for ${label} (${deviceId})${reconcileSuffix}`);
   if (result.changes.length > 0) {
     emitObservedState({
       source: 'device_update',

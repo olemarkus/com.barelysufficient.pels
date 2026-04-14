@@ -1,3 +1,4 @@
+import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import type { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import type { PowerMeasurementUpdates } from './powerMeasurement';
 import {
@@ -22,7 +23,10 @@ type RealtimeReconcileResult = {
 };
 
 export function updateLastKnownPower(params: {
-  state: { lastKnownPowerKw: Record<string, number> };
+  state: {
+    lastKnownPowerKw: Record<string, number>;
+    lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
+  };
   logger: Logger;
   deviceId: string;
   measuredKw: number;
@@ -36,13 +40,28 @@ export function updateLastKnownPower(params: {
     deviceLabel,
   } = params;
   const previousPeak = state.lastKnownPowerKw[deviceId] || 0;
-  if (measuredKw > previousPeak) {
-    state.lastKnownPowerKw[deviceId] = measuredKw;
-    logger.debug(
-      `Power estimate: updated peak power for ${deviceLabel}: ${measuredKw.toFixed(3)} kW `
-      + `(was ${previousPeak.toFixed(3)} kW)`,
-    );
+  if (measuredKw <= previousPeak) return;
+
+  state.lastKnownPowerKw[deviceId] = measuredKw;
+  const previousPeakKw = roundLogValue(previousPeak, 2);
+  const peakKw = roundLogValue(measuredKw, 2);
+  const signature = JSON.stringify({ peakKw });
+  if (!state.lastPeakPowerLogByDevice) return;
+  if (!shouldEmitOnChange({
+    state: state.lastPeakPowerLogByDevice,
+    key: deviceId,
+    signature,
+    now: Date.now(),
+  })) {
+    return;
   }
+  logger.structuredLog?.debug({
+    event: 'power_estimate_peak_updated',
+    deviceId,
+    deviceName: deviceLabel,
+    previousPeakKw,
+    peakKw,
+  });
 }
 
 export function applyMeasurementUpdates(params: {
@@ -50,6 +69,7 @@ export function applyMeasurementUpdates(params: {
     lastKnownPowerKw: Record<string, number>;
     lastMeterEnergyKwh: Record<string, { kwh: number; ts: number }>;
     lastMeasuredPowerKw: Record<string, { kw: number; ts: number }>;
+    lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
   };
   logger: Logger;
   deviceId: string;
@@ -168,7 +188,7 @@ function getPlanReconcileRealtimeChanges(
     if (!previousTarget || previousTarget.value === nextTarget.value) continue;
     changes.push({
       capabilityId: nextTarget.id,
-      previousValue: formatTargetValue(previousTarget.value, previousTarget.unit),
+      previousValue: formatTargetValue(previousTarget.value, nextTarget.unit),
       nextValue: formatTargetValue(nextTarget.value, nextTarget.unit),
     });
   }

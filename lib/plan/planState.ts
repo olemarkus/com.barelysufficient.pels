@@ -86,6 +86,7 @@ export type PlanEngineState = {
     desiredStepId: string;
     lowestNonZeroStepId: string;
   }>;
+  restoreDecisionLogByKey: Record<string, string>;
 };
 
 export function createPlanEngineState(): PlanEngineState {
@@ -117,5 +118,6 @@ export function createPlanEngineState(): PlanEngineState {
     lastOvershootMitigationMs: null,
     steppedRestoreRejectedByDevice: {},
     keepInvariantShedBlockedByDevice: {},
+    restoreDecisionLogByKey: {},
   };
 }

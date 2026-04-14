@@ -256,7 +256,7 @@ function buildPlanReasonGroups(devices: DevicePlanDevice[]): PlanReasonGroup[] {
     .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
 }
 
-function normalizePlanReason(reason: string | undefined): string {
+export function normalizePlanReason(reason: string | undefined): string {
   if (!reason) return 'unknown';
   const trimmed = reason.trim();
   const inactiveMatch = /^inactive \((.+)\)$/.exec(trimmed);

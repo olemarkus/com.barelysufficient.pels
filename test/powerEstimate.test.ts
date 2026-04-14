@@ -5,6 +5,9 @@ const logger = {
   log: vi.fn(),
   debug: vi.fn(),
   error: vi.fn(),
+  structuredLog: {
+    debug: vi.fn(),
+  },
 };
 
 const buildState = () => ({
@@ -12,6 +15,8 @@ const buildState = () => ({
   lastKnownPowerKw: {},
   lastMeasuredPowerKw: {},
   lastMeterEnergyKwh: {},
+  lastEstimateDecisionLogByDevice: new Map(),
+  lastPeakPowerLogByDevice: new Map(),
 });
 
 const buildDevice = (load?: number): HomeyDeviceLike => ({
@@ -45,6 +50,89 @@ const buildSocketDevice = (params?: {
 describe('estimatePower', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('dedupes unchanged estimate decisions across repeated reads', () => {
+    const state = buildState();
+
+    estimatePower({
+      device: buildDevice(650),
+      deviceId: 'dev-1',
+      deviceLabel: 'Device 1',
+      powerRaw: undefined,
+      meterPowerRaw: undefined,
+      now: Date.now(),
+      state,
+      logger,
+      minSignificantPowerW: 5,
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
+    });
+
+    estimatePower({
+      device: buildDevice(650),
+      deviceId: 'dev-1',
+      deviceLabel: 'Device 1',
+      powerRaw: undefined,
+      meterPowerRaw: undefined,
+      now: Date.now() + 1000,
+      state,
+      logger,
+      minSignificantPowerW: 5,
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
+    });
+
+    expect(logger.structuredLog.debug).toHaveBeenCalledTimes(1);
+    expect(logger.structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'power_estimate_source_changed',
+      source: 'load-setting',
+      estimatedKw: 0.65,
+    }));
+  });
+
+  it('logs again when the estimate source materially changes', () => {
+    const state = buildState();
+
+    estimatePower({
+      device: buildDevice(),
+      deviceId: 'dev-1',
+      deviceLabel: 'Device 1',
+      powerRaw: undefined,
+      meterPowerRaw: undefined,
+      now: Date.now(),
+      state,
+      logger,
+      minSignificantPowerW: 5,
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
+    });
+
+    estimatePower({
+      device: buildDevice(650),
+      deviceId: 'dev-1',
+      deviceLabel: 'Device 1',
+      powerRaw: undefined,
+      meterPowerRaw: undefined,
+      now: Date.now() + 1000,
+      state,
+      logger,
+      minSignificantPowerW: 5,
+      updateLastKnownPower: vi.fn(),
+      applyMeasurementUpdates: vi.fn(),
+    });
+
+    expect(logger.structuredLog.debug).toHaveBeenCalledTimes(2);
+    expect(logger.structuredLog.debug).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      event: 'power_estimate_source_changed',
+      source: 'default',
+      fallbackReason: 'default_1kw',
+    }));
+    expect(logger.structuredLog.debug).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      event: 'power_estimate_source_changed',
+      source: 'load-setting',
+      estimatedKw: 0.65,
+    }));
   });
 
   it('treats settings.load=0 as unset', () => {

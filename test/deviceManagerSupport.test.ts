@@ -35,6 +35,9 @@ const createLogger = () => ({
   log: vi.fn(),
   debug: vi.fn(),
   error: vi.fn(),
+  structuredLog: {
+    debug: vi.fn(),
+  },
 }) as unknown as Logger & {
   log: vi.Mock;
   debug: vi.Mock;
@@ -170,6 +173,7 @@ describe('device manager support helpers', () => {
       lastKnownPowerKw: { dev1: 0.5 },
       lastMeasuredPowerKw: {} as Record<string, { kw: number; ts: number }>,
       lastMeterEnergyKwh: {} as Record<string, { kwh: number; ts: number }>,
+      lastPeakPowerLogByDevice: new Map(),
     };
     updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.2, deviceLabel: 'Device 1' });
     expect(state.lastKnownPowerKw.dev1).toBe(1.2);
@@ -210,6 +214,31 @@ describe('device manager support helpers', () => {
     const normalizedError = logger.error.mock.calls.find(([message]) => message === 'device manager string failure')?.[1];
     expect(normalizedError).toBeInstanceOf(Error);
     expect((normalizedError as Error).message).toBe('string boom');
+  });
+
+
+  it('dedupes peak-power updates within the same rounded band', () => {
+    const logger = createLogger();
+    const state = {
+      lastKnownPowerKw: { dev1: 1.231 },
+      lastMeasuredPowerKw: {} as Record<string, { kw: number; ts: number }>,
+      lastMeterEnergyKwh: {} as Record<string, { kwh: number; ts: number }>,
+      lastPeakPowerLogByDevice: new Map(),
+    };
+
+    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.232, deviceLabel: 'Device 1' });
+    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.234, deviceLabel: 'Device 1' });
+    updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.29, deviceLabel: 'Device 1' });
+
+    expect(logger.structuredLog.debug).toHaveBeenCalledTimes(2);
+    expect(logger.structuredLog.debug).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      event: 'power_estimate_peak_updated',
+      peakKw: 1.23,
+    }));
+    expect(logger.structuredLog.debug).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      event: 'power_estimate_peak_updated',
+      peakKw: 1.29,
+    }));
   });
 
   it('hasRestClient reflects current state', () => {
