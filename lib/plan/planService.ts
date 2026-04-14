@@ -70,6 +70,7 @@ export type PlanServiceDeps = {
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
+  isPlanDebugEnabled?: () => boolean;
 };
 
 export class PlanService {
@@ -345,7 +346,7 @@ export class PlanService {
     this.lastActionPlanSignature = actionSignature;
     this.lastDetailPlanSignature = detailSignature;
     this.lastPlanMetaSignature = metaSignature;
-    if (debugSummaryState.signature !== null) {
+    if (debugSummaryState.emitted && debugSummaryState.signature !== null) {
       this.lastPlanDebugSummarySignature = debugSummaryState.signature;
     }
 
@@ -368,11 +369,14 @@ export class PlanService {
     event: ReturnType<typeof buildPlanDebugSummaryEvent> | null;
     signature: string | null;
     changed: boolean;
+    emitted: boolean;
   } {
     const { plan, actionChanged, detailChanged, metaChanged } = params;
-    const shouldCheck = (actionChanged || detailChanged || metaChanged) && Boolean(this.deps.debugStructured);
+    const shouldCheck = (actionChanged || detailChanged || metaChanged)
+      && Boolean(this.deps.debugStructured)
+      && (this.deps.isPlanDebugEnabled?.() ?? true);
     if (!shouldCheck) {
-      return { event: null, signature: null, changed: false };
+      return { event: null, signature: null, changed: false, emitted: false };
     }
     const event = buildPlanDebugSummaryEvent(plan);
     const signature = buildPlanDebugSummarySignatureFromEvent(event);
@@ -380,6 +384,7 @@ export class PlanService {
       event,
       signature,
       changed: signature !== this.lastPlanDebugSummarySignature,
+      emitted: true,
     };
   }
 
