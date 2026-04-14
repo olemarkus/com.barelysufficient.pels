@@ -8,7 +8,6 @@ const SUSTAINABLE_RATE_THRESHOLD_HOURS = SUSTAINABLE_RATE_THRESHOLD_MIN / 60;
 export function computeDynamicSoftLimit(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   powerTracker: PowerTrackerState;
-  logDebug: (...args: unknown[]) => void;
 }): { allowedKw: number; hourlyBudgetExhausted: boolean } {
   const { capacitySettings, powerTracker } = params;
   const netBudgetKWh = resolveUsableCapacityKw(capacitySettings);
@@ -43,7 +42,6 @@ export function computeDailyUsageSoftLimit(params: {
   bucketStartMs: number;
   bucketEndMs: number;
   nowMs?: number;
-  logDebug?: (...args: unknown[]) => void;
 }): number {
   const {
     plannedKWh,

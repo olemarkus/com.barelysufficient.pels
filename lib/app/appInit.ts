@@ -127,6 +127,7 @@ export type PlanServiceInitApp = {
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 };
 
 export function createPlanService(app: PlanServiceInitApp): PlanService {
@@ -154,6 +155,7 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
     getLastPowerUpdate: () => app.getLastPowerUpdate(),
     schedulePostActuationRefresh: app.schedulePostActuationRefresh,
     structuredLog: app.structuredLog?.child({ component: 'plan' }),
+    debugStructured: app.debugStructured,
   });
 }
 

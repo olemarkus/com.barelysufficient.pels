@@ -1,7 +1,7 @@
 import {
   buildPlanCapacityStateSummary,
   buildPlanChangeLines,
-  buildPlanDebugSummary,
+  buildPlanDebugSummaryEvent,
   buildPlanDebugSummarySignature,
   buildPlanSignature,
 } from '../lib/plan/planLogging';
@@ -287,7 +287,7 @@ describe('plan logging helpers', () => {
     });
   });
 
-  it('builds grouped debug summaries for restore-blocked and inactive devices', () => {
+  it('builds grouped structured debug summaries for restore-blocked and inactive devices', () => {
     const plan = {
       meta: {
         totalKw: 3.97,
@@ -334,11 +334,19 @@ describe('plan logging helpers', () => {
       ],
     } as unknown as DevicePlan;
 
-    expect(buildPlanDebugSummary(plan)).toBe(
-      'Plan debug: total=3.97kW soft=3.00kW capacity=4.00kW daily=3.00kW '
-      + 'source=daily headroom=-0.97kW restoreBlocked=2 [insufficient headroom x2] '
-      + 'inactive=1 [charger is unplugged x1]',
-    );
-    expect(buildPlanDebugSummarySignature(plan)).toContain('"reason":"insufficient headroom"');
+    expect(buildPlanDebugSummaryEvent(plan)).toEqual({
+      event: 'plan_debug_summary',
+      totalKw: 3.97,
+      softLimitKw: 3,
+      capacitySoftLimitKw: 4,
+      dailySoftLimitKw: 3,
+      softLimitSource: 'daily',
+      headroomKw: -0.97,
+      restoreBlockedCount: 2,
+      restoreBlockedReasons: [{ reason: 'insufficient headroom', count: 2 }],
+      inactiveCount: 1,
+      inactiveReasons: [{ reason: 'charger is unplugged', count: 1 }],
+    });
+    expect(buildPlanDebugSummarySignature(plan)).toBe(JSON.stringify(buildPlanDebugSummaryEvent(plan)));
   });
 });
