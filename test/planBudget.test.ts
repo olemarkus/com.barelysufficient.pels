@@ -15,7 +15,6 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 5, marginKw: 5 },
         powerTracker: {},
-        logDebug: vi.fn(),
       });
       expect(result).toEqual({ allowedKw: 0, hourlyBudgetExhausted: false });
     });
@@ -29,7 +28,6 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 7, marginKw: 0.3 },
         powerTracker: { buckets: { [bucketKey]: 1.5 } },
-        logDebug: vi.fn(),
       });
 
       // Soft budget = 6.7 kWh. Remaining = 5.2 kWh over 0.5h => 10.4 kW burst.
@@ -46,7 +44,6 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 5, marginKw: 0 },
         powerTracker: { buckets: { [bucketKey]: 0.5 } },
-        logDebug: vi.fn(),
       });
 
       // Remaining = 4.5 kWh, remaining time clamps to 10m => burst 27 kW.
@@ -64,7 +61,6 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 5, marginKw: 0 },
         powerTracker: { buckets: { [bucketKey]: 4.8 } },
-        logDebug: vi.fn(),
       });
 
       // Remaining = 0.2 kWh; with 10-minute minimum => 0.2 / (10/60) = 1.2 kW.
@@ -81,7 +77,6 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit({
         capacitySettings: { limitKw: 5, marginKw: 0 },
         powerTracker: { buckets: { [bucketKey]: 6 } },
-        logDebug: vi.fn(),
       });
 
       expect(result.allowedKw).toBe(0);
