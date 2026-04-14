@@ -9,7 +9,7 @@ import {
   buildPlanChangeLines,
   buildPlanCapacityStateSummary,
   buildPlanDebugSummaryEvent,
-  buildPlanDebugSummarySignature,
+  buildPlanDebugSummarySignatureFromEvent,
   buildPlanDetailSignature,
   buildPlanSignature,
 } from './planLogging';
@@ -309,10 +309,12 @@ export class PlanService {
     const actionChanged = actionSignature !== this.lastActionPlanSignature;
     const detailChanged = detailSignature !== this.lastDetailPlanSignature;
     const metaChanged = metaSignature !== this.lastPlanMetaSignature;
-    const shouldCheckDebugSummary = actionChanged || detailChanged || metaChanged;
-    const debugSummarySignature = shouldCheckDebugSummary ? buildPlanDebugSummarySignature(plan) : null;
-    const debugSummaryChanged = debugSummarySignature !== null
-      && debugSummarySignature !== this.lastPlanDebugSummarySignature;
+    const debugSummaryState = this.resolveDebugSummaryState({
+      plan,
+      actionChanged,
+      detailChanged,
+      metaChanged,
+    });
 
     if (actionChanged) {
       try {
@@ -336,15 +338,15 @@ export class PlanService {
       incPerfCounter('plan_rebuild_no_change_total');
     }
 
-    if (debugSummaryChanged) {
-      this.deps.debugStructured?.(buildPlanDebugSummaryEvent(plan));
+    if (debugSummaryState.changed) {
+      this.deps.debugStructured?.(debugSummaryState.event);
     }
 
     this.lastActionPlanSignature = actionSignature;
     this.lastDetailPlanSignature = detailSignature;
     this.lastPlanMetaSignature = metaSignature;
-    if (debugSummarySignature !== null) {
-      this.lastPlanDebugSummarySignature = debugSummarySignature;
+    if (debugSummaryState.signature !== null) {
+      this.lastPlanDebugSummarySignature = debugSummaryState.signature;
     }
 
     return {
@@ -354,6 +356,30 @@ export class PlanService {
       actionChanged,
       detailChanged,
       metaChanged,
+    };
+  }
+
+  private resolveDebugSummaryState(params: {
+    plan: DevicePlan;
+    actionChanged: boolean;
+    detailChanged: boolean;
+    metaChanged: boolean;
+  }): {
+    event: ReturnType<typeof buildPlanDebugSummaryEvent> | null;
+    signature: string | null;
+    changed: boolean;
+  } {
+    const { plan, actionChanged, detailChanged, metaChanged } = params;
+    const shouldCheck = (actionChanged || detailChanged || metaChanged) && Boolean(this.deps.debugStructured);
+    if (!shouldCheck) {
+      return { event: null, signature: null, changed: false };
+    }
+    const event = buildPlanDebugSummaryEvent(plan);
+    const signature = buildPlanDebugSummarySignatureFromEvent(event);
+    return {
+      event,
+      signature,
+      changed: signature !== this.lastPlanDebugSummarySignature,
     };
   }
 
