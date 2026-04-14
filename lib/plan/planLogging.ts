@@ -209,6 +209,10 @@ export function buildPlanDebugSummarySignature(plan: DevicePlan): string {
   return JSON.stringify(buildPlanDebugSummaryEvent(plan));
 }
 
+export function buildPlanDebugSummarySignatureFromEvent(event: PlanDebugSummaryEvent): string {
+  return JSON.stringify(event);
+}
+
 export function buildPlanChangeLines(plan: DevicePlan): string[] {
   const headroom = typeof plan.meta.headroomKw === 'number' ? plan.meta.headroomKw : null;
   const changes = plan.devices
@@ -263,6 +267,8 @@ function normalizePlanReason(reason: string | undefined): string {
   if (inactiveMatch) return inactiveMatch[1];
   if (/^cooldown \(shedding, \d+s remaining\)$/.test(trimmed)) return 'cooldown (shedding)';
   if (/^cooldown \(restore, \d+s remaining\)$/.test(trimmed)) return 'cooldown (restore)';
+  if (/^restore pending \(\d+s remaining\)$/.test(trimmed)) return 'restore pending';
+  if (/^activation backoff \(\d+s remaining\)$/.test(trimmed)) return 'activation backoff';
   if (/^headroom cooldown \(\d+s remaining; .+\)$/.test(trimmed)) return 'headroom cooldown';
   if (/^insufficient headroom \(need .+, headroom .+\)$/.test(trimmed)) return 'insufficient headroom';
   return trimmed;
