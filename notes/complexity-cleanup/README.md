@@ -18,9 +18,8 @@ reading, debugging, or modifying the system. Every change should make it easier 
 3. **One concept per change.** Each PR tackles one simplification. Don't bundle a file split with a
    logic rewrite.
 
-4. **Indirection has a cost.** The `plan-module-simplification` notes established that tracing one
-   restore decision crosses 14 files. Adding more files without removing indirection makes the
-   problem worse.
+4. **Indirection has a cost.** Earlier analysis showed that tracing one restore path crossed
+   roughly 14 files. Adding more files without removing indirection makes the problem worse.
 
 ---
 
