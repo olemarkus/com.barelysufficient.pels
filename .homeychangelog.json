@@ -289,5 +289,8 @@
   },
   "2.1.21": {
     "en": "Adds stability improvements of stepped load devices and real-time updates."
+  },
+  "2.1.22": {
+    "en": "Implements a minor stability improvement by increasing the stale device timeout."
   }
 }
