@@ -167,11 +167,6 @@ function planShedding(
   // Type narrowing: headroom is guaranteed to be non-null here due to shouldPlanShedding check
   if (context.headroom === null) return emptySheddingResult();
   const needed = -context.headroom;
-  deps.logDebug(
-    `Planning shed: soft=${context.softLimit.toFixed(3)} `
-    + `headroom=${context.headroom.toFixed(3)} `
-    + `total=${context.total === null ? 'unknown' : context.total.toFixed(3)}`,
-  );
   const candidates = buildSheddingCandidates({
     devices: context.devices,
     needed,

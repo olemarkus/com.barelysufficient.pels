@@ -253,7 +253,6 @@ function planRestoreForDevice(params: {
       plannedState: 'inactive',
       reason: inactiveReason,
     });
-    deps.logDebug(`Plan: marking ${dev.name} inactive - ${inactiveReason}`);
     return { availableHeadroom, restoredOneThisCycle };
   }
 

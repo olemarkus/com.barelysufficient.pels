@@ -8,6 +8,8 @@ import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
   buildPlanChangeLines,
   buildPlanCapacityStateSummary,
+  buildPlanDebugSummary,
+  buildPlanDebugSummarySignature,
   buildPlanDetailSignature,
   buildPlanSignature,
 } from './planLogging';
@@ -73,6 +75,7 @@ export class PlanService {
   private lastActionPlanSignature = '';
   private lastDetailPlanSignature = '';
   private lastPlanMetaSignature = '';
+  private lastPlanDebugSummarySignature = '';
   private latestPlanSnapshot: DevicePlan | null = null;
   private latestReconcilePlanSnapshot: DevicePlan | null = null;
   private lastPlanSnapshotWriteMs = 0;
@@ -302,9 +305,11 @@ export class PlanService {
   private trackPlanChanges(plan: DevicePlan, metaSignature: string): PlanChangeSet {
     const actionSignature = buildPlanSignature(plan);
     const detailSignature = buildPlanDetailSignature(plan);
+    const debugSummarySignature = buildPlanDebugSummarySignature(plan);
     const actionChanged = actionSignature !== this.lastActionPlanSignature;
     const detailChanged = detailSignature !== this.lastDetailPlanSignature;
     const metaChanged = metaSignature !== this.lastPlanMetaSignature;
+    const debugSummaryChanged = debugSummarySignature !== this.lastPlanDebugSummarySignature;
 
     if (actionChanged) {
       try {
@@ -328,9 +333,14 @@ export class PlanService {
       incPerfCounter('plan_rebuild_no_change_total');
     }
 
+    if ((actionChanged || detailChanged || metaChanged) && debugSummaryChanged) {
+      this.deps.logDebug(buildPlanDebugSummary(plan));
+    }
+
     this.lastActionPlanSignature = actionSignature;
     this.lastDetailPlanSignature = detailSignature;
     this.lastPlanMetaSignature = metaSignature;
+    this.lastPlanDebugSummarySignature = debugSummarySignature;
 
     return {
       actionSignature,

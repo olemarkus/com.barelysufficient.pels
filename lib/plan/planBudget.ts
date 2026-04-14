@@ -10,7 +10,7 @@ export function computeDynamicSoftLimit(params: {
   powerTracker: PowerTrackerState;
   logDebug: (...args: unknown[]) => void;
 }): { allowedKw: number; hourlyBudgetExhausted: boolean } {
-  const { capacitySettings, powerTracker, logDebug } = params;
+  const { capacitySettings, powerTracker } = params;
   const netBudgetKWh = resolveUsableCapacityKw(capacitySettings);
   if (netBudgetKWh <= 0) return { allowedKw: 0, hourlyBudgetExhausted: false };
 
@@ -34,11 +34,6 @@ export function computeDynamicSoftLimit(params: {
     ? Math.min(burstRateKw, sustainableRateKw)
     : burstRateKw;
 
-  logDebug(
-    `Soft limit calc: budget=${netBudgetKWh.toFixed(3)}kWh used=${usedKWh.toFixed(3)}kWh `
-    + `remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h `
-    + `burst=${burstRateKw.toFixed(3)}kW capped=${allowedKw.toFixed(3)}kW`,
-  );
   return { allowedKw, hourlyBudgetExhausted };
 }
 
@@ -56,7 +51,6 @@ export function computeDailyUsageSoftLimit(params: {
     bucketStartMs,
     bucketEndMs,
     nowMs = Date.now(),
-    logDebug,
   } = params;
   if (!Number.isFinite(plannedKWh) || plannedKWh <= 0) return 0;
   if (!Number.isFinite(bucketStartMs) || !Number.isFinite(bucketEndMs) || bucketEndMs <= bucketStartMs) return 0;
@@ -69,11 +63,6 @@ export function computeDailyUsageSoftLimit(params: {
   // Daily budget is a soft constraint - never apply end-of-hour capping.
   // Only the hourly hard cap needs EOH protection.
   const allowedKw = burstRateKw;
-  logDebug?.(
-    `Daily soft limit calc: budget=${plannedKWh.toFixed(3)}kWh used=${safeUsed.toFixed(3)}kWh `
-    + `remaining=${remainingKWh.toFixed(3)}kWh timeLeft=${remainingHours.toFixed(3)}h `
-    + `burst=${burstRateKw.toFixed(3)}kW`,
-  );
   return Math.max(0, allowedKw);
 }
 

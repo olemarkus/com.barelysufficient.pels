@@ -169,6 +169,62 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
   );
 }
 
+type PlanReasonGroup = {
+  reason: string;
+  count: number;
+};
+
+export function buildPlanDebugSummary(plan: DevicePlan): string {
+  const parts = [
+    `Plan debug: total=${formatKw(plan.meta.totalKw)}`,
+    `soft=${formatKw(plan.meta.softLimitKw)}`,
+  ];
+
+  if (typeof plan.meta.capacitySoftLimitKw === 'number') {
+    parts.push(`capacity=${formatKw(plan.meta.capacitySoftLimitKw)}`);
+  }
+  if (typeof plan.meta.dailySoftLimitKw === 'number') {
+    parts.push(`daily=${formatKw(plan.meta.dailySoftLimitKw)}`);
+  }
+  if (plan.meta.softLimitSource) {
+    parts.push(`source=${plan.meta.softLimitSource}`);
+  }
+  parts.push(`headroom=${formatKw(plan.meta.headroomKw)}`);
+
+  const blockedRestoreGroups = buildPlanReasonGroups(plan.devices.filter((device) => (
+    device.plannedState === 'shed'
+    && device.currentState === 'off'
+    && device.controllable !== false
+  )));
+  const inactiveGroups = buildPlanReasonGroups(plan.devices.filter((device) => device.plannedState === 'inactive'));
+
+  if (blockedRestoreGroups.length > 0) {
+    parts.push(`restoreBlocked=${formatReasonGroups(blockedRestoreGroups)}`);
+  }
+  if (inactiveGroups.length > 0) {
+    parts.push(`inactive=${formatReasonGroups(inactiveGroups)}`);
+  }
+
+  return parts.join(' ');
+}
+
+export function buildPlanDebugSummarySignature(plan: DevicePlan): string {
+  return JSON.stringify({
+    totalKw: roundPlanDebugNumber(plan.meta.totalKw),
+    softLimitKw: roundPlanDebugNumber(plan.meta.softLimitKw),
+    capacitySoftLimitKw: roundPlanDebugNumber(plan.meta.capacitySoftLimitKw),
+    dailySoftLimitKw: roundPlanDebugNumber(plan.meta.dailySoftLimitKw),
+    softLimitSource: plan.meta.softLimitSource ?? null,
+    headroomKw: roundPlanDebugNumber(plan.meta.headroomKw),
+    restoreBlocked: buildPlanReasonGroups(plan.devices.filter((device) => (
+      device.plannedState === 'shed'
+      && device.currentState === 'off'
+      && device.controllable !== false
+    ))),
+    inactive: buildPlanReasonGroups(plan.devices.filter((device) => device.plannedState === 'inactive')),
+  });
+}
+
 export function buildPlanChangeLines(plan: DevicePlan): string[] {
   const headroom = typeof plan.meta.headroomKw === 'number' ? plan.meta.headroomKw : null;
   const changes = plan.devices
@@ -203,6 +259,47 @@ function normalizeTarget(value: unknown): number | string | null {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return null;
   return String(value);
+}
+
+function buildPlanReasonGroups(devices: DevicePlanDevice[]): PlanReasonGroup[] {
+  const counts = new Map<string, number>();
+  for (const device of devices) {
+    const reason = normalizePlanReason(device.reason);
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
+}
+
+function normalizePlanReason(reason: string | undefined): string {
+  if (!reason) return 'unknown';
+  const trimmed = reason.trim();
+  const inactiveMatch = /^inactive \((.+)\)$/.exec(trimmed);
+  if (inactiveMatch) return inactiveMatch[1];
+  if (/^cooldown \(shedding, \d+s remaining\)$/.test(trimmed)) return 'cooldown (shedding)';
+  if (/^cooldown \(restore, \d+s remaining\)$/.test(trimmed)) return 'cooldown (restore)';
+  if (/^headroom cooldown \(\d+s remaining; .+\)$/.test(trimmed)) return 'headroom cooldown';
+  if (/^insufficient headroom \(need .+, headroom .+\)$/.test(trimmed)) return 'insufficient headroom';
+  return trimmed;
+}
+
+function formatReasonGroups(groups: PlanReasonGroup[]): string {
+  const total = groups.reduce((sum, group) => sum + group.count, 0);
+  const details = groups
+    .slice(0, 3)
+    .map((group) => `${group.reason} x${group.count}`)
+    .join(', ');
+  return `${total} [${details}]`;
+}
+
+function formatKw(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(2)}kW` : 'unknown';
+}
+
+function roundPlanDebugNumber(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.round(value * 1000) / 1000;
 }
 
 function formatPlanChange(device: DevicePlanDevice, headroom: number | null): string {
