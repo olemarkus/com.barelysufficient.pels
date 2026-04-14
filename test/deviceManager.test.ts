@@ -2224,6 +2224,42 @@ describe('DeviceManager', () => {
 
                 expect(realtimeListener).not.toHaveBeenCalled();
             });
+
+            it('dedupes identical capability receipt logs within a short window', async () => {
+                vi.useFakeTimers();
+                try {
+                    const debugStructured = vi.fn();
+                    deviceManager = new DeviceManager(homeyMock, loggerMock, undefined, undefined, { debugStructured });
+                    mockApiGet.mockResolvedValue(buildTempDevice());
+                    await deviceManager.refreshSnapshot();
+
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 18);
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 18);
+                    vi.advanceTimersByTime(2500);
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 19);
+
+                    const receivedEvents = debugStructured.mock.calls
+                        .map(([payload]) => payload)
+                        .filter((payload) => payload.event === 'device_capability_event_received');
+                    expect(receivedEvents).toHaveLength(2);
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
+            it('suppresses temperature chatter from capability receipt logs', async () => {
+                const debugStructured = vi.fn();
+                deviceManager = new DeviceManager(homeyMock, loggerMock, undefined, undefined, { debugStructured });
+                mockApiGet.mockResolvedValue(buildTempDevice());
+                await deviceManager.refreshSnapshot();
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
+
+                expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+                    event: 'device_capability_event_received',
+                    capabilityId: 'measure_temperature',
+                }));
+            });
         });
 
         describe('tracked capability freshness and reconcile semantics', () => {

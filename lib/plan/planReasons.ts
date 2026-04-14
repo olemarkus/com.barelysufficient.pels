@@ -13,6 +13,7 @@ import {
 import { sortByPriorityAsc } from './planSort';
 import { RESTORE_ADMISSION_FLOOR_KW, RESTORE_CONFIRM_RETRY_MS } from './planConstants';
 import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
+import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
 
 function shouldNormalizeReason(reason: string | undefined): boolean {
   if (!reason) return true;
@@ -263,19 +264,25 @@ function resolveRestoreDecision(params: {
 
   const setbackRemainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId: dev.id });
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
+  const restoreDebugKey = `target:${dev.id}`;
   if (setbackRemainingMs !== null) {
     const reason = `activation backoff (${Math.max(1, Math.ceil(setbackRemainingMs / 1000))}s remaining)`;
-    debugStructured?.({
-      event: 'restore_rejected',
-      restoreType: 'target',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      reason,
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      decisionReason: reason,
-      penaltyLevel: getActivationPenaltyLevel(state, dev.id),
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_rejected',
+        restoreType: 'target',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        reason,
+        availableKw: availableHeadroom,
+        decision: 'rejected',
+        decisionReason: reason,
+        penaltyLevel: getActivationPenaltyLevel(state, dev.id),
+      },
+      debugStructured,
     });
     return { type: 'hold', reason };
   }
@@ -286,23 +293,28 @@ function resolveRestoreDecision(params: {
     const requiredKwWithFloor = admission.requiredKw + RESTORE_ADMISSION_FLOOR_KW;
     const reason = `insufficient headroom (need ${requiredKwWithFloor.toFixed(2)}kW, `
       + `headroom ${availableHeadroom.toFixed(2)}kW)`;
-    debugStructured?.({
-      event: 'restore_rejected',
-      restoreType: 'target',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      reason,
-      estimatedPowerKw: restoreNeed.devPower,
-      powerSource: resolveRestorePowerSource(dev),
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      ...buildRestoreAdmissionLogFields(admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-      decision: 'rejected',
-      decisionReason: reason,
-      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_rejected',
+        restoreType: 'target',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        reason,
+        estimatedPowerKw: restoreNeed.devPower,
+        powerSource: resolveRestorePowerSource(dev),
+        neededKw: restoreNeed.needed,
+        availableKw: availableHeadroom,
+        ...buildRestoreAdmissionLogFields(admission),
+        minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+        decision: 'rejected',
+        decisionReason: reason,
+        penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+        penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+      },
+      debugStructured,
     });
     return { type: 'hold', reason };
   }
@@ -321,41 +333,51 @@ function resolveRestoreDecision(params: {
     useThrottleLabel: true,
   });
   if (gateReason) {
-    debugStructured?.({
-      event: 'restore_rejected',
-      restoreType: 'target',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      reason: gateReason,
-      estimatedPowerKw: restoreNeed.devPower,
-      powerSource: resolveRestorePowerSource(dev),
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-      ...buildRestoreAdmissionLogFields(admission),
-      decision: 'rejected',
-      decisionReason: gateReason,
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_rejected',
+        restoreType: 'target',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        reason: gateReason,
+        estimatedPowerKw: restoreNeed.devPower,
+        powerSource: resolveRestorePowerSource(dev),
+        neededKw: restoreNeed.needed,
+        availableKw: availableHeadroom,
+        penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+        penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+        ...buildRestoreAdmissionLogFields(admission),
+        decision: 'rejected',
+        decisionReason: gateReason,
+      },
+      debugStructured,
     });
     return { type: 'hold', reason: gateReason };
   }
   restoredThisCycle.add(dev.id);
   const powerSource = resolveRestorePowerSource(dev);
-  debugStructured?.({
-    event: 'restore_admitted',
-    restoreType: 'target',
-    deviceId: dev.id,
-    deviceName: dev.name,
-    phase,
-    estimatedPowerKw: restoreNeed.devPower,
-    powerSource,
-    neededKw: restoreNeed.needed,
-    availableKw: availableHeadroom,
-    ...buildRestoreAdmissionLogFields(admission),
-    decision: 'admitted',
-    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+  emitRestoreDebugEventOnChange({
+    state,
+    key: restoreDebugKey,
+    payload: {
+      event: 'restore_admitted',
+      restoreType: 'target',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource,
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      ...buildRestoreAdmissionLogFields(admission),
+      decision: 'admitted',
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    },
+    debugStructured,
   });
   return {
     type: 'restore',

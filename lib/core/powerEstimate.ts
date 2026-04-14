@@ -1,3 +1,4 @@
+import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import type { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import { getMeasuredPowerKw, type PowerMeasurementUpdates } from './powerMeasurement';
 
@@ -6,6 +7,8 @@ export type PowerEstimateState = {
   lastKnownPowerKw?: Record<string, number>;
   lastMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
   lastMeterEnergyKwh?: Record<string, { kwh: number; ts: number }>;
+  lastEstimateDecisionLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
+  lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
 };
 
 export type PowerEstimateResult = {
@@ -64,30 +67,38 @@ export function estimatePower(params: {
     return measured;
   };
 
-  if (loadW !== null) {
-    const measured = resolveMeasuredPower();
-    const loadEstimate = getPowerFromLoad({
+  const result = loadW !== null
+    ? (() => {
+      const measured = resolveMeasuredPower();
+      return {
+        ...getPowerFromLoad({
+          deviceId,
+          deviceLabel,
+          loadW,
+          expectedOverride,
+          updateLastKnownPower,
+        }),
+        measuredPowerKw: measured.measuredPowerKw,
+      };
+    })()
+    : getPowerFromMeasurement({
       deviceId,
-      deviceLabel,
-      loadW,
       expectedOverride,
-      updateLastKnownPower,
-      logger,
+      energyEstimateW,
+      state,
+      resolveMeasuredPower,
     });
-    return {
-      ...loadEstimate,
-      measuredPowerKw: measured.measuredPowerKw,
-    };
-  }
-  return getPowerFromMeasurement({
+
+  emitEstimateDecisionLog({
     deviceId,
     deviceLabel,
     expectedOverride,
-    energyEstimateW,
+    result,
     state,
     logger,
-    resolveMeasuredPower,
+    now,
   });
+  return result;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -174,14 +185,12 @@ function getPowerFromLoad(params: {
   loadW: number;
   expectedOverride?: { kw: number; ts: number };
   updateLastKnownPower: (deviceId: string, measuredKw: number, deviceLabel: string) => void;
-  logger: Logger;
 }): PowerEstimateResult {
-  const { deviceId, deviceLabel, loadW, expectedOverride, updateLastKnownPower, logger } = params;
+  const { deviceId, deviceLabel, loadW, expectedOverride, updateLastKnownPower } = params;
   const loadKw = loadW / 1000;
   updateLastKnownPower(deviceId, loadKw, deviceLabel);
 
   if (expectedOverride) {
-    logger.debug(`Power estimate: using override (manual) for ${deviceLabel}: ${expectedOverride.kw.toFixed(3)} kW`);
     return {
       powerKw: expectedOverride.kw,
       expectedPowerKw: expectedOverride.kw,
@@ -189,7 +198,6 @@ function getPowerFromLoad(params: {
       loadKw,
     };
   }
-  logger.debug(`Power estimate: using settings.load for ${deviceLabel}: ${loadKw.toFixed(3)} kW`);
   return {
     powerKw: loadKw,
     expectedPowerKw: loadKw,
@@ -200,20 +208,16 @@ function getPowerFromLoad(params: {
 
 function getPowerFromMeasurement(params: {
   deviceId: string;
-  deviceLabel: string;
   expectedOverride?: { kw: number; ts: number };
   energyEstimateW: number | null;
   state: Required<PowerEstimateState>;
-  logger: Logger;
   resolveMeasuredPower: () => { measuredKw?: number; measuredPowerKw?: number };
 }): PowerEstimateResult {
   const {
     deviceId,
-    deviceLabel,
     expectedOverride,
     energyEstimateW,
     state,
-    logger,
     resolveMeasuredPower,
   } = params;
   const measured = resolveMeasuredPower();
@@ -221,14 +225,11 @@ function getPowerFromMeasurement(params: {
 
   if (expectedOverride) {
     return resolveOverrideEstimate({
-      deviceLabel,
       expectedOverride,
       measuredKw: measured.measuredKw,
-      logger,
     });
   }
   if (peak) {
-    logger.debug(`Power estimate: using peak measured for ${deviceLabel}: ${peak.toFixed(3)} kW`);
     return {
       powerKw: peak,
       expectedPowerKw: peak,
@@ -238,7 +239,6 @@ function getPowerFromMeasurement(params: {
   }
   if (energyEstimateW !== null) {
     const energyEstimateKw = energyEstimateW / 1000;
-    logger.debug(`Power estimate: using Homey energy for ${deviceLabel}: ${energyEstimateKw.toFixed(3)} kW`);
     return {
       powerKw: energyEstimateKw,
       expectedPowerKw: energyEstimateKw,
@@ -247,7 +247,6 @@ function getPowerFromMeasurement(params: {
       hasEnergyEstimate: true,
     };
   }
-  logger.debug(`Power estimate: fallback 1 kW for ${deviceLabel} (no measured/override/load)`);
   return {
     powerKw: 1,
     expectedPowerKw: undefined,
@@ -257,18 +256,12 @@ function getPowerFromMeasurement(params: {
 }
 
 function resolveOverrideEstimate(params: {
-  deviceLabel: string;
   expectedOverride: { kw: number; ts: number };
   measuredKw?: number;
-  logger: Logger;
 }): PowerEstimateResult {
-  const { deviceLabel, expectedOverride, measuredKw, logger } = params;
+  const { expectedOverride, measuredKw } = params;
   const measuredValue = measuredKw ?? 0;
   if (measuredKw !== undefined && measuredValue > expectedOverride.kw) {
-    logger.debug(
-      `Power estimate: current ${measuredValue.toFixed(3)} kW > override `
-      + `${expectedOverride.kw.toFixed(3)} kW for ${deviceLabel}`,
-    );
     return {
       powerKw: measuredValue,
       expectedPowerKw: measuredValue,
@@ -276,11 +269,77 @@ function resolveOverrideEstimate(params: {
       measuredPowerKw: measuredKw,
     };
   }
-  logger.debug(`Power estimate: using override for ${deviceLabel}: ${expectedOverride.kw.toFixed(3)} kW`);
   return {
     powerKw: expectedOverride.kw,
     expectedPowerKw: expectedOverride.kw,
     expectedPowerSource: 'manual',
     measuredPowerKw: measuredKw,
   };
+}
+
+function emitEstimateDecisionLog(params: {
+  deviceId: string;
+  deviceLabel: string;
+  expectedOverride?: { kw: number; ts: number };
+  result: PowerEstimateResult;
+  state: Required<PowerEstimateState>;
+  logger: Logger;
+  now: number;
+}): void {
+  const {
+    deviceId,
+    deviceLabel,
+    expectedOverride,
+    result,
+    state,
+    logger,
+    now,
+  } = params;
+  const source = result.expectedPowerSource ?? null;
+  const estimatedKw = typeof result.powerKw === 'number'
+    ? roundLogValue(result.powerKw, 2)
+    : typeof result.expectedPowerKw === 'number'
+      ? roundLogValue(result.expectedPowerKw, 2)
+      : null;
+  const measuredPowerKw = typeof result.measuredPowerKw === 'number'
+    ? roundLogValue(result.measuredPowerKw, 2)
+    : null;
+  const loadKw = typeof result.loadKw === 'number' ? roundLogValue(result.loadKw, 2) : null;
+  const peakMeasuredKw = source === 'measured-peak' && typeof state.lastKnownPowerKw[deviceId] === 'number'
+    ? roundLogValue(state.lastKnownPowerKw[deviceId], 2)
+    : null;
+  const fallbackReason = source === 'default'
+    ? 'default_1kw'
+    : source === 'measured-peak' && expectedOverride !== undefined
+      ? 'override_exceeded'
+      : null;
+  const signature = JSON.stringify({
+    source,
+    estimatedKw,
+    measuredPowerKw,
+    loadKw,
+    peakMeasuredKw,
+    fallbackReason,
+    hasEnergyEstimate: result.hasEnergyEstimate === true,
+  });
+  if (!shouldEmitOnChange({
+    state: state.lastEstimateDecisionLogByDevice,
+    key: deviceId,
+    signature,
+    now,
+  })) {
+    return;
+  }
+  logger.structuredLog?.debug({
+    event: 'power_estimate_source_changed',
+    deviceId,
+    deviceName: deviceLabel,
+    source,
+    estimatedKw: estimatedKw ?? undefined,
+    measuredPowerKw: measuredPowerKw ?? undefined,
+    loadKw: loadKw ?? undefined,
+    peakMeasuredKw: peakMeasuredKw ?? undefined,
+    fallbackReason: fallbackReason ?? undefined,
+    hasEnergyEstimate: result.hasEnergyEstimate === true ? true : undefined,
+  });
 }

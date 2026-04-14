@@ -10,6 +10,7 @@ import {
   RESTORE_ADMISSION_FLOOR_KW,
 } from './planConstants';
 import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, exportSwapState } from './planSwapState';
+import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import {
   buildInsufficientHeadroomUpdate,
   buildSwapCandidates,
@@ -164,8 +165,7 @@ export function applyRestorePlan(params: {
         timing: effectiveTiming,
         availableHeadroom,
         restoredOneThisCycle,
-        logDebug: deps.logDebug,
-        debugStructured: deps.debugStructured,
+            debugStructured: deps.debugStructured,
       });
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
@@ -194,7 +194,6 @@ export function applyRestorePlan(params: {
     markSteppedDevicesStayAtCurrentLevel({
       deviceMap,
       timing: effectiveTiming,
-      logDebug: deps.logDebug,
     });
   }
 
@@ -246,7 +245,9 @@ function planRestoreForDevice(params: {
 
   const inactiveReason = getInactiveReason(dev);
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
+  const restoreDebugKey = `binary:${dev.id}`;
   if (inactiveReason) {
+    clearRestoreDebugEvent(state, restoreDebugKey);
     setDevice(deviceMap, dev.id, {
       plannedState: 'inactive',
       reason: inactiveReason,
@@ -263,22 +264,27 @@ function planRestoreForDevice(params: {
       plannedState: 'shed',
       reason: gateReason,
     });
-    deps.logDebug(`Plan: blocking restore of ${dev.name} - ${gateReason}`);
-    deps.debugStructured?.({
-      event: 'restore_rejected',
-      restoreType: 'binary',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      reason: gateReason,
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      decisionReason: gateReason,
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_rejected',
+        restoreType: 'binary',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        reason: gateReason,
+        availableKw: availableHeadroom,
+        decision: 'rejected',
+        decisionReason: gateReason,
+      },
+      debugStructured: deps.debugStructured,
     });
     return { availableHeadroom, restoredOneThisCycle };
   }
 
-  if (isBlockedBySwapState(dev, deviceMap, swapState, deps.logDebug)) {
+  if (isBlockedBySwapState(dev, deviceMap, swapState)) {
+    clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -291,17 +297,21 @@ function planRestoreForDevice(params: {
       plannedState: 'shed',
       reason: waitingReason,
     });
-    deps.logDebug(`Plan: blocking restore of ${dev.name} - ${waitingReason}`);
-    deps.debugStructured?.({
-      event: 'restore_rejected',
-      restoreType: 'binary',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      reason: waitingReason,
-      availableKw: availableHeadroom,
-      decision: 'rejected',
-      decisionReason: waitingReason,
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_rejected',
+        restoreType: 'binary',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        reason: waitingReason,
+        availableKw: availableHeadroom,
+        decision: 'rejected',
+        decisionReason: waitingReason,
+      },
+      debugStructured: deps.debugStructured,
     });
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -311,7 +321,6 @@ function planRestoreForDevice(params: {
     deviceId: dev.id,
     deviceName: dev.name,
     state,
-    logDebug: deps.logDebug,
     stepped: false,
     debugStructured: deps.debugStructured,
   })) {
@@ -322,40 +331,50 @@ function planRestoreForDevice(params: {
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   const powerSource = resolveRestorePowerSource(dev);
   if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
-    deps.debugStructured?.({
-      event: 'restore_admitted',
-      restoreType: 'binary',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      estimatedPowerKw: restoreNeed.devPower,
-      powerSource,
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      ...buildRestoreAdmissionLogFields(admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-      decision: 'admitted',
-      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_admitted',
+        restoreType: 'binary',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        estimatedPowerKw: restoreNeed.devPower,
+        powerSource,
+        neededKw: restoreNeed.needed,
+        availableKw: availableHeadroom,
+        ...buildRestoreAdmissionLogFields(admission),
+        minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+        decision: 'admitted',
+        penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+        penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+      },
+      debugStructured: deps.debugStructured,
     });
     restoredThisCycle.add(dev.id);
     return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
   }
 
-  deps.debugStructured?.({
-    event: 'restore_rejected',
-    restoreType: 'binary',
-    deviceId: dev.id,
-    deviceName: dev.name,
-    phase,
-    powerSource,
-    neededKw: restoreNeed.needed,
-    availableKw: availableHeadroom,
-    ...buildRestoreAdmissionLogFields(admission),
-    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-    decision: 'rejected',
-    rejectionReason: 'insufficient_headroom',
-    swapAttempt: true,
+  emitRestoreDebugEventOnChange({
+    state,
+    key: restoreDebugKey,
+    payload: {
+      event: 'restore_rejected',
+      restoreType: 'binary',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      powerSource,
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      ...buildRestoreAdmissionLogFields(admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      decision: 'rejected',
+      rejectionReason: 'insufficient_headroom',
+      swapAttempt: true,
+    },
+    debugStructured: deps.debugStructured,
   });
 
   return attemptSwapRestore({

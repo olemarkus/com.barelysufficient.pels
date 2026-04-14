@@ -74,9 +74,11 @@ import {
 } from './deviceManagerRealtimeHandlers';
 import type { DeviceFetchSource } from './deviceManagerFetch';
 import { normalizeError } from '../utils/errorUtils';
+import { shouldEmitWindowed } from '../logging/logDedupe';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const LOCAL_BINARY_SETTLE_WINDOW_MS = 5 * 1000;
+const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
 
@@ -169,6 +171,7 @@ export class DeviceManager extends EventEmitter {
     private pendingBinarySettleWindows: Map<string, PendingBinarySettleWindow> = new Map();
     private debugObservedSourcesByDeviceId: Map<string, DeviceDebugObservedSources> = new Map();
     private capabilityObservations: Map<string, CapabilityObservation> = new Map();
+    private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
     private latestLocalWriteMsByDeviceId: Map<string, number> = new Map();
     private lastSnapshotRefreshMetricsKey: string | null = null;
     private providers: {
@@ -191,27 +194,22 @@ export class DeviceManager extends EventEmitter {
         const snapshot = this.latestSnapshot[snapshotIndex];
         if (!this.isTrackedCapability(snapshot, capabilityId)) return;
 
-        this.debugStructured?.({
-            event: 'device_capability_event_received',
-            source: 'web_api_subscription',
-            deviceId,
-            capabilityId,
-            value,
-        });
-
-        const recentWrite = getRecentLocalCapabilityWrite({
-            recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
-            deviceId,
-            capabilityId,
-        });
-        if (recentWrite && recentWrite.value === value) return;
+        const normalizedValue = this.normalizeRealtimeCapabilityEventValue(capabilityId, value);
+        if (this.hasMatchingRecentLocalWrite(deviceId, capabilityId, normalizedValue)) return;
 
         if (this.isFreshnessOnlyCapability(capabilityId)) {
             this.handleFreshnessOnlyCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value);
             return;
         }
 
-        this.handleReconcileCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value, snapshot);
+        this.handleReconcileCapabilityUpdate(
+            snapshotIndex,
+            deviceId,
+            capabilityId,
+            value,
+            normalizedValue,
+            snapshot,
+        );
     };
 
     private handleFreshnessOnlyCapabilityUpdate(
@@ -235,13 +233,17 @@ export class DeviceManager extends EventEmitter {
         deviceId: string,
         capabilityId: string,
         value: unknown,
+        normalizedValue: unknown,
         snapshot: TargetDeviceSnapshot,
     ): void {
         const changes: PlanRealtimeUpdateEvent['changes'] = [];
 
         if (capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean') {
             const settled = this.applyBinaryCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value, changes);
-            if (settled) return;
+            if (settled) {
+                this.emitCapabilityEventReceived(deviceId, capabilityId, normalizedValue);
+                return;
+            }
         }
 
         for (const target of snapshot.targets) {
@@ -259,6 +261,7 @@ export class DeviceManager extends EventEmitter {
 
         if (changes.length === 0) return;
 
+        this.emitCapabilityEventReceived(deviceId, capabilityId, normalizedValue);
         this.logger.structuredLog?.info({
             event: 'realtime_capability_drift',
             deviceId,
@@ -311,6 +314,50 @@ export class DeviceManager extends EventEmitter {
         return { changed: false, normalizedValue: undefined };
     }
 
+    private hasMatchingRecentLocalWrite(deviceId: string, capabilityId: string, normalizedValue: unknown): boolean {
+        const recentWrite = getRecentLocalCapabilityWrite({
+            recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
+            deviceId,
+            capabilityId,
+        });
+        if (!recentWrite) return false;
+        return Object.is(
+            this.normalizeRealtimeCapabilityEventValue(capabilityId, recentWrite.value),
+            normalizedValue,
+        );
+    }
+
+    private normalizeRealtimeCapabilityEventValue(capabilityId: string, value: unknown): unknown {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') {
+            if (capabilityId === 'measure_power' || capabilityId.startsWith('meter_power')) return Math.round(value);
+            if (capabilityId.includes('temperature')) return Math.round(value * 10) / 10;
+            return Math.round(value * 100) / 100;
+        }
+        if (typeof value === 'string') return value.trim();
+        return value;
+    }
+
+    private emitCapabilityEventReceived(deviceId: string, capabilityId: string, normalizedValue: unknown): void {
+        if (!this.debugStructured) return;
+        const key = JSON.stringify([deviceId, capabilityId, normalizedValue]);
+        if (!shouldEmitWindowed({
+            state: this.recentRealtimeCapabilityEventLogByKey,
+            key,
+            now: Date.now(),
+            windowMs: REALTIME_CAPABILITY_EVENT_WINDOW_MS,
+        })) {
+            return;
+        }
+        this.debugStructured({
+            event: 'device_capability_event_received',
+            source: 'web_api_subscription',
+            deviceId,
+            capabilityId,
+            value: normalizedValue,
+        });
+    }
+
     /** Returns true if the change was deferred by the binary settle window. */
     private applyBinaryCapabilityUpdate(
         snapshotIndex: number,
@@ -354,7 +401,6 @@ export class DeviceManager extends EventEmitter {
             notePendingBinarySettleObservation: (nextDeviceId, capabilityId, value) => (
                 this.notePendingBinarySettleObservation(nextDeviceId, capabilityId, value)
             ),
-            logDebug: (message) => this.logger.debug(message),
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
@@ -383,6 +429,8 @@ export class DeviceManager extends EventEmitter {
             lastKnownPowerKw: powerState?.lastKnownPowerKw ?? {},
             lastMeasuredPowerKw: powerState?.lastMeasuredPowerKw ?? {},
             lastMeterEnergyKwh: powerState?.lastMeterEnergyKwh ?? {},
+            lastEstimateDecisionLogByDevice: powerState?.lastEstimateDecisionLogByDevice ?? new Map(),
+            lastPeakPowerLogByDevice: powerState?.lastPeakPowerLogByDevice ?? new Map(),
         };
     }
 

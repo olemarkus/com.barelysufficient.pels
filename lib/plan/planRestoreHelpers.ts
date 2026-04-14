@@ -14,6 +14,7 @@ import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../utils/dev
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
 import { computeRestoreBufferKw } from './planRestoreSwap';
 import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
+import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
@@ -42,12 +43,10 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   | 'shedCooldownRemainingSec'
   | 'restoreCooldownRemainingSec'
   | 'startupStabilizationRemainingSec'>;
-  logDebug: (...args: unknown[]) => void;
 }): void {
   const {
     deviceMap,
     timing,
-    logDebug,
   } = params;
   const reason = resolveCapacityRestoreBlockReason({ timing });
   if (!reason) return;
@@ -55,7 +54,6 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
   for (const dev of steppedDevices) {
     setRestorePlanDevice(deviceMap, dev.id, { reason });
-    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${reason}`);
   }
 }
 
@@ -96,17 +94,15 @@ export function isBlockedBySwapState(
   dev: DevicePlanDevice,
   deviceMap: Map<string, DevicePlanDevice>,
   swapState: SwapState,
-  logDebug: (...args: unknown[]) => void,
 ): boolean {
-  if (isBlockedByDirectSwap(dev, deviceMap, swapState, logDebug)) return true;
-  return isBlockedByPendingSwapTarget(dev, deviceMap, swapState, logDebug);
+  if (isBlockedByDirectSwap(dev, deviceMap, swapState)) return true;
+  return isBlockedByPendingSwapTarget(dev, deviceMap, swapState);
 }
 
 function isBlockedByDirectSwap(
   dev: DevicePlanDevice,
   deviceMap: Map<string, DevicePlanDevice>,
   swapState: SwapState,
-  logDebug: (...args: unknown[]) => void,
 ): boolean {
   const swappedFor = swapState.swappedOutFor.get(dev.id);
   if (!swappedFor) return false;
@@ -116,13 +112,11 @@ function isBlockedByDirectSwap(
       plannedState: 'shed',
       reason: `swap pending (${higherPriDev.name})`,
     });
-    logDebug(`Plan: blocking restore of ${dev.name} - was swapped out for ${higherPriDev.name} which is still off`);
     return true;
   }
   swapState.swappedOutFor.delete(dev.id);
   swapState.pendingSwapTargets.delete(swappedFor);
   swapState.pendingSwapTimestamps.delete(swappedFor);
-  logDebug(`Plan: ${dev.name} can now be considered for restore - ${higherPriDev?.name ?? swappedFor} is restored`);
   return false;
 }
 
@@ -130,7 +124,6 @@ function isBlockedByPendingSwapTarget(
   dev: DevicePlanDevice,
   deviceMap: Map<string, DevicePlanDevice>,
   swapState: SwapState,
-  logDebug: (...args: unknown[]) => void,
 ): boolean {
   if (swapState.pendingSwapTargets.size === 0 || swapState.pendingSwapTargets.has(dev.id)) return false;
   const devPriority = dev.priority ?? 100;
@@ -148,10 +141,6 @@ function isBlockedByPendingSwapTarget(
         plannedState: 'shed',
         reason: `swap pending (${swapTargetDev.name})`,
       });
-      logDebug(
-        `Plan: blocking restore of ${dev.name} (p${devPriority}) - `
-        + `swap target ${swapTargetDev.name} (p${swapTargetPriority}) should restore first`,
-      );
       return true;
     }
     if (swapTargetDev.currentState === 'on') {
@@ -167,7 +156,6 @@ export function blockRestoreForRecentActivationSetback(params: {
   deviceId: string;
   deviceName: string | undefined;
   state: PlanEngineState;
-  logDebug: (...args: unknown[]) => void;
   stepped: boolean;
   debugStructured?: StructuredDebugEmitter;
 }): boolean {
@@ -176,7 +164,6 @@ export function blockRestoreForRecentActivationSetback(params: {
     deviceId,
     deviceName,
     state,
-    logDebug,
     stepped,
     debugStructured,
   } = params;
@@ -192,15 +179,20 @@ export function blockRestoreForRecentActivationSetback(params: {
       reason,
     });
   }
-  debugStructured?.({
-    event: 'restore_blocked_setback',
-    deviceId,
-    deviceName,
-    penaltyLevel: getActivationPenaltyLevel(state, deviceId),
-    remainingMs,
-    stepped,
+  emitRestoreDebugEventOnChange({
+    state,
+    key: `setback:${stepped ? 'stepped' : 'binary'}:${deviceId}`,
+    payload: {
+      event: 'restore_blocked_setback',
+      deviceId,
+      deviceName,
+      penaltyLevel: getActivationPenaltyLevel(state, deviceId),
+      remainingMs,
+      stepped,
+      reason,
+    },
+    debugStructured,
   });
-  logDebug(`Plan: blocking ${stepped ? 'stepped ' : ''}restore of ${deviceName} - ${reason}`);
   return true;
 }
 
@@ -260,14 +252,11 @@ export function planRestoreForSteppedDevice(params: {
   | 'startupStabilizationRemainingSec'>;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
-  logDebug: (...args: unknown[]) => void;
   debugStructured?: StructuredDebugEmitter;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, logDebug, debugStructured } = params;
+  const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, debugStructured } = params;
+  const restoreDebugKey = `stepped:${dev.id}`;
 
-  // Clear shed-invariant suppression tracking when no devices are shed, even if an earlier gate
-  // returns first. Without this, tracking can survive into a new shed episode and suppress the
-  // first restore_stepped_rejected log of that episode.
   if (countShedDevices(deviceMap, dev.id) === 0) {
     delete state.steppedRestoreRejectedByDevice[dev.id];
   }
@@ -276,7 +265,24 @@ export function planRestoreForSteppedDevice(params: {
   const gateReason = resolveCapacityRestoreBlockReason({ timing, restoredOneThisCycle });
   if (gateReason) {
     setRestorePlanDevice(deviceMap, dev.id, { reason: gateReason });
-    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${gateReason}`);
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_stepped_rejected',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        currentStepId: dev.selectedStepId,
+        requestedStepId: dev.desiredStepId,
+        blockedByShedInvariant: false,
+        decision: 'rejected',
+        rejectionReason: gateReason,
+        reason: gateReason,
+        availableKw: availableHeadroom,
+      },
+      debugStructured,
+    });
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -286,18 +292,36 @@ export function planRestoreForSteppedDevice(params: {
   });
   if (waitingReason) {
     setRestorePlanDevice(deviceMap, dev.id, { reason: waitingReason });
-    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${waitingReason}`);
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_stepped_rejected',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        currentStepId: dev.selectedStepId,
+        requestedStepId: dev.desiredStepId,
+        blockedByShedInvariant: false,
+        decision: 'rejected',
+        rejectionReason: waitingReason,
+        reason: waitingReason,
+        availableKw: availableHeadroom,
+      },
+      debugStructured,
+    });
     return { availableHeadroom, restoredOneThisCycle };
   }
 
   if (blockRestoreForRecentActivationSetback({
-    deviceMap, deviceId: dev.id, deviceName: dev.name, state, logDebug, stepped: true, debugStructured,
+    deviceMap, deviceId: dev.id, deviceName: dev.name, state, stepped: true, debugStructured,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
   const nextStep = getSteppedLoadNextRestoreStep(dev);
   if (!nextStep || !dev.selectedStepId) {
+    clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -306,7 +330,7 @@ export function planRestoreForSteppedDevice(params: {
     : null;
 
   if (blockSteppedRestoreForShedInvariant({
-    dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, logDebug, debugStructured,
+    dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey,
   })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -316,11 +340,12 @@ export function planRestoreForSteppedDevice(params: {
     device: dev, fromStepId: dev.selectedStepId, toStepId: nextStep.id,
   });
   if (deltaKw <= 0) {
+    clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
   return admitSteppedRestore({
-    dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, deltaKw, availableHeadroom, debugStructured,
+    dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, deltaKw, availableHeadroom, debugStructured, restoreDebugKey,
   });
 }
 
@@ -334,39 +359,45 @@ function admitSteppedRestore(params: {
   deltaKw: number;
   availableHeadroom: number;
   debugStructured?: StructuredDebugEmitter;
+  restoreDebugKey: string;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const { dev, deviceMap, phase, nextStep, lowestNonZeroStep,
-    deltaKw, availableHeadroom, debugStructured } = params;
+  const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
+    deltaKw, availableHeadroom, debugStructured, restoreDebugKey } = params;
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: needed });
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
     return rejectSteppedRestoreForInsufficientHeadroom({
-      dev, deviceMap, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-      admission, availableHeadroom, needed, debugStructured,
+      dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
+      admission, availableHeadroom, needed, debugStructured, restoreDebugKey,
     });
   }
   setRestorePlanDevice(deviceMap, dev.id, {
     desiredStepId: nextStep.id,
     reason: `restore ${dev.selectedStepId} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
   });
-  debugStructured?.({
-    event: 'restore_stepped_admitted',
-    deviceId: dev.id,
-    deviceName: dev.name,
-    phase,
-    currentStepId: dev.selectedStepId,
-    toStepId: nextStep.id,
-    lowestNonZeroStepId: lowestNonZeroStep?.id,
-    blockedByShedInvariant: false,
-    shedDeviceCount,
-    deltaKw,
-    neededKw: needed,
-    availableKw: availableHeadroom,
-    ...buildRestoreAdmissionLogFields(admission),
-    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-    decision: 'admitted',
+  emitRestoreDebugEventOnChange({
+    state,
+    key: restoreDebugKey,
+    payload: {
+      event: 'restore_stepped_admitted',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      currentStepId: dev.selectedStepId,
+      toStepId: nextStep.id,
+      lowestNonZeroStepId: lowestNonZeroStep?.id,
+      blockedByShedInvariant: false,
+      shedDeviceCount,
+      deltaKw,
+      neededKw: needed,
+      availableKw: availableHeadroom,
+      ...buildRestoreAdmissionLogFields(admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      decision: 'admitted',
+    },
+    debugStructured,
   });
   return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
 }
@@ -388,10 +419,10 @@ function blockSteppedRestoreForShedInvariant(params: {
   nextStep: { id: string; planningPowerW: number };
   lowestNonZeroStep: { id: string; planningPowerW: number } | null;
   phase: 'startup' | 'runtime';
-  logDebug: (...args: unknown[]) => void;
   debugStructured?: StructuredDebugEmitter;
+  restoreDebugKey: string;
 }): boolean {
-  const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, logDebug, debugStructured } = params;
+  const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey } = params;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (shedDeviceCount === 0) return false;
@@ -405,20 +436,25 @@ function blockSteppedRestoreForShedInvariant(params: {
     && prev.lowestNonZeroStepId === lowestNonZeroStep.id
     && prev.shedDeviceCount === shedDeviceCount;
   if (!unchanged) {
-    logDebug(`Plan: blocking stepped restore of ${dev.name} - ${reason}`);
-    debugStructured?.({
-      event: 'restore_stepped_rejected',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      currentStepId: dev.selectedStepId,
-      requestedStepId: nextStep.id,
-      lowestNonZeroStepId: lowestNonZeroStep.id,
-      allowedMaxStepId: lowestNonZeroStep.id,
-      blockedByShedInvariant: true,
-      shedDeviceCount,
-      decision: 'rejected',
-      rejectionReason: 'shed_invariant',
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_stepped_rejected',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        currentStepId: dev.selectedStepId,
+        requestedStepId: nextStep.id,
+        lowestNonZeroStepId: lowestNonZeroStep.id,
+        allowedMaxStepId: lowestNonZeroStep.id,
+        blockedByShedInvariant: true,
+        shedDeviceCount,
+        decision: 'rejected',
+        rejectionReason: 'shed_invariant',
+        reason,
+      },
+      debugStructured,
     });
     state.steppedRestoreRejectedByDevice[dev.id] = {
       requestedStepId: nextStep.id,
@@ -432,6 +468,7 @@ function blockSteppedRestoreForShedInvariant(params: {
 function rejectSteppedRestoreForInsufficientHeadroom(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
+  state: PlanEngineState;
   phase: 'startup' | 'runtime';
   nextStep: { id: string };
   lowestNonZeroStep: { id: string } | null;
@@ -440,30 +477,36 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
   availableHeadroom: number;
   needed: number;
   debugStructured?: StructuredDebugEmitter;
+  restoreDebugKey: string;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const { dev, deviceMap, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
-    admission, availableHeadroom, needed, debugStructured } = params;
+  const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
+    admission, availableHeadroom, needed, debugStructured, restoreDebugKey } = params;
   const requiredKwWithFloor = admission.requiredKw + RESTORE_ADMISSION_FLOOR_KW;
   setRestorePlanDevice(deviceMap, dev.id, {
     reason: `insufficient headroom (need ${requiredKwWithFloor.toFixed(2)}kW, `
       + `headroom ${availableHeadroom.toFixed(2)}kW)`,
   });
-  debugStructured?.({
-    event: 'restore_stepped_rejected',
-    deviceId: dev.id,
-    deviceName: dev.name,
-    phase,
-    currentStepId: dev.selectedStepId,
-    requestedStepId: nextStep.id,
-    lowestNonZeroStepId: lowestNonZeroStep?.id,
-    blockedByShedInvariant: false,
-    shedDeviceCount,
-    neededKw: needed,
-    availableKw: availableHeadroom,
-    ...buildRestoreAdmissionLogFields(admission),
-    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-    decision: 'rejected',
-    rejectionReason: 'insufficient_headroom',
+  emitRestoreDebugEventOnChange({
+    state,
+    key: restoreDebugKey,
+    payload: {
+      event: 'restore_stepped_rejected',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      currentStepId: dev.selectedStepId,
+      requestedStepId: nextStep.id,
+      lowestNonZeroStepId: lowestNonZeroStep?.id,
+      blockedByShedInvariant: false,
+      shedDeviceCount,
+      neededKw: needed,
+      availableKw: availableHeadroom,
+      ...buildRestoreAdmissionLogFields(admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      decision: 'rejected',
+      rejectionReason: 'insufficient_headroom',
+    },
+    debugStructured,
   });
   return { availableHeadroom, restoredOneThisCycle: false };
 }
