@@ -338,7 +338,7 @@ export class PlanService {
       incPerfCounter('plan_rebuild_no_change_total');
     }
 
-    if (debugSummaryState.changed) {
+    if (debugSummaryState.changed && debugSummaryState.event) {
       this.deps.debugStructured?.(debugSummaryState.event);
     }
 
