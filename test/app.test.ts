@@ -2136,8 +2136,8 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).managedDevices = { 'dev-1': true };
     const staleSnapshot = (app as any).deviceManager.getSnapshot().map((device: any) => ({
       ...device,
-      lastFreshDataMs: new Date('2026-03-21T09:54:00Z').getTime(),
-      lastUpdated: new Date('2026-03-21T09:54:00Z').getTime(),
+      lastFreshDataMs: new Date('2026-03-21T09:10:00Z').getTime(),
+      lastUpdated: new Date('2026-03-21T09:10:00Z').getTime(),
     }));
     (app as any).deviceManager.setSnapshotForTests(staleSnapshot);
 
