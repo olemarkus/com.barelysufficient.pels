@@ -286,7 +286,7 @@ export function planRestoreForSteppedDevice(params: {
   }
 
   const nextStep = getSteppedLoadNextRestoreStep(dev);
-  if (!nextStep || !dev.selectedStepId) {
+  if (!nextStep) {
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -350,7 +350,8 @@ function admitSteppedRestore(params: {
   }
   setRestorePlanDevice(deviceMap, dev.id, {
     desiredStepId: nextStep.id,
-    reason: `restore ${dev.selectedStepId} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
+    expectedPowerKw: nextStep.planningPowerW / 1000,
+    reason: `restore ${dev.selectedStepId ?? 'unknown'} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
   });
   emitRestoreDebugEventOnChange({
     state,
@@ -360,7 +361,7 @@ function admitSteppedRestore(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      currentStepId: dev.selectedStepId,
+      currentStepId: dev.selectedStepId ?? 'unknown',
       toStepId: nextStep.id,
       lowestNonZeroStepId: lowestNonZeroStep?.id,
       blockedByShedInvariant: false,
@@ -419,7 +420,7 @@ function blockSteppedRestoreForShedInvariant(params: {
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        currentStepId: dev.selectedStepId,
+        currentStepId: dev.selectedStepId ?? 'unknown',
         requestedStepId: nextStep.id,
         lowestNonZeroStepId: lowestNonZeroStep.id,
         allowedMaxStepId: lowestNonZeroStep.id,
@@ -469,7 +470,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      currentStepId: dev.selectedStepId,
+      currentStepId: dev.selectedStepId ?? 'unknown',
       requestedStepId: nextStep.id,
       lowestNonZeroStepId: lowestNonZeroStep?.id,
       blockedByShedInvariant: false,

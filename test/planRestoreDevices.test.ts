@@ -81,12 +81,58 @@ describe('plan restore device helpers', () => {
         },
         selectedStepId: 'low',
       }),
+      makeDevice({
+        id: 'unknown-step-off',
+        priority: 2,
+        currentState: 'off',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: undefined,
+      }),
+      makeDevice({
+        id: 'high-step-off',
+        priority: 5,
+        currentState: 'off',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'max',
+      }),
+      makeDevice({
+        id: 'unknown-step-on',
+        priority: 3,
+        currentState: 'on',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: undefined,
+      }),
       makeDevice({ id: 'fresh-on', priority: 5, currentState: 'on' }),
       makeDevice({ id: 'stale-on', priority: 6, currentState: 'on', observationStale: true }),
     ];
 
     expect(getOffDevices(devices).map((device) => device.id)).toEqual(['fresh-off']);
-    expect(getSteppedRestoreCandidates(devices).map((device) => device.id)).toEqual(['fresh-step']);
+    expect(getSteppedRestoreCandidates(devices).map((device) => device.id))
+      .toEqual(['unknown-step-off', 'fresh-step', 'high-step-off']);
     expect(getOnDevices(devices, () => ({ action: 'turn_off', temperature: null, stepId: null }))
       .map((device) => device.id)).toEqual(['fresh-on']);
   });

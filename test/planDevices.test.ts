@@ -645,4 +645,62 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     // Off-step desiredStepId must be normalized to the lowest non-zero step ('low').
     expect(planDevice.desiredStepId).toBe('low');
   });
+
+  it('restore (keep) normalizes unknown-step off devices to lowest non-zero step and expected load', () => {
+    const device = steppedInputDevice({
+      id: 'dev-1',
+      hasBinaryControl: true,
+      selectedStepId: undefined,
+      desiredStepId: 'max',
+      currentOn: false,
+      expectedPowerKw: 3,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.plannedState).toBe('keep');
+    expect(planDevice.desiredStepId).toBe('low');
+    expect(planDevice.expectedPowerKw).toBeCloseTo(1.25);
+  });
+
+  it('leaves stepped restore intent unchanged when no positive restore step exists', () => {
+    const device = steppedInputDevice({
+      id: 'dev-1',
+      hasBinaryControl: true,
+      currentOn: false,
+      selectedStepId: undefined,
+      desiredStepId: undefined,
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'idle', planningPowerW: 0 },
+        ],
+      },
+      expectedPowerKw: 0.7,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.desiredStepId).toBeUndefined();
+    expect(planDevice.expectedPowerKw).toBe(0.7);
+  });
 });

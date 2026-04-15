@@ -17,6 +17,7 @@ import {
 import { getBinaryControlPlan } from '../lib/plan/planBinaryControl';
 import {
   applyMeasurementUpdates,
+  reconcileRealtimeDeviceUpdate,
   updateLastKnownPower,
 } from '../lib/core/deviceManagerRuntime';
 import {
@@ -215,8 +216,6 @@ describe('device manager support helpers', () => {
     expect(normalizedError).toBeInstanceOf(Error);
     expect((normalizedError as Error).message).toBe('string boom');
   });
-
-
   it('dedupes peak-power updates within the same rounded band', () => {
     const logger = createLogger();
     const state = {
@@ -239,6 +238,34 @@ describe('device manager support helpers', () => {
       event: 'power_estimate_peak_updated',
       peakKw: 1.29,
     }));
+  });
+
+  it('does not probe an empty capability id when no binary control capability is known', () => {
+    const latestSnapshot: TargetDeviceSnapshot[] = [];
+    const capabilityAccesses: string[] = [];
+    const capabilitiesObj = new Proxy({}, {
+      get(target, prop, receiver) {
+        if (typeof prop === 'string') capabilityAccesses.push(prop);
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    const result = reconcileRealtimeDeviceUpdate({
+      latestSnapshot,
+      device: {
+        id: 'dev-1',
+        capabilitiesObj,
+      } as never,
+      parseDevice: () => ({
+        id: 'dev-1',
+        name: 'Device 1',
+        currentOn: true,
+        targets: [],
+      } as never),
+    });
+
+    expect(result.shouldReconcilePlan).toBe(false);
+    expect(capabilityAccesses).not.toContain('');
   });
 
   it('hasRestClient reflects current state', () => {

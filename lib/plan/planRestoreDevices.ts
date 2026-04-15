@@ -24,9 +24,14 @@ export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): De
     .filter((device) => (
       isSteppedLoadDevice(device)
       && isLiveEligibleDevice(device)
-      && device.selectedStepId !== undefined
       && device.steppedLoadProfile?.model === 'stepped_load'
-      && device.selectedStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id
+      && (
+        device.currentState === 'off'
+        || (
+          device.selectedStepId !== undefined
+          && device.selectedStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id
+        )
+      )
     ));
   return sortByPriorityAsc(filtered);
 }

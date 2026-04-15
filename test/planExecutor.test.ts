@@ -1490,10 +1490,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       );
     });
 
-    // Test 3.3: selectedStepId is unknown but desiredStepId is non-zero ('max').
-    // Binary must be restored AND the step command must use the intended step —
-    // it must not be replaced with a different non-zero step (e.g. lowest non-zero).
-    it('preserves non-zero intended step and restores binary when selectedStepId is unknown', async () => {
+    // Test 3.3: selectedStepId is unknown while binary onoff is false.
+    // Restore must re-enter at the lowest non-zero step rather than trusting a stale
+    // desiredStepId, so the load becomes deterministic again.
+    it('normalizes unknown-step restore to the lowest non-zero step after binary on', async () => {
       const snapshot = [
         {
           id: 'dev-1',
@@ -1515,12 +1515,62 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
       // Binary must be restored
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-      // Step command must use the non-zero intended step 'max', not the lowest non-zero.
-      // This guards against an over-eager normalization that would reset it to 'low'.
+      // Step command must normalize to the lowest non-zero step.
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
-        expect.objectContaining({ step_id: 'max' }),
+        expect.objectContaining({ step_id: 'low' }),
         expect.objectContaining({ deviceId: 'dev-1' }),
       );
+      expect(deviceManager.setCapability.mock.invocationCallOrder[0])
+        .toBeLessThan(desiredSteppedTrigger.trigger.mock.invocationCallOrder[0]);
+    });
+
+    it('does not issue a forced normalization step when the current non-zero step is already known', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false,
+        },
+      ];
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+      }));
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    });
+
+    it('does not send a normalization step when binary restore fails', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false,
+        },
+      ];
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+      deviceManager.setCapability.mockRejectedValueOnce(new Error('boom'));
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: undefined as unknown as string,
+        desiredStepId: 'max',
+      }));
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     });
 
     // Test 3.4 / Regression 5.2 (executor layer): when both desiredStepId and selectedStepId
