@@ -559,7 +559,7 @@ describe('restore cooldown backoff', () => {
     expect(offDevice?.reason).toBeUndefined();
   });
 
-  it('keeps the known non-zero step for an off stepped device instead of forcing normalization', () => {
+  it('normalizes an off stepped device back to the lowest non-zero restore step', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
       planDevices: [
@@ -590,8 +590,8 @@ describe('restore cooldown backoff', () => {
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    expect(steppedDevice?.desiredStepId).toBe('medium');
-    expect(steppedDevice?.reason).toBe('restore medium -> medium (need 2.30kW)');
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.reason).toBe('restore medium -> low (need 1.48kW)');
   });
 
   it('normalizes an unknown-step off restore to the lowest non-zero step and can step up later', () => {

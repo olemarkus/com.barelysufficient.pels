@@ -850,7 +850,37 @@ describe('PlanExecutor stepped loads', () => {
     );
     // Binary control should also be set because keep requires onoff=true
     // The device was at off-step with onoff=false, which violates keep invariant
+  });
+
+  it('requests the lowest restore step before turning on a stepped device that is off at a stale higher step', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+
+    const [stepCallOrder] = desiredSteppedTrigger.trigger.mock.invocationCallOrder;
+    const [onoffCallOrder] = deviceManager.setCapability.mock.invocationCallOrder;
+    expect(stepCallOrder).toBeLessThan(onoffCallOrder);
   });
 
   it('sets onoff=false for a shed stepped device at its off-step', async () => {
@@ -1097,6 +1127,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // setBinaryControl is called with desired=true, but raw snapshot already
     // has currentOn=true so it detects "already on" and skips the command.
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
   it('fixes both onoff=false and step=off when keep intent is violated on both axes', async () => {
@@ -1161,11 +1192,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
   });
 
-  it('blocks keep-invariant restore when shed devices exist and desiredStepId exceeds lowestNonZeroStep', async () => {
+  it('normalizes a shed-constrained keep restore to the lowest non-zero step before turning on', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
-    const { executor, deviceManager } = buildExecutor(undefined, snapshot, {
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot, {
       structuredLog: structuredLog as any,
       debugStructured,
     });
@@ -1192,25 +1223,24 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           controllable: true,
           controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
-          selectedStepId: 'off',
-          desiredStepId: 'max', // above lowestNonZeroStep ('low')
+          selectedStepId: 'max',
+          desiredStepId: 'max',
         },
       ],
     };
 
     await executor.applyPlanActions(plan, 'reconcile');
 
-    // Binary restore must NOT fire — shed invariant should block it
-    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
-      deviceId: 'dev-1',
-      desiredStepId: 'max',
-      lowestNonZeroStepId: 'low',
-      rejectionReason: 'shed_invariant',
     }));
   });
 
@@ -1263,7 +1293,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
-  it('emits restore_keep_invariant_shed_blocked only once for repeated identical blocks', async () => {
+  it('does not emit restore_keep_invariant_shed_blocked for a true off restore while devices remain shed', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
@@ -1291,22 +1321,16 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ],
     };
 
-    // First call: emits
-    await executor.applyPlanActions(plan, 'reconcile');
-    expect(debugStructured).toHaveBeenCalledTimes(1);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'restore_keep_invariant_shed_blocked',
-    }));
-
-    // Second call with identical params: suppressed
-    debugStructured.mockClear();
     await executor.applyPlanActions(plan, 'reconcile');
     expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
   });
 
-  it('re-emits restore_keep_invariant_shed_blocked when desiredStepId changes', async () => {
+  it('normalizes stale desired steps to the same lowest restore step while devices remain shed', async () => {
     // Custom profile with off/low/medium/max so we can test desiredStepId transitions
     const multiStepProfile = {
       model: 'stepped_load' as const,
@@ -1321,7 +1345,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
-    const { executor } = buildExecutor(state, snapshot, {
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot, {
       structuredLog: structuredLog as any,
       debugStructured,
     });
@@ -1339,29 +1363,33 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId,
     });
 
-    // First call: desiredStepId='medium' (above lowestNonZeroStep='low') → blocked, emits
     await executor.applyPlanActions(
       { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('medium')] },
       'reconcile',
     );
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
-      desiredStepId: 'medium',
     }));
 
-    // Second call: desiredStepId changed to 'max' — still blocked but key differs → re-emits
-    debugStructured.mockClear();
+    desiredSteppedTrigger.trigger.mockClear();
+    deviceManager.setCapability.mockClear();
     await executor.applyPlanActions(
       { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('max')] },
       'reconcile',
     );
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'restore_keep_invariant_shed_blocked',
-      desiredStepId: 'max',
-    }));
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
-  it('clears dedupe state and re-emits restore_keep_invariant_shed_blocked after admitted transition', async () => {
+  it('keeps shed-block dedupe state clear across admitted off restores', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
@@ -1383,7 +1411,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentTarget: null, plannedTarget: null, controllable: true,
           controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
-          selectedStepId: 'off',
+          selectedStepId: 'max',
           desiredStepId: 'max',
         },
       ],
@@ -1402,22 +1430,19 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ],
     };
 
-    // First call: blocked → emits
     await executor.applyPlanActions(blockedPlan, 'reconcile');
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
 
-    // Second call: no shed devices → admitted (restore fires), dedupe state cleared
     debugStructured.mockClear();
     deviceManager.setCapability.mockClear();
     await executor.applyPlanActions(admittedPlan, 'reconcile');
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
 
-    // Third call: blocked again → re-emits because dedupe state was cleared
     debugStructured.mockClear();
     await executor.applyPlanActions(blockedPlan, 'reconcile');
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
   });
@@ -1493,7 +1518,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // Test 3.3: selectedStepId is unknown while binary onoff is false.
     // Restore must re-enter at the lowest non-zero step rather than trusting a stale
     // desiredStepId, so the load becomes deterministic again.
-    it('normalizes unknown-step restore to the lowest non-zero step after binary on', async () => {
+    it('normalizes unknown-step restore to the lowest non-zero step before binary on', async () => {
       const snapshot = [
         {
           id: 'dev-1',
@@ -1513,15 +1538,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         desiredStepId: 'max', // non-zero intended step
       }));
 
-      // Binary must be restored
-      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
       // Step command must normalize to the lowest non-zero step.
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
         expect.objectContaining({ step_id: 'low' }),
         expect.objectContaining({ deviceId: 'dev-1' }),
       );
-      expect(deviceManager.setCapability.mock.invocationCallOrder[0])
-        .toBeLessThan(desiredSteppedTrigger.trigger.mock.invocationCallOrder[0]);
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      expect(desiredSteppedTrigger.trigger.mock.invocationCallOrder[0])
+        .toBeLessThan(deviceManager.setCapability.mock.invocationCallOrder[0]);
     });
 
     it('does not issue a forced normalization step when the current non-zero step is already known', async () => {
@@ -1548,7 +1572,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     });
 
-    it('does not send a normalization step when binary restore fails', async () => {
+    it('still sends the normalization step before a failing binary restore', async () => {
       const snapshot = [
         {
           id: 'dev-1',
@@ -1569,8 +1593,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         desiredStepId: 'max',
       }));
 
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+        expect.objectContaining({ step_id: 'low' }),
+        expect.objectContaining({ deviceId: 'dev-1' }),
+      );
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-      expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     });
 
     // Test 3.4 / Regression 5.2 (executor layer): when both desiredStepId and selectedStepId
