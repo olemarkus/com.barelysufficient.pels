@@ -168,7 +168,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     await builder.buildDevicePlanSnapshot(devices);
     await builder.buildDevicePlanSnapshot(devices);
 
-    expect(structuredLog.info).toHaveBeenCalledTimes(2);
+    expect(structuredLog.info).toHaveBeenCalledTimes(1);
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'overshoot_entered',
       reasonCode: 'active_overshoot',
