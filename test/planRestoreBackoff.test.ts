@@ -559,7 +559,7 @@ describe('restore cooldown backoff', () => {
     expect(offDevice?.reason).toBeUndefined();
   });
 
-  it('keeps the known non-zero step for an off stepped device instead of forcing normalization', () => {
+  it('normalizes an off stepped device back to the lowest non-zero restore step', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
       planDevices: [
@@ -590,8 +590,8 @@ describe('restore cooldown backoff', () => {
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    expect(steppedDevice?.desiredStepId).toBe('medium');
-    expect(steppedDevice?.reason).toBe('restore medium -> medium (need 2.30kW)');
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.reason).toBe('restore medium -> low (need 1.48kW)');
   });
 
   it('normalizes an unknown-step off restore to the lowest non-zero step and can step up later', () => {
@@ -1139,6 +1139,10 @@ describe('restore admission — headroom and penalty gates', () => {
     });
 
     expect(rejected.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('shed');
+    expect(rejected.planDevices.find((d) => d.id === 'dev')?.reason).toBe(
+      'insufficient headroom to restore after reserves (need 0.72kW, available 1.10kW, '
+      + 'post-reserve margin 0.128kW < 0.250kW)',
+    );
     expect(admitted.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('keep');
   });
 
@@ -1230,6 +1234,9 @@ describe('restore admission — headroom and penalty gates', () => {
       deps: makeDeps(),
     });
     expect(resultBlocked.planDevices.find((d) => d.id === deviceId)?.plannedState).toBe('shed');
+    expect(resultBlocked.planDevices.find((d) => d.id === deviceId)?.reason).toContain(
+      'effective need 4.60kW (base 2.30kW + penalty 2.30kW)',
+    );
 
     // 5.1kW headroom: above 4.6 + 0.50kW floor → admitted
     const resultAdmitted = applyRestorePlan({
@@ -1473,7 +1480,48 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     });
     const device = result.planDevices.find((d) => d.id === 'dev-temp');
     expect(device?.plannedTarget).toBe(16);
-    expect(device?.reason).toContain('insufficient headroom');
+    expect(device?.reason).toBe(
+      'insufficient headroom to restore after reserves (need 1.20kW, available 1.70kW, '
+      + 'post-reserve margin 0.249kW < 0.250kW)',
+    );
+  });
+
+  it('keeps binary restore summaries non-contradictory when raw available exceeds need', () => {
+    const state = createPlanEngineState();
+    const debugStructured = vi.fn();
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev',
+          name: 'Termostat barnebad',
+          currentState: 'off',
+          expectedPowerKw: 0.45,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0.995, headroom: 0.995 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        ...makeDepsFloor(),
+        debugStructured,
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev');
+    expect(device?.reason).toBe(
+      'insufficient headroom to restore after reserves (need 0.65kW, available 1.00kW, '
+      + 'post-reserve margin 0.095kW < 0.250kW)',
+    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_rejected',
+      restoreType: 'binary',
+      availableKw: 0.995,
+      neededKw: 0.65,
+      postReserveMarginKw: 0.09499999999999997,
+      minimumRequiredPostReserveMarginKw: 0.25,
+      rejectionReason: 'insufficient_headroom',
+    }));
   });
 
   it('rejects stepped restore when postReserveMarginKw is below floor', () => {

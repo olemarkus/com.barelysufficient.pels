@@ -5,6 +5,7 @@ import {
   type PlanCapacityStateSummary,
 } from '../core/capacityStateSummary';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
+import { resolveCandidatePower } from './planCandidatePower';
 
 export type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
 
@@ -41,9 +42,18 @@ export function buildPlanCapacityStateSummary(
     summary.blockedByPenaltyDevices += Number(isBlockedByPenalty(device));
     summary.blockedByInvariantDevices += Number(isBlockedByInvariant(device));
   }
-
+  const remainingReducibleControlledLoadKw = sumReducibleControlledLoadKw(
+    plan.devices,
+    (device) => device.plannedState === 'shed',
+  );
+  const remainingReducibleControlledLoadW = roundPowerW(remainingReducibleControlledLoadKw);
   return {
     ...summary,
+    controlledPowerW: roundPowerW(plan.meta.controlledKw),
+    uncontrolledPowerW: roundPowerW(plan.meta.uncontrolledKw),
+    remainingReducibleControlledLoadW,
+    remainingReducibleControlledLoad: (remainingReducibleControlledLoadW ?? 0) > 0,
+    actuationInFlight: summary.pendingControlledDevices > 0,
     summarySource: metadata.summarySource ?? null,
     summarySourceAtMs: metadata.summarySourceAtMs ?? null,
   };
@@ -75,6 +85,7 @@ export function buildPlanInputCapacityStateSummary(
   }
   return {
     ...summary,
+    actuationInFlight: summary.pendingControlledDevices > 0,
     summarySource: metadata.summarySource ?? null,
     summarySourceAtMs: metadata.summarySourceAtMs ?? null,
   };
@@ -91,6 +102,30 @@ function buildPlannedShedCounts(
     pendingPlannedShedDevices: Number(counts.plannedShed && counts.pending),
     activePlannedShedDevices: Number(counts.plannedShed && counts.active),
   };
+}
+
+function sumReducibleControlledLoadKw<T extends {
+  controllable?: boolean;
+  currentOn?: boolean;
+  measuredPowerKw?: number;
+  expectedPowerKw?: number;
+  planningPowerKw?: number;
+  powerKw?: number;
+}>(devices: T[], isShed: (device: T) => boolean): number {
+  let totalKw = 0;
+  for (const device of devices) {
+    if (device.controllable === false || device.currentOn === false || isShed(device)) continue;
+    const power = resolveCandidatePower(device);
+    if (power !== null && power > 0) {
+      totalKw += power;
+    }
+  }
+  return totalKw;
+}
+
+function roundPowerW(powerKw: number | null | undefined): number | null {
+  if (typeof powerKw !== 'number' || !Number.isFinite(powerKw)) return null;
+  return Math.round(Math.max(0, powerKw * 1000));
 }
 
 function matchesAnyReason(reason: string | undefined, patterns: RegExp[]): boolean {
@@ -311,7 +346,7 @@ export function normalizePlanReason(reason: string | undefined): string {
   if (/^restore pending \(\d+s remaining\)$/.test(trimmed)) return 'restore pending';
   if (/^activation backoff \(\d+s remaining\)$/.test(trimmed)) return 'activation backoff';
   if (/^headroom cooldown \(\d+s remaining; .+\)$/.test(trimmed)) return 'headroom cooldown';
-  if (/^insufficient headroom \(need .+, headroom .+\)$/.test(trimmed)) return 'insufficient headroom';
+  if (trimmed.startsWith('insufficient headroom')) return 'insufficient headroom';
   return trimmed;
 }
 

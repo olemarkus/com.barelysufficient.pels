@@ -6,6 +6,7 @@ import {
   estimateRestorePower,
   resolveRestorePowerSource,
 } from '../lib/plan/planRestoreSwap';
+import { buildRestoreHeadroomReason } from '../lib/plan/planReasonStrings';
 import { resolveCandidatePower } from '../lib/plan/planCandidatePower';
 import { PENDING_RESTORE_WINDOW_MS } from '../lib/plan/planConstants';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
@@ -86,6 +87,29 @@ describe('buildSwapCandidates', () => {
     expect(result.reason).toContain('insufficient headroom');
   });
 
+  it('explains swap failures caused by post-reserve margin after swap reserve', () => {
+    const result = buildSwapCandidates({
+      dev: buildPlanDevice({ id: 'dev-off', name: 'Off Heater', priority: 50 }),
+      onDevices: [
+        buildPlanDevice({
+          id: 'candidate',
+          name: 'Candidate',
+          priority: 90,
+          measuredPowerKw: 1.2,
+        }),
+      ],
+      swappedOutFor: new Map(),
+      availableHeadroom: 0.4,
+      needed: 1.0,
+      restoredThisCycle: new Set(),
+    });
+
+    expect(result.ready).toBe(false);
+    expect(result.reason).toContain('insufficient headroom to swap for Off Heater after reserves');
+    expect(result.reason).toContain('effective 1.30kW after 0.30kW swap reserve');
+    expect(result.reason).toContain('post-reserve margin 0.050kW < 0.250kW');
+  });
+
   it('keeps swap restores blocked until the swap and admission reserves are both satisfied', () => {
     const result = buildSwapCandidates({
       dev: buildPlanDevice({ priority: 50 }),
@@ -158,9 +182,54 @@ describe('buildSwapCandidates', () => {
 
 describe('restore swap helpers', () => {
   it('returns a shed update when headroom is insufficient', () => {
-    const update = buildInsufficientHeadroomUpdate(2, 1);
+    const update = buildInsufficientHeadroomUpdate({
+      neededKw: 2,
+      availableKw: 1,
+      postReserveMarginKw: -1.25,
+      minimumRequiredPostReserveMarginKw: 0.25,
+    });
     expect(update.plannedState).toBe('shed');
     expect(update.reason).toContain('need 2.00kW');
+  });
+
+  it('mentions effective need when activation penalties increase the restore requirement', () => {
+    const update = buildInsufficientHeadroomUpdate({
+      neededKw: 4.6,
+      availableKw: 3,
+      postReserveMarginKw: -1.85,
+      minimumRequiredPostReserveMarginKw: 0.25,
+      penaltyExtraKw: 2.3,
+    });
+
+    expect(update.reason).toContain('effective need 4.60kW');
+    expect(update.reason).toContain('base 2.30kW + penalty 2.30kW');
+    expect(update.reason).toContain('available 3.00kW');
+  });
+
+  it('preserves negative half-step rounding when formatting reserve deficits', () => {
+    const reason = buildRestoreHeadroomReason({
+      neededKw: 1,
+      availableKw: 1.5,
+      postReserveMarginKw: -0.0005,
+      minimumRequiredPostReserveMarginKw: 0.25,
+    });
+
+    expect(reason).toContain('post-reserve margin -0.001kW < 0.250kW');
+  });
+
+  it('uses potential swap headroom in reserve-limited swap rejection summaries', () => {
+    const update = buildInsufficientHeadroomUpdate({
+      neededKw: 1.0,
+      availableKw: 1.6,
+      postReserveMarginKw: 0.05,
+      minimumRequiredPostReserveMarginKw: 0.25,
+      swapReserveKw: 0.3,
+      effectiveAvailableKw: 1.3,
+    });
+
+    expect(update.reason).toContain('available 1.60kW');
+    expect(update.reason).toContain('effective 1.30kW after 0.30kW swap reserve');
+    expect(update.reason).toContain('post-reserve margin 0.050kW < 0.250kW');
   });
 
   it('estimates restore power from expected, measured, or fallback values', () => {

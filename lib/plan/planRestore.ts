@@ -408,7 +408,11 @@ function attemptSwapRestore(params: {
     restoredThisCycle,
   });
   if (!swap.ready) {
-    setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate(restoreNeed.needed, availableHeadroom));
+    setDevice(deviceMap, dev.id, buildRejectedSwapUpdate({
+      availableHeadroom,
+      restoreNeed,
+      swap,
+    }));
     deps.debugStructured?.({
       event: 'restore_rejected',
       restoreType: 'swap',
@@ -474,4 +478,28 @@ function attemptSwapRestore(params: {
   restoredThisCycle.add(dev.id);
   setDevice(deviceMap, dev.id, { plannedState: 'keep' });
   return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+}
+
+function buildRejectedSwapUpdate(params: {
+  availableHeadroom: number;
+  restoreNeed: { needed: number; penaltyExtraKw: number };
+  swap: ReturnType<typeof buildSwapCandidates>;
+}): Partial<DevicePlanDevice> {
+  const { availableHeadroom, restoreNeed, swap } = params;
+  const directAdmission = buildRestoreAdmissionMetrics({
+    availableKw: availableHeadroom,
+    neededKw: restoreNeed.needed,
+  });
+  const shouldDescribeSwapReserve = swap.toShed.length > 0;
+  return buildInsufficientHeadroomUpdate({
+    neededKw: restoreNeed.needed,
+    availableKw: shouldDescribeSwapReserve ? swap.potentialHeadroom : availableHeadroom,
+    postReserveMarginKw: shouldDescribeSwapReserve
+      ? swap.admission.postReserveMarginKw
+      : directAdmission.postReserveMarginKw,
+    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    penaltyExtraKw: restoreNeed.penaltyExtraKw,
+    swapReserveKw: shouldDescribeSwapReserve ? swap.reserveKw : undefined,
+    effectiveAvailableKw: shouldDescribeSwapReserve ? swap.effectiveHeadroom : undefined,
+  });
 }

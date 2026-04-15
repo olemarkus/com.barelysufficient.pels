@@ -12,6 +12,11 @@ export type PlanCapacityStateCounts = {
   blockedByCooldownDevices: number | null;
   blockedByPenaltyDevices: number | null;
   blockedByInvariantDevices: number | null;
+  controlledPowerW: number | null;
+  uncontrolledPowerW: number | null;
+  remainingReducibleControlledLoadW: number | null;
+  remainingReducibleControlledLoad: boolean | null;
+  actuationInFlight: boolean | null;
 };
 
 export type PlanCapacityStateSummary = PlanCapacityStateCounts & {
@@ -20,7 +25,22 @@ export type PlanCapacityStateSummary = PlanCapacityStateCounts & {
 };
 
 export type KnownPlanCapacityStateCounts = {
-  [Key in keyof PlanCapacityStateCounts]: number;
+  controlledDevices: number;
+  plannedShedDevices: number;
+  pendingPlannedShedDevices: number;
+  activePlannedShedDevices: number;
+  activeControlledDevices: number;
+  zeroDrawControlledDevices: number;
+  staleControlledDevices: number;
+  pendingControlledDevices: number;
+  blockedByCooldownDevices: number;
+  blockedByPenaltyDevices: number;
+  blockedByInvariantDevices: number;
+  controlledPowerW: number;
+  uncontrolledPowerW: number;
+  remainingReducibleControlledLoadW: number;
+  remainingReducibleControlledLoad: boolean;
+  actuationInFlight: boolean;
 };
 
 export function buildNullCapacityStateSummary(): PlanCapacityStateSummary {
@@ -36,6 +56,11 @@ export function buildNullCapacityStateSummary(): PlanCapacityStateSummary {
     blockedByCooldownDevices: null,
     blockedByPenaltyDevices: null,
     blockedByInvariantDevices: null,
+    controlledPowerW: null,
+    uncontrolledPowerW: null,
+    remainingReducibleControlledLoadW: null,
+    remainingReducibleControlledLoad: null,
+    actuationInFlight: null,
     summarySource: null,
     summarySourceAtMs: null,
   };
@@ -54,5 +79,10 @@ export function buildEmptyCapacityStateSummary(): KnownPlanCapacityStateCounts {
     blockedByCooldownDevices: 0,
     blockedByPenaltyDevices: 0,
     blockedByInvariantDevices: 0,
+    controlledPowerW: 0,
+    uncontrolledPowerW: 0,
+    remainingReducibleControlledLoadW: 0,
+    remainingReducibleControlledLoad: false,
+    actuationInFlight: false,
   };
 }

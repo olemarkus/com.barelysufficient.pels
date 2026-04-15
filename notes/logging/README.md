@@ -35,8 +35,11 @@ This note is for contributors changing runtime logging.
 - `device_snapshot_refresh_completed`
 - `periodic_status`
 - `daily_budget_periodic_status`
-- `capacity_overshoot_detected`
-- `capacity_overshoot_recovered`
+- `capacity_overshoot_escalation_blocked`
+- `hard_cap_shortfall_detected`
+- `hard_cap_shortfall_recovery_started`
+- `hard_cap_shortfall_recovery_reset`
+- `hard_cap_shortfall_recovered`
 - `price_optimization_completed`
 - `price_fetch_failed`
 - `budget_recomputed`

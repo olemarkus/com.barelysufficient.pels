@@ -26,7 +26,7 @@ describe('planSteppedLoad', () => {
     expect(getSteppedLoadNextRestoreStep(steppedPlanDevice({
       selectedStepId: 'medium',
       currentState: 'off',
-    }))?.id).toBe('medium');
+    }))?.id).toBe('low');
     expect(getSteppedLoadNextRestoreStep(steppedPlanDevice({
       selectedStepId: undefined as unknown as string,
       currentState: 'off',
@@ -49,7 +49,7 @@ describe('planSteppedLoad', () => {
       plannedState: 'keep',
       selectedStepId: 'medium',
       desiredStepId: 'max',
-    }))).toBe('medium');
+    }))).toBe('low');
     expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
       currentState: 'unknown',
       plannedState: 'keep',
@@ -69,7 +69,7 @@ describe('planSteppedLoad', () => {
       selectedStepId: 'medium',
       desiredStepId: 'off',
     }));
-    expect(normalizedKeepDesiredStepId).toBe('medium');
+    expect(normalizedKeepDesiredStepId).toBe('low');
     expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
