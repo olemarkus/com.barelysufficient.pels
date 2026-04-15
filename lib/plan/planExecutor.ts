@@ -45,7 +45,7 @@ import {
   shouldSkipShedding,
   shouldSkipUnavailable,
 } from './planExecutorSupport';
-import { isSteppedLoadDevice } from './planSteppedLoad';
+import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from './planSteppedLoad';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 
@@ -491,11 +491,7 @@ export class PlanExecutor {
     // For keep intent, normalize off-step desiredStepId to the lowest non-zero step.
     // This ensures a device restored from binary-off always gets a step command to a
     // non-zero step, even when the planner could not normalize (e.g. stale desiredStepId).
-    const isKeepAtOffStep = dev.plannedState === 'keep'
-      && Boolean(dev.desiredStepId && isSteppedLoadOffStep(profile, dev.desiredStepId));
-    const desiredStepId = isKeepAtOffStep
-      ? getSteppedLoadLowestActiveStep(profile)?.id ?? dev.desiredStepId
-      : dev.desiredStepId;
+    const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
 
     if (!desiredStepId || desiredStepId === dev.selectedStepId) return false;
 
@@ -673,6 +669,9 @@ export class PlanExecutor {
     if (this.state.pendingRestores.has(dev.id)) {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, already in progress`);
       return false;
+    }
+    if (!onoffViolated) {
+      return true;
     }
     this.state.pendingRestores.add(dev.id);
     try {
@@ -1202,8 +1201,19 @@ export class PlanExecutor {
           if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
         }
-        if (await this.applySteppedLoadCommand(dev, mode)) deviceWriteCount += 1;
+        if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && dev.currentState === 'off') {
+          const onoffViolated = snapshot?.currentOn === false;
+          const stepRestoreReady = await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
+          const steppedCommandWrote = stepRestoreReady
+            ? await this.applySteppedLoadCommand(dev, mode)
+            : false;
+          if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
+          if (steppedCommandWrote) deviceWriteCount += 1;
+          if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+          continue;
+        }
         if (isSteppedLoadDevice(dev)) {
+          if (await this.applySteppedLoadCommand(dev, mode)) deviceWriteCount += 1;
           if (await this.applySteppedLoadShedOff(dev, snapshot, mode)) deviceWriteCount += 1;
           if (await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices)) deviceWriteCount += 1;
           if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;

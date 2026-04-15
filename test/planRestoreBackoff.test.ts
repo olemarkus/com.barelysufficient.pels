@@ -559,7 +559,7 @@ describe('restore cooldown backoff', () => {
     expect(offDevice?.reason).toBeUndefined();
   });
 
-  it('plans first restore to lowest non-zero step for an off stepped device, even with retained higher step', () => {
+  it('keeps the known non-zero step for an off stepped device instead of forcing normalization', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
       planDevices: [
@@ -575,8 +575,8 @@ describe('restore cooldown backoff', () => {
         }),
       ],
       context: buildContext({
-        headroomRaw: 2.0, // Enough for low plus 0.50kW (reserve + floor), but NOT enough for medium
-        headroom: 2.0,
+        headroomRaw: 3.0,
+        headroom: 3.0,
       }),
       state,
       sheddingActive: false,
@@ -590,9 +590,73 @@ describe('restore cooldown backoff', () => {
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    // It should successfully plan a restore to 'low'
-    expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toBe('restore medium -> low (need 1.48kW)');
+    expect(steppedDevice?.desiredStepId).toBe('medium');
+    expect(steppedDevice?.reason).toBe('restore medium -> medium (need 2.30kW)');
+  });
+
+  it('normalizes an unknown-step off restore to the lowest non-zero step and can step up later', () => {
+    const state = createPlanEngineState();
+    const firstRestore = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'off',
+          plannedState: 'keep',
+          selectedStepId: undefined as unknown as string,
+          desiredStepId: 'max',
+          measuredPowerKw: 0,
+          expectedPowerKw: 3.0,
+          planningPowerKw: 3.0,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 2.0,
+        headroom: 2.0,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const restored = firstRestore.planDevices.find((device) => device.id === 'dev-step');
+    expect(restored?.desiredStepId).toBe('low');
+    expect(restored?.expectedPowerKw).toBeCloseTo(1.25);
+    expect(restored?.reason).toBe('restore unknown -> low (need 1.48kW)');
+
+    const secondRestore = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          plannedState: 'keep',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    expect(secondRestore.planDevices.find((device) => device.id === 'dev-step')?.desiredStepId).toBe('medium');
   });
 
   it('applies shedding cooldown reason to stepped restore candidates as well as off devices', () => {

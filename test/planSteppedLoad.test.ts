@@ -2,6 +2,7 @@ import {
   getSteppedLoadNextRestoreStep,
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
+  resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadCurrentState,
   resolveSteppedLoadImmediateReliefKw,
   resolveSteppedLoadInitialDesiredStepId,
@@ -25,6 +26,10 @@ describe('planSteppedLoad', () => {
     expect(getSteppedLoadNextRestoreStep(steppedPlanDevice({
       selectedStepId: 'medium',
       currentState: 'off',
+    }))?.id).toBe('medium');
+    expect(getSteppedLoadNextRestoreStep(steppedPlanDevice({
+      selectedStepId: undefined as unknown as string,
+      currentState: 'off',
     }))?.id).toBe('low');
     expect(getSteppedLoadNextRestoreStep(steppedInputDevice({ selectedStepId: 'max' }))).toBeNull();
     expect(getSteppedLoadNextRestoreStep(steppedInputDevice({
@@ -32,6 +37,31 @@ describe('planSteppedLoad', () => {
       steppedLoadProfile: undefined,
       selectedStepId: 'off',
     }))).toBeNull();
+
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: undefined as unknown as string,
+      desiredStepId: 'max',
+    }))).toBe('low');
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'max',
+    }))).toBe('medium');
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'unknown',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'max',
+    }))).toBe('medium');
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'unknown',
+      plannedState: 'keep',
+      selectedStepId: undefined as unknown as string,
+      desiredStepId: 'max',
+    }))).toBe('low');
   });
 
   it('resolves shed targets conservatively for turn-off and set-step behavior', () => {

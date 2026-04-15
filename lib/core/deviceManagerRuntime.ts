@@ -126,7 +126,8 @@ export function reconcileRealtimeDeviceUpdate(params: {
   // cause parseDevice to synthesize a default (getCurrentOn returns true when the
   // value is missing), which must not be treated as a real observation.
   const controlCapabilityId = parsed.controlCapabilityId ?? previous?.controlCapabilityId;
-  const binaryValueExplicitlyObserved = typeof device.capabilitiesObj?.[controlCapabilityId ?? '']?.value === 'boolean';
+  const binaryValueExplicitlyObserved = typeof controlCapabilityId === 'string'
+    && typeof device.capabilitiesObj?.[controlCapabilityId]?.value === 'boolean';
 
   preserveRecentLocalBinaryState({
     previous,

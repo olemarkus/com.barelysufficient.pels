@@ -201,7 +201,9 @@ export class DeviceManager extends EventEmitter {
         // observation must reach the settle window to close it immediately.
         const hasBinarySettleWindow = capabilityId === snapshot.controlCapabilityId
             && this.pendingBinarySettleWindows.has(this.buildPendingBinarySettleKey(deviceId, capabilityId));
-        if (!hasBinarySettleWindow && this.hasMatchingRecentLocalWrite(deviceId, capabilityId, normalizedValue)) return;
+        if (!hasBinarySettleWindow && this.hasMatchingRecentLocalWrite(deviceId, capabilityId, normalizedValue)) {
+            return;
+        }
 
         if (this.isFreshnessOnlyCapability(capabilityId)) {
             this.handleFreshnessOnlyCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value);

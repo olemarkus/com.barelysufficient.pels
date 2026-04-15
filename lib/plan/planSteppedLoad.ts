@@ -57,6 +57,28 @@ export const resolveSteppedLoadInitialDesiredStepId = (
   return getSteppedLoadStep(profile, device.selectedStepId)?.id ?? undefined;
 };
 
+export const resolveSteppedKeepDesiredStepId = (
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'desiredStepId'>
+  & { currentState?: string; plannedState?: string },
+): string | undefined => {
+  const profile = getSteppedLoadProfileForDevice(device);
+  if (!profile) return device.desiredStepId;
+  if (device.plannedState !== 'keep') return device.desiredStepId;
+
+  const lowestActiveStepId = getSteppedLoadLowestActiveStep(profile)?.id;
+  if (!lowestActiveStepId) return device.desiredStepId;
+
+  if (device.currentState === 'on') {
+    return device.desiredStepId && isSteppedLoadOffStep(profile, device.desiredStepId)
+      ? lowestActiveStepId
+      : device.desiredStepId;
+  }
+
+  const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
+  if (!selectedStep || selectedStep.planningPowerW <= 0) return lowestActiveStepId;
+  return selectedStep.id;
+};
+
 export const getSteppedLoadNextRestoreStep = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'> & { currentState?: string },
 ) => {
@@ -64,6 +86,10 @@ export const getSteppedLoadNextRestoreStep = (
   if (!profile) return null;
 
   if (device.currentState === 'off') {
+    const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
+    if (selectedStep && selectedStep.planningPowerW > 0) {
+      return selectedStep;
+    }
     return getSteppedLoadRestoreStep(profile);
   }
 

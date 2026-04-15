@@ -12,6 +12,7 @@ import { getInactiveReason, getEvRestoreStateBlockReason } from './planRestoreDe
 import {
   isSteppedLoadDevice,
   resolveSteppedLoadCurrentState,
+  resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadInitialDesiredStepId,
   getSteppedLoadShedTargetStep,
 } from './planSteppedLoad';
@@ -19,6 +20,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadLowestStep,
   getSteppedLoadOffStep,
+  getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
 
@@ -154,22 +156,23 @@ function resolveCurrentState(device: PlanInputDevice): string {
   return device.currentOn ? 'on' : 'off';
 }
 
-// For keep/restore devices at off-step, normalize desired step to lowest non-zero.
-// Computed after plannedState to avoid a circular effect on isSteppedShed.
-function resolveSteppedKeepDesiredStepId(
-  dev: PlanInputDevice,
-  desiredStepId: string | undefined,
-  plannedState: 'shed' | 'keep',
-): string | undefined {
-  if (plannedState !== 'keep') return desiredStepId;
-  if (!dev.steppedLoadProfile || !desiredStepId) return desiredStepId;
-  if (!isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId)) return desiredStepId;
-  return getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id ?? desiredStepId;
-}
-
 // For shed stepped-load devices at the off step, expectedPowerKw should reflect the lowest
 // positive step so that restore planning uses a realistic power estimate rather than zero.
-function resolveExpectedPowerKw(dev: PlanInputDevice, plannedState: 'shed' | 'keep'): number | undefined {
+function resolveExpectedPowerKw(
+  dev: PlanInputDevice,
+  currentState: string,
+  plannedState: 'shed' | 'keep',
+  effectiveDesiredStepId: string | undefined,
+): number | undefined {
+  if (
+    plannedState === 'keep'
+    && currentState === 'off'
+    && isSteppedLoadDevice(dev)
+    && dev.steppedLoadProfile
+  ) {
+    const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, effectiveDesiredStepId);
+    if (desiredStep && desiredStep.planningPowerW > 0) return desiredStep.planningPowerW / 1000;
+  }
   if (
     plannedState === 'shed'
     && isSteppedLoadDevice(dev)
@@ -227,7 +230,12 @@ function buildBasePlanDevice(params: {
   const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id) || isSteppedShed);
   // For keep/restore devices at off-step, normalize desired step to lowest non-zero.
   // Computed after plannedState to avoid a circular effect on isSteppedShed.
-  const effectiveDesiredStepId = resolveSteppedKeepDesiredStepId(dev, desiredStepId, plannedState);
+  const effectiveDesiredStepId = resolveSteppedKeepDesiredStepId({
+    ...dev,
+    currentState,
+    plannedState,
+    desiredStepId,
+  });
   const baseReason = controllable
     ? shedReasons.get(dev.id) || (recentlyRestored ? 'keep (recently restored)' : 'keep')
     : 'capacity control off';
@@ -263,7 +271,7 @@ function buildBasePlanDevice(params: {
     actualStepSource: dev.actualStepSource,
     priority,
     powerKw: dev.powerKw,
-    expectedPowerKw: resolveExpectedPowerKw(dev, plannedState),
+    expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
     planningPowerKw: dev.planningPowerKw,
     expectedPowerSource: dev.expectedPowerSource,
     measuredPowerKw: dev.measuredPowerKw,
