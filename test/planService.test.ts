@@ -2361,6 +2361,46 @@ describe('PlanService', () => {
     }));
   });
 
+  it('normalizes non-finite actuation write counts to zero in rebuild logs and traces', async () => {
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
+    const { service, deps } = createPlanService({
+      structuredLog: structuredLog as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi
+          .fn()
+          .mockResolvedValueOnce(buildPlan(20, 'stable'))
+          .mockResolvedValueOnce(buildPlan(20, 'stable', {}, { plannedState: 'shed' })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: Number.NaN }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+    });
+
+    await service.rebuildPlanFromCache('seed');
+    structuredLog.info.mockClear();
+    structuredLog.debug.mockClear();
+
+    await service.rebuildPlanFromCache('power_delta');
+
+    expect((deps.planEngine.applyPlanActions as vi.Mock)).toHaveBeenCalled();
+    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_rebuild_completed',
+      reasonCode: 'power_delta',
+      appliedActions: false,
+      deviceWriteCount: 0,
+    }));
+
+    const trace = getRecentPlanRebuildTraces(1)[0];
+    expect(trace).toEqual(expect.objectContaining({
+      reason: 'power_delta',
+      appliedActions: false,
+      deviceWriteCount: 0,
+    }));
+  });
+
   it('emits structured rebuild logs for failed rebuilds', async () => {
     const structuredLog = { info: vi.fn() };
     const { service, deps } = createPlanService({

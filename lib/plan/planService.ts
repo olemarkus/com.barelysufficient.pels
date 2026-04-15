@@ -675,7 +675,8 @@ export class PlanService {
     let deviceWriteCount = 0;
     try {
       const actuation = await this.applyPlanActions(plan);
-      deviceWriteCount = typeof actuation?.deviceWriteCount === 'number' ? actuation.deviceWriteCount : 0;
+      const rawDeviceWriteCount = actuation?.deviceWriteCount;
+      deviceWriteCount = Number.isFinite(rawDeviceWriteCount) ? Math.max(0, Math.trunc(rawDeviceWriteCount)) : 0;
       appliedActions = deviceWriteCount > 0;
       this.deps.schedulePostActuationRefresh?.();
       const refreshed = this.refreshLatestPlanSnapshotFromSettledLiveState(plan);
