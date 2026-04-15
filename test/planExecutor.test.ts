@@ -152,6 +152,8 @@ describe('PlanExecutor restore logging', () => {
 
   it('logs restore from shed temperature as explicit capacity work', async () => {
     const state = createPlanEngineState();
+    const recordPlanCommandAction = vi.fn();
+    const classifyTargetCommandCause = vi.fn().mockReturnValue('price');
     const { executor, deps, deviceManager } = buildExecutor(state, [
       {
         id: 'dev-1',
@@ -163,6 +165,8 @@ describe('PlanExecutor restore logging', () => {
         targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
       },
     ], {
+      recordPlanCommandAction,
+      classifyTargetCommandCause,
       getShedBehavior: () => ({ action: 'set_temperature', temperature: 16, stepId: null }),
     });
 
@@ -181,6 +185,12 @@ describe('PlanExecutor restore logging', () => {
       reasonCode: 'restore_from_shed',
       operatingMode: 'Home',
     }));
+    expect(recordPlanCommandAction).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'dev-1',
+      cause: 'restore',
+      message: 'Set target_temperature to 23°C',
+    }));
+    expect(classifyTargetCommandCause).not.toHaveBeenCalled();
   });
 });
 

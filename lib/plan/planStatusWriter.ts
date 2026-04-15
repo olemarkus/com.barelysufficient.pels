@@ -153,14 +153,18 @@ export class PlanStatusWriter {
   private notifyPriceLevelChanged(priceLevel: PriceLevel): void {
     if (priceLevel === this.lastNotifiedPriceLevel) return;
     const previousPriceLevel = this.lastNotifiedPriceLevel;
+    this.lastNotifiedPriceLevel = priceLevel;
 
     const card = this.deps.homey.flow?.getTriggerCard?.('price_level_changed');
     if (card) {
-      card
-        .trigger({ level: priceLevel }, { priceLevel })
-        .catch((err: Error) => this.deps.error('Failed to trigger price_level_changed', err));
+      try {
+        card
+          .trigger({ level: priceLevel }, { priceLevel })
+          .catch((err: Error) => this.deps.error('Failed to trigger price_level_changed', err));
+      } catch (error) {
+        this.deps.error('Failed to trigger price_level_changed', error as Error);
+      }
     }
-    this.lastNotifiedPriceLevel = priceLevel;
     try {
       this.deps.onPriceLevelChanged?.(priceLevel, previousPriceLevel);
     } catch (error) {

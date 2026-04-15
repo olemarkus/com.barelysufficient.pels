@@ -13,7 +13,7 @@ describe('DeviceActionLogStore', () => {
     const persisted = new Map<string, unknown>([
       ['device_action_log_by_device', {
         heater: [
-          { timestamp: 1, eventKind: 'trigger', cause: 'mode', message: 'Mode changed to Away' },
+          { timestamp: 1, eventKind: 'trigger', cause: 'mode', message: '  Mode changed to Away  ' },
           { timestamp: 2, eventKind: 'bad', cause: 'mode', message: 'bad event' },
           { timestamp: 3, eventKind: 'command', cause: 'shed', message: 'Turned off heater' },
         ],

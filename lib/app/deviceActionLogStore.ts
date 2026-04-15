@@ -41,13 +41,14 @@ const sanitizeEntry = (value: unknown): DeviceActionLogEntry | null => {
   if (typeof eventKind !== 'string' || !KNOWN_EVENT_KINDS.has(eventKind as DeviceActionLogEventKind)) return null;
   if (typeof cause !== 'string' || !KNOWN_CAUSES.has(cause as DeviceActionLogCause)) return null;
   if (typeof message !== 'string' || message.trim() === '') return null;
+  const normalizedMessage = message.trim();
 
   const metadata = isRecord(value.metadata) ? value.metadata : undefined;
   return {
     timestamp,
     eventKind: eventKind as DeviceActionLogEventKind,
     cause: cause as DeviceActionLogCause,
-    message,
+    message: normalizedMessage,
     ...(metadata ? { metadata } : {}),
   };
 };

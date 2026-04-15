@@ -494,7 +494,9 @@ export class PlanExecutor {
       });
       this.recordPlanCommandAction({
         deviceId: dev.id,
-        cause: this.deps.classifyTargetCommandCause?.(dev.id, dev.plannedTarget as number) ?? 'unknown',
+        cause: isRestoring
+          ? 'restore'
+          : this.deps.classifyTargetCommandCause?.(dev.id, dev.plannedTarget as number) ?? 'unknown',
         message: `Set ${targetCap} to ${dev.plannedTarget}°C`,
         metadata: {
           targetCap,

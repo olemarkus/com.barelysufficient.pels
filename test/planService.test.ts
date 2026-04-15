@@ -100,6 +100,34 @@ describe('PlanService', () => {
     expect(writer.getLastNotifiedPriceLevel()).toBe(PriceLevel.CHEAP);
   });
 
+  it('keeps price-level state advanced when the trigger card throws synchronously', () => {
+    const trigger = vi.fn(() => {
+      throw new Error('sync trigger failure');
+    });
+    const onPriceLevelChanged = vi.fn();
+    const error = vi.fn();
+    const writer = new PlanStatusWriter({
+      homey: {
+        settings: { set: vi.fn() },
+        flow: { getTriggerCard: vi.fn().mockReturnValue({ trigger }) },
+      } as any,
+      getCombinedPrices: () => null,
+      isCurrentHourCheap: () => true,
+      isCurrentHourExpensive: () => false,
+      getLastPowerUpdate: () => null,
+      onPriceLevelChanged,
+      error,
+    });
+
+    expect(() => (writer as any).notifyPriceLevelChanged(PriceLevel.CHEAP)).not.toThrow();
+    (writer as any).notifyPriceLevelChanged(PriceLevel.CHEAP);
+
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(onPriceLevelChanged).toHaveBeenCalledTimes(1);
+    expect(writer.getLastNotifiedPriceLevel()).toBe(PriceLevel.CHEAP);
+    expect(error).toHaveBeenCalledWith('Failed to trigger price_level_changed', expect.any(Error));
+  });
+
   it('writes detail-only snapshot changes immediately', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);

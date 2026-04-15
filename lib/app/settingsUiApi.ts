@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
+import { SETTINGS_UI_DEVICE_ACTION_LOG_PATH } from '../../packages/contracts/src/settingsUiApi';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
 import type {
   SettingsUiBootstrap,
@@ -185,12 +186,12 @@ export const getSettingsUiDeviceActionLog = (
 ): SettingsUiDeviceActionLogPayload => {
   const app = getApp(homey);
   if (!isValidDeviceActionLogRequest(body)) {
-    app?.error?.('Device action log API called without a valid payload');
+    app?.error?.(`Device action log API (${SETTINGS_UI_DEVICE_ACTION_LOG_PATH}) called without a valid payload`);
     return { deviceId: '', entries: [] };
   }
   const deviceId = body.deviceId.trim();
   if (!deviceId) {
-    app?.error?.('Device action log API called without valid device id');
+    app?.error?.(`Device action log API (${SETTINGS_UI_DEVICE_ACTION_LOG_PATH}) called without valid device id`);
     return { deviceId: '', entries: [] };
   }
   try {
