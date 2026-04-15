@@ -168,6 +168,25 @@ describe('planSteppedLoad', () => {
     })?.id).toBe('low');
   });
 
+  it('resolves keep desired step idempotently', () => {
+    const firstPass = resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    const secondPass = resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: firstPass,
+    }));
+
+    expect(firstPass).toBe('low');
+    expect(secondPass).toBe(firstPass);
+  });
+
   it('resolves shedding target including profile and relief flags', () => {
     const targetStep = { id: 'low', planningPowerW: 1250 };
     const target = resolveSteppedLoadSheddingTarget({

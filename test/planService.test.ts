@@ -2512,7 +2512,7 @@ describe('PlanService', () => {
     expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
 
-  it('does not call schedulePostActuationRefresh when stepped-only actuation triggers no direct device writes', async () => {
+  it('does not call schedulePostActuationRefresh when stepped-load flow actuation is the only rebuild actuation', async () => {
     const schedulePostActuationRefresh = vi.fn();
     const steppedPlan = buildPlan(20, 'stable', {}, {
       currentState: 'off',

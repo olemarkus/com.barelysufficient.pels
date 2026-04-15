@@ -927,6 +927,11 @@ export class DeviceManager extends EventEmitter {
         const pending = this.pendingBinarySettleWindows.get(key);
         if (!pending) return;
         this.pendingBinarySettleWindows.delete(key);
+        clearLocalCapabilityWrite({
+            recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
+            deviceId: pending.deviceId,
+            capabilityId: pending.capabilityId,
+        });
         if (!this.shouldTrackRealtimeDevice(pending.deviceId)) return;
 
         const snapshot = this.latestSnapshot.find((device) => device.id === pending.deviceId);
