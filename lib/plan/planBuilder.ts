@@ -35,6 +35,7 @@ import {
 import { recordActivationSetback } from './planActivationBackoff';
 import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
+import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
 
 type ShortfallMeta = Pick<
   DevicePlan['meta'],
@@ -143,7 +144,13 @@ export class PlanBuilder {
   }
 
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
-    const { context, dailyBudgetSnapshot, sheddingPlan } = await this.buildContextAndShedding(devices);
+    const nowTs = Date.now();
+    const {
+      context,
+      dailyBudgetSnapshot,
+      sheddingPlan,
+      overshootDecision,
+    } = await this.buildContextAndShedding(devices, nowTs);
     const deviceNameById = new Map(devices.map((d) => [d.id, d.name]));
 
     let planDevices = this.buildPlanDevices(context, sheddingPlan);
@@ -157,7 +164,7 @@ export class PlanBuilder {
     planDevices = this.applyHeadroomCooldownOverlayWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
-    this.updateOvershootState(context, deviceNameById, finalized.planDevices);
+    this.updateOvershootState(context, deviceNameById, finalized.planDevices, overshootDecision, nowTs);
 
     const meta = this.trackDuration('plan_meta_ms', () => (
       this.buildPlanMeta(context, finalized.planDevices, dailyBudgetSnapshot)
@@ -173,10 +180,11 @@ export class PlanBuilder {
     };
   }
 
-  private async buildContextAndShedding(devices: PlanInputDevice[]): Promise<{
+  private async buildContextAndShedding(devices: PlanInputDevice[], nowTs: number): Promise<{
     context: PlanContext;
     dailyBudgetSnapshot: DailyBudgetUiPayload | null;
     sheddingPlan: SheddingPlan;
+    overshootDecision: SoftOvershootDecision;
   }> {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
     const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
@@ -198,6 +206,12 @@ export class PlanBuilder {
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       dailyBudget: buildPlanDailyBudgetContext(dailyBudgetSnapshot),
     }));
+    const overshootDecision = resolveSoftOvershootDecision({
+      headroomKw: context.headroom,
+      state: this.state,
+      nowTs,
+    });
+    this.state.softOvershootPendingSinceMs = overshootDecision.pendingSinceMs;
 
     const sheddingPlan = await this.trackDurationAsync(
       'plan_shedding_ms',
@@ -209,28 +223,31 @@ export class PlanBuilder {
         log: (...args: unknown[]) => this.deps.log(...args),
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
         structuredLog: this.deps.structuredLog,
-      }),
+      }, overshootDecision.actionable),
     );
     this.applySheddingUpdates(sheddingPlan);
 
-    return { context, dailyBudgetSnapshot, sheddingPlan };
+    return { context, dailyBudgetSnapshot, sheddingPlan, overshootDecision };
   }
 
   private updateOvershootState(
     context: PlanContext,
     deviceNameById: ReadonlyMap<string, string>,
     planDevices: DevicePlanDevice[],
+    overshootDecision: SoftOvershootDecision,
+    nowTs: number,
   ): void {
-    const overshootActive = context.headroom !== null && context.headroom < 0;
+    const overshootActive = overshootDecision.actionable;
     const prevOvershoot = this.state.wasOvershoot;
     const trackedPlanDevicesById = trackPlanDevicesForOvershoot(planDevices, this.state);
     if (overshootActive && !prevOvershoot) {
       this.state.overshootLogged = true;
-      this.state.overshootStartedMs = Date.now();
+      this.state.overshootStartedMs = nowTs;
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
       const overshootDiagnostics = buildOvershootEntryDiagnostics({
         context,
+        nowTs,
         previousTotalKw: this.state.lastPlanTotalKw,
         previousBuiltAtMs: this.state.lastPlanBuiltAtMs,
         previousDevicesById: this.state.lastPlanDevicesById,
@@ -250,10 +267,10 @@ export class PlanBuilder {
         }),
         ...overshootDiagnostics,
       });
-      this.attributeOvershootToRecentRestores(deviceNameById);
+      this.attributeOvershootToRecentRestores(deviceNameById, nowTs);
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.state.overshootLogged = false;
-      const durationMs = this.state.overshootStartedMs !== null ? Date.now() - this.state.overshootStartedMs : 0;
+      const durationMs = this.state.overshootStartedMs !== null ? nowTs - this.state.overshootStartedMs : 0;
       this.state.overshootStartedMs = null;
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
@@ -263,23 +280,26 @@ export class PlanBuilder {
         ...buildPlanContextHeadroomLogFields(context, this.capacityGuard, this.capacitySettings.limitKw),
       });
     } else if (overshootActive && this.state.overshootStartedMs === null) {
-      this.state.overshootStartedMs = Date.now();
+      this.state.overshootStartedMs = nowTs;
     }
-    this.rememberPlanSnapshot(context, trackedPlanDevicesById);
+    this.rememberPlanSnapshot(context, trackedPlanDevicesById, nowTs);
     this.state.wasOvershoot = overshootActive;
   }
 
   private rememberPlanSnapshot(
     context: PlanContext,
     trackedPlanDevicesById: Record<string, OvershootTrackedPlanDevice>,
+    nowTs: number,
   ): void {
     this.state.lastPlanTotalKw = context.total;
-    this.state.lastPlanBuiltAtMs = Date.now();
+    this.state.lastPlanBuiltAtMs = nowTs;
     this.state.lastPlanDevicesById = trackedPlanDevicesById;
   }
 
-  private attributeOvershootToRecentRestores(deviceNameById: ReadonlyMap<string, string>): void {
-    const nowTs = Date.now();
+  private attributeOvershootToRecentRestores(
+    deviceNameById: ReadonlyMap<string, string>,
+    nowTs: number,
+  ): void {
     // Only attribute to the single most recently restored device — it was the marginal addition
     // that tipped headroom negative. Devices restored earlier were already absorbed without
     // triggering overshoot, so penalizing them would be a false attribution.
@@ -641,6 +661,7 @@ type ResolvedPowerSource = 'measured' | 'expected' | 'planning' | 'off' | 'unkno
 
 function buildOvershootEntryDiagnostics(params: {
   context: PlanContext;
+  nowTs: number;
   previousTotalKw: number | null;
   previousBuiltAtMs: number | null;
   previousDevicesById: Record<string, OvershootTrackedPlanDevice>;
@@ -648,6 +669,7 @@ function buildOvershootEntryDiagnostics(params: {
 }): Record<string, unknown> {
   const {
     context,
+    nowTs,
     previousTotalKw,
     previousBuiltAtMs,
     previousDevicesById,
@@ -676,7 +698,7 @@ function buildOvershootEntryDiagnostics(params: {
 
   return {
     overshootContributorWindowMs: (
-      typeof previousBuiltAtMs === 'number' ? Math.max(0, Date.now() - previousBuiltAtMs) : null
+      typeof previousBuiltAtMs === 'number' ? Math.max(0, nowTs - previousBuiltAtMs) : null
     ),
     overshootTotalDeltaKw: totalDeltaKw,
     overshootAttributionDeltaKw: attributedDeltaKw,
