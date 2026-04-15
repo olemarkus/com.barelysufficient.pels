@@ -15,6 +15,7 @@ import {
 } from './planHeadroomDevice';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import type { DeviceActionLogCause } from '../utils/types';
 import {
   decoratePlanWithPendingTargetCommands,
   prunePendingTargetCommandsForPlan,
@@ -41,6 +42,13 @@ export type PlanEngineDeps = {
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getPriorityForDevice: (deviceId: string) => number;
   getDynamicSoftLimitOverride?: () => number | null;
+  recordPlanCommandAction?: (params: {
+    deviceId: string;
+    cause: DeviceActionLogCause;
+    message: string;
+    metadata?: Record<string, unknown>;
+  }) => void;
+  classifyTargetCommandCause?: (deviceId: string, plannedTarget: number) => 'mode' | 'price' | 'unknown';
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
@@ -113,6 +121,8 @@ export class PlanEngine {
       getOperatingMode: deps.getOperatingMode,
       getShedBehavior: deps.getShedBehavior,
       markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
+      recordPlanCommandAction: deps.recordPlanCommandAction,
+      classifyTargetCommandCause: deps.classifyTargetCommandCause,
       logTargetRetryComparison: deps.logTargetRetryComparison,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
       deviceDiagnostics: deps.deviceDiagnostics,

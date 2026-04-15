@@ -235,6 +235,229 @@ describe('MyApp initialization', () => {
     expect(childLogger.debug).not.toHaveBeenCalled();
   });
 
+  it('logs mode triggers when a device target is added or removed between modes', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).managedDevices = { heater: true, pump: true };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationSettings: () => ({}),
+      getCurrentPriceLevel: () => 'normal',
+    };
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
+      Away: { pump: 18 },
+    };
+
+    (app as any).logModeChangeTriggers('Home', 'Away');
+
+    expect(appendDeviceActionLog).toHaveBeenCalledTimes(2);
+    expect(appendDeviceActionLog).toHaveBeenNthCalledWith(1, {
+      deviceId: 'heater',
+      eventKind: 'trigger',
+      cause: 'mode',
+      message: 'Mode changed from Home to Away',
+      metadata: {
+        previousMode: 'Home',
+        nextMode: 'Away',
+        previousTarget: 21,
+        nextTarget: null,
+      },
+    });
+    expect(appendDeviceActionLog).toHaveBeenNthCalledWith(2, {
+      deviceId: 'pump',
+      eventKind: 'trigger',
+      cause: 'mode',
+      message: 'Mode changed from Home to Away',
+      metadata: {
+        previousMode: 'Home',
+        nextMode: 'Away',
+        previousTarget: null,
+        nextTarget: 18,
+      },
+    });
+  });
+
+  it('skips mode-trigger logs for unmanaged devices', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).managedDevices = { heater: true, pump: false };
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
+      Away: { pump: 18 },
+    };
+
+    (app as any).logModeChangeTriggers('Home', 'Away');
+
+    expect(appendDeviceActionLog).toHaveBeenCalledTimes(1);
+    expect(appendDeviceActionLog).toHaveBeenCalledWith({
+      deviceId: 'heater',
+      eventKind: 'trigger',
+      cause: 'mode',
+      message: 'Mode changed from Home to Away',
+      metadata: {
+        previousMode: 'Home',
+        nextMode: 'Away',
+        previousTarget: 21,
+        nextTarget: null,
+      },
+    });
+  });
+
+  it('skips price-trigger logs when price optimization is globally disabled', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).managedDevices = { heater: true };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => false,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
+    };
+    (app as any).operatingMode = 'Home';
+
+    (app as any).onPriceLevelChanged('cheap', 'normal');
+
+    expect(appendDeviceActionLog).not.toHaveBeenCalled();
+  });
+
+  it('skips bootstrap UNKNOWN price-trigger logs', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.fn();
+
+    (app as any).appendDeviceActionLog = appendDeviceActionLog;
+    (app as any).managedDevices = { heater: true };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
+    };
+    (app as any).operatingMode = 'Home';
+
+    (app as any).onPriceLevelChanged('cheap', 'unknown');
+
+    expect(appendDeviceActionLog).not.toHaveBeenCalled();
+    expect((app as any).pendingPriceDrivenTargetCauseByDevice).toEqual({});
+  });
+
+  it('skips price-trigger logs when the current mode has no target for the device', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).managedDevices = { heater: true };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).modeDeviceTargets = {
+      Home: {},
+    };
+    (app as any).operatingMode = 'Home';
+
+    (app as any).onPriceLevelChanged('cheap', 'normal');
+
+    expect(appendDeviceActionLog).not.toHaveBeenCalled();
+  });
+
+  it('skips price-trigger logs for unmanaged devices', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).managedDevices = { heater: false };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
+    };
+    (app as any).operatingMode = 'Home';
+
+    (app as any).onPriceLevelChanged('cheap', 'normal');
+
+    expect(appendDeviceActionLog).not.toHaveBeenCalled();
+  });
+
+  it('classifies mode-aligned targets as mode even when price optimization is enabled', () => {
+    const app = createApp();
+
+    (app as any).managedDevices = { heater: true };
+    (app as any).operatingMode = 'Away';
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 19 },
+      Away: { heater: 21 },
+    };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    mockHomeyInstance.settings.set('pels_status', { priceLevel: 'cheap' });
+    (app as any).logModeChangeTriggers('Home', 'Away');
+
+    expect((app as any).classifyTargetCommandCause('heater', 23)).toBe('mode');
+    expect((app as any).classifyTargetCommandCause('heater', 23)).toBe('price');
+  });
+
+  it('uses the live notified price level when seeding mode-driven target causes', () => {
+    const app = createApp();
+
+    (app as any).managedDevices = { heater: true };
+    (app as any).operatingMode = 'Away';
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 19 },
+      Away: { heater: 21 },
+    };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).planService = {
+      getLastNotifiedPriceLevel: () => 'cheap',
+    };
+    mockHomeyInstance.settings.set('pels_status', { priceLevel: 'normal' });
+
+    (app as any).logModeChangeTriggers('Home', 'Away');
+
+    expect((app as any).classifyTargetCommandCause('heater', 23)).toBe('mode');
+  });
+
+  it('classifies price-reset targets as price when the delta returns to zero', () => {
+    const app = createApp();
+
+    (app as any).managedDevices = { heater: true };
+    (app as any).operatingMode = 'Away';
+    (app as any).modeDeviceTargets = {
+      Away: { heater: 21 },
+    };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    mockHomeyInstance.settings.set('pels_status', { priceLevel: 'normal' });
+
+    (app as any).onPriceLevelChanged('normal', 'cheap');
+
+    expect((app as any).classifyTargetCommandCause('heater', 21)).toBe('price');
+    expect((app as any).classifyTargetCommandCause('heater', 21)).toBe('mode');
+  });
+
   it('keeps devices disabled by default when no settings exist', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
 

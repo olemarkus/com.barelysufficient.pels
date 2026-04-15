@@ -1,6 +1,7 @@
 import type { Mock } from 'vitest';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
+  SETTINGS_UI_DEVICE_ACTION_LOG_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_LOG_PATH,
@@ -19,6 +20,7 @@ const appManifest = require('../../../../app.json');
 const HOMEY_DEVICES_PATH = '/homey_devices';
 const DAILY_BUDGET_PATH = '/daily_budget';
 const LOG_HOMEY_DEVICE_PATH = '/log_homey_device';
+const DEVICE_ACTION_LOG_PATH = SETTINGS_UI_DEVICE_ACTION_LOG_PATH;
 
 const DEFAULT_TIMEZONE = 'UTC';
 
@@ -193,6 +195,10 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_LOG_PATH)]: () => async () => ({ ok: true }),
+  [buildRouteKey('POST', DEVICE_ACTION_LOG_PATH)]: () => async ({ body }) => ({
+    deviceId: (body as { deviceId?: string } | undefined)?.deviceId ?? '',
+    entries: [],
+  }),
   [buildRouteKey('POST', SETTINGS_UI_RESET_POWER_STATS_PATH)]: (homey) => async () => ({
     power: await buildUiPower(homey),
     dailyBudget: getUiOverride(homey, 'dailyBudget') ?? null,

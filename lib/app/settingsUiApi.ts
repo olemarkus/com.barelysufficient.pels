@@ -1,9 +1,12 @@
 import type Homey from 'homey';
 import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
+import { SETTINGS_UI_DEVICE_ACTION_LOG_PATH } from '../../packages/contracts/src/settingsUiApi';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
 import type {
   SettingsUiBootstrap,
+  SettingsUiDeviceActionLogPayload,
+  SettingsUiDeviceActionLogRequest,
   SettingsUiDeviceDiagnosticsResponse,
   SettingsUiDevicesPayload,
   SettingsUiLogRequest,
@@ -15,6 +18,7 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
+  getDeviceActionLogEntriesForUiFromApp,
   getLatestDevicesForUiFromApp,
   getPlanSnapshotForUiFromHomey,
   getPowerTrackerForUiFromApp,
@@ -55,6 +59,12 @@ const isValidLogRequest = (value: unknown): value is SettingsUiLogRequest => {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Partial<SettingsUiLogRequest>;
   return typeof entry.level === 'string' && typeof entry.message === 'string';
+};
+
+const isValidDeviceActionLogRequest = (value: unknown): value is SettingsUiDeviceActionLogRequest => {
+  if (!value || typeof value !== 'object') return false;
+  const request = value as Partial<SettingsUiDeviceActionLogRequest>;
+  return typeof request.deviceId === 'string';
 };
 
 const getArraySetting = <T>(homey: Homey.App['homey'], key: string): T[] => {
@@ -169,6 +179,28 @@ export const resetSettingsUiPowerStats = async ({ homey }: ApiContext): Promise<
     power: getSettingsUiPower({ homey }),
     dailyBudget: app?.getDailyBudgetUiPayload?.() ?? null,
   };
+};
+
+export const getSettingsUiDeviceActionLog = (
+  { homey, body }: ApiContext & { body?: unknown },
+): SettingsUiDeviceActionLogPayload => {
+  const app = getApp(homey);
+  if (!isValidDeviceActionLogRequest(body)) {
+    app?.error?.(`Device action log API (${SETTINGS_UI_DEVICE_ACTION_LOG_PATH}) called without a valid payload`);
+    return { deviceId: '', entries: [] };
+  }
+  const deviceId = body.deviceId.trim();
+  if (!deviceId) {
+    app?.error?.(`Device action log API (${SETTINGS_UI_DEVICE_ACTION_LOG_PATH}) called without valid device id`);
+    return { deviceId: '', entries: [] };
+  }
+  try {
+    const entries = getDeviceActionLogEntriesForUiFromApp(homey, deviceId) ?? [];
+    return { deviceId, entries };
+  } catch (error) {
+    app?.error?.('Device action log API failed', error as Error);
+    return { deviceId, entries: [] };
+  }
 };
 
 export const logSettingsUiMessage = ({ homey, body }: ApiContext & { body?: unknown }): { ok: boolean } => {

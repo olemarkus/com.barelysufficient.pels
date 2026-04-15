@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { DeviceActionLogEntry } from '../../packages/contracts/src/types';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { getHourBucketKey } from '../utils/dateUtils';
 
@@ -8,6 +9,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   powerTracker?: PowerTrackerState;
   getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
+  getDeviceActionLogEntriesForUi?: (deviceId: string) => DeviceActionLogEntry[];
   priceCoordinator?: {
     refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
     refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
@@ -42,6 +44,16 @@ export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): Settin
 export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTrackerState | null => {
   const tracker = getRuntimeApp(homey)?.powerTracker;
   return tracker && typeof tracker === 'object' ? tracker : null;
+};
+
+export const getDeviceActionLogEntriesForUiFromApp = (
+  homey: Homey.App['homey'],
+  deviceId: string,
+): DeviceActionLogEntry[] | null => {
+  const getter = getRuntimeApp(homey)?.getDeviceActionLogEntriesForUi;
+  if (typeof getter !== 'function') return null;
+  const entries = getter(deviceId);
+  return Array.isArray(entries) ? entries : [];
 };
 
 export const emitSettingsUiPowerUpdatedForApp = (

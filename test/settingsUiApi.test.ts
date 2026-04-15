@@ -1,5 +1,6 @@
 import {
   buildSettingsUiBootstrap,
+  getSettingsUiDeviceActionLog,
   getSettingsUiDeviceDiagnosticsPayload,
   getSettingsUiDevicesPayload,
   getSettingsUiPlanPayload,
@@ -110,6 +111,11 @@ describe('settingsUiApi', () => {
         },
       },
     });
+    const getDeviceActionLogEntriesForUi = vi.fn().mockImplementation((deviceId: string) => (
+      deviceId === 'dev-1'
+        ? [{ timestamp: 1234567890, eventKind: 'trigger', cause: 'mode', message: 'Mode changed to Away' }]
+        : []
+    ));
     const app = {
       log,
       error,
@@ -121,6 +127,7 @@ describe('settingsUiApi', () => {
       replacePowerTrackerForUi,
       getDailyBudgetUiPayload,
       getDeviceDiagnosticsUiPayload,
+      getDeviceActionLogEntriesForUi,
       get latestTargetSnapshot() {
         return latestDevices;
       },
@@ -152,6 +159,7 @@ describe('settingsUiApi', () => {
       persistPowerTrackerState,
       getDailyBudgetUiPayload,
       getDeviceDiagnosticsUiPayload,
+      getDeviceActionLogEntriesForUi,
     };
   };
 
@@ -290,6 +298,74 @@ describe('settingsUiApi', () => {
       diagnosticsByDeviceId: {},
     });
     expect(homey.error).toHaveBeenCalledWith('Device diagnostics API failed', expect.any(Error));
+  });
+
+  it('returns device action log entries for a valid device id', () => {
+    const homey = createHomey();
+
+    expect(getSettingsUiDeviceActionLog({
+      homey: homey as never,
+      body: { deviceId: 'dev-1' },
+    })).toEqual({
+      deviceId: 'dev-1',
+      entries: [{ timestamp: 1234567890, eventKind: 'trigger', cause: 'mode', message: 'Mode changed to Away' }],
+    });
+    expect(homey.getDeviceActionLogEntriesForUi).toHaveBeenCalledWith('dev-1');
+  });
+
+  it('returns an empty device action log payload for invalid input', () => {
+    const homey = createHomey();
+
+    expect(getSettingsUiDeviceActionLog({
+      homey: homey as never,
+      body: {},
+    })).toEqual({
+      deviceId: '',
+      entries: [],
+    });
+    expect(homey.error).toHaveBeenCalledWith('Device action log API (/ui_device_action_log) called without a valid payload');
+  });
+
+  it('returns an empty device action log payload when the device id trims to empty', () => {
+    const homey = createHomey();
+
+    expect(getSettingsUiDeviceActionLog({
+      homey: homey as never,
+      body: { deviceId: '   ' },
+    })).toEqual({
+      deviceId: '',
+      entries: [],
+    });
+    expect(homey.error).toHaveBeenCalledWith('Device action log API (/ui_device_action_log) called without valid device id');
+  });
+
+  it('returns an empty device action log payload for an empty string device id', () => {
+    const homey = createHomey();
+
+    expect(getSettingsUiDeviceActionLog({
+      homey: homey as never,
+      body: { deviceId: '' },
+    })).toEqual({
+      deviceId: '',
+      entries: [],
+    });
+    expect(homey.error).toHaveBeenCalledWith('Device action log API (/ui_device_action_log) called without valid device id');
+  });
+
+  it('returns an empty device action log payload when the app getter throws', () => {
+    const homey = createHomey();
+    homey.getDeviceActionLogEntriesForUi.mockImplementation(() => {
+      throw new Error('log unavailable');
+    });
+
+    expect(getSettingsUiDeviceActionLog({
+      homey: homey as never,
+      body: { deviceId: 'dev-1' },
+    })).toEqual({
+      deviceId: 'dev-1',
+      entries: [],
+    });
+    expect(homey.error).toHaveBeenCalledWith('Device action log API failed', expect.any(Error));
   });
 
   it('prefers the live in-memory plan snapshot over the persisted settings snapshot', () => {

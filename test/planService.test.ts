@@ -1,9 +1,11 @@
 import { PlanService } from '../lib/plan/planService';
+import { PlanStatusWriter } from '../lib/plan/planStatusWriter';
 import type { DevicePlan } from '../lib/plan/planTypes';
 import * as pelsStatusModule from '../lib/core/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../lib/utils/timingConstants';
+import { PriceLevel } from '../lib/price/priceLevels';
 
 const buildPlan = (
   currentTarget: number,
@@ -73,6 +75,57 @@ describe('PlanService', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('does not re-emit price-level changes once the notifier has updated its state', () => {
+    const trigger = vi.fn().mockResolvedValue(undefined);
+    const onPriceLevelChanged = vi.fn();
+    const writer = new PlanStatusWriter({
+      homey: {
+        settings: { set: vi.fn() },
+        flow: { getTriggerCard: vi.fn().mockReturnValue({ trigger }) },
+      } as any,
+      getCombinedPrices: () => null,
+      isCurrentHourCheap: () => true,
+      isCurrentHourExpensive: () => false,
+      getLastPowerUpdate: () => null,
+      onPriceLevelChanged,
+      error: vi.fn(),
+    });
+    (writer as any).notifyPriceLevelChanged(PriceLevel.CHEAP);
+    (writer as any).notifyPriceLevelChanged(PriceLevel.CHEAP);
+
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(onPriceLevelChanged).toHaveBeenCalledTimes(1);
+    expect(writer.getLastNotifiedPriceLevel()).toBe(PriceLevel.CHEAP);
+  });
+
+  it('keeps price-level state advanced when the trigger card throws synchronously', () => {
+    const trigger = vi.fn(() => {
+      throw new Error('sync trigger failure');
+    });
+    const onPriceLevelChanged = vi.fn();
+    const error = vi.fn();
+    const writer = new PlanStatusWriter({
+      homey: {
+        settings: { set: vi.fn() },
+        flow: { getTriggerCard: vi.fn().mockReturnValue({ trigger }) },
+      } as any,
+      getCombinedPrices: () => null,
+      isCurrentHourCheap: () => true,
+      isCurrentHourExpensive: () => false,
+      getLastPowerUpdate: () => null,
+      onPriceLevelChanged,
+      error,
+    });
+
+    expect(() => (writer as any).notifyPriceLevelChanged(PriceLevel.CHEAP)).not.toThrow();
+    (writer as any).notifyPriceLevelChanged(PriceLevel.CHEAP);
+
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(onPriceLevelChanged).toHaveBeenCalledTimes(1);
+    expect(writer.getLastNotifiedPriceLevel()).toBe(PriceLevel.CHEAP);
+    expect(error).toHaveBeenCalledWith('Failed to trigger price_level_changed', expect.any(Error));
   });
 
   it('writes detail-only snapshot changes immediately', async () => {

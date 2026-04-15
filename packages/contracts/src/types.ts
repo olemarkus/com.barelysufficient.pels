@@ -80,3 +80,21 @@ export type SettingsUiLogEntry = {
     context?: string;
     timestamp: number;
 };
+
+export type DeviceActionLogEventKind = 'trigger' | 'command';
+
+export type DeviceActionLogCause =
+  | 'mode'
+  | 'price'
+  | 'shed'
+  | 'restore'
+  | 'expected_power_flow'
+  | 'unknown';
+
+export type DeviceActionLogEntry = {
+  timestamp: number;
+  eventKind: DeviceActionLogEventKind;
+  cause: DeviceActionLogCause;
+  message: string;
+  metadata?: Record<string, unknown>;
+};

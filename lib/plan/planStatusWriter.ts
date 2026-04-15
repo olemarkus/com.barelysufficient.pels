@@ -23,6 +23,7 @@ type PlanStatusWriterDeps = {
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   getLastPowerUpdate: () => number | null;
+  onPriceLevelChanged?: (priceLevel: PriceLevel, previousPriceLevel: PriceLevel) => void;
   error: (...args: unknown[]) => void;
 };
 
@@ -51,7 +52,6 @@ export class PlanStatusWriter {
     );
 
     this.notifyPriceLevelChanged(computation.result.priceLevel);
-    this.lastNotifiedPriceLevel = computation.result.priceLevel;
     return writeMs;
   }
 
@@ -151,12 +151,23 @@ export class PlanStatusWriter {
 
   private notifyPriceLevelChanged(priceLevel: PriceLevel): void {
     if (priceLevel === this.lastNotifiedPriceLevel) return;
+    const previousPriceLevel = this.lastNotifiedPriceLevel;
+    this.lastNotifiedPriceLevel = priceLevel;
 
     const card = this.deps.homey.flow?.getTriggerCard?.('price_level_changed');
     if (card) {
-      card
-        .trigger({ level: priceLevel }, { priceLevel })
-        .catch((err: Error) => this.deps.error('Failed to trigger price_level_changed', err));
+      try {
+        card
+          .trigger({ level: priceLevel }, { priceLevel })
+          .catch((err: Error) => this.deps.error('Failed to trigger price_level_changed', err));
+      } catch (error) {
+        this.deps.error('Failed to trigger price_level_changed', error as Error);
+      }
+    }
+    try {
+      this.deps.onPriceLevelChanged?.(priceLevel, previousPriceLevel);
+    } catch (error) {
+      this.deps.error('Failed to process price-level change callback', error as Error);
     }
   }
 }
