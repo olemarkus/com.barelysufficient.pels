@@ -1,4 +1,4 @@
-import { buildPeriodicStatusLog } from '../lib/core/periodicStatus';
+import { buildPeriodicStatusLogFields } from '../lib/core/periodicStatus';
 import { recordPowerSample, type PowerTrackerState } from '../lib/core/powerTracker';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
@@ -29,7 +29,7 @@ describe('periodic status used kWh', () => {
     });
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(sampleStart + 15 * 60 * 1000);
-    const log = buildPeriodicStatusLog({
+    const fields = buildPeriodicStatusLogFields({
       capacityGuard: undefined,
       powerTracker: state,
       capacitySettings: { limitKw: 7, marginKw: 0.5 },
@@ -38,10 +38,9 @@ describe('periodic status used kWh', () => {
     });
     nowSpy.mockRestore();
 
-    expect(log).toContain('softLimit=6.50kW');
-    expect(log).toContain('used=0.75kWh');
-    // cap=6.5kWh, used=0.75kWh → remaining=5.75kWh
-    expect(log).toContain('hourRemaining=5.8kWh');
+    expect(fields.softLimitKw).toBe(6.5);
+    expect(fields.usedKWh).toBe(0.75);
+    expect(fields.hourRemainingKWh).toBe(5.75);
   });
 
   it('uses UTC hour bucket for usage', () => {
@@ -53,7 +52,7 @@ describe('periodic status used kWh', () => {
   it('labels soft limit separately from hourly usage budget', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 55, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
-    const log = buildPeriodicStatusLog({
+    const fields = buildPeriodicStatusLogFields({
       capacityGuard: {
         getLastTotalPower: () => 2.48,
         getSoftLimit: () => 4,
@@ -72,19 +71,17 @@ describe('periodic status used kWh', () => {
     });
     nowSpy.mockRestore();
 
-    expect(log).toContain('softLimit=4.00kW');
-    expect(log).toContain('hardCapHeadroom=2.52kW');
-    expect(log).toContain('used=2.52kWh');
-    // hourCap=4.0kWh, used=2.52kWh → remaining=1.48kWh (not the full cap)
-    expect(log).toContain('hourRemaining=1.5kWh');
-    expect(log).not.toContain('/5.0kWh');
+    expect(fields.softLimitKw).toBe(4);
+    expect(fields.hardCapHeadroomKw).toBe(2.52);
+    expect(fields.usedKWh).toBe(2.52);
+    expect(fields.hourRemainingKWh).toBeCloseTo(1.48, 8);
   });
 
   it('calls getSoftLimit at most once per invocation (no duplicate soft-limit provider calls)', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     let getSoftLimitCallCount = 0;
-    buildPeriodicStatusLog({
+    buildPeriodicStatusLogFields({
       capacityGuard: {
         getLastTotalPower: () => 3.0,
         getSoftLimit: () => { getSoftLimitCallCount += 1; return 5.0; },
@@ -104,7 +101,7 @@ describe('periodic status used kWh', () => {
   it('reports hard-cap breach amount in periodic status', () => {
     const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
-    const log = buildPeriodicStatusLog({
+    const fields = buildPeriodicStatusLogFields({
       capacityGuard: {
         getLastTotalPower: () => 7.4,
         getSoftLimit: () => 4.8,
@@ -119,7 +116,7 @@ describe('periodic status used kWh', () => {
     });
     nowSpy.mockRestore();
 
-    expect(log).toContain('headroom=-2.60kW');
-    expect(log).toContain('hardCapBreachedBy=1.40kW');
+    expect(fields.softHeadroomKw).toBeCloseTo(-2.6, 8);
+    expect(fields.hardCapHeadroomKw).toBeCloseTo(-1.4, 8);
   });
 });

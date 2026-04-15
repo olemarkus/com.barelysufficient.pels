@@ -58,30 +58,6 @@ export function buildPeriodicStatusLogFields(params: {
   };
 }
 
-export function buildPeriodicStatusLog(params: {
-  capacityGuard?: CapacityGuardView;
-  powerTracker: PowerTrackerState;
-  capacitySettings: { limitKw: number; marginKw: number };
-  operatingMode: string;
-  capacityDryRun: boolean;
-}): string {
-  const fields = buildPeriodicStatusLogFields(params);
-  const parts = [
-    formatPowerPart(fields.powerKw),
-    `softLimit=${fields.softLimitKw.toFixed(2)}kW`,
-    formatHeadroomPart(fields.softHeadroomKw),
-    formatHardCapPart(fields.hardCapHeadroomKw),
-    `used=${fields.usedKWh.toFixed(2)}kWh`,
-    `hourRemaining=${fields.hourRemainingKWh.toFixed(1)}kWh`,
-    fields.sheddingActive ? 'SHEDDING' : null,
-    fields.capacityShortfall ? 'SHORTFALL' : null,
-    `mode=${fields.mode}`,
-    fields.dryRun ? 'dry-run' : null,
-  ].filter((part): part is string => Boolean(part));
-
-  return `Status: ${parts.join(', ')}`;
-}
-
 function resolveCapacityStatusMetrics(params: {
   capacityGuard?: CapacityGuardView;
   capacitySettings: { limitKw: number; marginKw: number };
@@ -95,22 +71,6 @@ function resolveCapacityStatusMetrics(params: {
   const hardCapThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySettings.limitKw;
   const hardCapHeadroom = total !== null ? hardCapThreshold - total : null;
   return { total, softLimit, headroom, hardCapHeadroom };
-}
-
-function formatPowerPart(total: number | null): string | null {
-  if (total === null) return null;
-  return `power=${total.toFixed(2)}kW`;
-}
-
-function formatHeadroomPart(headroom: number | null): string | null {
-  if (headroom === null) return null;
-  return `headroom=${headroom.toFixed(2)}kW`;
-}
-
-function formatHardCapPart(hardCapHeadroom: number | null): string | null {
-  if (hardCapHeadroom === null) return null;
-  if (hardCapHeadroom < 0) return `hardCapBreachedBy=${Math.abs(hardCapHeadroom).toFixed(2)}kW`;
-  return `hardCapHeadroom=${hardCapHeadroom.toFixed(2)}kW`;
 }
 
 function getCurrentHourUsage(powerTracker: PowerTrackerState): { usedKWh: number } {
