@@ -96,7 +96,7 @@ file.
       cleanup.
       Files: `lib/plan/planActivationBackoff.ts`, restore/shedding tests.
 - [ ] Separate decision codes from display strings in `planReasons.ts`, then fold the
-      one-consumer helper back into the main decision file.
+      one-consumer helper back into `lib/plan/planReasons.ts`.
       Why P1: restore/shed behavior is harder to reason about than it should be because control
       flow and string building are interleaved.
       Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonHelpers.ts`.
