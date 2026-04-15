@@ -240,6 +240,10 @@ describe('MyApp initialization', () => {
     const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
 
     (app as any).managedDevices = { heater: true, pump: true };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationSettings: () => ({}),
+      getCurrentPriceLevel: () => 'normal',
+    };
     (app as any).modeDeviceTargets = {
       Home: { heater: 21 },
       Away: { pump: 18 },
@@ -362,6 +366,27 @@ describe('MyApp initialization', () => {
     (app as any).onPriceLevelChanged('cheap', 'normal');
 
     expect(appendDeviceActionLog).not.toHaveBeenCalled();
+  });
+
+  it('classifies mode-aligned targets as mode even when price optimization is enabled', () => {
+    const app = createApp();
+
+    (app as any).managedDevices = { heater: true };
+    (app as any).operatingMode = 'Away';
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 19 },
+      Away: { heater: 21 },
+    };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    mockHomeyInstance.settings.set('pels_status', { priceLevel: 'cheap' });
+    (app as any).logModeChangeTriggers('Home', 'Away');
+
+    expect((app as any).classifyTargetCommandCause('heater', 23)).toBe('mode');
+    expect((app as any).classifyTargetCommandCause('heater', 23)).toBe('price');
   });
 
   it('keeps devices disabled by default when no settings exist', async () => {

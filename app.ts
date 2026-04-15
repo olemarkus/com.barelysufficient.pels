@@ -181,6 +181,7 @@ class PelsApp extends Homey.App {
   private structuredLogger?: PinoLogger;
   private flowRebuildScheduler?: FlowRebuildScheduler;
   private deviceActionLogStore?: DeviceActionLogStore;
+  private pendingModeDrivenTargetCauseByDevice: Record<string, { expectedTarget: number; expiresAtMs: number }> = {};
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
   private static readonly TARGET_CAUSE_EPSILON = 0.000001;
   private setExpectedOverride(deviceId: string, kw: number): boolean {
@@ -732,6 +733,15 @@ class PelsApp extends Homey.App {
       ) {
         continue;
       }
+      if (hasNextTarget) {
+        const activePriceDelta = this.resolveActivePriceDelta(deviceId);
+        this.pendingModeDrivenTargetCauseByDevice[deviceId] = {
+          expectedTarget: (nextTarget as number) + (activePriceDelta ?? 0),
+          expiresAtMs: Date.now() + 60_000,
+        };
+      } else {
+        delete this.pendingModeDrivenTargetCauseByDevice[deviceId];
+      }
       this.appendDeviceActionLog({
         deviceId,
         eventKind: 'trigger',
@@ -774,6 +784,15 @@ class PelsApp extends Homey.App {
   private classifyTargetCommandCause(deviceId: string, plannedTarget: number): 'mode' | 'price' | 'unknown' {
     const modeTarget = this.modeDeviceTargets[this.operatingMode]?.[deviceId];
     if (!Number.isFinite(modeTarget) || !Number.isFinite(plannedTarget)) return 'unknown';
+    const pendingModeCause = this.pendingModeDrivenTargetCauseByDevice[deviceId];
+    if (pendingModeCause) {
+      if (pendingModeCause.expiresAtMs < Date.now()) {
+        delete this.pendingModeDrivenTargetCauseByDevice[deviceId];
+      } else if (Math.abs(plannedTarget - pendingModeCause.expectedTarget) <= PelsApp.TARGET_CAUSE_EPSILON) {
+        delete this.pendingModeDrivenTargetCauseByDevice[deviceId];
+        return 'mode';
+      }
+    }
     if (Math.abs(plannedTarget - modeTarget) <= PelsApp.TARGET_CAUSE_EPSILON) return 'mode';
     const activePriceDelta = this.resolveActivePriceDelta(deviceId);
     if (
