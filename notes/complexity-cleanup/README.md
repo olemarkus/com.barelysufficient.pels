@@ -155,7 +155,7 @@ most invasive and can wait.
 
 ## If simplicity becomes P1
 
-If the next stretch of work is explicitly about making the codebase simpler, the best P2 -> P1
+If the next stretch of work is explicitly about making the codebase simpler, the best P2 to P1
 promotions are the ones that remove indirection without opening a wide correctness surface:
 
 1. **Phase 1: `planActivationBackoff.ts`.** Lowest-risk deletion of complexity, and it makes the
@@ -172,8 +172,8 @@ promotions are the ones that remove indirection without opening a wide correctne
    repeated `setSetting(...)` save paths all live in one file.
 
 If these get promoted, keep the same rule as above: one concept per PR. Do not bundle
-`planActivationBackoff` simplification with a `planRestore` gate rewrite, and do not mix the
-`app.ts` wiring cleanup with unrelated runtime behavior changes.
+`planActivationBackoff.ts` simplification with a `planRestore.ts` gate rewrite, and do not mix
+the `app.ts` wiring cleanup with unrelated runtime behavior changes.
 
 ---
 
