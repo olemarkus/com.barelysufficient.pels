@@ -199,8 +199,10 @@ export class PlanService {
   applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
     return this.enqueuePlanOperation(
       async () => {
-        await this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
-        this.deps.schedulePostActuationRefresh?.();
+        const wrote = await this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
+        if (wrote) {
+          this.deps.schedulePostActuationRefresh?.();
+        }
       },
       `Failed to apply shedding to ${deviceName || deviceId}`,
       undefined,
@@ -678,7 +680,9 @@ export class PlanService {
       const rawDeviceWriteCount = actuation?.deviceWriteCount;
       deviceWriteCount = Number.isFinite(rawDeviceWriteCount) ? Math.max(0, Math.trunc(rawDeviceWriteCount)) : 0;
       appliedActions = deviceWriteCount > 0;
-      this.deps.schedulePostActuationRefresh?.();
+      if (appliedActions) {
+        this.deps.schedulePostActuationRefresh?.();
+      }
       const refreshed = this.refreshLatestPlanSnapshotFromSettledLiveState(plan);
       if (!refreshed) {
         this.refreshLatestPlanSnapshotPendingState();

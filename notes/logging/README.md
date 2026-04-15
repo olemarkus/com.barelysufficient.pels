@@ -31,6 +31,7 @@ This note is for contributors changing runtime logging.
 - `binary_command_applied`
 - `target_command_applied`
 - `stepped_load_command_requested`
+- `restore_keep_invariant_enforced`
 - `device_snapshot_refresh_completed`
 - `periodic_status`
 - `daily_budget_periodic_status`

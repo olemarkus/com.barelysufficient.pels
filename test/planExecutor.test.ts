@@ -329,6 +329,26 @@ describe('PlanExecutor pending target commands', () => {
     });
   });
 
+  it('does not fall back to turn_off when shed temperature is already applied', async () => {
+    const { executor, deviceManager } = buildExecutor(createPlanEngineState(), [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 15, unit: '°C' }],
+      },
+    ], {
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
+    });
+
+    await expect(executor.applySheddingToDevice('dev-1', 'Heater')).resolves.toBe(false);
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
   it('tags reconcile target updates in the user-visible log', async () => {
     const state = createPlanEngineState();
     const { executor, deps, deviceManager } = buildExecutor(state, [
@@ -1025,6 +1045,30 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
       direction: 'restore',
       mode: 'reconcile',
+    }));
+  });
+
+  it('does not count a stepped-load trigger request as a concrete device write', async () => {
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    });
+    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(
+      undefined,
+      buildSnapshot({ currentOn: true }),
+    );
+
+    await expect(executor.applyPlanActions(plan, 'reconcile')).resolves.toEqual({ deviceWriteCount: 0 });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.not.objectContaining({
+      actuationSuffix: expect.anything(),
     }));
   });
 
