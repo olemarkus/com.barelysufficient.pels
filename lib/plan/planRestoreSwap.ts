@@ -9,7 +9,10 @@ import {
 } from './planConstants';
 import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from './planRestoreAdmission';
 import { buildRestoreHeadroomReason } from './planReasonStrings';
-import { resolveRestorePower as resolveSharedRestorePower } from './planPowerResolution';
+import {
+  resolveRestorePower as resolveSharedRestorePower,
+  type RestorePowerSource as SharedRestorePowerSource,
+} from './planPowerResolution';
 
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
@@ -120,10 +123,10 @@ export function computeRestoreBufferKw(devPower: number): number {
   return Math.max(0.2, Math.min(0.6, scaled));
 }
 
-export type RestorePowerSource = 'stepped' | 'planning' | 'expected' | 'measured' | 'configured' | 'fallback';
+export type RestorePowerSource = SharedRestorePowerSource;
 
 export function resolveRestorePowerSource(dev: DevicePlanDevice): RestorePowerSource {
-  return resolveSharedRestorePower(dev).source as RestorePowerSource;
+  return resolveSharedRestorePower(dev).source;
 }
 
 export function estimateRestorePower(dev: DevicePlanDevice): number {
