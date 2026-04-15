@@ -3,11 +3,11 @@ import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
-import type { PlanEngineState } from './planState';
+import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './planShedding';
-import { buildPlanCapacityStateSummary } from './planLogging';
+import { buildPlanCapacityStateSummary, normalizePlanReason } from './planLogging';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
 import { sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from './planUsage';
@@ -34,6 +34,7 @@ import {
 } from './planDailyBudgetWindow';
 import { recordActivationSetback } from './planActivationBackoff';
 import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
+import { isPendingBinaryCommandActive } from './planObservationPolicy';
 
 type ShortfallMeta = Pick<
   DevicePlan['meta'],
@@ -62,6 +63,8 @@ export type PlanBuilderDeps = {
   logDebug: (...args: unknown[]) => void;
 };
 const SOFT_LIMIT_EPSILON = 1e-3;
+const OVERSHOOT_DELTA_EPSILON_KW = 0.05;
+const OVERSHOOT_TOP_CONTRIBUTOR_LIMIT = 3;
 
 export class PlanBuilder {
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) { }
@@ -220,11 +223,19 @@ export class PlanBuilder {
   ): void {
     const overshootActive = context.headroom !== null && context.headroom < 0;
     const prevOvershoot = this.state.wasOvershoot;
+    const trackedPlanDevicesById = trackPlanDevicesForOvershoot(planDevices, this.state);
     if (overshootActive && !prevOvershoot) {
       this.state.overshootLogged = true;
       this.state.overshootStartedMs = Date.now();
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
+      const overshootDiagnostics = buildOvershootEntryDiagnostics({
+        context,
+        previousTotalKw: this.state.lastPlanTotalKw,
+        previousBuiltAtMs: this.state.lastPlanBuiltAtMs,
+        previousDevicesById: this.state.lastPlanDevicesById,
+        currentDevicesById: trackedPlanDevicesById,
+      });
       this.deps.structuredLog?.info({
         event: 'overshoot_entered',
         headroomKw: context.headroom,
@@ -237,6 +248,7 @@ export class PlanBuilder {
           },
           devices: planDevices,
         }),
+        ...overshootDiagnostics,
       });
       this.attributeOvershootToRecentRestores(deviceNameById);
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
@@ -253,7 +265,17 @@ export class PlanBuilder {
     } else if (overshootActive && this.state.overshootStartedMs === null) {
       this.state.overshootStartedMs = Date.now();
     }
+    this.rememberPlanSnapshot(context, trackedPlanDevicesById);
     this.state.wasOvershoot = overshootActive;
+  }
+
+  private rememberPlanSnapshot(
+    context: PlanContext,
+    trackedPlanDevicesById: Record<string, OvershootTrackedPlanDevice>,
+  ): void {
+    this.state.lastPlanTotalKw = context.total;
+    this.state.lastPlanBuiltAtMs = Date.now();
+    this.state.lastPlanDevicesById = trackedPlanDevicesById;
   }
 
   private attributeOvershootToRecentRestores(deviceNameById: ReadonlyMap<string, string>): void {
@@ -579,4 +601,223 @@ function buildPlanContextHeadroomLogFields(
     hardCapHeadroomKw,
     hardCapBreached: hardCapHeadroomKw !== null ? hardCapHeadroomKw < 0 : false,
   };
+}
+
+type OvershootEntryContributor = {
+  deviceId: string;
+  deviceName: string;
+  previousKw: number;
+  newKw: number;
+  deltaKw: number;
+  previousPowerSource: ResolvedPowerSource;
+  newPowerSource: ResolvedPowerSource;
+  controllable: boolean;
+  expectedByPreviousPlan: boolean | null;
+  changedDuringPendingWindow: boolean;
+  changedDuringCooldownWindow: boolean;
+  plannedStateBefore: string | null;
+  plannedStateNow: string;
+  expectedPowerKw: number | null;
+  measuredPowerKw: number | null;
+  measuredExceedsExpectedKw: number | null;
+};
+
+type ResolvedPowerSource = 'measured' | 'expected' | 'planning' | 'off' | 'unknown';
+
+function buildOvershootEntryDiagnostics(params: {
+  context: PlanContext;
+  previousTotalKw: number | null;
+  previousBuiltAtMs: number | null;
+  previousDevicesById: Record<string, OvershootTrackedPlanDevice>;
+  currentDevicesById: Record<string, OvershootTrackedPlanDevice>;
+}): Record<string, unknown> {
+  const {
+    context,
+    previousTotalKw,
+    previousBuiltAtMs,
+    previousDevicesById,
+    currentDevicesById,
+  } = params;
+  const contributors = Object.values(currentDevicesById)
+    .map((device) => buildOvershootContributor(device, previousDevicesById[device.id]))
+    .filter((contributor): contributor is OvershootEntryContributor => contributor !== null)
+    .sort((left, right) => right.deltaKw - left.deltaKw);
+  const controlled = contributors
+    .filter((contributor) => contributor.controllable)
+    .slice(0, OVERSHOOT_TOP_CONTRIBUTOR_LIMIT);
+  const uncontrolled = contributors
+    .filter((contributor) => !contributor.controllable)
+    .slice(0, OVERSHOOT_TOP_CONTRIBUTOR_LIMIT);
+  const totalDeltaKw = (
+    typeof context.total === 'number'
+    && typeof previousTotalKw === 'number'
+    && Number.isFinite(context.total)
+    && Number.isFinite(previousTotalKw)
+  )
+    ? roundOvershootKw(context.total - previousTotalKw)
+    : null;
+  const attributedDeltaKw = roundOvershootKw(contributors.reduce((sum, contributor) => sum + contributor.deltaKw, 0));
+  const unattributedDeltaKw = totalDeltaKw === null ? null : roundOvershootKw(totalDeltaKw - attributedDeltaKw);
+
+  return {
+    overshootContributorWindowMs: (
+      typeof previousBuiltAtMs === 'number' ? Math.max(0, Date.now() - previousBuiltAtMs) : null
+    ),
+    overshootTotalDeltaKw: totalDeltaKw,
+    overshootAttributionDeltaKw: attributedDeltaKw,
+    overshootUnattributedDeltaKw: unattributedDeltaKw,
+    overshootTopControlledContributors: controlled,
+    overshootTopUncontrolledContributors: uncontrolled,
+  };
+}
+
+function buildOvershootContributor(
+  device: OvershootTrackedPlanDevice,
+  previous: OvershootTrackedPlanDevice | undefined,
+): OvershootEntryContributor | null {
+  const nextPower = resolveOvershootDevicePower(device);
+  const previousPower = resolveOvershootDevicePower(previous);
+  if (nextPower.kw === null || previousPower.kw === null) return null;
+  const deltaKw = nextPower.kw - previousPower.kw;
+  if (deltaKw <= OVERSHOOT_DELTA_EPSILON_KW) return null;
+  const expectedPowerKw = resolveFiniteNumber(device.expectedPowerKw);
+  const measuredPowerKw = resolveFiniteNumber(device.measuredPowerKw);
+  let expectedByPreviousPlan: boolean | null = null;
+  if (previous && previous.controllable !== false) {
+    expectedByPreviousPlan = previous.plannedState !== 'shed' && previous.plannedState !== 'inactive';
+  }
+
+  return {
+    deviceId: device.id,
+    deviceName: device.name,
+    previousKw: previousPower.kw,
+    newKw: nextPower.kw,
+    deltaKw: roundOvershootKw(deltaKw),
+    previousPowerSource: previousPower.source,
+    newPowerSource: nextPower.source,
+    controllable: device.controllable !== false,
+    expectedByPreviousPlan,
+    changedDuringPendingWindow: hasPendingWindow(previous) || hasPendingWindow(device),
+    changedDuringCooldownWindow: isCooldownBlocked(previous) || isCooldownBlocked(device),
+    plannedStateBefore: previous?.plannedState ?? null,
+    plannedStateNow: device.plannedState,
+    expectedPowerKw,
+    measuredPowerKw,
+    measuredExceedsExpectedKw: (
+      measuredPowerKw !== null && expectedPowerKw !== null && measuredPowerKw > expectedPowerKw
+    )
+      ? roundOvershootKw(measuredPowerKw - expectedPowerKw)
+      : null,
+  };
+}
+
+function trackPlanDeviceForOvershoot(
+  device: DevicePlanDevice,
+  state: PlanEngineState,
+): OvershootTrackedPlanDevice {
+  const pendingBinaryCommand = state.pendingBinaryCommands[device.id];
+  const pendingBinaryCommandActive = isPendingBinaryCommandActive({
+    pending: pendingBinaryCommand,
+    communicationModel: device.communicationModel,
+  });
+  return {
+    id: device.id,
+    name: device.name,
+    controllable: device.controllable,
+    plannedState: device.plannedState,
+    currentState: device.currentState,
+    currentOn: device.currentOn,
+    measuredPowerKw: device.measuredPowerKw,
+    expectedPowerKw: device.expectedPowerKw,
+    planningPowerKw: device.planningPowerKw,
+    observationStale: device.observationStale,
+    binaryCommandPending: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
+    pendingBinaryOnCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
+    pendingBinaryOffCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === false,
+    stepCommandPending: device.stepCommandPending,
+    headroomCardBlocked: device.headroomCardBlocked,
+    reason: device.reason,
+    pendingTargetCommand: shouldExposePendingTargetCommand(device, state),
+  };
+}
+
+function trackPlanDevicesForOvershoot(
+  planDevices: DevicePlanDevice[],
+  state: PlanEngineState,
+): Record<string, OvershootTrackedPlanDevice> {
+  return Object.fromEntries(
+    planDevices.map((device) => [device.id, trackPlanDeviceForOvershoot(device, state)]),
+  );
+}
+
+function shouldExposePendingTargetCommand(
+  device: Pick<DevicePlanDevice, 'id' | 'plannedTarget' | 'currentTarget'>,
+  state: PlanEngineState,
+): boolean {
+  const pending = state.pendingTargetCommands[device.id];
+  return Boolean(
+    pending
+    && typeof device.plannedTarget === 'number'
+    && device.plannedTarget !== device.currentTarget
+    && device.plannedTarget === pending.desired,
+  );
+}
+
+function resolveOvershootDevicePower(
+  device: Pick<
+    OvershootTrackedPlanDevice,
+    'currentState' | 'currentOn' | 'measuredPowerKw' | 'expectedPowerKw' | 'planningPowerKw'
+  > | undefined,
+): { kw: number | null; source: ResolvedPowerSource } {
+  if (!device) return { kw: null, source: 'unknown' };
+  const measuredPowerKw = resolveFiniteNumber(device.measuredPowerKw);
+  if (measuredPowerKw !== null) return { kw: measuredPowerKw, source: 'measured' };
+  if (device.currentState === 'off' || device.currentOn === false) return { kw: 0, source: 'off' };
+  const expectedPowerKw = resolveFiniteNumber(device.expectedPowerKw);
+  if (expectedPowerKw !== null) return { kw: expectedPowerKw, source: 'expected' };
+  const planningPowerKw = resolveFiniteNumber(device.planningPowerKw);
+  if (planningPowerKw !== null) return { kw: planningPowerKw, source: 'planning' };
+  return { kw: null, source: 'unknown' };
+}
+
+function hasPendingWindow(
+  device: {
+    pendingBinaryOnCommand?: boolean;
+    pendingBinaryOffCommand?: boolean;
+    binaryCommandPending?: boolean;
+    stepCommandPending?: boolean;
+    pendingTargetCommand?: boolean | DevicePlanDevice['pendingTargetCommand'];
+  } | undefined,
+): boolean {
+  if (!device) return false;
+  return device.pendingBinaryOnCommand === true
+    || device.pendingBinaryOffCommand === true
+    || device.stepCommandPending === true
+    || Boolean(device.pendingTargetCommand);
+}
+
+function isCooldownBlocked(
+  device: Pick<OvershootTrackedPlanDevice, 'headroomCardBlocked' | 'reason'> | undefined,
+): boolean {
+  if (!device) return false;
+  return device.headroomCardBlocked === true || isCooldownReason(device.reason);
+}
+
+function isCooldownReason(reason: string | undefined): boolean {
+  if (!reason) return false;
+  const normalizedReason = normalizePlanReason(reason);
+  return normalizedReason === 'cooldown (shedding)'
+    || normalizedReason === 'cooldown (restore)'
+    || normalizedReason === 'headroom cooldown'
+    || normalizedReason === 'restore pending';
+}
+
+function resolveFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? roundOvershootKw(value)
+    : null;
+}
+
+function roundOvershootKw(value: number): number {
+  return Math.round(value * 100) / 100;
 }

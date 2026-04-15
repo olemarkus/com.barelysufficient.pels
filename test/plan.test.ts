@@ -20,6 +20,14 @@ const setManagedControllableDevices = (devices: Record<string, boolean>) => {
   mockHomeyInstance.settings.set('managed_devices', managed);
 };
 
+const setManagedAndControllableDevices = (params: {
+  managed: Record<string, boolean>;
+  controllable: Record<string, boolean>;
+}) => {
+  mockHomeyInstance.settings.set('managed_devices', params.managed);
+  mockHomeyInstance.settings.set('controllable_devices', params.controllable);
+};
+
 async function advanceTimeAndRecordPower(app: any, advanceMs: number, powerW: number): Promise<void> {
   vi.advanceTimersByTime(advanceMs);
   await app.recordPowerSample(powerW);
@@ -246,6 +254,444 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(0);
     expect((app as any).planEngine.state.wasOvershoot).toBe(false);
     expect((app as any).planEngine.state.overshootLogged).toBe(false);
+  });
+
+  it('logs bounded overshoot-entry contributors with controlled and uncontrolled deltas', async () => {
+    setMockDrivers({});
+    setManagedAndControllableDevices({
+      managed: {
+        'dev-ctrl': true,
+        'dev-pending': true,
+        'dev-cooldown': true,
+        'dev-uncontrolled': true,
+      },
+      controllable: {
+        'dev-ctrl': true,
+        'dev-pending': true,
+        'dev-cooldown': true,
+        'dev-uncontrolled': false,
+      },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 4;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+    }
+
+    const structuredEvents: Record<string, unknown>[] = [];
+    (app as any).planEngine.builder.deps.structuredLog = {
+      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: () => (app as any).planEngine.builder.deps.structuredLog,
+    };
+
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'dev-ctrl',
+        name: 'Controlled Heater',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 1.0,
+        expectedPowerKw: 0.8,
+        controllable: true,
+      },
+      {
+        id: 'dev-pending',
+        name: 'Pending Heater',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 0.2,
+        expectedPowerKw: 0.2,
+        controllable: true,
+      },
+      {
+        id: 'dev-cooldown',
+        name: 'Cooldown Heater',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 0.4,
+        expectedPowerKw: 0.4,
+        controllable: true,
+      },
+      {
+        id: 'dev-uncontrolled',
+        name: 'Sauna',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 0.5,
+        controllable: false,
+      },
+    ]);
+
+    (app as any).planEngine.state.pendingBinaryCommands['dev-pending'] = {
+      capabilityId: 'onoff',
+      desired: true,
+      startedMs: Date.now(),
+    };
+    (app as any).planEngine.state.lastDeviceShedMs['dev-cooldown'] = Date.now();
+    (app as any).planEngine.state.lastInstabilityMs = Date.now();
+
+    await (app as any).recordPowerSample(3000);
+    structuredEvents.length = 0;
+
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'dev-ctrl',
+        name: 'Controlled Heater',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 2.6,
+        expectedPowerKw: 1.1,
+        controllable: true,
+      },
+      {
+        id: 'dev-pending',
+        name: 'Pending Heater',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 0.7,
+        expectedPowerKw: 0.2,
+        controllable: true,
+      },
+      {
+        id: 'dev-cooldown',
+        name: 'Cooldown Heater',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 0.8,
+        expectedPowerKw: 0.4,
+        controllable: true,
+      },
+      {
+        id: 'dev-uncontrolled',
+        name: 'Sauna',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 1.8,
+        controllable: false,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(5300);
+
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    expect(overshootEvent).toBeTruthy();
+    expect(overshootEvent.overshootTotalDeltaKw).toBeCloseTo(2.3, 5);
+    expect(overshootEvent.overshootAttributionDeltaKw).toBeCloseTo(3.8, 5);
+    expect(overshootEvent.overshootUnattributedDeltaKw).toBeCloseTo(-1.5, 5);
+    expect(overshootEvent.overshootTopControlledContributors).toEqual([
+      expect.objectContaining({
+        deviceId: 'dev-ctrl',
+        deltaKw: 1.6,
+        controllable: true,
+        measuredExceedsExpectedKw: 1.5,
+        expectedByPreviousPlan: true,
+      }),
+      expect.objectContaining({
+        deviceId: 'dev-pending',
+        deltaKw: 0.5,
+        changedDuringPendingWindow: false,
+      }),
+      expect.objectContaining({
+        deviceId: 'dev-cooldown',
+        deltaKw: 0.4,
+      }),
+    ]);
+    expect(overshootEvent.overshootTopUncontrolledContributors).toEqual([
+      expect.objectContaining({
+        deviceId: 'dev-uncontrolled',
+        deltaKw: 1.3,
+        controllable: false,
+        expectedByPreviousPlan: null,
+      }),
+    ]);
+  });
+
+  it('limits overshoot-entry contributors to the largest positive deltas', async () => {
+    setMockDrivers({});
+    setManagedAndControllableDevices({
+      managed: {
+        'dev-1': true,
+        'dev-2': true,
+        'dev-3': true,
+        'dev-4': true,
+      },
+      controllable: {
+        'dev-1': true,
+        'dev-2': true,
+        'dev-3': true,
+        'dev-4': true,
+      },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 4;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+    }
+
+    const structuredEvents: Record<string, unknown>[] = [];
+    (app as any).planEngine.builder.deps.structuredLog = {
+      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: () => (app as any).planEngine.builder.deps.structuredLog,
+    };
+
+    (app as any).deviceManager.setSnapshotForTests([
+      { id: 'dev-1', name: 'One', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 0.5, controllable: true },
+      { id: 'dev-2', name: 'Two', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 0.5, controllable: true },
+      { id: 'dev-3', name: 'Three', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 0.5, controllable: true },
+      { id: 'dev-4', name: 'Four', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 0.5, controllable: true },
+    ]);
+
+    await (app as any).recordPowerSample(2000);
+    structuredEvents.length = 0;
+
+    (app as any).deviceManager.setSnapshotForTests([
+      { id: 'dev-1', name: 'One', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 1.5, controllable: true },
+      { id: 'dev-2', name: 'Two', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 1.2, controllable: true },
+      { id: 'dev-3', name: 'Three', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 1.0, controllable: true },
+      { id: 'dev-4', name: 'Four', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 0.8, controllable: true },
+    ]);
+
+    await (app as any).recordPowerSample(4500);
+
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    expect(overshootEvent).toBeTruthy();
+    expect(overshootEvent.overshootTopControlledContributors).toHaveLength(3);
+    expect(overshootEvent.overshootTopControlledContributors.map((entry: any) => entry.deviceId)).toEqual([
+      'dev-1',
+      'dev-2',
+      'dev-3',
+    ]);
+  });
+
+  it('marks overshoot contributors inside a pending binary off window', async () => {
+    setMockDrivers({});
+    setManagedAndControllableDevices({
+      managed: { 'dev-off-pending': true },
+      controllable: { 'dev-off-pending': true },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    const structuredEvents: Record<string, unknown>[] = [];
+    (app as any).planEngine.builder.deps.structuredLog = {
+      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: () => (app as any).planEngine.builder.deps.structuredLog,
+    };
+
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'dev-off-pending',
+        name: 'Heater Awaiting Off',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        communicationModel: 'local',
+        measuredPowerKw: 0.7,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(700);
+    structuredEvents.length = 0;
+
+    (app as any).planEngine.state.pendingBinaryCommands['dev-off-pending'] = {
+      capabilityId: 'onoff',
+      desired: false,
+      startedMs: Date.now(),
+    };
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'dev-off-pending',
+        name: 'Heater Awaiting Off',
+        targets: [],
+        currentOn: true,
+        currentState: 'on',
+        communicationModel: 'local',
+        measuredPowerKw: 1.3,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(1300);
+
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    expect(overshootEvent).toBeTruthy();
+    expect(overshootEvent.overshootTopControlledContributors).toEqual([
+      expect.objectContaining({
+        deviceId: 'dev-off-pending',
+        changedDuringPendingWindow: true,
+      }),
+    ]);
+  });
+
+  it('marks overshoot contributors inside a pending binary on window', async () => {
+    setMockDrivers({});
+    setManagedAndControllableDevices({
+      managed: { 'dev-on-pending': true },
+      controllable: { 'dev-on-pending': true },
+    });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 4;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 4);
+    }
+
+    const structuredEvents: Record<string, unknown>[] = [];
+    (app as any).planEngine.builder.deps.structuredLog = {
+      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: () => (app as any).planEngine.builder.deps.structuredLog,
+    };
+
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'dev-on-pending',
+        name: 'Pending Restore Heater',
+        targets: [],
+        currentOn: false,
+        currentState: 'off',
+        measuredPowerKw: 0,
+        expectedPowerKw: 1.4,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(2500);
+    structuredEvents.length = 0;
+
+    (app as any).planEngine.state.pendingBinaryCommands['dev-on-pending'] = {
+      capabilityId: 'onoff',
+      desired: true,
+      startedMs: Date.now(),
+    };
+
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'dev-on-pending',
+        name: 'Pending Restore Heater',
+        targets: [],
+        currentOn: false,
+        currentState: 'off',
+        measuredPowerKw: 1.6,
+        expectedPowerKw: 1.4,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(4500);
+
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    expect(overshootEvent).toBeTruthy();
+    expect(overshootEvent.overshootTopControlledContributors).toEqual([
+      expect.objectContaining({
+        deviceId: 'dev-on-pending',
+        changedDuringPendingWindow: true,
+      }),
+    ]);
+  });
+
+  it('marks overshoot contributors inside a pending target command window', async () => {
+    setMockDrivers({});
+    setManagedAndControllableDevices({
+      managed: { 'dev-target-pending': true },
+      controllable: { 'dev-target-pending': true },
+    });
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-target-pending': 23 } });
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    const structuredEvents: Record<string, unknown>[] = [];
+    (app as any).planEngine.builder.deps.structuredLog = {
+      info: (obj: Record<string, unknown>) => { structuredEvents.push(obj); },
+      warn: vi.fn(),
+      error: vi.fn(),
+      child: () => (app as any).planEngine.builder.deps.structuredLog,
+    };
+
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'dev-target-pending',
+        name: 'Target Heater',
+        deviceType: 'temperature',
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 0.7,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(700);
+    structuredEvents.length = 0;
+
+    (app as any).planEngine.state.pendingTargetCommands['dev-target-pending'] = {
+      capabilityId: 'target_temperature',
+      desired: 23,
+      startedMs: Date.now(),
+      lastAttemptMs: Date.now(),
+      retryCount: 0,
+      nextRetryAtMs: Date.now() + 60_000,
+      status: 'waiting_confirmation',
+    };
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'dev-target-pending',
+        name: 'Target Heater',
+        deviceType: 'temperature',
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        currentOn: true,
+        currentState: 'on',
+        measuredPowerKw: 1.2,
+        controllable: true,
+      },
+    ]);
+
+    await (app as any).recordPowerSample(1200);
+
+    const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
+    expect(overshootEvent).toBeTruthy();
+    expect(overshootEvent.overshootTopControlledContributors).toEqual([
+      expect.objectContaining({
+        deviceId: 'dev-target-pending',
+        changedDuringPendingWindow: true,
+      }),
+    ]);
   });
 
   it('uses concise reason when shedding to a minimum temperature', async () => {

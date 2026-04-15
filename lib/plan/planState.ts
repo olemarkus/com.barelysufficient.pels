@@ -1,5 +1,6 @@
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type {
+  DevicePlanDevice,
   PendingTargetCommandStatus,
   PendingTargetObservationSource,
 } from './planTypes';
@@ -43,6 +44,28 @@ export type SwapEntry = {
   lastPlanMeasurementTs?: number;
 };
 
+export type OvershootTrackedPlanDevice = Pick<
+  DevicePlanDevice,
+  | 'id'
+  | 'name'
+  | 'controllable'
+  | 'plannedState'
+  | 'currentState'
+  | 'currentOn'
+  | 'measuredPowerKw'
+  | 'expectedPowerKw'
+  | 'planningPowerKw'
+  | 'observationStale'
+  | 'binaryCommandPending'
+  | 'stepCommandPending'
+  | 'headroomCardBlocked'
+  | 'reason'
+> & {
+  pendingBinaryOnCommand: boolean;
+  pendingBinaryOffCommand: boolean;
+  pendingTargetCommand: boolean;
+};
+
 export type PlanEngineState = {
   lastDeviceShedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
@@ -77,6 +100,9 @@ export type PlanEngineState = {
   overshootStartedMs: number | null;
   lastOvershootEscalationMs: number | null;
   lastOvershootMitigationMs: number | null;
+  lastPlanTotalKw: number | null;
+  lastPlanBuiltAtMs: number | null;
+  lastPlanDevicesById: Record<string, OvershootTrackedPlanDevice>;
   steppedRestoreRejectedByDevice: Record<string, {
     requestedStepId: string;
     lowestNonZeroStepId: string;
@@ -116,6 +142,9 @@ export function createPlanEngineState(): PlanEngineState {
     overshootStartedMs: null,
     lastOvershootEscalationMs: null,
     lastOvershootMitigationMs: null,
+    lastPlanTotalKw: null,
+    lastPlanBuiltAtMs: null,
+    lastPlanDevicesById: {},
     steppedRestoreRejectedByDevice: {},
     keepInvariantShedBlockedByDevice: {},
     restoreDecisionLogByKey: {},
