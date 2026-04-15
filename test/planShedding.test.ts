@@ -220,7 +220,7 @@ describe('buildSheddingPlan', () => {
     expect(result.shedReasons.get('dev-restore')).toBe('shed due to capacity');
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 2, expect.objectContaining({
       controlledDevices: 2,
-      shedDevices: 1,
+      plannedShedDevices: 1,
     }));
   });
 
@@ -1799,7 +1799,7 @@ describe('buildSheddingPlan', () => {
     // Daily soft-limit hours should still evaluate hourly shortfall risk.
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 1, expect.objectContaining({
       controlledDevices: 0,
-      shedDevices: 0,
+      plannedShedDevices: 0,
     }));
   });
 
@@ -1846,7 +1846,7 @@ describe('buildSheddingPlan', () => {
 
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 1, expect.objectContaining({
       controlledDevices: 1,
-      shedDevices: 0,
+      plannedShedDevices: 0,
     }));
   });
 
@@ -2177,7 +2177,7 @@ describe('buildSheddingPlan', () => {
     // With no remaining candidates, shortfall check should report remaining=0
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 0.5, expect.objectContaining({
       controlledDevices: 1,
-      shedDevices: 0,
+      plannedShedDevices: 0,
     }));
   });
 
@@ -2236,7 +2236,7 @@ describe('buildSheddingPlan', () => {
 
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, 0.5, expect.objectContaining({
       controlledDevices: 1,
-      shedDevices: 1,
+      plannedShedDevices: 1,
     }));
   });
 

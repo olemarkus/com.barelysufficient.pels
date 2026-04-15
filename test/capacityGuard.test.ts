@@ -188,6 +188,47 @@ describe('CapacityGuard', () => {
       await guard.checkShortfall(false, 1.0);
       expect(logEvents).toHaveLength(1); // No new event
     });
+
+    it('logs explicit planned-shed counter semantics and source metadata for shortfall events', async () => {
+      const logEvents: Array<Record<string, unknown>> = [];
+      const structuredLog: Pick<import('../lib/logging/logger').Logger, 'info'> = {
+        info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
+      };
+      const guard = new CapacityGuard({
+        limitKw: 5,
+        softMarginKw: 0.2,
+        onShortfall: () => {},
+        structuredLog: structuredLog as unknown as import('../lib/logging/logger').Logger,
+      });
+
+      guard.reportTotalPower(5.5);
+      await guard.checkShortfall(false, 0.5, {
+        controlledDevices: 3,
+        plannedShedDevices: 2,
+        pendingPlannedShedDevices: 1,
+        activePlannedShedDevices: 2,
+        activeControlledDevices: 3,
+        zeroDrawControlledDevices: 0,
+        staleControlledDevices: 0,
+        pendingControlledDevices: 1,
+        blockedByCooldownDevices: 0,
+        blockedByPenaltyDevices: 0,
+        blockedByInvariantDevices: 0,
+        summarySource: 'plan_input',
+        summarySourceAtMs: 1234,
+      });
+
+      expect(logEvents).toHaveLength(1);
+      expect(logEvents[0]).toEqual(expect.objectContaining({
+        event: 'capacity_overshoot_detected',
+        plannedShedDevices: 2,
+        pendingPlannedShedDevices: 1,
+        activePlannedShedDevices: 2,
+        summarySource: 'plan_input',
+        summarySourceAtMs: 1234,
+      }));
+      expect(logEvents[0]).not.toHaveProperty('shedDevices');
+    });
   });
 
   describe('Shortfall clearing with hysteresis', () => {

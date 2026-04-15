@@ -417,7 +417,13 @@ class PelsApp extends Homey.App {
       onShortfall: async (deficitKw) => this.handleShortfall(deficitKw),
       onShortfallCleared: async () => this.handleShortfallCleared(),
       structuredLog: this.structuredLogger?.child({ component: 'capacity' }),
-      capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(this.planService?.getLatestPlanSnapshot()),
+      capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
+        this.planService?.getLatestPlanSnapshot(),
+        {
+          summarySource: 'plan_snapshot',
+          summarySourceAtMs: this.planService?.getLatestPlanSnapshotUpdatedAtMs() ?? null,
+        },
+      ),
     });
   }
   private initPlanEngine(): void {

@@ -79,6 +79,7 @@ export class PlanService {
   private lastPlanMetaSignature = '';
   private lastPlanDebugSummarySignature = '';
   private latestPlanSnapshot: DevicePlan | null = null;
+  private latestPlanSnapshotUpdatedAtMs: number | null = null;
   private latestReconcilePlanSnapshot: DevicePlan | null = null;
   private lastPlanSnapshotWriteMs = 0;
   private hasPendingNonActionSnapshot = false;
@@ -129,6 +130,10 @@ export class PlanService {
     return this.latestPlanSnapshot;
   }
 
+  getLatestPlanSnapshotUpdatedAtMs(): number | null {
+    return this.latestPlanSnapshotUpdatedAtMs;
+  }
+
   getLatestReconcilePlanSnapshot(): DevicePlan | null {
     return this.latestReconcilePlanSnapshot ?? this.latestPlanSnapshot;
   }
@@ -166,6 +171,7 @@ export class PlanService {
     );
     if (canRefreshPlanSnapshotFromLiveState(this.latestPlanSnapshot, livePlan)) {
       this.latestPlanSnapshot = livePlan;
+      this.latestPlanSnapshotUpdatedAtMs = Date.now();
       this.latestReconcilePlanSnapshot = livePlan;
       this.emitPlanUpdated(livePlan);
       return true;
@@ -180,6 +186,7 @@ export class PlanService {
       return false;
     }
     this.latestPlanSnapshot = nextPlan;
+    this.latestPlanSnapshotUpdatedAtMs = Date.now();
     this.emitPlanUpdated(nextPlan);
     return true;
   }
@@ -544,7 +551,10 @@ export class PlanService {
             deviceWriteCount: outcome.deviceWriteCount,
             failed: outcome.failed,
             ...buildPlanHeadroomLogFields(this.latestPlanSnapshot),
-            ...buildPlanCapacityStateSummary(this.latestPlanSnapshot),
+            ...buildPlanCapacityStateSummary(this.latestPlanSnapshot, {
+              summarySource: 'plan_snapshot',
+              summarySourceAtMs: this.latestPlanSnapshotUpdatedAtMs,
+            }),
           });
         }
       }
@@ -561,6 +571,7 @@ export class PlanService {
   ): Promise<void> {
     const { plan, buildMs } = await this.buildPlanForRebuild(reason);
     this.latestPlanSnapshot = plan;
+    this.latestPlanSnapshotUpdatedAtMs = Date.now();
     const { changes, changeMs } = this.measurePlanChanges(plan);
     const { snapshotMs, snapshotWriteMs } = this.measureSnapshotUpdate(plan, changes);
     const { statusMs, statusWriteMs } = this.measureStatusUpdate(plan, changes);
@@ -747,6 +758,7 @@ export class PlanService {
     );
     if (!canRefreshPlanSnapshotFromLiveState(basePlan, livePlan)) return false;
     this.latestPlanSnapshot = livePlan;
+    this.latestPlanSnapshotUpdatedAtMs = Date.now();
     this.latestReconcilePlanSnapshot = livePlan;
     this.emitPlanUpdated(livePlan);
     return true;
@@ -759,6 +771,7 @@ export class PlanService {
       return false;
     }
     this.latestPlanSnapshot = nextPlan;
+    this.latestPlanSnapshotUpdatedAtMs = Date.now();
     this.emitPlanUpdated(nextPlan);
     return true;
   }

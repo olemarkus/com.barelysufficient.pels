@@ -1,13 +1,22 @@
 import {
   buildEmptyCapacityStateSummary,
   buildNullCapacityStateSummary,
+  type CapacityStateSummarySource,
   type PlanCapacityStateSummary,
 } from '../core/capacityStateSummary';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 
 export type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
 
-export function buildPlanCapacityStateSummary(plan: DevicePlan | null | undefined): PlanCapacityStateSummary {
+type CapacityStateSummaryMetadata = {
+  summarySource?: CapacityStateSummarySource;
+  summarySourceAtMs?: number | null;
+};
+
+export function buildPlanCapacityStateSummary(
+  plan: DevicePlan | null | undefined,
+  metadata: CapacityStateSummaryMetadata = {},
+): PlanCapacityStateSummary {
   if (!plan) {
     return buildNullCapacityStateSummary();
   }
@@ -16,7 +25,14 @@ export function buildPlanCapacityStateSummary(plan: DevicePlan | null | undefine
   for (const device of plan.devices) {
     if (device.controllable === false) continue;
     summary.controlledDevices += 1;
-    summary.shedDevices += Number(device.plannedState === 'shed');
+    const plannedShedCounts = buildPlannedShedCounts({
+      plannedShed: device.plannedState === 'shed',
+      pending: hasPendingCommand(device),
+      active: isActiveControlledDevice(device),
+    });
+    summary.plannedShedDevices += plannedShedCounts.plannedShedDevices;
+    summary.pendingPlannedShedDevices += plannedShedCounts.pendingPlannedShedDevices;
+    summary.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
     summary.activeControlledDevices += Number(isActiveControlledDevice(device));
     summary.zeroDrawControlledDevices += Number(isZeroDrawControlledDevice(device));
     summary.staleControlledDevices += Number(device.observationStale === true);
@@ -26,7 +42,11 @@ export function buildPlanCapacityStateSummary(plan: DevicePlan | null | undefine
     summary.blockedByInvariantDevices += Number(isBlockedByInvariant(device));
   }
 
-  return summary;
+  return {
+    ...summary,
+    summarySource: metadata.summarySource ?? null,
+    summarySourceAtMs: metadata.summarySourceAtMs ?? null,
+  };
 }
 
 // blockedByCooldownDevices, blockedByPenaltyDevices, blockedByInvariantDevices are not populated here
@@ -34,18 +54,43 @@ export function buildPlanCapacityStateSummary(plan: DevicePlan | null | undefine
 export function buildPlanInputCapacityStateSummary(
   devices: PlanInputDevice[],
   shedSet: ReadonlySet<string>,
+  metadata: CapacityStateSummaryMetadata = {},
 ): PlanCapacityStateSummary {
   const summary = buildEmptyCapacityStateSummary();
   for (const device of devices) {
     if (device.controllable === false) continue;
     summary.controlledDevices += 1;
-    summary.shedDevices += Number(shedSet.has(device.id));
+    const plannedShedCounts = buildPlannedShedCounts({
+      plannedShed: shedSet.has(device.id),
+      pending: hasPendingInputCommand(device),
+      active: isActiveInputDevice(device),
+    });
+    summary.plannedShedDevices += plannedShedCounts.plannedShedDevices;
+    summary.pendingPlannedShedDevices += plannedShedCounts.pendingPlannedShedDevices;
+    summary.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
     summary.activeControlledDevices += Number(isActiveInputDevice(device));
     summary.zeroDrawControlledDevices += Number(isZeroDrawInputDevice(device));
     summary.staleControlledDevices += Number(device.observationStale === true);
     summary.pendingControlledDevices += Number(hasPendingInputCommand(device));
   }
-  return summary;
+  return {
+    ...summary,
+    summarySource: metadata.summarySource ?? null,
+    summarySourceAtMs: metadata.summarySourceAtMs ?? null,
+  };
+}
+
+function buildPlannedShedCounts(
+  counts: { plannedShed: boolean; pending: boolean; active: boolean },
+): Pick<
+  ReturnType<typeof buildEmptyCapacityStateSummary>,
+  'plannedShedDevices' | 'pendingPlannedShedDevices' | 'activePlannedShedDevices'
+> {
+  return {
+    plannedShedDevices: Number(counts.plannedShed),
+    pendingPlannedShedDevices: Number(counts.plannedShed && counts.pending),
+    activePlannedShedDevices: Number(counts.plannedShed && counts.active),
+  };
 }
 
 function matchesAnyReason(reason: string | undefined, patterns: RegExp[]): boolean {

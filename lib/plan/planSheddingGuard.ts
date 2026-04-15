@@ -19,7 +19,10 @@ function handleShortfallCheck(
     ? (capacityGuard?.checkShortfall(
       remaining > 0,
       deficitKw,
-      buildPlanInputCapacityStateSummary(devices, shedSet),
+      buildPlanInputCapacityStateSummary(devices, shedSet, {
+        summarySource: 'plan_input',
+        summarySourceAtMs: Date.now(),
+      }),
     ) ?? Promise.resolve())
     : (capacityGuard?.checkShortfall(true, 0) ?? Promise.resolve());
 }
