@@ -286,40 +286,15 @@ function emitEstimateDecisionLog(params: {
   logger: Logger;
   now: number;
 }): void {
-  const {
-    deviceId,
-    deviceLabel,
-    expectedOverride,
-    result,
-    state,
-    logger,
-    now,
-  } = params;
-  const source = result.expectedPowerSource ?? null;
-  const estimatedKw = typeof result.powerKw === 'number'
-    ? roundLogValue(result.powerKw, 2)
-    : typeof result.expectedPowerKw === 'number'
-      ? roundLogValue(result.expectedPowerKw, 2)
-      : null;
-  const measuredPowerKw = typeof result.measuredPowerKw === 'number'
-    ? roundLogValue(result.measuredPowerKw, 2)
-    : null;
-  const loadKw = typeof result.loadKw === 'number' ? roundLogValue(result.loadKw, 2) : null;
-  const peakMeasuredKw = source === 'measured-peak' && typeof state.lastKnownPowerKw[deviceId] === 'number'
-    ? roundLogValue(state.lastKnownPowerKw[deviceId], 2)
-    : null;
-  const fallbackReason = source === 'default'
-    ? 'default_1kw'
-    : source === 'measured-peak' && expectedOverride !== undefined
-      ? 'override_exceeded'
-      : null;
+  const { deviceId, deviceLabel, result, state, logger, now } = params;
+  const decision = buildEstimateDecisionLogFields(params);
   const signature = JSON.stringify({
-    source,
-    estimatedKw,
-    measuredPowerKw,
-    loadKw,
-    peakMeasuredKw,
-    fallbackReason,
+    source: decision.source,
+    estimatedKw: decision.estimatedKw,
+    measuredPowerKw: decision.measuredPowerKw,
+    loadKw: decision.loadKw,
+    peakMeasuredKw: decision.peakMeasuredKw,
+    fallbackReason: decision.fallbackReason,
     hasEnergyEstimate: result.hasEnergyEstimate === true,
   });
   if (!shouldEmitOnChange({
@@ -334,12 +309,59 @@ function emitEstimateDecisionLog(params: {
     event: 'power_estimate_source_changed',
     deviceId,
     deviceName: deviceLabel,
-    source,
-    estimatedKw: estimatedKw ?? undefined,
-    measuredPowerKw: measuredPowerKw ?? undefined,
-    loadKw: loadKw ?? undefined,
-    peakMeasuredKw: peakMeasuredKw ?? undefined,
-    fallbackReason: fallbackReason ?? undefined,
+    source: decision.source,
+    estimatedKw: decision.estimatedKw ?? undefined,
+    measuredPowerKw: decision.measuredPowerKw ?? undefined,
+    loadKw: decision.loadKw ?? undefined,
+    peakMeasuredKw: decision.peakMeasuredKw ?? undefined,
+    fallbackReason: decision.fallbackReason ?? undefined,
     hasEnergyEstimate: result.hasEnergyEstimate === true ? true : undefined,
   });
+}
+
+function buildEstimateDecisionLogFields(params: {
+  deviceId: string;
+  expectedOverride?: { kw: number; ts: number };
+  result: PowerEstimateResult;
+  state: Required<PowerEstimateState>;
+}): {
+  source: PowerEstimateResult['expectedPowerSource'] | null;
+  estimatedKw: number | null;
+  measuredPowerKw: number | null;
+  loadKw: number | null;
+  peakMeasuredKw: number | null;
+  fallbackReason: 'default_1kw' | 'override_exceeded' | null;
+} {
+  const { deviceId, expectedOverride, result, state } = params;
+  const source = result.expectedPowerSource ?? null;
+  return {
+    source,
+    estimatedKw: roundMaybeKw(result.powerKw ?? result.expectedPowerKw),
+    measuredPowerKw: roundMaybeKw(result.measuredPowerKw),
+    loadKw: roundMaybeKw(result.loadKw),
+    peakMeasuredKw: resolvePeakMeasuredKw(source, deviceId, state),
+    fallbackReason: resolveFallbackReason(source, expectedOverride),
+  };
+}
+
+function roundMaybeKw(value: number | undefined): number | null {
+  return typeof value === 'number' ? roundLogValue(value, 2) : null;
+}
+
+function resolvePeakMeasuredKw(
+  source: PowerEstimateResult['expectedPowerSource'] | null,
+  deviceId: string,
+  state: Required<PowerEstimateState>,
+): number | null {
+  if (source !== 'measured-peak') return null;
+  return roundMaybeKw(state.lastKnownPowerKw[deviceId]);
+}
+
+function resolveFallbackReason(
+  source: PowerEstimateResult['expectedPowerSource'] | null,
+  expectedOverride?: { kw: number; ts: number },
+): 'default_1kw' | 'override_exceeded' | null {
+  if (source === 'default') return 'default_1kw';
+  if (source === 'measured-peak' && expectedOverride !== undefined) return 'override_exceeded';
+  return null;
 }

@@ -8,10 +8,6 @@ export function roundLogValue(value: number, decimals = 2): number {
   return Math.round(value * factor) / factor;
 }
 
-export function bandLogValue(value: number, step: number): number {
-  return Math.round(value / step) * step;
-}
-
 export function shouldEmitOnChange(params: {
   state: Map<string, LogDedupeEntry>;
   key: string;

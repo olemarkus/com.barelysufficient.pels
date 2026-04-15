@@ -104,6 +104,9 @@ type ParsedDeviceSettings = Pick<
     'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt'
 >;
 
+const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
+const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
+
 export type SnapshotRefreshMetrics = {
     availableDevices: number;
     temperatureKnownDevices: number;
@@ -207,7 +210,6 @@ export class DeviceManager extends EventEmitter {
             deviceId,
             capabilityId,
             value,
-            normalizedValue,
             snapshot,
         );
     };
@@ -233,7 +235,6 @@ export class DeviceManager extends EventEmitter {
         deviceId: string,
         capabilityId: string,
         value: unknown,
-        normalizedValue: unknown,
         snapshot: TargetDeviceSnapshot,
     ): void {
         const changes: PlanRealtimeUpdateEvent['changes'] = [];
@@ -241,7 +242,11 @@ export class DeviceManager extends EventEmitter {
         if (capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean') {
             const settled = this.applyBinaryCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value, changes);
             if (settled) {
-                this.emitCapabilityEventReceived(deviceId, capabilityId, normalizedValue);
+                this.emitCapabilityEventReceived(
+                    deviceId,
+                    capabilityId,
+                    this.normalizeRealtimeCapabilityEventValue(capabilityId, value),
+                );
                 return;
             }
         }
@@ -261,7 +266,11 @@ export class DeviceManager extends EventEmitter {
 
         if (changes.length === 0) return;
 
-        this.emitCapabilityEventReceived(deviceId, capabilityId, normalizedValue);
+        this.emitCapabilityEventReceived(
+            deviceId,
+            capabilityId,
+            this.normalizeRealtimeCapabilityEventValue(capabilityId, value),
+        );
         this.logger.structuredLog?.info({
             event: 'realtime_capability_drift',
             deviceId,
@@ -429,8 +438,9 @@ export class DeviceManager extends EventEmitter {
             lastKnownPowerKw: powerState?.lastKnownPowerKw ?? {},
             lastMeasuredPowerKw: powerState?.lastMeasuredPowerKw ?? {},
             lastMeterEnergyKwh: powerState?.lastMeterEnergyKwh ?? {},
-            lastEstimateDecisionLogByDevice: powerState?.lastEstimateDecisionLogByDevice ?? new Map(),
-            lastPeakPowerLogByDevice: powerState?.lastPeakPowerLogByDevice ?? new Map(),
+            lastEstimateDecisionLogByDevice:
+                powerState?.lastEstimateDecisionLogByDevice ?? createEstimateDecisionLogState(),
+            lastPeakPowerLogByDevice: powerState?.lastPeakPowerLogByDevice ?? createPeakPowerLogState(),
         };
     }
 

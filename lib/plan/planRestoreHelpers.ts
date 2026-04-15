@@ -265,24 +265,7 @@ export function planRestoreForSteppedDevice(params: {
   const gateReason = resolveCapacityRestoreBlockReason({ timing, restoredOneThisCycle });
   if (gateReason) {
     setRestorePlanDevice(deviceMap, dev.id, { reason: gateReason });
-    emitRestoreDebugEventOnChange({
-      state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_stepped_rejected',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        currentStepId: dev.selectedStepId,
-        requestedStepId: dev.desiredStepId,
-        blockedByShedInvariant: false,
-        decision: 'rejected',
-        rejectionReason: gateReason,
-        reason: gateReason,
-        availableKw: availableHeadroom,
-      },
-      debugStructured,
-    });
+    clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -292,24 +275,7 @@ export function planRestoreForSteppedDevice(params: {
   });
   if (waitingReason) {
     setRestorePlanDevice(deviceMap, dev.id, { reason: waitingReason });
-    emitRestoreDebugEventOnChange({
-      state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_stepped_rejected',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        currentStepId: dev.selectedStepId,
-        requestedStepId: dev.desiredStepId,
-        blockedByShedInvariant: false,
-        decision: 'rejected',
-        rejectionReason: waitingReason,
-        reason: waitingReason,
-        availableKw: availableHeadroom,
-      },
-      debugStructured,
-    });
+    clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
 
@@ -345,7 +311,16 @@ export function planRestoreForSteppedDevice(params: {
   }
 
   return admitSteppedRestore({
-    dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, deltaKw, availableHeadroom, debugStructured, restoreDebugKey,
+    dev,
+    deviceMap,
+    state,
+    phase,
+    nextStep,
+    lowestNonZeroStep,
+    deltaKw,
+    availableHeadroom,
+    debugStructured,
+    restoreDebugKey,
   });
 }
 

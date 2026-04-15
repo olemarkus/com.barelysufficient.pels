@@ -135,8 +135,7 @@ describe('pre-push checks script', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:test:settings-ui');
     expect(result.stdout).toContain('pre-push: running npm run ci:test:playwright:quick');
-    expect(result.stdout).toContain('pre-push: running npm run lint:runtime');
-    expect(result.stdout).toContain('pre-push: running npm run typecheck:unused');
+    expect(result.stdout).toContain('pre-push: running npm run ci:checks');
     expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
   });
 
@@ -151,8 +150,7 @@ describe('pre-push checks script', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('pre-push: running npm run lint:runtime');
-    expect(result.stdout).toContain('pre-push: running npm run typecheck:unused');
+    expect(result.stdout).toContain('pre-push: running npm run ci:checks');
     expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
     expect(result.stdout).toContain('pre-push: running npm run validate');
   });
@@ -168,8 +166,7 @@ describe('pre-push checks script', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('pre-push: running npm run lint:runtime');
-    expect(result.stdout).toContain('pre-push: running npm run typecheck:unused');
+    expect(result.stdout).toContain('pre-push: running npm run ci:checks');
     expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
     expect(result.stdout).toContain('pre-push: running npm run validate');
   });
@@ -185,8 +182,7 @@ describe('pre-push checks script', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('pre-push: running npm run lint:runtime');
-    expect(result.stdout).toContain('pre-push: running npm run typecheck:unused');
+    expect(result.stdout).toContain('pre-push: running npm run ci:checks');
     expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
   });
 });

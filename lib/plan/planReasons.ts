@@ -4,7 +4,7 @@ import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
 import { computeBaseRestoreNeed, resolveRestorePowerSource } from './planRestoreSwap';
-import { getRestoreNeed } from './planRestore';
+import { getRestoreNeed } from './planRestoreSupport';
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
