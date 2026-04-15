@@ -326,6 +326,29 @@ describe('MyApp initialization', () => {
     expect(appendDeviceActionLog).not.toHaveBeenCalled();
   });
 
+  it('skips bootstrap UNKNOWN price-trigger logs', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.fn();
+
+    (app as any).appendDeviceActionLog = appendDeviceActionLog;
+    (app as any).managedDevices = { heater: true };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
+    };
+    (app as any).operatingMode = 'Home';
+
+    (app as any).onPriceLevelChanged('cheap', 'unknown');
+
+    expect(appendDeviceActionLog).not.toHaveBeenCalled();
+    expect((app as any).pendingPriceDrivenTargetCauseByDevice).toEqual({});
+  });
+
   it('skips price-trigger logs when the current mode has no target for the device', () => {
     const app = createApp();
     const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
@@ -387,6 +410,30 @@ describe('MyApp initialization', () => {
 
     expect((app as any).classifyTargetCommandCause('heater', 23)).toBe('mode');
     expect((app as any).classifyTargetCommandCause('heater', 23)).toBe('price');
+  });
+
+  it('uses the live notified price level when seeding mode-driven target causes', () => {
+    const app = createApp();
+
+    (app as any).managedDevices = { heater: true };
+    (app as any).operatingMode = 'Away';
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 19 },
+      Away: { heater: 21 },
+    };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).planService = {
+      getLastNotifiedPriceLevel: () => 'cheap',
+    };
+    mockHomeyInstance.settings.set('pels_status', { priceLevel: 'normal' });
+
+    (app as any).logModeChangeTriggers('Home', 'Away');
+
+    expect((app as any).classifyTargetCommandCause('heater', 23)).toBe('mode');
   });
 
   it('classifies price-reset targets as price when the delta returns to zero', () => {

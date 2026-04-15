@@ -743,7 +743,7 @@ class PelsApp extends Homey.App {
       delete this.pendingModeDrivenTargetCauseByDevice[deviceId];
       return;
     }
-    const activePriceDelta = this.resolveActivePriceDelta(deviceId);
+    const activePriceDelta = this.resolveActivePriceDelta(deviceId, this.getLivePriceLevel());
     this.pendingModeDrivenTargetCauseByDevice[deviceId] = {
       expectedTarget: nextTarget + (activePriceDelta ?? 0),
       expiresAtMs: Date.now() + 60_000,
@@ -784,6 +784,7 @@ class PelsApp extends Homey.App {
   private onPriceLevelChanged(priceLevel: PriceLevel, previousPriceLevel: PriceLevel): void {
     if (priceLevel === previousPriceLevel) return;
     if (!this.priceOptimizationEnabled) return;
+    if (previousPriceLevel === PriceLevel.UNKNOWN) return;
     for (const [deviceId, config] of Object.entries(this.priceOptimizationSettings)) {
       if (!config?.enabled) continue;
       if (!this.resolveManagedState(deviceId)) continue;
@@ -1115,9 +1116,14 @@ class PelsApp extends Homey.App {
     }
     return this.latestTargetSnapshot;
   }
-  private getCurrentPriceLevel(): PriceLevel {
+  private getLivePriceLevel(): PriceLevel {
+    const livePriceLevel = this.planService?.getLastNotifiedPriceLevel();
+    if (livePriceLevel && livePriceLevel !== PriceLevel.UNKNOWN) return livePriceLevel;
     const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
-    return (status?.priceLevel || this.planService?.getLastNotifiedPriceLevel() || PriceLevel.UNKNOWN) as PriceLevel;
+    return (status?.priceLevel || livePriceLevel || PriceLevel.UNKNOWN) as PriceLevel;
+  }
+  private getCurrentPriceLevel(): PriceLevel {
+    return this.getLivePriceLevel();
   }
   private startHomeyEnergyPoll(): void {
     if (this.homeyEnergyPollInterval) clearInterval(this.homeyEnergyPollInterval);
