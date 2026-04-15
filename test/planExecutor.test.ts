@@ -413,6 +413,36 @@ describe('PlanExecutor pending target commands', () => {
     });
   });
 
+  it('logs normalized planned target values in action history', async () => {
+    const state = createPlanEngineState();
+    const recordPlanCommandAction = vi.fn();
+    const { executor, deviceManager } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Connected 300',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 40, unit: '°C', min: 35, max: 75, step: 5 }],
+      },
+    ], {
+      recordPlanCommandAction,
+    });
+
+    await executor.applyPlanActions(buildTargetPlan(40, 46));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 45);
+    expect(recordPlanCommandAction).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'dev-1',
+      message: 'Set target_temperature to 45°C',
+      metadata: expect.objectContaining({
+        targetCap: 'target_temperature',
+        plannedTarget: 45,
+      }),
+    }));
+  });
+
   it('logs shed-temperature target updates as shedding work instead of overshoot', async () => {
     const state = createPlanEngineState();
     const { executor, deps, deviceManager } = buildExecutor(state, [
@@ -459,6 +489,37 @@ describe('PlanExecutor pending target commands', () => {
       mode: 'plan',
       attemptType: 'send',
       reasonCode: 'shedding',
+    }));
+  });
+
+  it('logs normalized shed-temperature writes in action history', async () => {
+    const state = createPlanEngineState();
+    const recordPlanCommandAction = vi.fn();
+    const { executor, deviceManager } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 22, unit: '°C', min: 10, max: 30, step: 5 }],
+      },
+    ], {
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
+      recordPlanCommandAction,
+    });
+
+    await executor.applySheddingToDevice('dev-1', 'Heater');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 15);
+    expect(recordPlanCommandAction).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'dev-1',
+      message: 'Set target_temperature to 15°C during shedding',
+      metadata: expect.objectContaining({
+        targetCap: 'target_temperature',
+        shedTemp: 15,
+      }),
     }));
   });
 

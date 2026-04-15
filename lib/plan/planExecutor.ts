@@ -101,7 +101,7 @@ type PlanActionHandleResult = {
 };
 type TargetCommandDispatchResult =
   | { applied: false; reason: 'skipped' | 'failed' }
-  | { applied: true; attemptType: 'send' | 'retry' };
+  | { applied: true; attemptType: 'send' | 'retry'; desired: number };
 
 type TargetCommandPostActuationState = {
   latestObservedValueAfterActuation: unknown;
@@ -257,7 +257,7 @@ export class PlanExecutor {
         deviceId: dev.id,
         deviceName: dev.name || dev.id,
         capabilityId: targetCap,
-        targetValue: plannedTarget,
+        targetValue: result.desired,
         previousValue: dev.currentTarget ?? null,
         mode: 'plan',
         attemptType: result.attemptType,
@@ -266,10 +266,10 @@ export class PlanExecutor {
       this.recordPlanCommandAction({
         deviceId: dev.id,
         cause: 'shed',
-        message: `Set ${targetCap} to ${plannedTarget}°C during shedding`,
+        message: `Set ${targetCap} to ${result.desired}°C during shedding`,
         metadata: {
           targetCap,
-          plannedTarget,
+          plannedTarget: result.desired,
         },
       });
       const now = Date.now();
@@ -497,11 +497,11 @@ export class PlanExecutor {
         cause: isRestoring
           ? 'restore'
           : this.deps.classifyTargetCommandCause?.(dev.id, dev.plannedTarget as number) ?? 'unknown',
-        message: `Set ${targetCap} to ${dev.plannedTarget}°C`,
+        message: `Set ${targetCap} to ${result.desired}°C`,
         metadata: {
           targetCap,
           currentTarget: dev.currentTarget,
-          plannedTarget: dev.plannedTarget,
+          plannedTarget: result.desired,
           operatingMode: this.operatingMode,
           isRestoring,
         },
@@ -952,7 +952,7 @@ export class PlanExecutor {
         deviceId,
         deviceName: name,
         capabilityId: targetCap,
-        targetValue: shedTemp,
+        targetValue: result.desired,
         previousValue: observedValue ?? null,
         mode: 'plan',
         attemptType: result.attemptType,
@@ -961,10 +961,10 @@ export class PlanExecutor {
       this.recordPlanCommandAction({
         deviceId,
         cause: 'shed',
-        message: `Set ${targetCap} to ${shedTemp}°C during shedding`,
+        message: `Set ${targetCap} to ${result.desired}°C during shedding`,
         metadata: {
           targetCap,
-          shedTemp,
+          shedTemp: result.desired,
         },
       });
       this.recordShedActuation(deviceId, name, now);
@@ -1089,6 +1089,7 @@ export class PlanExecutor {
     return {
       applied: true,
       attemptType: decision.type,
+      desired,
     };
   }
 

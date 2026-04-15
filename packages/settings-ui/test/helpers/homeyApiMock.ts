@@ -20,7 +20,7 @@ const appManifest = require('../../../../app.json');
 const HOMEY_DEVICES_PATH = '/homey_devices';
 const DAILY_BUDGET_PATH = '/daily_budget';
 const LOG_HOMEY_DEVICE_PATH = '/log_homey_device';
-const DEVICE_ACTION_LOG_PATH = SETTINGS_UI_DEVICE_ACTION_LOG_PATH || '/ui_device_action_log';
+const DEVICE_ACTION_LOG_PATH = SETTINGS_UI_DEVICE_ACTION_LOG_PATH;
 
 const DEFAULT_TIMEZONE = 'UTC';
 
