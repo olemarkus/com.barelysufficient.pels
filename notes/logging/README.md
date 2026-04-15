@@ -35,8 +35,11 @@ This note is for contributors changing runtime logging.
 - `device_snapshot_refresh_completed`
 - `periodic_status`
 - `daily_budget_periodic_status`
-- `capacity_overshoot_detected`
-- `capacity_overshoot_recovered`
+- `capacity_overshoot_escalation_blocked`
+- `hard_cap_shortfall_detected`
+- `hard_cap_shortfall_recovery_started`
+- `hard_cap_shortfall_recovery_reset`
+- `hard_cap_shortfall_recovered`
 - `price_optimization_completed`
 - `price_fetch_failed`
 - `budget_recomputed`
@@ -79,6 +82,9 @@ This note is for contributors changing runtime logging.
 - Capacity-state summary fields should stay semantically explicit. Do not reuse one counter name
   for planned shed selection, pending shed actuation, and currently active shed devices; log
   separate counters plus `summarySource`/`summarySourceAtMs` when the source snapshot can differ.
+- Do not label hourly-budget-derived thresholds or margins as plain hard-cap headroom. If a field
+  comes from remaining-hour budget math, say so explicitly in the field name or adjacent text, and
+  reserve `hardCapHeadroomKw` for actual `limitKw - totalKw` semantics.
 - Add or update tests when changing the transport, correlation context, or emitted event shape.
 - If a code path currently uses prose logging only, either migrate it fully to structured events
   or leave a TODO entry explaining the remaining gap instead of adding more prose logs.

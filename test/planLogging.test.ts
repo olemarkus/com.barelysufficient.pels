@@ -274,6 +274,11 @@ describe('plan logging helpers', () => {
       blockedByInvariantDevices: 1,
       summarySource: null,
       summarySourceAtMs: null,
+      controlledPowerW: null,
+      uncontrolledPowerW: null,
+      remainingReducibleControlledLoadW: 4000,
+      remainingReducibleControlledLoad: true,
+      actuationInFlight: true,
     });
   });
 
@@ -292,6 +297,11 @@ describe('plan logging helpers', () => {
       blockedByInvariantDevices: null,
       summarySource: null,
       summarySourceAtMs: null,
+      controlledPowerW: null,
+      uncontrolledPowerW: null,
+      remainingReducibleControlledLoadW: null,
+      remainingReducibleControlledLoad: null,
+      actuationInFlight: null,
     });
   });
 

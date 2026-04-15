@@ -45,7 +45,8 @@ export type SettingsUiPowerStatus = {
   lastPowerUpdate?: number | null;
   priceLevel?: string | null;
   capacityShortfall?: boolean;
-  shortfallThresholdKw?: number;
+  shortfallBudgetThresholdKw?: number;
+  shortfallBudgetHeadroomKw?: number | null;
   hardCapHeadroomKw?: number | null;
 };
 

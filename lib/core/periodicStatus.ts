@@ -12,6 +12,8 @@ type CapacityStatusMetrics = {
   total: number | null;
   softLimit: number;
   headroom: number | null;
+  shortfallBudgetThreshold: number;
+  shortfallBudgetHeadroom: number | null;
   hardCapHeadroom: number | null;
 };
 
@@ -20,6 +22,8 @@ export type PeriodicStatusLogFields = {
   powerKw: number | null;
   softLimitKw: number;
   softHeadroomKw: number | null;
+  shortfallBudgetThresholdKw: number;
+  shortfallBudgetHeadroomKw: number | null;
   hardCapHeadroomKw: number | null;
   usedKWh: number;
   hourRemainingKWh: number;
@@ -48,6 +52,8 @@ export function buildPeriodicStatusLogFields(params: {
     powerKw: metrics.total,
     softLimitKw: metrics.softLimit,
     softHeadroomKw: metrics.headroom,
+    shortfallBudgetThresholdKw: metrics.shortfallBudgetThreshold,
+    shortfallBudgetHeadroomKw: metrics.shortfallBudgetHeadroom,
     hardCapHeadroomKw: metrics.hardCapHeadroom,
     usedKWh: usage.usedKWh,
     hourRemainingKWh,
@@ -68,9 +74,17 @@ function resolveCapacityStatusMetrics(params: {
   // Derive headroom from the already-fetched softLimit to avoid a second provider call.
   // CapacityGuard.getHeadroom() is just getSoftLimit() - mainPowerKw, so this is equivalent.
   const headroom = total !== null ? softLimit - total : null;
-  const hardCapThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySettings.limitKw;
-  const hardCapHeadroom = total !== null ? hardCapThreshold - total : null;
-  return { total, softLimit, headroom, hardCapHeadroom };
+  const shortfallBudgetThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySettings.limitKw;
+  const shortfallBudgetHeadroom = total !== null ? shortfallBudgetThreshold - total : null;
+  const hardCapHeadroom = total !== null ? capacitySettings.limitKw - total : null;
+  return {
+    total,
+    softLimit,
+    headroom,
+    shortfallBudgetThreshold,
+    shortfallBudgetHeadroom,
+    hardCapHeadroom,
+  };
 }
 
 function getCurrentHourUsage(powerTracker: PowerTrackerState): { usedKWh: number } {

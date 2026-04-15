@@ -9,7 +9,8 @@ type StatusData = {
   dailyBudgetExceeded?: boolean;
   limitReason?: 'none' | 'hourly' | 'daily' | 'both';
   capacityShortfall?: boolean;
-  shortfallThresholdKw?: number;
+  shortfallBudgetThresholdKw?: number;
+  shortfallBudgetHeadroomKw?: number | null;
   hardCapHeadroomKw?: number | null;
   controlledKw?: number;
   uncontrolledKw?: number;
