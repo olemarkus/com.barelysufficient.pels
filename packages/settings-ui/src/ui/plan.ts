@@ -382,12 +382,12 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
   let stateText = 'Unknown';
   const steppedRestorePending = isSteppedLoadDevice(dev)
     && Boolean(dev.selectedStepId && dev.desiredStepId && dev.selectedStepId !== dev.desiredStepId);
-  if (isGrayStateDevice(dev)) {
-    return createMetaLine('State', dev.available === false ? 'Unavailable' : 'State unknown');
-  }
   if (dev.controllable === false) {
     stateText = 'Capacity control off';
     return createMetaLine('State', stateText);
+  }
+  if (isGrayStateDevice(dev)) {
+    return createMetaLine('State', dev.available === false ? 'Unavailable' : 'State unknown');
   }
   if (dev.observationStale === true) {
     stateText = 'Live state stale';
