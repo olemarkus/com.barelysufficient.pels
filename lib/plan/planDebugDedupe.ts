@@ -13,12 +13,14 @@ export function emitRestoreDebugEventOnChange(params: {
   const signature = JSON.stringify(normalizeSignatureValue(payload));
   if (state.restoreDecisionLogByKey[key] === signature) return;
   if (!debugStructured) return;
-  state.restoreDecisionLogByKey[key] = signature;
+  const restoreDecisionLogByKey = state.restoreDecisionLogByKey;
+  restoreDecisionLogByKey[key] = signature;
   debugStructured(payload);
 }
 
 export function clearRestoreDebugEvent(state: PlanEngineState, key: string): void {
-  delete state.restoreDecisionLogByKey[key];
+  const restoreDecisionLogByKey = state.restoreDecisionLogByKey;
+  delete restoreDecisionLogByKey[key];
 }
 
 function normalizeSignatureValue(value: unknown, fieldName?: string): unknown {

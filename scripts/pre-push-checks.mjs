@@ -196,8 +196,7 @@ const main = () => {
 
   if (matchesAnyPath(changedFiles, RUNTIME_PATHS)) {
     commands.push(
-      ['npm', ['run', 'lint:runtime']],
-      ['npm', ['run', 'typecheck:unused']],
+      ['npm', ['run', 'ci:checks']],
       ['npm', ['run', 'ci:test:runtime']],
     );
   }
