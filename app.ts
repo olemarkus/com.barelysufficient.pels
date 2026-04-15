@@ -16,7 +16,7 @@ import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PowerTrackerState } from './lib/core/powerTracker';
 import { PriceLevel } from './lib/price/priceLevels';
-import { buildPeriodicStatusLog, buildPeriodicStatusLogFields } from './lib/core/periodicStatus';
+import { buildPeriodicStatusLogFields } from './lib/core/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
@@ -1087,7 +1087,6 @@ class PelsApp extends Homey.App {
       capacityDryRun: this.capacityDryRun,
     };
     this.getStructuredLogger('status')?.info(buildPeriodicStatusLogFields(periodicStatusParams));
-    this.log(buildPeriodicStatusLog(periodicStatusParams));
     if (options.includeDeviceHealth === true) {
       const deviceStatus = this.deviceManager.getPeriodicStatusMetrics();
       if (deviceStatus) {
@@ -1097,7 +1096,10 @@ class PelsApp extends Homey.App {
         });
       }
     }
-    const dailyBudgetLog = this.dailyBudgetService.getPeriodicStatusLog(); if (dailyBudgetLog) this.log(dailyBudgetLog);
+    const dailyBudgetStatus = this.dailyBudgetService.getPeriodicStatusFields();
+    if (dailyBudgetStatus) {
+      this.getStructuredLogger('daily_budget')?.info(dailyBudgetStatus);
+    }
   }
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
     const snapshot = this.deviceManager?.getSnapshot() ?? [];

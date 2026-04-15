@@ -28,7 +28,12 @@ This note is for contributors changing runtime logging.
 
 - `plan_rebuild_started`
 - `plan_rebuild_completed`
+- `binary_command_applied`
+- `target_command_applied`
+- `stepped_load_command_requested`
 - `device_snapshot_refresh_completed`
+- `periodic_status`
+- `daily_budget_periodic_status`
 - `capacity_overshoot_detected`
 - `capacity_overshoot_recovered`
 - `price_optimization_completed`
@@ -45,9 +50,9 @@ This note is for contributors changing runtime logging.
 
 ## Gaps Still Open
 
-- Structured logging is still partial. Core runtime areas such as executor actuation,
-  periodic/status output, UI snapshot writes, and several device/state transitions still emit
-  prose logs only.
+- Structured logging is still partial. The main actuation success paths and periodic status now
+  emit structured events, but executor failure/skip paths, UI snapshot writes, and several
+  device/state transitions still emit prose logs only.
 - Correlation coverage is narrow. Rebuild context exists, but there are no automatic helpers yet
   for `incidentId`, `snapshotId`, `priceRefreshId`, or broader flow-scoped correlation.
 - Event payloads are still stringly typed. There is no central event schema or bounded

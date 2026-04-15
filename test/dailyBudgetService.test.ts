@@ -241,8 +241,19 @@ describe('DailyBudgetService', () => {
       shouldPersist: false,
     }));
 
+    const fields = service.getPeriodicStatusFields();
     const result = service.getPeriodicStatusLog();
 
+    expect(fields).toEqual(expect.objectContaining({
+      event: 'daily_budget_periodic_status',
+      originalBudgetKWh: expect.any(Number),
+      currentBudgetKWh: expect.any(Number),
+      actualKWh: expect.any(Number),
+      budgetedKWh: expect.any(Number),
+      remainingOriginalKWh: expect.any(Number),
+      remainingCurrentKWh: expect.any(Number),
+      exceeded: false,
+    }));
     expect(result).toContain('Daily budget:');
     expect(info).not.toHaveBeenCalled();
   });

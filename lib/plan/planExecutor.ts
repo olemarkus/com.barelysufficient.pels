@@ -84,6 +84,13 @@ export type PlanExecutorDeps = {
 };
 
 export type PlanActuationMode = 'plan' | 'reconcile';
+export type PlanActuationResult = {
+  deviceWriteCount: number;
+};
+type PlanActionHandleResult = {
+  handled: boolean;
+  wrote: boolean;
+};
 type TargetCommandDispatchResult =
   | { applied: false; reason: 'skipped' | 'failed' }
   | { applied: true; attemptType: 'send' | 'retry' };
@@ -190,18 +197,16 @@ export class PlanExecutor {
     return this.deviceManager.getSnapshot();
   }
 
-  private async applyShedAction(dev: DevicePlan['devices'][number]): Promise<boolean> {
-    if (dev.plannedState !== 'shed') return false;
+  private async applyShedAction(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
+    if (dev.plannedState !== 'shed') return { handled: false, wrote: false };
     const shedAction = dev.shedAction ?? 'turn_off';
     if (shedAction === 'set_temperature') {
-      await this.applyShedTemperature(dev);
-      return true;
+      return this.applyShedTemperature(dev);
     }
-    await this.applyShedOff(dev);
-    return true;
+    return this.applyShedOff(dev);
   }
 
-  private async applyShedTemperature(dev: DevicePlan['devices'][number]): Promise<void> {
+  private async applyShedTemperature(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
     const snapshot = this.latestTargetSnapshot.find((entry) => entry.id === dev.id);
     const plan = resolveShedTemperaturePlan({
       dev,
@@ -210,15 +215,15 @@ export class PlanExecutor {
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (...args: unknown[]) => this.logDebug(...args),
     });
-    if (!plan) return;
-    await this.applyShedTemperaturePlan(dev, plan.targetCap, plan.plannedTarget);
+    if (!plan) return { handled: true, wrote: false };
+    return this.applyShedTemperaturePlan(dev, plan.targetCap, plan.plannedTarget);
   }
 
   private async applyShedTemperaturePlan(
     dev: DevicePlan['devices'][number],
     targetCap: string,
     plannedTarget: number,
-  ): Promise<void> {
+  ): Promise<PlanActionHandleResult> {
     try {
       const result = await this.dispatchTargetCommand({
         deviceId: dev.id,
@@ -229,28 +234,43 @@ export class PlanExecutor {
         skipContext: 'shedding',
         actuationMode: 'plan',
       });
-      if (!result.applied) return;
-      this.log(`Capacity: set ${targetCap} for ${dev.name || dev.id} to ${plannedTarget}°C (shedding)`);
+      if (!result.applied) return { handled: true, wrote: false };
+      this.deps.structuredLog?.info({
+        event: 'target_command_applied',
+        deviceId: dev.id,
+        deviceName: dev.name || dev.id,
+        capabilityId: targetCap,
+        targetValue: plannedTarget,
+        previousValue: dev.currentTarget ?? null,
+        mode: 'plan',
+        attemptType: result.attemptType,
+        reasonCode: 'shedding',
+      });
       const now = Date.now();
       this.recordShedActuation(dev.id, dev.name, now);
+      return { handled: true, wrote: true };
     } catch (error) {
       this.error(`Failed to set shed temperature for ${dev.name || dev.id} via DeviceManager`, error);
+      return { handled: true, wrote: false };
     }
   }
 
-  private async applyShedOff(dev: DevicePlan['devices'][number]): Promise<void> {
-    if (dev.currentState === 'off') return;
+  private async applyShedOff(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
+    if (dev.currentState === 'off') return { handled: true, wrote: false };
     const reason = dev.reason;
     const isSwap = reason ? reason.includes('swapped out for') : false;
-    await this.applySheddingToDevice(dev.id, dev.name, isSwap ? reason : undefined);
+    return {
+      handled: true,
+      wrote: await this.applySheddingToDevice(dev.id, dev.name, isSwap ? reason : undefined),
+    };
   }
 
   private async applyRestorePower(
     dev: DevicePlan['devices'][number],
     mode: PlanActuationMode,
-  ): Promise<void> {
-    if (isSteppedLoadDevice(dev)) return;
-    if (dev.plannedState !== 'keep' || dev.currentState !== 'off') return;
+  ): Promise<boolean> {
+    if (isSteppedLoadDevice(dev)) return false;
+    if (dev.plannedState !== 'keep' || dev.currentState !== 'off') return false;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (snapshot?.deviceClass === 'evcharger') {
       this.logDebug(`Capacity: evaluating EV restore for ${dev.name || dev.id} (${formatEvSnapshot(snapshot)})`);
@@ -259,13 +279,13 @@ export class PlanExecutor {
       const evReason = getEvRestoreBlockReason(snapshot);
       const suffix = evReason ? ` (${evReason})` : '';
       this.logDebug(`Capacity: skip restoring ${dev.name || dev.id}, cannot turn on from current snapshot${suffix}`);
-      return;
+      return false;
     }
     const name = dev.name || dev.id;
     // Check if this device is already being restored (in-flight)
     if (this.state.pendingRestores.has(dev.id)) {
       this.logDebug(`Capacity: skip restoring ${name}, already in progress`);
-      return;
+      return false;
     }
     // Mark as pending before async operation
     this.state.pendingRestores.add(dev.id);
@@ -281,7 +301,16 @@ export class PlanExecutor {
           restoreSource: this.getRestoreLogSource(dev.id),
           actuationMode: mode,
         });
-        if (!applied) return;
+        if (!applied) return false;
+        this.deps.structuredLog?.info({
+          event: 'binary_command_applied',
+          deviceId: dev.id,
+          deviceName: name,
+          capabilityId: snapshot?.controlCapabilityId ?? 'onoff',
+          desired: true,
+          mode,
+          reasonCode: mode === 'reconcile' ? 'reconcile_restore' : this.getRestoreLogSource(dev.id),
+        });
         if (mode === 'plan') {
           const now = Date.now();
           this.recordRestoreActuation(dev.id, name, now);
@@ -310,8 +339,10 @@ export class PlanExecutor {
             delete this.state.swapByDevice[dev.id];
           }
         }
+        return true;
       } catch (error) {
         this.error(`Failed to turn on ${name} via DeviceManager`, error);
+        return false;
       }
     } finally {
       this.state.pendingRestores.delete(dev.id);
@@ -322,20 +353,20 @@ export class PlanExecutor {
     dev: DevicePlan['devices'][number],
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const plan = this.getTargetUpdatePlan(dev, snapshot);
-    if (!plan) return;
-    await this.applyTargetUpdatePlan(dev, plan.targetCap, plan.isRestoring, mode);
+    if (!plan) return false;
+    return this.applyTargetUpdatePlan(dev, plan.targetCap, plan.isRestoring, mode);
   }
 
   private async applyUncontrolledRestore(
     dev: DevicePlan['devices'][number],
     snapshot?: TargetDeviceSnapshot,
-  ): Promise<void> {
-    if (dev.plannedState !== 'keep') return;
-    if (dev.currentState !== 'off') return;
+  ): Promise<boolean> {
+    if (dev.plannedState !== 'keep') return false;
+    if (dev.currentState !== 'off') return false;
     const lastShed = this.state.lastDeviceShedMs[dev.id];
-    if (!lastShed) return;
+    if (!lastShed) return false;
     const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (entry?.deviceClass === 'evcharger') {
       this.logDebug(
@@ -343,7 +374,7 @@ export class PlanExecutor {
         + `(${formatEvSnapshot(entry)})`,
       );
     }
-    if (!canTurnOnDevice(entry)) return;
+    if (!canTurnOnDevice(entry)) return false;
     const name = dev.name || dev.id;
     try {
       const applied = await setBinaryControl({
@@ -355,10 +386,21 @@ export class PlanExecutor {
         logContext: 'capacity_control_off',
         actuationMode: 'plan',
       });
-      if (!applied) return;
+      if (!applied) return false;
+      this.deps.structuredLog?.info({
+        event: 'binary_command_applied',
+        deviceId: dev.id,
+        deviceName: name,
+        capabilityId: entry?.controlCapabilityId ?? 'onoff',
+        desired: true,
+        mode: 'plan',
+        reasonCode: 'capacity_control_off_restore',
+      });
       delete this.state.lastDeviceShedMs[dev.id];
+      return true;
     } catch (error) {
       this.error(`Failed to restore ${name} via DeviceManager`, error);
+      return false;
     }
   }
 
@@ -385,7 +427,7 @@ export class PlanExecutor {
     targetCap: string,
     isRestoring: boolean,
     mode: PlanActuationMode,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const result = await this.dispatchTargetCommand({
         deviceId: dev.id,
@@ -396,22 +438,26 @@ export class PlanExecutor {
         skipContext: 'plan',
         actuationMode: mode,
       });
-      if (!result.applied) return;
-      const fromStr = dev.currentTarget === undefined || dev.currentTarget === null
-        ? ''
-        : `from ${dev.currentTarget} `;
       const name = dev.name || dev.id;
-      if (mode === 'plan' && isRestoring && result.attemptType !== 'retry') {
-        this.log(`Capacity: set ${targetCap} for ${name} to ${dev.plannedTarget}°C (restoring from shed state)`);
-      } else {
-        let actuationSuffix = ` (mode: ${this.operatingMode})`;
-        if (mode === 'reconcile') {
-          actuationSuffix = ` (reconcile after drift; mode: ${this.operatingMode})`;
-        } else if (result.attemptType === 'retry') {
-          actuationSuffix = ` (retry pending confirmation; mode: ${this.operatingMode})`;
-        }
-        this.log(`Set ${targetCap} for ${name} ${fromStr}to ${dev.plannedTarget}${actuationSuffix}`);
-      }
+      if (!result.applied) return false;
+      this.deps.structuredLog?.info({
+        event: 'target_command_applied',
+        deviceId: dev.id,
+        deviceName: name,
+        capabilityId: targetCap,
+        targetValue: dev.plannedTarget as number,
+        previousValue: dev.currentTarget ?? null,
+        mode,
+        attemptType: result.attemptType,
+        reasonCode: mode === 'reconcile'
+          ? 'reconcile'
+          : isRestoring
+            ? 'restore_from_shed'
+            : result.attemptType === 'retry'
+              ? 'retry_pending_confirmation'
+              : 'plan_update',
+        operatingMode: this.operatingMode,
+      });
 
       // If this was a restoration from shed temperature, update lastRestoreMs
       // This ensures cooldown applies between restoring different devices
@@ -426,19 +472,21 @@ export class PlanExecutor {
           nowTs: now,
         });
       }
+      return true;
     } catch (error) {
       this.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via DeviceManager`, error);
+      return false;
     }
   }
 
   private async applySteppedLoadCommand(
     dev: DevicePlan['devices'][number],
     mode: PlanActuationMode,
-  ): Promise<void> {
-    if (!isSteppedLoadDevice(dev)) return;
+  ): Promise<boolean> {
+    if (!isSteppedLoadDevice(dev)) return false;
 
     const profile = dev.steppedLoadProfile;
-    if (!profile) return;
+    if (!profile) return false;
 
     // For keep intent, normalize off-step desiredStepId to the lowest non-zero step.
     // This ensures a device restored from binary-off always gets a step command to a
@@ -449,7 +497,7 @@ export class PlanExecutor {
       ? getSteppedLoadLowestActiveStep(profile)?.id ?? dev.desiredStepId
       : dev.desiredStepId;
 
-    if (!desiredStepId || desiredStepId === dev.selectedStepId) return;
+    if (!desiredStepId || desiredStepId === dev.selectedStepId) return false;
 
     const desiredStep = getSteppedLoadStep(profile, desiredStepId);
     if (!desiredStep) {
@@ -457,7 +505,7 @@ export class PlanExecutor {
         `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
         + `desired step ${desiredStepId} is not in profile`,
       );
-      return;
+      return false;
     }
 
     // Safety: never issue a step-UP for a shed device. A stale desiredStepId from an intermediate
@@ -472,7 +520,7 @@ export class PlanExecutor {
           + ` desiredStepId=${desiredStepId} vs selectedStepId=${dev.selectedStepId ?? 'unknown'}`
           + ` (power ${selectedPowerW}W)`,
         );
-        return;
+        return false;
       }
     }
 
@@ -482,13 +530,13 @@ export class PlanExecutor {
         `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
         + `awaiting confirmation of ${desiredStepId}`,
       );
-      return;
+      return false;
     }
 
     const triggerCard = this.deps.homey.flow?.getTriggerCard?.('desired_stepped_load_changed');
     if (!triggerCard?.trigger) {
       this.logDebug('Capacity: desired_stepped_load_changed trigger is unavailable; cannot issue stepped-load command');
-      return;
+      return false;
     }
 
     const now = Date.now();
@@ -521,17 +569,24 @@ export class PlanExecutor {
             ? 'shed'
             : 'restore';
       const actuationSuffix = mode === 'reconcile' ? ' (reconcile after drift)' : '';
-      this.log(
-        `Capacity: requested stepped load ${dev.name || dev.id} `
-        + `${previousStepId ?? 'unknown'} -> ${desiredStep.id}${actuationSuffix}`,
-      );
+      this.deps.structuredLog?.info({
+        event: 'stepped_load_command_requested',
+        deviceId: dev.id,
+        deviceName: dev.name || dev.id,
+        previousStepId: previousStepId ?? null,
+        desiredStepId: desiredStep.id,
+        planningPowerW,
+        direction: nextDirection,
+        mode,
+        actuationSuffix: actuationSuffix || undefined,
+      });
       void Promise.resolve(triggerPromise).catch((error) => {
         this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
       });
-      if (mode !== 'plan') return;
+      if (mode !== 'plan') return true;
       if (nextDirection === 'shed') {
         this.recordShedActuation(dev.id, dev.name, now);
-        return;
+        return true;
       }
       this.recordRestoreActuation(dev.id, dev.name, now);
       recordActivationAttemptStarted({
@@ -542,8 +597,10 @@ export class PlanExecutor {
         nowTs: now,
         source: 'tracked_step_up',
       });
+      return true;
     } catch (error) {
       this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
+      return false;
     }
   }
 
@@ -561,16 +618,16 @@ export class PlanExecutor {
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
     anyShedDevices: boolean,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const name = dev.name || dev.id;
 
     if (dev.plannedState !== 'keep') {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`);
-      return;
+      return false;
     }
     if (dev.currentState !== 'off') {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, currentState is ${dev.currentState}`);
-      return;
+      return false;
     }
 
     const isAtOffStep = dev.steppedLoadProfile && dev.selectedStepId
@@ -598,26 +655,26 @@ export class PlanExecutor {
 
     if (!onoffViolated && !stepViolated) {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, no keep violations detected`);
-      return;
+      return false;
     }
 
-    if (this.applyKeepInvariantShedBlock(dev, name, anyShedDevices)) return;
+    if (this.applyKeepInvariantShedBlock(dev, name, anyShedDevices)) return false;
     // Block condition no longer applies — clear dedupe state so next block re-emits
     delete this.state.keepInvariantShedBlockedByDevice[dev.id];
 
     if (!snapshot) {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, no snapshot available`);
-      return;
+      return false;
     }
     if (!canTurnOnDevice(snapshot)) {
       this.logDebug(
         `Capacity: skip stepped-load restore for ${name}, cannot turn on from current snapshot`,
       );
-      return;
+      return false;
     }
     if (this.state.pendingRestores.has(dev.id)) {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, already in progress`);
-      return;
+      return false;
     }
     this.state.pendingRestores.add(dev.id);
     try {
@@ -631,7 +688,7 @@ export class PlanExecutor {
         restoreSource: this.getRestoreLogSource(dev.id),
         actuationMode: mode,
       });
-      if (!applied) return;
+      if (!applied) return false;
       this.deps.structuredLog?.info({
         event: 'restore_keep_invariant_enforced',
         deviceId: dev.id,
@@ -659,8 +716,10 @@ export class PlanExecutor {
           nowTs: Date.now(),
         });
       }
+      return true;
     } catch (error) {
       this.error(`Failed to restore stepped-load device ${name} via binary control`, error);
+      return false;
     } finally {
       this.state.pendingRestores.delete(dev.id);
     }
@@ -715,12 +774,12 @@ export class PlanExecutor {
     dev: DevicePlan['devices'][number],
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
-  ): Promise<void> {
-    if (dev.plannedState !== 'shed') return;
+  ): Promise<boolean> {
+    if (dev.plannedState !== 'shed') return false;
     const atOffStep = dev.steppedLoadProfile && dev.selectedStepId
       && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId);
-    if (dev.shedAction !== 'turn_off' && !atOffStep) return;
-    if (!snapshot) return;
+    if (dev.shedAction !== 'turn_off' && !atOffStep) return false;
+    if (!snapshot) return false;
     const name = dev.name || dev.id;
     try {
       const applied = await setBinaryControl({
@@ -732,16 +791,25 @@ export class PlanExecutor {
         logContext: 'capacity',
         actuationMode: mode,
       });
-      if (applied) {
-        this.logDebug(`Capacity: set onoff=false for stepped device ${name} (turn_off shed)`);
-      }
+      if (!applied) return false;
+      this.deps.structuredLog?.info({
+        event: 'binary_command_applied',
+        deviceId: dev.id,
+        deviceName: name,
+        capabilityId: snapshot.controlCapabilityId ?? 'onoff',
+        desired: false,
+        mode,
+        reasonCode: mode === 'reconcile' ? 'reconcile_shed' : 'stepped_turn_off_shed',
+      });
+      return true;
     } catch (error) {
       this.error(`Failed to turn off stepped-load device ${name} via binary control`, error);
+      return false;
     }
   }
 
-  public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
-    if (this.capacityDryRun) return;
+  public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<boolean> {
+    if (this.capacityDryRun) return false;
     const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
     if (shouldSkipShedding({
       state: this.state,
@@ -750,7 +818,7 @@ export class PlanExecutor {
       snapshotState,
       logDebug: (...args: unknown[]) => this.logDebug(...args),
     })) {
-      return;
+      return false;
     }
     const name = deviceName || deviceId;
     const shedBehavior = this.getShedBehavior(deviceId);
@@ -764,8 +832,9 @@ export class PlanExecutor {
     try {
       const applied = await this.trySetShedTemperature(deviceId, name, targetCap, shedTemp, canSetShedTemp);
       if (!applied) {
-        await this.turnOffDevice(deviceId, name, reason);
+        return this.turnOffDevice(deviceId, name, reason);
       }
+      return true;
     } finally {
       this.state.pendingSheds.delete(deviceId);
     }
@@ -802,7 +871,17 @@ export class PlanExecutor {
         actuationMode: 'plan',
       });
       if (!result.applied) return result.reason === 'skipped';
-      this.log(`Capacity: set ${targetCap} for ${name} to ${shedTemp}°C (shedding)`);
+      this.deps.structuredLog?.info({
+        event: 'target_command_applied',
+        deviceId,
+        deviceName: name,
+        capabilityId: targetCap,
+        targetValue: shedTemp,
+        previousValue: observedValue ?? null,
+        mode: 'plan',
+        attemptType: result.attemptType,
+        reasonCode: 'shedding',
+      });
       this.recordShedActuation(deviceId, name, now);
       return true;
     } catch (error) {
@@ -1010,7 +1089,7 @@ export class PlanExecutor {
     }
   }
 
-  private async turnOffDevice(deviceId: string, name: string, reason?: string): Promise<void> {
+  private async turnOffDevice(deviceId: string, name: string, reason?: string): Promise<boolean> {
     const snapshotEntry = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
     const controlPlan = getBinaryControlPlan(snapshotEntry);
     if (snapshotEntry?.deviceClass === 'evcharger') {
@@ -1022,10 +1101,10 @@ export class PlanExecutor {
       this.state.lastDeviceShedMs[deviceId] = now;
       if (!hasTarget) {
         this.logDebug(`Capacity: skip turn_off for ${name}, device has no onoff or temperature target`);
-        return;
+        return false;
       }
       this.logDebug(`Capacity: skip turn_off for ${name}, device has no onoff capability`);
-      return;
+      return false;
     }
     const now = Date.now();
     try {
@@ -1039,10 +1118,21 @@ export class PlanExecutor {
         reason,
         actuationMode: 'plan',
       });
-      if (!applied) return;
+      if (!applied) return false;
+      this.deps.structuredLog?.info({
+        event: 'binary_command_applied',
+        deviceId,
+        deviceName: name,
+        capabilityId: snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
+        desired: false,
+        mode: 'plan',
+        reasonCode: reason ? 'shed_with_reason' : 'shedding',
+      });
       this.recordShedActuation(deviceId, name, now);
+      return true;
     } catch (error) {
       this.error(`Failed to turn off ${name} via DeviceManager`, error);
+      return false;
     }
   }
 
@@ -1084,12 +1174,13 @@ export class PlanExecutor {
     incPerfCounter('settings_set.capacity_in_shortfall');
   }
 
-  public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<void> {
-    if (!plan || !Array.isArray(plan.devices)) return;
+  public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
+    if (!plan || !Array.isArray(plan.devices)) return { deviceWriteCount: 0 };
 
     const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
     const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
     const anyShedDevices = plan.devices.some((d) => d.plannedState === 'shed');
+    let deviceWriteCount = 0;
     for (const dev of plan.devices) {
       const snapshot = snapshotMap.get(dev.id);
       try {
@@ -1102,22 +1193,25 @@ export class PlanExecutor {
           continue;
         }
         if (dev.controllable === false) {
-          await this.applySteppedLoadCommand(dev, mode);
-          await this.applyUncontrolledRestore(dev, snapshot);
-          await this.applyTargetUpdate(dev, snapshot, mode);
+          if (await this.applySteppedLoadCommand(dev, mode)) deviceWriteCount += 1;
+          if (await this.applyUncontrolledRestore(dev, snapshot)) deviceWriteCount += 1;
+          if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
         }
-        await this.applySteppedLoadCommand(dev, mode);
+        if (await this.applySteppedLoadCommand(dev, mode)) deviceWriteCount += 1;
         if (isSteppedLoadDevice(dev)) {
-          await this.applySteppedLoadShedOff(dev, snapshot, mode);
-          await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
-          await this.applyTargetUpdate(dev, snapshot, mode);
+          if (await this.applySteppedLoadShedOff(dev, snapshot, mode)) deviceWriteCount += 1;
+          if (await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices)) deviceWriteCount += 1;
+          if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
         }
-        const handledShed = await this.applyShedAction(dev);
-        if (handledShed) continue;
-        await this.applyRestorePower(dev, mode);
-        await this.applyTargetUpdate(dev, snapshot, mode);
+        const shedResult = await this.applyShedAction(dev);
+        if (shedResult.handled) {
+          if (shedResult.wrote) deviceWriteCount += 1;
+          continue;
+        }
+        if (await this.applyRestorePower(dev, mode)) deviceWriteCount += 1;
+        if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
       } catch (error) {
         this.error(
           `Failed to apply action for ${dev.name || dev.id}; continuing with remaining devices`,
@@ -1125,6 +1219,7 @@ export class PlanExecutor {
         );
       }
     }
+    return { deviceWriteCount };
   }
 
   private getRestoreLogSource(deviceId: string): 'shed_state' | 'current_plan' {

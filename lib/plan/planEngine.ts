@@ -4,7 +4,7 @@ import { DeviceManager } from '../core/deviceManager';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
-import { PlanActuationMode, PlanExecutor, PlanExecutorDeps } from './planExecutor';
+import { PlanActuationMode, PlanActuationResult, PlanExecutor, PlanExecutorDeps } from './planExecutor';
 import { createPlanEngineState, PlanEngineState } from './planState';
 import {
   evaluateHeadroomForDevice,
@@ -147,7 +147,7 @@ export class PlanEngine {
     return this.executor.handleShortfallCleared();
   }
 
-  public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<void> {
+  public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
     return this.executor.applyPlanActions(plan, mode);
   }
 
@@ -260,7 +260,7 @@ export class PlanEngine {
     });
   }
 
-  public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
+  public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<boolean> {
     return this.executor.applySheddingToDevice(deviceId, deviceName, reason);
   }
 

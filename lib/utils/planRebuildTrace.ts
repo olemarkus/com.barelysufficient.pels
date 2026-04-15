@@ -16,6 +16,7 @@ export type PlanRebuildTrace = {
   metaChanged: boolean;
   isDryRun: boolean;
   appliedActions: boolean;
+  deviceWriteCount: number;
   hadShedding: boolean;
   failed: boolean;
 };
@@ -39,6 +40,7 @@ export type PlanRebuildTraceSummary = {
   actionChangedCount: number;
   appliedActionsCount: number;
   hadSheddingCount: number;
+  totalDeviceWriteCount: number;
   reasons: Record<string, number>;
 };
 
@@ -79,6 +81,7 @@ export const recordPlanRebuildTrace = (
       metaChanged: trace.metaChanged === true,
       isDryRun: trace.isDryRun === true,
       appliedActions: trace.appliedActions === true,
+      deviceWriteCount: Math.max(0, Math.round(trace.deviceWriteCount)),
       hadShedding: trace.hadShedding === true,
       failed: trace.failed === true,
     },
@@ -122,6 +125,7 @@ export const summarizeRecentPlanRebuildTraces = (
       actionChangedCount: 0,
       appliedActionsCount: 0,
       hadSheddingCount: 0,
+      totalDeviceWriteCount: 0,
       reasons: {},
     };
   }
@@ -140,6 +144,7 @@ export const summarizeRecentPlanRebuildTraces = (
     actionChangedCount: 0,
     appliedActionsCount: 0,
     hadSheddingCount: 0,
+    totalDeviceWriteCount: 0,
     reasons: {} as Record<string, number>,
   };
 
@@ -159,6 +164,7 @@ export const summarizeRecentPlanRebuildTraces = (
       actionChangedCount: totals.actionChangedCount + (trace.actionChanged ? 1 : 0),
       appliedActionsCount: totals.appliedActionsCount + (trace.appliedActions ? 1 : 0),
       hadSheddingCount: totals.hadSheddingCount + (trace.hadShedding ? 1 : 0),
+      totalDeviceWriteCount: totals.totalDeviceWriteCount + trace.deviceWriteCount,
       reasons: {
         ...totals.reasons,
         [trace.reason]: (totals.reasons[trace.reason] || 0) + 1,
@@ -181,6 +187,7 @@ export const summarizeRecentPlanRebuildTraces = (
     actionChangedCount: totals.actionChangedCount,
     appliedActionsCount: totals.appliedActionsCount,
     hadSheddingCount: totals.hadSheddingCount,
+    totalDeviceWriteCount: totals.totalDeviceWriteCount,
     reasons: totals.reasons,
   };
 };

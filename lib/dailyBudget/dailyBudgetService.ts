@@ -50,6 +50,17 @@ type BudgetLogState = {
   exceeded: boolean;
 };
 
+export type DailyBudgetPeriodicStatusFields = {
+  event: 'daily_budget_periodic_status';
+  originalBudgetKWh: number;
+  currentBudgetKWh: number;
+  actualKWh: number;
+  budgetedKWh: number;
+  remainingOriginalKWh: number;
+  remainingCurrentKWh: number;
+  exceeded: boolean;
+};
+
 export class DailyBudgetService {
   private manager: DailyBudgetManager;
   private settings: DailyBudgetSettings = {
@@ -265,7 +276,7 @@ export class DailyBudgetService {
     return normalizeDebugLoggingTopics(rawTopics).includes('daily_budget');
   }
 
-  getPeriodicStatusLog(): string | null {
+  getPeriodicStatusFields(): DailyBudgetPeriodicStatusFields | null {
     const nowMs = Date.now();
     this.updateState({ nowMs, forcePlanRebuild: false, emitStructuredEvent: false });
     const snapshot = this.getTodaySnapshot();
@@ -285,13 +296,28 @@ export class DailyBudgetService {
     const currentBudget = usedNow + plannedRemaining;
     const remainingOriginal = originalBudget - usedNow;
     const remainingNew = plannedRemaining;
+    return {
+      event: 'daily_budget_periodic_status',
+      originalBudgetKWh: originalBudget,
+      currentBudgetKWh: currentBudget,
+      actualKWh: usedNow,
+      budgetedKWh: allowedNow,
+      remainingOriginalKWh: remainingOriginal,
+      remainingCurrentKWh: remainingNew,
+      exceeded: snapshot.state.exceeded,
+    };
+  }
+
+  getPeriodicStatusLog(): string | null {
+    const fields = this.getPeriodicStatusFields();
+    if (!fields) return null;
     return (
-      `Daily budget: original=${originalBudget.toFixed(2)}kWh, `
-      + `current=${currentBudget.toFixed(2)}kWh, `
-      + `actual=${usedNow.toFixed(2)}kWh, `
-      + `budgeted=${allowedNow.toFixed(2)}kWh, `
-      + `remaining(original)=${remainingOriginal.toFixed(2)}kWh, `
-      + `remaining(new)=${remainingNew.toFixed(2)}kWh`
+      `Daily budget: original=${fields.originalBudgetKWh.toFixed(2)}kWh, `
+      + `current=${fields.currentBudgetKWh.toFixed(2)}kWh, `
+      + `actual=${fields.actualKWh.toFixed(2)}kWh, `
+      + `budgeted=${fields.budgetedKWh.toFixed(2)}kWh, `
+      + `remaining(original)=${fields.remainingOriginalKWh.toFixed(2)}kWh, `
+      + `remaining(new)=${fields.remainingCurrentKWh.toFixed(2)}kWh`
     );
   }
 
