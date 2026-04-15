@@ -788,19 +788,19 @@ const initDeviceDetailBudgetExemptHandler = () => {
   deviceDetailBudgetExempt?.addEventListener('change', async () => {
     const deviceId = currentDetailDeviceId;
     if (!deviceId) return;
-    const persistedBudgetExemptMap = await getSetting(BUDGET_EXEMPT_DEVICES);
-    const nextBudgetExemptMap = persistedBudgetExemptMap
-      && typeof persistedBudgetExemptMap === 'object'
-      && !Array.isArray(persistedBudgetExemptMap)
-      ? { ...(persistedBudgetExemptMap as Record<string, boolean>) }
-      : {};
-    if (deviceDetailBudgetExempt.checked) {
-      nextBudgetExemptMap[deviceId] = true;
-    } else {
-      delete nextBudgetExemptMap[deviceId];
-    }
-    state.budgetExemptMap = nextBudgetExemptMap;
     try {
+      const persistedBudgetExemptMap = await getSetting(BUDGET_EXEMPT_DEVICES);
+      const nextBudgetExemptMap = persistedBudgetExemptMap
+        && typeof persistedBudgetExemptMap === 'object'
+        && !Array.isArray(persistedBudgetExemptMap)
+        ? { ...(persistedBudgetExemptMap as Record<string, boolean>) }
+        : {};
+      if (deviceDetailBudgetExempt.checked) {
+        nextBudgetExemptMap[deviceId] = true;
+      } else {
+        delete nextBudgetExemptMap[deviceId];
+      }
+      state.budgetExemptMap = nextBudgetExemptMap;
       await setSetting(BUDGET_EXEMPT_DEVICES, nextBudgetExemptMap);
       renderDevices(state.latestDevices);
       renderPriorities(state.latestDevices);
@@ -809,6 +809,7 @@ const initDeviceDetailBudgetExemptHandler = () => {
     } catch (error) {
       await logSettingsError('Failed to update budget exempt device', error, 'device detail');
       await showToastError(error, 'Failed to update budget exempt device.');
+      refreshOpenDeviceDetail();
     }
   });
 };

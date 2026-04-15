@@ -224,4 +224,64 @@ describe('device detail budget exemption', () => {
     );
     expect(state.budgetExemptMap).toEqual({ 'other-device': true, 'heater-1': true });
   });
+
+  it('handles budget exempt read failures without mutating the map', async () => {
+    const logSettingsError = vi.fn().mockResolvedValue(undefined);
+    const showToastError = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError,
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError,
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        budget_exempt_devices: { 'other-device': true },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+    vi.spyOn(homeyModule, 'getSetting').mockRejectedValueOnce(new Error('Homey SDK not ready'));
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice()];
+    state.managedMap = { 'heater-1': true };
+    state.controllableMap = { 'heater-1': true };
+    state.budgetExemptMap = { 'other-device': true };
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'heater-1': 1 } };
+    state.modeTargets = { Home: { 'heater-1': 20 } };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('heater-1');
+    await flushPromises();
+
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
+    budgetExemptInput!.checked = true;
+    budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(logSettingsError).toHaveBeenCalledWith('Failed to update budget exempt device', expect.any(Error), 'device detail');
+    expect(showToastError).toHaveBeenCalled();
+    expect(homey.set).not.toHaveBeenCalledWith(
+      'budget_exempt_devices',
+      expect.anything(),
+      expect.any(Function),
+    );
+    expect(state.budgetExemptMap).toEqual({ 'other-device': true });
+  });
 });

@@ -419,6 +419,25 @@ describe('plan device state', () => {
     expect(chip?.textContent?.trim()).toBe('Budget exempt');
   });
 
+  it('keeps the state line on controllable-off devices even when the device is gray', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-gray-uncontrolled',
+          name: 'Gray uncontrolled',
+          currentState: 'unknown',
+          plannedState: 'keep',
+          controllable: false,
+          observationStale: true,
+          available: false,
+        },
+      ],
+    });
+
+    expect(getBadgeTitle('dev-gray-uncontrolled')).toBe('Uncontrolled');
+    expect(getStateText()).toBe('Capacity control off');
+  });
+
   it('shows pending confirmation text while a target write is still unconfirmed', async () => {
     await renderPlanSnapshot({
       devices: [
