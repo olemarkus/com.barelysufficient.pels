@@ -2526,6 +2526,7 @@ describe('PlanService', () => {
           currentState: 'off',
           plannedState: 'keep',
           controlModel: 'stepped_load',
+          controlCapabilityId: 'onoff',
           steppedLoadProfile: {
             model: 'stepped_load',
             steps: [
@@ -2552,8 +2553,9 @@ describe('PlanService', () => {
         hasBinaryControl: true,
         currentOn: false,
         controlModel: 'stepped_load',
+        controlCapabilityId: 'onoff',
         steppedLoadProfile: {
-          model: 'stepped_load',
+          model: 'stepped_load' as const,
           steps: [
             { id: 'off', planningPowerW: 0 },
             { id: 'low', planningPowerW: 1250 },
@@ -2561,6 +2563,7 @@ describe('PlanService', () => {
           ],
         },
         selectedStepId: 'low',
+        desiredStepId: 'max',
       }],
       getCapacityDryRun: () => false,
       isCurrentHourCheap: () => false,

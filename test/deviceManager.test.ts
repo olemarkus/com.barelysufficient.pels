@@ -1006,7 +1006,12 @@ describe('DeviceManager', () => {
             expect(realtimeListener).toHaveBeenCalledOnce();
             expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                 deviceId: 'dev1',
-                changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
+                name: 'Heater',
+                changes: [{
+                    capabilityId: 'onoff',
+                    previousValue: 'off',
+                    nextValue: 'on',
+                }],
             }));
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 currentOn: true,
