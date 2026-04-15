@@ -123,7 +123,6 @@ export function computeRestoreBufferKw(devPower: number): number {
 export type RestorePowerSource = 'stepped' | 'planning' | 'expected' | 'measured' | 'configured' | 'fallback';
 
 export function resolveRestorePowerSource(dev: DevicePlanDevice): RestorePowerSource {
-  if (isSteppedLoadDevice(dev) && dev.steppedLoadProfile) return 'stepped';
   return resolveSharedRestorePower(dev).source as RestorePowerSource;
 }
 

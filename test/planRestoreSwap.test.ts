@@ -296,8 +296,16 @@ describe('restore swap helpers', () => {
 });
 
 describe('resolveRestorePowerSource', () => {
-  it('returns stepped for stepped-load devices', () => {
-    expect(resolveRestorePowerSource(steppedPlanDevice({}))).toBe('stepped');
+  it('returns planning for active stepped-load devices', () => {
+    expect(resolveRestorePowerSource(steppedPlanDevice({}))).toBe('planning');
+  });
+
+  it('returns stepped for off-step stepped-load devices', () => {
+    expect(resolveRestorePowerSource(steppedPlanDevice({
+      selectedStepId: 'off',
+      planningPowerKw: 0,
+      measuredPowerKw: 0,
+    }))).toBe('stepped');
   });
 
   it('returns planning when planningPowerKw > 0', () => {
