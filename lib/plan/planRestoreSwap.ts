@@ -9,6 +9,7 @@ import {
   SWAP_RESTORE_RESERVE_KW,
 } from './planConstants';
 import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from './planRestoreAdmission';
+import { buildRestoreHeadroomReason } from './planReasonStrings';
 
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
@@ -74,10 +75,15 @@ export function buildSwapCandidates(params: {
   const names = toShed.map((d) => d.name).join(', ');
   const reason = ready
     ? `swapped out for ${dev.name}`
-    : `insufficient headroom to swap for ${dev.name} (need ${needed.toFixed(2)}kW, `
-    + `effective ${effectiveHeadroom.toFixed(2)}kW after ${SWAP_RESTORE_RESERVE_KW.toFixed(2)}kW reserve `
-    + `and ${admission.admissionReserveKw.toFixed(2)}kW admission reserve `
-    + `from ${names || 'none'})`;
+    : buildRestoreHeadroomReason({
+      neededKw: needed,
+      availableKw: currentPotential,
+      effectiveAvailableKw: effectiveHeadroom,
+      swapReserveKw: SWAP_RESTORE_RESERVE_KW,
+      postReserveMarginKw: admission.postReserveMarginKw,
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      swapTargetName: dev.name,
+    }) + ` from ${names || 'none'}`;
 
   return {
     ready,
@@ -92,11 +98,19 @@ export function buildSwapCandidates(params: {
   };
 }
 
-export function buildInsufficientHeadroomUpdate(needed: number, available: number): Partial<DevicePlanDevice> {
+export function buildInsufficientHeadroomUpdate(params: {
+  neededKw: number;
+  availableKw: number;
+  postReserveMarginKw: number;
+  minimumRequiredPostReserveMarginKw: number;
+  penaltyExtraKw?: number;
+  swapReserveKw?: number;
+  effectiveAvailableKw?: number;
+  swapTargetName?: string;
+}): Partial<DevicePlanDevice> {
   return {
     plannedState: 'shed',
-    reason: `insufficient headroom to restore (need ${needed.toFixed(2)}kW, `
-      + `available ${available.toFixed(2)}kW)`,
+    reason: buildRestoreHeadroomReason(params),
   };
 }
 

@@ -21,6 +21,7 @@ import {
   resolveRestoreDecisionPhase,
   type RestoreAdmissionMetrics,
 } from './planRestoreAdmission';
+import { buildRestoreHeadroomReason } from './planReasonStrings';
 
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -457,10 +458,13 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
     admission, availableHeadroom, needed, debugStructured, restoreDebugKey } = params;
-  const requiredKwWithFloor = admission.requiredKw + RESTORE_ADMISSION_FLOOR_KW;
   setRestorePlanDevice(deviceMap, dev.id, {
-    reason: `insufficient headroom (need ${requiredKwWithFloor.toFixed(2)}kW, `
-      + `headroom ${availableHeadroom.toFixed(2)}kW)`,
+    reason: buildRestoreHeadroomReason({
+      neededKw: needed,
+      availableKw: availableHeadroom,
+      postReserveMarginKw: admission.postReserveMarginKw,
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    }),
   });
   emitRestoreDebugEventOnChange({
     state,
