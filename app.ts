@@ -771,12 +771,18 @@ class PelsApp extends Homey.App {
     if (!Number.isFinite(modeTarget) || !Number.isFinite(plannedTarget)) return 'unknown';
     if (Math.abs(plannedTarget - modeTarget) <= PelsApp.TARGET_CAUSE_EPSILON) return 'mode';
     const activePriceDelta = this.resolveActivePriceDelta(deviceId);
-    if (activePriceDelta !== null && Math.abs(plannedTarget - (modeTarget + activePriceDelta)) <= PelsApp.TARGET_CAUSE_EPSILON) {
+    if (
+      activePriceDelta !== null
+      && Math.abs(plannedTarget - (modeTarget + activePriceDelta)) <= PelsApp.TARGET_CAUSE_EPSILON
+    ) {
       return activePriceDelta === 0 ? 'mode' : 'price';
     }
     return 'unknown';
   }
-  private resolveActivePriceDelta(deviceId: string, priceLevel: PriceLevel = this.getCurrentPriceLevel()): number | null {
+  private resolveActivePriceDelta(
+    deviceId: string,
+    priceLevel: PriceLevel = this.getCurrentPriceLevel(),
+  ): number | null {
     const config = this.priceOptimizationSettings[deviceId];
     if (!config?.enabled) return null;
     if (priceLevel === PriceLevel.CHEAP) return config.cheapDelta;

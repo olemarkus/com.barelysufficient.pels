@@ -54,22 +54,23 @@ const sanitizeEntry = (value: unknown): DeviceActionLogEntry | null => {
 
 const sanitizeMap = (value: unknown, maxEntriesPerDevice: number): DeviceActionLogMap => {
   if (!isRecord(value)) return {};
-  const byDeviceId: DeviceActionLogMap = {};
-  for (const [rawDeviceId, rawEntries] of Object.entries(value)) {
+  return Object.entries(value).reduce<DeviceActionLogMap>((byDeviceId, [rawDeviceId, rawEntries]) => {
     const deviceId = rawDeviceId.trim();
-    if (!deviceId) continue;
+    if (!deviceId) return byDeviceId;
     const entries = Array.isArray(rawEntries)
       ? rawEntries
         .map(sanitizeEntry)
         .filter((entry): entry is DeviceActionLogEntry => entry !== null)
       : [];
-    if (entries.length === 0) continue;
+    if (entries.length === 0) return byDeviceId;
     const existingEntries = byDeviceId[deviceId] ?? [];
-    byDeviceId[deviceId] = [...existingEntries, ...entries]
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-maxEntriesPerDevice);
-  }
-  return byDeviceId;
+    return {
+      ...byDeviceId,
+      [deviceId]: [...existingEntries, ...entries]
+        .sort((a, b) => a.timestamp - b.timestamp)
+        .slice(-maxEntriesPerDevice),
+    };
+  }, {});
 };
 
 export class DeviceActionLogStore {
