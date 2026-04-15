@@ -55,7 +55,8 @@ type PlanSnapshot = {
     softLimitSource?: 'capacity' | 'daily' | 'both';
     headroomKw?: number;
     capacityShortfall?: boolean;
-    shortfallThresholdKw?: number;
+    shortfallBudgetThresholdKw?: number;
+    shortfallBudgetHeadroomKw?: number | null;
     hardCapHeadroomKw?: number | null;
     usedKWh?: number;
     budgetKWh?: number;
@@ -102,7 +103,8 @@ type ValidatedMeta = {
   softLimitKw: number;
   headroomKw: number;
   capacityShortfall?: boolean;
-  shortfallThresholdKw?: number;
+  shortfallBudgetThresholdKw?: number;
+  shortfallBudgetHeadroomKw?: number | null;
   hardCapHeadroomKw?: number | null;
   controlledKw?: number;
   uncontrolledKw?: number;
@@ -125,11 +127,11 @@ const formatRelativeTime = (timestampMs: number): string => {
 };
 
 const buildHardCapDisplay = (meta: ValidatedMeta): HardCapDisplay => {
-  const { capacityShortfall, hardCapHeadroomKw } = meta;
+  const { hardCapHeadroomKw } = meta;
   if (typeof hardCapHeadroomKw !== 'number') {
-    return { breached: Boolean(capacityShortfall), breachText: null, remainingText: null };
+    return { breached: false, breachText: null, remainingText: null };
   }
-  if (hardCapHeadroomKw < 0 || capacityShortfall) {
+  if (hardCapHeadroomKw < 0) {
     const breachKw = Math.abs(Math.min(0, hardCapHeadroomKw));
     return {
       breached: true,
@@ -149,7 +151,10 @@ const buildNowLines = (meta: ValidatedMeta): string[] => {
     totalKw,
     softLimitKw,
     headroomKw,
-    shortfallThresholdKw,
+    capacityShortfall,
+    shortfallBudgetThresholdKw,
+    shortfallBudgetHeadroomKw,
+    hardCapHeadroomKw,
     controlledKw,
     uncontrolledKw,
     lastPowerUpdateMs,
@@ -161,10 +166,13 @@ const buildNowLines = (meta: ValidatedMeta): string[] => {
   const ageText = typeof lastPowerUpdateMs === 'number' ? ` (${formatRelativeTime(lastPowerUpdateMs)})` : '';
   const powerText = `Now ${totalKw.toFixed(1)}kW${ageText} (soft limit ${softLimitKw.toFixed(1)}kW)`;
   const lines = [powerText, headroomText];
-  if (hardCap.breached && typeof shortfallThresholdKw === 'number') {
-    lines.push(`Hard-cap threshold ${shortfallThresholdKw.toFixed(1)}kW`);
+  if ((capacityShortfall || hardCap.breached) && typeof shortfallBudgetThresholdKw === 'number') {
+    lines.push(`Shortfall threshold ${shortfallBudgetThresholdKw.toFixed(1)}kW (hourly budget-derived)`);
   } else if (headroomKw < 0 && hardCap.remainingText) {
     lines.push(hardCap.remainingText);
+  }
+  if (typeof shortfallBudgetHeadroomKw === 'number' && shortfallBudgetHeadroomKw !== hardCapHeadroomKw) {
+    lines.push(`Shortfall-threshold headroom ${shortfallBudgetHeadroomKw.toFixed(1)}kW`);
   }
   if (typeof controlledKw === 'number' && typeof uncontrolledKw === 'number') {
     lines.push(`Capacity-controlled ${controlledKw.toFixed(2)}kW / Other load ${uncontrolledKw.toFixed(2)}kW`);
@@ -204,7 +212,8 @@ const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null =
     softLimitKw,
     headroomKw,
     capacityShortfall: meta.capacityShortfall,
-    shortfallThresholdKw: meta.shortfallThresholdKw,
+    shortfallBudgetThresholdKw: meta.shortfallBudgetThresholdKw,
+    shortfallBudgetHeadroomKw: meta.shortfallBudgetHeadroomKw,
     hardCapHeadroomKw: meta.hardCapHeadroomKw,
     controlledKw: meta.controlledKw,
     uncontrolledKw: meta.uncontrolledKw,

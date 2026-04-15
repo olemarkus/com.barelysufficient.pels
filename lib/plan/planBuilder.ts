@@ -37,7 +37,7 @@ import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
 
 type ShortfallMeta = Pick<
   DevicePlan['meta'],
-  'capacityShortfall' | 'shortfallThresholdKw' | 'hardCapHeadroomKw'
+  'capacityShortfall' | 'shortfallBudgetThresholdKw' | 'shortfallBudgetHeadroomKw' | 'hardCapHeadroomKw'
 >;
 
 export type PlanBuilderDeps = {
@@ -228,7 +228,7 @@ export class PlanBuilder {
       this.deps.structuredLog?.info({
         event: 'overshoot_entered',
         headroomKw: context.headroom,
-        ...buildPlanContextHeadroomLogFields(context, this.capacityGuard),
+        ...buildPlanContextHeadroomLogFields(context, this.capacityGuard, this.capacitySettings.limitKw),
         ...buildPlanCapacityStateSummary({
           meta: {
             totalKw: context.total,
@@ -248,7 +248,7 @@ export class PlanBuilder {
       this.deps.structuredLog?.info({
         event: 'overshoot_cleared',
         durationMs,
-        ...buildPlanContextHeadroomLogFields(context, this.capacityGuard),
+        ...buildPlanContextHeadroomLogFields(context, this.capacityGuard, this.capacitySettings.limitKw),
       });
     } else if (overshootActive && this.state.overshootStartedMs === null) {
       this.state.overshootStartedMs = Date.now();
@@ -525,7 +525,7 @@ export class PlanBuilder {
       ? Math.max(0, context.total - controlledKw)
       : undefined;
     const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
-    const shortfallMeta = buildShortfallMeta(this.capacityGuard, context.total);
+    const shortfallMeta = buildShortfallMeta(this.capacityGuard, context.total, this.capacitySettings.limitKw);
     return {
       totalKw: context.total,
       softLimitKw: context.softLimit,
@@ -551,14 +551,23 @@ export class PlanBuilder {
   }
 }
 
-function buildShortfallMeta(capacityGuard: CapacityGuard | undefined, totalKw: number | null): ShortfallMeta {
-  const shortfallThresholdKw = capacityGuard?.getShortfallThreshold();
-  const hardCapHeadroomKw = typeof totalKw === 'number' && typeof shortfallThresholdKw === 'number'
-    ? shortfallThresholdKw - totalKw
+function buildShortfallMeta(
+  capacityGuard: CapacityGuard | undefined,
+  totalKw: number | null,
+  hardCapLimitKw: number,
+): ShortfallMeta {
+  const shortfallBudgetThresholdKw = capacityGuard?.getShortfallThreshold();
+  const shortfallBudgetHeadroomKw
+    = typeof totalKw === 'number' && typeof shortfallBudgetThresholdKw === 'number'
+      ? shortfallBudgetThresholdKw - totalKw
+      : null;
+  const hardCapHeadroomKw = typeof totalKw === 'number'
+    ? hardCapLimitKw - totalKw
     : null;
   return {
     capacityShortfall: capacityGuard?.isInShortfall() ?? false,
-    shortfallThresholdKw,
+    shortfallBudgetThresholdKw,
+    shortfallBudgetHeadroomKw,
     hardCapHeadroomKw,
   };
 }
@@ -566,16 +575,22 @@ function buildShortfallMeta(capacityGuard: CapacityGuard | undefined, totalKw: n
 function buildPlanContextHeadroomLogFields(
   context: PlanContext,
   capacityGuard: CapacityGuard | undefined,
+  hardCapLimitKw: number,
 ): Record<string, number | boolean | null> {
-  const shortfallThresholdKw = capacityGuard?.getShortfallThreshold();
-  const hardCapHeadroomKw = typeof context.total === 'number' && typeof shortfallThresholdKw === 'number'
-    ? shortfallThresholdKw - context.total
+  const shortfallBudgetThresholdKw = capacityGuard?.getShortfallThreshold();
+  const shortfallBudgetHeadroomKw
+    = typeof context.total === 'number' && typeof shortfallBudgetThresholdKw === 'number'
+      ? shortfallBudgetThresholdKw - context.total
+      : null;
+  const hardCapHeadroomKw = typeof context.total === 'number'
+    ? hardCapLimitKw - context.total
     : null;
   return {
     totalKw: context.total,
     softLimitKw: context.softLimit,
     softHeadroomKw: context.headroom,
-    shortfallThresholdKw: shortfallThresholdKw ?? null,
+    shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,
+    shortfallBudgetHeadroomKw,
     hardCapHeadroomKw,
     hardCapBreached: hardCapHeadroomKw !== null ? hardCapHeadroomKw < 0 : false,
   };

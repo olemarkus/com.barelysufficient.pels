@@ -219,7 +219,8 @@ describe('plan meta usage summary', () => {
         softLimitKw: 4.8,
         headroomKw: -2.4,
         capacityShortfall: true,
-        shortfallThresholdKw: 6,
+        shortfallBudgetThresholdKw: 6,
+        shortfallBudgetHeadroomKw: -1.2,
         hardCapHeadroomKw: -1.2,
       },
       devices: [],
@@ -227,7 +228,7 @@ describe('plan meta usage summary', () => {
 
     const metaLines = getPlanMetaText();
     expect(metaLines.some((line) => line === 'Hard cap breached by 1.2kW')).toBe(true);
-    expect(metaLines.some((line) => line === 'Hard-cap threshold 6.0kW')).toBe(true);
+    expect(metaLines.some((line) => line === 'Shortfall threshold 6.0kW (hourly budget-derived)')).toBe(true);
     expect(metaLines.some((line) => line === '2.4kW over soft limit')).toBe(false);
   });
 
@@ -254,7 +255,8 @@ describe('plan meta usage summary', () => {
         softLimitKw: 4.8,
         headroomKw: -0.4,
         capacityShortfall: false,
-        shortfallThresholdKw: 6,
+        shortfallBudgetThresholdKw: 8.5,
+        shortfallBudgetHeadroomKw: 3.3,
         hardCapHeadroomKw: 0.8,
       },
       devices: [],
@@ -263,6 +265,7 @@ describe('plan meta usage summary', () => {
     const metaLines = getPlanMetaText();
     expect(metaLines.some((line) => line === '0.4kW over soft limit')).toBe(true);
     expect(metaLines.some((line) => line === '0.8kW before hard cap')).toBe(true);
+    expect(metaLines.some((line) => line === 'Shortfall-threshold headroom 3.3kW')).toBe(true);
   });
 
   it('shows hard-cap breach text before shortfall state is entered', async () => {
@@ -272,7 +275,8 @@ describe('plan meta usage summary', () => {
         softLimitKw: 4.8,
         headroomKw: -2.6,
         capacityShortfall: false,
-        shortfallThresholdKw: 4.8,
+        shortfallBudgetThresholdKw: 4.8,
+        shortfallBudgetHeadroomKw: -2.6,
         hardCapHeadroomKw: -2.6,
       },
       devices: [],
@@ -280,7 +284,7 @@ describe('plan meta usage summary', () => {
 
     const metaLines = getPlanMetaText();
     expect(metaLines.some((line) => line === 'Hard cap breached by 2.6kW')).toBe(true);
-    expect(metaLines.some((line) => line === 'Hard-cap threshold 4.8kW')).toBe(true);
+    expect(metaLines.some((line) => line === 'Shortfall threshold 4.8kW (hourly budget-derived)')).toBe(true);
     expect(metaLines.some((line) => line === '2.6kW over soft limit')).toBe(false);
   });
 });

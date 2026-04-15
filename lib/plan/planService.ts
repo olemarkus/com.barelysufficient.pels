@@ -44,11 +44,17 @@ const buildPlanHeadroomLogFields = (plan: DevicePlan | null): Record<string, num
   if (!meta) return {};
   const softHeadroomKw = typeof meta.headroomKw === 'number' ? meta.headroomKw : null;
   const hardCapHeadroomKw = typeof meta.hardCapHeadroomKw === 'number' ? meta.hardCapHeadroomKw : null;
+  const shortfallBudgetHeadroomKw = typeof meta.shortfallBudgetHeadroomKw === 'number'
+    ? meta.shortfallBudgetHeadroomKw
+    : null;
   return {
     totalKw: typeof meta.totalKw === 'number' ? meta.totalKw : null,
     softLimitKw: typeof meta.softLimitKw === 'number' ? meta.softLimitKw : null,
     softHeadroomKw,
-    shortfallThresholdKw: typeof meta.shortfallThresholdKw === 'number' ? meta.shortfallThresholdKw : null,
+    shortfallBudgetThresholdKw: typeof meta.shortfallBudgetThresholdKw === 'number'
+      ? meta.shortfallBudgetThresholdKw
+      : null,
+    shortfallBudgetHeadroomKw,
     hardCapHeadroomKw,
     hardCapBreached: hardCapHeadroomKw !== null ? hardCapHeadroomKw < 0 : false,
     capacityShortfall: meta.capacityShortfall === true,
