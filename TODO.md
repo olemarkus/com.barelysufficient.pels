@@ -86,23 +86,41 @@ file.
       model captured in `notes/starvation/README.md`.
       Files: diagnostics model/service, plan snapshot/contracts/UI, flow cards, insights.
 
+## P1 Simplification follow-ups
+
+- [ ] Replace the over-specified `planActivationBackoff.ts` state machine with a simple
+      exponential timer model and keep the same public diagnostics surface.
+      Why P1: low-risk deletion of complexity, and it shrinks the restore gate surface for later
+      cleanup.
+      Files: `lib/plan/planActivationBackoff.ts`, restore/shedding tests.
+- [ ] Separate decision codes from display strings in `planReasons.ts`, then fold the
+      one-consumer helper back into the main decision file.
+      Why P1: restore/shed behavior is harder to reason about than it should be because control
+      flow and string building are interleaved.
+      Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonHelpers.ts`.
+- [ ] Move `planServiceInternals.ts` types to a stable owner and extract the snapshot-write path
+      out of `planService.ts` so rebuild orchestration stops carrying persistence plumbing.
+      Why P1: `planService.ts` mixes rebuilds, timers, throttled settings writes, and metrics in
+      one place even though snapshot persistence is a separate concern.
+      Files: `lib/plan/planService.ts`, `lib/plan/planServiceInternals.ts`,
+      `lib/plan/planTypes.ts`.
+- [ ] Collapse `app.ts` wiring accumulation by extracting snapshot-refresh / Homey Energy polling
+      coordination and removing trivial pass-through delegates where services can be passed
+      directly.
+      Why P1: the main app class is now mostly lifecycle plus timers plus wrappers, which makes
+      debugging control flow more expensive than it needs to be.
+      Files: `app.ts`, `lib/app/**`.
+- [ ] Split `packages/settings-ui/src/ui/deviceDetail.ts` by responsibility and centralize the
+      repeated setting-write / refresh / error-handling flow.
+      Why P1: the device detail panel mixes render logic, stepped-load draft state, diagnostics
+      refresh, and repeated `setSetting(...)` save paths in one 900+ line file.
+      Files: `packages/settings-ui/src/ui/deviceDetail.ts`, related device-detail helpers/tests.
+
 ## P2 Simplification and cleanup
 
-- [ ] Replace the over-specified `planActivationBackoff.ts` state machine with a simpler
-      exponential timer model.
-      Files: `lib/plan/planActivationBackoff.ts`, restore/shedding tests.
-- [ ] Separate decision logic from reason-string presentation in `planReasons.ts`, then fold the
-      remaining one-consumer helper back into the main file.
-      Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonHelpers.ts`.
-- [ ] Move `planServiceInternals.ts` types to a better-owned location and trim the remaining
-      plan-service plumbing indirection.
-      Files: `lib/plan/planService.ts`, `lib/plan/planServiceInternals.ts`, `lib/plan/planTypes.ts`.
 - [ ] Split `planExecutor.ts` by control type once the shared behavior is stable enough that the
       split reduces cognitive load instead of hiding bugs.
       Files: `lib/plan/planExecutor.ts`.
-- [ ] Extract the cohesive `app.ts` groups that are still just wiring accumulation: snapshot
-      refresh management, Homey Energy polling, and stepped-load helper logic.
-      Files: `app.ts`, `lib/app/**`.
 - [ ] Split the remaining large `deviceManager.ts` internals only where there is a real subsystem
       boundary: parsing, observation tracking, and binary settle management.
       Files: `lib/core/deviceManager.ts`.
