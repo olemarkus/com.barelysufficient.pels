@@ -1,7 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
 import { isSteppedLoadDevice } from './planSteppedLoad';
-import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
 import {
   PENDING_RESTORE_CONFIRMED_FRACTION,
   PENDING_RESTORE_WINDOW_MS,
@@ -10,6 +9,7 @@ import {
 } from './planConstants';
 import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from './planRestoreAdmission';
 import { buildRestoreHeadroomReason } from './planReasonStrings';
+import { resolveRestorePower as resolveSharedRestorePower } from './planPowerResolution';
 
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
@@ -122,64 +122,13 @@ export function computeRestoreBufferKw(devPower: number): number {
 
 export type RestorePowerSource = 'stepped' | 'planning' | 'expected' | 'measured' | 'configured' | 'fallback';
 
-type RestorePowerCandidate = {
-  source: Exclude<RestorePowerSource, 'stepped' | 'fallback'>;
-  value: number | undefined;
-};
-
 export function resolveRestorePowerSource(dev: DevicePlanDevice): RestorePowerSource {
   if (isSteppedLoadDevice(dev) && dev.steppedLoadProfile) return 'stepped';
-
-  const candidates: RestorePowerCandidate[] = [
-    { source: 'planning', value: dev.planningPowerKw },
-    { source: 'expected', value: dev.expectedPowerKw },
-    { source: 'measured', value: dev.measuredPowerKw },
-    { source: 'configured', value: dev.powerKw },
-  ];
-
-  let best: { source: Exclude<RestorePowerSource, 'stepped' | 'fallback'>; value: number } | null = null;
-  for (const candidate of candidates) {
-    const value = candidate.value;
-    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue;
-    if (best === null || value > best.value) {
-      best = { source: candidate.source, value };
-    }
-  }
-
-  return best?.source ?? 'fallback';
+  return resolveSharedRestorePower(dev).source as RestorePowerSource;
 }
 
 export function estimateRestorePower(dev: DevicePlanDevice): number {
-  const steppedPower = resolveSteppedRestorePower(dev);
-  if (steppedPower !== null) return steppedPower;
-
-  // Use the highest known demand across sources. Restore admission and pending-restore
-  // reservation should bias toward over-reserving rather than underestimating a device
-  // that has recently shown a higher draw than its configured/planned target suggests.
-  const candidates = [
-    dev.planningPowerKw,
-    dev.expectedPowerKw,
-    dev.measuredPowerKw,
-    dev.powerKw,
-  ].filter((value): value is number => typeof value === 'number' && value > 0);
-
-  if (candidates.length === 0) return 1;
-  return Math.max(...candidates);
-}
-
-function resolveSteppedRestorePower(dev: DevicePlanDevice): number | null {
-  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
-
-  if (dev.currentState !== 'off' && typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) {
-    return dev.planningPowerKw;
-  }
-
-  // For stepped devices that are off, or on with zero planning power, use the
-  // lowest non-zero step as the conservative re-entry estimate.
-  const restoreStep = getSteppedLoadRestoreStep(dev.steppedLoadProfile);
-  if (restoreStep && restoreStep.planningPowerW > 0) return restoreStep.planningPowerW / 1000;
-
-  return null;
+  return resolveSharedRestorePower(dev).powerKw;
 }
 
 /**

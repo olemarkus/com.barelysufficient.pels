@@ -16,4 +16,9 @@ describe('resolveCandidatePower', () => {
   it('ignores negative expected and configured power and uses fallback', () => {
     expect(resolveCandidatePower({ expectedPowerKw: -1, powerKw: -2 })).toBe(1);
   });
+
+  it('keeps the same preference order across non-measured power sources', () => {
+    expect(resolveCandidatePower({ expectedPowerKw: 1.4, planningPowerKw: 1.8, powerKw: 2.2 }))
+      .toBeCloseTo(1.4, 6);
+  });
 });

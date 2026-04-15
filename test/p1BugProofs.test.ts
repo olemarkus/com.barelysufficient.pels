@@ -210,7 +210,7 @@ describe('P1 bug proofs', () => {
     expect(getSteppedRestoreCandidates(devices)).toHaveLength(0);
   });
 
-  it.fails('uses the same controlled/uncontrolled split in planning and power tracking for stepped off-step devices', async () => {
+  it('uses the same controlled/uncontrolled split in planning and power tracking for stepped off-step devices', async () => {
     let tracker = {};
     const rawDevice = steppedInputDevice({
       id: 'dev-step',

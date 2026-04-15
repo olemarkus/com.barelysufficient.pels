@@ -339,6 +339,18 @@ describe('resolveRestorePowerSource', () => {
   it('returns fallback when no power fields are set', () => {
     expect(resolveRestorePowerSource(buildPlanDevice({}))).toBe('fallback');
   });
+
+  it('keeps stepped restore power aligned with the stepped restore helper', () => {
+    const stepped = steppedPlanDevice({
+      currentState: 'off',
+      selectedStepId: 'off',
+      planningPowerKw: 0,
+      measuredPowerKw: 0,
+    });
+
+    expect(resolveRestorePowerSource(stepped)).toBe('stepped');
+    expect(estimateRestorePower(stepped)).toBe(1.25);
+  });
 });
 
 describe('estimateRestorePower vs resolveCandidatePower asymmetry', () => {

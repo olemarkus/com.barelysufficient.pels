@@ -401,8 +401,8 @@ describe('Device plan snapshot', () => {
         deviceId: 'dev-ctrl',
         deltaKw: 1.6,
         controllable: true,
-        measuredExceedsExpectedKw: 1.5,
         expectedByPreviousPlan: true,
+        newPowerSource: 'measured',
       }),
       expect.objectContaining({
         deviceId: 'dev-pending',
@@ -1193,13 +1193,13 @@ describe('Device plan snapshot', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
-    expect(devPlan?.reason).toMatch(/^headroom cooldown \(\d+s remaining; usage 6\.00 -> 3\.50kW\)$/);
+    expect(devPlan?.reason).toMatch(/^headroom cooldown \(\d+s remaining; usage 3\.50 -> 1\.19kW\)$/);
     expect(devPlan?.headroomCardBlocked).toBe(true);
     expect(devPlan?.headroomCardCooldownSec).toBeGreaterThanOrEqual(55);
     expect(devPlan?.headroomCardCooldownSec).toBeLessThanOrEqual(60);
     expect(devPlan?.headroomCardCooldownSource).toBe('step_down');
-    expect(devPlan?.headroomCardCooldownFromKw).toBe(6);
-    expect(devPlan?.headroomCardCooldownToKw).toBe(3.5);
+    expect(devPlan?.headroomCardCooldownFromKw).toBe(3.5);
+    expect(devPlan?.headroomCardCooldownToKw).toBeCloseTo(1.19, 2);
   });
 
   it('marks off devices as staying off during cooldown with a short reason', async () => {

@@ -10,7 +10,7 @@ import { buildSheddingPlan, type SheddingPlan } from './planShedding';
 import { buildPlanCapacityStateSummary, normalizePlanReason } from './planLogging';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
-import { sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from './planUsage';
+import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from './planUsage';
 import {
   formatHeadroomCooldownReason,
   resolveHeadroomCardCooldown,
@@ -597,10 +597,10 @@ export class PlanBuilder {
     planDevices: DevicePlanDevice[],
     dailyBudgetSnapshot: DailyBudgetUiPayload | null,
   ): DevicePlan['meta'] {
-    const controlledKw = sumControlledUsageKw(planDevices);
-    const uncontrolledKw = typeof context.total === 'number' && controlledKw !== null
-      ? Math.max(0, context.total - controlledKw)
-      : undefined;
+    const { controlledKw, uncontrolledKw } = splitControlledUsageKw({
+      devices: planDevices,
+      totalKw: context.total,
+    });
     const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
     const shortfallMeta = buildShortfallMeta(this.capacityGuard, context.total, this.capacitySettings.limitKw);
     return {
@@ -616,7 +616,7 @@ export class PlanBuilder {
       budgetKWh: context.budgetKWh,
       minutesRemaining: context.minutesRemaining,
       controlledKw: controlledKw ?? undefined,
-      uncontrolledKw,
+      uncontrolledKw: uncontrolledKw ?? undefined,
       hourControlledKWh: getCurrentHourKWh(this.powerTracker.controlledBuckets),
       hourUncontrolledKWh: getCurrentHourKWh(this.powerTracker.uncontrolledBuckets),
       dailyBudgetRemainingKWh: today?.state.remainingKWh ?? 0,
