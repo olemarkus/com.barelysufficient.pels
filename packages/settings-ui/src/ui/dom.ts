@@ -133,6 +133,7 @@ export const deviceDetailClose = qs('#device-detail-close') as HTMLButtonElement
 export const deviceDetailManaged = document.querySelector('#device-detail-managed') as HTMLInputElement;
 export const deviceDetailControllable = document.querySelector('#device-detail-controllable') as HTMLInputElement;
 export const deviceDetailPriceOpt = document.querySelector('#device-detail-price-opt') as HTMLInputElement;
+export const deviceDetailBudgetExempt = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement;
 export const deviceDetailControlModelRow = qs('#device-detail-control-model-row');
 export const deviceDetailControlModel = document.querySelector('#device-detail-control-model') as HTMLSelectElement;
 export const deviceDetailModes = qs('#device-detail-modes');

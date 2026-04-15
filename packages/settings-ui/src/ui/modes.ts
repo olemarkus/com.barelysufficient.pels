@@ -16,11 +16,15 @@ import {
   renameModeButton,
 } from './dom.ts';
 import { getSetting, setSetting } from './homey.ts';
-import { OPERATING_MODE_SETTING } from '../../../contracts/src/settingsKeys.ts';
+import {
+  BUDGET_EXEMPT_DEVICES,
+  OPERATING_MODE_SETTING,
+} from '../../../contracts/src/settingsKeys.ts';
 import { showToast, showToastError } from './toast.ts';
 import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
+import { debouncedSetSetting } from './utils.ts';
 
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
@@ -42,6 +46,7 @@ export const loadModeAndPriorities = async () => {
   const targets = await getSetting('mode_device_targets');
   const controllables = await getSetting('controllable_devices');
   const managed = await getSetting('managed_devices');
+  const budgetExempt = await getSetting(BUDGET_EXEMPT_DEVICES);
   const aliases = await getSetting('mode_aliases');
   state.activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
   state.editingMode = state.activeMode; // Start editing the active mode
@@ -56,6 +61,9 @@ export const loadModeAndPriorities = async () => {
     : {};
   state.managedMap = managed && typeof managed === 'object'
     ? managed as Record<string, boolean>
+    : {};
+  state.budgetExemptMap = budgetExempt && typeof budgetExempt === 'object'
+    ? budgetExempt as Record<string, boolean>
     : {};
   state.modeAliases = aliases && typeof aliases === 'object'
     ? Object.entries(aliases).reduce<Record<string, string>>((acc, [k, v]) => {
@@ -320,7 +328,7 @@ export const applyTargetChange = async (deviceId: string, rawValue: string) => {
     const normalizedValue = device ? normalizeDeviceTargetValue(device, val) : val;
     if (!state.modeTargets[mode]) state.modeTargets[mode] = {};
     state.modeTargets[mode][deviceId] = normalizedValue;
-    await setSetting('mode_device_targets', state.modeTargets);
+    await debouncedSetSetting('mode_device_targets', () => state.modeTargets);
   } catch (error) {
     await logSettingsError('Failed to update mode target', error, 'applyTargetChange');
     await showToastError(error as Error, 'Failed to update mode target.');

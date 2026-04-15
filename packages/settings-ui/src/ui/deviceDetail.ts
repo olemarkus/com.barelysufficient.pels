@@ -13,6 +13,7 @@ import {
   deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
+  deviceDetailBudgetExempt,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
   deviceDetailDeltaSection,
@@ -54,6 +55,7 @@ import {
   NON_ONOFF_TEMPERATURE_SHED_FLOOR_C,
 } from '../../../shared-domain/src/utils/airtreatmentConstants.ts';
 import {
+  BUDGET_EXEMPT_DEVICES,
   OVERSHOOT_BEHAVIORS,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
@@ -171,6 +173,12 @@ const resolveShedTemperatureValue = (params: {
 
 const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = name;
+};
+
+const setDeviceDetailBudgetExemptState = (deviceId: string) => {
+  if (!deviceDetailBudgetExempt) return;
+  deviceDetailBudgetExempt.checked = state.budgetExemptMap[deviceId] === true;
+  deviceDetailBudgetExempt.disabled = false;
 };
 
 const attachDraftSyncOnChange = (...inputs: HTMLInputElement[]) => {
@@ -312,6 +320,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     deviceDetailPriceOpt.checked = supportsTemperature && isManaged && priceConfig?.enabled === true;
     deviceDetailPriceOpt.disabled = !supportsTemperature || !isManaged;
   }
+  setDeviceDetailBudgetExemptState(deviceId);
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
     const effectiveControlModel = device ? getEffectiveControlModel(device) : 'temperature_target';
     deviceDetailControlModel.value = effectiveControlModel === 'stepped_load' ? 'stepped_load' : 'temperature_target';
@@ -775,6 +784,24 @@ const initDeviceDetailPriceOptHandlers = () => {
   deviceDetailExpensiveDelta?.addEventListener('change', autoSavePriceOpt);
 };
 
+const initDeviceDetailBudgetExemptHandler = () => {
+  deviceDetailBudgetExempt?.addEventListener('change', async () => {
+    const deviceId = currentDetailDeviceId;
+    if (!deviceId) return;
+    state.budgetExemptMap[deviceId] = deviceDetailBudgetExempt.checked;
+    try {
+      await setSetting(BUDGET_EXEMPT_DEVICES, state.budgetExemptMap);
+      renderDevices(state.latestDevices);
+      renderPriorities(state.latestDevices);
+      renderPriceOptimization(state.latestDevices);
+      refreshOpenDeviceDetail();
+    } catch (error) {
+      await logSettingsError('Failed to update budget exempt device', error, 'device detail');
+      await showToastError(error, 'Failed to update budget exempt device.');
+    }
+  });
+};
+
 const initDeviceDetailShedHandlers = () => {
   const autoSaveShedBehavior = async () => {
     updateShedFieldVisibility();
@@ -898,6 +925,7 @@ export const initDeviceDetailHandlers = () => {
   initDeviceDetailControllableHandler();
   initDeviceDetailControlModelHandler();
   initDeviceDetailPriceOptHandlers();
+  initDeviceDetailBudgetExemptHandler();
   initDeviceDetailShedHandlers();
   initDeviceDetailSteppedHandlers();
   initDeviceDetailDiagnosticsHandler();
