@@ -1196,7 +1196,7 @@ export class PlanExecutor {
           continue;
         }
         if (dev.controllable === false) {
-          if (await this.applySteppedLoadCommand(dev, mode)) deviceWriteCount += 1;
+          await this.applySteppedLoadCommand(dev, mode);
           if (await this.applyUncontrolledRestore(dev, snapshot)) deviceWriteCount += 1;
           if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
@@ -1204,18 +1204,15 @@ export class PlanExecutor {
         if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && dev.currentState === 'off') {
           const onoffViolated = snapshot?.currentOn === false;
           const stepRestoreReady = await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
-          const steppedCommandWrote = stepRestoreReady
-            ? await this.applySteppedLoadCommand(dev, mode)
-            : false;
+          if (stepRestoreReady) await this.applySteppedLoadCommand(dev, mode);
           if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
-          if (steppedCommandWrote) deviceWriteCount += 1;
           if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
         }
         if (isSteppedLoadDevice(dev)) {
-          if (await this.applySteppedLoadCommand(dev, mode)) deviceWriteCount += 1;
+          await this.applySteppedLoadCommand(dev, mode);
           if (await this.applySteppedLoadShedOff(dev, snapshot, mode)) deviceWriteCount += 1;
-          if (await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices)) deviceWriteCount += 1;
+          await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
           if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
         }

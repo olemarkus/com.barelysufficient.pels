@@ -631,7 +631,7 @@ describe('PlanExecutor stepped loads', () => {
   it('triggers desired stepped-load change and records the issued command', async () => {
     const { executor, deps, deviceManager, desiredSteppedTrigger, state } = buildExecutor();
 
-    await executor.applyPlanActions(steppedPlan());
+    await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual({ deviceWriteCount: 0 });
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'max',
