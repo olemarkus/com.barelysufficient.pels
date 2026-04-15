@@ -37,4 +37,13 @@ describe('sumControlledUsageKw', () => {
 
     expect(result).toBeCloseTo(0.95, 6);
   });
+
+  it('preserves measured usage for shed devices so live draw is still counted', () => {
+    const result = sumControlledUsageKw([
+      { controllable: true, plannedState: 'shed', measuredPowerKw: 0.4, expectedPowerKw: 1.2 },
+      { controllable: true, measuredPowerKw: 0.6 },
+    ]);
+
+    expect(result).toBeCloseTo(1.0, 6);
+  });
 });

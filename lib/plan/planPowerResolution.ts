@@ -4,6 +4,8 @@ import { isSteppedLoadDevice } from './planSteppedLoad';
 
 type PowerSource = 'measured' | 'expected' | 'planning' | 'configured' | 'stepped' | 'off' | 'fallback';
 
+export type RestorePowerSource = Exclude<PowerSource, 'off'>;
+
 type PowerCandidate = {
   measuredPowerKw?: number;
   expectedPowerKw?: number;
@@ -74,7 +76,7 @@ function resolveHighestPowerSource(
   return best;
 }
 
-export function resolveCandidatePower(device: PowerCandidate): number | null {
+export function resolveCandidatePower(device: PowerCandidate): number {
   return resolvePreferredPowerSource(device, true)?.value ?? 1;
 }
 
@@ -89,7 +91,7 @@ export function resolveLiveUsagePowerKw(device: LiveUsageCandidate): number | nu
   return null;
 }
 
-export function resolveRestorePower(device: RestorePowerCandidate): { powerKw: number; source: PowerSource } {
+export function resolveRestorePower(device: RestorePowerCandidate): { powerKw: number; source: RestorePowerSource } {
   const steppedPower = resolveSteppedRestorePower(device);
   if (steppedPower !== null) return steppedPower;
 
@@ -103,7 +105,7 @@ export function resolveRestorePower(device: RestorePowerCandidate): { powerKw: n
 
 function resolveSteppedRestorePower(
   device: RestorePowerCandidate,
-): { powerKw: number; source: PowerSource } | null {
+): { powerKw: number; source: RestorePowerSource } | null {
   if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile) return null;
 
   if (device.currentState !== 'off' && typeof device.planningPowerKw === 'number' && device.planningPowerKw > 0) {

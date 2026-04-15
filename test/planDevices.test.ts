@@ -704,7 +704,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     expect(planDevice.expectedPowerKw).toBe(0.7);
   });
 
-  it('falls back to 1kW when all configured power fields are non-finite', () => {
+  it('leaves expectedPowerKw undefined when all configured power fields are non-finite', () => {
     const device = buildPlanInputDevice({
       id: 'dev-1',
       name: 'Broken heater',

@@ -8,10 +8,15 @@ type UsageDevice = {
   measuredPowerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
+  powerKw?: number;
 };
 
 const resolveUsageKw = (dev: UsageDevice): number | null => {
-  if (dev.plannedState === 'shed') return null;
+  if (dev.plannedState === 'shed') {
+    return typeof dev.measuredPowerKw === 'number' && Number.isFinite(dev.measuredPowerKw)
+      ? Math.max(0, dev.measuredPowerKw)
+      : null;
+  }
   return resolveLiveUsagePowerKw(dev);
 };
 

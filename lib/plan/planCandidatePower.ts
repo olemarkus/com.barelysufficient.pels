@@ -7,6 +7,6 @@ export type PowerCandidate = {
   powerKw?: number;
 };
 
-export function resolveCandidatePower(device: PowerCandidate): number | null {
+export function resolveCandidatePower(device: PowerCandidate): number {
   return resolveSharedCandidatePower(device);
 }
