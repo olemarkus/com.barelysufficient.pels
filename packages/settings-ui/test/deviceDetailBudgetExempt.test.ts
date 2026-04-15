@@ -120,8 +120,9 @@ describe('device detail budget exemption', () => {
 
     expect(homey.set).toHaveBeenCalledWith(
       'budget_exempt_devices',
-      { 'heater-1': false },
+      {},
       expect.any(Function),
     );
+    expect(state.budgetExemptMap['heater-1']).toBeUndefined();
   });
 });
