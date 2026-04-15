@@ -81,7 +81,7 @@ export const recordPlanRebuildTrace = (
       metaChanged: trace.metaChanged === true,
       isDryRun: trace.isDryRun === true,
       appliedActions: trace.appliedActions === true,
-      deviceWriteCount: Math.max(0, Math.round(trace.deviceWriteCount)),
+      deviceWriteCount: roundMs(trace.deviceWriteCount),
       hadShedding: trace.hadShedding === true,
       failed: trace.failed === true,
     },
