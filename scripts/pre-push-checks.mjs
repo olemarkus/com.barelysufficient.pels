@@ -103,6 +103,15 @@ const getChangedFilesForRange = (range) => {
     .filter(Boolean);
 };
 
+const isAncestor = (ancestorSha, descendantSha) => {
+  if (!ancestorSha || ZERO_SHA_PATTERN.test(ancestorSha)) return false;
+  const result = spawnSync('git', ['merge-base', '--is-ancestor', ancestorSha, descendantSha], {
+    env: process.env,
+    stdio: 'ignore',
+  });
+  return result.status === 0;
+};
+
 const getChangedFilesForNewRemote = (localSha) => {
   const baseRef = getDefaultBaseRef();
   const mergeBase = tryGit('merge-base', localSha, baseRef);
@@ -121,6 +130,10 @@ const getChangedFilesForPush = ({ localSha, remoteSha }) => {
   }
 
   if (!remoteSha || ZERO_SHA_PATTERN.test(remoteSha)) {
+    return getChangedFilesForNewRemote(localSha);
+  }
+
+  if (!isAncestor(remoteSha, localSha)) {
     return getChangedFilesForNewRemote(localSha);
   }
 

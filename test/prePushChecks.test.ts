@@ -23,6 +23,12 @@ case "$cmd" in
     printf '%s\\n' "\${FAKE_BASE_REF:-origin/main}"
     ;;
   merge-base)
+    if [ "$1" = "--is-ancestor" ]; then
+      if [ "\${FAKE_IS_ANCESTOR:-1}" = "1" ]; then
+        exit 0
+      fi
+      exit 1
+    fi
     if [ "\${FAKE_MERGE_BASE_MODE:-value}" = "fail" ]; then
       exit 1
     fi
@@ -62,7 +68,7 @@ esac
   return { dir, logPath };
 };
 
-const runPrePush = (envOverrides: NodeJS.ProcessEnv) => {
+const runPrePush = (envOverrides: NodeJS.ProcessEnv, input = 'refs/heads/fix local-sha refs/heads/fix 0000000000000000000000000000000000000000\n') => {
   const result = spawnSync(
     process.execPath,
     [scriptPath],
@@ -74,7 +80,7 @@ const runPrePush = (envOverrides: NodeJS.ProcessEnv) => {
         PELS_PRE_PUSH_DRY_RUN: '1',
         ...envOverrides,
       },
-      input: 'refs/heads/fix local-sha refs/heads/fix 0000000000000000000000000000000000000000\n',
+      input,
     },
   );
 
@@ -137,6 +143,25 @@ describe('pre-push checks script', () => {
     expect(result.stdout).toContain('pre-push: running npm run ci:test:playwright:quick');
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
     expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
+  });
+
+  it('treats a rewritten branch like a new remote diff and rechecks the full branch content', () => {
+    const { dir, logPath } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: logPath,
+      FAKE_IS_ANCESTOR: '0',
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'packages/contracts/src/settingsUiApi.ts',
+    }, 'refs/heads/fix local-sha refs/heads/fix remote-sha\n');
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npm run ci:test:settings-ui');
+    expect(result.stdout).toContain('pre-push: running npm run ci:test:playwright:quick');
+    expect(result.stdout).toContain('pre-push: running npm run ci:checks');
+    expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
+    expect(fs.readFileSync(logPath, 'utf8')).toContain('merge-base --is-ancestor remote-sha local-sha');
   });
 
   it('runs runtime checks and validation for Homey runtime packaging changes', () => {

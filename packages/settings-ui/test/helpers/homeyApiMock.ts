@@ -1,7 +1,6 @@
 import type { Mock } from 'vitest';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
-  SETTINGS_UI_DEVICE_ACTION_LOG_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_LOG_PATH,
@@ -194,7 +193,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_LOG_PATH)]: () => async () => ({ ok: true }),
-  [buildRouteKey('POST', SETTINGS_UI_DEVICE_ACTION_LOG_PATH)]: () => async ({ body }) => ({
+  [buildRouteKey('POST', '/ui_device_action_log')]: () => async ({ body }) => ({
     deviceId: (body as { deviceId?: string } | undefined)?.deviceId ?? '',
     entries: [],
   }),
