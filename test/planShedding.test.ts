@@ -1,9 +1,11 @@
 import CapacityGuard from '../lib/core/capacityGuard';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PlanContext } from '../lib/plan/planContext';
+import { SOFT_OVERSHOOT_PERSIST_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 import { buildSheddingPlan } from '../lib/plan/planShedding';
+import { resolveSoftOvershootDecision } from '../lib/plan/planOvershoot';
 
 const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
   id: 'dev',
@@ -37,6 +39,166 @@ describe('buildSheddingPlan', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('does not shed for a tiny negative headroom until it persists', async () => {
+    const state = createPlanEngineState();
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+    } as unknown as CapacityGuard;
+
+    const context = buildContext({
+      devices: [
+        buildDevice({
+          id: 'dev-1',
+          name: 'Heater',
+          expectedPowerKw: 1.2,
+          currentOn: true,
+          controllable: true,
+        }),
+      ],
+      total: 3.306,
+      softLimit: 3.296028097172276,
+      capacitySoftLimit: 5,
+      headroomRaw: -0.009971902827723866,
+      headroom: -0.009971902827723866,
+      softLimitSource: 'capacity',
+    });
+
+    const overshootDecision = resolveSoftOvershootDecision({
+      headroomKw: context.headroom,
+      state,
+      nowTs: Date.now(),
+    });
+    state.softOvershootPendingSinceMs = overshootDecision.pendingSinceMs;
+
+    const result = await buildSheddingPlan(
+      context,
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+      overshootDecision.actionable,
+    );
+
+    expect(result.shedSet.size).toBe(0);
+    expect(result.sheddingActive).toBe(false);
+    expect(capacityGuard.setSheddingActive).not.toHaveBeenCalledWith(true);
+  });
+
+  it('sheds after a tiny negative headroom persists past the soft overshoot dwell time', async () => {
+    const state = createPlanEngineState();
+    state.softOvershootPendingSinceMs = Date.now() - SOFT_OVERSHOOT_PERSIST_MS;
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+    } as unknown as CapacityGuard;
+
+    const context = buildContext({
+      devices: [
+        buildDevice({
+          id: 'dev-1',
+          name: 'Heater',
+          expectedPowerKw: 1.2,
+          currentOn: true,
+          controllable: true,
+        }),
+      ],
+      total: 3.306,
+      softLimit: 3.296028097172276,
+      capacitySoftLimit: 5,
+      headroomRaw: -0.009971902827723866,
+      headroom: -0.009971902827723866,
+      softLimitSource: 'capacity',
+    });
+
+    const overshootDecision = resolveSoftOvershootDecision({
+      headroomKw: context.headroom,
+      state,
+      nowTs: Date.now(),
+    });
+
+    const result = await buildSheddingPlan(
+      context,
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+      overshootDecision.actionable,
+    );
+
+    expect(overshootDecision.actionable).toBe(true);
+    expect(result.shedSet.has('dev-1')).toBe(true);
+    expect(result.sheddingActive).toBe(true);
+  });
+
+  it('still enters hard-cap shortfall immediately when above the shortfall threshold', async () => {
+    const state = createPlanEngineState();
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(true),
+      getShortfallThreshold: vi.fn().mockReturnValue(5),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+    } as unknown as CapacityGuard;
+
+    const context = buildContext({
+      devices: [],
+      total: 5.2,
+      softLimit: 5.19,
+      capacitySoftLimit: 5.19,
+      headroomRaw: -0.01,
+      headroom: -0.01,
+      softLimitSource: 'capacity',
+    });
+
+    const overshootDecision = resolveSoftOvershootDecision({
+      headroomKw: context.headroom,
+      state,
+      nowTs: Date.now(),
+    });
+
+    const result = await buildSheddingPlan(
+      context,
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+      overshootDecision.actionable,
+    );
+
+    expect(overshootDecision.actionable).toBe(false);
+    expect(result.shedSet.size).toBe(0);
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
+    const [hasCandidates, deficitKw] = (capacityGuard.checkShortfall as unknown as vi.Mock).mock.calls[0];
+    expect(hasCandidates).toBe(false);
+    expect(deficitKw).toBeCloseTo(0.2, 6);
+    expect(result.guardInShortfall).toBe(true);
   });
 
   it('deprioritizes recently restored devices when same-priority alternatives exist', async () => {

@@ -198,6 +198,7 @@ export function isCapacityBreached(total: number | null, capacitySoftLimit: numb
 
 export async function updateGuardState(params: {
   headroom: number | null;
+  overshootActionable: boolean;
   capacitySoftLimit: number;
   total: number | null;
   devices: PlanInputDevice[];
@@ -208,6 +209,7 @@ export async function updateGuardState(params: {
 }): Promise<{ sheddingActive: boolean }> {
   const {
     headroom,
+    overshootActionable,
     capacitySoftLimit,
     total,
     devices,
@@ -216,18 +218,19 @@ export async function updateGuardState(params: {
     getShedBehavior,
     capacityGuard,
   } = params;
-  if (shouldActivateShedding(headroom, shedSet)) {
-    const remainingCandidates = countRemainingCandidates({
-      devices,
-      shedSet,
-      headroom,
-      limitSource: softLimitSource,
-      total,
-      capacitySoftLimit,
-      getShedBehavior,
-    });
-    const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
-    const deficitKw = computeShortfallDeficitKw(total, shortfallThreshold);
+  const remainingCandidates = countRemainingCandidates({
+    devices,
+    shedSet,
+    headroom,
+    limitSource: softLimitSource,
+    total,
+    capacitySoftLimit,
+    getShedBehavior,
+  });
+  const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
+  const deficitKw = computeShortfallDeficitKw(total, shortfallThreshold);
+
+  if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
     await capacityGuard?.setSheddingActive(true);
     await handleShortfallCheck({
       capacityGuard,
@@ -252,7 +255,20 @@ export async function updateGuardState(params: {
   if (canDisable) {
     await capacityGuard?.setSheddingActive(false, headroom);
   }
-  await capacityGuard?.checkShortfall(true, 0);
+  await handleShortfallCheck({
+    capacityGuard,
+    remaining: remainingCandidates,
+    deficitKw,
+    capacityStateSummary: maybeBuildShortfallCapacityStateSummary({
+      deficitKw,
+      devices,
+      shedSet,
+      total,
+      limitSource: softLimitSource,
+      capacitySoftLimit,
+      getShedBehavior,
+    }),
+  });
   const next = capacityGuard?.isSheddingActive() ?? current;
   return { sheddingActive: next };
 }

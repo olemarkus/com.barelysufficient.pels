@@ -72,6 +72,7 @@ export async function buildSheddingPlan(
   context: PlanContext,
   state: PlanEngineState,
   deps: SheddingDeps,
+  overshootActionable = context.headroom !== null && context.headroom < 0,
 ): Promise<SheddingPlan> {
   const {
     shedSet,
@@ -80,10 +81,11 @@ export async function buildSheddingPlan(
     temperatureShedTargets,
     updates,
     overshootStats,
-  } = planShedding(context, state, deps);
+  } = planShedding(context, state, deps, overshootActionable);
   const wasSheddingActive = deps.capacityGuard?.isSheddingActive() ?? false;
   const guardResult = await updateGuardState({
     headroom: context.headroom,
+    overshootActionable,
     capacitySoftLimit: context.capacitySoftLimit,
     total: context.total,
     devices: context.devices,
@@ -145,8 +147,9 @@ function planShedding(
   context: PlanContext,
   state: PlanEngineState,
   deps: SheddingDeps,
+  overshootActionable: boolean,
 ): PlanSheddingResult {
-  if (!shouldPlanShedding(context.headroom)) return emptySheddingResult();
+  if (!overshootActionable || !shouldPlanShedding(context.headroom)) return emptySheddingResult();
 
   const nowTs = Date.now();
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
