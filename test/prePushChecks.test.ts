@@ -145,6 +145,23 @@ describe('pre-push checks script', () => {
     expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
   });
 
+  it('fails clearly when local dependencies are missing', () => {
+    const { dir } = createFakeGitDir();
+    const missingNodeModulesDir = path.join(dir, 'missing-node-modules');
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      PELS_PRE_PUSH_DRY_RUN: '0',
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'app.ts',
+      PELS_NODE_MODULES_PATH: missingNodeModulesDir,
+    }, 'refs/heads/fix local-sha refs/heads/fix 0000000000000000000000000000000000000000\n');
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`pre-push: missing local dependencies at ${missingNodeModulesDir}. Run \`npm install\` before pushing.`);
+  });
+
   it('treats a rewritten branch like a new remote diff and rechecks the full branch content', () => {
     const { dir, logPath } = createFakeGitDir();
     const result = runPrePush({

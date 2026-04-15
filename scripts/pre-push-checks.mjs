@@ -1,10 +1,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import process from 'node:process';
+import path from 'node:path';
 
 const ZERO_SHA_PATTERN = /^0+$/;
 const DRY_RUN = process.env.PELS_PRE_PUSH_DRY_RUN === '1';
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+const repoNodeModulesPath = process.env.PELS_NODE_MODULES_PATH ?? path.resolve(process.cwd(), 'node_modules');
 
 const FULL_CI_PATHS = [
   '.github/workflows/',
@@ -144,17 +146,28 @@ const matchesAnyPath = (files, patterns) => files.some((file) => (
   patterns.some((pattern) => file === pattern || file.startsWith(pattern))
 ));
 
+const ensureLocalToolingInstalled = () => {
+  if (existsSync(repoNodeModulesPath)) return;
+  console.error(`pre-push: missing local dependencies at ${repoNodeModulesPath}. Run \`npm install\` before pushing.`);
+  process.exit(1);
+};
+
 const runCommand = (command, args) => {
   const rendered = `${command} ${args.join(' ')}`;
   console.log(`pre-push: running ${rendered}`);
   if (DRY_RUN) return;
 
+  ensureLocalToolingInstalled();
   const result = spawnSync(command, args, {
     env: process.env,
     stdio: 'inherit',
   });
 
   if (result.error) {
+    if (result.error.code === 'ENOENT') {
+      console.error(`pre-push: required executable missing for ${rendered}. Run \`npm install\` and retry.`);
+      process.exit(1);
+    }
     throw result.error;
   }
 

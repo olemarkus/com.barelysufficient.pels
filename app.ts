@@ -712,6 +712,42 @@ class PelsApp extends Homey.App {
       ...(params.metadata ? { metadata: params.metadata } : {}),
     });
   }
+  private resolveModeChangeTargetState(
+    previousTargets: Record<string, number>,
+    nextTargets: Record<string, number>,
+    deviceId: string,
+  ): {
+      previousTarget: number | null;
+      nextTarget: number | null;
+    } | null {
+    const previousTarget = previousTargets[deviceId];
+    const nextTarget = nextTargets[deviceId];
+    const hasPreviousTarget = Number.isFinite(previousTarget);
+    const hasNextTarget = Number.isFinite(nextTarget);
+    if (!hasPreviousTarget && !hasNextTarget) return null;
+    if (
+      hasPreviousTarget
+      && hasNextTarget
+      && Math.abs((previousTarget as number) - (nextTarget as number)) <= PelsApp.TARGET_CAUSE_EPSILON
+    ) {
+      return null;
+    }
+    return {
+      previousTarget: hasPreviousTarget ? (previousTarget as number) : null,
+      nextTarget: hasNextTarget ? (nextTarget as number) : null,
+    };
+  }
+  private updatePendingModeDrivenTargetCause(deviceId: string, nextTarget: number | null): void {
+    if (nextTarget === null) {
+      delete this.pendingModeDrivenTargetCauseByDevice[deviceId];
+      return;
+    }
+    const activePriceDelta = this.resolveActivePriceDelta(deviceId);
+    this.pendingModeDrivenTargetCauseByDevice[deviceId] = {
+      expectedTarget: nextTarget + (activePriceDelta ?? 0),
+      expiresAtMs: Date.now() + 60_000,
+    };
+  }
   private logModeChangeTriggers(previousMode: string, nextMode: string): void {
     const previousTargets = this.modeDeviceTargets[previousMode] ?? {};
     const nextTargets = this.modeDeviceTargets[nextMode] ?? {};
@@ -721,27 +757,9 @@ class PelsApp extends Homey.App {
     ]);
     for (const deviceId of deviceIds) {
       if (!this.resolveManagedState(deviceId)) continue;
-      const previousTarget = previousTargets[deviceId];
-      const nextTarget = nextTargets[deviceId];
-      const hasPreviousTarget = Number.isFinite(previousTarget);
-      const hasNextTarget = Number.isFinite(nextTarget);
-      if (!hasPreviousTarget && !hasNextTarget) continue;
-      if (
-        hasPreviousTarget
-        && hasNextTarget
-        && Math.abs((previousTarget as number) - (nextTarget as number)) <= PelsApp.TARGET_CAUSE_EPSILON
-      ) {
-        continue;
-      }
-      if (hasNextTarget) {
-        const activePriceDelta = this.resolveActivePriceDelta(deviceId);
-        this.pendingModeDrivenTargetCauseByDevice[deviceId] = {
-          expectedTarget: (nextTarget as number) + (activePriceDelta ?? 0),
-          expiresAtMs: Date.now() + 60_000,
-        };
-      } else {
-        delete this.pendingModeDrivenTargetCauseByDevice[deviceId];
-      }
+      const targetState = this.resolveModeChangeTargetState(previousTargets, nextTargets, deviceId);
+      if (!targetState) continue;
+      this.updatePendingModeDrivenTargetCause(deviceId, targetState.nextTarget);
       this.appendDeviceActionLog({
         deviceId,
         eventKind: 'trigger',
@@ -750,8 +768,8 @@ class PelsApp extends Homey.App {
         metadata: {
           previousMode,
           nextMode,
-          previousTarget: hasPreviousTarget ? previousTarget : null,
-          nextTarget: hasNextTarget ? nextTarget : null,
+          previousTarget: targetState.previousTarget,
+          nextTarget: targetState.nextTarget,
         },
       });
     }
