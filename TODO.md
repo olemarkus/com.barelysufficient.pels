@@ -20,7 +20,7 @@ file.
       post-actuation polling as the normal success path.
       Files: `lib/core/deviceManager.ts`, `lib/core/deviceManagerRuntime.ts`, `app.ts`,
       capability-write/reconcile tests.
-- [ ] Startup should converge in one clean actionful rebuild unless genuinely new information
+- [x] Startup should converge in one clean actionful rebuild unless genuinely new information
       arrives after the first pass.
       Files: startup helpers, `lib/plan/planService.ts`, startup orchestration tests.
 - [ ] Unify the power-resolution model used by shedding, restore admission, and live usage so the
@@ -37,7 +37,7 @@ file.
 - [ ] Pick one source of truth for the controlled vs uncontrolled power split. Planning and
       `PowerTracker` still derive it separately.
       Files: `lib/core/powerTracker.ts`, `lib/plan/planBuilder.ts`, `lib/plan/planUsage.ts`.
-- [ ] Avoid full plan rebuilds on every power sample. Power updates should normally refresh
+- [x] Avoid full plan rebuilds on every power sample. Power updates should normally refresh
       status/headroom and only trigger a full rebuild when a control boundary actually changed.
       Files: power update pipeline, rebuild scheduler, status/headroom path.
 

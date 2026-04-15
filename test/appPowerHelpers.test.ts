@@ -710,6 +710,73 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
+  it('does not bypass tight no-op backoff for repeated hard-cap breaches once shortfall is active', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now(),
+      lastRebuildPowerW: 9300,
+      lastSoftLimitKw: 9.5,
+      tightNoopStreak: 1,
+      backoffUntilMs: Date.now() + 15_000,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9300,
+      limitKw: 10,
+      softLimitKw: 9.5,
+      headroomKw: 0.2,
+      isInShortfall: true,
+      hardCapBreach: { breached: true, deficitKw: 0.1 },
+    });
+
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
+  it('does not bypass mitigation holdoff for repeated hard-cap breaches before shortfall is active', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now(),
+      lastRebuildPowerW: 9300,
+      lastSoftLimitKw: 9.5,
+      mitigationHoldoffUntilMs: Date.now() + 15_000,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 0,
+      maxIntervalMs: 1000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9300,
+      limitKw: 10,
+      softLimitKw: 9.5,
+      headroomKw: 0.2,
+      hardCapBreach: { breached: true, deficitKw: 0.1 },
+    });
+
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    expect(state.mitigationHoldoffUntilMs).toBe(Date.now() + 15_000);
+  });
+
   it('uses shortfall as the rebuild reason while shortfall is active', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 1000, lastRebuildPowerW: 9500, lastSoftLimitKw: 9 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
@@ -989,6 +1056,107 @@ describe('schedulePlanRebuildFromSignal', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.5 },
       capacityGuard: createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 9.6 }),
     });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('bypasses the stable interval and checks shortfall when the hard-cap threshold is breached', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9310, lastSoftLimitKw: 9.5 };
+    const onShortfall = vi.fn();
+    const capacityGuard = new CapacityGuard({
+      limitKw: 10,
+      softMarginKw: 0.5,
+      onShortfall,
+    });
+    capacityGuard.setSoftLimitProvider(() => 9.5);
+    capacityGuard.setShortfallThresholdProvider(() => 9.2);
+    capacityGuard.reportTotalPower(9.3);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9300,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(onShortfall).toHaveBeenCalledTimes(1);
+    expect(onShortfall.mock.calls[0]?.[0]).toBeCloseTo(0.1, 6);
+    expect(capacityGuard.isInShortfall()).toBe(true);
+  });
+
+  it('reschedules a pending stable timer when a hard-cap breach becomes urgent', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 5000, lastSoftLimitKw: 9.5 };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+    const firstCapacityGuard = createCapacityGuardMock({ softLimitKw: 9.5, totalPowerKw: 5.3 });
+
+    const pending = schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 5300,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard: firstCapacityGuard,
+    });
+
+    vi.advanceTimersByTime(1000);
+    await Promise.resolve();
+
+    const urgentCapacityGuard = new CapacityGuard({
+      limitKw: 10,
+      softMarginKw: 0.5,
+      onShortfall: vi.fn(),
+    });
+    urgentCapacityGuard.setSoftLimitProvider(() => 9.5);
+    urgentCapacityGuard.setShortfallThresholdProvider(() => 9.2);
+    urgentCapacityGuard.reportTotalPower(9.3);
+
+    void schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9300,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard: urgentCapacityGuard,
+    });
+
+    expect(state.pendingDueMs).toBe(Date.now() + 1000);
+
+    vi.advanceTimersByTime(999);
+    await Promise.resolve();
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    await pending;
 
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
