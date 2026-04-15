@@ -516,12 +516,6 @@ export class DeviceManager extends EventEmitter {
         ) {
             this.logger.log('Device API unavailable from SDK, running without realtime device updates');
             this.logger.structuredLog?.info({
-                event: 'device_api_unavailable',
-                reasonCode: 'sdk_api_missing',
-                realtimeListenerAttached: false,
-                reason: 'sdk_api_missing',
-            });
-            this.logger.structuredLog?.info({
                 component: 'devices',
                 event: 'device_api_init_skipped',
                 reasonCode: 'sdk_api_missing',
@@ -576,11 +570,13 @@ export class DeviceManager extends EventEmitter {
                     ? await this.fetchDevicesByKnownIds()
                     : await this.fetchDevicesForSnapshot();
             } catch (error) {
+                const normalizedError = normalizeError(error);
                 this.logger.error('Device snapshot refresh failed, keeping previous snapshot', error);
                 this.logger.structuredLog?.error({
                     event: 'device_snapshot_refresh_failed',
                     reasonCode: 'refresh_failed',
                     targetedRefresh: isTargetedRefresh,
+                    err: normalizedError,
                 });
                 return;
             }

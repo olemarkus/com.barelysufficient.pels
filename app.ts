@@ -308,7 +308,11 @@ class PelsApp extends Homey.App {
     await runStartupStep('migrateManagedDevices', () => this.migrateManagedDevices(), logStartupStepFailure);
     await runStartupStep('loadCapacitySettings', () => this.loadCapacitySettings(), logStartupStepFailure);
     await runStartupStep('initDailyBudgetService', () => this.initDailyBudgetService(), logStartupStepFailure);
-    await runStartupStep('initDeviceDiagnosticsService', () => this.initDeviceDiagnosticsService(), logStartupStepFailure);
+    await runStartupStep(
+      'initDeviceDiagnosticsService',
+      () => this.initDeviceDiagnosticsService(),
+      logStartupStepFailure,
+    );
     await runStartupStep('initDeviceManager', () => this.initDeviceManager(), logStartupStepFailure);
     const hasCachedTargetSnapshot = restoreCachedTargetSnapshotForApp({
       homey: this.homey,
@@ -356,7 +360,11 @@ class PelsApp extends Homey.App {
       runPriceBootstrapInBackground: deferStartupBootstrap,
       applyPriceOptimizationImmediatelyOnStart: !deferStartupBootstrap,
     }), logStartupStepFailure);
-    await runStartupStep('startPriceLowestTriggerChecker', () => this.startPriceLowestTriggerChecker(), logStartupStepFailure);
+    await runStartupStep(
+      'startPriceLowestTriggerChecker',
+      () => this.startPriceLowestTriggerChecker(),
+      logStartupStepFailure,
+    );
     await runStartupStep('startPowerTrackerPruning', () => this.startPowerTrackerPruning(), logStartupStepFailure);
   }
   private initPriceCoordinator(): void {
