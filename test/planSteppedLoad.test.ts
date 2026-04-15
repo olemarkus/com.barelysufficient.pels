@@ -64,6 +64,24 @@ describe('planSteppedLoad', () => {
     }))).toBe('low');
   });
 
+  it('is idempotent when re-run on its own normalized keep-step output', () => {
+    const device = steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    });
+
+    const first = resolveSteppedKeepDesiredStepId(device);
+    const second = resolveSteppedKeepDesiredStepId({
+      ...device,
+      desiredStepId: first,
+    });
+
+    expect(first).toBe('low');
+    expect(second).toBe(first);
+  });
+
   it('resolves shed targets conservatively for turn-off and set-step behavior', () => {
     expect(getSteppedLoadShedTargetStep({
       device: steppedInputDevice({ selectedStepId: 'max' }),
