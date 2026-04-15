@@ -74,6 +74,10 @@ export const resolveSteppedKeepDesiredStepId = (
       : device.desiredStepId;
   }
 
+  if (device.currentState === 'off') {
+    return lowestActiveStepId;
+  }
+
   const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
   if (!selectedStep || selectedStep.planningPowerW <= 0) return lowestActiveStepId;
   return selectedStep.id;
@@ -86,10 +90,6 @@ export const getSteppedLoadNextRestoreStep = (
   if (!profile) return null;
 
   if (device.currentState === 'off') {
-    const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
-    if (selectedStep && selectedStep.planningPowerW > 0) {
-      return selectedStep;
-    }
     return getSteppedLoadRestoreStep(profile);
   }
 

@@ -627,17 +627,18 @@ export class PlanExecutor {
     const isAtOffStep = dev.steppedLoadProfile && dev.selectedStepId
       && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId);
     const onoffViolated = snapshot?.currentOn === false;
+    const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
     // Only treat step as violated when a step-up is actually planned — i.e. the
     // desired step differs from the selected step and targets a non-off step.
     // Without this gate the method would repeatedly attempt binary restore
     // without addressing the underlying step violation.
-    const desiredIsNonOff = dev.desiredStepId
+    const desiredIsNonOff = desiredStepId
       && dev.steppedLoadProfile
-      && !isSteppedLoadOffStep(dev.steppedLoadProfile, dev.desiredStepId);
+      && !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
     const stepViolated = Boolean(
       isAtOffStep
       && desiredIsNonOff
-      && dev.desiredStepId !== dev.selectedStepId,
+      && desiredStepId !== dev.selectedStepId,
     );
 
     if (onoffViolated) {
@@ -652,7 +653,7 @@ export class PlanExecutor {
       return false;
     }
 
-    if (this.applyKeepInvariantShedBlock(dev, name, anyShedDevices)) return false;
+    if (this.applyKeepInvariantShedBlock(dev, name, anyShedDevices, desiredStepId)) return false;
     // Block condition no longer applies — clear dedupe state so next block re-emits
     delete this.state.keepInvariantShedBlockedByDevice[dev.id];
 
@@ -730,30 +731,31 @@ export class PlanExecutor {
     dev: DevicePlan['devices'][number],
     name: string,
     anyShedDevices: boolean,
+    desiredStepId?: string,
   ): boolean {
-    if (!anyShedDevices || !dev.steppedLoadProfile || !dev.desiredStepId) return false;
+    if (!anyShedDevices || !dev.steppedLoadProfile || !desiredStepId) return false;
     const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
-    const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.desiredStepId);
+    const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
     if (!lowestNonZeroStep || !desiredStep || desiredStep.planningPowerW <= lowestNonZeroStep.planningPowerW) {
       return false;
     }
     this.logDebug(`Capacity: skip stepped-load restore for ${name}, shed invariant: `
-      + `desiredStep=${dev.desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`);
+      + `desiredStep=${desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`);
     const prevBlock = this.state.keepInvariantShedBlockedByDevice[dev.id];
     const unchanged = prevBlock !== undefined
-      && prevBlock.desiredStepId === dev.desiredStepId
+      && prevBlock.desiredStepId === desiredStepId
       && prevBlock.lowestNonZeroStepId === lowestNonZeroStep.id;
     if (!unchanged) {
       this.deps.debugStructured?.({
         event: 'restore_keep_invariant_shed_blocked',
         deviceId: dev.id,
         deviceName: name,
-        desiredStepId: dev.desiredStepId,
+        desiredStepId,
         lowestNonZeroStepId: lowestNonZeroStep.id,
         rejectionReason: 'shed_invariant',
       });
       this.state.keepInvariantShedBlockedByDevice[dev.id] = {
-        desiredStepId: dev.desiredStepId,
+        desiredStepId,
         lowestNonZeroStepId: lowestNonZeroStep.id,
       };
     }
@@ -1203,6 +1205,7 @@ export class PlanExecutor {
         }
         if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && dev.currentState === 'off') {
           const onoffViolated = snapshot?.currentOn === false;
+          await this.applySteppedLoadCommand(dev, mode);
           const stepRestoreReady = await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
           if (stepRestoreReady) await this.applySteppedLoadCommand(dev, mode);
           if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
