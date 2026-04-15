@@ -3,36 +3,40 @@ import type { DevicePlanDevice } from './planTypes';
 import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
-function isLiveEligibleDevice(device: DevicePlanDevice): boolean {
+export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
   return device.controllable !== false
     && device.observationStale !== true
     && device.plannedState !== 'shed';
 }
 
+export function isBinaryRestoreCandidate(device: DevicePlanDevice): boolean {
+  return isRestoreLiveEligibleDevice(device) && device.currentState === 'off';
+}
+
+export function isSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
+  if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
+  if (!isRestoreLiveEligibleDevice(device)) return false;
+  return device.currentState === 'off'
+    || (
+      device.selectedStepId !== undefined
+      && device.selectedStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id
+    );
+}
+
+export function isSwapRestoreCandidate(device: DevicePlanDevice): boolean {
+  return isRestoreLiveEligibleDevice(device)
+    && (device.currentState === 'on' || device.currentState === 'not_applicable');
+}
+
 export function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
   const filtered = planDevices
-    .filter((device) => (
-      !isSteppedLoadDevice(device)
-      && isLiveEligibleDevice(device)
-      && device.currentState === 'off'
-    ));
+    .filter((device) => !isSteppedLoadDevice(device) && isBinaryRestoreCandidate(device));
   return sortByPriorityAsc(filtered);
 }
 
 export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
   const filtered = planDevices
-    .filter((device) => (
-      isSteppedLoadDevice(device)
-      && isLiveEligibleDevice(device)
-      && device.steppedLoadProfile?.model === 'stepped_load'
-      && (
-        device.currentState === 'off'
-        || (
-          device.selectedStepId !== undefined
-          && device.selectedStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id
-        )
-      )
-    ));
+    .filter((device) => isSteppedRestoreCandidate(device));
   return sortByPriorityAsc(filtered);
 }
 
@@ -45,8 +49,7 @@ export function getOnDevices(
   },
 ): DevicePlanDevice[] {
   const filtered = planDevices
-    .filter((device) => !isSteppedLoadDevice(device) && isLiveEligibleDevice(device))
-    .filter((device) => device.currentState === 'on' || device.currentState === 'not_applicable')
+    .filter((device) => !isSteppedLoadDevice(device) && isSwapRestoreCandidate(device))
     .filter((device) => canSwapOutDevice(device, getShedBehavior(device.id)));
   return sortByPriorityDesc(filtered);
 }
@@ -105,7 +108,7 @@ export function markOffDevicesStayOff(params: {
     reasonOverride,
   } = params;
   const offDevices = Array.from(deviceMap.values())
-    .filter((device) => isLiveEligibleDevice(device) && device.currentState === 'off');
+    .filter((device) => isBinaryRestoreCandidate(device));
   for (const dev of offDevices) {
     const inactiveReason = getInactiveReason(dev);
     if (inactiveReason) {

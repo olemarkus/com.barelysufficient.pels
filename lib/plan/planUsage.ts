@@ -1,3 +1,5 @@
+import { resolveLiveUsagePowerKw } from './planPowerResolution';
+
 type UsageDevice = {
   controllable?: boolean;
   budgetExempt?: boolean;
@@ -8,25 +10,9 @@ type UsageDevice = {
   planningPowerKw?: number;
 };
 
-const resolveUsageKw = (
-  dev: UsageDevice,
-  allowExpectedFallback: boolean,
-): number | null => {
-  const measured = typeof dev.measuredPowerKw === 'number' && Number.isFinite(dev.measuredPowerKw)
-    ? dev.measuredPowerKw
-    : null;
-  if (measured !== null) return measured;
-  if (dev.currentState === 'off') return 0;
-  if (!allowExpectedFallback || dev.plannedState === 'shed') return null;
-
-  const expected = typeof dev.expectedPowerKw === 'number' && Number.isFinite(dev.expectedPowerKw)
-    ? dev.expectedPowerKw
-    : null;
-  if (expected !== null) return expected;
-  const planning = typeof dev.planningPowerKw === 'number' && Number.isFinite(dev.planningPowerKw)
-    ? dev.planningPowerKw
-    : null;
-  return planning;
+const resolveUsageKw = (dev: UsageDevice): number | null => {
+  if (dev.plannedState === 'shed') return null;
+  return resolveLiveUsagePowerKw(dev);
 };
 
 export const sumControlledUsageKw = (devices: UsageDevice[]): number | null => {
@@ -36,7 +22,7 @@ export const sumControlledUsageKw = (devices: UsageDevice[]): number | null => {
   for (const dev of devices) {
     if (dev.controllable === false) continue;
     hasControllable = true;
-    const usage = resolveUsageKw(dev, true);
+    const usage = resolveUsageKw(dev);
     if (usage === null) continue;
     totalKw += usage;
     hasUsage = true;
@@ -46,12 +32,25 @@ export const sumControlledUsageKw = (devices: UsageDevice[]): number | null => {
 };
 
 export const sumBudgetExemptLiveUsageKw = (devices: UsageDevice[]): number | null => {
-  return sumBudgetExemptUsageKwInternal(devices, true);
+  return sumBudgetExemptUsageKwInternal(devices);
 };
+
+export function splitControlledUsageKw(params: {
+  devices: UsageDevice[];
+  totalKw: number | null;
+}): { controlledKw: number | null; uncontrolledKw: number | null } {
+  const { devices, totalKw } = params;
+  const controlledKw = sumControlledUsageKw(devices);
+  return {
+    controlledKw,
+    uncontrolledKw: totalKw !== null && controlledKw !== null
+      ? Math.max(0, totalKw - controlledKw)
+      : null,
+  };
+}
 
 const sumBudgetExemptUsageKwInternal = (
   devices: UsageDevice[],
-  allowExpectedFallback: boolean,
 ): number | null => {
   let totalKw = 0;
   let hasExempt = false;
@@ -59,7 +58,7 @@ const sumBudgetExemptUsageKwInternal = (
   for (const dev of devices) {
     if (dev.budgetExempt !== true || dev.controllable === false) continue;
     hasExempt = true;
-    const usage = resolveUsageKw(dev, allowExpectedFallback);
+    const usage = resolveUsageKw(dev);
     if (usage === null) continue;
     totalKw += usage;
     hasUsage = true;

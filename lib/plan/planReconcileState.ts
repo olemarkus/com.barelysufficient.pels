@@ -1,7 +1,7 @@
 import type { DevicePlan, PlanInputDevice } from './planTypes';
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../utils/types';
-import { resolveSteppedLoadCurrentState } from './planSteppedLoad';
+import { resolveObservedCurrentState } from './planStateResolution';
 
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
@@ -165,20 +165,14 @@ function resolveCurrentStateFromPlanInput(
   previousDevice: DevicePlan['devices'][number],
   liveDevice: PlanInputDevice,
 ): string {
-  if (liveDevice.observationStale === true) {
-    return liveDevice.hasBinaryControl === false ? 'not_applicable' : 'unknown';
-  }
-  if (previousDevice.controlModel === 'stepped_load' && previousDevice.steppedLoadProfile) {
-    const steppedState = resolveSteppedLoadCurrentState({
-      controlModel: 'stepped_load',
-      steppedLoadProfile: previousDevice.steppedLoadProfile,
-      selectedStepId: liveDevice.selectedStepId,
-      currentOn: liveDevice.currentOn,
-    });
-    if (steppedState !== 'unknown') return steppedState;
-  }
-  if (liveDevice.hasBinaryControl === false) return 'not_applicable';
-  return liveDevice.currentOn ? 'on' : 'off';
+  return resolveObservedCurrentState({
+    currentOn: liveDevice.currentOn,
+    hasBinaryControl: liveDevice.hasBinaryControl,
+    observationStale: liveDevice.observationStale,
+    controlModel: previousDevice.controlModel,
+    steppedLoadProfile: previousDevice.steppedLoadProfile,
+    selectedStepId: liveDevice.selectedStepId,
+  });
 }
 
 function hasSettledPostActuationState(

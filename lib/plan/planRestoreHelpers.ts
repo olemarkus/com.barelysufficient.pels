@@ -3,7 +3,7 @@ import type { RestoreTiming } from './planRestoreTiming';
 import type { SwapState } from './planSwapState';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
-import { getInactiveReason, getSteppedRestoreCandidates } from './planRestoreDevices';
+import { getInactiveReason, getSteppedRestoreCandidates, isRestoreLiveEligibleDevice } from './planRestoreDevices';
 import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
 import {
   getSteppedLoadNextRestoreStep,
@@ -64,7 +64,7 @@ export function hasOtherDevicesWithUnconfirmedRecovery(
 ): boolean {
   for (const device of deviceMap.values()) {
     if (device.id === deviceId) continue;
-    if (device.controllable === false) continue;
+    if (!isRestoreLiveEligibleDevice(device)) continue;
     if (getInactiveReason(device)) continue;
     if (isDeviceUnconfirmedRecoveryInFlight(device)) return true;
   }
@@ -78,7 +78,7 @@ export function hasOtherDevicesBlockingSteppedRestore(
 ): boolean {
   for (const device of deviceMap.values()) {
     if (device.id === steppedDeviceId) continue;
-    if (device.controllable === false) continue;
+    if (!isRestoreLiveEligibleDevice(device)) continue;
     if (getInactiveReason(device)) continue;
     if (isDeviceBlockingSteppedRestore(device, lastDeviceShedMs)) return true;
   }

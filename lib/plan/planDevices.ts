@@ -1,6 +1,7 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
+import { resolveCandidatePower } from './planCandidatePower';
 import { computeBaseRestoreNeed } from './planRestoreSwap';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
@@ -11,7 +12,6 @@ import {
 import { getInactiveReason, getEvRestoreStateBlockReason } from './planRestoreDevices';
 import {
   isSteppedLoadDevice,
-  resolveSteppedLoadCurrentState,
   resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadInitialDesiredStepId,
   getSteppedLoadShedTargetStep,
@@ -23,6 +23,7 @@ import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
+import { resolveObservedCurrentState } from './planStateResolution';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -147,13 +148,7 @@ function applyPriceOptimizationDelta(
 }
 
 function resolveCurrentState(device: PlanInputDevice): string {
-  if (device.observationStale === true) {
-    return device.hasBinaryControl === false ? 'not_applicable' : 'unknown';
-  }
-  const steppedState = resolveSteppedLoadCurrentState(device);
-  if (steppedState !== 'unknown') return steppedState;
-  if (device.hasBinaryControl === false) return 'not_applicable';
-  return device.currentOn ? 'on' : 'off';
+  return resolveObservedCurrentState(device);
 }
 
 // For shed stepped-load devices at the off step, expectedPowerKw should reflect the lowest
@@ -164,6 +159,30 @@ function resolveExpectedPowerKw(
   plannedState: 'shed' | 'keep',
   effectiveDesiredStepId: string | undefined,
 ): number | undefined {
+  const steppedExpectedPowerKw = resolveSteppedExpectedPowerKw({
+    dev,
+    currentState,
+    plannedState,
+    effectiveDesiredStepId,
+  });
+  if (steppedExpectedPowerKw !== null) return steppedExpectedPowerKw;
+  if (!hasKnownPowerFields(dev)) return undefined;
+  return resolveCandidatePower(dev) ?? undefined;
+}
+
+function resolveSteppedExpectedPowerKw(params: {
+  dev: PlanInputDevice;
+  currentState: string;
+  plannedState: 'shed' | 'keep';
+  effectiveDesiredStepId: string | undefined;
+}): number | null {
+  const {
+    dev,
+    currentState,
+    plannedState,
+    effectiveDesiredStepId,
+  } = params;
+
   if (
     plannedState === 'keep'
     && currentState === 'off'
@@ -171,8 +190,11 @@ function resolveExpectedPowerKw(
     && dev.steppedLoadProfile
   ) {
     const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, effectiveDesiredStepId);
-    if (desiredStep && desiredStep.planningPowerW > 0) return desiredStep.planningPowerW / 1000;
+    if (desiredStep && desiredStep.planningPowerW > 0) {
+      return desiredStep.planningPowerW / 1000;
+    }
   }
+
   if (
     plannedState === 'shed'
     && isSteppedLoadDevice(dev)
@@ -180,9 +202,19 @@ function resolveExpectedPowerKw(
     && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
   ) {
     const lowestActiveStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
-    if (lowestActiveStep) return lowestActiveStep.planningPowerW / 1000;
+    if (lowestActiveStep) {
+      return lowestActiveStep.planningPowerW / 1000;
+    }
   }
-  return dev.expectedPowerKw;
+
+  return null;
+}
+
+function hasKnownPowerFields(dev: PlanInputDevice): boolean {
+  return typeof dev.measuredPowerKw === 'number'
+    || typeof dev.expectedPowerKw === 'number'
+    || typeof dev.planningPowerKw === 'number'
+    || typeof dev.powerKw === 'number';
 }
 
 function buildBasePlanDevice(params: {

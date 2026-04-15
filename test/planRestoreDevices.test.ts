@@ -1,9 +1,11 @@
 import {
+  isBinaryRestoreCandidate,
   getEvRestoreStateBlockReason,
   getEvUnknownPowerBlockReason,
   getInactiveReason,
   getOffDevices,
   getOnDevices,
+  isRestoreLiveEligibleDevice,
   getSteppedRestoreCandidates,
   markOffDevicesStayOff,
 } from '../lib/plan/planRestoreDevices';
@@ -212,5 +214,16 @@ describe('plan restore device helpers', () => {
       reasonOverride: (device) => `blocked ${device.id}`,
     });
     expect(setDevice).toHaveBeenCalledWith('dev2', expect.objectContaining({ reason: 'blocked dev2' }));
+  });
+
+  it('shares the same live eligibility gate across restore candidate paths', () => {
+    const eligible = makeDevice({ id: 'eligible', currentState: 'off' });
+    const stale = makeDevice({ id: 'stale', currentState: 'off', observationStale: true });
+    const shed = makeDevice({ id: 'shed', currentState: 'off', plannedState: 'shed' });
+
+    expect(isRestoreLiveEligibleDevice(eligible)).toBe(true);
+    expect(isBinaryRestoreCandidate(eligible)).toBe(true);
+    expect(isBinaryRestoreCandidate(stale)).toBe(false);
+    expect(isBinaryRestoreCandidate(shed)).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { sumBudgetExemptLiveUsageKw } from '../lib/plan/planUsage';
+import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../lib/plan/planUsage';
 
 describe('plan usage budget exemption helpers', () => {
   it('prefers measured power over expected power when both are available', () => {
@@ -46,5 +46,19 @@ describe('plan usage budget exemption helpers', () => {
         measuredPowerKw: 1.5,
       },
     ])).toBeCloseTo(1.5, 6);
+  });
+
+  it('splits controlled and uncontrolled usage from the same helper', () => {
+    expect(splitControlledUsageKw({
+      totalKw: 4,
+      devices: [
+        { currentState: 'on', measuredPowerKw: 1.5, controllable: true },
+        { currentState: 'on', expectedPowerKw: 0.5, controllable: true },
+        { currentState: 'on', measuredPowerKw: 2, controllable: false },
+      ],
+    })).toEqual({
+      controlledKw: 2,
+      uncontrolledKw: 2,
+    });
   });
 });
