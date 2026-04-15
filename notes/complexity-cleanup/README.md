@@ -153,6 +153,28 @@ Each phase is one PR. Phases 1-2 are low-risk and can be done first as confidenc
 Phases 3-5 are the main structural splits. Phase 6 is a logic simplification. Phase 7 is the
 most invasive and can wait.
 
+## If simplicity becomes P1
+
+If the next stretch of work is explicitly about making the codebase simpler, the best P2 -> P1
+promotions are the ones that remove indirection without opening a wide correctness surface:
+
+1. **Phase 1: `planActivationBackoff.ts`.** Lowest-risk deletion of complexity, and it makes the
+   later restore-gate cleanup smaller.
+2. **Phase 2: `planReasons.ts` + helper merge.** Improves debuggability immediately because the
+   decision path stops being buried in string-building noise.
+3. **`planService.ts` snapshot-write extraction.** Rebuild orchestration and throttled snapshot
+   persistence are separate concepts and are currently coupled for convenience.
+4. **`app.ts` wiring cleanup.** The biggest local win is extracting snapshot-refresh / Homey
+   Energy polling coordination and deleting pass-through delegates where direct service access is
+   enough.
+5. **Settings UI `deviceDetail.ts`.** Not part of the original runtime cleanup, but it is now a
+   real simplification candidate: render logic, stepped-load draft state, diagnostics refresh, and
+   repeated `setSetting(...)` save paths all live in one file.
+
+If these get promoted, keep the same rule as above: one concept per PR. Do not bundle
+`planActivationBackoff` simplification with a `planRestore` gate rewrite, and do not mix the
+`app.ts` wiring cleanup with unrelated runtime behavior changes.
+
 ---
 
 ## What this does NOT include
