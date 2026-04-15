@@ -30,7 +30,7 @@ import {
   deviceDetailSteppedSave,
   deviceDetailSteppedReset,
 } from './dom.ts';
-import { getSetting, setSetting } from './homey.ts';
+import { getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { resolveManagedState, state, defaultPriceOptimizationConfig } from './state.ts';
 import { renderDevices } from './devices.ts';
 import { renderPriorities } from './modes.ts';
@@ -179,6 +179,13 @@ const setDeviceDetailBudgetExemptState = (device: TargetDeviceSnapshot | null) =
   if (!deviceDetailBudgetExempt || !device) return;
   deviceDetailBudgetExempt.checked = state.budgetExemptMap[device.id] === true || device.budgetExempt === true;
   deviceDetailBudgetExempt.disabled = false;
+};
+
+const updateCurrentDeviceBudgetExemptSnapshot = (deviceId: string, budgetExempt: boolean) => {
+  const device = state.latestDevices.find((entry) => entry.id === deviceId);
+  if (device) {
+    device.budgetExempt = budgetExempt;
+  }
 };
 
 const attachDraftSyncOnChange = (...inputs: HTMLInputElement[]) => {
@@ -789,7 +796,7 @@ const initDeviceDetailBudgetExemptHandler = () => {
     const deviceId = currentDetailDeviceId;
     if (!deviceId) return;
     try {
-      const persistedBudgetExemptMap = await getSetting(BUDGET_EXEMPT_DEVICES);
+      const persistedBudgetExemptMap = await getSettingFresh(BUDGET_EXEMPT_DEVICES);
       const nextBudgetExemptMap = persistedBudgetExemptMap
         && typeof persistedBudgetExemptMap === 'object'
         && !Array.isArray(persistedBudgetExemptMap)
@@ -802,6 +809,7 @@ const initDeviceDetailBudgetExemptHandler = () => {
       }
       state.budgetExemptMap = nextBudgetExemptMap;
       await setSetting(BUDGET_EXEMPT_DEVICES, nextBudgetExemptMap);
+      updateCurrentDeviceBudgetExemptSnapshot(deviceId, deviceDetailBudgetExempt.checked);
       renderDevices(state.latestDevices);
       renderPriorities(state.latestDevices);
       renderPriceOptimization(state.latestDevices);

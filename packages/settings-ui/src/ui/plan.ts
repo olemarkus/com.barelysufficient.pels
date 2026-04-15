@@ -7,6 +7,7 @@ import { getApiReadModel } from './homey.ts';
 import { createMetaLine } from './components.ts';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator.ts';
 import { isGrayStateDevice } from './deviceUtils.ts';
+import { setTooltip } from './tooltips.ts';
 
 type PlanDeviceSnapshot = {
   id: string;
@@ -389,10 +390,6 @@ const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
   if (isGrayStateDevice(dev)) {
     return createMetaLine('State', dev.available === false ? 'Unavailable' : 'State unknown');
   }
-  if (dev.observationStale === true) {
-    stateText = 'Live state stale';
-    return createMetaLine('State', stateText);
-  }
   if (isRestoreCooldownState(dev)) {
     stateText = isOffLikeState(dev.currentState)
       ? 'Shed (restore cooldown)'
@@ -524,7 +521,7 @@ const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
   badge.dataset.icon = getPriceIndicatorIcon(tone);
   badge.setAttribute('role', 'img');
   badge.setAttribute('aria-label', label);
-  badge.title = label;
+  setTooltip(badge, label);
   return badge;
 };
 

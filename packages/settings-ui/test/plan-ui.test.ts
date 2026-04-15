@@ -49,9 +49,9 @@ const getBadgeClassList = (deviceId: string): DOMTokenList | null => {
   return dot.classList;
 };
 
-const getBadgeTitle = (deviceId: string): string | null => {
+const getBadgeTooltip = (deviceId: string): string | null => {
   const dot = document.querySelector(`[data-device-id="${deviceId}"] .plan-state-indicator`) as HTMLElement | null;
-  return dot?.title ?? null;
+  return dot?.getAttribute('data-tooltip');
 };
 
 const getPlanMetaText = () => {
@@ -321,7 +321,7 @@ describe('plan device state', () => {
     });
 
     expect(getStateText()).toBe('State unknown');
-    expect(getBadgeTitle('dev-stale')).toBe('State unknown');
+    expect(getBadgeTooltip('dev-stale')).toBe('State unknown');
     expect(getBadgeClassList('dev-stale')?.contains('neutral')).toBe(true);
   });
 
@@ -340,7 +340,7 @@ describe('plan device state', () => {
       ],
     });
 
-    expect(getBadgeTitle('dev-missing')).toBe('Unavailable');
+    expect(getBadgeTooltip('dev-missing')).toBe('Unavailable');
     expect(getStateText()).toBe('Unavailable');
     expect(getBadgeClassList('dev-missing')?.contains('neutral')).toBe(true);
   });
@@ -419,6 +419,25 @@ describe('plan device state', () => {
     expect(chip?.textContent?.trim()).toBe('Budget exempt');
   });
 
+  it('uses the shared tooltip hook for the plan state badge', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-tip',
+          name: 'Tooltip device',
+          currentState: 'unknown',
+          plannedState: 'keep',
+          observationStale: true,
+          controllable: true,
+        },
+      ],
+    });
+
+    const badge = document.querySelector('[data-device-id="dev-tip"] .plan-state-indicator') as HTMLElement | null;
+    expect(badge?.getAttribute('data-tooltip')).toBe('State unknown');
+    expect(badge?.getAttribute('title')).toBeNull();
+  });
+
   it('keeps the state line on controllable-off devices even when the device is gray', async () => {
     await renderPlanSnapshot({
       devices: [
@@ -434,7 +453,7 @@ describe('plan device state', () => {
       ],
     });
 
-    expect(getBadgeTitle('dev-gray-uncontrolled')).toBe('Uncontrolled');
+    expect(getBadgeTooltip('dev-gray-uncontrolled')).toBe('Uncontrolled');
     expect(getStateText()).toBe('Capacity control off');
   });
 

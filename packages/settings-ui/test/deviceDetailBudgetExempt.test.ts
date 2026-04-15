@@ -225,6 +225,115 @@ describe('device detail budget exemption', () => {
     expect(state.budgetExemptMap).toEqual({ 'other-device': true, 'heater-1': true });
   });
 
+  it('bypasses a stale cached budget exempt map when saving changes', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        budget_exempt_devices: { 'stale-device': true },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+    await homeyModule.getSetting('budget_exempt_devices');
+    homey.__settingsStore.budget_exempt_devices = { 'fresh-device': true };
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice({ budgetExempt: false })];
+    state.managedMap = { 'heater-1': true };
+    state.controllableMap = { 'heater-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'heater-1': 1 } };
+    state.modeTargets = { Home: { 'heater-1': 20 } };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('heater-1');
+    await flushPromises();
+
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
+    budgetExemptInput!.checked = true;
+    budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(homey.set).toHaveBeenCalledWith(
+      'budget_exempt_devices',
+      { 'fresh-device': true, 'heater-1': true },
+      expect.any(Function),
+    );
+  });
+
+  it('lets a local uncheck override a stale snapshot budget flag', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        budget_exempt_devices: { 'heater-1': true },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice({ budgetExempt: true })];
+    state.managedMap = { 'heater-1': true };
+    state.controllableMap = { 'heater-1': true };
+    state.budgetExemptMap = { 'heater-1': true };
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'heater-1': 1 } };
+    state.modeTargets = { Home: { 'heater-1': 20 } };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('heater-1');
+    await flushPromises();
+
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
+    expect(budgetExemptInput?.checked).toBe(true);
+
+    budgetExemptInput!.checked = false;
+    budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(budgetExemptInput?.checked).toBe(false);
+    expect(state.latestDevices[0].budgetExempt).toBe(false);
+  });
+
   it('handles budget exempt read failures without mutating the map', async () => {
     const logSettingsError = vi.fn().mockResolvedValue(undefined);
     const showToastError = vi.fn().mockResolvedValue(undefined);
@@ -252,7 +361,7 @@ describe('device detail budget exemption', () => {
       },
     });
     homeyModule.setHomeyClient(homey);
-    vi.spyOn(homeyModule, 'getSetting').mockRejectedValueOnce(new Error('Homey SDK not ready'));
+    vi.spyOn(homeyModule, 'getSettingFresh').mockRejectedValueOnce(new Error('Homey SDK not ready'));
     const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
     const { state } = await import('../src/ui/state.ts');
 
