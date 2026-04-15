@@ -27,6 +27,10 @@ describe('device detail target writes', () => {
   });
 
   it('coalesces rapid temperature edits into one mode_device_targets write', async () => {
+    const renderPriorities = vi.fn();
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities,
+    }));
     const homey = createHomeyMock({
       settings: {
         operating_mode: 'Home',
@@ -69,5 +73,6 @@ describe('device detail target writes', () => {
       { Home: { 'heater-1': 21 }, Away: { 'heater-1': 19 } },
       expect.any(Function),
     );
+    expect(renderPriorities).toHaveBeenCalledWith(state.latestDevices);
   });
 });
