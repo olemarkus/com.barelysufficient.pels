@@ -57,7 +57,12 @@ const buildRealtimeDevices = () => ({
 describe('DeviceManager', () => {
     let deviceManager: DeviceManager;
     let homeyMock: Homey.App;
-    let loggerMock: { log: vi.Mock; debug: vi.Mock; error: vi.Mock };
+    let loggerMock: {
+        log: vi.Mock;
+        debug: vi.Mock;
+        error: vi.Mock;
+        structuredLog: { info: vi.Mock; error: vi.Mock; debug: vi.Mock };
+    };
 
     afterEach(() => {
         vi.restoreAllMocks();
@@ -79,6 +84,11 @@ describe('DeviceManager', () => {
             log: vi.fn(),
             debug: vi.fn(),
             error: vi.fn(),
+            structuredLog: {
+                info: vi.fn(),
+                error: vi.fn(),
+                debug: vi.fn(),
+            },
         };
         deviceManager = new DeviceManager(homeyMock, loggerMock);
     });
@@ -96,6 +106,13 @@ describe('DeviceManager', () => {
             await deviceManager.init();
             expect(loggerMock.log).not.toHaveBeenCalledWith(expect.stringContaining('initialized'));
             expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining('skipping init'));
+            expect(loggerMock.structuredLog.info).toHaveBeenCalledTimes(1);
+            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+                component: 'devices',
+                event: 'device_api_init_skipped',
+                reasonCode: 'sdk_api_missing',
+                realtimeListenerAttached: false,
+            }));
             (homeyMock as any).api = savedApi;
         });
     });
@@ -139,6 +156,21 @@ describe('DeviceManager', () => {
             expect(heater?.currentOn).toBe(true);
             expect(light?.deviceType).toBe('onoff');
             expect(light?.targets).toEqual([]);
+        });
+
+        it('includes the normalized error in the structured refresh failure log', async () => {
+            await deviceManager.init();
+            const refreshFailure = new Error('refresh failed');
+            vi.spyOn(deviceManager as never, 'fetchDevicesForSnapshot').mockRejectedValueOnce(refreshFailure);
+
+            await deviceManager.refreshSnapshot();
+
+            expect((loggerMock as any).structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_snapshot_refresh_failed',
+                reasonCode: 'refresh_failed',
+                targetedRefresh: false,
+                err: refreshFailure,
+            }));
         });
 
         it('stores cumulative home power from live report in getHomePowerW', async () => {

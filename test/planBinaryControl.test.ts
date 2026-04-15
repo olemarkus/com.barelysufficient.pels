@@ -6,6 +6,7 @@ import {
   setBinaryControl,
   syncPendingBinaryCommands,
 } from '../lib/plan/planBinaryControl';
+import { getPendingBinaryCommand } from '../lib/plan/planBinaryControlHelpers';
 
 describe('plan binary control helpers', () => {
   afterEach(() => {
@@ -647,6 +648,26 @@ describe('plan binary control helpers', () => {
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
     expect(logDebug).toHaveBeenCalledWith(
       'Capacity: cleared stale pending binary command for socket1: onoff=false after 20000ms (timeout 15000ms)',
+    );
+  });
+
+  it('logs the clearing stale message when getPendingBinaryCommand removes an expired entry', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.socket1 = {
+      capabilityId: 'onoff',
+      desired: false,
+      startedMs: 1_000,
+    };
+    const logDebug = vi.fn();
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000 + 20_000);
+    const pending = getPendingBinaryCommand(state, 'socket1', logDebug);
+    nowSpy.mockRestore();
+
+    expect(pending).toBeUndefined();
+    expect(state.pendingBinaryCommands.socket1).toBeUndefined();
+    expect(logDebug).toHaveBeenCalledWith(
+      'Capacity: clearing stale pending binary command for socket1: onoff=false after 20000ms (timeout 15000ms)',
     );
   });
 
