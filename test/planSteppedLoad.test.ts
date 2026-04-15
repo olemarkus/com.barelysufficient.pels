@@ -64,6 +64,24 @@ describe('planSteppedLoad', () => {
     }))).toBe('low');
   });
 
+  it('keeps keep-intent desired-step normalization idempotent across planner and executor paths', () => {
+    const plannerNormalized = resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(plannerNormalized).toBe('low');
+
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: plannerNormalized,
+    }))).toBe(plannerNormalized);
+  });
+
   it('resolves shed targets conservatively for turn-off and set-step behavior', () => {
     expect(getSteppedLoadShedTargetStep({
       device: steppedInputDevice({ selectedStepId: 'max' }),
