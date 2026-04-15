@@ -388,6 +388,11 @@ describe('Device plan snapshot', () => {
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
     expect(overshootEvent).toBeTruthy();
+    expect(overshootEvent.reasonCode).toBe('active_overshoot');
+    expect(overshootEvent.lastPlanBuildAgeMs).toEqual(expect.any(Number));
+    expect(overshootEvent.lastPowerUpdateAgeMs).toEqual(expect.any(Number));
+    expect(overshootEvent.overshootPlanAgeMs).toEqual(expect.any(Number));
+    expect(overshootEvent.overshootPowerSampleAgeMs).toEqual(expect.any(Number));
     expect(overshootEvent.overshootTotalDeltaKw).toBeCloseTo(2.3, 5);
     expect(overshootEvent.overshootAttributionDeltaKw).toBeCloseTo(3.8, 5);
     expect(overshootEvent.overshootUnattributedDeltaKw).toBeCloseTo(-1.5, 5);

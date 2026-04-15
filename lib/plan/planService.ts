@@ -456,6 +456,14 @@ export class PlanService {
     this.hasPendingNonActionSnapshot = true;
     this.pendingNonActionSnapshotPlan = plan;
     this.pendingNonActionSnapshotReason = reason;
+    this.deps.debugStructured?.({
+      event: 'plan_snapshot_write_throttled',
+      reasonCode: 'meta_only_throttled',
+      deviceCount: plan.devices.length,
+      totalKw: plan.meta.totalKw ?? null,
+      waitMs: this.resolveNonActionWaitMs(nowMs),
+      snapshotReason: reason,
+    });
     if (this.pendingNonActionSnapshotTimer) return;
 
     const waitMs = this.resolveNonActionWaitMs(nowMs);
@@ -501,6 +509,13 @@ export class PlanService {
     this.deps.homey.settings.set('device_plan_snapshot', plan);
     this.lastPlanSnapshotWriteMs = nowMs;
     const writeMs = Date.now() - writeStart;
+    this.deps.structuredLog?.info({
+      event: 'plan_snapshot_written',
+      reasonCode: reason,
+      deviceCount: plan.devices.length,
+      totalKw: plan.meta.totalKw ?? null,
+      writeMs,
+    });
     addPerfDuration('settings_write_ms', writeMs);
     incPerfCounter('settings_set.device_plan_snapshot');
     incPerfCounter(`settings_set.device_plan_snapshot_reason.${reason}_total`);

@@ -187,6 +187,43 @@ describe('MyApp initialization', () => {
     expect(snapshotWrites).toHaveLength(1);
   });
 
+  it('emits structured logs for snapshot writes and unchanged snapshot skips', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+
+    const childLogger = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      error: vi.fn(),
+    };
+    const child = vi.fn().mockReturnValue(childLogger);
+    (app as any).structuredLogger = { child };
+
+    await heater.setCapabilityValue('measure_power', 1500);
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    expect(childLogger.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_devices_snapshot_written',
+      reasonCode: 'snapshot_refresh',
+      deviceCount: 1,
+      targetedRefresh: false,
+    }));
+
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    expect(childLogger.debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_devices_snapshot_write_skipped',
+      reasonCode: 'unchanged',
+      deviceCount: 1,
+      targetedRefresh: false,
+    }));
+  });
+
   it('builds component child loggers without debugTopic bindings', () => {
     const app = createApp();
     const childLogger = { info: vi.fn() };

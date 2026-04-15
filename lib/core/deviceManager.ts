@@ -516,9 +516,10 @@ export class DeviceManager extends EventEmitter {
         ) {
             this.logger.log('Device API unavailable from SDK, running without realtime device updates');
             this.logger.structuredLog?.info({
-                event: 'device_api_unavailable',
+                component: 'devices',
+                event: 'device_api_init_skipped',
+                reasonCode: 'sdk_api_missing',
                 realtimeListenerAttached: false,
-                reason: 'sdk_api_missing',
             });
             this.logger.debug('Homey SDK API unavailable, skipping init');
             return;
@@ -531,6 +532,7 @@ export class DeviceManager extends EventEmitter {
             this.logger.error('Failed to initialize HTTP client, continuing in degraded mode', normalizedError);
             this.logger.structuredLog?.error({
                 event: 'device_api_http_client_init_failed',
+                reasonCode: 'http_client_init_failed',
                 realtimeListenerAttached: false,
                 err: normalizedError,
             });
@@ -568,7 +570,14 @@ export class DeviceManager extends EventEmitter {
                     ? await this.fetchDevicesByKnownIds()
                     : await this.fetchDevicesForSnapshot();
             } catch (error) {
+                const normalizedError = normalizeError(error);
                 this.logger.error('Device snapshot refresh failed, keeping previous snapshot', error);
+                this.logger.structuredLog?.error({
+                    event: 'device_snapshot_refresh_failed',
+                    reasonCode: 'refresh_failed',
+                    targetedRefresh: isTargetedRefresh,
+                    err: normalizedError,
+                });
                 return;
             }
             const { devices: list, fetchSource } = fetchResult;

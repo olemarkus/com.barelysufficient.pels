@@ -6,7 +6,7 @@ import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from '
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
-import { buildSheddingPlan, type OvershootStats, type SheddingPlan } from './planShedding';
+import { buildSheddingPlan, type SheddingPlan } from './planShedding';
 import { buildPlanCapacityStateSummary, normalizePlanReason } from './planLogging';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
@@ -169,7 +169,6 @@ export class PlanBuilder {
       deviceNameById,
       planDevices: finalized.planDevices,
       overshootDecision,
-      sheddingPlan,
       nowTs,
     });
 
@@ -242,7 +241,6 @@ export class PlanBuilder {
     deviceNameById: ReadonlyMap<string, string>;
     planDevices: DevicePlanDevice[];
     overshootDecision: SoftOvershootDecision;
-    sheddingPlan: SheddingPlan;
     nowTs: number;
   }): void {
     const {
@@ -250,124 +248,62 @@ export class PlanBuilder {
       deviceNameById,
       planDevices,
       overshootDecision,
-      sheddingPlan,
       nowTs,
     } = params;
     const overshootActive = overshootDecision.actionable;
     const prevOvershoot = this.state.wasOvershoot;
     const trackedPlanDevicesById = trackPlanDevicesForOvershoot(planDevices, this.state);
-    const overshootSummary = overshootActive
-      ? buildOvershootSummary({
-        context,
-        planDevices,
-        overshootStats: sheddingPlan.overshootStats,
-      })
-      : {};
-    const overshootSummarySignature = overshootActive ? JSON.stringify(overshootSummary) : null;
+    const lastPowerUpdateMs = this.powerTracker.lastTimestamp ?? null;
+    const overshootTimingFields = this.buildOvershootTimingFields(nowTs, lastPowerUpdateMs);
     if (overshootActive && !prevOvershoot) {
-      this.enterOvershoot({
+      this.state.overshootLogged = true;
+      this.state.overshootStartedMs = nowTs;
+      this.state.lastOvershootEscalationMs = null;
+      this.state.lastOvershootMitigationMs = null;
+      const overshootDiagnostics = buildOvershootEntryDiagnostics({
         context,
-        deviceNameById,
-        planDevices,
-        trackedPlanDevicesById,
-        overshootSummary,
-        overshootSummarySignature,
         nowTs,
+        lastPowerUpdateMs,
+        previousTotalKw: this.state.lastPlanTotalKw,
+        previousBuiltAtMs: this.state.lastPlanBuiltAtMs,
+        previousDevicesById: this.state.lastPlanDevicesById,
+        currentDevicesById: trackedPlanDevicesById,
       });
-    } else if (overshootActive && prevOvershoot) {
-      this.updateActiveOvershoot(context, planDevices, overshootSummary, overshootSummarySignature);
-    } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
-      this.clearOvershoot(context);
-    }
-    this.rememberPlanSnapshot(context, trackedPlanDevicesById, nowTs);
-    this.state.wasOvershoot = overshootActive;
-  }
-
-  private enterOvershoot(params: {
-    context: PlanContext;
-    deviceNameById: ReadonlyMap<string, string>;
-    planDevices: DevicePlanDevice[];
-    trackedPlanDevicesById: Record<string, OvershootTrackedPlanDevice>;
-    overshootSummary: Record<string, number | boolean | null>;
-    overshootSummarySignature: string | null;
-    nowTs: number;
-  }): void {
-    const {
-      context,
-      deviceNameById,
-      planDevices,
-      trackedPlanDevicesById,
-      overshootSummary,
-      overshootSummarySignature,
-      nowTs,
-    } = params;
-    this.state.overshootLogged = true;
-    this.state.overshootStartedMs = nowTs;
-    this.state.lastOvershootEscalationMs = null;
-    this.state.lastOvershootMitigationMs = null;
-    this.state.lastOvershootSummarySignature = overshootSummarySignature;
-    const overshootDiagnostics = buildOvershootEntryDiagnostics({
-      context,
-      nowTs,
-      previousTotalKw: this.state.lastPlanTotalKw,
-      previousBuiltAtMs: this.state.lastPlanBuiltAtMs,
-      previousDevicesById: this.state.lastPlanDevicesById,
-      currentDevicesById: trackedPlanDevicesById,
-    });
-    this.logOvershootState('overshoot_entered', context, planDevices, {
-      ...overshootSummary,
-      ...overshootDiagnostics,
-    });
-    this.attributeOvershootToRecentRestores(deviceNameById, nowTs);
-  }
-
-  private updateActiveOvershoot(
-    context: PlanContext,
-    planDevices: DevicePlanDevice[],
-    overshootSummary: Record<string, number | boolean | null>,
-    overshootSummarySignature: string | null,
-  ): void {
-    if (overshootSummarySignature === this.state.lastOvershootSummarySignature) return;
-    this.state.lastOvershootSummarySignature = overshootSummarySignature;
-    this.logOvershootState('overshoot_active', context, planDevices, overshootSummary);
-  }
-
-  private clearOvershoot(context: PlanContext): void {
-    this.state.overshootLogged = false;
-    const durationMs = this.state.overshootStartedMs !== null ? Date.now() - this.state.overshootStartedMs : 0;
-    this.state.overshootStartedMs = null;
-    this.state.lastOvershootEscalationMs = null;
-    this.state.lastOvershootMitigationMs = null;
-    this.state.lastOvershootSummarySignature = null;
-    this.deps.structuredLog?.info({
-      event: 'overshoot_cleared',
-      durationMs,
-      ...buildPlanContextHeadroomLogFields(context, this.capacityGuard, this.capacitySettings.limitKw),
-    });
-  }
-
-  private logOvershootState(
-    event: 'overshoot_entered' | 'overshoot_active',
-    context: PlanContext,
-    planDevices: DevicePlanDevice[],
-    overshootFields: Record<string, unknown>,
-  ): void {
-    this.deps.structuredLog?.info({
-      event,
-      headroomKw: context.headroom,
-      ...buildPlanContextHeadroomLogFields(context, this.capacityGuard, this.capacitySettings.limitKw),
-      ...(event === 'overshoot_entered'
-        ? buildPlanCapacityStateSummary({
+      this.deps.structuredLog?.info({
+        event: 'overshoot_entered',
+        reasonCode: 'active_overshoot',
+        headroomKw: context.headroom,
+        ...overshootTimingFields,
+        ...buildPlanContextHeadroomLogFields(context, this.capacityGuard, this.capacitySettings.limitKw),
+        ...buildPlanCapacityStateSummary({
           meta: {
             totalKw: context.total,
             softLimitKw: context.softLimit,
             headroomKw: context.headroom,
           },
           devices: planDevices,
-        })
-        : {}),
-      ...overshootFields,
-    });
+        }),
+        ...overshootDiagnostics,
+      });
+      this.attributeOvershootToRecentRestores(deviceNameById, nowTs);
+    } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
+      this.state.overshootLogged = false;
+      const durationMs = this.state.overshootStartedMs !== null ? nowTs - this.state.overshootStartedMs : 0;
+      this.state.overshootStartedMs = null;
+      this.state.lastOvershootEscalationMs = null;
+      this.state.lastOvershootMitigationMs = null;
+      this.deps.structuredLog?.info({
+        event: 'overshoot_cleared',
+        reasonCode: 'overshoot_cleared',
+        durationMs,
+        ...overshootTimingFields,
+        ...buildPlanContextHeadroomLogFields(context, this.capacityGuard, this.capacitySettings.limitKw),
+      });
+    } else if (overshootActive && this.state.overshootStartedMs === null) {
+      this.state.overshootStartedMs = nowTs;
+    }
+    this.rememberPlanSnapshot(context, trackedPlanDevicesById, nowTs);
+    this.state.wasOvershoot = overshootActive;
   }
 
   private rememberPlanSnapshot(
@@ -411,6 +347,21 @@ export class PlanBuilder {
         this.deps.deviceDiagnostics.recordActivationTransition(result.transition, { name: deviceName });
       }
     }
+  }
+
+  private buildOvershootTimingFields(
+    nowTs: number,
+    lastPowerUpdateMs: number | null,
+  ): {
+    lastPlanBuildAgeMs: number | null;
+    lastPowerUpdateAgeMs: number | null;
+  } {
+    return {
+      lastPlanBuildAgeMs: typeof this.state.lastPlanBuiltAtMs === 'number'
+        ? Math.max(0, nowTs - this.state.lastPlanBuiltAtMs)
+        : null,
+      lastPowerUpdateAgeMs: lastPowerUpdateMs !== null ? Math.max(0, nowTs - lastPowerUpdateMs) : null,
+    };
   }
 
   private buildPlanDevices(context: PlanContext, sheddingPlan: SheddingPlan): DevicePlanDevice[] {
@@ -725,8 +676,6 @@ function buildPlanContextHeadroomLogFields(
 type OvershootEntryContributor = {
   deviceId: string;
   deviceName: string;
-  previousKw: number;
-  newKw: number;
   deltaKw: number;
   previousPowerSource: ResolvedPowerSource;
   newPowerSource: ResolvedPowerSource;
@@ -734,10 +683,6 @@ type OvershootEntryContributor = {
   expectedByPreviousPlan: boolean | null;
   changedDuringPendingWindow: boolean;
   changedDuringCooldownWindow: boolean;
-  plannedStateBefore: string | null;
-  plannedStateNow: string;
-  expectedPowerKw: number | null;
-  measuredPowerKw: number | null;
   measuredExceedsExpectedKw: number | null;
 };
 
@@ -746,6 +691,7 @@ type ResolvedPowerSource = 'measured' | 'expected' | 'planning' | 'off' | 'unkno
 function buildOvershootEntryDiagnostics(params: {
   context: PlanContext;
   nowTs: number;
+  lastPowerUpdateMs: number | null;
   previousTotalKw: number | null;
   previousBuiltAtMs: number | null;
   previousDevicesById: Record<string, OvershootTrackedPlanDevice>;
@@ -754,6 +700,7 @@ function buildOvershootEntryDiagnostics(params: {
   const {
     context,
     nowTs,
+    lastPowerUpdateMs,
     previousTotalKw,
     previousBuiltAtMs,
     previousDevicesById,
@@ -781,9 +728,10 @@ function buildOvershootEntryDiagnostics(params: {
   const unattributedDeltaKw = totalDeltaKw === null ? null : roundOvershootKw(totalDeltaKw - attributedDeltaKw);
 
   return {
-    overshootContributorWindowMs: (
+    overshootPlanAgeMs: (
       typeof previousBuiltAtMs === 'number' ? Math.max(0, nowTs - previousBuiltAtMs) : null
     ),
+    overshootPowerSampleAgeMs: lastPowerUpdateMs !== null ? Math.max(0, nowTs - lastPowerUpdateMs) : null,
     overshootTotalDeltaKw: totalDeltaKw,
     overshootAttributionDeltaKw: attributedDeltaKw,
     overshootUnattributedDeltaKw: unattributedDeltaKw,
@@ -811,8 +759,6 @@ function buildOvershootContributor(
   return {
     deviceId: device.id,
     deviceName: device.name,
-    previousKw: previousPower.kw,
-    newKw: nextPower.kw,
     deltaKw: roundOvershootKw(deltaKw),
     previousPowerSource: previousPower.source,
     newPowerSource: nextPower.source,
@@ -820,10 +766,6 @@ function buildOvershootContributor(
     expectedByPreviousPlan,
     changedDuringPendingWindow: hasPendingWindow(previous) || hasPendingWindow(device),
     changedDuringCooldownWindow: isCooldownBlocked(previous) || isCooldownBlocked(device),
-    plannedStateBefore: previous?.plannedState ?? null,
-    plannedStateNow: device.plannedState,
-    expectedPowerKw,
-    measuredPowerKw,
     measuredExceedsExpectedKw: (
       measuredPowerKw !== null && expectedPowerKw !== null && measuredPowerKw > expectedPowerKw
     )
@@ -941,54 +883,4 @@ function resolveFiniteNumber(value: unknown): number | null {
 
 function roundOvershootKw(value: number): number {
   return Math.round(value * 100) / 100;
-}
-
-function buildOvershootSummary(params: {
-  context: PlanContext;
-  planDevices: DevicePlanDevice[];
-  overshootStats: OvershootStats | null;
-}): Record<string, number | boolean | null> {
-  const { context, planDevices, overshootStats } = params;
-  const controlledKw = roundOvershootSummaryNumber(sumControlledUsageKw(planDevices));
-  const uncontrolledKw = roundOvershootSummaryNumber(resolveUncontrolledKw(context.total, controlledKw));
-  const reducibleControlledKw = roundOvershootSummaryNumber(overshootStats?.reducibleControlledKw ?? null);
-  const blockedReducibleControlledKw = roundOvershootSummaryNumber(
-    overshootStats?.blockedReducibleControlledKw ?? null,
-  );
-  const controlledAtMinimumKw = roundOvershootSummaryNumber(resolveControlledAtMinimumKw({
-    controlledKw,
-    reducibleControlledKw,
-    blockedReducibleControlledKw,
-  }));
-  return {
-    controlledKw,
-    uncontrolledKw,
-    controlledAtMinimumKw,
-    reducibleControlledKw,
-    blockedReducibleControlledKw,
-    eligibleAdditionalShedCount: overshootStats?.eligibleCandidateCount ?? null,
-    blockedAdditionalShedCount: overshootStats?.blockedCandidateCount ?? null,
-    allShedCandidatesExhausted: overshootStats?.allShedCandidatesExhausted ?? null,
-    controlRecoverable: overshootStats?.controlRecoverable ?? null,
-  };
-}
-
-function resolveUncontrolledKw(totalKw: number | null, controlledKw: number | null): number | null {
-  if (typeof totalKw !== 'number' || controlledKw === null) return null;
-  return Math.max(0, totalKw - controlledKw);
-}
-
-function resolveControlledAtMinimumKw(params: {
-  controlledKw: number | null;
-  reducibleControlledKw: number | null;
-  blockedReducibleControlledKw: number | null;
-}): number | null {
-  const { controlledKw, reducibleControlledKw, blockedReducibleControlledKw } = params;
-  if (controlledKw === null || reducibleControlledKw === null || blockedReducibleControlledKw === null) return null;
-  return Math.max(0, controlledKw - reducibleControlledKw - blockedReducibleControlledKw);
-}
-
-function roundOvershootSummaryNumber(value: number | null): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
-  return Math.round(value * 1000) / 1000;
 }

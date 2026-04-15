@@ -28,14 +28,27 @@ This note is for contributors changing runtime logging.
 
 - `plan_rebuild_started`
 - `plan_rebuild_completed`
+- `plan_snapshot_written`
+- `plan_snapshot_write_throttled`
 - `binary_command_applied`
+- `binary_command_skipped`
+- `binary_command_failed`
 - `target_command_applied`
+- `target_command_skipped`
+- `target_command_failed`
 - `stepped_load_command_requested`
+- `stepped_load_command_skipped`
+- `stepped_load_command_failed`
 - `restore_keep_invariant_enforced`
+- `restore_command_skipped`
 - `device_snapshot_refresh_completed`
+- `target_devices_snapshot_written`
+- `target_devices_snapshot_write_skipped`
 - `periodic_status`
 - `daily_budget_periodic_status`
 - `capacity_overshoot_escalation_blocked`
+- `overshoot_entered`
+- `overshoot_cleared`
 - `hard_cap_shortfall_detected`
 - `hard_cap_shortfall_recovery_started`
 - `hard_cap_shortfall_recovery_reset`
@@ -44,6 +57,7 @@ This note is for contributors changing runtime logging.
 - `price_fetch_failed`
 - `budget_recomputed`
 - `app_initialized`
+- `startup_step_failed`
 - `startup_background_task_failed`
 - `realtime_reconcile_queued`
 - `realtime_reconcile_skipped_no_drift`
@@ -54,15 +68,15 @@ This note is for contributors changing runtime logging.
 
 ## Gaps Still Open
 
-- Structured logging is still partial. The main actuation success paths and periodic status now
-  emit structured events, but executor failure/skip paths, UI snapshot writes, and several
-  device/state transitions still emit prose logs only.
+- Structured logging is still partial, but the highest-value executor failure/skip paths, UI
+  snapshot writes, startup step/background-task failures, and the main price/overshoot boundary
+  transitions are now structured.
 - Correlation coverage is narrow. Rebuild context exists, but there are no automatic helpers yet
   for `incidentId`, `snapshotId`, `priceRefreshId`, or broader flow-scoped correlation.
-- Event payloads are still stringly typed. There is no central event schema or bounded
-  `reasonCode` inventory.
-- We do not yet emit compact summary snapshots at important boundaries such as startup completion,
-  plan rebuild completion, UI snapshot writes, or degraded-mode transitions.
+- Event payloads are still stringly typed. There is no central event schema, but the current
+  high-value events in this slice now use bounded `reasonCode` values.
+- We do not yet emit compact summary snapshots at important boundaries such as startup
+  completion or broader degraded-mode transitions.
 - Tests cover base ALS behavior, logger bindings, and Homey forwarding, but do not yet cover
   end-to-end correlation for overshoot incidents, snapshot flows, or price refresh flows.
 

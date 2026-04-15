@@ -135,6 +135,8 @@ export class PlanExecutor {
       log: this.log.bind(this),
       logDebug: this.logDebug.bind(this),
       error: this.error.bind(this),
+      structuredLog: this.deps.structuredLog,
+      debugStructured: this.deps.debugStructured,
     };
   }
 
@@ -275,15 +277,43 @@ export class PlanExecutor {
     if (snapshot?.deviceClass === 'evcharger') {
       this.logDebug(`Capacity: evaluating EV restore for ${dev.name || dev.id} (${formatEvSnapshot(snapshot)})`);
     }
+    if (!snapshot) {
+      this.deps.debugStructured?.({
+        event: 'restore_command_skipped',
+        reasonCode: 'missing_snapshot',
+        deviceId: dev.id,
+        deviceName: dev.name || dev.id,
+        logContext: 'capacity',
+        actuationMode: mode,
+      });
+      this.logDebug(`Capacity: skip restoring ${dev.name || dev.id}, no snapshot available`);
+      return false;
+    }
     if (!canTurnOnDevice(snapshot)) {
       const evReason = getEvRestoreBlockReason(snapshot);
       const suffix = evReason ? ` (${evReason})` : '';
+      this.deps.debugStructured?.({
+        event: 'restore_command_skipped',
+        reasonCode: 'not_setable',
+        deviceId: dev.id,
+        deviceName: dev.name || dev.id,
+        logContext: 'capacity',
+        actuationMode: mode,
+      });
       this.logDebug(`Capacity: skip restoring ${dev.name || dev.id}, cannot turn on from current snapshot${suffix}`);
       return false;
     }
     const name = dev.name || dev.id;
     // Check if this device is already being restored (in-flight)
     if (this.state.pendingRestores.has(dev.id)) {
+      this.deps.debugStructured?.({
+        event: 'restore_command_skipped',
+        reasonCode: 'already_in_progress',
+        deviceId: dev.id,
+        deviceName: name,
+        logContext: 'capacity',
+        actuationMode: mode,
+      });
       this.logDebug(`Capacity: skip restoring ${name}, already in progress`);
       return false;
     }
@@ -367,15 +397,36 @@ export class PlanExecutor {
     if (dev.currentState !== 'off') return false;
     const lastShed = this.state.lastDeviceShedMs[dev.id];
     if (!lastShed) return false;
+    const name = dev.name || dev.id;
     const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (entry?.deviceClass === 'evcharger') {
       this.logDebug(
-        `Capacity control off: evaluating EV restore for ${dev.name || dev.id} `
+        `Capacity control off: evaluating EV restore for ${name} `
         + `(${formatEvSnapshot(entry)})`,
       );
     }
-    if (!canTurnOnDevice(entry)) return false;
-    const name = dev.name || dev.id;
+    if (!entry) {
+      this.deps.debugStructured?.({
+        event: 'restore_command_skipped',
+        reasonCode: 'missing_snapshot',
+        deviceId: dev.id,
+        deviceName: name,
+        logContext: 'capacity_control_off',
+        actuationMode: 'plan',
+      });
+      return false;
+    }
+    if (!canTurnOnDevice(entry)) {
+      this.deps.debugStructured?.({
+        event: 'restore_command_skipped',
+        reasonCode: 'not_setable',
+        deviceId: dev.id,
+        deviceName: name,
+        logContext: 'capacity_control_off',
+        actuationMode: 'plan',
+      });
+      return false;
+    }
     try {
       const applied = await setBinaryControl({
         ...this.buildBinaryControlDeps(),
@@ -485,57 +536,110 @@ export class PlanExecutor {
     options: { recordPlanActuation?: boolean } = {},
   ): Promise<boolean> {
     if (!isSteppedLoadDevice(dev)) return false;
-
     const profile = dev.steppedLoadProfile;
     if (!profile) return false;
-
-    // The planner already stamps this normalization onto dev.desiredStepId for keep intent.
-    // Re-run the helper here as defense-in-depth for stale/reconstructed plan devices, and keep
-    // the helper idempotent so planner/executor normalization cannot diverge.
     const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
-
     if (!desiredStepId || desiredStepId === dev.selectedStepId) return false;
-
     const desiredStep = getSteppedLoadStep(profile, desiredStepId);
     if (!desiredStep) {
-      this.logDebug(
-        `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
-        + `desired step ${desiredStepId} is not in profile`,
-      );
-      return false;
+      return this.logSteppedLoadCommandSkip({
+        dev,
+        mode,
+        reasonCode: 'missing_step',
+        logMessage: `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
+          + `desired step ${desiredStepId} is not in profile`,
+        fields: { desiredStepId },
+      });
     }
-
-    // Safety: never issue a step-UP for a shed device. A stale desiredStepId from an intermediate
-    // shed step must not become a restore command if the device has already reached or passed it.
-    // When selectedStepId is unknown, default to 0 W (most conservative assumption for a shed device).
     if (dev.plannedState === 'shed') {
       const selectedStep = dev.selectedStepId ? getSteppedLoadStep(profile, dev.selectedStepId) : null;
       const selectedPowerW = selectedStep?.planningPowerW ?? 0;
       if (desiredStep.planningPowerW > selectedPowerW) {
-        this.logDebug(
-          `Capacity: skip step command for ${dev.name || dev.id}, shed device has upward`
-          + ` desiredStepId=${desiredStepId} vs selectedStepId=${dev.selectedStepId ?? 'unknown'}`
-          + ` (power ${selectedPowerW}W)`,
-        );
-        return false;
+        return this.logSteppedLoadCommandSkip({
+          dev,
+          mode,
+          reasonCode: 'step_up_blocked',
+          logMessage: `Capacity: skip step command for ${dev.name || dev.id}, shed device has upward`
+            + ` desiredStepId=${desiredStepId} vs selectedStepId=${dev.selectedStepId ?? 'unknown'}`
+            + ` (power ${selectedPowerW}W)`,
+          fields: { desiredStepId, selectedStepId: dev.selectedStepId ?? null },
+        });
       }
     }
-
     const previousStepId = dev.selectedStepId ?? dev.lastDesiredStepId;
     if (dev.stepCommandPending && dev.lastDesiredStepId === desiredStepId) {
-      this.logDebug(
-        `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
-        + `awaiting confirmation of ${desiredStepId}`,
-      );
-      return false;
+      return this.logSteppedLoadCommandSkip({
+        dev,
+        mode,
+        reasonCode: 'waiting_for_confirmation',
+        logMessage: `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
+          + `awaiting confirmation of ${desiredStepId}`,
+        fields: { desiredStepId },
+      });
     }
-
     const triggerCard = this.deps.homey.flow?.getTriggerCard?.('desired_stepped_load_changed');
     if (!triggerCard?.trigger) {
-      this.logDebug('Capacity: desired_stepped_load_changed trigger is unavailable; cannot issue stepped-load command');
-      return false;
+      return this.logSteppedLoadCommandSkip({
+        dev,
+        mode,
+        reasonCode: 'missing_trigger',
+        logMessage: 'Capacity: desired_stepped_load_changed trigger is unavailable; cannot issue stepped-load command',
+        fields: { desiredStepId: desiredStep.id },
+      });
     }
+    return this.executeSteppedLoadCommand({
+      dev,
+      mode,
+      options,
+      desiredStep,
+      desiredStepId,
+      previousStepId,
+      triggerCard,
+      profile,
+    });
+  }
 
+  private logSteppedLoadCommandSkip(params: {
+    dev: DevicePlan['devices'][number];
+    mode: PlanActuationMode;
+    reasonCode: 'missing_step' | 'step_up_blocked' | 'waiting_for_confirmation' | 'missing_trigger';
+    logMessage: string;
+    fields: Record<string, unknown>;
+  }): false {
+    const { dev, mode, reasonCode, logMessage, fields } = params;
+    this.deps.debugStructured?.({
+      event: 'stepped_load_command_skipped',
+      reasonCode,
+      deviceId: dev.id,
+      deviceName: dev.name || dev.id,
+      logContext: 'capacity',
+      actuationMode: mode,
+      ...fields,
+    });
+    this.logDebug(logMessage);
+    return false;
+  }
+
+  private async executeSteppedLoadCommand(params: {
+    dev: DevicePlan['devices'][number];
+    mode: PlanActuationMode;
+    options: { recordPlanActuation?: boolean };
+    desiredStep: NonNullable<ReturnType<typeof getSteppedLoadStep>>;
+    desiredStepId: string;
+    previousStepId: string | undefined;
+    triggerCard: { trigger: (tokens?: object, state?: object) => Promise<unknown> };
+    profile: NonNullable<DevicePlan['devices'][number]['steppedLoadProfile']>;
+  }): Promise<boolean> {
+    const {
+      dev,
+      mode,
+      options,
+      desiredStep,
+      desiredStepId,
+      previousStepId,
+      triggerCard,
+      profile,
+    } = params;
     const now = Date.now();
     const planningPowerW = desiredStep.planningPowerW;
     try {
@@ -553,18 +657,7 @@ export class PlanExecutor {
         issuedAtMs: now,
         pendingWindowMs: resolveSteppedLoadCommandPendingMs(dev.communicationModel),
       });
-
-      const previousStep = previousStepId ? getSteppedLoadStep(profile, previousStepId) : undefined;
-      const sortedStepIds = sortSteppedLoadSteps(profile.steps).map((step) => step.id);
-      const desiredIndex = sortedStepIds.indexOf(desiredStep.id);
-      const previousIndex = previousStep ? sortedStepIds.indexOf(previousStep.id) : -1;
-      const nextDirection = previousStep && desiredIndex > previousIndex
-        ? 'restore'
-        : previousStep && desiredIndex < previousIndex
-          ? 'shed'
-          : dev.plannedState === 'shed'
-            ? 'shed'
-            : 'restore';
+      const nextDirection = this.resolveSteppedLoadDirection(dev, profile, desiredStep.id, previousStepId);
       this.deps.structuredLog?.info({
         event: 'stepped_load_command_requested',
         deviceId: dev.id,
@@ -576,6 +669,15 @@ export class PlanExecutor {
         mode,
       });
       void Promise.resolve(triggerPromise).catch((error) => {
+        this.deps.structuredLog?.error({
+          event: 'stepped_load_command_failed',
+          reasonCode: 'flow_trigger_failed',
+          deviceId: dev.id,
+          deviceName: dev.name || dev.id,
+          desiredStepId: desiredStep.id,
+          planningPowerW,
+          mode,
+        });
         this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
       });
       const shouldRecordPlanActuation = options.recordPlanActuation !== false;
@@ -595,9 +697,37 @@ export class PlanExecutor {
       });
       return true;
     } catch (error) {
+      this.deps.structuredLog?.error({
+        event: 'stepped_load_command_failed',
+        reasonCode: 'flow_trigger_failed',
+        deviceId: dev.id,
+        deviceName: dev.name || dev.id,
+        desiredStepId,
+        planningPowerW,
+        mode,
+      });
       this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
       return false;
     }
+  }
+
+  private resolveSteppedLoadDirection(
+    dev: DevicePlan['devices'][number],
+    profile: NonNullable<DevicePlan['devices'][number]['steppedLoadProfile']>,
+    desiredStepId: string,
+    previousStepId: string | undefined,
+  ): 'restore' | 'shed' {
+    const previousStep = previousStepId ? getSteppedLoadStep(profile, previousStepId) : undefined;
+    const sortedStepIds = sortSteppedLoadSteps(profile.steps).map((step) => step.id);
+    const desiredIndex = sortedStepIds.indexOf(desiredStepId);
+    const previousIndex = previousStep ? sortedStepIds.indexOf(previousStep.id) : -1;
+    return previousStep && desiredIndex > previousIndex
+      ? 'restore'
+      : previousStep && desiredIndex < previousIndex
+        ? 'shed'
+        : dev.plannedState === 'shed'
+          ? 'shed'
+          : 'restore';
   }
 
   /**
@@ -617,16 +747,22 @@ export class PlanExecutor {
     options: { preRestoreStepIssued?: boolean } = {},
   ): Promise<boolean> {
     const name = dev.name || dev.id;
-
     if (dev.plannedState !== 'keep') {
-      this.logDebug(`Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`);
-      return false;
+      return this.logSteppedLoadRestoreSkip({
+        dev,
+        mode,
+        reasonCode: 'planned_state',
+        logMessage: `Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`,
+      });
     }
     if (dev.currentState !== 'off') {
-      this.logDebug(`Capacity: skip stepped-load restore for ${name}, currentState is ${dev.currentState}`);
-      return false;
+      return this.logSteppedLoadRestoreSkip({
+        dev,
+        mode,
+        reasonCode: 'current_state',
+        logMessage: `Capacity: skip stepped-load restore for ${name}, currentState is ${dev.currentState}`,
+      });
     }
-
     const onoffViolated = snapshot?.currentOn === false;
     const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
     const hasPendingMatchingRestoreStep = desiredStepId !== undefined
@@ -644,7 +780,6 @@ export class PlanExecutor {
       && desiredIsNonOff
       && desiredStepId !== dev.selectedStepId,
     );
-
     if (onoffViolated) {
       this.logDebug(`Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
     }
@@ -655,39 +790,94 @@ export class PlanExecutor {
         : `${dev.selectedStepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
       this.logDebug(`Capacity: ${name} violates keep invariant: step=${stepDetail}`);
     }
-
     if (!onoffViolated && !stepViolated) {
-      this.logDebug(`Capacity: skip stepped-load restore for ${name}, no keep violations detected`);
-      return false;
+      return this.logSteppedLoadRestoreSkip({
+        dev,
+        mode,
+        reasonCode: 'no_keep_violation',
+        logMessage: `Capacity: skip stepped-load restore for ${name}, no keep violations detected`,
+      });
     }
-
     if (this.applyKeepInvariantShedBlock(dev, name, anyShedDevices, desiredStepId)) return false;
-    // Block condition no longer applies — clear dedupe state so next block re-emits
     delete this.state.keepInvariantShedBlockedByDevice[dev.id];
-
     if (!snapshot) {
-      this.logDebug(`Capacity: skip stepped-load restore for ${name}, no snapshot available`);
-      return false;
+      return this.logSteppedLoadRestoreSkip({
+        dev,
+        mode,
+        reasonCode: 'missing_snapshot',
+        logMessage: `Capacity: skip stepped-load restore for ${name}, no snapshot available`,
+      });
     }
     if (!canTurnOnDevice(snapshot)) {
-      this.logDebug(
-        `Capacity: skip stepped-load restore for ${name}, cannot turn on from current snapshot`,
-      );
-      return false;
+      return this.logSteppedLoadRestoreSkip({
+        dev,
+        mode,
+        reasonCode: 'not_setable',
+        logMessage: `Capacity: skip stepped-load restore for ${name}, cannot turn on from current snapshot`,
+      });
     }
     if (this.state.pendingRestores.has(dev.id)) {
-      this.logDebug(`Capacity: skip stepped-load restore for ${name}, already in progress`);
-      return false;
+      return this.logSteppedLoadRestoreSkip({
+        dev,
+        mode,
+        reasonCode: 'already_in_progress',
+        logMessage: `Capacity: skip stepped-load restore for ${name}, already in progress`,
+      });
     }
     if (onoffViolated && stepViolated && options.preRestoreStepIssued !== true && !hasPendingMatchingRestoreStep) {
-      this.logDebug(
-        `Capacity: skip stepped-load restore for ${name}, required pre-restore step command was not issued`,
-      );
-      return false;
+      return this.logSteppedLoadRestoreSkip({
+        dev,
+        mode,
+        reasonCode: 'pre_restore_step_required',
+        logMessage: `Capacity: skip stepped-load restore for ${name}, required pre-restore step command was not issued`,
+      });
     }
-    if (!onoffViolated) {
-      return true;
-    }
+    if (!onoffViolated) return true;
+    return this.executeSteppedLoadRestoreBinary({ dev, snapshot, mode, name, onoffViolated, stepViolated });
+  }
+
+  private logSteppedLoadRestoreSkip(params: {
+    dev: DevicePlan['devices'][number];
+    mode: PlanActuationMode;
+    reasonCode:
+      | 'planned_state'
+      | 'current_state'
+      | 'no_keep_violation'
+      | 'missing_snapshot'
+      | 'not_setable'
+      | 'already_in_progress'
+      | 'pre_restore_step_required';
+    logMessage: string;
+  }): false {
+    const { dev, mode, reasonCode, logMessage } = params;
+    this.deps.debugStructured?.({
+      event: 'restore_command_skipped',
+      reasonCode,
+      deviceId: dev.id,
+      deviceName: dev.name || dev.id,
+      logContext: 'capacity',
+      actuationMode: mode,
+    });
+    this.logDebug(logMessage);
+    return false;
+  }
+
+  private async executeSteppedLoadRestoreBinary(params: {
+    dev: DevicePlan['devices'][number];
+    snapshot: TargetDeviceSnapshot;
+    mode: PlanActuationMode;
+    name: string;
+    onoffViolated: boolean;
+    stepViolated: boolean;
+  }): Promise<boolean> {
+    const {
+      dev,
+      snapshot,
+      mode,
+      name,
+      onoffViolated,
+      stepViolated,
+    } = params;
     this.state.pendingRestores.add(dev.id);
     try {
       const applied = await setBinaryControl({
@@ -708,6 +898,7 @@ export class PlanExecutor {
         mode,
         onoffViolated,
         stepViolated,
+        reasonCode: 'keep_invariant',
       });
       if (mode === 'plan') {
         const now = Date.now();
@@ -762,6 +953,7 @@ export class PlanExecutor {
     if (!unchanged) {
       this.deps.debugStructured?.({
         event: 'restore_keep_invariant_shed_blocked',
+        reasonCode: 'shed_invariant',
         deviceId: dev.id,
         deviceName: name,
         desiredStepId,
@@ -931,11 +1123,62 @@ export class PlanExecutor {
     const target = latestObservedSnapshot?.targets?.find((entry) => entry.id === targetCap);
     const desired = normalizeTargetCapabilityValue({ target, value: rawDesired });
     const latestObservedValue = latestObservedSnapshot?.targets?.find((entry) => entry.id === targetCap)?.value;
-    if (Object.is(latestObservedValue, desired)) {
-      this.logDebug(`Capacity: skip ${targetCap} for ${name}, already ${desired}°C in current snapshot`);
-      return { applied: false, reason: 'skipped' };
-    }
+    const preflightResult = this.handleTargetCommandPreflight({
+      deviceId,
+      name,
+      targetCap,
+      desired,
+      latestObservedValue,
+      skipContext,
+      actuationMode,
+    });
+    if (preflightResult.type === 'skip') return preflightResult.result;
+    return this.executeTargetCommandDispatch({
+      deviceId,
+      name,
+      targetCap,
+      desired,
+      observedValue,
+      skipContext,
+      actuationMode,
+      latestObservedValue,
+      decisionType: preflightResult.decisionType,
+    });
+  }
 
+  private handleTargetCommandPreflight(params: {
+    deviceId: string;
+    name: string;
+    targetCap: string;
+    desired: number;
+    latestObservedValue: unknown;
+    skipContext: 'plan' | 'shedding' | 'overshoot';
+    actuationMode: PlanActuationMode;
+  }): { type: 'skip'; result: TargetCommandDispatchResult } | { type: 'proceed'; decisionType: 'send' | 'retry' } {
+    const {
+      deviceId,
+      name,
+      targetCap,
+      desired,
+      latestObservedValue,
+      skipContext,
+      actuationMode,
+    } = params;
+    if (Object.is(latestObservedValue, desired)) {
+      this.deps.debugStructured?.({
+        event: 'target_command_skipped',
+        reasonCode: 'already_matched',
+        deviceId,
+        deviceName: name,
+        capabilityId: targetCap,
+        desired,
+        observedValue: latestObservedValue ?? null,
+        skipContext,
+        actuationMode,
+      });
+      this.logDebug(`Capacity: skip ${targetCap} for ${name}, already ${desired}°C in current snapshot`);
+      return { type: 'skip', result: { applied: false, reason: 'skipped' } };
+    }
     const nowMs = Date.now();
     const pendingBeforeDecision = this.state.pendingTargetCommands[deviceId];
     const canBypassRetryState = actuationMode === 'reconcile'
@@ -949,22 +1192,61 @@ export class PlanExecutor {
         desired,
         nowMs,
       });
-    if (decision.type === 'skip') {
-      const remainingSec = Math.max(1, Math.ceil(decision.remainingMs / 1000));
-      if (decision.pending.status === 'temporary_unavailable') {
-        this.logDebug(
-          `Capacity: skip ${targetCap} for ${name}, device temporarily unavailable `
-          + `for ${remainingSec}s before retry (${skipContext})`,
-        );
-      } else {
-        this.logDebug(
-          `Capacity: skip ${targetCap} for ${name}, waiting ${remainingSec}s `
-          + `for ${desired}°C confirmation (${skipContext})`,
-        );
-      }
-      return { applied: false, reason: 'skipped' };
+    if (decision.type !== 'skip') {
+      return { type: 'proceed', decisionType: decision.type };
     }
+    const remainingSec = Math.max(1, Math.ceil(decision.remainingMs / 1000));
+    this.deps.debugStructured?.({
+      event: 'target_command_skipped',
+      reasonCode: decision.pending.status === 'temporary_unavailable'
+        ? 'temporarily_unavailable'
+        : 'waiting_for_confirmation',
+      deviceId,
+      deviceName: name,
+      capabilityId: targetCap,
+      desired,
+      retryCount: decision.pending.retryCount,
+      remainingMs: decision.remainingMs,
+      skipContext,
+      actuationMode,
+    });
+    if (decision.pending.status === 'temporary_unavailable') {
+      this.logDebug(
+        `Capacity: skip ${targetCap} for ${name}, device temporarily unavailable `
+        + `for ${remainingSec}s before retry (${skipContext})`,
+      );
+    } else {
+      this.logDebug(
+        `Capacity: skip ${targetCap} for ${name}, waiting ${remainingSec}s `
+        + `for ${desired}°C confirmation (${skipContext})`,
+      );
+    }
+    return { type: 'skip', result: { applied: false, reason: 'skipped' } };
+  }
 
+  private async executeTargetCommandDispatch(params: {
+    deviceId: string;
+    name: string;
+    targetCap: string;
+    desired: number;
+    observedValue?: unknown;
+    skipContext: 'plan' | 'shedding' | 'overshoot';
+    actuationMode: PlanActuationMode;
+    latestObservedValue: unknown;
+    decisionType: 'send' | 'retry';
+  }): Promise<TargetCommandDispatchResult> {
+    const {
+      deviceId,
+      name,
+      targetCap,
+      desired,
+      observedValue,
+      skipContext,
+      actuationMode,
+      latestObservedValue,
+      decisionType,
+    } = params;
+    const nowMs = Date.now();
     try {
       await this.deviceManager.setCapability(deviceId, targetCap, desired);
     } catch (error) {
@@ -977,6 +1259,16 @@ export class PlanExecutor {
         observedValue: latestObservedValue ?? observedValue,
       });
       const retryDelaySec = Math.max(1, Math.ceil((failedPending.nextRetryAtMs - nowMs) / 1000));
+      this.deps.structuredLog?.error({
+        event: 'target_command_failed',
+        reasonCode: 'device_manager_write_failed',
+        deviceId,
+        deviceName: name,
+        capabilityId: targetCap,
+        desired,
+        skipContext,
+        actuationMode,
+      });
       this.log(
         `Failed to set ${targetCap} for ${name}; treating device as temporarily unavailable `
         + `for ${retryDelaySec}s before retry`,
@@ -1002,7 +1294,7 @@ export class PlanExecutor {
       desired,
     });
     const retryDelaySec = Math.max(1, Math.ceil((pending.nextRetryAtMs - nowMs) / 1000));
-    if (decision.type === 'retry' && pendingStillExists && !Object.is(latestObservedValueAfterActuation, desired)) {
+    if (decisionType === 'retry' && pendingStillExists && !Object.is(latestObservedValueAfterActuation, desired)) {
       await this.logPendingTargetRetry({
         deviceId,
         name,
@@ -1010,8 +1302,8 @@ export class PlanExecutor {
         desired,
         retryCount: pending.retryCount,
         retryDelaySec,
-        observedValue: decision.pending.lastObservedValue,
-        observedSource: decision.pending.lastObservedSource,
+        observedValue: pending.lastObservedValue,
+        observedSource: pending.lastObservedSource,
         skipContext,
       });
     } else if (pendingStillExists) {
@@ -1022,7 +1314,7 @@ export class PlanExecutor {
     }
     return {
       applied: true,
-      attemptType: decision.type,
+      attemptType: decisionType,
     };
   }
 
@@ -1119,9 +1411,31 @@ export class PlanExecutor {
       const now = Date.now();
       this.state.lastDeviceShedMs[deviceId] = now;
       if (!hasTarget) {
+        this.deps.debugStructured?.({
+          event: 'binary_command_skipped',
+          reasonCode: 'missing_control_targets',
+          deviceId,
+          deviceName: name,
+          desired: false,
+          logContext: 'capacity',
+          actuationMode: 'plan',
+          hasTargets: false,
+          capabilityId: snapshotEntry?.controlCapabilityId ?? null,
+        });
         this.logDebug(`Capacity: skip turn_off for ${name}, device has no onoff or temperature target`);
         return false;
       }
+      this.deps.debugStructured?.({
+        event: 'binary_command_skipped',
+        reasonCode: 'missing_onoff_capability',
+        deviceId,
+        deviceName: name,
+        desired: false,
+        logContext: 'capacity',
+        actuationMode: 'plan',
+        hasTargets: true,
+        capabilityId: snapshotEntry?.controlCapabilityId ?? null,
+      });
       this.logDebug(`Capacity: skip turn_off for ${name}, device has no onoff capability`);
       return false;
     }

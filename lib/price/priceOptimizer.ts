@@ -69,13 +69,14 @@ export class PriceOptimizer {
         + `threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, `
         + `isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`,
       );
-      const hourLabel = PriceOptimizer.resolveHourLabel(isCheap, isExpensive);
+      const resultingMode = PriceOptimizer.resolveHourLabel(isCheap, isExpensive);
       const previousMode = this.lastMode;
-      this.lastMode = hourLabel;
       this.deps.structuredLog?.info({
         event: 'price_optimization_completed',
         previousMode,
-        mode: hourLabel,
+        resultingMode,
+        mode: resultingMode,
+        transition: previousMode === resultingMode ? 'steady' : 'hour_boundary_transition',
         devicesCount: Object.keys(settings).length,
         currentPriceAvailable: currentPrice != null,
         currentPriceOre: currentPrice?.totalPrice ?? null,
@@ -83,12 +84,13 @@ export class PriceOptimizer {
         isCheap,
         isExpensive,
       });
+      this.lastMode = resultingMode;
       incPerfCounters([
         'plan_rebuild_requested_total',
         'plan_rebuild_requested.price_optimizer_total',
-        `plan_rebuild_requested.price_optimizer.${hourLabel}_total`,
+        `plan_rebuild_requested.price_optimizer.${resultingMode}_total`,
       ]);
-      await this.deps.rebuildPlan(`price optimization (${hourLabel} hour)`);
+      await this.deps.rebuildPlan(`price optimization (${resultingMode} hour)`);
     } finally {
       stopSpan();
     }
