@@ -79,6 +79,7 @@ const buildExecutor = (
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     logTargetRetryComparison: vi.fn(),
+    structuredLog: { info: vi.fn(), debug: vi.fn(), error: vi.fn() } as any,
     log: vi.fn(),
     logDebug: vi.fn(),
     error: vi.fn(),
@@ -168,12 +169,18 @@ describe('PlanExecutor restore logging', () => {
     await executor.applyPlanActions(buildTargetPlan(16, 23));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
-    expect(deps.log).toHaveBeenCalledWith(
-      'Capacity: set target_temperature for Heater to 23°C (restoring from shed state)',
-    );
-    expect(deps.log).not.toHaveBeenCalledWith(
-      'Set target_temperature for Heater from 16 to 23 (mode: Home)',
-    );
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 16,
+      mode: 'plan',
+      attemptType: 'send',
+      reasonCode: 'restore_from_shed',
+      operatingMode: 'Home',
+    }));
   });
 });
 
@@ -229,9 +236,17 @@ describe('PlanExecutor pending target commands', () => {
     expect(deps.log).toHaveBeenCalledWith(
       'Target mismatch still present for Heater; observed 18°C via unknown, retrying target_temperature to 23°C',
     );
-    expect(deps.log).toHaveBeenCalledWith(
-      'Set target_temperature for Heater from 18 to 23 (retry pending confirmation; mode: Home)',
-    );
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 18,
+      mode: 'plan',
+      attemptType: 'retry',
+      reasonCode: 'retry_pending_confirmation',
+      operatingMode: 'Home',
+    }));
     expect(deps.logTargetRetryComparison).toHaveBeenCalledWith({
       deviceId: 'dev-1',
       name: 'Heater',
@@ -331,9 +346,17 @@ describe('PlanExecutor pending target commands', () => {
     await executor.applyPlanActions(buildTargetPlan(), 'reconcile');
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
-    expect(deps.log).toHaveBeenCalledWith(
-      'Set target_temperature for Heater from 18 to 23 (reconcile after drift; mode: Home)',
-    );
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 18,
+      mode: 'reconcile',
+      attemptType: 'send',
+      reasonCode: 'reconcile',
+      operatingMode: 'Home',
+    }));
   });
 
   it('normalizes target writes to the device target step before tracking pending retries', async () => {
@@ -397,12 +420,16 @@ describe('PlanExecutor pending target commands', () => {
     });
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 15);
-    expect(deps.log).toHaveBeenCalledWith(
-      'Capacity: set target_temperature for Heater to 15°C (shedding)',
-    );
-    expect(deps.log).not.toHaveBeenCalledWith(
-      'Capacity: set target_temperature for Heater to 15°C (overshoot)',
-    );
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 15,
+      previousValue: 22,
+      mode: 'plan',
+      attemptType: 'send',
+      reasonCode: 'shedding',
+    }));
   });
 
   it('bypasses pending target retry backoff for reconcile-driven drift correction', async () => {
@@ -435,9 +462,15 @@ describe('PlanExecutor pending target commands', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
-    expect(deps.log).toHaveBeenCalledWith(
-      'Set target_temperature for Heater from 28 to 23 (reconcile after drift; mode: Home)',
-    );
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 28,
+      mode: 'reconcile',
+      reasonCode: 'reconcile',
+    }));
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
       desired: 23,
       retryCount: 1,
@@ -489,9 +522,16 @@ describe('PlanExecutor pending target commands', () => {
     expect(deps.log).not.toHaveBeenCalledWith(
       expect.stringContaining('Target mismatch still present for Heater'),
     );
-    expect(deps.log).toHaveBeenCalledWith(
-      'Set target_temperature for Heater from 25 to 23 (retry pending confirmation; mode: Home)',
-    );
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 25,
+      mode: 'plan',
+      attemptType: 'retry',
+      reasonCode: 'retry_pending_confirmation',
+    }));
     expect(deps.logDebug).toHaveBeenCalledWith(
       'Capacity: confirmed target_temperature for Heater at 23°C immediately after actuation',
     );
@@ -818,9 +858,13 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
-    expect(deps.logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('set onoff=false for stepped device Tank'),
-    );
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+      desired: false,
+      reasonCode: 'stepped_turn_off_shed',
+    }));
   });
 
   it('does not set onoff=false for a shed stepped device not at off-step', async () => {
@@ -974,9 +1018,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ step_id: 'low' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    expect(deps.log).toHaveBeenCalledWith(
-      expect.stringContaining('reconcile after drift'),
-    );
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      deviceId: 'dev-1',
+      previousStepId: 'off',
+      desiredStepId: 'low',
+      direction: 'restore',
+      mode: 'reconcile',
+    }));
   });
 
   it('re-issues step command when keep device has onoff=true but step is at off', async () => {
@@ -1058,9 +1107,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ step_id: 'low' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    expect(deps.log).toHaveBeenCalledWith(
-      expect.stringContaining('reconcile after drift'),
-    );
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      deviceId: 'dev-1',
+      previousStepId: 'max',
+      desiredStepId: 'low',
+      direction: 'shed',
+      mode: 'reconcile',
+    }));
   });
 
   it('blocks keep-invariant restore when shed devices exist and desiredStepId exceeds lowestNonZeroStep', async () => {

@@ -32,6 +32,7 @@ export type PlanRebuildOutcome = {
   detailChanged: boolean;
   metaChanged: boolean;
   appliedActions: boolean;
+  deviceWriteCount: number;
   hadShedding: boolean;
   isDryRun: boolean;
   failed: boolean;
@@ -54,6 +55,7 @@ export const createPlanRebuildOutcome = (isDryRun: boolean): PlanRebuildOutcome 
   detailChanged: false,
   metaChanged: false,
   appliedActions: false,
+  deviceWriteCount: 0,
   hadShedding: false,
   isDryRun,
   failed: false,

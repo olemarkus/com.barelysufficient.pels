@@ -3749,7 +3749,7 @@ describe('Dry run mode', () => {
       ],
     };
 
-    await expect((app as any).applyPlanActions(plan)).resolves.toBeUndefined();
+    await expect((app as any).applyPlanActions(plan)).resolves.toEqual({ deviceWriteCount: 0 });
     expect(callback).toHaveBeenCalledTimes(2);
     expect(callback).toHaveBeenNthCalledWith(1, 'dev-1', 'Failing device', undefined);
     expect(callback).toHaveBeenNthCalledWith(2, 'dev-2', 'Healthy device', undefined);

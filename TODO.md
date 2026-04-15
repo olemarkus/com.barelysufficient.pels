@@ -40,15 +40,17 @@ file.
 - [ ] Keep default structured event payloads bounded. Normal diagnostics should avoid large
       per-device arrays and full change objects outside explicit incident/debug paths.
       Files: reconcile, incident, and rebuild logging paths.
-- [ ] Finish the highest-value structured logging gaps: executor actuation, periodic/status
-      output, target-restore execution, UI snapshot writes, and startup/background-task paths.
+- [ ] Finish the highest-value structured logging gaps: executor failure/skip paths, UI snapshot
+      writes, and startup/background-task paths. Success-path actuation and periodic status are
+      now structured.
       Files: executor/runtime helpers, `app.ts`, UI snapshot writers.
 - [ ] Add bounded `reasonCode` values for important failures, fallback paths, and degraded-state
       transitions instead of relying on prose-only diagnostics.
       Files: `lib/logging/**`, runtime log call sites.
-- [ ] Make `plan_rebuild_completed` semantics fully trustworthy: `actionChanged` must mean plan
-      action intent changed, and `appliedActions` must correlate with concrete device writes.
-      Files: `lib/plan/planService.ts`, rebuild logging/tests.
+- [x] Make `plan_rebuild_completed` semantics fully trustworthy. Fixed: rebuild completion now
+      reports `deviceWriteCount`, and `appliedActions` is derived from actual executor writes
+      instead of merely entering the apply path.
+      Files: `lib/plan/planService.ts`, `lib/plan/planExecutor.ts`, rebuild logging/tests.
 - [ ] Fix price-optimization transition logging at hour boundaries so logs reflect the resulting
       state, not the previous one.
       Files: price optimization transition logic and tests.

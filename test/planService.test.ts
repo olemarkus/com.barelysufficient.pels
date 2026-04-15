@@ -47,7 +47,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     } as any,
     getPlanDevices: () => [],
@@ -87,7 +87,7 @@ describe('PlanService', () => {
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -217,7 +217,7 @@ describe('PlanService', () => {
       computeShortfallThreshold: vi.fn(() => 0),
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -2141,6 +2141,7 @@ describe('PlanService', () => {
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions: vi.fn().mockImplementation(async () => {
         vi.advanceTimersByTime(13);
+        return { deviceWriteCount: 1 };
       }),
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     };
@@ -2171,6 +2172,7 @@ describe('PlanService', () => {
       queueDepth: 1,
       actionChanged: true,
       appliedActions: true,
+      deviceWriteCount: 1,
     }));
     expect(trace.buildMs).toBeGreaterThanOrEqual(11);
     expect(trace.snapshotWriteMs).toBeGreaterThanOrEqual(7);
@@ -2263,6 +2265,7 @@ describe('PlanService', () => {
       reasonCode: 'initial',
       actionChanged: false,
       appliedActions: false,
+      deviceWriteCount: 0,
       failed: false,
     }));
   });
@@ -2288,6 +2291,7 @@ describe('PlanService', () => {
       durationMs: expect.any(Number),
       actionChanged: false,
       appliedActions: false,
+      deviceWriteCount: 0,
       failed: false,
     }));
     expect((structuredLog.info.mock.calls[0]?.[0] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(1500);
@@ -2318,6 +2322,42 @@ describe('PlanService', () => {
       event: 'plan_rebuild_completed',
       actionChanged: true,
       appliedActions: false,
+      deviceWriteCount: 0,
+    }));
+  });
+
+  it('emits plan_rebuild_completed with concrete deviceWriteCount when actuation wrote to devices', async () => {
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
+    const { service, deps } = createPlanService({
+      structuredLog: structuredLog as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi
+          .fn()
+          .mockResolvedValueOnce(buildPlan(20, 'stable'))
+          .mockResolvedValueOnce(buildPlan(20, 'stable', {}, { plannedState: 'shed' })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 2 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+    });
+
+    await service.rebuildPlanFromCache('seed');
+    structuredLog.info.mockClear();
+    structuredLog.debug.mockClear();
+
+    await service.rebuildPlanFromCache('power_delta');
+
+    expect((deps.planEngine.applyPlanActions as vi.Mock)).toHaveBeenCalled();
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_rebuild_completed',
+      reasonCode: 'power_delta',
+      actionChanged: true,
+      appliedActions: true,
+      deviceWriteCount: 2,
+      failed: false,
     }));
   });
 

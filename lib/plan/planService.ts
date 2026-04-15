@@ -35,7 +35,7 @@ import {
 import type { PlanEngine } from './planEngine';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice } from './planTypes';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './planHeadroomDevice';
-import type { PlanActuationMode } from './planExecutor';
+import type { PlanActuationMode, PlanActuationResult } from './planExecutor';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
@@ -192,7 +192,7 @@ export class PlanService {
     );
   }
 
-  applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<void> {
+  applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
     return this.deps.planEngine.applyPlanActions(plan, mode);
   }
 
@@ -539,6 +539,7 @@ export class PlanService {
             metaChanged: outcome.metaChanged,
             hadShedding: outcome.hadShedding,
             appliedActions: outcome.appliedActions,
+            deviceWriteCount: outcome.deviceWriteCount,
             failed: outcome.failed,
             ...buildPlanHeadroomLogFields(this.latestPlanSnapshot),
             ...buildPlanCapacityStateSummary(this.latestPlanSnapshot),
@@ -567,7 +568,7 @@ export class PlanService {
       this.deps.log('Dry run: shedding planned but not executed');
     }
 
-    const { applyMs, appliedActions } = await this.maybeApplyPlanChanges(plan, changes, isDryRun);
+    const { applyMs, appliedActions, deviceWriteCount } = await this.maybeApplyPlanChanges(plan, changes, isDryRun);
     if (changes.actionChanged || !this.latestReconcilePlanSnapshot) {
       this.latestReconcilePlanSnapshot = this.latestPlanSnapshot ?? plan;
     }
@@ -583,6 +584,7 @@ export class PlanService {
       detailChanged: changes.detailChanged,
       metaChanged: changes.metaChanged,
       appliedActions,
+      deviceWriteCount,
       hadShedding,
     });
   }
@@ -662,17 +664,19 @@ export class PlanService {
     plan: DevicePlan,
     changes: PlanChangeSet,
     isDryRun: boolean,
-  ): Promise<{ applyMs: number; appliedActions: boolean }> {
+  ): Promise<{ applyMs: number; appliedActions: boolean; deviceWriteCount: number }> {
     const shouldApplyStablePlanActions = this.deps.planEngine.shouldApplyStablePlanActions?.(plan) ?? false;
     if (isDryRun || (!changes.actionChanged && !shouldApplyStablePlanActions)) {
-      return { applyMs: 0, appliedActions: false };
+      return { applyMs: 0, appliedActions: false, deviceWriteCount: 0 };
     }
 
     const applyStart = Date.now();
     let appliedActions = false;
+    let deviceWriteCount = 0;
     try {
-      await this.applyPlanActions(plan);
-      appliedActions = true;
+      const actuation = await this.applyPlanActions(plan);
+      deviceWriteCount = typeof actuation?.deviceWriteCount === 'number' ? actuation.deviceWriteCount : 0;
+      appliedActions = deviceWriteCount > 0;
       this.deps.schedulePostActuationRefresh?.();
       const refreshed = this.refreshLatestPlanSnapshotFromSettledLiveState(plan);
       if (!refreshed) {
@@ -684,6 +688,7 @@ export class PlanService {
     return {
       applyMs: Date.now() - applyStart,
       appliedActions,
+      deviceWriteCount,
     };
   }
 
@@ -721,6 +726,7 @@ export class PlanService {
       metaChanged: outcome.metaChanged,
       isDryRun: outcome.isDryRun,
       appliedActions: outcome.appliedActions,
+      deviceWriteCount: outcome.deviceWriteCount,
       hadShedding: outcome.hadShedding,
       failed: outcome.failed,
     });
