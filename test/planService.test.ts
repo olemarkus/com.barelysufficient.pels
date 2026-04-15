@@ -2514,6 +2514,22 @@ describe('PlanService', () => {
 
   it('does not call schedulePostActuationRefresh when stepped-only actuation triggers no direct device writes', async () => {
     const schedulePostActuationRefresh = vi.fn();
+    const steppedPlan = buildPlan(20, 'stable', {}, {
+      currentState: 'off',
+      plannedState: 'keep',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+      currentOn: true,
+    });
     const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
     const service = new PlanService({
       homey: {
@@ -2522,22 +2538,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
-          currentState: 'off',
-          plannedState: 'keep',
-          controlModel: 'stepped_load',
-          controlCapabilityId: 'onoff',
-          steppedLoadProfile: {
-            model: 'stepped_load',
-            steps: [
-              { id: 'off', planningPowerW: 0 },
-              { id: 'low', planningPowerW: 1250 },
-              { id: 'max', planningPowerW: 3000 },
-            ],
-          },
-          selectedStepId: 'low',
-          desiredStepId: 'max',
-        })),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(steppedPlan),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
@@ -2550,20 +2551,13 @@ describe('PlanService', () => {
         name: 'Tank',
         targets: [],
         deviceType: 'onoff',
-        hasBinaryControl: true,
-        currentOn: false,
         controlModel: 'stepped_load',
         controlCapabilityId: 'onoff',
-        steppedLoadProfile: {
-          model: 'stepped_load' as const,
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1250 },
-            { id: 'max', planningPowerW: 3000 },
-          ],
-        },
-        selectedStepId: 'low',
-        desiredStepId: 'max',
+        steppedLoadProfile: steppedPlan.devices[0].steppedLoadProfile,
+        hasBinaryControl: true,
+        currentOn: true,
+        selectedStepId: 'off',
+        desiredStepId: 'low',
       }],
       getCapacityDryRun: () => false,
       isCurrentHourCheap: () => false,
@@ -2578,7 +2572,7 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache();
 
-    expect(applyPlanActions).toHaveBeenCalled();
+    expect(applyPlanActions).toHaveBeenCalledWith(steppedPlan, 'plan');
     expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
 
