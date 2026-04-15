@@ -788,7 +788,11 @@ const initDeviceDetailBudgetExemptHandler = () => {
   deviceDetailBudgetExempt?.addEventListener('change', async () => {
     const deviceId = currentDetailDeviceId;
     if (!deviceId) return;
-    state.budgetExemptMap[deviceId] = deviceDetailBudgetExempt.checked;
+    if (deviceDetailBudgetExempt.checked) {
+      state.budgetExemptMap[deviceId] = true;
+    } else {
+      delete state.budgetExemptMap[deviceId];
+    }
     try {
       await setSetting(BUDGET_EXEMPT_DEVICES, state.budgetExemptMap);
       renderDevices(state.latestDevices);

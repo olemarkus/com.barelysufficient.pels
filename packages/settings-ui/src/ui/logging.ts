@@ -4,6 +4,8 @@ import { callApi } from './homey.ts';
 
 const pendingLogs: SettingsUiLogEntry[] = [];
 const NETWORK_FAILURE_WINDOW_MS = 5_000;
+const NETWORK_FAILURE_TTL_MS = NETWORK_FAILURE_WINDOW_MS * 3;
+const NETWORK_FAILURE_MAX_ENTRIES = 100;
 
 type NetworkFailureState = {
   firstSeenAt: number;
@@ -44,8 +46,7 @@ const normalizeErrorSummary = (error: unknown): string => {
 
 const isNetworkFailure = (message: string, detail?: string): boolean => {
   const text = `${message} ${detail || ''}`.toLowerCase();
-  return text.includes('homey api ')
-    || text.includes('homey api')
+  return text.includes('homey api')
     || text.includes('homey sdk not ready')
     || text.includes('cannot get /api/app/')
     || text.includes('cannot post /api/app/')
@@ -72,6 +73,23 @@ const buildNetworkFailureDetail = (
   suppressedCount: state?.suppressedCount ?? 0,
   windowMs: NETWORK_FAILURE_WINDOW_MS,
 });
+
+const pruneRecentNetworkFailures = (now: number) => {
+  for (const [key, state] of recentNetworkFailures) {
+    if (now - state.lastSeenAt > NETWORK_FAILURE_TTL_MS) {
+      recentNetworkFailures.delete(key);
+    }
+  }
+  if (recentNetworkFailures.size <= NETWORK_FAILURE_MAX_ENTRIES) return;
+
+  const keysByAge = [...recentNetworkFailures.entries()]
+    .sort((a, b) => a[1].lastSeenAt - b[1].lastSeenAt)
+    .map(([key]) => key);
+
+  for (let index = 0; index < keysByAge.length - NETWORK_FAILURE_MAX_ENTRIES; index += 1) {
+    recentNetworkFailures.delete(keysByAge[index]);
+  }
+};
 
 const buildLogEntry = (
   level: SettingsUiLogLevel,
@@ -104,6 +122,7 @@ export const logSettingsMessage = async (
   if (error !== undefined && isNetworkFailure(message, detail)) {
     const key = buildNetworkFailureKey(message, error, context);
     const now = Date.now();
+    pruneRecentNetworkFailures(now);
     const existing = recentNetworkFailures.get(key);
     if (existing && now - existing.lastLoggedAt < NETWORK_FAILURE_WINDOW_MS) {
       existing.lastSeenAt = now;
@@ -139,6 +158,7 @@ export const logSettingsMessage = async (
     } catch {
       queueLog(entry);
     }
+    pruneRecentNetworkFailures(now);
     return;
   }
   const entry = buildLogEntry(level, message, detail, context);
