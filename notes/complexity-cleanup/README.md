@@ -153,10 +153,10 @@ Each phase is one PR. Phases 1-2 are low-risk and can be done first as confidenc
 Phases 3-5 are the main structural splits. Phase 6 is a logic simplification. Phase 7 is the
 most invasive and can wait.
 
-## If simplicity becomes P1
+## P1 Simplicity Candidates
 
-If the next stretch of work is explicitly about making the codebase simpler, the best P2 to P1
-promotions are the ones that remove indirection without opening a wide correctness surface:
+If the next stretch of work explicitly prioritizes simplification, these are the strongest P1
+candidates because they remove indirection without opening a wide correctness surface:
 
 1. **Phase 1: `planActivationBackoff.ts`.** Lowest-risk deletion of complexity, and it makes the
    later restore-gate cleanup smaller.
