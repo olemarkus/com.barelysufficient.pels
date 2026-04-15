@@ -6,6 +6,13 @@ import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from 
 import { computeBaseRestoreNeed, resolveRestorePowerSource } from './planRestoreSwap';
 import { getRestoreNeed } from './planRestoreSupport';
 import {
+  buildActivationBackoffReason,
+  buildCooldownReason,
+  buildInsufficientHeadroomReason,
+  buildRestorePendingReason,
+  buildShortfallReason,
+} from './planReasonStrings';
+import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
@@ -71,8 +78,7 @@ function maybeApplyShortfallReason(params: {
   if (!guardInShortfall || reasonFlags.isSwapReason || reasonFlags.isBudgetReason) return null;
   if (dev.reason?.startsWith('shortfall (')) return null;
   const { needed: estimatedNeed } = computeBaseRestoreNeed(dev);
-  return `shortfall (need ${estimatedNeed.toFixed(2)}kW, headroom `
-    + `${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`;
+  return buildShortfallReason(estimatedNeed, headroomRaw);
 }
 
 function maybeApplyCooldownReason(params: {
@@ -88,7 +94,7 @@ function maybeApplyCooldownReason(params: {
     inRestoreCooldown, restoreCooldownRemainingSec,
   } = params;
   if (inCooldown && !activeOvershoot && !reasonFlags.isSwapReason) {
-    return `cooldown (shedding, ${shedCooldownRemainingSec ?? 0}s remaining)`;
+    return buildCooldownReason('shedding', shedCooldownRemainingSec);
   }
   if (
     inRestoreCooldown
@@ -97,7 +103,7 @@ function maybeApplyCooldownReason(params: {
     && !reasonFlags.isBudgetReason
     && !reasonFlags.isShortfallReason
   ) {
-    return `cooldown (restore, ${restoreCooldownRemainingSec ?? 0}s remaining)`;
+    return buildCooldownReason('restore', restoreCooldownRemainingSec);
   }
   return null;
 }
@@ -266,7 +272,7 @@ function resolveRestoreDecision(params: {
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
   const restoreDebugKey = `target:${dev.id}`;
   if (setbackRemainingMs !== null) {
-    const reason = `activation backoff (${Math.max(1, Math.ceil(setbackRemainingMs / 1000))}s remaining)`;
+    const reason = buildActivationBackoffReason(setbackRemainingMs);
     emitRestoreDebugEventOnChange({
       state,
       key: restoreDebugKey,
@@ -291,8 +297,7 @@ function resolveRestoreDecision(params: {
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
     const requiredKwWithFloor = admission.requiredKw + RESTORE_ADMISSION_FLOOR_KW;
-    const reason = `insufficient headroom (need ${requiredKwWithFloor.toFixed(2)}kW, `
-      + `headroom ${availableHeadroom.toFixed(2)}kW)`;
+    const reason = buildInsufficientHeadroomReason(requiredKwWithFloor, availableHeadroom);
     emitRestoreDebugEventOnChange({
       state,
       key: restoreDebugKey,
@@ -486,7 +491,7 @@ function resolvePostHoldRestoreDecision(params: {
     debugStructured,
   } = params;
   if (pendingRestoreDelaySec !== null) {
-    return { type: 'hold', reason: `restore pending (${pendingRestoreDelaySec}s remaining)` };
+    return { type: 'hold', reason: buildRestorePendingReason(pendingRestoreDelaySec) };
   }
   return resolveRestoreDecision({
     dev,
