@@ -1004,7 +1004,8 @@ describe('DeviceManager', () => {
 
             // Drift is emitted immediately — no waiting for settle timeout
             expect(realtimeListener).toHaveBeenCalledOnce();
-            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+            const driftEvent = realtimeListener.mock.calls[0][0];
+            expect(driftEvent).toEqual(expect.objectContaining({
                 deviceId: 'dev1',
                 name: 'Heater',
                 changes: [{
@@ -1140,6 +1141,60 @@ describe('DeviceManager', () => {
                 await vi.advanceTimersByTimeAsync(5000);
 
                 expect(realtimeListener).not.toHaveBeenCalled();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('does not preserve the old desired onoff value after settle timeout when a later device.update omits the binary capability', async () => {
+            vi.useFakeTimers();
+            try {
+                mockApiGet.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    currentOn: false,
+                }));
+
+                await vi.advanceTimersByTimeAsync(5000);
+
+                deviceManager.injectDeviceUpdateForTest({
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        measure_power: { value: 900, id: 'measure_power' },
+                    },
+                });
+
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    currentOn: true,
+                }));
+                expect(realtimeListener).toHaveBeenCalledOnce();
+                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                    deviceId: 'dev1',
+                    changes: [expect.objectContaining({
+                        capabilityId: 'onoff',
+                        previousValue: 'off',
+                        nextValue: 'on',
+                    })],
+                }));
             } finally {
                 vi.useRealTimers();
             }
