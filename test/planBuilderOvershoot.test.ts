@@ -68,15 +68,14 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'overshoot_entered',
+      reasonCode: 'active_overshoot',
       totalKw: 2.5,
-      controlledKw: expect.closeTo(2.1, 6),
-      uncontrolledKw: expect.closeTo(0.4, 6),
-      controlledAtMinimumKw: expect.closeTo(0, 6),
-      reducibleControlledKw: 2.1,
-      eligibleAdditionalShedCount: 2,
-      blockedAdditionalShedCount: 0,
-      allShedCandidatesExhausted: false,
-      controlRecoverable: true,
+      hardCapBreached: false,
+      hardCapHeadroomKw: 2.5,
+      remainingReducibleControlledLoad: true,
+      remainingReducibleControlledLoadW: 900,
+      activeControlledDevices: 2,
+      activePlannedShedDevices: 1,
     }));
   });
 
@@ -116,15 +115,14 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'overshoot_entered',
+      reasonCode: 'active_overshoot',
       totalKw: 4.8,
-      controlledKw: 0.8,
-      uncontrolledKw: 4,
-      controlledAtMinimumKw: expect.closeTo(0.8, 6),
-      reducibleControlledKw: 0,
-      eligibleAdditionalShedCount: 0,
-      blockedAdditionalShedCount: 0,
-      allShedCandidatesExhausted: true,
-      controlRecoverable: false,
+      hardCapBreached: true,
+      hardCapHeadroomKw: expect.closeTo(-0.8, 6),
+      remainingReducibleControlledLoad: false,
+      remainingReducibleControlledLoadW: 0,
+      activeControlledDevices: 1,
+      activePlannedShedDevices: 1,
     }));
   });
 
@@ -173,9 +171,9 @@ describe('PlanBuilder overshoot diagnostics', () => {
     expect(structuredLog.info).toHaveBeenCalledTimes(1);
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'overshoot_entered',
-      reducibleControlledKw: 2.1,
-      allShedCandidatesExhausted: false,
-      controlRecoverable: true,
+      reasonCode: 'active_overshoot',
+      remainingReducibleControlledLoad: true,
+      activeControlledDevices: 2,
     }));
   });
 });

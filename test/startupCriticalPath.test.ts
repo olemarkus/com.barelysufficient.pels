@@ -1,4 +1,4 @@
-import { startAppServices } from '../lib/app/appLifecycleHelpers';
+import { runStartupStep, startAppServices } from '../lib/app/appLifecycleHelpers';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -145,6 +145,30 @@ describe('startup critical path perf guardrails', () => {
     await flushMicrotasks();
 
     expect(params.logError).toHaveBeenCalledWith('startup_update_overhead_token', error);
+  });
+
+  it('invokes startup-step failure hooks before rethrowing', async () => {
+    const error = new Error('startup boom');
+    const onError = vi.fn();
+
+    await expect(runStartupStep('initPriceCoordinator', () => {
+      throw error;
+    }, onError)).rejects.toBe(error);
+
+    expect(onError).toHaveBeenCalledWith('initPriceCoordinator', error);
+  });
+
+  it('normalizes non-Error startup-step failures before logging and rethrowing', async () => {
+    const onError = vi.fn();
+
+    const rejection = runStartupStep('initPriceCoordinator', () => {
+      throw 'startup boom';
+    }, onError).catch((error: unknown) => error);
+
+    const error = await rejection;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('startup boom');
+    expect(onError).toHaveBeenCalledWith('initPriceCoordinator', error);
   });
 
   it('does not block startup completion on long-running price pipeline bootstrap', async () => {

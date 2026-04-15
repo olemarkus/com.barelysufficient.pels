@@ -43,6 +43,11 @@ is now a calibration and observability problem around delayed power visibility.
   startup/bootstrap, or another non-power reason
 - whether the overshoot attribution points back to a recently restored device inside the expected
   confirmation window
+- `overshoot_entered` fields including `reasonCode`, `lastPlanBuildAgeMs`,
+  `lastPowerUpdateAgeMs`, `overshootPlanAgeMs`, `overshootPowerSampleAgeMs`,
+  `overshootTopControlledContributors`, and `overshootTopUncontrolledContributors`
+- `overshoot_cleared` duration plus the same age fields above, to distinguish stale lifecycle
+  state from genuine slow recovery
 
 ## Useful regression coverage
 

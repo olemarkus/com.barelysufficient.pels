@@ -6,8 +6,9 @@ file.
 ## P0 Correctness and control integrity
 
 - [ ] Keep monitoring restore optimism under real load. The big restore-overshoot loop fixes are
-      in, but field logs still need watching for cases where delayed element ramp or stale power
-      samples admit a restore too early.
+      in, and the overshoot diagnostics now include plan/power sample age fields, but field logs
+      still need watching for cases where delayed element ramp or stale power samples admit a
+      restore too early.
       Files: `lib/plan/planRestoreAdmission.ts`, `lib/plan/planRestoreSwap.ts`,
       `lib/plan/planConstants.ts`.
 - [ ] If cloud devices still show confirmation or drift gaps after the current freshness model,
@@ -42,25 +43,26 @@ file.
 
 ## P1 Observability and runtime diagnostics
 
-- [ ] Keep default structured event payloads bounded. Normal diagnostics should avoid large
+- [x] Keep default structured event payloads bounded. Normal diagnostics now avoid large
       per-device arrays and full change objects outside explicit incident/debug paths.
       Files: reconcile, incident, and rebuild logging paths.
-- [ ] Finish the highest-value structured logging gaps: executor failure/skip paths, UI snapshot
+- [x] Finish the highest-value structured logging gaps: executor failure/skip paths, UI snapshot
       writes, and startup/background-task paths. Success-path actuation and periodic status are
       now structured.
       Files: executor/runtime helpers, `app.ts`, UI snapshot writers.
-- [ ] Add bounded `reasonCode` values for important failures, fallback paths, and degraded-state
+- [x] Add bounded `reasonCode` values for important failures, fallback paths, and degraded-state
       transitions instead of relying on prose-only diagnostics.
       Files: `lib/logging/**`, runtime log call sites.
 - [x] Make `plan_rebuild_completed` semantics fully trustworthy. Fixed: rebuild completion now
       reports `deviceWriteCount`, and `appliedActions` is derived from actual executor writes
       instead of merely entering the apply path.
       Files: `lib/plan/planService.ts`, `lib/plan/planExecutor.ts`, rebuild logging/tests.
-- [ ] Fix price-optimization transition logging at hour boundaries so logs reflect the resulting
+- [x] Fix price-optimization transition logging at hour boundaries so logs reflect the resulting
       state, not the previous one.
       Files: price optimization transition logic and tests.
 - [ ] Audit suspicious long overshoot durations and confirm whether they were genuine slow
-      recovery or stale lifecycle state.
+      recovery or stale lifecycle state. The new overshoot diagnostics now include plan and power
+      sample age fields to make that call easier.
       Files: overshoot lifecycle/state handling, incident tests/log review.
 
 ## P1 UI and product follow-ups
