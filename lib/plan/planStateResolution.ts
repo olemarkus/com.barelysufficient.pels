@@ -12,7 +12,7 @@ type ObservedCurrentStateInput = {
 
 export function resolveObservedCurrentState(device: ObservedCurrentStateInput): string {
   if (device.observationStale === true) {
-    return 'unknown';
+    return device.hasBinaryControl === false ? 'not_applicable' : 'unknown';
   }
 
   if (device.controlModel === 'stepped_load' && device.steppedLoadProfile) {
@@ -23,6 +23,10 @@ export function resolveObservedCurrentState(device: ObservedCurrentStateInput): 
       currentOn: device.currentOn,
     });
     if (steppedState !== 'unknown') return steppedState;
+  }
+
+  if (device.hasBinaryControl === false) {
+    return 'not_applicable';
   }
 
   return device.currentOn ? 'on' : 'off';
