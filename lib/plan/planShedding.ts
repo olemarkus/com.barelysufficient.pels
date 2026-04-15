@@ -173,6 +173,28 @@ function planShedding(
   // Type narrowing: headroom is guaranteed to be non-null here due to shouldPlanShedding check
   if (context.headroom === null) return emptySheddingResult();
   const needed = -context.headroom;
+  if (measurementDecision.skip) {
+    const summary = summarizeSheddingCandidates({
+      devices: context.devices,
+      needed,
+      limitSource: context.softLimitSource,
+      total: context.total,
+      capacitySoftLimit: context.capacitySoftLimit,
+      state,
+      deps,
+    });
+    deps.logDebug('Plan: skipping additional shedding until a new power measurement arrives');
+    return emptySheddingResult({}, buildOvershootStats({
+      needed,
+      eligibleCandidateCount: summary.eligibleCandidateCount,
+      blockedCandidateCount: summary.blockedCandidateCount,
+      reducibleControlledKw: summary.reducibleControlledKw,
+      blockedReducibleControlledKw: summary.blockedReducibleControlledKw,
+    }));
+  }
+  if (measurementDecision.escalatedSameSample) {
+    deps.logDebug('Plan: escalating overshoot despite unchanged power measurement');
+  }
   const candidateSummary = buildSheddingCandidates({
     devices: context.devices,
     needed,
@@ -183,22 +205,13 @@ function planShedding(
     deps,
   });
   const { candidates } = candidateSummary;
-  const overshootStats: OvershootStats = {
+  const overshootStats = buildOvershootStats({
     needed,
     eligibleCandidateCount: candidates.length,
     blockedCandidateCount: candidateSummary.blockedCandidateCount,
     reducibleControlledKw: candidateSummary.reducibleControlledKw,
     blockedReducibleControlledKw: candidateSummary.blockedReducibleControlledKw,
-    allShedCandidatesExhausted: candidates.length === 0,
-    controlRecoverable: candidateSummary.reducibleControlledKw > 0,
-  };
-  if (measurementDecision.skip) {
-    deps.logDebug('Plan: skipping additional shedding until a new power measurement arrives');
-    return emptySheddingResult({}, overshootStats);
-  }
-  if (measurementDecision.escalatedSameSample) {
-    deps.logDebug('Plan: escalating overshoot despite unchanged power measurement');
-  }
+  });
   const result = selectShedDevices({
     candidates,
     needed,
@@ -238,6 +251,86 @@ function planShedding(
     ...result,
     updates,
     overshootStats,
+  };
+}
+
+function buildOvershootStats(params: {
+  needed: number;
+  eligibleCandidateCount: number;
+  blockedCandidateCount: number;
+  reducibleControlledKw: number;
+  blockedReducibleControlledKw: number;
+}): OvershootStats {
+  const {
+    needed,
+    eligibleCandidateCount,
+    blockedCandidateCount,
+    reducibleControlledKw,
+    blockedReducibleControlledKw,
+  } = params;
+  return {
+    needed,
+    eligibleCandidateCount,
+    blockedCandidateCount,
+    reducibleControlledKw,
+    blockedReducibleControlledKw,
+    allShedCandidatesExhausted: eligibleCandidateCount === 0,
+    controlRecoverable: reducibleControlledKw > 0,
+  };
+}
+
+function summarizeSheddingCandidates(params: ShedCandidateParams): {
+  eligibleCandidateCount: number;
+  blockedCandidateCount: number;
+  reducibleControlledKw: number;
+  blockedReducibleControlledKw: number;
+} {
+  const {
+    devices,
+    needed,
+    limitSource,
+    total,
+    capacitySoftLimit,
+    state,
+    deps,
+  } = params;
+  const nowTs = Date.now();
+  const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
+  let eligibleCandidateCount = 0;
+  let blockedCandidateCount = 0;
+  let reducibleControlledKw = 0;
+  let blockedReducibleControlledKw = 0;
+
+  for (const device of devices) {
+    if (device.controllable === false) continue;
+    if (!isEligibleForShedding({ device, state, nowTs })) continue;
+
+    const candidate = addCandidatePower({
+      device,
+      devices,
+      state,
+      nowTs,
+      needed,
+      deps,
+    });
+    if (!candidate || !isNotAtShedTemperature(candidate)) continue;
+
+    const allowedByLimitPolicy = limitSource !== 'daily' || capacityBreached || device.budgetExempt !== true;
+    if (allowedByLimitPolicy) {
+      eligibleCandidateCount += 1;
+      reducibleControlledKw += candidate.effectivePower;
+      continue;
+    }
+
+    blockedCandidateCount += 1;
+    blockedReducibleControlledKw += candidate.effectivePower;
+  }
+
+  return {
+    eligibleCandidateCount,
+    blockedCandidateCount,
+    reducibleControlledKw,
+    blockedReducibleControlledKw,
   };
 }
 
