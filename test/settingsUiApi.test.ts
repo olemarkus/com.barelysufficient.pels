@@ -323,7 +323,7 @@ describe('settingsUiApi', () => {
       deviceId: '',
       entries: [],
     });
-    expect(homey.error).toHaveBeenCalledWith('Device action log API called without a valid payload');
+    expect(homey.error).toHaveBeenCalledWith('Device action log API (/ui_device_action_log) called without a valid payload');
   });
 
   it('returns an empty device action log payload when the app getter throws', () => {
