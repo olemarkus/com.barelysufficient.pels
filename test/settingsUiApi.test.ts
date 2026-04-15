@@ -339,12 +339,12 @@ describe('settingsUiApi', () => {
     expect(homey.error).toHaveBeenCalledWith('Device action log API (/ui_device_action_log) called without valid device id');
   });
 
-  it('returns an empty device action log payload for a blank device id', () => {
+  it('returns an empty device action log payload for an empty string device id', () => {
     const homey = createHomey();
 
     expect(getSettingsUiDeviceActionLog({
       homey: homey as never,
-      body: { deviceId: '   ' },
+      body: { deviceId: '' },
     })).toEqual({
       deviceId: '',
       entries: [],

@@ -52,7 +52,6 @@ export class PlanStatusWriter {
     );
 
     this.notifyPriceLevelChanged(computation.result.priceLevel);
-    this.lastNotifiedPriceLevel = computation.result.priceLevel;
     return writeMs;
   }
 

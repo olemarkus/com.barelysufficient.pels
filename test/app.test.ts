@@ -389,6 +389,28 @@ describe('MyApp initialization', () => {
     expect((app as any).classifyTargetCommandCause('heater', 23)).toBe('price');
   });
 
+  it('classifies price-reset targets as price when the delta returns to zero', () => {
+    const app = createApp();
+
+    (app as any).managedDevices = { heater: true };
+    (app as any).operatingMode = 'Away';
+    (app as any).modeDeviceTargets = {
+      Away: { heater: 21 },
+    };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    mockHomeyInstance.settings.set('pels_status', { priceLevel: 'normal' });
+
+    (app as any).onPriceLevelChanged('normal', 'cheap');
+
+    expect((app as any).classifyTargetCommandCause('heater', 21)).toBe('price');
+    expect((app as any).classifyTargetCommandCause('heater', 21)).toBe('mode');
+  });
+
   it('keeps devices disabled by default when no settings exist', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
 

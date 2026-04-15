@@ -182,6 +182,7 @@ class PelsApp extends Homey.App {
   private flowRebuildScheduler?: FlowRebuildScheduler;
   private deviceActionLogStore?: DeviceActionLogStore;
   private pendingModeDrivenTargetCauseByDevice: Record<string, { expectedTarget: number; expiresAtMs: number }> = {};
+  private pendingPriceDrivenTargetCauseByDevice: Record<string, { expectedTarget: number; expiresAtMs: number }> = {};
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
   private static readonly TARGET_CAUSE_EPSILON = 0.000001;
   private setExpectedOverride(deviceId: string, kw: number): boolean {
@@ -748,6 +749,12 @@ class PelsApp extends Homey.App {
       expiresAtMs: Date.now() + 60_000,
     };
   }
+  private updatePendingPriceDrivenTargetCause(deviceId: string, expectedTarget: number): void {
+    this.pendingPriceDrivenTargetCauseByDevice[deviceId] = {
+      expectedTarget,
+      expiresAtMs: Date.now() + 60_000,
+    };
+  }
   private logModeChangeTriggers(previousMode: string, nextMode: string): void {
     const previousTargets = this.modeDeviceTargets[previousMode] ?? {};
     const nextTargets = this.modeDeviceTargets[nextMode] ?? {};
@@ -784,7 +791,9 @@ class PelsApp extends Homey.App {
       if (!Number.isFinite(modeTarget)) continue;
       const nextDelta = this.resolveActivePriceDelta(deviceId, priceLevel);
       const previousDelta = this.resolveActivePriceDelta(deviceId, previousPriceLevel);
+      if (nextDelta === null || previousDelta === null) continue;
       if (nextDelta === previousDelta) continue;
+      this.updatePendingPriceDrivenTargetCause(deviceId, modeTarget + nextDelta);
       this.appendDeviceActionLog({
         deviceId,
         eventKind: 'trigger',
@@ -809,6 +818,15 @@ class PelsApp extends Homey.App {
       } else if (Math.abs(plannedTarget - pendingModeCause.expectedTarget) <= PelsApp.TARGET_CAUSE_EPSILON) {
         delete this.pendingModeDrivenTargetCauseByDevice[deviceId];
         return 'mode';
+      }
+    }
+    const pendingPriceCause = this.pendingPriceDrivenTargetCauseByDevice[deviceId];
+    if (pendingPriceCause) {
+      if (pendingPriceCause.expiresAtMs < Date.now()) {
+        delete this.pendingPriceDrivenTargetCauseByDevice[deviceId];
+      } else if (Math.abs(plannedTarget - pendingPriceCause.expectedTarget) <= PelsApp.TARGET_CAUSE_EPSILON) {
+        delete this.pendingPriceDrivenTargetCauseByDevice[deviceId];
+        return 'price';
       }
     }
     if (Math.abs(plannedTarget - modeTarget) <= PelsApp.TARGET_CAUSE_EPSILON) return 'mode';
