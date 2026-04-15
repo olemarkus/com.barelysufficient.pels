@@ -12,6 +12,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
+  BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DAILY_BUDGET_BREAKDOWN_ENABLED,
   DAILY_BUDGET_CONTROLLED_WEIGHT,
@@ -96,8 +97,18 @@ const PRICE_REFRESH_KEYS = new Set([
   'nettleie_data',
 ]);
 
-const DEVICE_CONTROL_KEYS = new Set(['managed_devices', 'controllable_devices', DEVICE_CONTROL_PROFILES]);
-const PLAN_REFRESH_KEYS = new Set(['capacity_priorities', 'mode_device_targets', OPERATING_MODE_SETTING]);
+const DEVICE_CONTROL_KEYS = new Set([
+  'managed_devices',
+  'controllable_devices',
+  BUDGET_EXEMPT_DEVICES,
+  DEVICE_CONTROL_PROFILES,
+]);
+const PLAN_REFRESH_KEYS = new Set([
+  'capacity_priorities',
+  'mode_device_targets',
+  BUDGET_EXEMPT_DEVICES,
+  OPERATING_MODE_SETTING,
+]);
 
 const runLoggedTask = (task: Promise<unknown>, message: string, context: string) => {
   task.catch((error) => {

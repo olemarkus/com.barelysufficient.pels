@@ -76,15 +76,15 @@ file.
 - [ ] Align restore-cooldown badge/state text in the plan UI and make true shed states visually
       unambiguous.
       Files: `packages/settings-ui/src/ui/plan.ts`.
-- [ ] Add gray badge/state handling for unknown or disappeared devices in the overview/device list.
+- [x] Add gray badge/state handling for unknown or disappeared devices in the overview/device list.
       Files: settings UI overview/device list.
-- [ ] Debounce or coalesce rapid temperature changes from the device tab so bulk edits do not flap
+- [x] Debounce or coalesce rapid temperature changes from the device tab so bulk edits do not flap
       the plan or spam writes/retries.
       Files: settings UI device detail/target write path.
-- [ ] Add a budget-exemption toggle on the device page so budget-exempt status can be edited from
+- [x] Add a budget-exemption toggle on the device page so budget-exempt status can be edited from
       device detail without leaving the flow.
       Files: settings UI device detail/settings write path.
-- [ ] Add structured observability plus rate limiting for repeated Settings UI network failures.
+- [x] Add structured observability plus rate limiting for repeated Settings UI network failures.
       Files: settings UI API/client refresh paths and logging tests.
 - [ ] Rework temperature-device starvation detection to the intended-target / suppression-only
       model captured in `notes/starvation/README.md`.

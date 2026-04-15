@@ -5,12 +5,12 @@ import {
   normalizeTargetCapabilityValue,
 } from '../../../contracts/src/targetCapabilities.ts';
 import { deviceDetailModes } from './dom.ts';
-import { setSetting } from './homey.ts';
 import { state } from './state.ts';
-import { renderPriorities } from './modes.ts';
 import { showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
+import { debouncedSetSetting } from './utils.ts';
+import { renderPriorities } from './modes.ts';
 
 const getAllModes = () => {
   const modes = new Set([state.activeMode]);
@@ -86,7 +86,7 @@ const bindDeviceDetailModeInput = (
     if (!state.modeTargets[mode]) state.modeTargets[mode] = {};
     state.modeTargets[mode][device.id] = normalizedValue;
     try {
-      await setSetting('mode_device_targets', state.modeTargets);
+      await debouncedSetSetting('mode_device_targets', () => state.modeTargets);
       renderPriorities(state.latestDevices);
     } catch (error) {
       await logSettingsError('Failed to update device target', error, 'device detail');

@@ -120,6 +120,20 @@ export const getSetting = (key: string): Promise<unknown> => {
   });
 };
 
+export const getSettingFresh = (key: string): Promise<unknown> => {
+  if (!homeyClient) return Promise.reject(new Error('Homey SDK not ready'));
+  return new Promise((resolve, reject) => {
+    countHomeyGet(key);
+    homeyClient?.get(key, (err, value) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(value);
+    });
+  });
+};
+
 export const setSetting = (key: string, value: unknown): Promise<void> => {
   if (!homeyClient) return Promise.reject(new Error('Homey SDK not ready'));
   return new Promise((resolve, reject) => {
