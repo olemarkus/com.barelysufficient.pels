@@ -488,9 +488,9 @@ export class PlanExecutor {
     const profile = dev.steppedLoadProfile;
     if (!profile) return false;
 
-    // For keep intent, normalize off-step desiredStepId to the lowest non-zero step.
-    // This ensures a device restored from binary-off always gets a step command to a
-    // non-zero step, even when the planner could not normalize (e.g. stale desiredStepId).
+    // The planner already stamps this normalization onto dev.desiredStepId for keep intent.
+    // Re-run the helper here as defense-in-depth for stale/reconstructed plan devices, and keep
+    // the helper idempotent so planner/executor normalization cannot diverge.
     const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
 
     if (!desiredStepId || desiredStepId === dev.selectedStepId) return false;
