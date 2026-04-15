@@ -55,6 +55,8 @@ describe('devices render', () => {
     const row = document.querySelector('[data-device-id="device-1"]') as HTMLElement | null;
     expect(row?.textContent).toContain('Unavailable');
     expect(row?.querySelector('.device-row__state-chip')?.textContent).toBe('Unavailable');
+    expect(row?.querySelector('.device-row__state-chip')?.getAttribute('data-tooltip')).toBe('Device is currently unavailable in Homey.');
+    expect(row?.querySelector('.device-row__state-chip')?.getAttribute('title')).toBeNull();
   });
 
   it('renders budget-exempt devices with a gray badge', async () => {
@@ -89,5 +91,7 @@ describe('devices render', () => {
     const row = document.querySelector('[data-device-id="device-1"]') as HTMLElement | null;
     expect(row?.textContent).toContain('Budget exempt');
     expect(row?.querySelector('.device-row__state-chip')?.textContent).toBe('Budget exempt');
+    expect(row?.querySelector('.device-row__state-chip')?.getAttribute('data-tooltip')).toBe('This device is excluded from daily budget limits.');
+    expect(row?.querySelector('.device-row__state-chip')?.getAttribute('title')).toBeNull();
   });
 });

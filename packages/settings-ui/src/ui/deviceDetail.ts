@@ -788,13 +788,20 @@ const initDeviceDetailBudgetExemptHandler = () => {
   deviceDetailBudgetExempt?.addEventListener('change', async () => {
     const deviceId = currentDetailDeviceId;
     if (!deviceId) return;
+    const persistedBudgetExemptMap = await getSetting(BUDGET_EXEMPT_DEVICES);
+    const nextBudgetExemptMap = persistedBudgetExemptMap
+      && typeof persistedBudgetExemptMap === 'object'
+      && !Array.isArray(persistedBudgetExemptMap)
+      ? { ...(persistedBudgetExemptMap as Record<string, boolean>) }
+      : {};
     if (deviceDetailBudgetExempt.checked) {
-      state.budgetExemptMap[deviceId] = true;
+      nextBudgetExemptMap[deviceId] = true;
     } else {
-      delete state.budgetExemptMap[deviceId];
+      delete nextBudgetExemptMap[deviceId];
     }
+    state.budgetExemptMap = nextBudgetExemptMap;
     try {
-      await setSetting(BUDGET_EXEMPT_DEVICES, state.budgetExemptMap);
+      await setSetting(BUDGET_EXEMPT_DEVICES, nextBudgetExemptMap);
       renderDevices(state.latestDevices);
       renderPriorities(state.latestDevices);
       renderPriceOptimization(state.latestDevices);

@@ -15,6 +15,7 @@ import { renderPriceOptimization, savePriceOptimizationSettings } from './priceO
 import { createDeviceRow, createCheckboxLabel } from './components.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { debouncedSetSetting } from './utils.ts';
+import { setTooltip } from './tooltips.ts';
 import {
   supportsManagedDevice,
   supportsPowerDevice,
@@ -216,7 +217,7 @@ const buildStateChip = (label: string, title: string): HTMLElement => {
   const chip = document.createElement('span');
   chip.className = 'chip chip--neutral device-row__state-chip';
   chip.textContent = label;
-  chip.title = title;
+  setTooltip(chip, title);
   return chip;
 };
 

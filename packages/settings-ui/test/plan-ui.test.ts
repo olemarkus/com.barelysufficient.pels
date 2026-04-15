@@ -320,7 +320,7 @@ describe('plan device state', () => {
       ],
     });
 
-    expect(getStateText()).toBe('Live state stale');
+    expect(getStateText()).toBe('State unknown');
     expect(getBadgeTitle('dev-stale')).toBe('State unknown');
     expect(getBadgeClassList('dev-stale')?.contains('neutral')).toBe(true);
   });
@@ -341,6 +341,7 @@ describe('plan device state', () => {
     });
 
     expect(getBadgeTitle('dev-missing')).toBe('Unavailable');
+    expect(getStateText()).toBe('Unavailable');
     expect(getBadgeClassList('dev-missing')?.contains('neutral')).toBe(true);
   });
 
