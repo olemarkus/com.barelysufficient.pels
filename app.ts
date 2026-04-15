@@ -747,8 +747,11 @@ class PelsApp extends Homey.App {
   }
   private onPriceLevelChanged(priceLevel: PriceLevel, previousPriceLevel: PriceLevel): void {
     if (priceLevel === previousPriceLevel) return;
+    if (!this.priceOptimizationEnabled) return;
     for (const [deviceId, config] of Object.entries(this.priceOptimizationSettings)) {
       if (!config?.enabled) continue;
+      const modeTarget = this.modeDeviceTargets[this.operatingMode]?.[deviceId];
+      if (!Number.isFinite(modeTarget)) continue;
       const nextDelta = this.resolveActivePriceDelta(deviceId, priceLevel);
       const previousDelta = this.resolveActivePriceDelta(deviceId, previousPriceLevel);
       if (nextDelta === previousDelta) continue;

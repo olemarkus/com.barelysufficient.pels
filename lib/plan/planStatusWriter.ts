@@ -160,6 +160,7 @@ export class PlanStatusWriter {
         .trigger({ level: priceLevel }, { priceLevel })
         .catch((err: Error) => this.deps.error('Failed to trigger price_level_changed', err));
     }
+    this.lastNotifiedPriceLevel = priceLevel;
     try {
       this.deps.onPriceLevelChanged?.(priceLevel, previousPriceLevel);
     } catch (error) {

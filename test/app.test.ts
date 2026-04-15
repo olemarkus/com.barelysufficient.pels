@@ -273,6 +273,46 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('skips price-trigger logs when price optimization is globally disabled', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => false,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
+    };
+    (app as any).operatingMode = 'Home';
+
+    (app as any).onPriceLevelChanged('cheap', 'normal');
+
+    expect(appendDeviceActionLog).not.toHaveBeenCalled();
+  });
+
+  it('skips price-trigger logs when the current mode has no target for the device', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).modeDeviceTargets = {
+      Home: {},
+    };
+    (app as any).operatingMode = 'Home';
+
+    (app as any).onPriceLevelChanged('cheap', 'normal');
+
+    expect(appendDeviceActionLog).not.toHaveBeenCalled();
+  });
+
   it('keeps devices disabled by default when no settings exist', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
 
