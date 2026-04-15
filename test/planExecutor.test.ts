@@ -850,6 +850,7 @@ describe('PlanExecutor stepped loads', () => {
     );
     // Binary control should also be set because keep requires onoff=true
     // The device was at off-step with onoff=false, which violates keep invariant
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
   it('requests the lowest restore step before turning on a stepped device that is off at a stale higher step', async () => {
@@ -881,6 +882,64 @@ describe('PlanExecutor stepped loads', () => {
     const [stepCallOrder] = desiredSteppedTrigger.trigger.mock.invocationCallOrder;
     const [onoffCallOrder] = deviceManager.setCapability.mock.invocationCallOrder;
     expect(stepCallOrder).toBeLessThan(onoffCallOrder);
+  });
+
+  it('does not turn a stepped device on when the required pre-restore step command cannot be issued', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager, deps } = buildExecutor(undefined, snapshot, {
+      homey: {
+        settings: { set: vi.fn() },
+        flow: { getTriggerCard: vi.fn(() => null) },
+      } as unknown as Homey.App['homey'],
+    });
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deps.logDebug).toHaveBeenCalledWith(
+      expect.stringContaining('required pre-restore step command was not issued'),
+    );
+  });
+
+  it('retries binary restore when the required pre-restore step command is already pending', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'low',
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
   it('sets onoff=false for a shed stepped device at its off-step', async () => {
