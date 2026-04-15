@@ -1899,7 +1899,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(250);
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
-    expect(devPlan?.currentState).toBe('on');
+    expect(devPlan?.currentState).toBe('not_applicable');
     expect(devPlan?.reason).not.toContain('restore');
   });
 

@@ -79,7 +79,11 @@ export function resolveCandidatePower(device: PowerCandidate): number | null {
 }
 
 export function resolveLiveUsagePowerKw(device: LiveUsageCandidate): number | null {
-  const preferred = resolvePreferredPowerSource(device, true);
+  const preferred = resolvePreferredPowerSource({
+    measuredPowerKw: device.measuredPowerKw,
+    expectedPowerKw: device.expectedPowerKw,
+    planningPowerKw: device.planningPowerKw,
+  }, true);
   if (preferred) return preferred.value;
   if (device.currentState === 'off') return 0;
   return null;

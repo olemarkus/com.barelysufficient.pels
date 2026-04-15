@@ -61,4 +61,17 @@ describe('plan usage budget exemption helpers', () => {
       uncontrolledKw: 2,
     });
   });
+
+  it('does not treat configured fallback power as live controlled usage', () => {
+    expect(splitControlledUsageKw({
+      totalKw: 4,
+      devices: [
+        { currentState: 'on', measuredPowerKw: 1.5, controllable: true },
+        { currentState: 'on', powerKw: 1, controllable: true },
+      ],
+    })).toEqual({
+      controlledKw: 1.5,
+      uncontrolledKw: 2.5,
+    });
+  });
 });
