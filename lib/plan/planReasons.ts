@@ -8,7 +8,7 @@ import { getRestoreNeed } from './planRestoreSupport';
 import {
   buildActivationBackoffReason,
   buildCooldownReason,
-  buildInsufficientHeadroomReason,
+  buildRestoreHeadroomReason,
   buildRestorePendingReason,
   buildShortfallReason,
 } from './planReasonStrings';
@@ -296,8 +296,13 @@ function resolveRestoreDecision(params: {
   const restoreNeed = getRestoreNeed(dev, state);
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
-    const requiredKwWithFloor = admission.requiredKw + RESTORE_ADMISSION_FLOOR_KW;
-    const reason = buildInsufficientHeadroomReason(requiredKwWithFloor, availableHeadroom);
+    const reason = buildRestoreHeadroomReason({
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      postReserveMarginKw: admission.postReserveMarginKw,
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      penaltyExtraKw: restoreNeed.penaltyExtraKw,
+    });
     emitRestoreDebugEventOnChange({
       state,
       key: restoreDebugKey,

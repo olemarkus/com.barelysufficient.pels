@@ -311,7 +311,7 @@ export function normalizePlanReason(reason: string | undefined): string {
   if (/^restore pending \(\d+s remaining\)$/.test(trimmed)) return 'restore pending';
   if (/^activation backoff \(\d+s remaining\)$/.test(trimmed)) return 'activation backoff';
   if (/^headroom cooldown \(\d+s remaining; .+\)$/.test(trimmed)) return 'headroom cooldown';
-  if (/^insufficient headroom \(need .+, headroom .+\)$/.test(trimmed)) return 'insufficient headroom';
+  if (trimmed.startsWith('insufficient headroom')) return 'insufficient headroom';
   return trimmed;
 }
 
