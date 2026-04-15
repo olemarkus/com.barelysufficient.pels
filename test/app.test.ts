@@ -239,6 +239,7 @@ describe('MyApp initialization', () => {
     const app = createApp();
     const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
 
+    (app as any).managedDevices = { heater: true, pump: true };
     (app as any).modeDeviceTargets = {
       Home: { heater: 21 },
       Away: { pump: 18 },
@@ -273,10 +274,38 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('skips mode-trigger logs for unmanaged devices', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).managedDevices = { heater: true, pump: false };
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
+      Away: { pump: 18 },
+    };
+
+    (app as any).logModeChangeTriggers('Home', 'Away');
+
+    expect(appendDeviceActionLog).toHaveBeenCalledTimes(1);
+    expect(appendDeviceActionLog).toHaveBeenCalledWith({
+      deviceId: 'heater',
+      eventKind: 'trigger',
+      cause: 'mode',
+      message: 'Mode changed from Home to Away',
+      metadata: {
+        previousMode: 'Home',
+        nextMode: 'Away',
+        previousTarget: 21,
+        nextTarget: null,
+      },
+    });
+  });
+
   it('skips price-trigger logs when price optimization is globally disabled', () => {
     const app = createApp();
     const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
 
+    (app as any).managedDevices = { heater: true };
     (app as any).priceCoordinator = {
       getPriceOptimizationEnabled: () => false,
       getPriceOptimizationSettings: () => ({
@@ -297,6 +326,7 @@ describe('MyApp initialization', () => {
     const app = createApp();
     const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
 
+    (app as any).managedDevices = { heater: true };
     (app as any).priceCoordinator = {
       getPriceOptimizationEnabled: () => true,
       getPriceOptimizationSettings: () => ({
@@ -305,6 +335,27 @@ describe('MyApp initialization', () => {
     };
     (app as any).modeDeviceTargets = {
       Home: {},
+    };
+    (app as any).operatingMode = 'Home';
+
+    (app as any).onPriceLevelChanged('cheap', 'normal');
+
+    expect(appendDeviceActionLog).not.toHaveBeenCalled();
+  });
+
+  it('skips price-trigger logs for unmanaged devices', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).managedDevices = { heater: false };
+    (app as any).priceCoordinator = {
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({
+        heater: { enabled: true, cheapDelta: 2, expensiveDelta: -2 },
+      }),
+    };
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
     };
     (app as any).operatingMode = 'Home';
 

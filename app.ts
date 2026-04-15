@@ -719,6 +719,7 @@ class PelsApp extends Homey.App {
       ...Object.keys(nextTargets),
     ]);
     for (const deviceId of deviceIds) {
+      if (!this.resolveManagedState(deviceId)) continue;
       const previousTarget = previousTargets[deviceId];
       const nextTarget = nextTargets[deviceId];
       const hasPreviousTarget = Number.isFinite(previousTarget);
@@ -750,6 +751,7 @@ class PelsApp extends Homey.App {
     if (!this.priceOptimizationEnabled) return;
     for (const [deviceId, config] of Object.entries(this.priceOptimizationSettings)) {
       if (!config?.enabled) continue;
+      if (!this.resolveManagedState(deviceId)) continue;
       const modeTarget = this.modeDeviceTargets[this.operatingMode]?.[deviceId];
       if (!Number.isFinite(modeTarget)) continue;
       const nextDelta = this.resolveActivePriceDelta(deviceId, priceLevel);
