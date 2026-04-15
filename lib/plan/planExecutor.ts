@@ -568,7 +568,6 @@ export class PlanExecutor {
           : dev.plannedState === 'shed'
             ? 'shed'
             : 'restore';
-      const actuationSuffix = mode === 'reconcile' ? ' (reconcile after drift)' : '';
       this.deps.structuredLog?.info({
         event: 'stepped_load_command_requested',
         deviceId: dev.id,
@@ -578,15 +577,14 @@ export class PlanExecutor {
         planningPowerW,
         direction: nextDirection,
         mode,
-        actuationSuffix: actuationSuffix || undefined,
       });
       void Promise.resolve(triggerPromise).catch((error) => {
         this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
       });
-      if (mode !== 'plan') return true;
+      if (mode !== 'plan') return false;
       if (nextDirection === 'shed') {
         this.recordShedActuation(dev.id, dev.name, now);
-        return true;
+        return false;
       }
       this.recordRestoreActuation(dev.id, dev.name, now);
       recordActivationAttemptStarted({
@@ -597,7 +595,7 @@ export class PlanExecutor {
         nowTs: now,
         source: 'tracked_step_up',
       });
-      return true;
+      return false;
     } catch (error) {
       this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
       return false;
@@ -830,11 +828,17 @@ export class PlanExecutor {
     // Mark as pending before async operation
     this.state.pendingSheds.add(deviceId);
     try {
-      const applied = await this.trySetShedTemperature(deviceId, name, targetCap, shedTemp, canSetShedTemp);
-      if (!applied) {
+      const shedTemperatureResult = await this.trySetShedTemperature(
+        deviceId,
+        name,
+        targetCap,
+        shedTemp,
+        canSetShedTemp,
+      );
+      if (!shedTemperatureResult.handled) {
         return this.turnOffDevice(deviceId, name, reason);
       }
-      return true;
+      return shedTemperatureResult.wrote;
     } finally {
       this.state.pendingSheds.delete(deviceId);
     }
@@ -855,8 +859,8 @@ export class PlanExecutor {
     targetCap: string | undefined,
     shedTemp: number | null,
     canSetShedTemp: boolean,
-  ): Promise<boolean> {
-    if (!canSetShedTemp || !targetCap || shedTemp === null) return false;
+  ): Promise<PlanActionHandleResult> {
+    if (!canSetShedTemp || !targetCap || shedTemp === null) return { handled: false, wrote: false };
     const now = Date.now();
     try {
       const snapshot = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
@@ -870,7 +874,7 @@ export class PlanExecutor {
         skipContext: 'shedding',
         actuationMode: 'plan',
       });
-      if (!result.applied) return result.reason === 'skipped';
+      if (!result.applied) return { handled: result.reason === 'skipped', wrote: false };
       this.deps.structuredLog?.info({
         event: 'target_command_applied',
         deviceId,
@@ -883,10 +887,10 @@ export class PlanExecutor {
         reasonCode: 'shedding',
       });
       this.recordShedActuation(deviceId, name, now);
-      return true;
+      return { handled: true, wrote: true };
     } catch (error) {
       this.error(`Failed to set shed temperature for ${name} via DeviceManager`, error);
-      return false;
+      return { handled: false, wrote: false };
     }
   }
 

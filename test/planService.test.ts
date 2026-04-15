@@ -2422,7 +2422,7 @@ describe('PlanService', () => {
 
   it('calls schedulePostActuationRefresh after rebuild actuation', async () => {
     const schedulePostActuationRefresh = vi.fn();
-    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 1 });
     const service = new PlanService({
       homey: {
         settings: { set: vi.fn() },
@@ -2464,6 +2464,52 @@ describe('PlanService', () => {
     await service.rebuildPlanFromCache();
     expect(applyPlanActions).toHaveBeenCalled();
     expect(schedulePostActuationRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call schedulePostActuationRefresh after rebuild actuation when no writes occur', async () => {
+    const schedulePostActuationRefresh = vi.fn();
+    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
+    const service = new PlanService({
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+          currentState: 'off',
+          plannedState: 'keep',
+        })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: vi.fn().mockResolvedValue(false),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn: false,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      schedulePostActuationRefresh,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+    });
+
+    await service.rebuildPlanFromCache();
+    expect(applyPlanActions).toHaveBeenCalled();
+    expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
 
   it('calls schedulePostActuationRefresh after reconcile actuation', async () => {
@@ -2518,7 +2564,7 @@ describe('PlanService', () => {
 
   it('calls schedulePostActuationRefresh after direct shedding actuation', async () => {
     const schedulePostActuationRefresh = vi.fn();
-    const applySheddingToDevice = vi.fn().mockResolvedValue(undefined);
+    const applySheddingToDevice = vi.fn().mockResolvedValue(true);
     const service = new PlanService({
       homey: {
         settings: { set: vi.fn() },
@@ -2550,5 +2596,41 @@ describe('PlanService', () => {
 
     expect(applySheddingToDevice).toHaveBeenCalledWith('dev-1', 'Heater', undefined);
     expect(schedulePostActuationRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call schedulePostActuationRefresh after direct shedding when no write occurs', async () => {
+    const schedulePostActuationRefresh = vi.fn();
+    const applySheddingToDevice = vi.fn().mockResolvedValue(false);
+    const service = new PlanService({
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice,
+      } as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      schedulePostActuationRefresh,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+    });
+
+    await service.applySheddingToDevice('dev-1', 'Heater');
+
+    expect(applySheddingToDevice).toHaveBeenCalledWith('dev-1', 'Heater', undefined);
+    expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
 });
