@@ -235,6 +235,44 @@ describe('MyApp initialization', () => {
     expect(childLogger.debug).not.toHaveBeenCalled();
   });
 
+  it('logs mode triggers when a device target is added or removed between modes', () => {
+    const app = createApp();
+    const appendDeviceActionLog = vi.spyOn(app as never, 'appendDeviceActionLog').mockImplementation(() => {});
+
+    (app as any).modeDeviceTargets = {
+      Home: { heater: 21 },
+      Away: { pump: 18 },
+    };
+
+    (app as any).logModeChangeTriggers('Home', 'Away');
+
+    expect(appendDeviceActionLog).toHaveBeenCalledTimes(2);
+    expect(appendDeviceActionLog).toHaveBeenNthCalledWith(1, {
+      deviceId: 'heater',
+      eventKind: 'trigger',
+      cause: 'mode',
+      message: 'Mode changed from Home to Away',
+      metadata: {
+        previousMode: 'Home',
+        nextMode: 'Away',
+        previousTarget: 21,
+        nextTarget: null,
+      },
+    });
+    expect(appendDeviceActionLog).toHaveBeenNthCalledWith(2, {
+      deviceId: 'pump',
+      eventKind: 'trigger',
+      cause: 'mode',
+      message: 'Mode changed from Home to Away',
+      metadata: {
+        previousMode: 'Home',
+        nextMode: 'Away',
+        previousTarget: null,
+        nextTarget: 18,
+      },
+    });
+  });
+
   it('keeps devices disabled by default when no settings exist', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
 

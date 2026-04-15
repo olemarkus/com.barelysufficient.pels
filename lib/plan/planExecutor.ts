@@ -210,11 +210,6 @@ export class PlanExecutor {
     this.deps.recordPlanCommandAction?.(params);
   }
 
-  private classifyTargetCommandCause(deviceId: string, plannedTarget: number): DeviceActionLogCause {
-    const cause = this.deps.classifyTargetCommandCause?.(deviceId, plannedTarget) ?? 'unknown';
-    return cause === 'mode' || cause === 'price' ? cause : 'unknown';
-  }
-
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
     return this.deviceManager.getSnapshot();
   }
@@ -499,7 +494,7 @@ export class PlanExecutor {
       });
       this.recordPlanCommandAction({
         deviceId: dev.id,
-        cause: this.classifyTargetCommandCause(dev.id, dev.plannedTarget as number),
+        cause: this.deps.classifyTargetCommandCause?.(dev.id, dev.plannedTarget as number) ?? 'unknown',
         message: `Set ${targetCap} to ${dev.plannedTarget}°C`,
         metadata: {
           targetCap,

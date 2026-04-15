@@ -36,6 +36,34 @@ describe('DeviceActionLogStore', () => {
     ]);
   });
 
+  it('merges persisted buckets that differ only by surrounding whitespace', () => {
+    const persisted = new Map<string, unknown>([
+      ['device_action_log_by_device', {
+        ' heater ': [
+          { timestamp: 1, eventKind: 'trigger', cause: 'mode', message: 'Mode changed to Away' },
+        ],
+        heater: [
+          { timestamp: 2, eventKind: 'command', cause: 'shed', message: 'Turned off heater' },
+        ],
+      }],
+    ]);
+    const store = new DeviceActionLogStore({
+      settings: {
+        get: (key: string) => persisted.get(key),
+        set: vi.fn(),
+      } as never,
+      settingKey: 'device_action_log_by_device',
+      error: vi.fn(),
+    });
+
+    store.loadFromSettings();
+
+    expect(store.getEntriesNewestFirst('heater')).toEqual([
+      { timestamp: 2, eventKind: 'command', cause: 'shed', message: 'Turned off heater' },
+      { timestamp: 1, eventKind: 'trigger', cause: 'mode', message: 'Mode changed to Away' },
+    ]);
+  });
+
   it('persists appended entries with ring-buffer trimming', () => {
     const set = vi.fn();
     const store = new DeviceActionLogStore({

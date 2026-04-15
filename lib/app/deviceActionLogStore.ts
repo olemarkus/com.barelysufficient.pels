@@ -54,21 +54,22 @@ const sanitizeEntry = (value: unknown): DeviceActionLogEntry | null => {
 
 const sanitizeMap = (value: unknown, maxEntriesPerDevice: number): DeviceActionLogMap => {
   if (!isRecord(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([deviceId]) => deviceId.trim().length > 0)
-      .map(([deviceId, rawEntries]) => {
-        const entries = Array.isArray(rawEntries)
-          ? rawEntries
-            .map(sanitizeEntry)
-            .filter((entry): entry is DeviceActionLogEntry => entry !== null)
-            .sort((a, b) => a.timestamp - b.timestamp)
-            .slice(-maxEntriesPerDevice)
-          : [];
-        return [deviceId, entries] as const;
-      })
-      .filter(([, entries]) => entries.length > 0),
-  );
+  const byDeviceId: DeviceActionLogMap = {};
+  for (const [rawDeviceId, rawEntries] of Object.entries(value)) {
+    const deviceId = rawDeviceId.trim();
+    if (!deviceId) continue;
+    const entries = Array.isArray(rawEntries)
+      ? rawEntries
+        .map(sanitizeEntry)
+        .filter((entry): entry is DeviceActionLogEntry => entry !== null)
+      : [];
+    if (entries.length === 0) continue;
+    const existingEntries = byDeviceId[deviceId] ?? [];
+    byDeviceId[deviceId] = [...existingEntries, ...entries]
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-maxEntriesPerDevice);
+  }
+  return byDeviceId;
 };
 
 export class DeviceActionLogStore {

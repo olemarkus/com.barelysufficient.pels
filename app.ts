@@ -721,8 +721,16 @@ class PelsApp extends Homey.App {
     for (const deviceId of deviceIds) {
       const previousTarget = previousTargets[deviceId];
       const nextTarget = nextTargets[deviceId];
-      if (!Number.isFinite(previousTarget) || !Number.isFinite(nextTarget)) continue;
-      if (Math.abs(previousTarget - nextTarget) <= PelsApp.TARGET_CAUSE_EPSILON) continue;
+      const hasPreviousTarget = Number.isFinite(previousTarget);
+      const hasNextTarget = Number.isFinite(nextTarget);
+      if (!hasPreviousTarget && !hasNextTarget) continue;
+      if (
+        hasPreviousTarget
+        && hasNextTarget
+        && Math.abs((previousTarget as number) - (nextTarget as number)) <= PelsApp.TARGET_CAUSE_EPSILON
+      ) {
+        continue;
+      }
       this.appendDeviceActionLog({
         deviceId,
         eventKind: 'trigger',
@@ -731,8 +739,8 @@ class PelsApp extends Homey.App {
         metadata: {
           previousMode,
           nextMode,
-          previousTarget,
-          nextTarget,
+          previousTarget: hasPreviousTarget ? previousTarget : null,
+          nextTarget: hasNextTarget ? nextTarget : null,
         },
       });
     }

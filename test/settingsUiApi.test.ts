@@ -326,6 +326,22 @@ describe('settingsUiApi', () => {
     expect(homey.error).toHaveBeenCalledWith('Device action log API called without a valid payload');
   });
 
+  it('returns an empty device action log payload when the app getter throws', () => {
+    const homey = createHomey();
+    homey.getDeviceActionLogEntriesForUi.mockImplementation(() => {
+      throw new Error('log unavailable');
+    });
+
+    expect(getSettingsUiDeviceActionLog({
+      homey: homey as never,
+      body: { deviceId: 'dev-1' },
+    })).toEqual({
+      deviceId: 'dev-1',
+      entries: [],
+    });
+    expect(homey.error).toHaveBeenCalledWith('Device action log API failed', expect.any(Error));
+  });
+
   it('prefers the live in-memory plan snapshot over the persisted settings snapshot', () => {
     const homey = createHomey({
       latestPlanSnapshot: { devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }] },

@@ -193,8 +193,13 @@ export const getSettingsUiDeviceActionLog = (
     app?.error?.('Device action log API called without valid device id');
     return { deviceId: '', entries: [] };
   }
-  const entries = getDeviceActionLogEntriesForUiFromApp(homey, deviceId) ?? [];
-  return { deviceId, entries };
+  try {
+    const entries = getDeviceActionLogEntriesForUiFromApp(homey, deviceId) ?? [];
+    return { deviceId, entries };
+  } catch (error) {
+    app?.error?.('Device action log API failed', error as Error);
+    return { deviceId, entries: [] };
+  }
 };
 
 export const logSettingsUiMessage = ({ homey, body }: ApiContext & { body?: unknown }): { ok: boolean } => {
