@@ -1455,7 +1455,7 @@ describe('DeviceManager', () => {
             }));
         });
 
-        it('updates local target snapshot after a successful temperature write', async () => {
+        it('keeps a target write pending until realtime confirmation arrives', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -1482,11 +1482,20 @@ describe('DeviceManager', () => {
 
             expect(deviceManager.getSnapshot()[0]?.targets[0]).toEqual(expect.objectContaining({
                 id: 'target_temperature',
-                value: 18,
+                value: 22,
             }));
+            expect(deviceManager.getSnapshot()[0]?.lastLocalWriteMs).toBeDefined();
+            expect(deviceManager.getDebugObservedSources('dev1')?.localWrites.target_temperature).toEqual(
+                expect.objectContaining({
+                    path: 'local_write',
+                    capabilityId: 'target_temperature',
+                    value: 18,
+                    preservedLocalState: false,
+                }),
+            );
         });
 
-        it('updates the correct target when a device has multiple target capabilities', async () => {
+        it('keeps the correct target pending when a device has multiple target capabilities', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -1514,7 +1523,8 @@ describe('DeviceManager', () => {
 
             const updated = deviceManager.getSnapshot()[0];
             expect(updated?.targets[0]).toEqual(expect.objectContaining({ id: 'target_temperature', value: 22 }));
-            expect(updated?.targets[1]).toEqual(expect.objectContaining({ id: 'target_temperature.zone1', value: 18 }));
+            expect(updated?.targets[1]).toEqual(expect.objectContaining({ id: 'target_temperature.zone1', value: 20 }));
+            expect(updated?.lastLocalWriteMs).toBeDefined();
         });
 
         it('preserves local onoff state optimistically after a binary write', async () => {
@@ -1726,7 +1736,7 @@ describe('DeviceManager', () => {
             }
         });
 
-        it('preserves a newer local target write across a stale snapshot refresh and keeps freshness timestamps', async () => {
+        it('preserves a newer target write across a stale snapshot refresh even when snapshot lastUpdated is stale', async () => {
             vi.useFakeTimers();
             try {
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
@@ -1761,7 +1771,7 @@ describe('DeviceManager', () => {
                 await deviceManager.setCapability('dev1', 'target_temperature', 16);
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     lastLocalWriteMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
-                    targets: [expect.objectContaining({ id: 'target_temperature', value: 16 })],
+                    targets: [expect.objectContaining({ id: 'target_temperature', value: 23 })],
                 }));
 
                 mockApiGet.mockResolvedValue({
@@ -1791,9 +1801,71 @@ describe('DeviceManager', () => {
                     lastLocalWriteMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 16 })],
                 }));
-                expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining(
-                    'Device snapshot refresh preserved newer local_write target_temperature for Heater (dev1)',
-                ));
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('overwrites a stale target observation with a newer local target write during refreshes', async () => {
+            vi.useFakeTimers();
+            try {
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            target_temperature: {
+                                value: 23,
+                                id: 'target_temperature',
+                                units: '°C',
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    targets: [expect.objectContaining({ id: 'target_temperature', value: 23 })],
+                }));
+
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                await deviceManager.setCapability('dev1', 'target_temperature', 16);
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    lastLocalWriteMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
+                    targets: [expect.objectContaining({ id: 'target_temperature', value: 23 })],
+                }));
+
+                mockApiGet.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            target_temperature: {
+                                value: 16,
+                                id: 'target_temperature',
+                                units: '°C',
+                            },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    targets: [expect.objectContaining({ id: 'target_temperature', value: 16 })],
+                }));
             } finally {
                 vi.useRealTimers();
             }
@@ -2447,7 +2519,7 @@ describe('DeviceManager', () => {
                 expect(realtimeListener).not.toHaveBeenCalled();
             });
 
-            it('suppresses capability echo when observed temperature normalizes to the local write', async () => {
+            it('ignores normalized target_temperature echoes until device.update confirms the write', async () => {
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.refreshSnapshot();
 
@@ -2464,7 +2536,7 @@ describe('DeviceManager', () => {
                     deviceManager.getSnapshot()
                         .find((d) => d.id === 'dev1')
                         ?.targets.find((t) => t.id === 'target_temperature')?.value,
-                ).toBe(21.5);
+                ).toBe(20);
             });
 
             it('ignores capability events for untracked devices', async () => {
@@ -2630,6 +2702,79 @@ describe('DeviceManager', () => {
                 }
             });
 
+            it('keeps target_temperature capability echoes suppressed until device.update confirms the write', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            class: 'heater',
+                            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                            capabilitiesObj: {
+                                measure_power: { value: 1000, id: 'measure_power' },
+                                measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                                target_temperature: {
+                                    value: 23,
+                                    id: 'target_temperature',
+                                    units: '°C',
+                                },
+                                onoff: { value: true, id: 'onoff' },
+                            },
+                        },
+                    });
+                    await deviceManager.refreshSnapshot();
+
+                    vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
+                    mockApiPut.mockResolvedValue({});
+                    await deviceManager.setCapability('dev1', 'target_temperature', 18);
+
+                    const liveStateListener = vi.fn();
+                    const reconcileListener = vi.fn();
+                    deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
+                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 18);
+
+                    const snapshot = deviceManager.getSnapshot()[0];
+                    expect(snapshot.targets.find((t) => t.id === 'target_temperature')?.value).toBe(23);
+                    expect(snapshot.lastFreshDataMs).toBeUndefined();
+                    expect(liveStateListener).not.toHaveBeenCalled();
+                    expect(reconcileListener).not.toHaveBeenCalled();
+
+                    deviceManager.injectDeviceUpdateForTest({
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            target_temperature: {
+                                value: 18,
+                                id: 'target_temperature',
+                                units: '°C',
+                            },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    });
+
+                    expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value)
+                        .toBe(18);
+                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs)
+                        .toBe(new Date('2026-04-01T12:01:00.000Z').getTime());
+                    expect(liveStateListener).toHaveBeenCalledOnce();
+                    expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
+                        source: 'device_update',
+                        deviceId: 'dev1',
+                    }));
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
             it('realtime measure_power update advances freshness and does not trigger reconcile', async () => {
                 vi.useFakeTimers();
                 try {
@@ -2716,9 +2861,9 @@ describe('DeviceManager', () => {
 
                     vi.setSystemTime(new Date('2026-04-01T12:02:00.000Z'));
 
-                    // Local target_temperature write
+                    // Local target_temperature write stays pending until a confirmation observation.
                     await deviceManager.setCapability('dev1', 'target_temperature', 18);
-                    expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBe(18);
+                    expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBe(20);
                     expect(deviceManager.getSnapshot()[0].lastLocalWriteMs).toBe(
                         new Date('2026-04-01T12:02:00.000Z').getTime(),
                     );

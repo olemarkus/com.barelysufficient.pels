@@ -39,7 +39,6 @@ import {
 } from '../lib/utils/settingsKeys';
 import {
   SHED_COOLDOWN_MS,
-  TARGET_COMMAND_RETRY_DELAYS_MS,
   TARGET_CONFIRMATION_STUCK_POLL_MS,
 } from '../lib/plan/planConstants';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
@@ -1316,27 +1315,34 @@ describe('MyApp initialization', () => {
       await (app as any).refreshTargetDevicesSnapshot();
       await (app as any).planService.rebuildPlanFromCache();
 
-      // The local snapshot is updated immediately after the write, so the
-      // pending target command is confirmed right away — no stale-snapshot
-      // retry timer is needed.
+      // The write is no longer treated as confirmed just because the API call
+      // completed. The plan should keep waiting for a real observation.
       expect(putSpy).toHaveBeenCalledTimes(1);
       expect((app as any).planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
         id: 'dev-1',
         plannedTarget: 20,
+        pendingTargetCommand: expect.objectContaining({
+          desired: 20,
+          status: 'waiting_confirmation',
+        }),
       });
-      expect((app as any).planService.getLatestPlanSnapshot()?.devices[0].pendingTargetCommand).toBeUndefined();
-
-      // After API refresh returns the stale value, the confirmed local
-      // snapshot update prevents retry because the executor sees no mismatch
-      // in the live snapshot at dispatch time.
-      nowSpy.mockReturnValue(baseNow + TARGET_COMMAND_RETRY_DELAYS_MS[0] + 5);
+      // A stale snapshot refresh must not clear the pending target.
+      nowSpy.mockReturnValue(baseNow + 1_000);
       await (app as any).refreshTargetDevicesSnapshot();
       await (app as any).planService.rebuildPlanFromCache();
       expect(putSpy).toHaveBeenCalledTimes(1);
+      expect((app as any).planService.getLatestPlanSnapshot()?.devices[0]).toMatchObject({
+        id: 'dev-1',
+        pendingTargetCommand: expect.objectContaining({
+          desired: 20,
+          status: 'waiting_confirmation',
+          lastObservedValue: 18,
+        }),
+      });
 
       // Simulate the API snapshot catching up to the actual value
       heater.syncActualToApi('target_temperature');
-      nowSpy.mockReturnValue(baseNow + TARGET_COMMAND_RETRY_DELAYS_MS[0] + 10);
+      nowSpy.mockReturnValue(baseNow + 2_000);
       await (app as any).refreshTargetDevicesSnapshot();
       await (app as any).planService.rebuildPlanFromCache();
 
@@ -1402,6 +1408,55 @@ describe('MyApp initialization', () => {
         targets: [expect.objectContaining({ id: 'target_temperature', value: 26.5 })],
       }),
     }));
+  });
+
+  it('ignores target_temperature capability echoes and clears pending commands on device.update', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('measure_temperature', 21);
+    await heater.setCapabilityValue('measure_power', 360);
+    await heater.setCapabilityValue('target_temperature', 20);
+    await heater.setCapabilityValue('onoff', true);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
+    (app as any).planEngine.state.pendingTargetCommands['dev-1'] = {
+      capabilityId: 'target_temperature',
+      desired: 18,
+      startedMs: nowMs - 5_000,
+      lastAttemptMs: nowMs - 5_000,
+      retryCount: 0,
+      nextRetryAtMs: nowMs + 30_000,
+      status: 'waiting_confirmation',
+      lastObservedValue: 20,
+      lastObservedSource: 'snapshot_refresh',
+    };
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+    try {
+      (app as any).deviceManager.injectCapabilityUpdateForTest('dev-1', 'target_temperature', 18);
+      expect((app as any).planEngine.state.pendingTargetCommands['dev-1']).toBeDefined();
+
+      heater.setApiCapabilityValue('target_temperature', 18);
+      (app as any).deviceManager.injectDeviceUpdateForTest(heater.toHomeyApiDevice());
+      await waitFor(() => (app as any).planEngine.state.pendingTargetCommands['dev-1'] === undefined);
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
+      targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
+    });
   });
 
   it('polls device state when a target confirmation has been pending for more than one minute', async () => {

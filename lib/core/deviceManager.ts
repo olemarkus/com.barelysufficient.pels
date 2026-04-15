@@ -707,11 +707,6 @@ export class DeviceManager extends EventEmitter {
             this.updateLocalSnapshot(deviceId, { on: normalizedValue });
         }
 
-        // Update local snapshot for target/temperature writes so pending-command
-        // confirmation checks see the written value instead of a stale snapshot.
-        if (typeof normalizedValue === 'number' && capabilityId.startsWith('target_temperature')) {
-            this.updateLocalSnapshot(deviceId, { target: normalizedValue, targetCapabilityId: capabilityId });
-        }
         this.recordLocalWriteObservation(deviceId, capabilityId, normalizedValue, {
             preservedLocalState,
         });
@@ -1190,16 +1185,17 @@ export class DeviceManager extends EventEmitter {
         value: unknown,
         options: { preservedLocalState: boolean },
     ): void {
+        const observedAt = Date.now();
         const sources = this.getOrCreateDebugObservedSources(deviceId);
         sources.localWrites[capabilityId] = {
-            observedAt: Date.now(),
+            observedAt,
             path: 'local_write',
             snapshot: this.buildCurrentDebugSnapshot(deviceId),
             capabilityId,
             value,
             preservedLocalState: options.preservedLocalState,
         };
-        this.recordCapabilityObservation(deviceId, capabilityId, value, 'local_write');
+        this.recordCapabilityObservation(deviceId, capabilityId, value, 'local_write', observedAt);
     }
 
     private mergeFresherCapabilityObservations(params: {
@@ -1602,15 +1598,28 @@ export class DeviceManager extends EventEmitter {
         const snapshot = this.latestSnapshot.find((entry) => entry.id === deviceId);
         if (!snapshot) return;
         if (source === 'local_write') {
-            snapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observedAt);
-            this.latestLocalWriteMsByDeviceId.set(
-                deviceId,
-                Math.max(this.latestLocalWriteMsByDeviceId.get(deviceId) ?? 0, observedAt),
-            );
+            this.updateLocalWriteTimestamps(deviceId, observedAt, snapshot);
             return;
         }
         snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observedAt);
         snapshot.lastUpdated = snapshot.lastFreshDataMs;
+    }
+
+    private updateLocalWriteTimestamps(
+        deviceId: string,
+        observedAt: number,
+        snapshot?: TargetDeviceSnapshot,
+    ): void {
+        const resolvedSnapshot = snapshot ?? this.latestSnapshot.find((entry) => entry.id === deviceId);
+        if (resolvedSnapshot) {
+            resolvedSnapshot.lastLocalWriteMs = (
+                Math.max(resolvedSnapshot.lastLocalWriteMs ?? 0, observedAt) || undefined
+            );
+        }
+        this.latestLocalWriteMsByDeviceId.set(
+            deviceId,
+            Math.max(this.latestLocalWriteMsByDeviceId.get(deviceId) ?? 0, observedAt),
+        );
     }
 
     private resolveLatestLocalWriteMs(deviceId: string): number | undefined {
