@@ -19,15 +19,12 @@ describe('End-of-Hour Mode', () => {
 
       const plannedKWh = 100; // Daily budget: 100 kWh
       const usedKWh = 95; // Used 95 kWh so far
-      const logDebug = vi.fn();
-
       const result = computeDailyUsageSoftLimit({
         plannedKWh,
         usedKWh,
         bucketStartMs: dayStart,
         bucketEndMs: dayEnd,
         nowMs: now,
-        logDebug,
       });
 
       // Remaining: 5 kWh over 5 minutes (but uses min threshold of 10 minutes)
@@ -44,15 +41,12 @@ describe('End-of-Hour Mode', () => {
 
       const plannedKWh = 100;
       const usedKWh = 50;
-      const logDebug = vi.fn();
-
       const result = computeDailyUsageSoftLimit({
         plannedKWh,
         usedKWh,
         bucketStartMs: dayStart,
         bucketEndMs: dayEnd,
         nowMs: now,
-        logDebug,
       });
 
       // Remaining: 50 kWh over 12 hours = 4.17 kW
@@ -67,15 +61,12 @@ describe('End-of-Hour Mode', () => {
 
       const plannedKWh = 100;
       const usedKWh = 99; // Only 1 kWh remaining
-      const logDebug = vi.fn();
-
       const result = computeDailyUsageSoftLimit({
         plannedKWh,
         usedKWh,
         bucketStartMs: dayStart,
         bucketEndMs: dayEnd,
         nowMs: now,
-        logDebug,
       });
 
       // Remaining: 1 kWh over 30 seconds (but uses min threshold of 10 minutes)

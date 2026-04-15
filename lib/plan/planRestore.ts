@@ -174,7 +174,6 @@ export function applyRestorePlan(params: {
     markOffDevicesStayOff({
       deviceMap,
       timing,
-      logDebug: deps.logDebug,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
       reasonOverride: (dev) => {
         const { needed } = computeBaseRestoreNeed(dev);
@@ -190,7 +189,6 @@ export function applyRestorePlan(params: {
     markOffDevicesStayOff({
       deviceMap,
       timing: effectiveTiming,
-      logDebug: deps.logDebug,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
     });
     markSteppedDevicesStayAtCurrentLevel({
@@ -253,7 +251,6 @@ function planRestoreForDevice(params: {
       plannedState: 'inactive',
       reason: inactiveReason,
     });
-    deps.logDebug(`Plan: marking ${dev.name} inactive - ${inactiveReason}`);
     return { availableHeadroom, restoredOneThisCycle };
   }
 

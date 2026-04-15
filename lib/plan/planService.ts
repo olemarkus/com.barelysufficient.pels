@@ -8,6 +8,8 @@ import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
   buildPlanChangeLines,
   buildPlanCapacityStateSummary,
+  buildPlanDebugSummaryEvent,
+  buildPlanDebugSummarySignatureFromEvent,
   buildPlanDetailSignature,
   buildPlanSignature,
 } from './planLogging';
@@ -21,7 +23,7 @@ import {
 } from './planServiceInternals';
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { withRebuildContext } from '../logging/logger';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
@@ -67,12 +69,15 @@ export type PlanServiceDeps = {
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
+  isPlanDebugEnabled?: () => boolean;
 };
 
 export class PlanService {
   private lastActionPlanSignature = '';
   private lastDetailPlanSignature = '';
   private lastPlanMetaSignature = '';
+  private lastPlanDebugSummarySignature = '';
   private latestPlanSnapshot: DevicePlan | null = null;
   private latestReconcilePlanSnapshot: DevicePlan | null = null;
   private lastPlanSnapshotWriteMs = 0;
@@ -305,6 +310,12 @@ export class PlanService {
     const actionChanged = actionSignature !== this.lastActionPlanSignature;
     const detailChanged = detailSignature !== this.lastDetailPlanSignature;
     const metaChanged = metaSignature !== this.lastPlanMetaSignature;
+    const debugSummaryState = this.resolveDebugSummaryState({
+      plan,
+      actionChanged,
+      detailChanged,
+      metaChanged,
+    });
 
     if (actionChanged) {
       try {
@@ -328,9 +339,16 @@ export class PlanService {
       incPerfCounter('plan_rebuild_no_change_total');
     }
 
+    if (debugSummaryState.changed && debugSummaryState.event) {
+      this.deps.debugStructured?.(debugSummaryState.event);
+    }
+
     this.lastActionPlanSignature = actionSignature;
     this.lastDetailPlanSignature = detailSignature;
     this.lastPlanMetaSignature = metaSignature;
+    if (debugSummaryState.emitted && debugSummaryState.signature !== null) {
+      this.lastPlanDebugSummarySignature = debugSummaryState.signature;
+    }
 
     return {
       actionSignature,
@@ -339,6 +357,34 @@ export class PlanService {
       actionChanged,
       detailChanged,
       metaChanged,
+    };
+  }
+
+  private resolveDebugSummaryState(params: {
+    plan: DevicePlan;
+    actionChanged: boolean;
+    detailChanged: boolean;
+    metaChanged: boolean;
+  }): {
+    event: ReturnType<typeof buildPlanDebugSummaryEvent> | null;
+    signature: string | null;
+    changed: boolean;
+    emitted: boolean;
+  } {
+    const { plan, actionChanged, detailChanged, metaChanged } = params;
+    const shouldCheck = (actionChanged || detailChanged || metaChanged)
+      && Boolean(this.deps.debugStructured)
+      && (this.deps.isPlanDebugEnabled?.() ?? true);
+    if (!shouldCheck) {
+      return { event: null, signature: null, changed: false, emitted: false };
+    }
+    const event = buildPlanDebugSummaryEvent(plan);
+    const signature = buildPlanDebugSummarySignatureFromEvent(event);
+    return {
+      event,
+      signature,
+      changed: signature !== this.lastPlanDebugSummarySignature,
+      emitted: true,
     };
   }
 

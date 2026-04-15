@@ -123,6 +123,88 @@ describe('PlanService', () => {
     expect(planUpdatedCalls).toHaveLength(2);
   });
 
+  it('emits grouped structured plan debug summaries only when the summary changes', async () => {
+    const summaryPlan: DevicePlan = {
+      meta: {
+        totalKw: 3.97,
+        softLimitKw: 3.0,
+        capacitySoftLimitKw: 4.0,
+        dailySoftLimitKw: 3.0,
+        softLimitSource: 'daily',
+        headroomKw: -0.97,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater 1',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'insufficient headroom (need 0.98kW, headroom -0.97kW)',
+        },
+        {
+          id: 'dev-2',
+          name: 'Heater 2',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'insufficient headroom (need 1.10kW, headroom -0.97kW)',
+        },
+        {
+          id: 'ev-1',
+          name: 'EV',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'inactive',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'inactive (charger is unplugged)',
+        },
+      ],
+    };
+    const debugStructured = vi.fn();
+    const { service } = createPlanService({
+      planEngine: {
+        buildDevicePlanSnapshot: vi
+          .fn()
+          .mockResolvedValueOnce(summaryPlan)
+          .mockResolvedValueOnce(summaryPlan),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      debugStructured,
+    });
+
+    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache();
+
+    expect(debugStructured).toHaveBeenCalledTimes(1);
+    expect(debugStructured).toHaveBeenCalledWith({
+      event: 'plan_debug_summary',
+      totalKw: 3.97,
+      softLimitKw: 3,
+      capacitySoftLimitKw: 4,
+      dailySoftLimitKw: 3,
+      softLimitSource: 'daily',
+      headroomKw: -0.97,
+      restoreBlockedCount: 2,
+      restoreBlockedReasons: [{ reason: 'insufficient headroom', count: 2 }],
+      inactiveCount: 1,
+      inactiveReasons: [{ reason: 'charger is unplugged', count: 1 }],
+    });
+  });
+
   it('writes a fresh snapshot when priority changes without action changes', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);

@@ -90,14 +90,12 @@ export function markOffDevicesStayOff(params: {
     shedCooldownRemainingSec: number | null;
     startupStabilizationRemainingSec: number | null;
   };
-  logDebug: (...args: unknown[]) => void;
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
   reasonOverride?: (dev: DevicePlanDevice) => string;
 }): void {
   const {
     deviceMap,
     timing,
-    logDebug,
     setDevice,
     reasonOverride,
   } = params;
@@ -107,17 +105,11 @@ export function markOffDevicesStayOff(params: {
     const inactiveReason = getInactiveReason(dev);
     if (inactiveReason) {
       setDevice(dev.id, { plannedState: 'inactive', reason: inactiveReason });
-      logDebug(`Plan: marking ${dev.name} inactive - ${inactiveReason}`);
       continue;
     }
     const defaultReason = dev.reason || 'shed due to capacity';
     const nextReason = reasonOverride ? reasonOverride(dev) : resolveOffDeviceReason(timing, defaultReason);
     setDevice(dev.id, { plannedState: 'shed', reason: nextReason });
-    logDebug(
-      `Plan: skipping restore of ${dev.name} `
-      + `(p${dev.priority ?? 100}, ~${(dev.powerKw ?? 1).toFixed(2)}kW) `
-      + `- ${nextReason}`,
-    );
   }
 }
 

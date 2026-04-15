@@ -136,8 +136,6 @@ describe('plan restore device helpers', () => {
       const current = deviceMap.get(id);
       if (current) deviceMap.set(id, { ...current, ...updates });
     });
-    const logDebug = vi.fn();
-
     markOffDevicesStayOff({
       deviceMap,
       timing: {
@@ -146,7 +144,6 @@ describe('plan restore device helpers', () => {
         restoreCooldownSeconds: 12,
         shedCooldownRemainingSec: 7,
       },
-      logDebug,
       setDevice,
     });
     expect(setDevice).toHaveBeenCalledWith('dev1', expect.objectContaining({ reason: 'cooldown (shedding, 7s remaining)' }));
@@ -165,11 +162,9 @@ describe('plan restore device helpers', () => {
         restoreCooldownSeconds: 9,
         shedCooldownRemainingSec: null,
       },
-      logDebug,
       setDevice,
       reasonOverride: (device) => `blocked ${device.id}`,
     });
     expect(setDevice).toHaveBeenCalledWith('dev2', expect.objectContaining({ reason: 'blocked dev2' }));
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('Plan: skipping restore of Device 1'));
   });
 });

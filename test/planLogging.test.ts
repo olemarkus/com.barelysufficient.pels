@@ -1,6 +1,8 @@
 import {
   buildPlanCapacityStateSummary,
   buildPlanChangeLines,
+  buildPlanDebugSummaryEvent,
+  buildPlanDebugSummarySignatureFromEvent,
   buildPlanSignature,
 } from '../lib/plan/planLogging';
 import type { DevicePlan } from '../lib/plan/planTypes';
@@ -283,5 +285,69 @@ describe('plan logging helpers', () => {
       blockedByPenaltyDevices: null,
       blockedByInvariantDevices: null,
     });
+  });
+
+  it('builds grouped structured debug summaries for restore-blocked and inactive devices', () => {
+    const plan = {
+      meta: {
+        totalKw: 3.97,
+        softLimitKw: 3.0,
+        capacitySoftLimitKw: 4.0,
+        dailySoftLimitKw: 3.0,
+        softLimitSource: 'daily',
+        headroomKw: -0.97,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater 1',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'insufficient headroom (need 0.98kW, headroom -0.97kW)',
+        },
+        {
+          id: 'dev-2',
+          name: 'Heater 2',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'insufficient headroom (need 1.10kW, headroom -0.97kW)',
+        },
+        {
+          id: 'ev-1',
+          name: 'EV',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'inactive',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'inactive (charger is unplugged)',
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    expect(buildPlanDebugSummaryEvent(plan)).toEqual({
+      event: 'plan_debug_summary',
+      totalKw: 3.97,
+      softLimitKw: 3,
+      capacitySoftLimitKw: 4,
+      dailySoftLimitKw: 3,
+      softLimitSource: 'daily',
+      headroomKw: -0.97,
+      restoreBlockedCount: 2,
+      restoreBlockedReasons: [{ reason: 'insufficient headroom', count: 2 }],
+      inactiveCount: 1,
+      inactiveReasons: [{ reason: 'charger is unplugged', count: 1 }],
+    });
+    expect(buildPlanDebugSummarySignatureFromEvent(buildPlanDebugSummaryEvent(plan)))
+      .toBe(JSON.stringify(buildPlanDebugSummaryEvent(plan)));
   });
 });

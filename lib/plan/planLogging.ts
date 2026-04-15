@@ -169,6 +169,46 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
   );
 }
 
+export type PlanReasonGroup = {
+  reason: string;
+  count: number;
+};
+
+export type PlanDebugSummaryEvent = {
+  event: 'plan_debug_summary';
+  totalKw: number | null;
+  softLimitKw: number | null;
+  capacitySoftLimitKw: number | null;
+  dailySoftLimitKw: number | null;
+  softLimitSource: DevicePlan['meta']['softLimitSource'] | null;
+  headroomKw: number | null;
+  restoreBlockedCount: number;
+  restoreBlockedReasons: PlanReasonGroup[];
+  inactiveCount: number;
+  inactiveReasons: PlanReasonGroup[];
+};
+
+export function buildPlanDebugSummaryEvent(plan: DevicePlan): PlanDebugSummaryEvent {
+  const categories = categorizePlanDebugDevices(plan.devices);
+  return {
+    event: 'plan_debug_summary',
+    totalKw: roundPlanDebugNumber(plan.meta.totalKw),
+    softLimitKw: roundPlanDebugNumber(plan.meta.softLimitKw),
+    capacitySoftLimitKw: roundPlanDebugNumber(plan.meta.capacitySoftLimitKw),
+    dailySoftLimitKw: roundPlanDebugNumber(plan.meta.dailySoftLimitKw),
+    softLimitSource: plan.meta.softLimitSource ?? null,
+    headroomKw: roundPlanDebugNumber(plan.meta.headroomKw),
+    restoreBlockedCount: categories.restoreBlockedCount,
+    restoreBlockedReasons: categories.restoreBlockedReasons,
+    inactiveCount: categories.inactiveCount,
+    inactiveReasons: categories.inactiveReasons,
+  };
+}
+
+export function buildPlanDebugSummarySignatureFromEvent(event: PlanDebugSummaryEvent): string {
+  return JSON.stringify(event);
+}
+
 export function buildPlanChangeLines(plan: DevicePlan): string[] {
   const headroom = typeof plan.meta.headroomKw === 'number' ? plan.meta.headroomKw : null;
   const changes = plan.devices
@@ -203,6 +243,61 @@ function normalizeTarget(value: unknown): number | string | null {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return null;
   return String(value);
+}
+
+function buildPlanReasonGroups(devices: DevicePlanDevice[]): PlanReasonGroup[] {
+  const counts = new Map<string, number>();
+  for (const device of devices) {
+    const reason = normalizePlanReason(device.reason);
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
+}
+
+function normalizePlanReason(reason: string | undefined): string {
+  if (!reason) return 'unknown';
+  const trimmed = reason.trim();
+  const inactiveMatch = /^inactive \((.+)\)$/.exec(trimmed);
+  if (inactiveMatch) return inactiveMatch[1];
+  if (/^cooldown \(shedding, \d+s remaining\)$/.test(trimmed)) return 'cooldown (shedding)';
+  if (/^cooldown \(restore, \d+s remaining\)$/.test(trimmed)) return 'cooldown (restore)';
+  if (/^restore pending \(\d+s remaining\)$/.test(trimmed)) return 'restore pending';
+  if (/^activation backoff \(\d+s remaining\)$/.test(trimmed)) return 'activation backoff';
+  if (/^headroom cooldown \(\d+s remaining; .+\)$/.test(trimmed)) return 'headroom cooldown';
+  if (/^insufficient headroom \(need .+, headroom .+\)$/.test(trimmed)) return 'insufficient headroom';
+  return trimmed;
+}
+
+function categorizePlanDebugDevices(devices: DevicePlanDevice[]): {
+  restoreBlockedCount: number;
+  restoreBlockedReasons: PlanReasonGroup[];
+  inactiveCount: number;
+  inactiveReasons: PlanReasonGroup[];
+} {
+  const restoreBlockedDevices: DevicePlanDevice[] = [];
+  const inactiveDevices: DevicePlanDevice[] = [];
+  for (const device of devices) {
+    if (device.plannedState === 'inactive') {
+      inactiveDevices.push(device);
+      continue;
+    }
+    if (device.plannedState === 'shed' && device.currentState === 'off' && device.controllable !== false) {
+      restoreBlockedDevices.push(device);
+    }
+  }
+  return {
+    restoreBlockedCount: restoreBlockedDevices.length,
+    restoreBlockedReasons: buildPlanReasonGroups(restoreBlockedDevices),
+    inactiveCount: inactiveDevices.length,
+    inactiveReasons: buildPlanReasonGroups(inactiveDevices),
+  };
+}
+
+function roundPlanDebugNumber(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.round(value * 100) / 100;
 }
 
 function formatPlanChange(device: DevicePlanDevice, headroom: number | null): string {
