@@ -175,9 +175,9 @@ const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = name;
 };
 
-const setDeviceDetailBudgetExemptState = (deviceId: string) => {
-  if (!deviceDetailBudgetExempt) return;
-  deviceDetailBudgetExempt.checked = state.budgetExemptMap[deviceId] === true;
+const setDeviceDetailBudgetExemptState = (device: TargetDeviceSnapshot | null) => {
+  if (!deviceDetailBudgetExempt || !device) return;
+  deviceDetailBudgetExempt.checked = state.budgetExemptMap[device.id] === true || device.budgetExempt === true;
   deviceDetailBudgetExempt.disabled = false;
 };
 
@@ -320,7 +320,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     deviceDetailPriceOpt.checked = supportsTemperature && isManaged && priceConfig?.enabled === true;
     deviceDetailPriceOpt.disabled = !supportsTemperature || !isManaged;
   }
-  setDeviceDetailBudgetExemptState(deviceId);
+  setDeviceDetailBudgetExemptState(device);
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
     const effectiveControlModel = device ? getEffectiveControlModel(device) : 'temperature_target';
     deviceDetailControlModel.value = effectiveControlModel === 'stepped_load' ? 'stepped_load' : 'temperature_target';
