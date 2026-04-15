@@ -482,6 +482,7 @@ export class PlanExecutor {
   private async applySteppedLoadCommand(
     dev: DevicePlan['devices'][number],
     mode: PlanActuationMode,
+    options: { recordPlanActuation?: boolean } = {},
   ): Promise<boolean> {
     if (!isSteppedLoadDevice(dev)) return false;
 
@@ -577,10 +578,11 @@ export class PlanExecutor {
       void Promise.resolve(triggerPromise).catch((error) => {
         this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
       });
-      if (mode !== 'plan') return false;
+      const shouldRecordPlanActuation = options.recordPlanActuation !== false;
+      if (mode !== 'plan' || !shouldRecordPlanActuation) return true;
       if (nextDirection === 'shed') {
         this.recordShedActuation(dev.id, dev.name, now);
-        return false;
+        return true;
       }
       this.recordRestoreActuation(dev.id, dev.name, now);
       recordActivationAttemptStarted({
@@ -591,7 +593,7 @@ export class PlanExecutor {
         nowTs: now,
         source: 'tracked_step_up',
       });
-      return false;
+      return true;
     } catch (error) {
       this.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
       return false;
@@ -612,6 +614,7 @@ export class PlanExecutor {
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
     anyShedDevices: boolean,
+    options: { preRestoreStepIssued?: boolean } = {},
   ): Promise<boolean> {
     const name = dev.name || dev.id;
 
@@ -624,10 +627,11 @@ export class PlanExecutor {
       return false;
     }
 
-    const isAtOffStep = dev.steppedLoadProfile && dev.selectedStepId
-      && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId);
     const onoffViolated = snapshot?.currentOn === false;
     const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
+    const hasPendingMatchingRestoreStep = desiredStepId !== undefined
+      && dev.stepCommandPending === true
+      && dev.lastDesiredStepId === desiredStepId;
     // Only treat step as violated when a step-up is actually planned — i.e. the
     // desired step differs from the selected step and targets a non-off step.
     // Without this gate the method would repeatedly attempt binary restore
@@ -636,7 +640,7 @@ export class PlanExecutor {
       && dev.steppedLoadProfile
       && !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
     const stepViolated = Boolean(
-      isAtOffStep
+      dev.currentState === 'off'
       && desiredIsNonOff
       && desiredStepId !== dev.selectedStepId,
     );
@@ -645,7 +649,11 @@ export class PlanExecutor {
       this.logDebug(`Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
     }
     if (stepViolated) {
-      this.logDebug(`Capacity: ${name} violates keep invariant: step=${dev.selectedStepId} (off-step)`);
+      const stepDetail = dev.steppedLoadProfile && dev.selectedStepId
+        && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
+        ? `${dev.selectedStepId} (off-step)`
+        : `${dev.selectedStepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
+      this.logDebug(`Capacity: ${name} violates keep invariant: step=${stepDetail}`);
     }
 
     if (!onoffViolated && !stepViolated) {
@@ -669,6 +677,12 @@ export class PlanExecutor {
     }
     if (this.state.pendingRestores.has(dev.id)) {
       this.logDebug(`Capacity: skip stepped-load restore for ${name}, already in progress`);
+      return false;
+    }
+    if (onoffViolated && stepViolated && options.preRestoreStepIssued !== true && !hasPendingMatchingRestoreStep) {
+      this.logDebug(
+        `Capacity: skip stepped-load restore for ${name}, required pre-restore step command was not issued`,
+      );
       return false;
     }
     if (!onoffViolated) {
@@ -1205,9 +1219,17 @@ export class PlanExecutor {
         }
         if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && dev.currentState === 'off') {
           const onoffViolated = snapshot?.currentOn === false;
-          await this.applySteppedLoadCommand(dev, mode);
-          const stepRestoreReady = await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
-          if (stepRestoreReady) await this.applySteppedLoadCommand(dev, mode);
+          const preRestoreStepIssued = onoffViolated
+            ? await this.applySteppedLoadCommand(dev, mode, { recordPlanActuation: false })
+            : false;
+          const stepRestoreReady = await this.applySteppedLoadRestore(
+            dev,
+            snapshot,
+            mode,
+            anyShedDevices,
+            { preRestoreStepIssued },
+          );
+          if (stepRestoreReady && !onoffViolated) await this.applySteppedLoadCommand(dev, mode);
           if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
           if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
