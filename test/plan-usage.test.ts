@@ -35,6 +35,6 @@ describe('sumControlledUsageKw', () => {
       { controllable: true, currentState: 'off', expectedPowerKw: 0.8 },
     ]);
 
-    expect(result).toBeCloseTo(0.15, 6);
+    expect(result).toBeCloseTo(0.95, 6);
   });
 });
