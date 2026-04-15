@@ -17,7 +17,8 @@ export function buildPelsStatus(params: {
     dailyBudgetExceeded?: boolean;
     limitReason?: 'none' | 'hourly' | 'daily' | 'both';
     capacityShortfall?: boolean;
-    shortfallThresholdKw?: number;
+    shortfallBudgetThresholdKw?: number;
+    shortfallBudgetHeadroomKw?: number | null;
     hardCapHeadroomKw?: number | null;
     controlledKw?: number;
     uncontrolledKw?: number;
@@ -41,7 +42,8 @@ export function buildPelsStatus(params: {
       dailyBudgetExceeded: plan.meta.dailyBudgetExceeded ?? false,
       limitReason,
       capacityShortfall: plan.meta.capacityShortfall ?? false,
-      shortfallThresholdKw: plan.meta.shortfallThresholdKw,
+      shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw,
+      shortfallBudgetHeadroomKw: plan.meta.shortfallBudgetHeadroomKw,
       hardCapHeadroomKw: plan.meta.hardCapHeadroomKw,
       controlledKw: plan.meta.controlledKw,
       uncontrolledKw: plan.meta.uncontrolledKw,

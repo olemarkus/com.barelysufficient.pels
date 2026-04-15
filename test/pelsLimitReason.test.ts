@@ -151,7 +151,8 @@ describe('pels status limit reason', () => {
         softLimitSource: 'capacity',
         headroomKw: -2.4,
         capacityShortfall: true,
-        shortfallThresholdKw: 6,
+        shortfallBudgetThresholdKw: 6,
+        shortfallBudgetHeadroomKw: -1.2,
         hardCapHeadroomKw: -1.2,
       },
       devices: [],
@@ -166,7 +167,8 @@ describe('pels status limit reason', () => {
     });
 
     expect(status.capacityShortfall).toBe(true);
-    expect(status.shortfallThresholdKw).toBe(6);
+    expect(status.shortfallBudgetThresholdKw).toBe(6);
+    expect(status.shortfallBudgetHeadroomKw).toBe(-1.2);
     expect(status.hardCapHeadroomKw).toBe(-1.2);
   });
 });

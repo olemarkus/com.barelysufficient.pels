@@ -72,6 +72,8 @@ describe('periodic status used kWh', () => {
     nowSpy.mockRestore();
 
     expect(fields.softLimitKw).toBe(4);
+    expect(fields.shortfallBudgetThresholdKw).toBe(5);
+    expect(fields.shortfallBudgetHeadroomKw).toBe(2.52);
     expect(fields.hardCapHeadroomKw).toBe(2.52);
     expect(fields.usedKWh).toBe(2.52);
     expect(fields.hourRemainingKWh).toBeCloseTo(1.48, 8);
@@ -117,6 +119,31 @@ describe('periodic status used kWh', () => {
     nowSpy.mockRestore();
 
     expect(fields.softHeadroomKw).toBeCloseTo(-2.6, 8);
+    expect(fields.shortfallBudgetThresholdKw).toBe(6);
+    expect(fields.shortfallBudgetHeadroomKw).toBeCloseTo(-1.4, 8);
     expect(fields.hardCapHeadroomKw).toBeCloseTo(-1.4, 8);
+  });
+
+  it('keeps physical hard-cap headroom separate from budget-derived shortfall headroom', () => {
+    const nowMs = Date.UTC(2025, 0, 1, 10, 57, 0);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const fields = buildPeriodicStatusLogFields({
+      capacityGuard: {
+        getLastTotalPower: () => 5.2,
+        getSoftLimit: () => 4.8,
+        getShortfallThreshold: () => 8.6,
+        isSheddingActive: () => false,
+        isInShortfall: () => false,
+      },
+      powerTracker: {},
+      capacitySettings: { limitKw: 6, marginKw: 1.2 },
+      operatingMode: 'Home',
+      capacityDryRun: false,
+    });
+    nowSpy.mockRestore();
+
+    expect(fields.hardCapHeadroomKw).toBeCloseTo(0.8, 8);
+    expect(fields.shortfallBudgetHeadroomKw).toBeCloseTo(3.4, 8);
+    expect(fields.shortfallBudgetThresholdKw).toBe(8.6);
   });
 });
