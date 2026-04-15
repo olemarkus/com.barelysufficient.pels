@@ -2060,8 +2060,178 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    expect(result.overshootStats?.candidates).toBe(1);
-    expect(result.overshootStats?.totalSheddable).toBeCloseTo(1, 6);
+    expect(result.overshootStats?.eligibleCandidateCount).toBe(1);
+    expect(result.overshootStats?.reducibleControlledKw).toBeCloseTo(1, 6);
+    expect(result.overshootStats?.blockedCandidateCount).toBe(0);
+    expect(result.overshootStats?.allShedCandidatesExhausted).toBe(false);
+    expect(result.overshootStats?.controlRecoverable).toBe(true);
+  });
+
+  it('marks overshoot as exhausted when no sheddable controlled load remains', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'dev-at-temp',
+            name: 'AtTemp',
+            currentOn: true,
+            controllable: true,
+            expectedPowerKw: 0.8,
+            targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    );
+
+    expect(result.overshootStats).toEqual({
+      needed: 0.8,
+      eligibleCandidateCount: 0,
+      blockedCandidateCount: 0,
+      reducibleControlledKw: 0,
+      blockedReducibleControlledKw: 0,
+      allShedCandidatesExhausted: true,
+      controlRecoverable: false,
+    });
+  });
+
+  it('counts stepped lowest non-zero load as blocked-or-minimum, not reducible, when cooldown blocks further shedding', async () => {
+    const state = createPlanEngineState();
+    state.lastDeviceRestoreMs.stepper = Date.now() - 30_000;
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(true),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'stepper',
+            name: 'Stepper',
+            currentOn: true,
+            controllable: true,
+            controlModel: 'stepped_load',
+            selectedStepId: 'low',
+            desiredStepId: 'low',
+            measuredPowerKw: 0.4,
+            steppedLoadProfile: {
+              model: 'stepped_load',
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: 'low', planningPowerW: 400 },
+                { id: 'high', planningPowerW: 1200 },
+              ],
+            },
+          }),
+        ],
+        total: 4.4,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: -0.4,
+        headroom: -0.4,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    );
+
+    expect(result.overshootStats).toEqual({
+      needed: 0.4,
+      eligibleCandidateCount: 0,
+      blockedCandidateCount: 0,
+      reducibleControlledKw: 0,
+      blockedReducibleControlledKw: 0,
+      allShedCandidatesExhausted: true,
+      controlRecoverable: false,
+    });
+  });
+
+  it('does not count policy-blocked devices as reducible load', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(8),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'budget-exempt',
+            name: 'Budget Exempt Heater',
+            measuredPowerKw: 0.4,
+            currentOn: true,
+            controllable: true,
+            budgetExempt: true,
+          }),
+        ],
+        total: 4.4,
+        softLimit: 4,
+        capacitySoftLimit: 8,
+        headroomRaw: -0.4,
+        headroom: -0.4,
+        softLimitSource: 'daily',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    );
+
+    expect(result.overshootStats).toEqual({
+      needed: 0.4,
+      eligibleCandidateCount: 0,
+      blockedCandidateCount: 1,
+      reducibleControlledKw: 0,
+      blockedReducibleControlledKw: 0.4,
+      allShedCandidatesExhausted: true,
+      controlRecoverable: false,
+    });
   });
 
   it('skips budget-exempt devices when shedding due to the daily budget', async () => {
@@ -2736,6 +2906,15 @@ describe('buildSheddingPlan', () => {
 
     expect(sameSampleResult.shedSet.size).toBe(0);
     expect(sameSampleResult.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(sameSampleResult.overshootStats).toEqual({
+      needed: 0.8,
+      eligibleCandidateCount: 1,
+      blockedCandidateCount: 0,
+      reducibleControlledKw: 0.8,
+      blockedReducibleControlledKw: 0,
+      allShedCandidatesExhausted: false,
+      controlRecoverable: true,
+    });
     expect(deps.logDebug).toHaveBeenCalledWith(
       'Plan: skipping additional shedding until a new power measurement arrives',
     );
@@ -2786,7 +2965,67 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.size).toBe(0);
     expect(result.updates.lastOvershootEscalationMs).toBeUndefined();
+    expect(result.overshootStats).toEqual({
+      needed: 0.8,
+      eligibleCandidateCount: 1,
+      blockedCandidateCount: 0,
+      reducibleControlledKw: 0.8,
+      blockedReducibleControlledKw: 0,
+      allShedCandidatesExhausted: false,
+      controlRecoverable: true,
+    });
     expect(logDebug).toHaveBeenCalledWith('Plan: skipping additional shedding until a new power measurement arrives');
+  });
+
+  it('does not count ineligible off devices as blocked reducible load', async () => {
+    const state = createPlanEngineState();
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(4),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'off-device',
+            name: 'Off Device',
+            currentOn: false,
+            controllable: true,
+            expectedPowerKw: 1.2,
+          }),
+        ],
+        total: 4.8,
+        softLimit: 4,
+        capacitySoftLimit: 4,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1006 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    );
+
+    expect(result.overshootStats).toEqual({
+      needed: 0.8,
+      eligibleCandidateCount: 0,
+      blockedCandidateCount: 0,
+      reducibleControlledKw: 0,
+      blockedReducibleControlledKw: 0,
+      allShedCandidatesExhausted: true,
+      controlRecoverable: false,
+    });
   });
 
   it('emits a bounded blocker event when sustained overshoot escalation has no candidates left', async () => {

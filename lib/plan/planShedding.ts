@@ -1,3 +1,6 @@
+/* eslint-disable max-lines --
+  shedding candidate evaluation and overshoot diagnostics share the same control-authority math.
+*/
 import type CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { PlanInputDevice, ShedAction } from './planTypes';
@@ -41,11 +44,17 @@ export type SheddingPlan = {
     lastOvershootEscalationMs?: number;
     lastOvershootMitigationMs?: number;
   };
-  overshootStats: {
-    needed: number;
-    candidates: number;
-    totalSheddable: number;
-  } | null;
+  overshootStats: OvershootStats | null;
+};
+
+export type OvershootStats = {
+  needed: number;
+  eligibleCandidateCount: number;
+  blockedCandidateCount: number;
+  reducibleControlledKw: number;
+  blockedReducibleControlledKw: number;
+  allShedCandidatesExhausted: boolean;
+  controlRecoverable: boolean;
 };
 
 export type SheddingDeps = {
@@ -132,6 +141,7 @@ type PlanSheddingResult = {
 
 function emptySheddingResult(
   updates: PlanSheddingResult['updates'] = {},
+  overshootStats: PlanSheddingResult['overshootStats'] = null,
 ): PlanSheddingResult {
   return {
     shedSet: new Set<string>(),
@@ -139,7 +149,7 @@ function emptySheddingResult(
     steppedDesiredStepByDeviceId: new Map<string, string>(),
     temperatureShedTargets: new Map<string, { temperature: number; capabilityId: string }>(),
     updates,
-    overshootStats: null,
+    overshootStats,
   };
 }
 
@@ -159,18 +169,11 @@ function planShedding(
     nowTs,
     allowEscalation: isCapacityBreached(context.total, context.capacitySoftLimit),
   });
-  if (measurementDecision.skip) {
-    deps.logDebug('Plan: skipping additional shedding until a new power measurement arrives');
-    return emptySheddingResult();
-  }
-  if (measurementDecision.escalatedSameSample) {
-    deps.logDebug('Plan: escalating overshoot despite unchanged power measurement');
-  }
 
   // Type narrowing: headroom is guaranteed to be non-null here due to shouldPlanShedding check
   if (context.headroom === null) return emptySheddingResult();
   const needed = -context.headroom;
-  const candidates = buildSheddingCandidates({
+  const candidateSummary = buildSheddingCandidates({
     devices: context.devices,
     needed,
     limitSource: context.softLimitSource,
@@ -179,6 +182,23 @@ function planShedding(
     state,
     deps,
   });
+  const { candidates } = candidateSummary;
+  const overshootStats: OvershootStats = {
+    needed,
+    eligibleCandidateCount: candidates.length,
+    blockedCandidateCount: candidateSummary.blockedCandidateCount,
+    reducibleControlledKw: candidateSummary.reducibleControlledKw,
+    blockedReducibleControlledKw: candidateSummary.blockedReducibleControlledKw,
+    allShedCandidatesExhausted: candidates.length === 0,
+    controlRecoverable: candidateSummary.reducibleControlledKw > 0,
+  };
+  if (measurementDecision.skip) {
+    deps.logDebug('Plan: skipping additional shedding until a new power measurement arrives');
+    return emptySheddingResult({}, overshootStats);
+  }
+  if (measurementDecision.escalatedSameSample) {
+    deps.logDebug('Plan: escalating overshoot despite unchanged power measurement');
+  }
   const result = selectShedDevices({
     candidates,
     needed,
@@ -204,9 +224,9 @@ function planShedding(
       return emptySheddingResult({
         lastOvershootEscalationMs: nowTs,
         lastOvershootMitigationMs: nowTs,
-      });
+      }, overshootStats);
     }
-    return emptySheddingResult();
+    return emptySheddingResult({}, overshootStats);
   }
   const updates = {
     lastInstabilityMs: nowTs,
@@ -217,15 +237,16 @@ function planShedding(
   return {
     ...result,
     updates,
-    overshootStats: {
-      needed,
-      candidates: candidates.length,
-      totalSheddable: candidates.reduce((sum, c) => sum + c.effectivePower, 0),
-    },
+    overshootStats,
   };
 }
 
-function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
+function buildSheddingCandidates(params: ShedCandidateParams): {
+  candidates: ShedCandidate[];
+  reducibleControlledKw: number;
+  blockedCandidateCount: number;
+  blockedReducibleControlledKw: number;
+} {
   const {
     devices,
     needed,
@@ -237,26 +258,48 @@ function buildSheddingCandidates(params: ShedCandidateParams): ShedCandidate[] {
   } = params;
   const nowTs = Date.now();
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
-  return devices
-    .filter((d) => d.controllable !== false && isEligibleForShedding({
-      device: d,
+  const candidates: ShedCandidate[] = [];
+  let reducibleControlledKw = 0;
+  let blockedCandidateCount = 0;
+  let blockedReducibleControlledKw = 0;
+
+  for (const device of devices) {
+    if (device.controllable === false) continue;
+    const eligible = isEligibleForShedding({
+      device,
       state,
       nowTs,
-    }))
-    // Budget exemption only bypasses daily soft-limit control. Capacity shedding
-    // still considers the device because hard-cap protection remains in force.
-    .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
-    .map((device) => addCandidatePower({
+    });
+    if (!eligible) continue;
+
+    const candidate = addCandidatePower({
       device,
       devices,
       state,
       nowTs,
       needed,
       deps,
-    }))
-    .filter((candidate): candidate is ShedCandidate => candidate !== null)
-    .filter((d) => isNotAtShedTemperature(d))
-    .sort(sortCandidates);
+    });
+    if (!candidate || !isNotAtShedTemperature(candidate)) continue;
+
+    const allowedByLimitPolicy = limitSource !== 'daily' || capacityBreached || device.budgetExempt !== true;
+    if (allowedByLimitPolicy) {
+      candidates.push(candidate);
+      reducibleControlledKw += candidate.effectivePower;
+      continue;
+    }
+
+    blockedCandidateCount += 1;
+    blockedReducibleControlledKw += candidate.effectivePower;
+  }
+
+  candidates.sort(sortCandidates);
+  return {
+    candidates,
+    reducibleControlledKw,
+    blockedCandidateCount,
+    blockedReducibleControlledKw,
+  };
 }
 
 function addCandidatePower(params: {
