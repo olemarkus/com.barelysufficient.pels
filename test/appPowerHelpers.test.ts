@@ -1035,4 +1035,24 @@ describe('recordPowerSampleForApp', () => {
     const bucketKey = new Date(start).toISOString();
     expect(tracker.exemptBuckets?.[bucketKey]).toBe(0);
   });
+
+  it('leaves controlled power unknown when no snapshot devices are available', async () => {
+    let tracker: PowerTrackerState = {};
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+
+    await recordPowerSampleForApp({
+      currentPowerW: 1000,
+      nowMs: start,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot: () => [],
+      powerTracker: tracker,
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    expect(tracker.lastControlledPowerW).toBeUndefined();
+    expect(tracker.lastUncontrolledPowerW).toBeUndefined();
+  });
 });

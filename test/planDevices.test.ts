@@ -703,4 +703,28 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     expect(planDevice.desiredStepId).toBeUndefined();
     expect(planDevice.expectedPowerKw).toBe(0.7);
   });
+
+  it('falls back to 1kW when all configured power fields are non-finite', () => {
+    const device = buildPlanInputDevice({
+      id: 'dev-1',
+      name: 'Broken heater',
+      measuredPowerKw: Number.NaN,
+      expectedPowerKw: Number.POSITIVE_INFINITY,
+      planningPowerKw: Number.NaN,
+      powerKw: Number.POSITIVE_INFINITY,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.expectedPowerKw).toBeUndefined();
+  });
 });

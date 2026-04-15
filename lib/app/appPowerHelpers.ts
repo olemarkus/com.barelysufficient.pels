@@ -592,10 +592,12 @@ export async function recordPowerSampleForApp(params: {
   } = params;
   const hourBudgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
   const snapshot = getLatestTargetSnapshot();
-  const { controlledKw } = splitControlledUsageKw({
-    devices: snapshot,
-    totalKw: snapshot.length ? currentPowerW / 1000 : null,
-  });
+  const { controlledKw } = snapshot.length
+    ? splitControlledUsageKw({
+      devices: snapshot,
+      totalKw: currentPowerW / 1000,
+    })
+    : { controlledKw: null };
   const exemptKw = snapshot.length ? sumBudgetExemptLiveUsageKw(snapshot) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
