@@ -211,10 +211,10 @@ function resolveSteppedExpectedPowerKw(params: {
 }
 
 function hasKnownPowerFields(dev: PlanInputDevice): boolean {
-  return typeof dev.measuredPowerKw === 'number'
-    || typeof dev.expectedPowerKw === 'number'
-    || typeof dev.planningPowerKw === 'number'
-    || typeof dev.powerKw === 'number';
+  return Number.isFinite(dev.measuredPowerKw)
+    || Number.isFinite(dev.expectedPowerKw)
+    || Number.isFinite(dev.planningPowerKw)
+    || Number.isFinite(dev.powerKw);
 }
 
 function buildBasePlanDevice(params: {
