@@ -51,10 +51,17 @@ const runStep = async (
 export const runStartupStep = async <T>(
   label: string,
   work: () => T | Promise<T>,
+  onError?: (label: string, error: Error) => void,
 ): Promise<T> => {
   const stopSpan = startRuntimeSpan(`startup_step(${label})`);
   try {
     return await work();
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    if (typeof onError === 'function') {
+      onError(label, normalizedError);
+    }
+    throw normalizedError;
   } finally {
     stopSpan();
   }

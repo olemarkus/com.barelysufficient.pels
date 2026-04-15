@@ -289,19 +289,27 @@ class PelsApp extends Homey.App {
   }
   async onInit() {
     const deferStartupBootstrap = process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1';
+    const logStartupStepFailure = (label: string, error: Error): void => {
+      this.structuredLogger?.child({ component: 'startup' }).error({
+        event: 'startup_step_failed',
+        reasonCode: 'startup_step_failed',
+        stepLabel: label,
+        err: normalizeError(error),
+      });
+    };
     this.structuredLogger = createRootLogger(
       createHomeyDestination({ log: (...a) => this.log(...a), error: (...a) => this.error(...a) }),
     );
     this.structuredLogger.child({ component: 'startup' }).info({ event: 'app_initialized' });
     this.startResourceWarningListeners();
-    await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled());
+    await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled(), logStartupStepFailure);
     this.startPerfLogging();
-    await runStartupStep('initPriceCoordinator', () => this.initPriceCoordinator());
-    await runStartupStep('migrateManagedDevices', () => this.migrateManagedDevices());
-    await runStartupStep('loadCapacitySettings', () => this.loadCapacitySettings());
-    await runStartupStep('initDailyBudgetService', () => this.initDailyBudgetService());
-    await runStartupStep('initDeviceDiagnosticsService', () => this.initDeviceDiagnosticsService());
-    await runStartupStep('initDeviceManager', () => this.initDeviceManager());
+    await runStartupStep('initPriceCoordinator', () => this.initPriceCoordinator(), logStartupStepFailure);
+    await runStartupStep('migrateManagedDevices', () => this.migrateManagedDevices(), logStartupStepFailure);
+    await runStartupStep('loadCapacitySettings', () => this.loadCapacitySettings(), logStartupStepFailure);
+    await runStartupStep('initDailyBudgetService', () => this.initDailyBudgetService(), logStartupStepFailure);
+    await runStartupStep('initDeviceDiagnosticsService', () => this.initDeviceDiagnosticsService(), logStartupStepFailure);
+    await runStartupStep('initDeviceManager', () => this.initDeviceManager(), logStartupStepFailure);
     const hasCachedTargetSnapshot = restoreCachedTargetSnapshotForApp({
       homey: this.homey,
       deviceManager: this.deviceManager,
@@ -312,11 +320,11 @@ class PelsApp extends Homey.App {
     if (deferStartupBootstrap) {
       snapshotPlanBootstrapDelayMs = hasCachedTargetSnapshot ? 300 : 1200;
     }
-    await runStartupStep('initCapacityGuard', () => this.initCapacityGuard());
-    await runStartupStep('initPlanEngine', () => this.initPlanEngine());
-    await runStartupStep('initPlanService', () => this.initPlanService());
-    await runStartupStep('initCapacityGuardProviders', () => this.initCapacityGuardProviders());
-    await runStartupStep('initSettingsHandler', () => this.initSettingsHandler());
+    await runStartupStep('initCapacityGuard', () => this.initCapacityGuard(), logStartupStepFailure);
+    await runStartupStep('initPlanEngine', () => this.initPlanEngine(), logStartupStepFailure);
+    await runStartupStep('initPlanService', () => this.initPlanService(), logStartupStepFailure);
+    await runStartupStep('initCapacityGuardProviders', () => this.initCapacityGuardProviders(), logStartupStepFailure);
+    await runStartupStep('initSettingsHandler', () => this.initSettingsHandler(), logStartupStepFailure);
     await runStartupStep('startAppServices', () => startAppServices({
       loadPowerTracker: (options) => this.loadPowerTracker(options),
       loadPriceOptimizationSettings: () => this.loadPriceOptimizationSettings(),
@@ -338,6 +346,7 @@ class PelsApp extends Homey.App {
         const normalizedError = normalizeError(error);
         this.structuredLogger?.child({ component: 'startup' }).error({
           event: 'startup_background_task_failed',
+          reasonCode: 'startup_background_task_failed',
           taskLabel: label,
           err: normalizedError,
         });
@@ -346,9 +355,9 @@ class PelsApp extends Homey.App {
       runSnapshotPlanBootstrapInBackground: deferStartupBootstrap,
       runPriceBootstrapInBackground: deferStartupBootstrap,
       applyPriceOptimizationImmediatelyOnStart: !deferStartupBootstrap,
-    }));
-    await runStartupStep('startPriceLowestTriggerChecker', () => this.startPriceLowestTriggerChecker());
-    await runStartupStep('startPowerTrackerPruning', () => this.startPowerTrackerPruning());
+    }), logStartupStepFailure);
+    await runStartupStep('startPriceLowestTriggerChecker', () => this.startPriceLowestTriggerChecker(), logStartupStepFailure);
+    await runStartupStep('startPowerTrackerPruning', () => this.startPowerTrackerPruning(), logStartupStepFailure);
   }
   private initPriceCoordinator(): void {
     this.priceCoordinator = createPriceCoordinator({
@@ -1167,7 +1176,19 @@ class PelsApp extends Homey.App {
         const existingSnapshot = this.homey.settings.get('target_devices_snapshot') as unknown;
         if (toPersistedTargetSnapshotFingerprint(existingSnapshot) !== toPersistedTargetSnapshotFingerprint(snapshot)) {
           this.homey.settings.set('target_devices_snapshot', snapshot);
+          this.getStructuredLogger('devices')?.info({
+            event: 'target_devices_snapshot_written',
+            reasonCode: options.targeted === true ? 'targeted_refresh' : 'snapshot_refresh',
+            deviceCount: snapshot.length,
+            targetedRefresh: options.targeted === true,
+          });
         } else {
+          this.getStructuredLogger('devices')?.debug({
+            event: 'target_devices_snapshot_write_skipped',
+            reasonCode: 'unchanged',
+            deviceCount: snapshot.length,
+            targetedRefresh: options.targeted === true,
+          });
           this.logDebug('devices', 'Target devices snapshot unchanged, skipping settings write');
         }
         disableUnsupportedDevicesHelper({

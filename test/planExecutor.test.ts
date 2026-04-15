@@ -62,6 +62,7 @@ const buildExecutor = (
   overrides: Partial<PlanExecutorDeps> = {},
 ) => {
   const desiredSteppedTrigger = { trigger: vi.fn().mockResolvedValue(true) };
+  const debugStructured = vi.fn();
   const deviceManager = {
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),
@@ -80,12 +81,13 @@ const buildExecutor = (
     markSteppedLoadDesiredStepIssued: vi.fn(),
     logTargetRetryComparison: vi.fn(),
     structuredLog: { info: vi.fn(), debug: vi.fn(), error: vi.fn() } as any,
+    debugStructured,
     log: vi.fn(),
     logDebug: vi.fn(),
     error: vi.fn(),
     ...overrides,
   };
-  return { executor: new PlanExecutor(deps, state), deps, deviceManager, state, desiredSteppedTrigger };
+  return { executor: new PlanExecutor(deps, state), deps, deviceManager, state, desiredSteppedTrigger, debugStructured };
 };
 
 describe('PlanExecutor restore logging', () => {
@@ -262,7 +264,7 @@ describe('PlanExecutor pending target commands', () => {
   it('backs off failed target writes and marks the device temporarily unavailable', async () => {
     const state = createPlanEngineState();
     const failure = new Error('Device offline');
-    const { executor, deps, deviceManager, state: nextState } = buildExecutor(state, [
+    const { executor, deps, deviceManager, state: nextState, debugStructured } = buildExecutor(state, [
       {
         id: 'dev-1',
         name: 'Heater',
@@ -296,6 +298,43 @@ describe('PlanExecutor pending target commands', () => {
     expect(deps.logDebug).toHaveBeenCalledWith(
       'Capacity: skip target_temperature for Heater, device temporarily unavailable for 30s before retry (plan)',
     );
+    expect((deps.structuredLog as any).error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_command_failed',
+      reasonCode: 'device_manager_write_failed',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'target_temperature',
+      desired: 23,
+      skipContext: 'plan',
+      actuationMode: 'plan',
+    }));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_command_skipped',
+      reasonCode: 'temporarily_unavailable',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      desired: 23,
+      skipContext: 'plan',
+      actuationMode: 'plan',
+    }));
+  });
+
+  it('logs restore skips when the target snapshot is missing', async () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
+    const { executor, debugStructured, deviceManager } = buildExecutor(state, []);
+
+    await executor.applyPlanActions(buildPlan());
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'missing_snapshot',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
   });
 
   it('falls back to turn_off shedding when a shed temperature write fails', async () => {
@@ -821,6 +860,67 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes turn_off skip reasons when no control path exists', async () => {
+    const noTargetsSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const noTargetsDebugStructured = vi.fn();
+    const noTargets = buildExecutor(undefined, noTargetsSnapshot, { debugStructured: noTargetsDebugStructured });
+    await noTargets.executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(noTargetsDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: 'missing_control_targets',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+      desired: false,
+      hasTargets: false,
+      capabilityId: null,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
+
+    const missingCapabilitySnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      },
+    ];
+    const missingCapabilityDebugStructured = vi.fn();
+    const missingCapability = buildExecutor(undefined, missingCapabilitySnapshot, { debugStructured: missingCapabilityDebugStructured });
+    await missingCapability.executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(missingCapabilityDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: 'missing_onoff_capability',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+      desired: false,
+      hasTargets: true,
+      capabilityId: null,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
   });
 
   it('restores a stepped device at its off-step when keep intent requires onoff=true', async () => {

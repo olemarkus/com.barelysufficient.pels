@@ -121,6 +121,8 @@ describe('plan binary control helpers', () => {
     const log = vi.fn();
     const logDebug = vi.fn();
     const error = vi.fn();
+    const structuredLog = { info: vi.fn(), debug: vi.fn(), error: vi.fn() };
+    const debugStructured = vi.fn();
     const deviceManager = {
       setCapability: vi.fn().mockResolvedValue(undefined),
       getSnapshot: vi.fn().mockReturnValue([
@@ -135,6 +137,8 @@ describe('plan binary control helpers', () => {
       log,
       logDebug,
       error,
+      structuredLog,
+      debugStructured,
       deviceId: 'ev1',
       name: 'EV',
       desired: true,
@@ -159,6 +163,8 @@ describe('plan binary control helpers', () => {
       log,
       logDebug,
       error,
+      structuredLog,
+      debugStructured,
       deviceId: 'ev1',
       name: 'EV',
       desired: true,
@@ -172,6 +178,15 @@ describe('plan binary control helpers', () => {
       logContext: 'capacity',
     })).resolves.toBe(false);
     expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('already pending'));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: 'already_pending',
+      deviceId: 'ev1',
+      desired: true,
+      capabilityId: 'evcharger_charging',
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
 
     vi.spyOn(Date, 'now').mockReturnValue(state.pendingBinaryCommands.ev1.startedMs + 20_000);
     await expect(setBinaryControl({
@@ -181,6 +196,8 @@ describe('plan binary control helpers', () => {
       log,
       logDebug,
       error,
+      structuredLog,
+      debugStructured,
       deviceId: 'socket1',
       name: 'Socket',
       desired: false,
@@ -195,6 +212,48 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(true);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('socket1', 'onoff', false);
     expect(log).toHaveBeenCalledWith('Capacity: turned off Socket (shedding)');
+  });
+
+  it('emits binary_command_failed when the device manager write fails', async () => {
+    const state = createPlanEngineState();
+    const failure = new Error('device unavailable');
+    const structuredLog = { info: vi.fn(), debug: vi.fn(), error: vi.fn() };
+    const deviceManager = {
+      setCapability: vi.fn().mockRejectedValue(failure),
+      getSnapshot: vi.fn().mockReturnValue([]),
+    };
+
+    await expect(setBinaryControl({
+      state,
+      deviceManager: deviceManager as never,
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      structuredLog,
+      debugStructured: vi.fn(),
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: false,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+      },
+      logContext: 'capacity',
+    })).resolves.toBe(false);
+
+    expect(structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_failed',
+      reasonCode: 'device_manager_write_failed',
+      deviceId: 'socket1',
+      deviceName: 'Socket',
+      capabilityId: 'onoff',
+      desired: false,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
   });
 
   it('does not resend the same standard binary command while it is pending', async () => {

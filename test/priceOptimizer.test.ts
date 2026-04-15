@@ -45,7 +45,13 @@ describe('PriceOptimizer.applyOnce', () => {
     await optimizer.applyOnce();
 
     expect(structuredLog.info).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'price_optimization_completed', previousMode: null, mode: 'normal' }),
+      expect.objectContaining({
+        event: 'price_optimization_completed',
+        previousMode: null,
+        resultingMode: 'normal',
+        mode: 'normal',
+        transition: 'hour_boundary_transition',
+      }),
     );
   });
 
@@ -63,7 +69,12 @@ describe('PriceOptimizer.applyOnce', () => {
     const calls = structuredLog.info.mock.calls.map((c: unknown[]) => c[0]);
     const second = calls.find((c: Record<string, unknown>) => c['previousMode'] === 'expensive');
     expect(second).toBeDefined();
-    expect(second?.['mode']).toBe('normal');
+    expect(second).toMatchObject({
+      previousMode: 'expensive',
+      resultingMode: 'normal',
+      mode: 'normal',
+      transition: 'hour_boundary_transition',
+    });
   });
 
   it('emits same mode for both previousMode and mode when mode is unchanged', async () => {
@@ -77,5 +88,7 @@ describe('PriceOptimizer.applyOnce', () => {
     const second = calls[1] as Record<string, unknown>;
     expect(second?.['previousMode']).toBe('normal');
     expect(second?.['mode']).toBe('normal');
+    expect(second?.['resultingMode']).toBe('normal');
+    expect(second?.['transition']).toBe('steady');
   });
 });

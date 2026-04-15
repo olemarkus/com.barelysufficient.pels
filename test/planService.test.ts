@@ -123,6 +123,77 @@ describe('PlanService', () => {
     expect(planUpdatedCalls).toHaveLength(2);
   });
 
+  it('emits bounded snapshot write logs and throttles meta-only rewrites', async () => {
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const debugStructured = vi.fn();
+    const structuredLog = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const planEngine = {
+      buildDevicePlanSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1, headroomKw: 4 }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 2, headroomKw: 3 })),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      structuredLog,
+      debugStructured,
+    });
+
+    await service.rebuildPlanFromCache();
+    structuredLog.info.mockClear();
+    settingsSet.mockClear();
+
+    await service.rebuildPlanFromCache();
+
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_snapshot_write_throttled',
+      reasonCode: 'meta_only_throttled',
+      deviceCount: 1,
+      totalKw: 2,
+      waitMs: expect.any(Number),
+      snapshotReason: 'meta_only',
+    }));
+    expect(settingsSet).not.toHaveBeenCalledWith('device_plan_snapshot', expect.anything());
+
+    await vi.advanceTimersByTimeAsync(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
+
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_snapshot_written',
+      reasonCode: 'meta_only',
+      deviceCount: 1,
+      totalKw: 2,
+      writeMs: expect.any(Number),
+    }));
+    expect(settingsSet).toHaveBeenCalledWith('device_plan_snapshot', expect.anything());
+  });
+
   it('emits grouped structured plan debug summaries only when the summary changes', async () => {
     const summaryPlan: DevicePlan = {
       meta: {
