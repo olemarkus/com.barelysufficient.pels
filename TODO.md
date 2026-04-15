@@ -100,8 +100,9 @@ file.
       Why P1: restore/shed behavior is harder to reason about than it should be because control
       flow and string building are interleaved.
       Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonHelpers.ts`.
-- [ ] Move `planServiceInternals.ts` types to a stable owner and extract the snapshot-write path
-      out of `planService.ts` so rebuild orchestration stops carrying persistence plumbing.
+- [ ] Move `planServiceInternals.ts` types into `lib/plan/planTypes.ts` and extract the
+      snapshot-write path out of `planService.ts` so rebuild orchestration stops carrying
+      persistence plumbing.
       Why P1: `planService.ts` mixes rebuilds, timers, throttled settings writes, and metrics in
       one place even though snapshot persistence is a separate concern.
       Files: `lib/plan/planService.ts`, `lib/plan/planServiceInternals.ts`,
