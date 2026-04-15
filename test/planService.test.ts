@@ -2512,6 +2512,76 @@ describe('PlanService', () => {
     expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
 
+  it('does not call schedulePostActuationRefresh when stepped-only actuation triggers no direct device writes', async () => {
+    const schedulePostActuationRefresh = vi.fn();
+    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
+    const service = new PlanService({
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
+          currentState: 'off',
+          plannedState: 'keep',
+          controlModel: 'stepped_load',
+          controlCapabilityId: 'onoff',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+          selectedStepId: 'low',
+          desiredStepId: 'max',
+        })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: vi.fn().mockResolvedValue(false),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Tank',
+        targets: [],
+        deviceType: 'onoff',
+        hasBinaryControl: true,
+        currentOn: false,
+        controlModel: 'stepped_load',
+        controlCapabilityId: 'onoff',
+        steppedLoadProfile: {
+          model: 'stepped_load' as const,
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+        desiredStepId: 'max',
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      schedulePostActuationRefresh,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+    });
+
+    await service.rebuildPlanFromCache();
+
+    expect(applyPlanActions).toHaveBeenCalled();
+    expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
+  });
+
   it('calls schedulePostActuationRefresh after reconcile actuation', async () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);

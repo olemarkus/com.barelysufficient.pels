@@ -1006,7 +1006,12 @@ describe('DeviceManager', () => {
             expect(realtimeListener).toHaveBeenCalledOnce();
             expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                 deviceId: 'dev1',
-                changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
+                name: 'Heater',
+                changes: [{
+                    capabilityId: 'onoff',
+                    previousValue: 'off',
+                    nextValue: 'on',
+                }],
             }));
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 currentOn: true,
@@ -1215,10 +1220,16 @@ describe('DeviceManager', () => {
                 deviceManager.injectDeviceUpdateForTest(heaterOnDevice());
 
                 expect(realtimeListener).toHaveBeenCalledOnce();
-                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                expect(realtimeListener).toHaveBeenCalledWith({
                     deviceId: 'dev1',
-                    changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
-                }));
+                    name: 'Heater',
+                    capabilityId: 'onoff',
+                    changes: [{
+                        capabilityId: 'onoff',
+                        previousValue: 'off',
+                        nextValue: 'on',
+                    }],
+                });
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
             });
 
@@ -1268,6 +1279,96 @@ describe('DeviceManager', () => {
                     // snapshot.currentOn=false matches desired=false => no reconcile at timeout
                     expect(realtimeListener).not.toHaveBeenCalled();
                     expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
+            it('does not preserve the stale desired binary state after settle timeout expires and a later non-boolean device.update arrives', async () => {
+                vi.useFakeTimers();
+                try {
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            class: 'heater',
+                            capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                            capabilitiesObj: {
+                                measure_power: { value: 1000, id: 'measure_power' },
+                                measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                                target_temperature: { value: 20, id: 'target_temperature', units: '°C' },
+                                onoff: { value: true, id: 'onoff' },
+                            },
+                        },
+                    });
+                    await deviceManager.refreshSnapshot();
+                    const realtimeListener = vi.fn();
+                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                    await deviceManager.setCapability('dev1', 'onoff', false);
+
+                    deviceManager.injectDeviceUpdateForTest({
+                        id: 'dev1',
+                        name: 'Heater',
+                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                        class: 'heater',
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+                        },
+                    });
+
+                    expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                        currentOn: false,
+                        targets: [expect.objectContaining({ id: 'target_temperature', value: 19 })],
+                    }));
+                    expect(realtimeListener).toHaveBeenCalledWith({
+                        deviceId: 'dev1',
+                        name: 'Heater',
+                        changes: [{
+                            capabilityId: 'target_temperature',
+                            previousValue: '20°C',
+                            nextValue: '19°C',
+                        }],
+                    });
+
+                    realtimeListener.mockClear();
+
+                    await vi.advanceTimersByTimeAsync(5001);
+
+                    deviceManager.injectDeviceUpdateForTest({
+                        id: 'dev1',
+                        name: 'Heater',
+                        capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'onoff'],
+                        class: 'heater',
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            measure_temperature: { value: 21, id: 'measure_temperature', units: '°C' },
+                            target_temperature: { value: 18, id: 'target_temperature', units: '°C' },
+                        },
+                    });
+
+                    expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                        currentOn: true,
+                        targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
+                    }));
+                    expect(realtimeListener).toHaveBeenCalledWith({
+                        deviceId: 'dev1',
+                        name: 'Heater',
+                        changes: [
+                            {
+                                capabilityId: 'onoff',
+                                previousValue: 'off',
+                                nextValue: 'on',
+                            },
+                            {
+                                capabilityId: 'target_temperature',
+                                previousValue: '19°C',
+                                nextValue: '18°C',
+                            },
+                        ],
+                    });
                 } finally {
                     vi.useRealTimers();
                 }
@@ -2301,6 +2402,26 @@ describe('DeviceManager', () => {
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 16);
 
                 expect(realtimeListener).not.toHaveBeenCalled();
+            });
+
+            it('suppresses normalized capability echoes for own recent writes', async () => {
+                mockApiGet.mockResolvedValue(buildTempDevice());
+                await deviceManager.refreshSnapshot();
+
+                mockApiPut.mockResolvedValue({});
+                await deviceManager.setCapability('dev1', 'target_temperature', 21.5);
+
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'target_temperature', 21.49);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(
+                    deviceManager.getSnapshot()
+                        .find((d) => d.id === 'dev1')
+                        ?.targets.find((t) => t.id === 'target_temperature')?.value,
+                ).toBe(21.5);
             });
 
             it('ignores capability events for untracked devices', async () => {

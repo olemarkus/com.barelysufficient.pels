@@ -62,6 +62,38 @@ describe('planSteppedLoad', () => {
       selectedStepId: undefined as unknown as string,
       desiredStepId: 'max',
     }))).toBe('low');
+
+    const normalizedKeepDesiredStepId = resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'off',
+    }));
+    expect(normalizedKeepDesiredStepId).toBe('medium');
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: normalizedKeepDesiredStepId,
+      desiredStepId: normalizedKeepDesiredStepId,
+    }))).toBe(normalizedKeepDesiredStepId);
+  });
+
+  it('is idempotent when re-run on its own normalized keep-step output', () => {
+    const device = steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    });
+
+    const first = resolveSteppedKeepDesiredStepId(device);
+    const second = resolveSteppedKeepDesiredStepId({
+      ...device,
+      desiredStepId: first,
+    });
+
+    expect(first).toBe('low');
+    expect(second).toBe(first);
   });
 
   it('keeps keep-intent desired-step normalization idempotent across planner and executor paths', () => {

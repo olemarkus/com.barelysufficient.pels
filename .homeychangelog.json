@@ -292,5 +292,8 @@
   },
   "2.1.22": {
     "en": "Implements a minor stability improvement by increasing the stale device timeout."
+  },
+  "2.1.23": {
+    "en": "Various bugfixes and stability improvements."
   }
 }

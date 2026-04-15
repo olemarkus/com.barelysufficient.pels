@@ -14,6 +14,11 @@ file.
       add per-capability realtime subscriptions for managed control capabilities (`onoff`,
       `evcharger_charging`, `target_temperature`).
       Files: `lib/core/deviceManager.ts`.
+- [ ] Move direct capability writes to the same confirmation-first model as binary settle and
+      stepped-load callbacks so temperature and other writable capabilities do not rely on
+      post-actuation polling as the normal success path.
+      Files: `lib/core/deviceManager.ts`, `lib/core/deviceManagerRuntime.ts`, `app.ts`,
+      capability-write/reconcile tests.
 - [ ] Startup should converge in one clean actionful rebuild unless genuinely new information
       arrives after the first pass.
       Files: startup helpers, `lib/plan/planService.ts`, startup orchestration tests.
