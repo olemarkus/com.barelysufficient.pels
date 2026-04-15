@@ -76,6 +76,9 @@ This note is for contributors changing runtime logging.
 - Prefer stable field names over embedding meaning in a formatted message string.
 - When adding a new event, keep payload fields machine-friendly and consistent with existing unit
   naming such as `durationMs`, `powerW`, `kWh`, and explicit IDs.
+- Capacity-state summary fields should stay semantically explicit. Do not reuse one counter name
+  for planned shed selection, pending shed actuation, and currently active shed devices; log
+  separate counters plus `summarySource`/`summarySourceAtMs` when the source snapshot can differ.
 - Add or update tests when changing the transport, correlation context, or emitted event shape.
 - If a code path currently uses prose logging only, either migrate it fully to structured events
   or leave a TODO entry explaining the remaining gap instead of adding more prose logs.

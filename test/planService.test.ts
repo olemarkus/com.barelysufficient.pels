@@ -2267,7 +2267,13 @@ describe('PlanService', () => {
       appliedActions: false,
       deviceWriteCount: 0,
       failed: false,
+      plannedShedDevices: 0,
+      pendingPlannedShedDevices: 0,
+      activePlannedShedDevices: 0,
+      summarySource: 'plan_snapshot',
+      summarySourceAtMs: expect.any(Number),
     }));
+    expect(structuredLog.info.mock.calls[0]?.[0]).not.toHaveProperty('shedDevices');
   });
 
   it('emits structured rebuild logs for slow rebuilds even without action changes', async () => {

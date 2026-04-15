@@ -1,6 +1,10 @@
-export type PlanCapacityStateSummary = {
+export type CapacityStateSummarySource = 'plan_input' | 'plan_snapshot' | null;
+
+export type PlanCapacityStateCounts = {
   controlledDevices: number | null;
-  shedDevices: number | null;
+  plannedShedDevices: number | null;
+  pendingPlannedShedDevices: number | null;
+  activePlannedShedDevices: number | null;
   activeControlledDevices: number | null;
   zeroDrawControlledDevices: number | null;
   staleControlledDevices: number | null;
@@ -10,14 +14,21 @@ export type PlanCapacityStateSummary = {
   blockedByInvariantDevices: number | null;
 };
 
-export type KnownPlanCapacityStateSummary = {
-  [Key in keyof PlanCapacityStateSummary]: number;
+export type PlanCapacityStateSummary = PlanCapacityStateCounts & {
+  summarySource: CapacityStateSummarySource;
+  summarySourceAtMs: number | null;
+};
+
+export type KnownPlanCapacityStateCounts = {
+  [Key in keyof PlanCapacityStateCounts]: number;
 };
 
 export function buildNullCapacityStateSummary(): PlanCapacityStateSummary {
   return {
     controlledDevices: null,
-    shedDevices: null,
+    plannedShedDevices: null,
+    pendingPlannedShedDevices: null,
+    activePlannedShedDevices: null,
     activeControlledDevices: null,
     zeroDrawControlledDevices: null,
     staleControlledDevices: null,
@@ -25,13 +36,17 @@ export function buildNullCapacityStateSummary(): PlanCapacityStateSummary {
     blockedByCooldownDevices: null,
     blockedByPenaltyDevices: null,
     blockedByInvariantDevices: null,
+    summarySource: null,
+    summarySourceAtMs: null,
   };
 }
 
-export function buildEmptyCapacityStateSummary(): KnownPlanCapacityStateSummary {
+export function buildEmptyCapacityStateSummary(): KnownPlanCapacityStateCounts {
   return {
     controlledDevices: 0,
-    shedDevices: 0,
+    plannedShedDevices: 0,
+    pendingPlannedShedDevices: 0,
+    activePlannedShedDevices: 0,
     activeControlledDevices: 0,
     zeroDrawControlledDevices: 0,
     staleControlledDevices: 0,

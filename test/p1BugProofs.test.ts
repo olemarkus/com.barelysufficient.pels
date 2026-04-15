@@ -168,11 +168,14 @@ describe('P1 bug proofs', () => {
 
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 1, expect.objectContaining({
       controlledDevices: 2,
-      shedDevices: 1,
+      plannedShedDevices: 1,
+      pendingPlannedShedDevices: 1,
+      activePlannedShedDevices: 1,
       activeControlledDevices: 1,
       zeroDrawControlledDevices: 1,
       staleControlledDevices: 1,
       pendingControlledDevices: 1,
+      summarySource: 'plan_input',
     }));
   });
 

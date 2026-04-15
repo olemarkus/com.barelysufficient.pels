@@ -262,7 +262,9 @@ describe('plan logging helpers', () => {
 
     expect(buildPlanCapacityStateSummary(plan)).toEqual({
       controlledDevices: 5,
-      shedDevices: 1,
+      plannedShedDevices: 1,
+      pendingPlannedShedDevices: 1,
+      activePlannedShedDevices: 1,
       activeControlledDevices: 4,
       zeroDrawControlledDevices: 1,
       staleControlledDevices: 1,
@@ -270,13 +272,17 @@ describe('plan logging helpers', () => {
       blockedByCooldownDevices: 1,
       blockedByPenaltyDevices: 1,
       blockedByInvariantDevices: 1,
+      summarySource: null,
+      summarySourceAtMs: null,
     });
   });
 
   it('returns explicit null summary fields when no plan is available', () => {
     expect(buildPlanCapacityStateSummary(null)).toEqual({
       controlledDevices: null,
-      shedDevices: null,
+      plannedShedDevices: null,
+      pendingPlannedShedDevices: null,
+      activePlannedShedDevices: null,
       activeControlledDevices: null,
       zeroDrawControlledDevices: null,
       staleControlledDevices: null,
@@ -284,6 +290,8 @@ describe('plan logging helpers', () => {
       blockedByCooldownDevices: null,
       blockedByPenaltyDevices: null,
       blockedByInvariantDevices: null,
+      summarySource: null,
+      summarySourceAtMs: null,
     });
   });
 
