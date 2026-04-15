@@ -64,6 +64,10 @@
       "method": "GET",
       "path": "/ui_device_diagnostics"
     },
+    "ui_device_action_log": {
+      "method": "POST",
+      "path": "/ui_device_action_log"
+    },
     "get_daily_budget": {
       "method": "GET",
       "path": "/daily_budget"

@@ -10,7 +10,11 @@ import { PlanService } from '../plan/planService';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import type { PendingTargetObservationSource, ShedAction } from '../plan/planTypes';
 import { isDeviceObservationStale } from '../plan/planObservationPolicy';
-import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
+import type {
+  DeviceActionLogCause,
+  FlowHomeyLike,
+  TargetDeviceSnapshot,
+} from '../utils/types';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { ReportSteppedLoadActualStepResult } from './appDeviceControlHelpers';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
@@ -62,6 +66,13 @@ export type PlanEngineInitApp = {
     issuedAtMs?: number;
     pendingWindowMs?: number;
   }) => void;
+  recordPlanCommandAction?: (params: {
+    deviceId: string;
+    cause: DeviceActionLogCause;
+    message: string;
+    metadata?: Record<string, unknown>;
+  }) => void;
+  classifyTargetCommandCause?: (deviceId: string, plannedTarget: number) => 'mode' | 'price' | 'unknown';
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
@@ -100,6 +111,10 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
     getShedBehavior: (deviceId) => app.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: () => app.getDynamicSoftLimitOverride(),
     markSteppedLoadDesiredStepIssued: (params) => app.markSteppedLoadDesiredStepIssued(params),
+    recordPlanCommandAction: (params) => app.recordPlanCommandAction?.(params),
+    classifyTargetCommandCause: (deviceId, plannedTarget) => (
+      app.classifyTargetCommandCause?.(deviceId, plannedTarget) ?? 'unknown'
+    ),
     logTargetRetryComparison: (params) => app.logTargetRetryComparison?.(params),
     syncLivePlanStateAfterTargetActuation: (source) => app.syncLivePlanStateAfterTargetActuation?.(source),
     deviceDiagnostics: app.deviceDiagnostics,
@@ -122,6 +137,7 @@ export type PlanServiceInitApp = {
   isBudgetExempt: (deviceId: string) => boolean;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
+  onPriceLevelChanged?: (priceLevel: PriceLevel, previousPriceLevel: PriceLevel) => void;
   schedulePostActuationRefresh?: () => void;
   log: (...args: unknown[]) => void;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
@@ -154,6 +170,7 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
     isCurrentHourExpensive: () => app.isCurrentHourExpensive(),
     getCombinedPrices: () => app.homey.settings.get(COMBINED_PRICES) as unknown,
     getLastPowerUpdate: () => app.getLastPowerUpdate(),
+    onPriceLevelChanged: (priceLevel, previousPriceLevel) => app.onPriceLevelChanged?.(priceLevel, previousPriceLevel),
     schedulePostActuationRefresh: app.schedulePostActuationRefresh,
     structuredLog: app.structuredLog?.child({ component: 'plan' }),
     debugStructured: app.debugStructured,

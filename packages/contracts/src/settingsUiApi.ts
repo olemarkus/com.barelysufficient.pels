@@ -1,7 +1,11 @@
 import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
-import type { SettingsUiLogEntry, TargetDeviceSnapshot } from './types.js';
+import type {
+  DeviceActionLogEntry,
+  SettingsUiLogEntry,
+  TargetDeviceSnapshot,
+} from './types.js';
 
 export const SETTINGS_UI_BOOTSTRAP_PATH = '/ui_bootstrap';
 export const SETTINGS_UI_DEVICES_PATH = '/ui_devices';
@@ -14,6 +18,7 @@ export const SETTINGS_UI_REFRESH_GRID_TARIFF_PATH = '/ui_refresh_grid_tariff';
 export const SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH = '/ui_device_diagnostics';
 export const SETTINGS_UI_LOG_PATH = '/settings_ui_log';
 export const SETTINGS_UI_RESET_POWER_STATS_PATH = '/ui_reset_power_stats';
+export const SETTINGS_UI_DEVICE_ACTION_LOG_PATH = '/ui_device_action_log';
 
 export type SettingsUiSettingsPatch = {
   settings: Record<string, unknown>;
@@ -73,4 +78,13 @@ export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPay
 export type SettingsUiResetPowerStatsResponse = {
   power: SettingsUiPowerPayload;
   dailyBudget: DailyBudgetUiPayload | null;
+};
+
+export type SettingsUiDeviceActionLogRequest = {
+  deviceId: string;
+};
+
+export type SettingsUiDeviceActionLogPayload = {
+  deviceId: string;
+  entries: DeviceActionLogEntry[];
 };

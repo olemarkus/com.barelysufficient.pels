@@ -1,4 +1,7 @@
 import type {
+    DeviceActionLogCause,
+    DeviceActionLogEntry,
+    DeviceActionLogEventKind,
     DeviceControlModel,
     DeviceControlProfile,
     DeviceControlProfiles,
@@ -11,6 +14,9 @@ import type {
 } from '../../packages/contracts/src/types';
 
 export type {
+    DeviceActionLogCause,
+    DeviceActionLogEntry,
+    DeviceActionLogEventKind,
     DeviceControlModel,
     DeviceControlProfile,
     DeviceControlProfiles,

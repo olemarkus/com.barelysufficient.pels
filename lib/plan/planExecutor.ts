@@ -48,6 +48,7 @@ import {
 import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from './planSteppedLoad';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import type { DeviceActionLogCause } from '../utils/types';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -64,6 +65,13 @@ export type PlanExecutorDeps = {
     issuedAtMs?: number;
     pendingWindowMs?: number;
   }) => void;
+  recordPlanCommandAction?: (params: {
+    deviceId: string;
+    cause: DeviceActionLogCause;
+    message: string;
+    metadata?: Record<string, unknown>;
+  }) => void;
+  classifyTargetCommandCause?: (deviceId: string, plannedTarget: number) => 'mode' | 'price' | 'unknown';
   logTargetRetryComparison?: (params: {
     deviceId: string;
     name: string;
@@ -193,6 +201,20 @@ export class PlanExecutor {
     return this.deps.getShedBehavior(deviceId);
   }
 
+  private recordPlanCommandAction(params: {
+    deviceId: string;
+    cause: DeviceActionLogCause;
+    message: string;
+    metadata?: Record<string, unknown>;
+  }): void {
+    this.deps.recordPlanCommandAction?.(params);
+  }
+
+  private classifyTargetCommandCause(deviceId: string, plannedTarget: number): DeviceActionLogCause {
+    const cause = this.deps.classifyTargetCommandCause?.(deviceId, plannedTarget) ?? 'unknown';
+    return cause === 'mode' || cause === 'price' ? cause : 'unknown';
+  }
+
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
     return this.deviceManager.getSnapshot();
   }
@@ -245,6 +267,15 @@ export class PlanExecutor {
         mode: 'plan',
         attemptType: result.attemptType,
         reasonCode: 'shedding',
+      });
+      this.recordPlanCommandAction({
+        deviceId: dev.id,
+        cause: 'shed',
+        message: `Set ${targetCap} to ${plannedTarget}°C during shedding`,
+        metadata: {
+          targetCap,
+          plannedTarget,
+        },
       });
       const now = Date.now();
       this.recordShedActuation(dev.id, dev.name, now);
@@ -310,6 +341,14 @@ export class PlanExecutor {
           desired: true,
           mode,
           reasonCode: mode === 'reconcile' ? 'reconcile_restore' : this.getRestoreLogSource(dev.id),
+        });
+        this.recordPlanCommandAction({
+          deviceId: dev.id,
+          cause: 'restore',
+          message: `Restored power for ${name}`,
+          metadata: {
+            desiredOn: true,
+          },
         });
         if (mode === 'plan') {
           const now = Date.now();
@@ -457,6 +496,18 @@ export class PlanExecutor {
               ? 'retry_pending_confirmation'
               : 'plan_update',
         operatingMode: this.operatingMode,
+      });
+      this.recordPlanCommandAction({
+        deviceId: dev.id,
+        cause: this.classifyTargetCommandCause(dev.id, dev.plannedTarget as number),
+        message: `Set ${targetCap} to ${dev.plannedTarget}°C`,
+        metadata: {
+          targetCap,
+          currentTarget: dev.currentTarget,
+          plannedTarget: dev.plannedTarget,
+          operatingMode: this.operatingMode,
+          isRestoring,
+        },
       });
 
       // If this was a restoration from shed temperature, update lastRestoreMs
@@ -814,6 +865,15 @@ export class PlanExecutor {
         mode,
         reasonCode: mode === 'reconcile' ? 'reconcile_shed' : 'stepped_turn_off_shed',
       });
+      this.recordPlanCommandAction({
+        deviceId: dev.id,
+        cause: 'shed',
+        message: `Turned off ${name} during shedding`,
+        metadata: {
+          desiredOn: false,
+          reason: dev.shedAction === 'turn_off' ? 'turn_off' : 'off_step',
+        },
+      });
       return true;
     } catch (error) {
       this.error(`Failed to turn off stepped-load device ${name} via binary control`, error);
@@ -900,6 +960,15 @@ export class PlanExecutor {
         mode: 'plan',
         attemptType: result.attemptType,
         reasonCode: 'shedding',
+      });
+      this.recordPlanCommandAction({
+        deviceId,
+        cause: 'shed',
+        message: `Set ${targetCap} to ${shedTemp}°C during shedding`,
+        metadata: {
+          targetCap,
+          shedTemp,
+        },
       });
       this.recordShedActuation(deviceId, name, now);
       return { handled: true, wrote: true };
@@ -1146,6 +1215,15 @@ export class PlanExecutor {
         desired: false,
         mode: 'plan',
         reasonCode: reason ? 'shed_with_reason' : 'shedding',
+      });
+      this.recordPlanCommandAction({
+        deviceId,
+        cause: 'shed',
+        message: `Turned off ${name} during shedding`,
+        metadata: {
+          desiredOn: false,
+          reason: reason || null,
+        },
       });
       this.recordShedActuation(deviceId, name, now);
       return true;

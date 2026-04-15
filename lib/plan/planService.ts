@@ -70,6 +70,7 @@ export type PlanServiceDeps = {
   isCurrentHourExpensive: () => boolean;
   getCombinedPrices: () => unknown;
   getLastPowerUpdate: () => number | null;
+  onPriceLevelChanged?: (priceLevel: PriceLevel, previousPriceLevel: PriceLevel) => void;
   schedulePostActuationRefresh?: () => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
@@ -104,6 +105,7 @@ export class PlanService {
       isCurrentHourCheap: deps.isCurrentHourCheap,
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
       getLastPowerUpdate: deps.getLastPowerUpdate,
+      onPriceLevelChanged: deps.onPriceLevelChanged,
       error: deps.error,
     });
   }

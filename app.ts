@@ -12,7 +12,12 @@ import { PlanService } from './lib/plan/planService';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from './lib/plan/planConstants';
 import { getLatestDeviceObservationMs, isDeviceObservationStale } from './lib/plan/planObservationPolicy';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
-import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
+import {
+  DeviceActionLogCause,
+  DeviceActionLogEntry,
+  HomeyDeviceLike,
+  TargetDeviceSnapshot,
+} from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PowerTrackerState } from './lib/core/powerTracker';
 import { PriceLevel } from './lib/price/priceLevels';
@@ -39,6 +44,7 @@ import {
 } from './lib/utils/capacityHelpers';
 import {
   OPERATING_MODE_SETTING,
+  DEVICE_ACTION_LOG_BY_DEVICE,
 } from './lib/utils/settingsKeys';
 import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
@@ -91,6 +97,7 @@ import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceR
 import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
 import type { ObservedDeviceStateEvent } from './lib/core/deviceManagerRealtimeHandlers';
 import { emitSettingsUiPowerUpdatedForApp } from './lib/app/settingsUiAppRuntime';
+import { DeviceActionLogStore } from './lib/app/deviceActionLogStore';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
 import type { DeviceControlProfiles, SteppedLoadProfile } from './lib/utils/types';
@@ -173,7 +180,9 @@ class PelsApp extends Homey.App {
   private stopSettingsHandler?: () => void;
   private structuredLogger?: PinoLogger;
   private flowRebuildScheduler?: FlowRebuildScheduler;
+  private deviceActionLogStore?: DeviceActionLogStore;
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
+  private static readonly TARGET_CAUSE_EPSILON = 0.000001;
   private setExpectedOverride(deviceId: string, kw: number): boolean {
     if (this.getSteppedLoadProfile(deviceId)) {
       throw new Error(
@@ -187,6 +196,13 @@ class PelsApp extends Homey.App {
     }
     this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
     this.planService?.syncHeadroomCardTrackedUsage({ deviceId, trackedKw: kw });
+    this.appendDeviceActionLog({
+      deviceId,
+      eventKind: 'trigger',
+      cause: 'expected_power_flow',
+      message: `Expected power override set to ${kw.toFixed(2)} kW from Flow`,
+      metadata: { kw },
+    });
     return true;
   }
   private getSteppedLoadProfile(deviceId: string): SteppedLoadProfile | null {
@@ -294,6 +310,7 @@ class PelsApp extends Homey.App {
     );
     this.structuredLogger.child({ component: 'startup' }).info({ event: 'app_initialized' });
     this.startResourceWarningListeners();
+    this.initDeviceActionLogStore();
     await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled());
     this.startPerfLogging();
     await runStartupStep('initPriceCoordinator', () => this.initPriceCoordinator());
@@ -445,6 +462,16 @@ class PelsApp extends Homey.App {
       getShedBehavior: (deviceId) => this.getShedBehavior(deviceId),
       getDynamicSoftLimitOverride: () => this.getDynamicSoftLimitOverride(),
       markSteppedLoadDesiredStepIssued: (params) => this.markSteppedLoadDesiredStepIssued(params),
+      recordPlanCommandAction: ({ deviceId, cause, message, metadata }) => {
+        this.appendDeviceActionLog({
+          deviceId,
+          eventKind: 'command',
+          cause,
+          message,
+          metadata,
+        });
+      },
+      classifyTargetCommandCause: (deviceId, plannedTarget) => this.classifyTargetCommandCause(deviceId, plannedTarget),
       logTargetRetryComparison: async (params) => {
         await logHomeyDeviceComparisonForDebugFromApp({
           app: this,
@@ -486,6 +513,7 @@ class PelsApp extends Homey.App {
       isBudgetExempt: (deviceId) => this.isBudgetExempt(deviceId),
       isCurrentHourCheap: () => this.isCurrentHourCheap(),
       isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
+      onPriceLevelChanged: (priceLevel, previousPriceLevel) => this.onPriceLevelChanged(priceLevel, previousPriceLevel),
       schedulePostActuationRefresh: () => this.schedulePostActuationRefresh(),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
@@ -534,6 +562,8 @@ class PelsApp extends Homey.App {
     this.staleObservationRefreshStopped = true;
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
+    this.deviceActionLogStore?.destroy();
+    this.deviceActionLogStore = undefined;
     this.stopUninitServices();
     this.flowRebuildScheduler?.stop();
     this.deviceDiagnosticsService?.destroy();
@@ -646,12 +676,104 @@ class PelsApp extends Homey.App {
   private notifyOperatingModeChanged(mode: string): void {
     const trimmed = (mode || '').trim();
     if (!trimmed || this.lastNotifiedOperatingMode === trimmed) return;
+    const previousMode = this.lastNotifiedOperatingMode;
+    this.logModeChangeTriggers(previousMode, trimmed);
     const card = this.homey.flow?.getTriggerCard?.('operating_mode_changed');
     if (card && typeof card.trigger === 'function') {
       card.trigger({}, { mode: trimmed })
         .catch((err: Error) => this.error('Failed to trigger operating_mode_changed', err));
     }
     this.lastNotifiedOperatingMode = trimmed;
+  }
+  private initDeviceActionLogStore(): void {
+    this.deviceActionLogStore = new DeviceActionLogStore({
+      settings: this.homey.settings,
+      settingKey: DEVICE_ACTION_LOG_BY_DEVICE,
+      error: (message, error) => this.error(message, error),
+    });
+    this.deviceActionLogStore.loadFromSettings();
+  }
+  private appendDeviceActionLog(params: {
+    deviceId: string;
+    eventKind: DeviceActionLogEntry['eventKind'];
+    cause: DeviceActionLogCause;
+    message: string;
+    metadata?: Record<string, unknown>;
+  }): void {
+    const deviceId = params.deviceId.trim();
+    const message = params.message.trim();
+    if (!deviceId || !message) return;
+    this.deviceActionLogStore?.append(deviceId, {
+      timestamp: Date.now(),
+      eventKind: params.eventKind,
+      cause: params.cause,
+      message,
+      ...(params.metadata ? { metadata: params.metadata } : {}),
+    });
+  }
+  private logModeChangeTriggers(previousMode: string, nextMode: string): void {
+    const previousTargets = this.modeDeviceTargets[previousMode] ?? {};
+    const nextTargets = this.modeDeviceTargets[nextMode] ?? {};
+    const deviceIds = new Set<string>([
+      ...Object.keys(previousTargets),
+      ...Object.keys(nextTargets),
+    ]);
+    for (const deviceId of deviceIds) {
+      const previousTarget = previousTargets[deviceId];
+      const nextTarget = nextTargets[deviceId];
+      if (!Number.isFinite(previousTarget) || !Number.isFinite(nextTarget)) continue;
+      if (Math.abs(previousTarget - nextTarget) <= PelsApp.TARGET_CAUSE_EPSILON) continue;
+      this.appendDeviceActionLog({
+        deviceId,
+        eventKind: 'trigger',
+        cause: 'mode',
+        message: `Mode changed from ${previousMode} to ${nextMode}`,
+        metadata: {
+          previousMode,
+          nextMode,
+          previousTarget,
+          nextTarget,
+        },
+      });
+    }
+  }
+  private onPriceLevelChanged(priceLevel: PriceLevel, previousPriceLevel: PriceLevel): void {
+    if (priceLevel === previousPriceLevel) return;
+    for (const [deviceId, config] of Object.entries(this.priceOptimizationSettings)) {
+      if (!config?.enabled) continue;
+      const nextDelta = this.resolveActivePriceDelta(deviceId, priceLevel);
+      const previousDelta = this.resolveActivePriceDelta(deviceId, previousPriceLevel);
+      if (nextDelta === previousDelta) continue;
+      this.appendDeviceActionLog({
+        deviceId,
+        eventKind: 'trigger',
+        cause: 'price',
+        message: `Price level changed from ${previousPriceLevel} to ${priceLevel}`,
+        metadata: {
+          previousPriceLevel,
+          priceLevel,
+          previousDelta,
+          nextDelta,
+        },
+      });
+    }
+  }
+  private classifyTargetCommandCause(deviceId: string, plannedTarget: number): 'mode' | 'price' | 'unknown' {
+    const modeTarget = this.modeDeviceTargets[this.operatingMode]?.[deviceId];
+    if (!Number.isFinite(modeTarget) || !Number.isFinite(plannedTarget)) return 'unknown';
+    if (Math.abs(plannedTarget - modeTarget) <= PelsApp.TARGET_CAUSE_EPSILON) return 'mode';
+    const activePriceDelta = this.resolveActivePriceDelta(deviceId);
+    if (activePriceDelta !== null && Math.abs(plannedTarget - (modeTarget + activePriceDelta)) <= PelsApp.TARGET_CAUSE_EPSILON) {
+      return activePriceDelta === 0 ? 'mode' : 'price';
+    }
+    return 'unknown';
+  }
+  private resolveActivePriceDelta(deviceId: string, priceLevel: PriceLevel = this.getCurrentPriceLevel()): number | null {
+    const config = this.priceOptimizationSettings[deviceId];
+    if (!config?.enabled) return null;
+    if (priceLevel === PriceLevel.CHEAP) return config.cheapDelta;
+    if (priceLevel === PriceLevel.EXPENSIVE) return config.expensiveDelta;
+    return 0;
   }
   private loadPowerTracker(options: { skipDailyBudgetUpdate?: boolean } = {}): void {
     const stored = this.homey.settings.get('power_tracker_state') as unknown;
@@ -705,6 +827,9 @@ class PelsApp extends Homey.App {
   }
   private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }
+  public getDeviceActionLogEntriesForUi(deviceId: string): DeviceActionLogEntry[] {
+    return this.deviceActionLogStore?.getEntriesNewestFirst(deviceId) ?? [];
+  }
   public getLatestPlanSnapshotForUi(): DevicePlan | null { return this.planService?.getLatestPlanSnapshot() ?? null; }
   private async updateOverheadToken(value?: number): Promise<void> {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;
