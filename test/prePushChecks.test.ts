@@ -185,4 +185,19 @@ describe('pre-push checks script', () => {
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
     expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
   });
+
+  it('runs runtime checks for runtime test file changes', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'test/planExecutor.test.ts',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npm run ci:checks');
+    expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
+  });
 });
