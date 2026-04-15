@@ -1212,7 +1212,7 @@ export class PlanExecutor {
         if (isSteppedLoadDevice(dev)) {
           await this.applySteppedLoadCommand(dev, mode);
           if (await this.applySteppedLoadShedOff(dev, snapshot, mode)) deviceWriteCount += 1;
-          if (await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices)) deviceWriteCount += 1;
+          await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
           if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
         }
