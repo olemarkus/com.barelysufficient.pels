@@ -970,179 +970,143 @@ describe('DeviceManager', () => {
             await setCapabilityPromise;
         });
 
-        it('suppresses contradictory device.update during binary settle window via local state preservation', async () => {
-            vi.useFakeTimers();
-            try {
-                mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            onoff: { value: true, id: 'onoff' },
-                        },
-                    },
-                });
-
-                await deviceManager.refreshSnapshot();
-                const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
-
-                await deviceManager.setCapability('dev1', 'onoff', false);
-
-                // Contradictory device.update (fight-back from device)
-                deviceManager.injectDeviceUpdateForTest({
+        it('emits drift immediately when device fights back with contradictory device.update during binary settle', async () => {
+            mockApiGet.mockResolvedValue({
+                dev1: {
                     id: 'dev1',
                     name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
                         measure_power: { value: 1000, id: 'measure_power' },
                         onoff: { value: true, id: 'onoff' },
                     },
-                });
+                },
+            });
 
-                // Local binary state is preserved, so no reconcile during settle
-                expect(realtimeListener).not.toHaveBeenCalled();
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
-                }));
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
-                await vi.advanceTimersByTimeAsync(5000);
+            await deviceManager.setCapability('dev1', 'onoff', false);
 
-                // After settle window expires, local state was preserved so no reconcile
-                expect(realtimeListener).not.toHaveBeenCalled();
-            } finally {
-                vi.useRealTimers();
-            }
+            // Contradictory device.update (fight-back from device) — first observation decides
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['measure_power', 'onoff'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 1000, id: 'measure_power' },
+                    onoff: { value: true, id: 'onoff' },
+                },
+            });
+
+            // Drift is emitted immediately — no waiting for settle timeout
+            expect(realtimeListener).toHaveBeenCalledOnce();
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                deviceId: 'dev1',
+                changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
+            }));
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+            }));
         });
 
-        it('preserves local binary state across multiple contradictory device.update events', async () => {
-            vi.useFakeTimers();
-            try {
-                mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            onoff: { value: true, id: 'onoff' },
-                        },
-                    },
-                });
-
-                await deviceManager.refreshSnapshot();
-                const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
-
-                await deviceManager.setCapability('dev1', 'onoff', false);
-
-                // First echo confirms the local write
-                deviceManager.injectDeviceUpdateForTest({
+        it('first confirming device.update settles the window; subsequent fight-back triggers normal reconcile', async () => {
+            mockApiGet.mockResolvedValue({
+                dev1: {
                     id: 'dev1',
                     name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: false, id: 'onoff' },
-                    },
-                });
-                // Second update fights back
-                deviceManager.injectDeviceUpdateForTest({
-                    id: 'dev1',
-                    name: 'Heater',
                     capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
                     capabilitiesObj: {
                         measure_power: { value: 1000, id: 'measure_power' },
                         onoff: { value: true, id: 'onoff' },
                     },
-                });
+                },
+            });
 
-                // Local binary state is preserved throughout
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
-                }));
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
-                await vi.advanceTimersByTimeAsync(5000);
+            await deviceManager.setCapability('dev1', 'onoff', false);
 
-                // No reconcile because local state was preserved
-                expect(realtimeListener).not.toHaveBeenCalled();
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
-                }));
-            } finally {
-                vi.useRealTimers();
-            }
+            // First update confirms the local write — settle window closes
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['measure_power', 'onoff'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 1000, id: 'measure_power' },
+                    onoff: { value: false, id: 'onoff' },
+                },
+            });
+            expect(realtimeListener).not.toHaveBeenCalled();
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+
+            // Second update fights back — settle window is gone, treated as normal drift
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['measure_power', 'onoff'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 1000, id: 'measure_power' },
+                    onoff: { value: true, id: 'onoff' },
+                },
+            });
+
+            expect(realtimeListener).toHaveBeenCalledOnce();
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                deviceId: 'dev1',
+                changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
+            }));
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
         });
 
-        it('confirms the local off write when the latest onoff observation before deadline is off', async () => {
-            vi.useFakeTimers();
-            try {
-                mockApiGet.mockResolvedValue({
-                    dev1: {
-                        id: 'dev1',
-                        name: 'Heater',
-                        class: 'heater',
-                        capabilities: ['measure_power', 'onoff'],
-                        capabilitiesObj: {
-                            measure_power: { value: 1000, id: 'measure_power' },
-                            onoff: { value: true, id: 'onoff' },
-                        },
-                    },
-                });
-
-                await deviceManager.refreshSnapshot();
-                const realtimeListener = vi.fn();
-                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
-
-                await deviceManager.setCapability('dev1', 'onoff', false);
-
-                deviceManager.injectDeviceUpdateForTest({
+        it('first contradictory device.update triggers drift; subsequent observations are normal', async () => {
+            mockApiGet.mockResolvedValue({
+                dev1: {
                     id: 'dev1',
                     name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
                     class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
                     capabilitiesObj: {
                         measure_power: { value: 1000, id: 'measure_power' },
                         onoff: { value: true, id: 'onoff' },
                     },
-                });
-                deviceManager.injectDeviceUpdateForTest({
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: true, id: 'onoff' },
-                    },
-                });
-                deviceManager.injectDeviceUpdateForTest({
-                    id: 'dev1',
-                    name: 'Heater',
-                    capabilities: ['measure_power', 'onoff'],
-                    class: 'heater',
-                    capabilitiesObj: {
-                        measure_power: { value: 1000, id: 'measure_power' },
-                        onoff: { value: false, id: 'onoff' },
-                    },
-                });
+                },
+            });
 
-                await vi.advanceTimersByTimeAsync(5000);
+            await deviceManager.refreshSnapshot();
+            const realtimeListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
-                expect(realtimeListener).not.toHaveBeenCalled();
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
-                }));
-            } finally {
-                vi.useRealTimers();
-            }
+            await deviceManager.setCapability('dev1', 'onoff', false);
+
+            // First observation is contradictory — drift emitted immediately, window closed
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['measure_power', 'onoff'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 1000, id: 'measure_power' },
+                    onoff: { value: true, id: 'onoff' },
+                },
+            });
+
+            expect(realtimeListener).toHaveBeenCalledOnce();
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                deviceId: 'dev1',
+                changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
+            }));
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+            }));
         });
 
         it('drops a pending binary settle window when the device disappears before expiry', async () => {
@@ -1174,6 +1138,140 @@ describe('DeviceManager', () => {
             } finally {
                 vi.useRealTimers();
             }
+        });
+
+        describe('binary settle — first observation decides', () => {
+            const heaterOnDevice = () => ({
+                id: 'dev1',
+                name: 'Heater',
+                class: 'heater',
+                capabilities: ['measure_power', 'onoff'],
+                capabilitiesObj: {
+                    measure_power: { value: 1000, id: 'measure_power' },
+                    onoff: { value: true, id: 'onoff' },
+                },
+            });
+            const heaterOffDevice = () => ({
+                id: 'dev1',
+                name: 'Heater',
+                class: 'heater',
+                capabilities: ['measure_power', 'onoff'],
+                capabilitiesObj: {
+                    measure_power: { value: 1000, id: 'measure_power' },
+                    onoff: { value: false, id: 'onoff' },
+                },
+            });
+
+            it('pending off write + capability event off => settles immediately', async () => {
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+            });
+
+            it('pending off write + capability event on => drift immediately', async () => {
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
+
+                expect(realtimeListener).toHaveBeenCalledOnce();
+                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                    deviceId: 'dev1',
+                    changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
+                }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
+            });
+
+            it('pending off write + device.update with off => settles immediately', async () => {
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+                deviceManager.injectDeviceUpdateForTest(heaterOffDevice());
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+            });
+
+            it('pending off write + device.update with on => drift immediately', async () => {
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+                deviceManager.injectDeviceUpdateForTest(heaterOnDevice());
+
+                expect(realtimeListener).toHaveBeenCalledOnce();
+                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                    deviceId: 'dev1',
+                    changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
+                }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
+            });
+
+            it('pending on write + capability event on => settles immediately', async () => {
+                mockApiGet.mockResolvedValue({ dev1: heaterOffDevice() });
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', true);
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
+
+                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
+            });
+
+            it('pending on write + capability event off => drift immediately', async () => {
+                mockApiGet.mockResolvedValue({ dev1: heaterOffDevice() });
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', true);
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+
+                expect(realtimeListener).toHaveBeenCalledOnce();
+                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                    deviceId: 'dev1',
+                    changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' })],
+                }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+            });
+
+            it('pending binary write + no observation before timeout => timeout path runs, reconcile if state differs', async () => {
+                vi.useFakeTimers();
+                try {
+                    mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                    await deviceManager.refreshSnapshot();
+                    const realtimeListener = vi.fn();
+                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                    // Write off (desired=false), snapshot immediately updated to false
+                    await deviceManager.setCapability('dev1', 'onoff', false);
+                    // No binary observations arrive
+                    await vi.advanceTimersByTimeAsync(5000);
+
+                    // snapshot.currentOn=false matches desired=false => no reconcile at timeout
+                    expect(realtimeListener).not.toHaveBeenCalled();
+                    expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
         });
 
         it('preserves local onoff state after a successful binary write', async () => {
@@ -1948,7 +2046,7 @@ describe('DeviceManager', () => {
             }
         });
 
-        it('suppresses stale device.update drift immediately after a local binary write', async () => {
+        it('emits drift when a contradictory device.update arrives during the binary settle window', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1',
@@ -1971,6 +2069,7 @@ describe('DeviceManager', () => {
                 currentOn: false,
             }));
 
+            // Device fights back — settle window resolves as drift immediately
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
                 name: 'Heater',
@@ -1982,10 +2081,14 @@ describe('DeviceManager', () => {
                 },
             });
 
-            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+            expect(realtimeListener).toHaveBeenCalledOnce();
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                deviceId: 'dev1',
+                changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
             }));
-            expect(realtimeListener).not.toHaveBeenCalled();
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+            }));
         });
 
         it('suppresses device.update binary drift while a local off write is still settling', async () => {

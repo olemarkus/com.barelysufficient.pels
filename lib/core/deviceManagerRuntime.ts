@@ -97,12 +97,14 @@ export function reconcileRealtimeDeviceUpdate(params: {
   device: HomeyDeviceLike;
   parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
   recentLocalCapabilityWrites?: RecentLocalCapabilityWrites;
+  hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
 }): RealtimeReconcileResult {
   const {
     latestSnapshot,
     device,
     parseDevice,
     recentLocalCapabilityWrites,
+    hasPendingBinarySettleWindow,
   } = params;
   const deviceId = device.id || device.data?.id;
   if (!deviceId) return { shouldReconcilePlan: false, changes: [], observedCapabilityIds: [] };
@@ -118,11 +120,21 @@ export function reconcileRealtimeDeviceUpdate(params: {
     return { shouldReconcilePlan: false, changes: [], observedCapabilityIds: [] };
   }
 
+  // Only let the raw device value bypass local-state preservation when the settle
+  // window is active AND the payload contains an explicit boolean for the control
+  // capability. A device.update without the binary capability in its payload would
+  // cause parseDevice to synthesize a default (getCurrentOn returns true when the
+  // value is missing), which must not be treated as a real observation.
+  const controlCapabilityId = parsed.controlCapabilityId ?? previous?.controlCapabilityId;
+  const binaryValueExplicitlyObserved = typeof device.capabilitiesObj?.[controlCapabilityId ?? '']?.value === 'boolean';
+
   preserveRecentLocalBinaryState({
     previous,
     parsed,
     deviceId,
     recentLocalCapabilityWrites,
+    hasPendingBinarySettleWindow,
+    binaryValueExplicitlyObserved,
   });
 
   if (snapshotIndex >= 0) {
@@ -145,16 +157,25 @@ function preserveRecentLocalBinaryState(params: {
   parsed: TargetDeviceSnapshot;
   deviceId: string;
   recentLocalCapabilityWrites?: RecentLocalCapabilityWrites;
+  hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
+  binaryValueExplicitlyObserved?: boolean;
 }): void {
   const {
     previous,
     parsed,
     deviceId,
     recentLocalCapabilityWrites,
+    hasPendingBinarySettleWindow,
+    binaryValueExplicitlyObserved,
   } = params;
   if (!previous || !recentLocalCapabilityWrites) return;
   const capabilityId = parsed.controlCapabilityId ?? previous.controlCapabilityId;
   if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return;
+  // Skip preservation only when a settle window is active AND the payload contained
+  // an explicit boolean value. Without an explicit observation, parseDevice may
+  // synthesize a default (getCurrentOn returns true when the value is absent), which
+  // must not be passed to the settle window as a real observation.
+  if (hasPendingBinarySettleWindow?.(deviceId, capabilityId) && binaryValueExplicitlyObserved) return;
   const localWrite = getRecentLocalCapabilityWrite({
     recentLocalCapabilityWrites,
     deviceId,

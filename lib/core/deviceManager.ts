@@ -87,7 +87,6 @@ type PendingBinarySettleWindow = {
     capabilityId: string;
     name: string;
     desired: boolean;
-    latestObserved?: boolean;
     timer: ReturnType<typeof setTimeout>;
 };
 
@@ -198,7 +197,11 @@ export class DeviceManager extends EventEmitter {
         if (!this.isTrackedCapability(snapshot, capabilityId)) return;
 
         const normalizedValue = this.normalizeRealtimeCapabilityEventValue(capabilityId, value);
-        if (this.hasMatchingRecentLocalWrite(deviceId, capabilityId, normalizedValue)) return;
+        // Skip echo suppression when a binary settle window is active: the confirmation
+        // observation must reach the settle window to close it immediately.
+        const hasBinarySettleWindow = capabilityId === snapshot.controlCapabilityId
+            && this.pendingBinarySettleWindows.has(this.buildPendingBinarySettleKey(deviceId, capabilityId));
+        if (!hasBinarySettleWindow && this.hasMatchingRecentLocalWrite(deviceId, capabilityId, normalizedValue)) return;
 
         if (this.isFreshnessOnlyCapability(capabilityId)) {
             this.handleFreshnessOnlyCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value);
@@ -367,7 +370,7 @@ export class DeviceManager extends EventEmitter {
         });
     }
 
-    /** Returns true if the change was deferred by the binary settle window. */
+    /** Returns true if the change was handled by the binary settle window. */
     private applyBinaryCapabilityUpdate(
         snapshotIndex: number,
         deviceId: string,
@@ -375,18 +378,26 @@ export class DeviceManager extends EventEmitter {
         value: boolean,
         changes: NonNullable<PlanRealtimeUpdateEvent['changes']>,
     ): boolean {
-        const snapshot = this.latestSnapshot[snapshotIndex];
-        if (snapshot.currentOn === value) return false;
-        if (this.notePendingBinarySettleObservation(deviceId, capabilityId, value)) {
-            this.logger.structuredLog?.info({
-                event: 'realtime_capability_binary_settling',
+        // Check the settle window before the snapshot equality check: a confirmation
+        // observation (value === currentOn) must still reach the window to settle it.
+        const settleOutcome = this.notePendingBinarySettleObservation(
+            deviceId, capabilityId, value, 'realtime_capability',
+        );
+        if (settleOutcome !== 'none') {
+            // Update snapshot to reflect the actual device state in both cases.
+            this.latestSnapshot[snapshotIndex].currentOn = value;
+            // Record the observation so freshness tracking advances even for settle events.
+            this.recordSnapshotCapabilityObservations(deviceId, 'realtime_capability', [capabilityId]);
+            this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
+                source: 'realtime_capability',
                 deviceId,
                 capabilityId,
-                currentOn: snapshot.currentOn,
-                incomingValue: value,
-            });
-            return true;
+            } satisfies ObservedDeviceStateEvent);
+            return true; // reconcile already emitted by settle window on drift; none needed on settle
         }
+
+        const snapshot = this.latestSnapshot[snapshotIndex];
+        if (snapshot.currentOn === value) return false;
         this.latestSnapshot[snapshotIndex].currentOn = value;
         changes.push({
             capabilityId,
@@ -407,9 +418,13 @@ export class DeviceManager extends EventEmitter {
             recordObservedCapabilities: (nextDeviceId, capabilityIds) => {
                 this.recordSnapshotCapabilityObservations(nextDeviceId, 'device_update', capabilityIds);
             },
-            notePendingBinarySettleObservation: (nextDeviceId, capabilityId, value) => (
-                this.notePendingBinarySettleObservation(nextDeviceId, capabilityId, value)
+            notePendingBinarySettleObservation: (nextDeviceId, capabilityId, value, source) => (
+                this.notePendingBinarySettleObservation(nextDeviceId, capabilityId, value, source)
             ),
+            hasPendingBinarySettleWindow: (nextDeviceId, capabilityId) => (
+                this.pendingBinarySettleWindows.has(this.buildPendingBinarySettleKey(nextDeviceId, capabilityId))
+            ),
+            logDebug: (message) => this.logger.debug(message),
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
@@ -827,15 +842,24 @@ export class DeviceManager extends EventEmitter {
 
         this.clearPendingBinarySettleWindow(deviceId, capabilityId);
         const key = this.buildPendingBinarySettleKey(deviceId, capabilityId);
+        const name = deviceName || deviceId;
         const timer = setTimeout(() => {
             this.finalizePendingBinarySettleWindow(key);
         }, LOCAL_BINARY_SETTLE_WINDOW_MS);
         this.pendingBinarySettleWindows.set(key, {
             deviceId,
             capabilityId,
-            name: deviceName || deviceId,
+            name,
             desired: value,
             timer,
+        });
+        this.logger.structuredLog?.info({
+            event: 'binary_write_started',
+            deviceId,
+            deviceName: name,
+            capabilityId,
+            desired: value,
+            settleWindowMs: LOCAL_BINARY_SETTLE_WINDOW_MS,
         });
     }
 
@@ -851,12 +875,50 @@ export class DeviceManager extends EventEmitter {
         deviceId: string,
         capabilityId: string,
         value: boolean,
-    ): boolean {
+        source: 'realtime_capability' | 'device_update',
+    ): 'settled' | 'drift' | 'none' {
         const key = this.buildPendingBinarySettleKey(deviceId, capabilityId);
         const pending = this.pendingBinarySettleWindows.get(key);
-        if (!pending) return false;
-        pending.latestObserved = value;
-        return true;
+        if (!pending) return 'none';
+
+        // First observation resolves the window immediately.
+        clearTimeout(pending.timer);
+        this.pendingBinarySettleWindows.delete(key);
+
+        const outcome = value === pending.desired ? 'settled' : 'drift';
+        this.logger.structuredLog?.info({
+            event: 'binary_write_observed',
+            deviceId,
+            deviceName: pending.name,
+            capabilityId,
+            desired: pending.desired,
+            observed: value,
+            source,
+            outcome,
+        });
+
+        // Clear the echo-suppression entry so subsequent observations after the settle
+        // window closes are not silently suppressed by preserveRecentLocalBinaryState.
+        clearLocalCapabilityWrite({
+            recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
+            deviceId,
+            capabilityId,
+        });
+
+        if (outcome === 'drift') {
+            this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+                deviceId,
+                name: pending.name,
+                capabilityId,
+                changes: [{
+                    capabilityId,
+                    previousValue: formatBinaryState(pending.desired),
+                    nextValue: formatBinaryState(value),
+                }],
+            } satisfies PlanRealtimeUpdateEvent);
+        }
+
+        return outcome;
     }
 
     private finalizePendingBinarySettleWindow(key: string): void {
@@ -867,14 +929,18 @@ export class DeviceManager extends EventEmitter {
 
         const snapshot = this.latestSnapshot.find((device) => device.id === pending.deviceId);
         if (!snapshot) return;
-        const observed = snapshot.currentOn ?? pending.latestObserved;
-        if (observed === pending.desired) {
-            this.logger.debug(
-                `Binary settle confirmed for ${pending.name} (${pending.deviceId}) via ${pending.capabilityId}: `
-                + `${formatBinaryState(observed)}`,
-            );
-            return;
-        }
+
+        this.logger.structuredLog?.info({
+            event: 'binary_write_timeout',
+            deviceId: pending.deviceId,
+            deviceName: pending.name,
+            capabilityId: pending.capabilityId,
+            desired: pending.desired,
+        });
+
+        // No binary observation arrived — check snapshot state and reconcile if needed.
+        const observed = snapshot.currentOn;
+        if (observed === pending.desired) return;
 
         const changes = typeof observed === 'boolean'
             ? [{
@@ -883,13 +949,9 @@ export class DeviceManager extends EventEmitter {
                 nextValue: formatBinaryState(observed),
             }]
             : undefined;
-        this.logger.debug(
-            `Binary settle expired for ${pending.name} (${pending.deviceId}) via ${pending.capabilityId}: `
-            + `expected ${formatBinaryState(pending.desired)}, observed ${formatBinaryState(observed)}`,
-        );
         this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
             deviceId: pending.deviceId,
-            name: snapshot?.name || pending.name,
+            name: snapshot.name,
             capabilityId: pending.capabilityId,
             changes,
         });
