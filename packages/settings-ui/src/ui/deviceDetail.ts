@@ -13,6 +13,7 @@ import {
   deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
+  deviceDetailBudgetExempt,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
   deviceDetailDeltaSection,
@@ -29,7 +30,7 @@ import {
   deviceDetailSteppedSave,
   deviceDetailSteppedReset,
 } from './dom.ts';
-import { getSetting, setSetting } from './homey.ts';
+import { getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { resolveManagedState, state, defaultPriceOptimizationConfig } from './state.ts';
 import { renderDevices } from './devices.ts';
 import { renderPriorities } from './modes.ts';
@@ -54,6 +55,7 @@ import {
   NON_ONOFF_TEMPERATURE_SHED_FLOOR_C,
 } from '../../../shared-domain/src/utils/airtreatmentConstants.ts';
 import {
+  BUDGET_EXEMPT_DEVICES,
   OVERSHOOT_BEHAVIORS,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
@@ -171,6 +173,19 @@ const resolveShedTemperatureValue = (params: {
 
 const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = name;
+};
+
+const setDeviceDetailBudgetExemptState = (device: TargetDeviceSnapshot | null) => {
+  if (!deviceDetailBudgetExempt || !device) return;
+  deviceDetailBudgetExempt.checked = state.budgetExemptMap[device.id] === true || device.budgetExempt === true;
+  deviceDetailBudgetExempt.disabled = false;
+};
+
+const updateCurrentDeviceBudgetExemptSnapshot = (deviceId: string, budgetExempt: boolean) => {
+  const device = state.latestDevices.find((entry) => entry.id === deviceId);
+  if (device) {
+    device.budgetExempt = budgetExempt;
+  }
 };
 
 const attachDraftSyncOnChange = (...inputs: HTMLInputElement[]) => {
@@ -312,6 +327,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     deviceDetailPriceOpt.checked = supportsTemperature && isManaged && priceConfig?.enabled === true;
     deviceDetailPriceOpt.disabled = !supportsTemperature || !isManaged;
   }
+  setDeviceDetailBudgetExemptState(device);
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
     const effectiveControlModel = device ? getEffectiveControlModel(device) : 'temperature_target';
     deviceDetailControlModel.value = effectiveControlModel === 'stepped_load' ? 'stepped_load' : 'temperature_target';
@@ -775,6 +791,37 @@ const initDeviceDetailPriceOptHandlers = () => {
   deviceDetailExpensiveDelta?.addEventListener('change', autoSavePriceOpt);
 };
 
+const initDeviceDetailBudgetExemptHandler = () => {
+  deviceDetailBudgetExempt?.addEventListener('change', async () => {
+    const deviceId = currentDetailDeviceId;
+    if (!deviceId) return;
+    try {
+      const persistedBudgetExemptMap = await getSettingFresh(BUDGET_EXEMPT_DEVICES);
+      const nextBudgetExemptMap = persistedBudgetExemptMap
+        && typeof persistedBudgetExemptMap === 'object'
+        && !Array.isArray(persistedBudgetExemptMap)
+        ? { ...(persistedBudgetExemptMap as Record<string, boolean>) }
+        : {};
+      if (deviceDetailBudgetExempt.checked) {
+        nextBudgetExemptMap[deviceId] = true;
+      } else {
+        delete nextBudgetExemptMap[deviceId];
+      }
+      state.budgetExemptMap = nextBudgetExemptMap;
+      await setSetting(BUDGET_EXEMPT_DEVICES, nextBudgetExemptMap);
+      updateCurrentDeviceBudgetExemptSnapshot(deviceId, deviceDetailBudgetExempt.checked);
+      renderDevices(state.latestDevices);
+      renderPriorities(state.latestDevices);
+      renderPriceOptimization(state.latestDevices);
+      refreshOpenDeviceDetail();
+    } catch (error) {
+      await logSettingsError('Failed to update budget exempt device', error, 'device detail');
+      await showToastError(error, 'Failed to update budget exempt device.');
+      refreshOpenDeviceDetail();
+    }
+  });
+};
+
 const initDeviceDetailShedHandlers = () => {
   const autoSaveShedBehavior = async () => {
     updateShedFieldVisibility();
@@ -898,6 +945,7 @@ export const initDeviceDetailHandlers = () => {
   initDeviceDetailControllableHandler();
   initDeviceDetailControlModelHandler();
   initDeviceDetailPriceOptHandlers();
+  initDeviceDetailBudgetExemptHandler();
   initDeviceDetailShedHandlers();
   initDeviceDetailSteppedHandlers();
   initDeviceDetailDiagnosticsHandler();

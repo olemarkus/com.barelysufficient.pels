@@ -848,6 +848,12 @@ input:focus-visible {
   white-space: nowrap;
 }
 
+.device-row__state-chip {
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  line-height: 1.1;
+}
+
 .panel.hidden {
   display: none;
 }
@@ -869,6 +875,12 @@ input:focus-visible {
 .chip--ok {
   background: var(--color-state-success-bg-muted);
   border-color: var(--color-state-success-bg);
+}
+
+.chip--neutral {
+  background: var(--color-surface-4);
+  border-color: var(--color-border-strong);
+  color: var(--muted);
 }
 
 .chip--alert {

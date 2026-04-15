@@ -1,9 +1,9 @@
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
-const flushPromises = () => new Promise<void>((resolve) => {
-  setTimeout(() => resolve(), 0);
-});
+const flushPromises = async () => {
+  await Promise.resolve();
+};
 
 const buildDom = () => {
   document.body.innerHTML = `
@@ -45,7 +45,12 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevic
 });
 
 describe('device detail diagnostics', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
   afterEach(() => {
+    vi.useRealTimers();
     vi.resetModules();
     vi.clearAllMocks();
   });
@@ -149,6 +154,7 @@ describe('device detail diagnostics', () => {
     initDeviceDetailHandlers();
 
     openDeviceDetail('heater-1');
+    await vi.advanceTimersByTimeAsync(0);
     await flushPromises();
 
     expect(homey.api.mock.calls.some(
@@ -158,6 +164,7 @@ describe('device detail diagnostics', () => {
     const diagnosticsDisclosure = document.getElementById('device-detail-diagnostics-disclosure') as HTMLDetailsElement | null;
     diagnosticsDisclosure!.open = true;
     diagnosticsDisclosure!.dispatchEvent(new Event('toggle'));
+    await vi.advanceTimersByTimeAsync(0);
     await flushPromises();
 
     expect(homey.api.mock.calls).toEqual(expect.arrayContaining([
@@ -208,6 +215,7 @@ describe('device detail diagnostics', () => {
 
     initDeviceDetailHandlers();
     openDeviceDetail('heater-1');
+    await vi.advanceTimersByTimeAsync(0);
     await flushPromises();
 
     const input = document.querySelector('.detail-mode-temp') as HTMLInputElement | null;
@@ -218,6 +226,8 @@ describe('device detail diagnostics', () => {
     if (!input) throw new Error('Expected detail mode input');
     input.value = '64.5';
     input.dispatchEvent(new Event('change'));
+    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(0);
     await flushPromises();
 
     expect(input.value).toBe('65');
@@ -273,6 +283,7 @@ describe('device detail diagnostics', () => {
     initDeviceDetailHandlers();
 
     openDeviceDetail('heater-1');
+    await vi.advanceTimersByTimeAsync(0);
     await flushPromises();
 
     expect(homey.api.mock.calls.some(
@@ -282,6 +293,7 @@ describe('device detail diagnostics', () => {
     const diagnosticsDisclosure = document.getElementById('device-detail-diagnostics-disclosure') as HTMLDetailsElement | null;
     diagnosticsDisclosure!.open = true;
     diagnosticsDisclosure!.dispatchEvent(new Event('toggle'));
+    await vi.advanceTimersByTimeAsync(0);
     await flushPromises();
 
     expect(homey.api.mock.calls).toEqual(expect.arrayContaining([
