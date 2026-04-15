@@ -59,9 +59,6 @@ file.
 - [ ] Fix price-optimization transition logging at hour boundaries so logs reflect the resulting
       state, not the previous one.
       Files: price optimization transition logic and tests.
-- [ ] Make transient overshoot handling more explicit in logs so it is clear whether a culprit
-      was attributed, mitigation was intentionally skipped, or the incident was treated as noise.
-      Files: overshoot lifecycle/logging paths and tests.
 - [ ] Audit suspicious long overshoot durations and confirm whether they were genuine slow
       recovery or stale lifecycle state.
       Files: overshoot lifecycle/state handling, incident tests/log review.

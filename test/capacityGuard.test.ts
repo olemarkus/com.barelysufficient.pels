@@ -179,7 +179,15 @@ describe('CapacityGuard', () => {
       await guard.checkShortfall(false, 0.5);
       expect(guard.isInShortfall()).toBe(true);
       expect(logEvents).toHaveLength(1);
-      expect(logEvents[0].event).toBe('capacity_overshoot_detected');
+      expect(logEvents[0]).toMatchObject({
+        event: 'hard_cap_shortfall_detected',
+        powerW: 5500,
+        thresholdW: 5000,
+        headroomW: -500,
+        excessW: 500,
+        remainingReducibleControlledLoad: null,
+        actuationInFlight: null,
+      });
       const firstIncidentId = logEvents[0].incidentId;
       expect(firstIncidentId).toBeDefined();
 
@@ -189,7 +197,7 @@ describe('CapacityGuard', () => {
       expect(logEvents).toHaveLength(1); // No new event
     });
 
-    it('logs explicit planned-shed counter semantics and source metadata for shortfall events', async () => {
+    it('logs hard-shortfall diagnostics, planned-shed counters, and source metadata', async () => {
       const logEvents: Array<Record<string, unknown>> = [];
       const structuredLog: Pick<import('../lib/logging/logger').Logger, 'info'> = {
         info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
@@ -201,13 +209,13 @@ describe('CapacityGuard', () => {
         structuredLog: structuredLog as unknown as import('../lib/logging/logger').Logger,
       });
 
-      guard.reportTotalPower(5.5);
-      await guard.checkShortfall(false, 0.5, {
+      guard.reportTotalPower(5.38);
+      await guard.checkShortfall(false, 0.38, {
         controlledDevices: 3,
         plannedShedDevices: 2,
         pendingPlannedShedDevices: 1,
         activePlannedShedDevices: 2,
-        activeControlledDevices: 3,
+        activeControlledDevices: 2,
         zeroDrawControlledDevices: 0,
         staleControlledDevices: 0,
         pendingControlledDevices: 1,
@@ -216,18 +224,25 @@ describe('CapacityGuard', () => {
         blockedByInvariantDevices: 0,
         summarySource: 'plan_input',
         summarySourceAtMs: 1234,
+        controlledPowerW: 2875,
+        uncontrolledPowerW: 2505,
+        remainingReducibleControlledLoadW: 0,
+        remainingReducibleControlledLoad: false,
+        actuationInFlight: true,
       });
 
       expect(logEvents).toHaveLength(1);
-      expect(logEvents[0]).toEqual(expect.objectContaining({
-        event: 'capacity_overshoot_detected',
-        plannedShedDevices: 2,
-        pendingPlannedShedDevices: 1,
-        activePlannedShedDevices: 2,
-        summarySource: 'plan_input',
-        summarySourceAtMs: 1234,
-      }));
-      expect(logEvents[0]).not.toHaveProperty('shedDevices');
+      expect(logEvents[0]).toMatchObject({
+        event: 'hard_cap_shortfall_detected',
+        powerW: 5380,
+        thresholdW: 5000,
+        excessW: 380,
+        controlledPowerW: 2875,
+        uncontrolledPowerW: 2505,
+        remainingReducibleControlledLoadW: 0,
+        remainingReducibleControlledLoad: false,
+        actuationInFlight: true,
+      });
     });
   });
 
@@ -302,6 +317,57 @@ describe('CapacityGuard', () => {
       advanceTime(2000);
       await guard.checkShortfall(true, 0);
       expect(guard.isInShortfall()).toBe(false);
+    });
+
+    it('emits recovery lifecycle events only after sustained hard-cap recovery', async () => {
+      const logEvents: Array<Record<string, unknown>> = [];
+      const structuredLog: Pick<import('../lib/logging/logger').Logger, 'info'> = {
+        info: (obj: Record<string, unknown>) => { logEvents.push(obj); },
+      };
+      const guard = new CapacityGuard({
+        limitKw: 5,
+        structuredLog: structuredLog as unknown as import('../lib/logging/logger').Logger,
+      });
+
+      guard.reportTotalPower(5.5);
+      await guard.checkShortfall(false, 0.5);
+
+      guard.reportTotalPower(4.7);
+      await guard.checkShortfall(true, 0);
+      expect(logEvents.map((event) => event.event)).toEqual([
+        'hard_cap_shortfall_detected',
+        'hard_cap_shortfall_recovery_started',
+      ]);
+
+      advanceTime(30_000);
+      await guard.checkShortfall(true, 0);
+      expect(logEvents).toHaveLength(2);
+
+      guard.reportTotalPower(4.95);
+      await guard.checkShortfall(true, 0);
+      expect(logEvents.map((event) => event.event)).toEqual([
+        'hard_cap_shortfall_detected',
+        'hard_cap_shortfall_recovery_started',
+        'hard_cap_shortfall_recovery_reset',
+      ]);
+
+      guard.reportTotalPower(4.7);
+      await guard.checkShortfall(true, 0);
+      expect(logEvents.map((event) => event.event)).toEqual([
+        'hard_cap_shortfall_detected',
+        'hard_cap_shortfall_recovery_started',
+        'hard_cap_shortfall_recovery_reset',
+        'hard_cap_shortfall_recovery_started',
+      ]);
+
+      advanceTime(61_000);
+      await guard.checkShortfall(true, 0);
+      expect(logEvents[4]).toMatchObject({
+        event: 'hard_cap_shortfall_recovered',
+        powerW: 4700,
+        thresholdW: 5000,
+        headroomW: 300,
+      });
     });
   });
 
