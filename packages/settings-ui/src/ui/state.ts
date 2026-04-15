@@ -25,6 +25,7 @@ export type UiState = {
   modeTargets: Record<string, Record<string, number>>;
   controllableMap: Record<string, boolean>;
   managedMap: Record<string, boolean>;
+  budgetExemptMap: Record<string, boolean>;
   deviceControlProfiles: DeviceControlProfiles;
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ShedBehavior>;
@@ -49,6 +50,7 @@ export const state: UiState = {
   modeTargets: {},
   controllableMap: {},
   managedMap: {},
+  budgetExemptMap: {},
   deviceControlProfiles: {},
   modeAliases: {},
   shedBehaviors: {},

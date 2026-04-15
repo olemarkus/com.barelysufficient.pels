@@ -19,6 +19,7 @@ import {
   supportsManagedDevice,
   supportsPowerDevice,
   supportsTemperatureDevice,
+  isGrayStateDevice,
 } from './deviceUtils.ts';
 
 export const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
@@ -211,6 +212,29 @@ const buildPriceToggleHandler = (deviceId: string) => withInitialLoadGuard('pric
   }
 });
 
+const buildStateChip = (label: string, title: string): HTMLElement => {
+  const chip = document.createElement('span');
+  chip.className = 'chip chip--neutral device-row__state-chip';
+  chip.textContent = label;
+  chip.title = title;
+  return chip;
+};
+
+const buildDeviceAvailabilityChip = (device: TargetDeviceSnapshot): HTMLElement | null => {
+  if (!isGrayStateDevice(device)) return null;
+  return buildStateChip(
+    device.available === false ? 'Unavailable' : 'Unknown',
+    device.available === false
+      ? 'Device is currently unavailable in Homey.'
+      : 'Device state is unknown.',
+  );
+};
+
+const buildBudgetExemptChip = (device: TargetDeviceSnapshot): HTMLElement | null => {
+  if (state.budgetExemptMap[device.id] !== true && device.budgetExempt !== true) return null;
+  return buildStateChip('Budget exempt', 'This device is excluded from daily budget limits.');
+};
+
 const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
@@ -261,6 +285,10 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   nameText.textContent = device.name;
 
   nameWrap.replaceChildren(nameText);
+  const stateChip = buildDeviceAvailabilityChip(device);
+  if (stateChip) nameWrap.appendChild(stateChip);
+  const budgetExemptChip = buildBudgetExemptChip(device);
+  if (budgetExemptChip) nameWrap.appendChild(budgetExemptChip);
   return row;
 };
 

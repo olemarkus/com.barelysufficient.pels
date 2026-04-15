@@ -325,6 +325,25 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-stale')?.contains('neutral')).toBe(true);
   });
 
+  it('shows unavailable devices with an unavailable badge', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-missing',
+          name: 'Missing device',
+          currentState: 'unknown',
+          plannedState: 'keep',
+          observationStale: true,
+          available: false,
+          controllable: true,
+        },
+      ],
+    });
+
+    expect(getBadgeTitle('dev-missing')).toBe('Unavailable');
+    expect(getBadgeClassList('dev-missing')?.contains('neutral')).toBe(true);
+  });
+
   it('renders badge color classes per device plan state', async () => {
     await renderPlanSnapshot({
       devices: [

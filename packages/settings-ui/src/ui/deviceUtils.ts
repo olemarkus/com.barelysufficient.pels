@@ -18,3 +18,17 @@ export const supportsTemperatureDevice = (device?: TargetDeviceSnapshot | null):
 export const supportsManagedDevice = (supportsPower: boolean, supportsTemperature: boolean): boolean => (
   supportsPower || supportsTemperature
 );
+
+type GrayStateDevice = {
+  available?: boolean;
+  currentState?: string;
+  observationStale?: boolean;
+};
+
+export const isGrayStateDevice = (device?: GrayStateDevice | null): boolean => {
+  if (!device) return false;
+  if (device.available === false) return true;
+  if (device.observationStale === true) return true;
+  const currentState = typeof device.currentState === 'string' ? device.currentState.trim().toLowerCase() : '';
+  return currentState === 'unknown' || currentState === 'disappeared';
+};

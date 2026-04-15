@@ -6,6 +6,7 @@ import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../cont
 import { getApiReadModel } from './homey.ts';
 import { createMetaLine } from './components.ts';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator.ts';
+import { isGrayStateDevice } from './deviceUtils.ts';
 
 type PlanDeviceSnapshot = {
   id: string;
@@ -25,6 +26,7 @@ type PlanDeviceSnapshot = {
   controllable?: boolean;
   budgetExempt?: boolean;
   currentTemperature?: number;
+  available?: boolean;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
   shedTemperature?: number | null;
   selectedStepId?: string;
@@ -471,7 +473,7 @@ const resolvePlanBadgeState = (
   const steppedRestorePending = isSteppedLoadDevice(dev)
     && Boolean(dev.selectedStepId && dev.desiredStepId && dev.selectedStepId !== dev.desiredStepId);
   if (dev.controllable === false) return 'uncontrolled';
-  if (dev.observationStale === true) return 'unknown';
+  if (isGrayStateDevice(dev)) return 'unknown';
   if (dev.plannedState === 'inactive') return 'inactive';
   const restoreCooldownState = resolveRestoreCooldownBadgeState(dev);
   if (restoreCooldownState) return restoreCooldownState;
@@ -513,7 +515,7 @@ const buildPlanStateBadge = (dev: PlanDeviceSnapshot) => {
   } else if (state === 'restoring') {
     label = 'Restoring';
   } else if (state === 'unknown') {
-    label = 'State unknown';
+    label = dev.available === false ? 'Unavailable' : 'State unknown';
   }
   badge.className = `plan-state-indicator price-indicator ${tone}`;
   badge.dataset.icon = getPriceIndicatorIcon(tone);

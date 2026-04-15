@@ -218,6 +218,7 @@ describe('device detail diagnostics', () => {
     if (!input) throw new Error('Expected detail mode input');
     input.value = '64.5';
     input.dispatchEvent(new Event('change'));
+    await new Promise((resolve) => setTimeout(resolve, 350));
     await flushPromises();
 
     expect(input.value).toBe('65');
