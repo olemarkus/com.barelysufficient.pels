@@ -2,7 +2,7 @@ import type CapacityGuard from '../core/capacityGuard';
 import type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanContext } from './planContext';
-import { resolveEffectiveCurrentOn, resolveObservedCurrentState } from './planCurrentState';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveCandidatePower } from './planCandidatePower';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
 import { buildPlanInputCapacityStateSummary } from './planLogging';
@@ -69,10 +69,7 @@ function resolveReducibleControlledLoadCandidatePowerKw(params: {
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): number | null {
   const { device, shedSet, limitSource, capacityBreached, getShedBehavior } = params;
-  const effectiveCurrentOn = resolveEffectiveCurrentOn({
-    ...device,
-    currentState: resolveObservedCurrentState(device),
-  });
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
   if (device.controllable === false || effectiveCurrentOn === false || shedSet.has(device.id)) return null;
   if (limitSource === 'daily' && !capacityBreached && device.budgetExempt === true) return null;
   const reduciblePowerKw = resolveReduciblePowerKw(device);
@@ -179,10 +176,7 @@ export function countRemainingCandidates(params: {
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return devices
     .filter((d) => {
-      const effectiveCurrentOn = resolveEffectiveCurrentOn({
-        ...d,
-        currentState: resolveObservedCurrentState(d),
-      });
+      const effectiveCurrentOn = resolveEffectiveCurrentOn(d);
       return d.controllable !== false && effectiveCurrentOn !== false && !shedSet.has(d.id);
     })
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)

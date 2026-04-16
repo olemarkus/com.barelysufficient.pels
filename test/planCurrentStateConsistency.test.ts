@@ -26,6 +26,7 @@ const buildPlan = (overrides: Partial<DevicePlan['devices'][number]> = {}): Devi
   devices: [{
     id: 'dev-1',
     name: 'Heater',
+    currentOn: false,
     currentState: 'off',
     plannedState: 'keep',
     currentTarget: null,

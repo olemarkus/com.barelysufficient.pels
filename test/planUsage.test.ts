@@ -74,4 +74,21 @@ describe('plan usage budget exemption helpers', () => {
       uncontrolledKw: 2.5,
     });
   });
+
+  it('keeps target-only devices on expected-power fallback when binary state is not applicable', () => {
+    expect(splitControlledUsageKw({
+      totalKw: 3,
+      devices: [
+        {
+          currentState: 'not_applicable',
+          currentOn: false,
+          expectedPowerKw: 1.25,
+          controllable: true,
+        },
+      ],
+    })).toEqual({
+      controlledKw: 1.25,
+      uncontrolledKw: 1.75,
+    });
+  });
 });

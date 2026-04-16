@@ -6,7 +6,7 @@ import type { PowerTrackerState } from '../core/powerTracker';
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
-import { resolveEffectiveCurrentOn, resolveObservedCurrentState } from './planCurrentState';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveCandidatePower } from './planCandidatePower';
 import {
   getSteppedLoadShedTargetStep,
@@ -476,10 +476,7 @@ function isEligibleForShedding(params: {
   nowTs: number;
 }): boolean {
   const { device, state, nowTs } = params;
-  const effectiveCurrentOn = resolveEffectiveCurrentOn({
-    ...device,
-    currentState: resolveObservedCurrentState(device),
-  }, {
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(device, {
     pendingPresent: isPendingBinaryCommandActive({
       pending: state.pendingBinaryCommands[device.id],
       nowMs: nowTs,
@@ -642,10 +639,7 @@ function isNonSteppedDeviceRecovering(
   candidate: PlanInputDevice,
   state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
 ): boolean {
-  const effectiveCurrentOn = resolveEffectiveCurrentOn({
-    ...candidate,
-    currentState: resolveObservedCurrentState(candidate),
-  });
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(candidate);
   if (candidate.controllable === false || isSteppedLoadDevice(candidate) || effectiveCurrentOn !== false) {
     return false;
   }
