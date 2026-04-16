@@ -9,6 +9,7 @@ import {
 import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
+import { isPlanConverging } from './lib/plan/planStateHelpers';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from './lib/plan/planConstants';
 import { getLatestDeviceObservationMs, isDeviceObservationStale } from './lib/plan/planObservationPolicy';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
@@ -803,6 +804,8 @@ class PelsApp extends Homey.App {
     const sampleStart = Date.now();
     const previousSampleTs = this.powerTracker.lastTimestamp;
     try {
+      const planState = this.planEngine?.state;
+      const planConvergenceActive = isPlanConverging(planState, nowMs);
       await recordPowerSampleForApp({
         currentPowerW,
         nowMs,
@@ -821,6 +824,7 @@ class PelsApp extends Homey.App {
           currentPowerW,
           capacitySettings: this.capacitySettings,
           capacityGuard: this.capacityGuard,
+          planConvergenceActive,
           rebuildPlanFromCache: (reason?: string) => this.planService.rebuildPlanFromCache(reason),
           logError: (error) => {
             // Log error but don't throw - state is already persisted

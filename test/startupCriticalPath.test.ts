@@ -88,6 +88,7 @@ describe('startup critical path perf guardrails', () => {
       refreshSnapshotGate.resolve(undefined);
       rebuildPlanGate.resolve(undefined);
       await startupPromise;
+      expect(params.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     }
   });
 

@@ -72,6 +72,7 @@ describe('startPerfLogger', () => {
     const log = vi.fn();
     incPerfCounter('plan_rebuild_total');
     incPerfCounter('plan_rebuild_skipped_insignificant_total');
+    incPerfCounter('plan_rebuild_skipped_non_boundary_delta_total');
 
     const stop = startPerfLogger({
       isEnabled: () => true,
@@ -81,6 +82,7 @@ describe('startPerfLogger', () => {
 
     incPerfCounter('plan_rebuild_total');
     incPerfCounter('plan_rebuild_skipped_insignificant_total');
+    incPerfCounter('plan_rebuild_skipped_non_boundary_delta_total');
     vi.advanceTimersByTime(1000);
 
     const message = log.mock.calls[1][0] as string;
@@ -88,6 +90,7 @@ describe('startPerfLogger', () => {
     const payload = JSON.parse(message.slice(jsonStart)) as { delta?: { counts?: Record<string, number> } };
     expect(payload.delta?.counts?.plan_rebuild_total).toBe(1);
     expect(payload.delta?.counts?.plan_rebuild_skipped_insignificant_total).toBe(1);
+    expect(payload.delta?.counts?.plan_rebuild_skipped_non_boundary_delta_total).toBe(1);
 
     stop();
   });
