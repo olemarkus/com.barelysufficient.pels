@@ -52,7 +52,7 @@ export function splitControlledUsageKw(params: {
   const { devices, totalKw } = params;
   const controlledKw = sumControlledUsageKw(devices);
   const boundedControlledKw = totalKw !== null && controlledKw !== null
-    ? Math.min(totalKw, controlledKw)
+    ? Math.max(0, Math.min(totalKw, controlledKw))
     : controlledKw;
   return {
     controlledKw: boundedControlledKw,

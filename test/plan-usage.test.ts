@@ -46,6 +46,14 @@ describe('sumControlledUsageKw', () => {
     expect(result).toBe(0);
   });
 
+  it('returns zero for snapshot-shaped off devices when only expected or planning values are available', () => {
+    const result = sumControlledUsageKw([
+      { controllable: true, currentOn: false, expectedPowerKw: 1.2, planningPowerKw: 1.4 },
+    ]);
+
+    expect(result).toBe(0);
+  });
+
   it('preserves measured usage for shed devices so live draw is still counted', () => {
     const result = sumControlledUsageKw([
       { controllable: true, plannedState: 'shed', measuredPowerKw: 0.4, expectedPowerKw: 1.2 },
@@ -76,6 +84,19 @@ describe('sumControlledUsageKw', () => {
       ],
     })).toEqual({
       controlledKw: 1,
+      uncontrolledKw: 0,
+    });
+  });
+
+  it('does not produce negative controlled usage when the total is negative', () => {
+    expect(splitControlledUsageKw({
+      totalKw: -1,
+      devices: [
+        { controllable: true, measuredPowerKw: 0.7 },
+        { controllable: true, expectedPowerKw: 0.8 },
+      ],
+    })).toEqual({
+      controlledKw: 0,
       uncontrolledKw: 0,
     });
   });
