@@ -4,6 +4,7 @@ import * as pelsStatusModule from '../lib/core/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../lib/utils/timingConstants';
+import { formatDeviceOverview } from '../packages/shared-domain/src/deviceOverview';
 
 const buildPlan = (
   currentTarget: number,
@@ -59,6 +60,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     log: vi.fn(),
     logDebug: vi.fn(),
     error: vi.fn(),
+    isOverviewDebugEnabled: () => true,
     ...overrides,
   };
 
@@ -274,6 +276,265 @@ describe('PlanService', () => {
       inactiveCount: 1,
       inactiveReasons: [{ reason: 'charger is unplugged', count: 1 }],
     });
+  });
+
+  it('logs overview changes on rebuild using the shared formatter output', async () => {
+    const overviewDebugStructured = vi.fn();
+    const { service } = createPlanService({
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
+          currentState: 'on',
+          plannedState: 'keep',
+          measuredPowerKw: 0,
+          expectedPowerKw: 3,
+        })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      overviewDebugStructured,
+    });
+
+    await service.rebuildPlanFromCache();
+
+    const overview = formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'keep',
+      reason: 'keep',
+      measuredPowerKw: 0,
+      expectedPowerKw: 3,
+      controllable: true,
+    });
+    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      component: 'overview',
+      event: 'device_overview_changed',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      ...overview,
+      currentState: 'on',
+      plannedState: 'keep',
+      reason: 'keep',
+      measuredPowerKw: 0,
+      expectedPowerKw: 3,
+      desiredStepId: null,
+    }));
+  });
+
+  it('does not log repeated identical overview snapshots', async () => {
+    const overviewDebugStructured = vi.fn();
+    const samePlan = buildPlan(20, 'keep', {}, {
+      currentState: 'on',
+      plannedState: 'keep',
+      measuredPowerKw: 0,
+      expectedPowerKw: 3,
+    });
+    const { service } = createPlanService({
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValueOnce(samePlan).mockResolvedValueOnce(samePlan),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      overviewDebugStructured,
+    });
+
+    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache();
+
+    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not log on usage-only overview changes during rebuilds', async () => {
+    const overviewDebugStructured = vi.fn();
+    const { service } = createPlanService({
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn()
+          .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
+            currentState: 'on',
+            plannedState: 'keep',
+            measuredPowerKw: 0,
+            expectedPowerKw: 3,
+          }))
+          .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
+            currentState: 'on',
+            plannedState: 'keep',
+            measuredPowerKw: 0.25,
+            expectedPowerKw: 3,
+          })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      overviewDebugStructured,
+    });
+
+    await service.rebuildPlanFromCache();
+    overviewDebugStructured.mockClear();
+
+    await service.rebuildPlanFromCache();
+    expect(overviewDebugStructured).not.toHaveBeenCalled();
+  });
+
+  it('does not cache overview signatures when the overview emitter is missing', async () => {
+    const samePlan = buildPlan(20, 'keep', {}, {
+      currentState: 'on',
+      plannedState: 'keep',
+      measuredPowerKw: 0,
+      expectedPowerKw: 3,
+    });
+    const { service } = createPlanService({
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(samePlan),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      overviewDebugStructured: undefined,
+      isOverviewDebugEnabled: () => true,
+    });
+
+    await service.rebuildPlanFromCache();
+
+    expect((service as any).lastOverviewSignatureByDeviceId.size).toBe(0);
+  });
+
+  it('logs overview changes during live sync when a visible field changes', async () => {
+    const overviewDebugStructured = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const service = new PlanService({
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+        hasPendingBinaryCommands: vi.fn(() => true),
+        syncPendingBinaryCommands: vi.fn(() => false),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn: true,
+        currentTemperature: 21,
+        measuredPowerKw: 0.25,
+        expectedPowerKw: 3,
+        binaryCommandPending: true,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      overviewDebugStructured,
+      isOverviewDebugEnabled: () => true,
+    });
+
+    (service as any).latestPlanSnapshot = buildPlan(20, 'keep', {}, {
+      currentState: 'off',
+      plannedState: 'keep',
+      measuredPowerKw: 0,
+      expectedPowerKw: 3,
+      binaryCommandPending: true,
+    });
+    (service as any).emitPlanUpdated((service as any).latestPlanSnapshot);
+    overviewDebugStructured.mockClear();
+
+    await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
+    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
+    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_overview_changed',
+      powerMsg: 'on',
+      stateMsg: 'Active',
+      usageMsg: 'Measured: 0.25 kW / Expected: 3.00 kW',
+      statusMsg: 'keep',
+    }));
+  });
+
+  it('logs a post-actuation overview transition once the live state settles', async () => {
+    let currentOn = false;
+    const overviewDebugStructured = vi.fn();
+    const service = new PlanService({
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
+          currentState: 'off',
+          currentTarget: 20,
+          plannedState: 'keep',
+          plannedTarget: 20,
+        })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockImplementation(async () => {
+          currentOn = true;
+          return { deviceWriteCount: 1 };
+        }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      overviewDebugStructured,
+      isOverviewDebugEnabled: () => true,
+    });
+
+    await service.rebuildPlanFromCache();
+
+    expect(overviewDebugStructured).toHaveBeenCalledTimes(2);
+    expect(overviewDebugStructured.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      event: 'device_overview_changed',
+      powerMsg: 'off',
+      stateMsg: 'Restoring',
+    }));
+    expect(overviewDebugStructured.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      event: 'device_overview_changed',
+      powerMsg: 'on',
+      stateMsg: 'Active',
+    }));
   });
 
   it('writes a fresh snapshot when priority changes without action changes', async () => {

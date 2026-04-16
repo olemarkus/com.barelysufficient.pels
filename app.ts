@@ -413,6 +413,8 @@ class PelsApp extends Homey.App {
       error: (...args: unknown[]) => this.error(...args),
       structuredLog: this.getStructuredLogger('plan'),
       debugStructured: this.getStructuredDebugEmitter('plan', 'plan'),
+      overviewDebugStructured: this.getStructuredDebugEmitter('overview', 'overview'),
+      isOverviewDebugEnabled: () => this.debugLoggingTopics.has('overview'),
       isPlanDebugEnabled: () => this.debugLoggingTopics.has('plan'),
     };
     this.planService = createPlanService(deps);

@@ -69,6 +69,7 @@ This note is for contributors changing runtime logging.
 - `realtime_reconcile_applied`
 - `realtime_reconcile_circuit_opened`
 - `realtime_reconcile_failed`
+- `device_overview_changed`
 
 ## Gaps Still Open
 
@@ -95,6 +96,9 @@ This note is for contributors changing runtime logging.
 ## Contributor Guidance
 
 - Prefer stable field names over embedding meaning in a formatted message string.
+- Any future Settings UI device-log or diagnostics surface that shows the per-device overview
+  wording should reuse `packages/shared-domain/src/deviceOverview.ts` rather than rebuilding
+  `powerMsg`/`stateMsg`/`usageMsg`/`statusMsg` separately in the UI.
 - When adding a new event, keep payload fields machine-friendly and consistent with existing unit
   naming such as `durationMs`, `powerW`, `kWh`, and explicit IDs.
 - Capacity-state summary fields should stay semantically explicit. Do not reuse one counter name
