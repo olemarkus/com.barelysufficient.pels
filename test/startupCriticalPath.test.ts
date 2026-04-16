@@ -22,32 +22,82 @@ const flushMicrotasks = async (iterations = 8): Promise<void> => {
   }
 };
 
-const buildParams = () => ({
-  loadPowerTracker: vi.fn<(options?: { skipDailyBudgetUpdate?: boolean }) => void>(),
-  loadPriceOptimizationSettings: vi.fn<() => void>(),
-  initOptimizer: vi.fn<() => void>(),
-  startHeartbeat: vi.fn<() => void>(),
-  updateOverheadToken: vi.fn<() => Promise<void>>(async () => undefined),
-  refreshDailyBudgetState: vi.fn<() => void>(),
-  refreshTargetDevicesSnapshot: vi.fn<(
+const buildContext = () => {
+  const startupLogger = { error: vi.fn() };
+  const loadPowerTracker = vi.fn<(options?: { skipDailyBudgetUpdate?: boolean }) => void>();
+  const loadPriceOptimizationSettings = vi.fn<() => void>();
+  const initOptimizer = vi.fn<() => void>();
+  const startHeartbeat = vi.fn<() => void>();
+  const updateOverheadToken = vi.fn<() => Promise<void>>(async () => undefined);
+  const updateDailyBudgetState = vi.fn<() => void>();
+  const refreshTargetDevicesSnapshot = vi.fn<(
     options?: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean },
-  ) => Promise<void>>(async () => undefined),
-  rebuildPlanFromCache: vi.fn<() => Promise<void>>(async () => undefined),
-  setLastNotifiedOperatingMode: vi.fn<(mode: string) => void>(),
-  getOperatingMode: vi.fn<() => string>(() => 'Home'),
-  registerFlowCards: vi.fn<() => void>(),
-  startPeriodicSnapshotRefresh: vi.fn<() => void>(),
-  refreshSpotPrices: vi.fn<() => Promise<void>>(async () => undefined),
-  refreshGridTariffData: vi.fn<() => Promise<void>>(async () => undefined),
-  startPriceRefresh: vi.fn<() => void>(),
-  startPriceOptimization: vi.fn<(arg?: boolean) => Promise<void>>(async () => undefined),
-  logError: vi.fn<(msg: string, err: Error) => void>(),
-});
+  ) => Promise<void>>(async () => undefined);
+  const rebuildPlanFromCache = vi.fn<(reason?: string) => Promise<void>>(async () => undefined);
+  const registerFlowCards = vi.fn<() => void>();
+  const startPeriodicSnapshotRefresh = vi.fn<() => void>();
+  const startHomeyEnergy = vi.fn<() => void>();
+  const refreshSpotPrices = vi.fn<() => Promise<void>>(async () => undefined);
+  const refreshGridTariffData = vi.fn<() => Promise<void>>(async () => undefined);
+  const startPriceRefresh = vi.fn<() => void>();
+  const startPriceOptimization = vi.fn<(arg?: boolean) => Promise<void>>(async () => undefined);
+
+  return {
+    startupLogger,
+    loadPowerTracker,
+    loadPriceOptimizationSettings,
+    initOptimizer,
+    startHeartbeat,
+    updateOverheadToken,
+    updateDailyBudgetState,
+    refreshTargetDevicesSnapshot,
+    rebuildPlanFromCache,
+    registerFlowCards,
+    startPeriodicSnapshotRefresh,
+    startHomeyEnergy,
+    refreshSpotPrices,
+    refreshGridTariffData,
+    startPriceRefresh,
+    startPriceOptimization,
+    ctx: {
+      startupBootstrap: undefined,
+      homey: { settings: { get: vi.fn() } },
+      operatingMode: 'Home',
+      lastNotifiedOperatingMode: 'Away',
+      loadPowerTracker,
+      loadPriceOptimizationSettings,
+      startHeartbeat,
+      updateOverheadToken,
+      registerFlowCards,
+      refreshTargetDevicesSnapshot,
+      getStructuredLogger: (component: string) => (component === 'startup' ? startupLogger : undefined),
+      snapshotHelpers: {
+        startPeriodicSnapshotRefresh,
+      },
+      homeyEnergyHelpers: {
+        start: startHomeyEnergy,
+      },
+      dailyBudgetService: {
+        updateState: updateDailyBudgetState,
+      },
+      priceCoordinator: {
+        initOptimizer,
+        refreshSpotPrices,
+        refreshGridTariffData,
+        startPriceRefresh,
+        startPriceOptimization,
+      },
+      planService: {
+        rebuildPlanFromCache,
+      },
+    } as any,
+  };
+};
 
 describe('startup critical path perf guardrails', () => {
   it('runs baseline startup hooks', async () => {
-    const params = buildParams();
-    await startAppServices(params);
+    const params = buildContext();
+    await startAppServices(params.ctx);
     await flushMicrotasks();
 
     expect(params.loadPowerTracker).toHaveBeenCalledTimes(1);
@@ -56,23 +106,24 @@ describe('startup critical path perf guardrails', () => {
     expect(params.initOptimizer).toHaveBeenCalledTimes(1);
     expect(params.startHeartbeat).toHaveBeenCalledTimes(1);
     expect(params.updateOverheadToken).toHaveBeenCalledTimes(1);
-    expect(params.refreshDailyBudgetState).toHaveBeenCalledTimes(1);
+    expect(params.updateDailyBudgetState).toHaveBeenCalledTimes(1);
     expect(params.registerFlowCards).toHaveBeenCalledTimes(1);
     expect(params.startPeriodicSnapshotRefresh).toHaveBeenCalledTimes(1);
+    expect(params.startHomeyEnergy).toHaveBeenCalledTimes(1);
     expect(params.startPriceRefresh).toHaveBeenCalledTimes(1);
     expect(params.startPriceOptimization).toHaveBeenCalledTimes(1);
     expect(params.startPriceOptimization).toHaveBeenCalledWith(false);
   });
 
   it('does not block startup completion on initial snapshot and plan rebuild', async () => {
-    const params = buildParams();
+    const params = buildContext();
     const refreshSnapshotGate = createDeferred<void>();
     const rebuildPlanGate = createDeferred<void>();
 
     params.refreshTargetDevicesSnapshot.mockImplementation(() => refreshSnapshotGate.promise);
     params.rebuildPlanFromCache.mockImplementation(() => rebuildPlanGate.promise);
 
-    const startupPromise = startAppServices(params);
+    const startupPromise = startAppServices(params.ctx);
     let settled = false;
     startupPromise.then(() => {
       settled = true;
@@ -94,7 +145,7 @@ describe('startup critical path perf guardrails', () => {
 
   it('defers snapshot and plan bootstrap when delay is configured', async () => {
     vi.useFakeTimers();
-    const params = buildParams();
+    const params = buildContext();
     const callOrder: string[] = [];
 
     params.refreshTargetDevicesSnapshot.mockImplementation(async () => {
@@ -105,23 +156,21 @@ describe('startup critical path perf guardrails', () => {
     });
 
     try {
-      await startAppServices({
-        ...params,
-        snapshotPlanBootstrapDelayMs: 100,
-      });
+      params.ctx.startupBootstrap = { snapshotPlanBootstrapDelayMs: 100 };
+      await startAppServices(params.ctx);
       await flushMicrotasks();
       expect(callOrder).toEqual([]);
-      expect(params.refreshDailyBudgetState).not.toHaveBeenCalled();
+      expect(params.updateDailyBudgetState).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(99);
       await flushMicrotasks();
       expect(callOrder).toEqual([]);
-      expect(params.refreshDailyBudgetState).not.toHaveBeenCalled();
+      expect(params.updateDailyBudgetState).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(1);
       await flushMicrotasks();
-      expect(params.refreshDailyBudgetState).toHaveBeenCalledTimes(1);
-      expect(params.refreshTargetDevicesSnapshot).toHaveBeenCalledWith({ recordHomeyEnergySample: false });
+      expect(params.updateDailyBudgetState).toHaveBeenCalledTimes(1);
+      expect(params.refreshTargetDevicesSnapshot).toHaveBeenCalledWith({ fast: true, recordHomeyEnergySample: false });
       expect(callOrder).toEqual(['refresh', 'rebuild']);
     } finally {
       vi.useRealTimers();
@@ -129,23 +178,27 @@ describe('startup critical path perf guardrails', () => {
   });
 
   it('schedules overhead token update only once without delay', async () => {
-    const params = buildParams();
-    await startAppServices(params);
+    const params = buildContext();
+    await startAppServices(params.ctx);
     await flushMicrotasks();
     expect(params.updateOverheadToken).toHaveBeenCalledTimes(1);
   });
 
   it('captures synchronous throws from background tasks', async () => {
-    const params = buildParams();
+    const params = buildContext();
     const error = new Error('sync boom');
     params.updateOverheadToken.mockImplementation(() => {
       throw error;
     });
 
-    await expect(startAppServices(params)).resolves.toBeUndefined();
+    await expect(startAppServices(params.ctx)).resolves.toBeUndefined();
     await flushMicrotasks();
 
-    expect(params.logError).toHaveBeenCalledWith('startup_update_overhead_token', error);
+    expect(params.startupLogger.error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'startup_background_task_failed',
+      taskLabel: 'startup_update_overhead_token',
+      err: error,
+    }));
   });
 
   it('invokes startup-step failure hooks before rethrowing', async () => {
@@ -173,7 +226,7 @@ describe('startup critical path perf guardrails', () => {
   });
 
   it('does not block startup completion on long-running price pipeline bootstrap', async () => {
-    const params = buildParams();
+    const params = buildContext();
     const refreshSpotGate = createDeferred<void>();
     const refreshTariffGate = createDeferred<void>();
     const optimizeGate = createDeferred<void>();
@@ -182,7 +235,7 @@ describe('startup critical path perf guardrails', () => {
     params.refreshGridTariffData.mockImplementation(() => refreshTariffGate.promise);
     params.startPriceOptimization.mockImplementation(() => optimizeGate.promise);
 
-    const startupPromise = startAppServices(params);
+    const startupPromise = startAppServices(params.ctx);
     let settled = false;
     startupPromise.then(() => {
       settled = true;

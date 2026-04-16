@@ -8,17 +8,17 @@ import { createApp, cleanupApps } from './utils/appTestUtils';
 
 vi.mock('../lib/app/appLifecycleHelpers', () => ({
   runStartupStep: async (_label: string, work: () => unknown | Promise<unknown>) => work(),
-  startAppServices: async (params: any) => {
-    params.loadPowerTracker();
-    params.loadPriceOptimizationSettings();
-    params.initOptimizer();
-    params.startHeartbeat();
-    await params.updateOverheadToken();
-    await params.refreshTargetDevicesSnapshot();
-    await params.rebuildPlanFromCache();
-    params.setLastNotifiedOperatingMode(params.getOperatingMode());
-    params.registerFlowCards();
-    params.startPeriodicSnapshotRefresh();
+  startAppServices: async (ctx: any) => {
+    ctx.loadPowerTracker();
+    ctx.loadPriceOptimizationSettings();
+    ctx.priceCoordinator.initOptimizer();
+    ctx.startHeartbeat();
+    await ctx.updateOverheadToken();
+    await ctx.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
+    await ctx.planService.rebuildPlanFromCache('startup_snapshot_bootstrap');
+    ctx.registerFlowCards();
+    ctx.snapshotHelpers.startPeriodicSnapshotRefresh();
+    ctx.homeyEnergyHelpers.start();
     // Intentionally skip price refresh/optimization timers to keep tests fast and deterministic.
   },
 }));

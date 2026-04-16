@@ -1,5 +1,6 @@
 import type Homey from 'homey';
 import type { DeviceManager } from '../core/deviceManager';
+import type { TimerRegistry } from './timerRegistry';
 
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 
@@ -8,6 +9,7 @@ export class AppHomeyEnergyHelpers {
 
   constructor(private readonly deps: {
     homey: Homey.App['homey'];
+    timers: TimerRegistry;
     getDeviceManager: () => DeviceManager | undefined;
     recordPowerSample: (powerW: number) => Promise<void>;
     logDebug: (topic: 'devices', ...args: unknown[]) => void;
@@ -16,7 +18,7 @@ export class AppHomeyEnergyHelpers {
 
   start(): void {
     if (this.pollInterval) {
-      clearInterval(this.pollInterval);
+      this.deps.timers.clear('homeyEnergyPoll');
       this.pollInterval = undefined;
     }
     if (this.deps.homey.settings.get('power_source') !== 'homey_energy') return;
@@ -24,10 +26,10 @@ export class AppHomeyEnergyHelpers {
     this.pollNow()
       .catch((error) => this.deps.error('Homey Energy initial poll failed', error));
 
-    this.pollInterval = setInterval(() => {
+    this.pollInterval = this.deps.timers.registerInterval('homeyEnergyPoll', setInterval(() => {
       this.pollNow()
         .catch((error) => this.deps.error('Homey Energy poll failed', error));
-    }, HOMEY_ENERGY_POLL_INTERVAL_MS);
+    }, HOMEY_ENERGY_POLL_INTERVAL_MS));
   }
 
   restart(): void {
@@ -36,7 +38,7 @@ export class AppHomeyEnergyHelpers {
 
   stop(): void {
     if (!this.pollInterval) return;
-    clearInterval(this.pollInterval);
+    this.deps.timers.clear('homeyEnergyPoll');
     this.pollInterval = undefined;
   }
 

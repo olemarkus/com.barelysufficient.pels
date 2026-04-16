@@ -1,6 +1,7 @@
 import { incPerfCounters } from '../utils/perfCounters';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
+import type { AppContext } from './appContext';
 
 const runBackgroundTask = (
   label: string,
@@ -67,80 +68,55 @@ export const runStartupStep = async <T>(
   }
 };
 
-export async function startAppServices(params: {
-  loadPowerTracker: (options?: { skipDailyBudgetUpdate?: boolean }) => void;
-  loadPriceOptimizationSettings: () => void;
-  initOptimizer: () => void;
-  startHeartbeat: () => void;
-  updateOverheadToken: () => Promise<void>;
-  refreshDailyBudgetState?: () => void;
-  refreshTargetDevicesSnapshot: (
-    options?: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean },
-  ) => Promise<void>;
-  rebuildPlanFromCache: () => Promise<void>;
-  setLastNotifiedOperatingMode: (mode: string) => void;
-  getOperatingMode: () => string;
-  registerFlowCards: () => void;
-  startPeriodicSnapshotRefresh: () => void;
-  refreshSpotPrices: () => Promise<void>;
-  refreshGridTariffData: () => Promise<void>;
-  startPriceRefresh: () => void;
-  startPriceOptimization: (applyImmediately?: boolean) => Promise<void>;
-  logError?: (label: string, error: Error) => void;
-  snapshotPlanBootstrapDelayMs?: number;
-  overheadTokenDelayMs?: number;
-  runSnapshotPlanBootstrapInBackground?: boolean;
-  runPriceBootstrapInBackground?: boolean;
-  applyPriceOptimizationImmediatelyOnStart?: boolean;
-}): Promise<void> {
+export async function startAppServices(ctx: AppContext): Promise<void> {
+  const appContext = ctx;
   const {
-    loadPowerTracker,
-    loadPriceOptimizationSettings,
-    initOptimizer,
-    startHeartbeat,
-    updateOverheadToken,
-    refreshDailyBudgetState,
-    refreshTargetDevicesSnapshot,
-    rebuildPlanFromCache,
-    setLastNotifiedOperatingMode,
-    getOperatingMode,
-    registerFlowCards,
-    startPeriodicSnapshotRefresh,
-    refreshSpotPrices,
-    refreshGridTariffData,
-    startPriceRefresh,
-    startPriceOptimization,
-    logError,
+    logStartupStepFailure: logError,
     snapshotPlanBootstrapDelayMs = 0,
     overheadTokenDelayMs = 0,
     runSnapshotPlanBootstrapInBackground = true,
     runPriceBootstrapInBackground = true,
     applyPriceOptimizationImmediatelyOnStart = false,
-  } = params;
-  await runStep('loadPowerTracker', async () => loadPowerTracker({ skipDailyBudgetUpdate: true }));
-  await runStep('loadPriceOptimizationSettings', async () => loadPriceOptimizationSettings());
-  await runStep('initOptimizer', async () => initOptimizer());
-  await runStep('startHeartbeat', async () => startHeartbeat());
-  scheduleBackgroundTask('startup_update_overhead_token', updateOverheadToken, logError, overheadTokenDelayMs);
-  setLastNotifiedOperatingMode(getOperatingMode());
-  registerFlowCards();
-  startPeriodicSnapshotRefresh();
-  startPriceRefresh();
+  } = {
+    logStartupStepFailure: ctx.getStructuredLogger('startup')
+      ? (label: string, error: Error) => {
+        ctx.getStructuredLogger('startup')?.error({
+          event: 'startup_background_task_failed',
+          reasonCode: 'startup_background_task_failed',
+          taskLabel: label,
+          err: normalizeError(error),
+        });
+      }
+      : undefined,
+    ...appContext.startupBootstrap,
+  };
+  await runStep('loadPowerTracker', async () => appContext.loadPowerTracker({ skipDailyBudgetUpdate: true }));
+  await runStep('loadPriceOptimizationSettings', async () => appContext.loadPriceOptimizationSettings());
+  await runStep('initOptimizer', async () => appContext.priceCoordinator?.initOptimizer());
+  await runStep('startHeartbeat', async () => appContext.startHeartbeat());
+  scheduleBackgroundTask(
+    'startup_update_overhead_token',
+    () => appContext.updateOverheadToken(),
+    logError,
+    overheadTokenDelayMs,
+  );
+  appContext.registerFlowCards();
+  appContext.snapshotHelpers.startPeriodicSnapshotRefresh();
+  appContext.homeyEnergyHelpers.start();
+  appContext.priceCoordinator?.startPriceRefresh();
   const bootstrapSnapshotAndPlan = async (): Promise<void> => {
-    if (typeof refreshDailyBudgetState === 'function') {
-      refreshDailyBudgetState();
-    }
-    await refreshTargetDevicesSnapshot({ recordHomeyEnergySample: false });
+    appContext.dailyBudgetService?.updateState({ refreshObservedStats: false });
+    await appContext.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
     incPerfCounters([
       'plan_rebuild_requested_total',
       'plan_rebuild_requested.startup_total',
     ]);
-    await rebuildPlanFromCache();
+    await appContext.planService?.rebuildPlanFromCache('startup_snapshot_bootstrap');
   };
   const bootstrapPricePipeline = async (): Promise<void> => {
-    await refreshSpotPrices();
-    await refreshGridTariffData();
-    await startPriceOptimization(applyPriceOptimizationImmediatelyOnStart);
+    await appContext.priceCoordinator?.refreshSpotPrices();
+    await appContext.priceCoordinator?.refreshGridTariffData();
+    await appContext.priceCoordinator?.startPriceOptimization(applyPriceOptimizationImmediatelyOnStart);
   };
 
   if (runSnapshotPlanBootstrapInBackground) {

@@ -1,172 +1,156 @@
-import type Homey from 'homey';
-import { HomeyEnergyApi } from '../utils/homeyEnergy';
-import type CapacityGuard from '../core/capacityGuard';
-import type { DeviceManager } from '../core/deviceManager';
-import type { PowerTrackerState } from '../core/powerTracker';
-import type { PriceOptimizationSettings } from '../price/priceOptimizer';
-import type { PriceLevel } from '../price/priceLevels';
-import type { PlanEngine } from '../plan/planEngine';
-import { PlanService } from '../plan/planService';
-import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
-import type { PendingTargetObservationSource, ShedAction } from '../plan/planTypes';
 import { isDeviceObservationStale } from '../plan/planObservationPolicy';
-import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
-import { registerFlowCards } from '../../flowCards/registerFlowCards';
-import type { ReportSteppedLoadActualStepResult } from './appDeviceControlHelpers';
-import type { DebugLoggingTopic } from '../utils/debugLogging';
-import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import { COMBINED_PRICES } from '../utils/settingsKeys';
-import type { CapacitySettingsSnapshot } from './appSettingsHelpers';
+import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
+import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
-import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
+import { registerFlowCards } from '../../flowCards/registerFlowCards';
+import { COMBINED_PRICES } from '../utils/settingsKeys';
+import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
+import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { PlanRebuildScheduler } from './planRebuildScheduler';
+import type { AppContext } from './appContext';
 
-export type { CapacitySettingsSnapshot };
+function requireDeviceManager(ctx: AppContext) {
+  if (!ctx.deviceManager) {
+    throw new Error('DeviceManager must be initialized before plan engine setup.');
+  }
+  return ctx.deviceManager;
+}
 
-export const createDeviceDiagnosticsService = (app: {
-  homey: Homey.App['homey'];
-  getTimeZone: () => string;
-  isDebugEnabled?: () => boolean;
-  structuredLog?: PinoLogger;
-  logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-}): DeviceDiagnosticsService => new DeviceDiagnosticsService({
-  homey: app.homey,
-  getTimeZone: () => app.getTimeZone(),
-  isDebugEnabled: app.isDebugEnabled,
-  structuredLog: app.structuredLog?.child({ component: 'diagnostics' }),
-  logDebug: (...args: unknown[]) => app.logDebug('diagnostics', ...args),
-  error: (...args: unknown[]) => app.error(...args),
-});
+function requirePlanEngine(ctx: AppContext) {
+  if (!ctx.planEngine) {
+    throw new Error('PlanEngine must be initialized before plan service setup.');
+  }
+  return ctx.planEngine;
+}
 
-export type PlanEngineInitApp = {
-  homey: Homey.App['homey'];
-  deviceManager: DeviceManager;
-  getCapacityGuard: () => CapacityGuard | undefined;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
-  getCapacityDryRun: () => boolean;
-  getOperatingMode: () => string;
-  getModeDeviceTargets: () => Record<string, Record<string, number>>;
-  getPowerTracker: () => PowerTrackerState;
-  getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
-  getPriceOptimizationEnabled: () => boolean;
-  getPriceOptimizationSettings: () => Record<string, PriceOptimizationSettings>;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
-  getPriorityForDevice: (deviceId: string) => number;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
-  getDynamicSoftLimitOverride: () => number | null;
-  markSteppedLoadDesiredStepIssued: (params: {
-    deviceId: string;
-    desiredStepId: string;
-    previousStepId?: string;
-    issuedAtMs?: number;
-    pendingWindowMs?: number;
-  }) => void;
-  logTargetRetryComparison?: (params: {
-    deviceId: string;
-    name: string;
-    targetCap: string;
-    desired: number;
-    observedValue?: unknown;
-    observedSource?: string;
-    retryCount: number;
-    skipContext: 'plan' | 'shedding' | 'overshoot';
-  }) => Promise<void> | void;
-  syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
-  deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  structuredLog?: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
-  log: (...args: unknown[]) => void;
-  logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-};
+function requireFlowHomey(ctx: AppContext): FlowHomeyLike {
+  const { homey } = ctx;
+  if (
+    typeof homey.flow?.getTriggerCard !== 'function'
+    || typeof homey.flow?.getConditionCard !== 'function'
+    || typeof homey.flow?.getActionCard !== 'function'
+    || typeof homey.settings?.get !== 'function'
+    || typeof homey.settings?.set !== 'function'
+  ) {
+    throw new Error('Flow card registration requires Homey flow and settings APIs.');
+  }
+  return homey as unknown as FlowHomeyLike;
+}
 
-export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
+export const createDeviceDiagnosticsService = (ctx: AppContext): DeviceDiagnosticsService => (
+  new DeviceDiagnosticsService({
+    homey: ctx.homey,
+    getTimeZone: () => ctx.getTimeZone(),
+    isDebugEnabled: () => ctx.debugLoggingTopics.has('diagnostics'),
+    structuredLog: ctx.getStructuredLogger('diagnostics'),
+    logDebug: (...args: unknown[]) => ctx.logDebug('diagnostics', ...args),
+    error: (...args: unknown[]) => ctx.error(...args),
+  })
+);
+
+export function createPlanEngine(ctx: AppContext) {
   return new PlanEngineClass({
-    homey: app.homey,
-    deviceManager: app.deviceManager,
-    getCapacityGuard: () => app.getCapacityGuard(),
-    getCapacitySettings: () => app.getCapacitySettings(),
-    getCapacityDryRun: () => app.getCapacityDryRun(),
-    getOperatingMode: () => app.getOperatingMode(),
-    getModeDeviceTargets: () => app.getModeDeviceTargets(),
-    getPriceOptimizationEnabled: () => app.getPriceOptimizationEnabled(),
-    getPriceOptimizationSettings: () => app.getPriceOptimizationSettings(),
-    isCurrentHourCheap: () => app.isCurrentHourCheap(),
-    isCurrentHourExpensive: () => app.isCurrentHourExpensive(),
-    getPowerTracker: () => app.getPowerTracker(),
-    getDailyBudgetSnapshot: () => app.getDailyBudgetSnapshot(),
-    getPriorityForDevice: (deviceId) => app.getPriorityForDevice(deviceId),
-    getShedBehavior: (deviceId) => app.getShedBehavior(deviceId),
-    getDynamicSoftLimitOverride: () => app.getDynamicSoftLimitOverride(),
-    markSteppedLoadDesiredStepIssued: (params) => app.markSteppedLoadDesiredStepIssued(params),
-    logTargetRetryComparison: (params) => app.logTargetRetryComparison?.(params),
-    syncLivePlanStateAfterTargetActuation: (source) => app.syncLivePlanStateAfterTargetActuation?.(source),
-    deviceDiagnostics: app.deviceDiagnostics,
-    structuredLog: app.structuredLog?.child({ component: 'plan' }),
-    debugStructured: app.debugStructured,
-    log: (...args: unknown[]) => app.log(...args),
-    logDebug: (...args: unknown[]) => app.logDebug('plan', ...args),
-    error: (...args: unknown[]) => app.error(...args),
+    homey: ctx.homey,
+    deviceManager: requireDeviceManager(ctx),
+    getCapacityGuard: () => ctx.capacityGuard,
+    getCapacitySettings: () => ctx.capacitySettings,
+    getCapacityDryRun: () => ctx.capacityDryRun,
+    getOperatingMode: () => ctx.operatingMode,
+    getModeDeviceTargets: () => ctx.modeDeviceTargets,
+    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
+    getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,
+    isCurrentHourCheap: () => ctx.isCurrentHourCheap(),
+    isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
+    getPowerTracker: () => ctx.powerTracker,
+    getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
+    getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
+    getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
+    getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
+    markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
+    logTargetRetryComparison: (params) => ctx.logTargetRetryComparison?.(params),
+    syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
+    deviceDiagnostics: ctx.deviceDiagnosticsService as DeviceDiagnosticsRecorder | undefined,
+    structuredLog: ctx.getStructuredLogger('plan'),
+    debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
+    log: (...args: unknown[]) => ctx.log(...args),
+    logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
+    error: (...args: unknown[]) => ctx.error(...args),
   });
 }
 
-export type PlanServiceInitApp = {
-  homey: Homey.App['homey'];
-  planEngine: PlanEngine;
-  scheduler?: PlanRebuildScheduler;
-  getCapacityDryRun: () => boolean;
-  getLastPowerUpdate: () => number | null;
-  getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
-  resolveManagedState: (deviceId: string) => boolean;
-  isCapacityControlEnabled: (deviceId: string) => boolean;
-  isBudgetExempt: (deviceId: string) => boolean;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
-  schedulePostActuationRefresh?: () => void;
-  log: (...args: unknown[]) => void;
-  logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  structuredLog?: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
-  overviewDebugStructured?: StructuredDebugEmitter;
-  isOverviewDebugEnabled?: () => boolean;
-  isPlanDebugEnabled?: () => boolean;
-};
-
-export function createPlanService(app: PlanServiceInitApp): PlanService {
+export function createPlanService(ctx: AppContext): PlanService {
   return new PlanService({
-    homey: app.homey,
-    planEngine: app.planEngine,
-    scheduler: app.scheduler,
-    getPlanDevices: () => app.getLatestTargetSnapshot().map((device) => ({
-      ...device,
-      hasBinaryControl: resolveHasBinaryControl(device),
-      observationStale: isDeviceObservationStale(device),
-      managed: app.resolveManagedState(device.id),
-      controllable: app.isCapacityControlEnabled(device.id),
-      budgetExempt: app.isBudgetExempt(device.id),
-      binaryCommandPending: (
-        app.planEngine.isBinaryCommandPendingForDevice?.(device.id, device.communicationModel) ?? false
-      ),
-    })).filter((device) => device.managed !== false),
-    getCapacityDryRun: () => app.getCapacityDryRun(),
-    log: (...args: unknown[]) => app.log(...args),
-    logDebug: (...args: unknown[]) => app.logDebug('plan', ...args),
-    error: (...args: unknown[]) => app.error(...args),
-    isCurrentHourCheap: () => app.isCurrentHourCheap(),
-    isCurrentHourExpensive: () => app.isCurrentHourExpensive(),
-    getCombinedPrices: () => app.homey.settings.get(COMBINED_PRICES) as unknown,
-    getLastPowerUpdate: () => app.getLastPowerUpdate(),
-    schedulePostActuationRefresh: app.schedulePostActuationRefresh,
-    structuredLog: app.structuredLog?.child({ component: 'plan' }),
-    debugStructured: app.debugStructured,
-    overviewDebugStructured: app.overviewDebugStructured,
-    isOverviewDebugEnabled: app.isOverviewDebugEnabled,
-    isPlanDebugEnabled: app.isPlanDebugEnabled,
+    homey: ctx.homey,
+    planEngine: requirePlanEngine(ctx),
+    scheduler: ctx.planRebuildScheduler,
+    getPlanDevices: () => ctx.latestTargetSnapshot
+      .map((device) => toPlanDevice(ctx, device))
+      .filter((device) => device.managed !== false),
+    getCapacityDryRun: () => ctx.capacityDryRun,
+    log: (...args: unknown[]) => ctx.log(...args),
+    logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
+    error: (...args: unknown[]) => ctx.error(...args),
+    isCurrentHourCheap: () => ctx.isCurrentHourCheap(),
+    isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
+    getCombinedPrices: () => ctx.homey.settings.get(COMBINED_PRICES) as unknown,
+    getLastPowerUpdate: () => ctx.powerTracker.lastTimestamp ?? null,
+    schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
+    structuredLog: ctx.getStructuredLogger('plan'),
+    debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
+    overviewDebugStructured: ctx.getStructuredDebugEmitter('overview', 'overview'),
+    isOverviewDebugEnabled: () => ctx.debugLoggingTopics.has('overview'),
+    isPlanDebugEnabled: () => ctx.debugLoggingTopics.has('plan'),
+  });
+}
+
+export function registerAppFlowCards(ctx: AppContext): void {
+  registerFlowCards({
+    homey: requireFlowHomey(ctx),
+    resolveModeName: (mode) => ctx.resolveModeName(mode),
+    getAllModes: () => ctx.getAllModes(),
+    getCurrentOperatingMode: () => ctx.operatingMode,
+    handleOperatingModeChange: (rawMode) => ctx.handleOperatingModeChange(rawMode),
+    getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
+    recordPowerSample: (powerW) => {
+      if (ctx.homey.settings.get('power_source') === 'homey_energy') return Promise.resolve();
+      return ctx.recordPowerSample(powerW);
+    },
+    getCapacityGuard: () => ctx.capacityGuard,
+    getHeadroom: () => ctx.capacityGuard?.getHeadroom() ?? null,
+    setCapacityLimit: (kw) => ctx.capacityGuard?.setLimit(kw),
+    getSnapshot: () => ctx.getFlowSnapshot(),
+    refreshSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
+    reportSteppedLoadActualStep: (deviceId, stepId) => (
+      ctx.deviceControlHelpers.reportSteppedLoadActualStep(deviceId, stepId)
+    ),
+    getDeviceLoadSetting: (deviceId) => ctx.getDeviceLoadSetting(deviceId),
+    setExpectedOverride: (deviceId, kw) => ctx.setExpectedOverride(deviceId, kw),
+    storeFlowPriceData: (kind, raw) => ctx.storeFlowPriceData(kind, raw),
+    rebuildPlan: (source) => ctx.requestFlowPlanRebuild(source),
+    evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),
+    loadDailyBudgetSettings: () => ctx.dailyBudgetService?.loadSettings(),
+    updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
+    getCombinedHourlyPrices: () => ctx.getCombinedHourlyPrices(),
+    getTimeZone: () => ctx.getTimeZone(),
+    getNow: () => ctx.getNow(),
+    log: (...args: unknown[]) => ctx.log(...args),
+    logDebug: (...args: unknown[]) => ctx.logDebug('settings', ...args),
+    error: (...args: unknown[]) => ctx.error(...args),
+  });
+}
+
+export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
+  return new PriceCoordinator({
+    homey: ctx.homey,
+    getHomeyEnergyApi: () => resolveHomeyEnergyApiFromSdk(ctx.homey),
+    getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
+    rebuildPlanFromCache: async (reason) => {
+      await ctx.planService?.rebuildPlanFromCache(reason);
+    },
+    log: (...args: unknown[]) => ctx.log(...args),
+    logDebug: (...args: unknown[]) => ctx.logDebug('price', ...args),
+    error: (...args: unknown[]) => ctx.error(...args),
+    structuredLog: ctx.getStructuredLogger('price'),
   });
 }
 
@@ -176,98 +160,16 @@ function resolveHasBinaryControl(device: TargetDeviceSnapshot): boolean {
   return device.capabilities.some((capabilityId) => capabilityId === 'onoff' || capabilityId === 'evcharger_charging');
 }
 
-export type FlowCardInitApp = {
-  homey: Homey.App['homey'];
-  resolveModeName: (mode: string) => string;
-  getAllModes: () => Set<string>;
-  getOperatingMode: () => string;
-  handleOperatingModeChange: (rawMode: string) => Promise<void>;
-  getCurrentPriceLevel: () => PriceLevel;
-  recordPowerSample: (powerW: number) => Promise<void>;
-  capacityGuard?: CapacityGuard;
-  getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;
-  refreshTargetDevicesSnapshot: () => Promise<void>;
-  reportSteppedLoadActualStep: (
-    deviceId: string,
-    stepId: string,
-  ) => Promise<ReportSteppedLoadActualStepResult> | ReportSteppedLoadActualStepResult;
-  getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
-  setExpectedOverride: (deviceId: string, kw: number) => boolean;
-  storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
-    dateKey: string;
-    storedCount: number;
-    missingHours: number[];
+function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
+  return {
+    ...device,
+    hasBinaryControl: resolveHasBinaryControl(device),
+    observationStale: isDeviceObservationStale(device),
+    managed: ctx.resolveManagedState(device.id),
+    controllable: ctx.isCapacityControlEnabled(device.id),
+    budgetExempt: ctx.isBudgetExempt(device.id),
+    binaryCommandPending: (
+      ctx.planEngine?.isBinaryCommandPendingForDevice?.(device.id, device.communicationModel) ?? false
+    ),
   };
-  requestFlowPlanRebuild: (source: string) => void;
-  evaluateHeadroomForDevice: (params: {
-    devices: HeadroomCardDeviceLike[];
-    deviceId: string;
-    device?: HeadroomCardDeviceLike;
-    headroom: number;
-    requiredKw: number;
-    cleanupMissingDevices?: boolean;
-  }) => HeadroomForDeviceDecision | null;
-  loadDailyBudgetSettings: () => void;
-  updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
-  getCombinedHourlyPrices: () => unknown;
-  getTimeZone: () => string;
-  getNow: () => Date;
-  log: (...args: unknown[]) => void;
-  logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-};
-
-export function registerAppFlowCards(app: FlowCardInitApp): void {
-  registerFlowCards({
-    homey: app.homey as FlowHomeyLike,
-    resolveModeName: (mode) => app.resolveModeName(mode),
-    getAllModes: () => app.getAllModes(),
-    getCurrentOperatingMode: () => app.getOperatingMode(),
-    handleOperatingModeChange: (rawMode) => app.handleOperatingModeChange(rawMode),
-    getCurrentPriceLevel: () => app.getCurrentPriceLevel(),
-    recordPowerSample: (powerW) => app.recordPowerSample(powerW),
-    getCapacityGuard: () => app.capacityGuard,
-    getHeadroom: () => app.capacityGuard?.getHeadroom() ?? null,
-    setCapacityLimit: (kw) => app.capacityGuard?.setLimit(kw),
-    getSnapshot: () => app.getFlowSnapshot(),
-    refreshSnapshot: () => app.refreshTargetDevicesSnapshot(),
-    reportSteppedLoadActualStep: (deviceId, stepId) => app.reportSteppedLoadActualStep(deviceId, stepId),
-    getDeviceLoadSetting: (deviceId) => app.getDeviceLoadSetting(deviceId),
-    setExpectedOverride: (deviceId, kw) => app.setExpectedOverride(deviceId, kw),
-    storeFlowPriceData: (kind, raw) => app.storeFlowPriceData(kind, raw),
-    rebuildPlan: (source) => app.requestFlowPlanRebuild(source),
-    evaluateHeadroomForDevice: (params) => app.evaluateHeadroomForDevice(params),
-    loadDailyBudgetSettings: () => app.loadDailyBudgetSettings(),
-    updateDailyBudgetState: (options) => app.updateDailyBudgetState(options),
-    getCombinedHourlyPrices: () => app.getCombinedHourlyPrices(),
-    getTimeZone: () => app.getTimeZone(),
-    getNow: () => app.getNow(),
-    log: (...args: unknown[]) => app.log(...args),
-    logDebug: (...args: unknown[]) => app.logDebug('settings', ...args),
-    error: (...args: unknown[]) => app.error(...args),
-  });
-}
-
-export type PriceCoordinatorInitApp = {
-  homey: Homey.App['homey'];
-  getHomeyEnergyApi: () => HomeyEnergyApi | null;
-  getCurrentPriceLevel: () => PriceLevel;
-  rebuildPlanFromCache: (reason?: string) => Promise<void>;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  structuredLog?: PinoLogger;
-};
-
-export function createPriceCoordinator(app: PriceCoordinatorInitApp): PriceCoordinator {
-  return new PriceCoordinator({
-    homey: app.homey,
-    getHomeyEnergyApi: () => app.getHomeyEnergyApi(),
-    getCurrentPriceLevel: () => app.getCurrentPriceLevel(),
-    rebuildPlanFromCache: (reason) => app.rebuildPlanFromCache(reason),
-    log: (...args: unknown[]) => app.log(...args),
-    logDebug: (...args: unknown[]) => app.logDebug(...args),
-    error: (...args: unknown[]) => app.error(...args),
-    structuredLog: app.structuredLog?.child({ component: 'price' }),
-  });
 }

@@ -29,8 +29,8 @@ import {
   OVERSHOOT_BEHAVIORS,
 } from '../utils/settingsKeys';
 import type { PriceCoordinator } from '../price/priceCoordinator';
-import type CapacityGuard from '../core/capacityGuard';
 import type { SettingsHandler } from '../utils/settingsHandlers';
+import type { AppContext } from './appContext';
 
 export type CapacitySettingsSnapshot = {
   capacitySettings: { limitKw: number; marginKw: number };
@@ -125,90 +125,43 @@ export function loadCapacitySettingsFromHomey(params: {
   return buildCapacitySettingsSnapshot({ settings, current });
 }
 
-export function initSettingsHandlerForApp(params: {
-  homey: Homey.App['homey'];
-  getOperatingMode: () => string;
-  notifyOperatingModeChanged: (mode: string) => void;
-  loadCapacitySettings: () => void;
-  rebuildPlanFromCache: (reason?: string) => Promise<void>;
-  refreshTargetDevicesSnapshot: () => Promise<void>;
-  loadPowerTracker: () => void;
-  getCapacityGuard: () => CapacityGuard | undefined;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
-  getCapacityDryRun: () => boolean;
-  loadPriceOptimizationSettings: () => void;
-  loadDailyBudgetSettings: () => void;
-  updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
-  resetDailyBudgetLearning: () => void;
-  priceService: PriceCoordinator;
-  updatePriceOptimizationEnabled: (logChange?: boolean) => void;
-  updateOverheadToken: (value?: number) => Promise<void>;
-  updateDebugLoggingEnabled: (logChange?: boolean) => void;
-  getExperimentalEvSupportEnabled: () => boolean;
-  disableManagedEvDevices: () => void;
-  restartHomeyEnergyPoll?: () => void;
-  log: (message: string) => void;
-  error: (message: string, error: Error) => void;
-}): { handle: SettingsHandler; stop: () => void } {
-  const {
-    homey,
-    getOperatingMode,
-    notifyOperatingModeChanged,
-    loadCapacitySettings,
-    rebuildPlanFromCache,
-    refreshTargetDevicesSnapshot,
-    loadPowerTracker,
-    getCapacityGuard,
-    getCapacitySettings,
-    getCapacityDryRun,
-    loadPriceOptimizationSettings,
-    loadDailyBudgetSettings,
-    updateDailyBudgetState,
-    resetDailyBudgetLearning,
-    priceService,
-    updatePriceOptimizationEnabled,
-    updateOverheadToken,
-    updateDebugLoggingEnabled,
-    getExperimentalEvSupportEnabled,
-    disableManagedEvDevices,
-    restartHomeyEnergyPoll,
-    log,
-    error,
-  } = params;
+export function initSettingsHandlerForApp(ctx: AppContext): { handle: SettingsHandler; stop: () => void } {
   const settingsHandler = createSettingsHandler({
-    homey,
-    loadCapacitySettings,
-    rebuildPlanFromCache,
-    refreshTargetDevicesSnapshot,
-    loadPowerTracker,
-    getCapacityGuard,
-    getCapacitySettings,
-    getCapacityDryRun,
-    loadPriceOptimizationSettings,
-    loadDailyBudgetSettings,
-    updateDailyBudgetState,
-    resetDailyBudgetLearning,
-    priceService,
-    updatePriceOptimizationEnabled,
-    updateOverheadToken,
-    updateDebugLoggingEnabled,
-    getExperimentalEvSupportEnabled,
-    disableManagedEvDevices,
-    restartHomeyEnergyPoll,
-    log,
-    errorLog: (message: string, err: unknown) => error(message, err as Error),
+    homey: ctx.homey,
+    loadCapacitySettings: ctx.loadCapacitySettings,
+    rebuildPlanFromCache: async (reason) => {
+      await ctx.planService?.rebuildPlanFromCache(reason);
+    },
+    refreshTargetDevicesSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
+    loadPowerTracker: () => ctx.loadPowerTracker(),
+    getCapacityGuard: () => ctx.capacityGuard,
+    getCapacitySettings: () => ctx.capacitySettings,
+    getCapacityDryRun: () => ctx.capacityDryRun,
+    loadPriceOptimizationSettings: ctx.loadPriceOptimizationSettings,
+    loadDailyBudgetSettings: () => ctx.dailyBudgetService?.loadSettings(),
+    updateDailyBudgetState: (options) => ctx.dailyBudgetService?.updateState(options),
+    resetDailyBudgetLearning: () => ctx.dailyBudgetService?.resetLearning(),
+    priceService: ctx.priceCoordinator as PriceCoordinator,
+    updatePriceOptimizationEnabled: ctx.updatePriceOptimizationEnabled,
+    updateOverheadToken: ctx.updateOverheadToken,
+    updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,
+    getExperimentalEvSupportEnabled: () => ctx.experimentalEvSupportEnabled,
+    disableManagedEvDevices: ctx.disableManagedEvDevices,
+    restartHomeyEnergyPoll: () => ctx.homeyEnergyHelpers.restart(),
+    log: (message: string) => ctx.log(message),
+    errorLog: (message: string, err: unknown) => ctx.error(message, err as Error),
   });
   const onSettingsSet = async (key: string) => {
     await settingsHandler?.(key);
     if (key === OPERATING_MODE_SETTING) {
-      notifyOperatingModeChanged(getOperatingMode());
+      ctx.notifyOperatingModeChanged(ctx.operatingMode);
     }
   };
-  homey.settings.on('set', onSettingsSet);
+  ctx.homey.settings.on('set', onSettingsSet);
   return {
     handle: settingsHandler,
     stop: () => {
-      homey.settings.off('set', onSettingsSet);
+      ctx.homey.settings.off('set', onSettingsSet);
       settingsHandler.stop();
     },
   };
