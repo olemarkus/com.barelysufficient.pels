@@ -315,7 +315,11 @@ export class PlanExecutor {
   }
 
   private async applyShedOff(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
-    if (resolveEffectiveCurrentOn(dev) === false) return { handled: true, wrote: false };
+    const snapshot = this.latestTargetSnapshot.find((entry) => entry.id === dev.id);
+    const currentOn = typeof snapshot?.currentOn === 'boolean'
+      ? snapshot.currentOn
+      : resolveEffectiveCurrentOn(dev);
+    if (currentOn === false) return { handled: true, wrote: false };
     const reason = dev.reason;
     const isSwap = reason ? reason.includes('swapped out for') : false;
     return {

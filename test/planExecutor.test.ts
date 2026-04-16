@@ -1860,6 +1860,41 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   // -------------------------------------------------------------------------
 
   describe('turn_off shed actuation (Group 2 executor / Regression 5.1)', () => {
+    it('uses raw snapshot state for binary shed-off when decorated currentState is stale', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: true,
+        },
+      ];
+      const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions({
+        meta: {
+          totalKw: 1,
+          softLimitKw: 5,
+          headroomKw: 4,
+        },
+        devices: [
+          {
+            id: 'dev-1',
+            name: 'Tank',
+            currentState: 'off',
+            plannedState: 'shed',
+            currentTarget: 21,
+            plannedTarget: 21,
+            controllable: true,
+          },
+        ],
+      });
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    });
+
     // Test 2.4: binary is already off; the executor must not re-enable it.
     it('does not re-enable binary when device is already off at a non-lowest step', async () => {
       const snapshot = [

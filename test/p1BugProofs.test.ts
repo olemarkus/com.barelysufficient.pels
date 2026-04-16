@@ -260,7 +260,7 @@ describe('P1 bug proofs', () => {
     );
   });
 
-  it.fails('uses raw onoff state, not stale currentState, when deciding whether a shed device still needs an off command', async () => {
+  it('uses raw onoff state, not stale currentState, when deciding whether a shed device still needs an off command', async () => {
     const { executor, deviceManager } = buildExecutor([{
       id: 'dev-1',
       name: 'Heater',
