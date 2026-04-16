@@ -5,12 +5,6 @@ file.
 
 ## P0 Correctness and control integrity
 
-- [ ] Keep monitoring restore optimism under real load. The big restore-overshoot loop fixes are
-      in, and the overshoot diagnostics now include plan/power sample age fields, but field logs
-      still need watching for cases where delayed element ramp or stale power samples admit a
-      restore too early.
-      Files: `lib/plan/planRestoreAdmission.ts`, `lib/plan/planRestoreSwap.ts`,
-      `lib/plan/planConstants.ts`.
 - [x] Move direct capability writes to the same confirmation-first model as binary settle and
       stepped-load callbacks so temperature and other writable capabilities do not rely on
       post-actuation polling as the normal success path.
@@ -42,10 +36,6 @@ file.
 - [x] Fix price-optimization transition logging at hour boundaries so logs reflect the resulting
       state, not the previous one.
       Files: price optimization transition logic and tests.
-- [ ] Audit suspicious long overshoot durations and confirm whether they were genuine slow
-      recovery or stale lifecycle state. The new overshoot diagnostics now include plan and power
-      sample age fields to make that call easier.
-      Files: overshoot lifecycle/state handling, incident tests/log review.
 - [ ] Sweep logging and diagnostics to ensure `deviceId` is always the identity field and
       `deviceName` stays a plain label without `name || id` fallback rewriting.
       Files: structured logging call sites, diagnostics helpers, executor/reconcile logging.
