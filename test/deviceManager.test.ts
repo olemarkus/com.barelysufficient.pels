@@ -1361,6 +1361,46 @@ describe('DeviceManager', () => {
             }
         });
 
+        it('drops a pending binary settle window when a device.update removes the device before expiry', async () => {
+            vi.useFakeTimers();
+            try {
+                mockApiGet.mockResolvedValue({
+                    dev1: {
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['measure_power', 'onoff'],
+                        capabilitiesObj: {
+                            measure_power: { value: 1000, id: 'measure_power' },
+                            onoff: { value: true, id: 'onoff' },
+                        },
+                    },
+                });
+
+                await deviceManager.refreshSnapshot();
+                const realtimeListener = vi.fn();
+                deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                await deviceManager.setCapability('dev1', 'onoff', false);
+                deviceManager.injectDeviceUpdateForTest({
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                });
+
+                await vi.advanceTimersByTimeAsync(5000);
+
+                expect(deviceManager.getSnapshot()).toEqual([]);
+                expect(realtimeListener).not.toHaveBeenCalled();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
         it('does not preserve the old desired onoff value after settle timeout when a later device.update omits the binary capability', async () => {
             vi.useFakeTimers();
             try {
