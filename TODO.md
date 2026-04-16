@@ -27,10 +27,6 @@ file.
       same device does not resolve to different power depending on which subsystem asks.
       Files: `lib/plan/planCandidatePower.ts`, `lib/plan/planRestoreSwap.ts`,
       `lib/plan/planUsage.ts`, `lib/plan/planSteppedLoad.ts`.
-- [ ] Align `currentOn` vs `currentState` handling across shedding, restore, reconcile, and
-      executor paths so binary truth and planning truth do not drift apart.
-      Files: `lib/plan/planShedding.ts`, `lib/plan/planRestoreDevices.ts`,
-      `lib/plan/planReconcileState.ts`, `lib/plan/planExecutor.ts`.
 - [ ] Standardize restore eligibility rules across normal restore, stepped restore, and swap
       restore so "can this device restore?" has one consistent answer.
       Files: `lib/plan/planRestoreDevices.ts`, `lib/plan/planRestoreSwap.ts`.
@@ -86,22 +82,20 @@ file.
       Files: settings UI device detail/settings write path.
 - [x] Add structured observability plus rate limiting for repeated Settings UI network failures.
       Files: settings UI API/client refresh paths and logging tests.
-- [ ] Rework temperature-device starvation detection to the intended-target / suppression-only
-      model captured in `notes/starvation/README.md`.
-      Files: diagnostics model/service, plan snapshot/contracts/UI, flow cards, insights.
+- [ ] Finish the starvation rollout beyond the current diagnostics implementation: add
+      per-episode / duration-threshold flow triggers, verify insights coverage, and close any
+      remaining snapshot/UI contract gaps against `notes/starvation/README.md`.
+      Files: `lib/diagnostics/**`, `flowCards/**`, `drivers/pels_insights/**`,
+      plan snapshot/contracts/UI wiring.
 
 ## P1 Simplification follow-ups
 
-- [ ] Replace the over-specified `planActivationBackoff.ts` state machine with a simple
-      exponential timer model and keep the same public diagnostics surface.
-      Why P1: low-risk deletion of complexity, and it shrinks the restore gate surface for later
-      cleanup.
-      Files: `lib/plan/planActivationBackoff.ts`, restore/shedding tests.
-- [ ] Separate decision codes from display strings in `planReasons.ts`, then fold the
-      one-consumer helper back into `lib/plan/planReasons.ts`.
-      Why P1: restore/shed behavior is harder to reason about than it should be because control
-      flow and string building are interleaved.
-      Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonHelpers.ts`.
+- [ ] Keep simplifying `planReasons.ts` so decision flow continues moving toward bounded
+      machine-readable reason codes instead of burying planner control flow in display-string
+      formatting.
+      Why P1: recent cleanup landed `planReasonStrings.ts`, but `planReasons.ts` still mixes
+      decision logic and presentation more than it should.
+      Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonStrings.ts`.
 - [ ] Move `planServiceInternals.ts` types into `lib/plan/planTypes.ts` and extract the
       snapshot-write path out of `planService.ts` so rebuild orchestration stops carrying
       persistence plumbing.
@@ -109,11 +103,12 @@ file.
       one place even though snapshot persistence is a separate concern.
       Files: `lib/plan/planService.ts`, `lib/plan/planServiceInternals.ts`,
       `lib/plan/planTypes.ts`.
-- [ ] Collapse `app.ts` wiring accumulation by extracting snapshot-refresh / Homey Energy polling
-      coordination and removing trivial pass-through delegates where services can be passed
-      directly.
-      Why P1: the main app class is now mostly lifecycle plus timers plus wrappers, which makes
-      debugging control flow more expensive than it needs to be.
+- [ ] Continue shrinking `app.ts` after the helper extractions already landed. Snapshot refresh,
+      Homey Energy polling, and stepped-load helper ownership have moved out; the remaining work
+      is to reduce lifecycle/timer/wrapper bulk and remove the remaining trivial pass-through
+      delegates where services can be passed directly.
+      Why P1: recent PRs reduced `app.ts`, but it is still the main wiring accumulation point and
+      still carries broad lifecycle plus timer orchestration.
       Files: `app.ts`, `lib/app/**`.
 - [ ] Split `packages/settings-ui/src/ui/deviceDetail.ts` by responsibility and centralize the
       repeated setting-write / refresh / error-handling flow.
@@ -150,12 +145,6 @@ file.
 
 ## P2 Simplification and cleanup
 
-- [ ] Split `planExecutor.ts` by control type once the shared behavior is stable enough that the
-      split reduces cognitive load instead of hiding bugs.
-      Files: `lib/plan/planExecutor.ts`.
-- [ ] Split the remaining large `deviceManager.ts` internals only where there is a real subsystem
-      boundary: parsing, observation tracking, and binary settle management.
-      Files: `lib/core/deviceManager.ts`.
 - [ ] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
       purely informational, simplify it aggressively.
       Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget service/plan paths.

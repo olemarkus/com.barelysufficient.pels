@@ -2,6 +2,11 @@
 
 > **Status:** Proposal (2026-04-16). Not ratified. Intended as input for a decision on whether and
 > how to tighten max-lines enforcement.
+>
+> **Snapshot warning:** the LOC figures below are mixed: some come from the original review
+> snapshot, while some rows were remeasured later as files changed. Several cited splits and
+> extractions have already landed since then, so remeasure the files before using these numbers as
+> policy input.
 
 ## Problem
 
@@ -23,9 +28,8 @@ Two waiver mechanisms are in use today, with no consistent policy for choosing b
 
 | File | Current LOC |
 |------|-------------|
-| `app.ts` | 1284 (also has a config override at 750; the pragma is redundant) |
-| `lib/core/deviceManager.ts` | 1702 |
-| `lib/plan/planExecutor.ts` | 1587 (no pragma — relies on config default; currently a lint warning) |
+| `app.ts` | 938 (still has a config override at 750; the pragma is now the main waiver) |
+| `lib/core/deviceManager.ts` | 894 |
 | `lib/plan/planBuilder.ts` | 888 |
 | `lib/plan/planService.ts` | 823 |
 | `lib/plan/planReasons.ts` | 683 |
@@ -92,7 +96,7 @@ file can be split before accepting the override.
 
 | File | Current | Shrink path |
 |------|---------|-------------|
-| `app.ts` | 1284 | Phases 4, 10, 11 (extract snapshot/polling, TimerRegistry, AppContext, delete appInit.ts). Remove the 750 config override once under 500. |
+| `app.ts` | 938 | Phases 4, 10, 11 (helper extractions partly landed; remaining work is delegate/timer/context cleanup). Remove the 750 config override once under 500. |
 | `lib/app/appPowerHelpers.ts` | 898 | Phase 8 (split into three focused modules). |
 | `lib/plan/planService.ts` | 823 | Phase 5 (extract snapshot-write + rebuild-metrics). |
 | `lib/plan/planBuilder.ts` | 888 | Extract phase helpers (context/shedding/restore/overshoot) so builder becomes orchestrator at ~300. |
@@ -107,8 +111,8 @@ file can be split before accepting the override.
 
 | File | Current | Target ceiling | Structural reason |
 |------|---------|----------------|-------------------|
-| `lib/plan/planExecutor.ts` | 1587 | 800 | Per-device-type apply dispatch. Splitting per action creates >=15 files with shared executor context; net cognitive load is higher. Extract shared helpers first, re-measure. |
-| `lib/core/deviceManager.ts` | 1702 | 800 | After Phase 7 (observation-store + parsing + settle extraction). If the post-extraction size is under 500, drop the override. |
+| `lib/plan/planExecutor.ts` | 782 | 800 | The control-type split has landed, but the remaining binary-control dispatch remains a single cohesive table to avoid the cognitive load of splitting into >=10 action files. |
+| `lib/core/deviceManager.ts` | 894 | 800 | Parsing / observation / settle extraction has already landed. Re-measure after follow-up cleanup to decide whether the override should target 800 or be dropped. |
 | `lib/diagnostics/deviceDiagnosticsService.ts` | 1135 | 700 | Stateful diagnostics orchestration. Revisit after the `notes/starvation/` rework, which may split this naturally. |
 
 The existing config overrides in `eslint.config.mjs` (`app.ts` 750, `drivers/pels_insights/device.ts`

@@ -1,5 +1,13 @@
 # Runtime complexity cleanup
 
+> Status note: this document started as a point-in-time complexity review. Several simplifications
+> called out below have already landed since the original snapshot, including
+> `planReasonStrings.ts`, the `planExecutorTarget.ts` / `planExecutorStepped.ts` split, the
+> `deviceManager` parsing / observation / binary-settle extractions, the activation-backoff
+> simplification, and the first `app.ts` helper extractions around snapshot refresh / Homey Energy
+> / stepped-load runtime ownership. Treat the raw LOC counts and any "current hotspot"
+> descriptions for those areas as historical unless remeasured before use.
+
 ## See also
 
 - [`god-file-policy.md`](god-file-policy.md) — proposal to stop granting blanket `max-lines`
@@ -33,85 +41,55 @@ reading, debugging, or modifying the system. Every change should make it easier 
 
 ## Current complexity hotspots
 
-### 1. `planActivationBackoff.ts` — 405 LOC, over-specified state machine
+### 1. `planActivationBackoff.ts` — landed
 
-Full 5-level penalty state machine with stick windows, clear windows, and diagnostic transitions.
-The problem it solves: "don't keep retrying a device that fails to activate." A simple exponential
-timer per device would cover the same cases in ~60 lines.
+This simplification has already landed via PR #401. The remaining relevance here is downstream:
+`planRestore.ts` can now be simplified without having to preserve the older backoff lifecycle
+shape.
 
-**Simplification:** Replace with exponential backoff. Block for N minutes after failure, double N
-on each failure, cap at 30 min, reset after sustained success. Emit the same diagnostic events
-from the simpler model.
+**Remaining follow-up:** none in this file; see `planRestore.ts` / restore-gate cleanup.
 
-**Risk:** Low. The public API surface is small (3 functions). Existing tests describe the desired
-behavior, not the internal state machine.
+### 2. `planReasons.ts` — partially landed
 
-**Prerequisite:** None.
+The first extraction has already landed: `planReasonStrings.ts` exists and carries some of the
+formatting burden. `planReasons.ts` is still larger and more interleaved than ideal, but the
+starting point is no longer the original monolith described in the first review.
 
-### 2. `planReasons.ts` — 683 LOC, decision logic mixed with presentation
+**Remaining simplification:** keep pushing decision flow toward machine-readable reason codes and
+collapse any leftover one-consumer formatting helpers back into a smaller `planReasons.ts` surface.
 
-Reason strings are presentation concerns interleaved with control flow. Every restore/shed path
-carries `reason:` assignments alongside decision gates. Reading the decision logic means reading
-through string interpolation.
+**Current size:** ~684 LOC.
 
-**Simplification:** Extract reason-string builders into `planReasonStrings.ts`. The decision
-functions record a machine-readable code; strings are derived separately. This also unblocks
-merging `planReasonHelpers.ts` (102 LOC, 1 consumer) into the decision file.
+### 3. `planExecutor.ts` — partially landed
 
-**Risk:** Low. Pure extraction, no logic change.
+The control-type split has already landed via PR #396. `planExecutor.ts` remains a hotspot, but
+the target-command and stepped-load pipelines no longer live in the file.
 
-**Prerequisite:** None.
+**Remaining simplification:** decide whether the remaining binary-control path should stay local or
+be extracted further once the post-split shape has settled.
 
-### 3. `planExecutor.ts` — 1587 LOC, three actuation pipelines in one file
+**Current size:** ~782 LOC after the landed split.
 
-The executor has three distinct control pipelines (binary, target-temperature, stepped-load) that
-share only the top-level dispatch. Each pipeline is internally cohesive and does not call the
-others.
+### 4. `app.ts` — partially landed, still active
 
-**Simplification:** Extract stepped-load actuation (~240 LOC) and target-command actuation
-(~300 LOC) into their own modules. The top-level dispatch and binary control stay. This follows
-the existing pattern of `planExecutorSupport.ts`.
+Snapshot refresh, Homey Energy polling, and stepped-load helper ownership have already moved out
+via PRs #397 and #398. `app.ts` is still a hotspot because it remains the lifecycle / timer /
+service-wiring accumulation point.
 
-**Risk:** Medium. The methods access executor state/deps, so they need a clean deps parameter.
-But `planExecutorSupport.ts` already shows the pattern.
+**Remaining simplification:** continue collapsing one-line delegates, introduce `TimerRegistry`,
+and replace the init-time dependency bags with `AppContext`.
 
-**Prerequisite:** None. Can happen in parallel with other phases.
+**Current size:** ~938 LOC after the helper extractions.
 
-### 4. `app.ts` — 1284 LOC, accumulation point for wiring
+### 5. `deviceManager.ts` — partially landed
 
-The app class grew by accretion. Several method groups are internally cohesive and only interact
-with the rest of the class through `this.xxx` field access:
+PR #400 landed the parsing, observation, and binary-settle extractions. `deviceManager.ts`
+remains large, but the specific split described in the original review is no longer open work.
 
-- Snapshot refresh management (~170 LOC)
-- Homey Energy polling (~50 LOC)
-- Stepped-load runtime helpers (~130 LOC)
-- One-liner delegates to services (~40 LOC of `= () => this.service.method()`)
+**Remaining simplification:** only pursue further extraction if a new subsystem boundary is clear
+after the current helper layout has settled.
 
-**Simplification:** Extract cohesive groups into existing or new app helpers. Collapse one-liner
-delegates where possible by passing services directly instead of wrapping each method.
-
-**Risk:** Medium. The methods use `this` state extensively, so extraction requires passing state
-or a context object.
-
-**Prerequisite:** None, but benefits from doing planExecutor.ts first (pattern established).
-
-### 5. `deviceManager.ts` — 1702 LOC, largest file
-
-Already delegates to 9 helper files. The remaining class contains two large internal subsystems
-that are extraction candidates:
-
-- Device parsing pipeline (~200 LOC) — pure data transformation
-- Capability observation tracking (~250 LOC) — freshness/staleness subsystem
-- Binary settle window management (~100 LOC) — pending confirmation tracking
-
-**Simplification:** Extract these three subsystems. DeviceManager keeps init, refresh, set,
-apply, realtime listener management, and public API.
-
-**Risk:** Medium-high. The observation tracking interacts with refresh timing. Needs careful
-testing.
-
-**Prerequisite:** None, but this is the most invasive split and should come after the lower-risk
-phases.
+**Current size:** ~894 LOC after the landed extractions.
 
 ### 6. `planService.ts` — 823 LOC, mixed concerns
 
@@ -244,48 +222,43 @@ Phases are ordered by: standalone value, risk, and dependency.
 
 | Phase | Target | Primary win | Risk |
 |-------|--------|-------------|------|
-| 1 | planActivationBackoff.ts | Delete ~370 lines of unnecessary complexity | Low |
+| 1 | planActivationBackoff.ts | Landed via PR #401 | Low |
 | 2 | planReasons.ts + merges | Separate decision logic from presentation | Low |
-| 3 | planExecutor.ts | Split three independent pipelines | Medium |
-| 4 | app.ts | Extract cohesive method groups | Medium |
+| 3 | planExecutor.ts | Largely landed via PR #396; binary-path follow-up remains | Medium |
+| 4 | app.ts | Helper extractions landed via PRs #397/#398; wiring cleanup remains | Medium |
 | 5 | planService.ts | Separate persistence from orchestration | Medium |
 | 6 | planRestore.ts | Collapse redundant gates | Low-medium |
-| 7 | deviceManager.ts | Extract parsing and observation tracking | Medium-high |
+| 7 | deviceManager.ts | Core internal split landed via PR #400; only further cleanup remains | Medium-high |
 | 8 | appPowerHelpers.ts | Split decision / scheduler / ingest | Medium |
 | 9 | PlanRebuildScheduler | Unify three coalescers; close rebuild race | Medium-high |
 | 10 | TimerRegistry | Eliminate timer-leak failure mode | Low |
 | 11 | AppContext + delete appInit.ts | Collapse four callback bags and the glue layer | Medium |
 
-Each phase is one PR. Phases 1-2 are low-risk and can be done first as confidence builders.
-Phases 3-5 are the main structural splits. Phase 6 is a logic simplification. Phase 7 is the
-most invasive of the original set. Phases 8-11 were added in the 2026-04-16 review; Phases 8
-and 11 both shrink `app.ts` wiring, Phase 9 depends on Phase 8, and Phase 10 is independent.
+Several phases above have already landed. The main open structural work is now Phases 5, 6, and
+8-11, with only narrower follow-up left in the earlier app/executor/deviceManager phases.
 
-Workpackages that can land in parallel: {1}, {2}, {3}, {4 ∪ 10 ∪ 11}, {5}, {6 after 1}, {7},
-{8}, {9 after 8}. The cross-file Phases 9 and 11 each conflict with `app.ts`, so land them
-sequentially relative to each other.
+Open workpackages that can still land in parallel: {2}, {5}, {6}, {8}, {9 after 8}, {10}, {11}.
+The cross-file Phases 9, 10, and 11 each conflict with `app.ts`, so land them sequentially
+relative to each other.
 
 ## P1 Simplicity Candidates
 
 If the next stretch of work explicitly prioritizes simplification, these are the strongest P1
 candidates because they remove indirection without opening a wide correctness surface:
 
-1. **Phase 1: `planActivationBackoff.ts`.** Lowest-risk deletion of complexity, and it makes the
-   later restore-gate cleanup smaller.
-2. **Phase 2: `planReasons.ts` + helper merge.** Improves debuggability immediately because the
+1. **Phase 2: `planReasons.ts` + helper merge.** Improves debuggability immediately because the
    decision path stops being buried in string-building noise.
-3. **`planService.ts` snapshot-write extraction.** Rebuild orchestration and throttled snapshot
+2. **`planService.ts` snapshot-write extraction.** Rebuild orchestration and throttled snapshot
    persistence are separate concepts and are currently coupled for convenience.
-4. **`app.ts` wiring cleanup.** The biggest local win is extracting snapshot-refresh / Homey
-   Energy polling coordination and deleting pass-through delegates where direct service access is
-   enough.
-5. **Settings UI `deviceDetail.ts`.** Not part of the original runtime cleanup, but it is now a
+3. **`app.ts` wiring cleanup.** The biggest local win now is finishing the delegate/timer/context
+   cleanup after the snapshot-refresh / Homey Energy / stepped-load helper extractions landed.
+4. **Settings UI `deviceDetail.ts`.** Not part of the original runtime cleanup, but it is now a
    real simplification candidate: render logic, stepped-load draft state, diagnostics refresh, and
    repeated `setSetting(...)` save paths all live in one file.
 
 If these get promoted, keep the same rule as above: one concept per PR. Do not bundle
-`planActivationBackoff.ts` simplification with a `planRestore.ts` gate rewrite, and do not mix
-the `app.ts` wiring cleanup with unrelated runtime behavior changes.
+the `planRestore.ts` gate rewrite with unrelated correctness work, and do not mix the remaining
+`app.ts` wiring cleanup with unrelated runtime behavior changes.
 
 ---
 
@@ -310,25 +283,23 @@ Items from the original refactoring spec that are deferred or dropped:
 
 ## Progress
 
-### Phase 1: Simplify planActivationBackoff
-- [ ] Replace state machine with exponential timer (~60 LOC)
-- [ ] Preserve same public API and diagnostic events
-- [ ] Verify existing backoff tests pass against new implementation
+### Landed
+- [x] Phase 1: simplify `planActivationBackoff` via PR #401
+- [x] Phase 3: split `planExecutor` by control type via PR #396
+- [x] Phase 4 (partial): extract snapshot refresh / Homey Energy / stepped-load runtime helpers
+      from `app.ts` via PRs #397 and #398
+- [x] Phase 7: extract `deviceManager` parsing / observation / binary-settle internals via PR #400
 
-### Phase 2: Split planReasons + merges
-- [ ] Extract reason-string builders into planReasonStrings.ts
-- [ ] Merge planReasonHelpers.ts into planReasons.ts
-- [ ] Move planServiceInternals.ts types into planTypes.ts
+### Phase 2: Continue planReasons cleanup
+- [x] Extract reason-string builders into `planReasonStrings.ts`
+- [ ] Keep moving restore/shed decisions toward bounded machine-readable codes
+- [ ] Re-measure whether `planReasonStrings.ts` should stay separate or be folded back once the
+      remaining formatting surface is smaller
 
-### Phase 3: Split planExecutor
-- [ ] Extract stepped-load actuation into planExecutorStepped.ts
-- [ ] Extract target-command actuation into planExecutorTarget.ts
-
-### Phase 4: Split app.ts
-- [ ] Extract snapshot refresh management
-- [ ] Extract Homey Energy polling
-- [ ] Absorb stepped-load helpers into appDeviceControlHelpers.ts
+### Phase 4 follow-up: continue shrinking app.ts
 - [ ] Collapse one-liner delegates
+- [ ] Re-measure whether any cohesive runtime helper groups still justify extraction before
+      moving to `TimerRegistry` / `AppContext`
 
 ### Phase 5: Split planService
 - [ ] Extract snapshot-write subsystem into planSnapshotWriter.ts
@@ -337,11 +308,6 @@ Items from the original refactoring spec that are deferred or dropped:
 ### Phase 6: Collapse planRestore gates
 - [ ] Merge swap + pending-swap gates
 - [ ] Merge waiting + activation-setback gates where applicable
-
-### Phase 7: Split deviceManager
-- [ ] Extract device parsing pipeline
-- [ ] Extract capability observation tracking
-- [ ] Extract binary settle window management
 
 ### Phase 8: Split appPowerHelpers
 - [ ] Coverage audit of `test/appPowerHelpers.test.ts` for every backoff/holdoff branch

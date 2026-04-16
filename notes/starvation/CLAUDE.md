@@ -1,6 +1,10 @@
 # Temperature Device Starvation — Invariants
 
-Partial starvation tracking exists in `lib/diagnostics/deviceDiagnosticsService.ts`, but the full model (intended-target suppression-only detection, per-episode flow triggers) is not yet complete — see `TODO.md` and `notes/starvation/README.md` for remaining work.
+The core intended-target / suppression-only diagnostics model now exists in
+`lib/plan/planDiagnostics.ts` and `lib/diagnostics/deviceDiagnosticsService.ts`, but the full
+rollout is not complete yet. The main remaining work is per-episode / duration-threshold flow
+triggers plus any remaining insights/UI integration gaps — see `TODO.md` and
+`notes/starvation/README.md`.
 
 **Scope:** managed temperature-driven devices only (room thermostats, water heaters). Not EV chargers or generic binary loads.
 
