@@ -2480,4 +2480,23 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(persistSpy).toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('clears the one-shot prune timer registry entry after the initial prune fires', async () => {
+    vi.useFakeTimers();
+    const app = createApp();
+    const pruneSpy = vi.spyOn(app as any, 'prunePowerTrackerHistory').mockImplementation(() => {});
+
+    try {
+      (app as any).startPowerTrackerPruning();
+
+      expect((app as any).timers.has('powerTrackerPruneInitial')).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(10 * 1000);
+
+      expect(pruneSpy).toHaveBeenCalledTimes(1);
+      expect((app as any).timers.has('powerTrackerPruneInitial')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

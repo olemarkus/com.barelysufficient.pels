@@ -3,6 +3,27 @@ import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
 import type { AppContext } from './appContext';
 
+function requirePriceCoordinator(ctx: AppContext) {
+  if (!ctx.priceCoordinator) {
+    throw new Error('PriceCoordinator must be initialized before app services start.');
+  }
+  return ctx.priceCoordinator;
+}
+
+function requirePlanService(ctx: AppContext) {
+  if (!ctx.planService) {
+    throw new Error('PlanService must be initialized before app services start.');
+  }
+  return ctx.planService;
+}
+
+function requireDailyBudgetService(ctx: AppContext) {
+  if (!ctx.dailyBudgetService) {
+    throw new Error('DailyBudgetService must be initialized before app services start.');
+  }
+  return ctx.dailyBudgetService;
+}
+
 const runBackgroundTask = (
   label: string,
   work: () => void | Promise<void>,
@@ -25,15 +46,22 @@ const scheduleBackgroundTask = (
   label: string,
   work: () => void | Promise<void>,
   logError?: (label: string, error: Error) => void,
-  delayMs = 0,
+  options?: {
+    delayMs?: number;
+    timerName?: string;
+    ctx?: Pick<AppContext, 'timers'>;
+  },
 ): void => {
+  const { delayMs = 0, timerName = label, ctx } = options ?? {};
   if (delayMs <= 0) {
     runBackgroundTask(label, work, logError);
     return;
   }
   const timeout = setTimeout(() => {
+    ctx?.timers.clear(timerName);
     runBackgroundTask(label, work, logError);
   }, delayMs);
+  ctx?.timers.registerTimeout(timerName, timeout);
   (timeout as { unref?: () => void }).unref?.();
 };
 
@@ -70,6 +98,9 @@ export const runStartupStep = async <T>(
 
 export async function startAppServices(ctx: AppContext): Promise<void> {
   const appContext = ctx;
+  const priceCoordinator = requirePriceCoordinator(appContext);
+  const planService = requirePlanService(appContext);
+  const dailyBudgetService = requireDailyBudgetService(appContext);
   const {
     logStartupStepFailure: logError,
     snapshotPlanBootstrapDelayMs = 0,
@@ -92,31 +123,31 @@ export async function startAppServices(ctx: AppContext): Promise<void> {
   };
   await runStep('loadPowerTracker', async () => appContext.loadPowerTracker({ skipDailyBudgetUpdate: true }));
   await runStep('loadPriceOptimizationSettings', async () => appContext.loadPriceOptimizationSettings());
-  await runStep('initOptimizer', async () => appContext.priceCoordinator?.initOptimizer());
+  await runStep('initOptimizer', async () => priceCoordinator.initOptimizer());
   await runStep('startHeartbeat', async () => appContext.startHeartbeat());
   scheduleBackgroundTask(
     'startup_update_overhead_token',
     () => appContext.updateOverheadToken(),
     logError,
-    overheadTokenDelayMs,
+    { delayMs: overheadTokenDelayMs, timerName: 'startupUpdateOverheadToken', ctx: appContext },
   );
   appContext.registerFlowCards();
   appContext.snapshotHelpers.startPeriodicSnapshotRefresh();
   appContext.homeyEnergyHelpers.start();
-  appContext.priceCoordinator?.startPriceRefresh();
+  priceCoordinator.startPriceRefresh();
   const bootstrapSnapshotAndPlan = async (): Promise<void> => {
-    appContext.dailyBudgetService?.updateState({ refreshObservedStats: false });
+    dailyBudgetService.updateState({ refreshObservedStats: false });
     await appContext.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
     incPerfCounters([
       'plan_rebuild_requested_total',
       'plan_rebuild_requested.startup_total',
     ]);
-    await appContext.planService?.rebuildPlanFromCache('startup_snapshot_bootstrap');
+    await planService.rebuildPlanFromCache('startup_snapshot_bootstrap');
   };
   const bootstrapPricePipeline = async (): Promise<void> => {
-    await appContext.priceCoordinator?.refreshSpotPrices();
-    await appContext.priceCoordinator?.refreshGridTariffData();
-    await appContext.priceCoordinator?.startPriceOptimization(applyPriceOptimizationImmediatelyOnStart);
+    await priceCoordinator.refreshSpotPrices();
+    await priceCoordinator.refreshGridTariffData();
+    await priceCoordinator.startPriceOptimization(applyPriceOptimizationImmediatelyOnStart);
   };
 
   if (runSnapshotPlanBootstrapInBackground) {
@@ -124,7 +155,11 @@ export async function startAppServices(ctx: AppContext): Promise<void> {
       'startup_snapshot_and_plan_bootstrap',
       bootstrapSnapshotAndPlan,
       logError,
-      snapshotPlanBootstrapDelayMs,
+      {
+        delayMs: snapshotPlanBootstrapDelayMs,
+        timerName: 'startupSnapshotAndPlanBootstrap',
+        ctx: appContext,
+      },
     );
   } else {
     await runStep('startupSnapshotPlanBootstrap', bootstrapSnapshotAndPlan);

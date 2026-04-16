@@ -125,12 +125,35 @@ export function loadCapacitySettingsFromHomey(params: {
   return buildCapacitySettingsSnapshot({ settings, current });
 }
 
+function requirePriceCoordinator(ctx: AppContext): PriceCoordinator {
+  if (!ctx.priceCoordinator) {
+    throw new Error('PriceCoordinator must be initialized before settings handler setup.');
+  }
+  return ctx.priceCoordinator;
+}
+
+function requirePlanService(ctx: AppContext) {
+  if (!ctx.planService) {
+    throw new Error('PlanService must be initialized before settings handler setup.');
+  }
+  return ctx.planService;
+}
+
+function requireDailyBudgetService(ctx: AppContext) {
+  if (!ctx.dailyBudgetService) {
+    throw new Error('DailyBudgetService must be initialized before settings handler setup.');
+  }
+  return ctx.dailyBudgetService;
+}
+
 export function initSettingsHandlerForApp(ctx: AppContext): { handle: SettingsHandler; stop: () => void } {
+  const planService = requirePlanService(ctx);
+  const dailyBudgetService = requireDailyBudgetService(ctx);
   const settingsHandler = createSettingsHandler({
     homey: ctx.homey,
     loadCapacitySettings: ctx.loadCapacitySettings,
     rebuildPlanFromCache: async (reason) => {
-      await ctx.planService?.rebuildPlanFromCache(reason);
+      await planService.rebuildPlanFromCache(reason);
     },
     refreshTargetDevicesSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
     loadPowerTracker: () => ctx.loadPowerTracker(),
@@ -138,10 +161,10 @@ export function initSettingsHandlerForApp(ctx: AppContext): { handle: SettingsHa
     getCapacitySettings: () => ctx.capacitySettings,
     getCapacityDryRun: () => ctx.capacityDryRun,
     loadPriceOptimizationSettings: ctx.loadPriceOptimizationSettings,
-    loadDailyBudgetSettings: () => ctx.dailyBudgetService?.loadSettings(),
-    updateDailyBudgetState: (options) => ctx.dailyBudgetService?.updateState(options),
-    resetDailyBudgetLearning: () => ctx.dailyBudgetService?.resetLearning(),
-    priceService: ctx.priceCoordinator as PriceCoordinator,
+    loadDailyBudgetSettings: () => dailyBudgetService.loadSettings(),
+    updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
+    resetDailyBudgetLearning: () => dailyBudgetService.resetLearning(),
+    priceService: requirePriceCoordinator(ctx),
     updatePriceOptimizationEnabled: ctx.updatePriceOptimizationEnabled,
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,

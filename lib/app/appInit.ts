@@ -23,6 +23,20 @@ function requirePlanEngine(ctx: AppContext) {
   return ctx.planEngine;
 }
 
+function requirePlanService(ctx: AppContext) {
+  if (!ctx.planService) {
+    throw new Error('PlanService must be initialized before price coordinator wiring.');
+  }
+  return ctx.planService;
+}
+
+function requireDailyBudgetService(ctx: AppContext) {
+  if (!ctx.dailyBudgetService) {
+    throw new Error('DailyBudgetService must be initialized before flow card registration.');
+  }
+  return ctx.dailyBudgetService;
+}
+
 function requireFlowHomey(ctx: AppContext): FlowHomeyLike {
   const { homey } = ctx;
   if (
@@ -128,7 +142,7 @@ export function registerAppFlowCards(ctx: AppContext): void {
     storeFlowPriceData: (kind, raw) => ctx.storeFlowPriceData(kind, raw),
     rebuildPlan: (source) => ctx.requestFlowPlanRebuild(source),
     evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),
-    loadDailyBudgetSettings: () => ctx.dailyBudgetService?.loadSettings(),
+    loadDailyBudgetSettings: () => requireDailyBudgetService(ctx).loadSettings(),
     updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
     getCombinedHourlyPrices: () => ctx.getCombinedHourlyPrices(),
     getTimeZone: () => ctx.getTimeZone(),
@@ -144,9 +158,7 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     homey: ctx.homey,
     getHomeyEnergyApi: () => resolveHomeyEnergyApiFromSdk(ctx.homey),
     getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
-    rebuildPlanFromCache: async (reason) => {
-      await ctx.planService?.rebuildPlanFromCache(reason);
-    },
+    rebuildPlanFromCache: (reason) => requirePlanService(ctx).rebuildPlanFromCache(reason).then(() => undefined),
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('price', ...args),
     error: (...args: unknown[]) => ctx.error(...args),
