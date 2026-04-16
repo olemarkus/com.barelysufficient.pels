@@ -1,41 +1,24 @@
-/* eslint-disable max-lines --
- * Plan rendering remains centralized because device rows and meta share formatting helpers.
- */
 import { planList, planEmpty, planMeta } from './dom.ts';
 import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel } from './homey.ts';
 import { createMetaLine } from './components.ts';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator.ts';
+import {
+  formatDeviceOverview,
+  type DeviceOverviewStrings,
+  type DeviceOverviewSnapshot,
+} from '../../../shared-domain/src/deviceOverview.ts';
 import { isGrayStateDevice } from './deviceUtils.ts';
 import { setTooltip } from './tooltips.ts';
 
-type PlanDeviceSnapshot = {
+type PlanDeviceSnapshot = DeviceOverviewSnapshot & {
   id: string;
   name: string;
-  currentState: string;
-  plannedState: string;
-  controlModel?: 'temperature_target' | 'binary_power' | 'stepped_load';
-  currentTarget?: unknown;
   plannedTarget?: number | null;
   priority?: number;
-  powerKw?: number;
-  expectedPowerKw?: number;
-  measuredPowerKw?: number;
-  planningPowerKw?: number;
-  reason?: string;
   zone?: string;
-  controllable?: boolean;
   budgetExempt?: boolean;
   currentTemperature?: number;
-  available?: boolean;
-  shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
-  shedTemperature?: number | null;
-  selectedStepId?: string;
-  desiredStepId?: string;
-  actualStepId?: string;
-  assumedStepId?: string;
-  binaryCommandPending?: boolean;
-  observationStale?: boolean;
   headroomCardBlocked?: boolean;
   headroomCardCooldownSec?: number | null;
   headroomCardCooldownSource?: 'step_down' | 'pels_shed' | 'pels_restore';
@@ -271,21 +254,6 @@ const formatPlanTemp = (value: number | null | undefined): string => (
 
 const isSteppedLoadDevice = (dev: PlanDeviceSnapshot): boolean => dev.controlModel === 'stepped_load';
 
-const getDisplayedSteppedStepId = (dev: PlanDeviceSnapshot): string | undefined => (
-  dev.actualStepId ?? dev.assumedStepId ?? dev.selectedStepId
-);
-
-const getSteppedUsageStepText = (dev: PlanDeviceSnapshot): string | null => {
-  const selectedStepId = getDisplayedSteppedStepId(dev);
-  const desiredStepId = dev.desiredStepId;
-  if (!selectedStepId && !desiredStepId) return null;
-  if (!selectedStepId) return desiredStepId ? `→ ${desiredStepId}` : null;
-  if (desiredStepId && desiredStepId !== selectedStepId) {
-    return `${selectedStepId} → ${desiredStepId}`;
-  }
-  return selectedStepId;
-};
-
 const buildPlanTemperatureLine = (dev: PlanDeviceSnapshot) => {
   if (!hasPlanTempData(dev)) return null;
   const currentTemp = formatPlanTemp(dev.currentTemperature);
@@ -307,29 +275,6 @@ const buildPlanTemperatureLine = (dev: PlanDeviceSnapshot) => {
   return createMetaLine('Temperature', `${currentTemp} / target ${targetTextWithPending}`);
 };
 
-const resolvePlannedPowerState = (
-  dev: PlanDeviceSnapshot,
-  currentPowerRaw: string,
-  currentPower: string,
-): string => {
-  if (currentPowerRaw === 'not_applicable') return currentPower;
-
-  const isMinTempActive = dev.shedAction === 'set_temperature'
-    && typeof dev.shedTemperature === 'number'
-    && dev.currentTarget === dev.shedTemperature;
-
-  switch (dev.plannedState) {
-    case 'shed':
-      return dev.shedAction === 'set_temperature' ? 'on' : 'off';
-    case 'inactive':
-      return currentPowerRaw === 'unknown' ? currentPower : 'off';
-    case 'keep':
-      return isMinTempActive ? 'on' : currentPower;
-    default:
-      return dev.plannedState || currentPower;
-  }
-};
-
 const isRestoreCooldownReason = (reason: string | undefined): boolean => {
   if (!reason) return false;
   return reason.startsWith('cooldown (restore') || reason === 'restore throttled';
@@ -339,123 +284,20 @@ const isRestoreCooldownState = (dev: PlanDeviceSnapshot): boolean => (
   dev.plannedState === 'shed' && isRestoreCooldownReason(dev.reason)
 );
 
-const isActiveStatusDevice = (dev: PlanDeviceSnapshot): boolean => (
-  dev.currentState === 'not_applicable' || isOnLikeState(dev.currentState)
-);
-
-const formatActivePlanStatusReason = (reason: string): string => {
-  const restoreMatch = reason.match(/^cooldown \(restore, (.+)\)$/);
-  if (restoreMatch) {
-    return `stabilizing after restore (${restoreMatch[1]})`;
-  }
-
-  const headroomRestoreMatch = reason.match(/^headroom cooldown \((.+); recent PELS restore\)$/);
-  if (headroomRestoreMatch) {
-    return `stabilizing after recent PELS restore (${headroomRestoreMatch[1]})`;
-  }
-
-  const headroomShedMatch = reason.match(/^headroom cooldown \((.+); recent PELS shed\)$/);
-  if (headroomShedMatch) {
-    return `stabilizing after recent PELS shed (${headroomShedMatch[1]})`;
-  }
-
-  const stepDownMatch = reason.match(/^headroom cooldown \((.+); usage (.+)\)$/);
-  if (stepDownMatch) {
-    return `stabilizing after recent step-down (${stepDownMatch[1]}; usage ${stepDownMatch[2]})`;
-  }
-
-  return reason;
+const buildPlanPowerLine = (overview: DeviceOverviewStrings) => {
+  return overview.powerMsg ? createMetaLine('Power', overview.powerMsg) : null;
 };
 
-const buildPlanPowerLine = (dev: PlanDeviceSnapshot) => {
-  if (isSteppedLoadDevice(dev)) return null;
-  const currentPowerRaw = dev.currentState || 'unknown';
-  if (currentPowerRaw === 'not_applicable') return null;
-  const currentPower = currentPowerRaw === 'not_applicable' ? 'N/A' : currentPowerRaw;
-  const plannedPowerState = resolvePlannedPowerState(dev, currentPowerRaw, currentPower);
-  const powerChanging = plannedPowerState !== currentPower;
-  const powerText = powerChanging ? `${currentPower} → ${plannedPowerState}` : plannedPowerState;
-  return createMetaLine('Power', powerText);
+const buildPlanStateLine = (overview: DeviceOverviewStrings) => {
+  return createMetaLine('State', overview.stateMsg);
 };
 
-// eslint-disable-next-line sonarjs/cognitive-complexity, complexity
-const buildPlanStateLine = (dev: PlanDeviceSnapshot) => {
-  let stateText = 'Unknown';
-  const steppedRestorePending = isSteppedLoadDevice(dev)
-    && Boolean(dev.selectedStepId && dev.desiredStepId && dev.selectedStepId !== dev.desiredStepId);
-  if (dev.controllable === false) {
-    stateText = 'Capacity control off';
-    return createMetaLine('State', stateText);
-  }
-  if (isGrayStateDevice(dev)) {
-    return createMetaLine('State', dev.available === false ? 'Unavailable' : 'State unknown');
-  }
-  if (isRestoreCooldownState(dev)) {
-    stateText = isOffLikeState(dev.currentState)
-      ? 'Shed (restore cooldown)'
-      : 'Active';
-  } else if (dev.plannedState === 'shed') {
-    if (dev.shedAction === 'set_temperature') {
-      stateText = 'Shed (lowered temperature)';
-    } else if (dev.shedAction === 'set_step') {
-      stateText = dev.desiredStepId ? `Shed to ${dev.desiredStepId}` : 'Shed (reduced step)';
-    } else {
-      stateText = 'Shed (powered off)';
-    }
-  } else if (dev.plannedState === 'inactive') {
-    stateText = 'Inactive';
-  } else if (dev.plannedState === 'keep') {
-    if (dev.binaryCommandPending && isOffLikeState(dev.currentState)) {
-      stateText = 'Restore requested';
-    } else if (steppedRestorePending || isOffLikeState(dev.currentState)) {
-      stateText = 'Restoring';
-    } else if (dev.currentState === 'not_applicable') {
-      stateText = 'Active (temperature-managed)';
-    } else {
-      stateText = 'Active';
-    }
-  }
-  return createMetaLine('State', stateText);
+const buildPlanUsageLine = (overview: DeviceOverviewStrings) => {
+  return createMetaLine('Usage', overview.usageMsg);
 };
 
-const formatUsageText = (params: {
-  measuredKw?: number;
-  expectedKw?: number;
-}): string => {
-  const { measuredKw, expectedKw } = params;
-  const hasMeasured = typeof measuredKw === 'number' && Number.isFinite(measuredKw);
-  const hasExpected = typeof expectedKw === 'number' && Number.isFinite(expectedKw);
-  if (hasExpected && hasMeasured) {
-    return `Measured: ${measuredKw.toFixed(2)} kW / Expected: ${expectedKw.toFixed(2)} kW`;
-  }
-  if (hasExpected) return `Expected: ${expectedKw.toFixed(2)} kW`;
-  if (hasMeasured) return `Measured: ${measuredKw.toFixed(2)} kW`;
-  return 'Unknown';
-};
-
-const buildPlanUsageLine = (dev: PlanDeviceSnapshot) => {
-  const measuredKw = dev.measuredPowerKw;
-  const expectedKw = isSteppedLoadDevice(dev)
-    ? dev.planningPowerKw ?? dev.expectedPowerKw
-    : dev.expectedPowerKw;
-  let usageText = formatUsageText({ measuredKw, expectedKw });
-
-  if (isSteppedLoadDevice(dev)) {
-    const stepText = getSteppedUsageStepText(dev);
-    if (stepText) {
-      usageText = `${usageText} (${stepText})`;
-    }
-  }
-
-  return createMetaLine('Usage', usageText);
-};
-
-const buildPlanStatusLine = (dev: PlanDeviceSnapshot) => {
-  if (!dev.reason) return createMetaLine('Status', 'Waiting for headroom');
-  const statusText = isActiveStatusDevice(dev)
-    ? formatActivePlanStatusReason(dev.reason)
-    : dev.reason;
-  return createMetaLine('Status', statusText);
+const buildPlanStatusLine = (overview: DeviceOverviewStrings) => {
+  return createMetaLine('Status', overview.statusMsg);
 };
 
 const isOnLikeState = (value: string | undefined): boolean => {
@@ -537,6 +379,7 @@ const buildBudgetExemptChip = () => {
 };
 
 const buildPlanRow = (dev: PlanDeviceSnapshot) => {
+  const overview = formatDeviceOverview(dev);
   const row = document.createElement('li');
   row.className = 'device-row plan-row clickable';
   row.dataset.deviceId = dev.id;
@@ -556,13 +399,13 @@ const buildPlanRow = (dev: PlanDeviceSnapshot) => {
 
   const tempLine = buildPlanTemperatureLine(dev);
   if (tempLine) metaWrap.appendChild(tempLine);
-  const powerLine = buildPlanPowerLine(dev);
+  const powerLine = buildPlanPowerLine(overview);
   if (powerLine) metaWrap.appendChild(powerLine);
 
   metaWrap.append(
-    buildPlanStateLine(dev),
-    buildPlanUsageLine(dev),
-    buildPlanStatusLine(dev),
+    buildPlanStateLine(overview),
+    buildPlanUsageLine(overview),
+    buildPlanStatusLine(overview),
   );
 
   row.addEventListener('click', () => {

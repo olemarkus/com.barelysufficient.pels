@@ -13,7 +13,7 @@ const removePath = async (targetPath) => {
 await removePath(path.join(homeyBuildDir, 'node_modules', '@pels'));
 await removePath(path.join(homeyBuildDir, 'node_modules', '@napi-rs'));
 await removePath(path.join(homeyBuildDir, 'node_modules', '.bin'));
-await removePath(path.join(homeyBuildDir, 'packages'));
+await removePath(path.join(homeyBuildDir, 'packages', 'contracts'));
 await removePath(path.join(homeyBuildDir, 'package-lock.json'));
 
 try {

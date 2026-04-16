@@ -6,6 +6,11 @@ import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
+  buildDeviceOverviewTransitionSignature,
+  formatDeviceOverview,
+  getDeviceOverviewExpectedPowerKw,
+} from '../../packages/shared-domain/src/deviceOverview';
+import {
   buildPlanChangeLines,
   buildPlanCapacityStateSummary,
   buildPlanDebugSummaryEvent,
@@ -76,6 +81,8 @@ export type PlanServiceDeps = {
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
+  overviewDebugStructured?: StructuredDebugEmitter;
+  isOverviewDebugEnabled?: () => boolean;
   isPlanDebugEnabled?: () => boolean;
 };
 
@@ -87,6 +94,7 @@ export class PlanService {
   private latestPlanSnapshot: DevicePlan | null = null;
   private latestPlanSnapshotUpdatedAtMs: number | null = null;
   private latestReconcilePlanSnapshot: DevicePlan | null = null;
+  private lastOverviewSignatureByDeviceId = new Map<string, string>();
   private lastPlanSnapshotWriteMs = 0;
   private hasPendingNonActionSnapshot = false;
   private pendingNonActionSnapshotReason: Exclude<PlanSnapshotWriteReason, 'action_changed'> = 'meta_only';
@@ -523,11 +531,49 @@ export class PlanService {
   }
 
   private emitPlanUpdated(plan: DevicePlan): void {
+    this.emitOverviewTransitions(plan);
     const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
       realtime.call(api, 'plan_updated', plan)
         .catch((err: unknown) => this.deps.error('Failed to emit plan_updated event', normalizeError(err)));
+    }
+  }
+
+  private emitOverviewTransitions(plan: DevicePlan): void {
+    if (!(this.deps.isOverviewDebugEnabled?.() ?? false) || !this.deps.overviewDebugStructured) {
+      return;
+    }
+    const nextDeviceIds = new Set<string>();
+    for (const device of plan.devices) {
+      nextDeviceIds.add(device.id);
+      const overview = formatDeviceOverview(device);
+      const signature = buildDeviceOverviewTransitionSignature(overview);
+      const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
+      this.lastOverviewSignatureByDeviceId.set(device.id, signature);
+      if (signature === previousSignature) continue;
+      this.deps.overviewDebugStructured({
+        component: 'overview',
+        event: 'device_overview_changed',
+        deviceId: device.id,
+        deviceName: device.name,
+        powerMsg: overview.powerMsg,
+        stateMsg: overview.stateMsg,
+        usageMsg: overview.usageMsg,
+        statusMsg: overview.statusMsg,
+        currentState: device.currentState,
+        plannedState: device.plannedState,
+        reason: device.reason ?? null,
+        measuredPowerKw: device.measuredPowerKw ?? null,
+        expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
+        desiredStepId: device.desiredStepId ?? null,
+      });
+    }
+
+    for (const deviceId of this.lastOverviewSignatureByDeviceId.keys()) {
+      if (!nextDeviceIds.has(deviceId)) {
+        this.lastOverviewSignatureByDeviceId.delete(deviceId);
+      }
     }
   }
 

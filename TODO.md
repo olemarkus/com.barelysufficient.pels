@@ -61,6 +61,9 @@ file.
       Files: settings UI device detail/settings write path.
 - [x] Add structured observability plus rate limiting for repeated Settings UI network failures.
       Files: settings UI API/client refresh paths and logging tests.
+- [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
+      the visible device-log wording matches backend overview transition logs exactly.
+      Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
 - [ ] Finish the starvation rollout beyond the current diagnostics implementation: add
       per-episode / duration-threshold flow triggers, verify insights coverage, and close any
       remaining snapshot/UI contract gaps against `notes/starvation/README.md`.

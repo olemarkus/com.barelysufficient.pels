@@ -1,5 +1,6 @@
 export const DEBUG_LOGGING_TOPICS = [
   { id: 'plan', label: 'Plan engine', description: 'Shedding, restore, and soft-limit decisions.' },
+  { id: 'overview', label: 'Overview', description: 'UI-visible per-device overview transition logging.' },
   {
     id: 'diagnostics',
     label: 'Device diagnostics',
