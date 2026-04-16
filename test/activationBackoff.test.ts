@@ -13,7 +13,12 @@ import type { PlanContext } from '../lib/plan/planContext';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import { applyRestorePlan } from '../lib/plan/planRestore';
-import { evaluateHeadroomForDevice, syncHeadroomCardState } from '../lib/plan/planHeadroomDevice';
+import {
+  evaluateHeadroomForDevice,
+  syncHeadroomCardState,
+  syncHeadroomCardTrackedUsage,
+} from '../lib/plan/planHeadroomDevice';
+import { emitActivationTransitions } from '../lib/plan/planHeadroomState';
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
@@ -451,6 +456,7 @@ describe('activation backoff', () => {
 
     const offDevice = {
       id: 'dev-1',
+      name: 'Heater',
       currentOn: false,
       available: true,
       expectedPowerKw: 0,
@@ -522,6 +528,86 @@ describe('activation backoff', () => {
     expect(recoveredDecision?.penaltyLevel).toBe(1);
     expect(recoveredDecision?.requiredKwWithPenalty).toBeGreaterThan(3.2);
     expect(recoveredDecision?.allowed).toBe(false);
+  });
+
+  it('emits activation transitions when only the stored device name is available', () => {
+    const diagnostics = {
+      recordActivationTransition: vi.fn(),
+    };
+
+    emitActivationTransitions(
+      diagnostics as any,
+      'Heater',
+      [{
+        kind: 'attempt_closed_inactive',
+        deviceId: 'dev-1',
+        source: 'tracked_step_up',
+        penaltyLevel: 1,
+        elapsedMs: 5_000,
+        nowTs: Date.now(),
+      }],
+    );
+
+    expect(diagnostics.recordActivationTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'attempt_closed_inactive',
+        deviceId: 'dev-1',
+      }),
+      { name: 'Heater' },
+    );
+  });
+
+  it('preserves diagnostics names for tracked step-downs without a live device object', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: true,
+        available: true,
+        expectedPowerKw: 3.2,
+        measuredPowerKw: 3.2,
+        powerKw: 3.2,
+      }],
+      nowTs: start,
+    });
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'tracked_step_up',
+      nowTs: start + 60_000,
+    });
+
+    expect(syncHeadroomCardTrackedUsage({
+      state,
+      deviceId: 'dev-1',
+      trackedKw: 1.0,
+      nowTs: start + 120_000,
+      diagnostics: diagnostics as any,
+    })).toBe(true);
+
+    expect(diagnostics.recordControlEvent).toHaveBeenCalledWith({
+      kind: 'shed',
+      origin: 'tracked',
+      deviceId: 'dev-1',
+      name: 'Heater',
+      nowTs: start + 120_000,
+    });
+    expect(diagnostics.recordActivationTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'setback_failed',
+        deviceId: 'dev-1',
+      }),
+      { name: 'Heater' },
+    );
   });
 });
 

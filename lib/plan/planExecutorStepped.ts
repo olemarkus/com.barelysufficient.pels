@@ -56,8 +56,8 @@ export type PlanExecutorSteppedContext = {
     issuedAtMs?: number;
     pendingWindowMs?: number;
   }) => void;
-  recordShedActuation: (deviceId: string, name: string | undefined, now: number) => void;
-  recordRestoreActuation: (deviceId: string, name: string | undefined, now: number) => void;
+  recordShedActuation: (deviceId: string, name: string, now: number) => void;
+  recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
   getDesiredSteppedLoadTrigger: () => {
     trigger: (tokens?: object, state?: object) => Promise<unknown>;

@@ -932,7 +932,7 @@ class PelsApp extends Homey.App {
       ?? { generatedAt: Date.now(), windowDays: 21, diagnosticsByDeviceId: {} };
   }
   public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
-  public applySheddingToDevice = (deviceId: string, deviceName?: string, reason?: string) =>
+  public applySheddingToDevice = (deviceId: string, deviceName: string, reason?: string) =>
     this.planService.applySheddingToDevice(deviceId, deviceName, reason);
 }
 

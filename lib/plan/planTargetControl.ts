@@ -137,7 +137,7 @@ export function prunePendingTargetCommandsForPlan(params: {
     delete state.pendingTargetCommands[deviceId];
     changed = true;
     logDebug(
-      `Capacity: cleared pending ${pending.capabilityId} for ${device?.name || deviceId}, `
+      `Capacity: cleared pending ${pending.capabilityId} for ${device ? device.name : `device ${deviceId}`}, `
       + `current plan no longer wants ${pending.desired}°C`,
     );
   }
@@ -183,7 +183,7 @@ export function syncPendingTargetCommands(params: {
       pending,
       observedValue,
       source,
-      name: liveDevice.name || deviceId,
+      name: liveDevice.name,
       logDebug,
     })) {
       changed = true;
@@ -194,7 +194,7 @@ export function syncPendingTargetCommands(params: {
       pending,
       observedValue,
       source,
-      name: liveDevice.name || deviceId,
+      name: liveDevice.name,
       logDebug,
     })) {
       changed = true;
@@ -207,7 +207,7 @@ export function syncPendingTargetCommands(params: {
     ) {
       maybeLogRepeatedPendingConfirmation({
         pending,
-        name: liveDevice.name || deviceId,
+        name: liveDevice.name,
         log,
         source,
         observedValue,
@@ -220,7 +220,7 @@ export function syncPendingTargetCommands(params: {
       pending,
       observedValue,
       source,
-      name: liveDevice.name || deviceId,
+      name: liveDevice.name,
       log,
       logDebug,
     });

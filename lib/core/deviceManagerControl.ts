@@ -82,7 +82,8 @@ export function logEvCapabilityRequest(params: {
   } = params;
   if (capabilityId !== 'evcharger_charging') return;
   logger.debug(
-    `EV command requested for ${snapshotBefore?.name || deviceId}: ${capabilityId}=${String(value)} `
+    `EV command requested for `
+    + `${snapshotBefore ? snapshotBefore.name : `device ${deviceId}`}: ${capabilityId}=${String(value)} `
     + `(${formatEvSnapshotDetails(snapshotBefore, true)})`,
   );
 }
@@ -103,7 +104,8 @@ export function logEvCapabilityAccepted(params: {
   } = params;
   if (capabilityId !== 'evcharger_charging') return;
   logger.debug(
-    `EV command accepted for ${snapshotAfter?.name || deviceId}: ${capabilityId}=${String(value)} `
+    `EV command accepted for `
+    + `${snapshotAfter ? snapshotAfter.name : `device ${deviceId}`}: ${capabilityId}=${String(value)} `
     + `(${formatEvSnapshotDetails(snapshotAfter, false)})`,
   );
 }

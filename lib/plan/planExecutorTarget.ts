@@ -64,9 +64,9 @@ export type PlanExecutorTargetContext = {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
-  recordShedActuation: (deviceId: string, name: string | undefined, now: number) => void;
-  recordRestoreActuation: (deviceId: string, name: string | undefined, now: number) => void;
-  recordActivationAttemptStarted: (deviceId: string, name: string | undefined, now: number) => void;
+  recordShedActuation: (deviceId: string, name: string, now: number) => void;
+  recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
+  recordActivationAttemptStarted: (deviceId: string, name: string, now: number) => void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
 };
 
@@ -103,7 +103,7 @@ export const applyShedTemperaturePlan = async (
   try {
     const result = await dispatchTargetCommand(ctx, {
       deviceId: dev.id,
-      name: dev.name || dev.id,
+      name: dev.name,
       targetCap,
       desired: plannedTarget,
       observedValue: dev.currentTarget,
@@ -114,7 +114,7 @@ export const applyShedTemperaturePlan = async (
     ctx.structuredLog?.info({
       event: 'target_command_applied',
       deviceId: dev.id,
-      deviceName: dev.name || dev.id,
+      deviceName: dev.name,
       capabilityId: targetCap,
       targetValue: plannedTarget,
       previousValue: dev.currentTarget ?? null,
@@ -126,7 +126,7 @@ export const applyShedTemperaturePlan = async (
     ctx.recordShedActuation(dev.id, dev.name, now);
     return { handled: true, wrote: true };
   } catch (error) {
-    ctx.error(`Failed to set shed temperature for ${dev.name || dev.id} via DeviceManager`, error);
+    ctx.error(`Failed to set shed temperature for ${dev.name} via DeviceManager`, error);
     return { handled: true, wrote: false };
   }
 };
@@ -269,14 +269,14 @@ const applyTargetUpdatePlan = async (
   try {
     const result = await dispatchTargetCommand(ctx, {
       deviceId: dev.id,
-      name: dev.name || dev.id,
+      name: dev.name,
       targetCap,
       desired: dev.plannedTarget as number,
       observedValue: dev.currentTarget,
       skipContext: 'plan',
       actuationMode: mode,
     });
-    const name = dev.name || dev.id;
+    const name = dev.name;
     if (!result.applied) return false;
     ctx.structuredLog?.info({
       event: 'target_command_applied',
@@ -298,7 +298,7 @@ const applyTargetUpdatePlan = async (
     }
     return true;
   } catch (error) {
-    ctx.error(`Failed to set ${targetCap} for ${dev.name || dev.id} via DeviceManager`, error);
+    ctx.error(`Failed to set ${targetCap} for ${dev.name} via DeviceManager`, error);
     return false;
   }
 };

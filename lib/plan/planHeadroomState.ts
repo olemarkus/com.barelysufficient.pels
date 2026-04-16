@@ -14,7 +14,7 @@ export type HeadroomCardCooldownSource = 'step_down' | 'pels_shed' | 'pels_resto
 
 export type HeadroomCardDeviceLike = {
   id: string;
-  name?: string;
+  name: string;
   powerKw?: number;
   expectedPowerKw?: number;
   measuredPowerKw?: number;
@@ -110,10 +110,25 @@ const updateHeadroomCardLastObserved = (
   state: PlanEngineState,
   deviceId: string,
   trackedKw: number,
+  deviceName?: string,
 ): void => {
   const entry = ensureHeadroomEntry(state, deviceId);
   entry.lastObservedKw = trackedKw;
+  if (deviceName) {
+    entry.deviceName = deviceName;
+  }
 };
+
+const resolveHeadroomDeviceName = (params: {
+  state: PlanEngineState;
+  deviceId: string;
+  device?: Pick<HeadroomCardDeviceLike, 'name'>;
+  deviceName?: string;
+}): string | undefined => (
+  params.device?.name
+  ?? params.deviceName
+  ?? params.state.headroomCardByDevice[params.deviceId]?.deviceName
+);
 
 const wasRecentlySteppedDown = (
   state: PlanEngineState,
@@ -152,12 +167,12 @@ const shouldStartTrackedActivationAttempt = (params: {
 
 export const emitActivationTransitions = (
   diagnostics: DeviceDiagnosticsRecorder | undefined,
-  name: string | undefined,
+  deviceName: string | undefined,
   transitions: Array<Parameters<DeviceDiagnosticsRecorder['recordActivationTransition']>[0]>,
 ): void => {
-  if (!diagnostics || transitions.length === 0) return;
+  if (!diagnostics || !deviceName || transitions.length === 0) return;
   for (const transition of transitions) {
-    diagnostics.recordActivationTransition(transition, { name });
+    diagnostics.recordActivationTransition(transition, { name: deviceName });
   }
 };
 
@@ -202,6 +217,7 @@ const maybeStartTrackedActivationAttempt = (params: {
   trackedKw: number;
   nowTs: number;
   device?: HeadroomCardDeviceLike;
+  deviceName?: string;
   attemptOpen: boolean;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
@@ -212,6 +228,7 @@ const maybeStartTrackedActivationAttempt = (params: {
     trackedKw,
     nowTs,
     device,
+    deviceName,
     attemptOpen,
     diagnostics,
   } = params;
@@ -233,17 +250,20 @@ const maybeStartTrackedActivationAttempt = (params: {
     source: 'tracked_step_up',
     nowTs,
   });
+  const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
   if (startResult.started) {
-    diagnostics?.recordControlEvent({
-      kind: 'restore',
-      origin: 'tracked',
-      deviceId,
-      name: device?.name,
-      nowTs,
-    });
+    if (name) {
+      diagnostics?.recordControlEvent({
+        kind: 'restore',
+        origin: 'tracked',
+        deviceId,
+        name,
+        nowTs,
+      });
+    }
   }
   if (startResult.transition) {
-    diagnostics?.recordActivationTransition(startResult.transition, { name: device?.name });
+    if (name) diagnostics?.recordActivationTransition(startResult.transition, { name });
   }
   return startResult.stateChanged;
 };
@@ -255,6 +275,7 @@ const maybeRecordTrackedStepDown = (params: {
   trackedKw: number;
   nowTs: number;
   device?: HeadroomCardDeviceLike;
+  deviceName?: string;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
   const {
@@ -264,6 +285,7 @@ const maybeRecordTrackedStepDown = (params: {
     trackedKw,
     nowTs,
     device,
+    deviceName,
     diagnostics,
   } = params;
   const stepDownResult = maybeStartStepDownCooldown({
@@ -273,26 +295,29 @@ const maybeRecordTrackedStepDown = (params: {
     trackedKw,
     nowTs,
   });
-  if (!stepDownResult.started || !device) {
+  if (!stepDownResult.started) {
     return stepDownResult.stateChanged;
   }
 
   const entry = ensureHeadroomEntry(state, deviceId);
   entry.lastStepDownMs = nowTs;
-  diagnostics?.recordControlEvent({
-    kind: 'shed',
-    origin: 'tracked',
-    deviceId,
-    name: device.name,
-    nowTs,
-  });
+  const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
+  if (name) {
+    diagnostics?.recordControlEvent({
+      kind: 'shed',
+      origin: 'tracked',
+      deviceId,
+      name,
+      nowTs,
+    });
+  }
   const setbackResult = recordActivationSetback({
     state,
     deviceId,
     nowTs,
   });
-  if (setbackResult.transition) {
-    diagnostics?.recordActivationTransition(setbackResult.transition, { name: device.name });
+  if (setbackResult.transition && name) {
+    diagnostics?.recordActivationTransition(setbackResult.transition, { name });
   }
   return stepDownResult.stateChanged || setbackResult.stateChanged;
 };
@@ -319,6 +344,7 @@ const syncHeadroomCardTrackedKw = (params: {
   trackedKw: number;
   nowTs: number;
   device?: HeadroomCardDeviceLike;
+  deviceName?: string;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
   const {
@@ -327,6 +353,7 @@ const syncHeadroomCardTrackedKw = (params: {
     trackedKw,
     nowTs,
     device,
+    deviceName,
     diagnostics,
   } = params;
   const penaltyInfo = syncActivationPenaltyState({
@@ -335,13 +362,14 @@ const syncHeadroomCardTrackedKw = (params: {
     nowTs,
     observation: device,
   });
-  emitActivationTransitions(diagnostics, device?.name, penaltyInfo.transitions);
+  const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
+  emitActivationTransitions(diagnostics, name, penaltyInfo.transitions);
   const previousTrackedKw = state.headroomCardByDevice[deviceId]?.lastObservedKw;
   const expiredChanged = clearExpiredStepDownCooldown(state, deviceId, nowTs);
   let stateChanged = expiredChanged || penaltyInfo.stateChanged;
 
   if (!isFiniteNumber(previousTrackedKw)) {
-    updateHeadroomCardLastObserved(state, deviceId, trackedKw);
+    updateHeadroomCardLastObserved(state, deviceId, trackedKw, name);
     return stateChanged;
   }
 
@@ -352,6 +380,7 @@ const syncHeadroomCardTrackedKw = (params: {
     trackedKw,
     nowTs,
     device,
+    deviceName: name,
     attemptOpen: penaltyInfo.attemptOpen,
     diagnostics,
   }) || stateChanged;
@@ -363,10 +392,11 @@ const syncHeadroomCardTrackedKw = (params: {
     trackedKw,
     nowTs,
     device,
+    deviceName: name,
     diagnostics,
   }) || stateChanged;
 
-  updateHeadroomCardLastObserved(state, deviceId, trackedKw);
+  updateHeadroomCardLastObserved(state, deviceId, trackedKw, name);
   return stateChanged;
 };
 
@@ -381,6 +411,7 @@ const syncHeadroomCardDevice = (params: {
   trackedKw: resolveTrackedHeadroomDeviceKw(params.device),
   nowTs: params.nowTs,
   device: params.device,
+  deviceName: params.device.name,
   diagnostics: params.diagnostics,
 });
 

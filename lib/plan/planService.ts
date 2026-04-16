@@ -217,7 +217,7 @@ export class PlanService {
     return this.deps.planEngine.applyPlanActions(plan, mode);
   }
 
-  applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<void> {
+  applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<void> {
     return this.enqueuePlanOperation(
       async () => {
         const wrote = await this.deps.planEngine.applySheddingToDevice(deviceId, deviceName, reason);
@@ -225,7 +225,7 @@ export class PlanService {
           this.deps.schedulePostActuationRefresh?.();
         }
       },
-      `Failed to apply shedding to ${deviceName || deviceId}`,
+      `Failed to apply shedding to ${deviceName}`,
       undefined,
     );
   }

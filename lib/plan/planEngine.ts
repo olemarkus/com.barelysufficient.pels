@@ -260,7 +260,7 @@ export class PlanEngine {
     });
   }
 
-  public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<boolean> {
+  public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {
     return this.executor.applySheddingToDevice(deviceId, deviceName, reason);
   }
 

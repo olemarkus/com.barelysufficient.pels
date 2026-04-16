@@ -303,6 +303,6 @@ export const getRecentDateKeys = (params: {
 
 export const formatDurationSeconds = (durationMs: number): string => `${(durationMs / 1000).toFixed(1)}s`;
 
-export const formatDeviceRef = (deviceId: string, name?: string): string => (
-  name ? `deviceId=${deviceId} name="${name}"` : `deviceId=${deviceId}`
+export const formatDeviceRef = (deviceId: string, name: string): string => (
+  `deviceId=${deviceId} name="${name}"`
 );

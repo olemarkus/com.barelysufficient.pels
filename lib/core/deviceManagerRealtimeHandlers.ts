@@ -60,8 +60,8 @@ export function handleRealtimeDeviceUpdate(params: {
     emitPlanReconcile,
     emitObservedState,
   } = params;
-  const deviceId = device.id || device.data?.id;
-  if (!deviceId || !shouldTrackRealtimeDevice(deviceId)) {
+  const deviceId = device.id;
+  if (!shouldTrackRealtimeDevice(deviceId)) {
     return {
       hadChanges: false,
       shouldReconcilePlan: false,
@@ -69,7 +69,7 @@ export function handleRealtimeDeviceUpdate(params: {
       observedCapabilityIds: [],
     };
   }
-  const label = device.name || deviceId;
+  const label = device.name;
 
   // Extract the raw binary value from the device payload before reconcile so the
   // settle window receives the actual observed value rather than a preserved or

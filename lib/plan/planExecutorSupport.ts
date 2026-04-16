@@ -56,7 +56,7 @@ const shouldSkipShedTemperature = (params: {
   if (capacityDryRun) {
     log(
       `Capacity (dry run): would set ${targetCap || 'target'} `
-      + `for ${dev.name || dev.id} to ${dev.plannedTarget ?? '–'}°C (shedding)`,
+      + `for ${dev.name} to ${dev.plannedTarget ?? '–'}°C (shedding)`,
     );
     return true;
   }
@@ -64,7 +64,7 @@ const shouldSkipShedTemperature = (params: {
   if (currentTarget === dev.plannedTarget) {
     logDebug(
       `Capacity: skip setting ${targetCap || 'target'} `
-      + `for ${dev.name || dev.id}, already at ${dev.plannedTarget}°C`,
+      + `for ${dev.name}, already at ${dev.plannedTarget}°C`,
     );
     return true;
   }
@@ -132,7 +132,7 @@ export const shouldSkipUnavailable = (params: {
 export const shouldSkipShedding = (params: {
   state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'pendingSheds'>;
   deviceId: string;
-  deviceName: string | undefined;
+  deviceName: string;
   snapshotState: TargetDeviceSnapshot | undefined;
   logDebug: (...args: unknown[]) => void;
   nowTs?: number;
@@ -147,10 +147,10 @@ export const shouldSkipShedding = (params: {
   const isUnavailable = snapshotState?.available === false;
   const isAlreadyOff = snapshotState?.currentOn === false;
   if (snapshotState?.deviceClass === 'evcharger') {
-    logDebug(`Actuator: evaluating EV shed for ${deviceName || deviceId} (${formatEvSnapshot(snapshotState)})`);
+    logDebug(`Actuator: evaluating EV shed for ${deviceName} (${formatEvSnapshot(snapshotState)})`);
   }
   if (isUnavailable) {
-    logDebug(`Actuator: skip shedding ${deviceName || deviceId}, device unavailable`);
+    logDebug(`Actuator: skip shedding ${deviceName}, device unavailable`);
     return true;
   }
 
@@ -158,16 +158,16 @@ export const shouldSkipShedding = (params: {
   const throttledElapsedMs = isShedThrottled({ state, deviceId, nowTs });
   if (throttledElapsedMs !== null) {
     logDebug(
-      `Actuator: skip shedding ${deviceName || deviceId}, throttled (${throttledElapsedMs}ms since last)`,
+      `Actuator: skip shedding ${deviceName}, throttled (${throttledElapsedMs}ms since last)`,
     );
     return true;
   }
   if (state.pendingSheds.has(deviceId)) {
-    logDebug(`Actuator: skip shedding ${deviceName || deviceId}, already in progress`);
+    logDebug(`Actuator: skip shedding ${deviceName}, already in progress`);
     return true;
   }
   if (isAlreadyOff) {
-    logDebug(`Actuator: skip shedding ${deviceName || deviceId}, already off in snapshot`);
+    logDebug(`Actuator: skip shedding ${deviceName}, already off in snapshot`);
     return true;
   }
   return false;
@@ -176,7 +176,7 @@ export const shouldSkipShedding = (params: {
 export const recordDiagnosticsRestore = (params: {
   diagnostics: DeviceDiagnosticsRecorder | undefined;
   deviceId: string;
-  name: string | undefined;
+  name: string;
   nowTs: number;
 }): void => {
   params.diagnostics?.recordControlEvent({
@@ -191,7 +191,7 @@ export const recordDiagnosticsRestore = (params: {
 export const recordDiagnosticsShed = (params: {
   diagnostics: DeviceDiagnosticsRecorder | undefined;
   deviceId: string;
-  name: string | undefined;
+  name: string;
   nowTs: number;
 }): void => {
   params.diagnostics?.recordControlEvent({
@@ -207,7 +207,7 @@ export const recordActivationAttemptStarted = (params: {
   state: PlanEngineState;
   diagnostics: DeviceDiagnosticsRecorder | undefined;
   deviceId: string;
-  name: string | undefined;
+  name: string;
   nowTs: number;
   source?: ActivationAttemptSource;
 }): void => {
@@ -226,7 +226,7 @@ export const recordActivationSetbackForDevice = (params: {
   state: PlanEngineState;
   diagnostics: DeviceDiagnosticsRecorder | undefined;
   deviceId: string;
-  name: string | undefined;
+  name: string;
   nowTs: number;
 }): void => {
   const result = recordActivationSetback({

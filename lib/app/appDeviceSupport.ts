@@ -200,11 +200,11 @@ function logUnsupportedChanges(params: {
     logDebug,
   } = params;
   if (managedChanged || controllableChanged || priceChanged) {
-    const names = unsupported.map((device) => device.name || device.id).join(', ');
+    const names = unsupported.map((device) => device.name).join(', ');
     logDebug(`Disabled unsupported PELS controls: ${names}`);
   }
   if (changedPriceOnly.length > 0) {
-    const names = changedPriceOnly.map((device) => device.name || device.id).join(', ');
+    const names = changedPriceOnly.map((device) => device.name).join(', ');
     logDebug(`Price-only support enabled (capacity disabled) for no-power temperature devices: ${names}`);
   }
 }
@@ -288,6 +288,6 @@ export function disableManagedEvDevices(params: {
 
   if (!changed) return;
 
-  const names = evDevices.map((device) => device.name || device.id).join(', ');
+  const names = evDevices.map((device) => device.name).join(', ');
   logDebug(`Disabled managed EV devices: ${names}`);
 }

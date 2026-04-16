@@ -22,8 +22,9 @@ import {
   registerDeviceCapacityControlCards,
   registerManagedDeviceCondition,
 } from './deviceSettingsCards';
+import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 
-type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
+type DeviceArg = RawFlowDeviceArg;
 
 export type FlowCardDeps = {
   homey: FlowHomeyLike;
@@ -361,14 +362,11 @@ function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {
     }, deps);
   });
   hasHeadroomForDeviceCond.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const q = (query || '').toLowerCase();
     const snapshot = await deps.getSnapshot();
-    const devices = snapshot
-      .filter((d) => d.controllable !== false && (!d.loadKw || d.loadKw <= 0))
-      .map((d) => ({ id: d.id, name: d.name || d.id }));
-    return devices
-      .filter((d) => !q || d.name.toLowerCase().includes(q))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return buildDeviceAutocompleteOptions(
+      snapshot.filter((d) => d.controllable !== false && (!d.loadKw || d.loadKw <= 0)),
+      query,
+    );
   });
 }
 
@@ -500,18 +498,17 @@ async function getSteppedLoadDeviceOptions(
   deps: FlowCardDeps,
   query: string,
 ): Promise<Array<{ id: string; name: string }>> {
-  const q = (query || '').toLowerCase();
   const snapshot = await deps.getSnapshot();
-  return snapshot
-    .filter((device) => device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load')
-    .map((device) => ({ id: device.id, name: device.name || device.id }))
-    .filter((device) => !q || device.name.toLowerCase().includes(q))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return buildDeviceAutocompleteOptions(
+    snapshot.filter((device) => (
+      device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load'
+    )),
+    query,
+  );
 }
 
 function getDeviceIdFromArg(arg: DeviceArg): string {
-  const deviceIdRaw = typeof arg === 'object' && arg !== null ? arg.id || arg.data?.id : arg;
-  return (deviceIdRaw || '').trim();
+  return getDeviceIdFromFlowArg(arg);
 }
 
 function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
@@ -582,7 +579,7 @@ function logHeadroomCheck(params: {
   } = params;
   const softLimit = capacityGuard.getSoftLimit();
   const currentPower = capacityGuard.getLastTotalPower();
-  const deviceName = deviceSnap?.name || deviceId;
+  const deviceName = deviceSnap ? deviceSnap.name : `device ${deviceId}`;
   const expectedPowerKwStr = deviceSnap?.expectedPowerKw !== undefined
     ? deviceSnap.expectedPowerKw.toFixed(2)
     : 'unknown';

@@ -76,6 +76,24 @@ describe('advanced device logger', () => {
     expect(toast.showToast).not.toHaveBeenCalled();
   });
 
+  it('filters out invalid Homey API devices without a name', async () => {
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    homey.callApi.mockResolvedValue([
+      { id: 'dev-1', name: 'Pump', class: 'pump' },
+      { id: 'dev-2' },
+      { name: 'No id' },
+    ]);
+
+    const advanced = await import('../src/ui/advanced.ts');
+    await advanced.refreshAdvancedDeviceLogger();
+
+    const select = document.querySelector('#advanced-api-device-select') as HTMLSelectElement;
+
+    expect(select.options.length).toBe(2);
+    expect(select.options[1].value).toBe('dev-1');
+    expect(select.options[1].textContent).toContain('Pump');
+  });
+
   it('warns when no device is selected', async () => {
     const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
     const toast = await import('../src/ui/toast.ts') as unknown as { showToast: ReturnType<typeof vi.fn>; showToastError: ReturnType<typeof vi.fn> };
@@ -216,6 +234,7 @@ describe('advanced device cleanup', () => {
 
   it('clears selected device settings after confirmation', async () => {
     const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    const toast = await import('../src/ui/toast.ts') as unknown as { showToast: ReturnType<typeof vi.fn>; showToastError: ReturnType<typeof vi.fn> };
     await seedState();
 
     const advanced = await import('../src/ui/advanced.ts');
@@ -245,6 +264,32 @@ describe('advanced device cleanup', () => {
       },
     });
     expect(homey.setSetting).toHaveBeenCalledWith('overshoot_behaviors', { 'dev-2': { action: 'turn_off' } });
+    expect(toast.showToast).toHaveBeenCalledWith('Cleared PELS data for Device One.', 'ok');
+  });
+
+  it('includes the device id when the selected device is no longer in the live list', async () => {
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
+    const toast = await import('../src/ui/toast.ts') as unknown as { showToast: ReturnType<typeof vi.fn>; showToastError: ReturnType<typeof vi.fn> };
+    await seedState();
+
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [];
+
+    const advanced = await import('../src/ui/advanced.ts');
+    advanced.initAdvancedDeviceCleanupHandlers();
+    advanced.refreshAdvancedDeviceCleanup();
+
+    const select = document.querySelector('#advanced-device-select') as HTMLSelectElement;
+    const clearButton = document.querySelector('#advanced-device-clear') as HTMLButtonElement;
+    select.value = 'dev-1';
+
+    clearButton.click();
+    await flushPromises();
+    clearButton.click();
+    await flushPromises();
+
+    expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-2': true });
+    expect(toast.showToast).toHaveBeenCalledWith('Cleared PELS data for device dev-1.', 'ok');
   });
 
   it('clears unknown devices after confirmation', async () => {

@@ -69,7 +69,7 @@ export type DeviceDiagnosticsStarvationPauseReason =
 
 export type DeviceDiagnosticsPlanObservation = {
   deviceId: string;
-  name?: string;
+  name: string;
   includeDemandMetrics: boolean;
   unmetDemand: boolean;
   blockCause: DeviceDiagnosticsBlockCause;
@@ -90,7 +90,7 @@ export type DeviceDiagnosticsControlEvent = {
   kind: 'shed' | 'restore';
   origin: DeviceDiagnosticsControlEventOrigin;
   deviceId: string;
-  name?: string;
+  name: string;
   nowTs?: number;
 };
 
@@ -150,8 +150,8 @@ export type DeviceDiagnosticsRecorder = {
     nowTs?: number;
   }) => void;
   recordControlEvent: (event: DeviceDiagnosticsControlEvent) => void;
-  recordActivationTransition: (transition: DeviceDiagnosticsBackoffTransition, params?: {
-    name?: string;
+  recordActivationTransition: (transition: DeviceDiagnosticsBackoffTransition, params: {
+    name: string;
   }) => void;
   getUiPayload: (nowTs?: number) => SettingsUiDeviceDiagnosticsPayload;
 };
@@ -205,7 +205,7 @@ type LiveStarvationState = {
 };
 
 type LiveDeviceDiagnostics = {
-  name?: string;
+  name: string;
   lastObservedTs?: number;
   lastObservation?: LiveDemandObservation;
   lastStarvationObservation?: LiveStarvationObservation;
@@ -238,6 +238,8 @@ const createEmptyStarvationState = (): LiveStarvationState => ({
   starvationCause: null,
   starvationPauseReason: null,
 });
+
+const UNKNOWN_DEVICE_NAME = 'unknown device';
 
 const roundUpToStep = (value: number, step: number): number => (
   Math.ceil(value / step) * step
@@ -382,7 +384,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     const nowTs = event.nowTs ?? Date.now();
     this.ensureDayRollover(nowTs);
     const live = this.getLiveDeviceState(event.deviceId);
-    if (event.name) live.name = event.name;
+    live.name = event.name;
     if (event.kind === 'shed') {
       this.addCount(event.deviceId, nowTs, 'shedCount', 1);
       if (isFiniteNumber(live.openRestoreTs)) {
@@ -419,10 +421,10 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   recordActivationTransition(
     transition: DeviceDiagnosticsBackoffTransition,
-    params: { name?: string } = {},
+    params: { name: string },
   ): void {
     const live = this.getLiveDeviceState(transition.deviceId);
-    if (params.name) live.name = params.name;
+    live.name = params.name;
     this.ensureDayRollover(transition.nowTs);
 
     switch (transition.kind) {
@@ -560,7 +562,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   private observeDeviceSample(observation: DeviceDiagnosticsPlanObservation, nowTs: number): void {
     const live = this.getLiveDeviceState(observation.deviceId);
-    if (observation.name) live.name = observation.name;
+    live.name = observation.name;
     const nextObservation: LiveDemandObservation = {
       includeDemandMetrics: observation.includeDemandMetrics,
       unmetDemand: observation.unmetDemand,
@@ -840,7 +842,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   private logObservationTransition(
     deviceId: string,
-    name: string | undefined,
+    name: string,
     previous: LiveDemandObservation | undefined,
     next: LiveDemandObservation,
   ): void {
@@ -860,7 +862,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   private logDemandBoundary(transition: {
     deviceId: string;
-    name: string | undefined;
+    name: string;
     previous: LiveDemandObservation | undefined;
     next: LiveDemandObservation;
     previousUnmet: boolean;
@@ -892,7 +894,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   private logBlockCauseChange(transition: {
     deviceId: string;
-    name: string | undefined;
+    name: string;
     previous: LiveDemandObservation | undefined;
     next: LiveDemandObservation;
     previousUnmet: boolean;
@@ -1005,6 +1007,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     let live = this.liveByDeviceId[deviceId];
     if (!live) {
       live = {
+        name: UNKNOWN_DEVICE_NAME,
         currentPenaltyLevel: 0,
         starvation: createEmptyStarvationState(),
       };

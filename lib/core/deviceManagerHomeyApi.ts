@@ -1,7 +1,7 @@
 import type Homey from 'homey';
 import http from 'http';
 import https from 'https';
-import type { HomeyDeviceLike, Logger } from '../utils/types';
+import type { Logger, RawHomeyDeviceLike } from '../utils/types';
 import { normalizeError } from '../utils/errorUtils';
 
 export const DEVICES_API_PATH = 'manager/devices/device';
@@ -64,23 +64,23 @@ export function resetRestClient(): void {
 
 export async function getRawDevices(
   path: string,
-): Promise<Record<string, HomeyDeviceLike> | HomeyDeviceLike[]> {
+): Promise<Record<string, RawHomeyDeviceLike> | RawHomeyDeviceLike[]> {
   if (!restClient) throw new Error('REST client not initialized — call initHomeyHttpClient first');
   const data = await restClient.get(path);
-  if (Array.isArray(data)) return data as HomeyDeviceLike[];
-  if (typeof data === 'object' && data !== null) return data as Record<string, HomeyDeviceLike>;
+  if (Array.isArray(data)) return data as RawHomeyDeviceLike[];
+  if (typeof data === 'object' && data !== null) return data as Record<string, RawHomeyDeviceLike>;
   return [];
 }
 
 export async function getRawDevice(
   deviceId: string,
-): Promise<HomeyDeviceLike> {
+): Promise<RawHomeyDeviceLike> {
   if (!restClient) throw new Error('REST client not initialized — call initHomeyHttpClient first');
   const data = await restClient.get(`${DEVICES_API_PATH}/${deviceId}`);
   if (!data || typeof data !== 'object') {
     throw new Error(`Invalid response for device ${deviceId}`);
   }
-  return data as HomeyDeviceLike;
+  return data as RawHomeyDeviceLike;
 }
 
 export async function setRawCapabilityValue(

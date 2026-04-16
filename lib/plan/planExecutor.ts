@@ -104,17 +104,17 @@ export class PlanExecutor {
   }): void => this.markSteppedLoadDesiredStepIssued(params);
   private readonly boundRecordShedActuation = (
     deviceId: string,
-    name: string | undefined,
+    name: string,
     now: number,
   ): void => this.recordShedActuation(deviceId, name, now);
   private readonly boundRecordRestoreActuation = (
     deviceId: string,
-    name: string | undefined,
+    name: string,
     now: number,
   ): void => this.recordRestoreActuation(deviceId, name, now);
   private readonly boundRecordActivationAttemptStarted = (
     deviceId: string,
-    name: string | undefined,
+    name: string,
     now: number,
   ): void => {
     recordActivationAttemptStarted({
@@ -179,7 +179,7 @@ export class PlanExecutor {
     this.deps.error(...args);
   }
 
-  private recordShedActuation(deviceId: string, name: string | undefined, now: number): void {
+  private recordShedActuation(deviceId: string, name: string, now: number): void {
     this.state.lastInstabilityMs = now;
     this.state.lastDeviceShedMs[deviceId] = now;
     recordDiagnosticsShed({
@@ -197,7 +197,7 @@ export class PlanExecutor {
     });
   }
 
-  private recordRestoreActuation(deviceId: string, name: string | undefined, now: number): void {
+  private recordRestoreActuation(deviceId: string, name: string, now: number): void {
     this.state.lastRestoreMs = now;
     this.state.lastDeviceRestoreMs[deviceId] = now;
     recordDiagnosticsRestore({
@@ -341,18 +341,18 @@ export class PlanExecutor {
     if (dev.plannedState !== 'keep' || resolveEffectiveCurrentOn(dev) !== false) return false;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (snapshot?.deviceClass === 'evcharger') {
-      this.logDebug(`Capacity: evaluating EV restore for ${dev.name || dev.id} (${formatEvSnapshot(snapshot)})`);
+      this.logDebug(`Capacity: evaluating EV restore for ${dev.name} (${formatEvSnapshot(snapshot)})`);
     }
     if (!snapshot) {
       this.deps.debugStructured?.({
         event: 'restore_command_skipped',
         reasonCode: 'missing_snapshot',
         deviceId: dev.id,
-        deviceName: dev.name || dev.id,
+        deviceName: dev.name,
         logContext: 'capacity',
         actuationMode: mode,
       });
-      this.logDebug(`Capacity: skip restoring ${dev.name || dev.id}, no snapshot available`);
+      this.logDebug(`Capacity: skip restoring ${dev.name}, no snapshot available`);
       return false;
     }
     if (!canTurnOnDevice(snapshot)) {
@@ -362,14 +362,14 @@ export class PlanExecutor {
         event: 'restore_command_skipped',
         reasonCode: 'not_setable',
         deviceId: dev.id,
-        deviceName: dev.name || dev.id,
+        deviceName: dev.name,
         logContext: 'capacity',
         actuationMode: mode,
       });
-      this.logDebug(`Capacity: skip restoring ${dev.name || dev.id}, cannot turn on from current snapshot${suffix}`);
+      this.logDebug(`Capacity: skip restoring ${dev.name}, cannot turn on from current snapshot${suffix}`);
       return false;
     }
-    const name = dev.name || dev.id;
+    const name = dev.name;
     // Check if this device is already being restored (in-flight)
     if (this.state.pendingRestores.has(dev.id)) {
       this.deps.debugStructured?.({
@@ -466,7 +466,7 @@ export class PlanExecutor {
     if (resolveEffectiveCurrentOn(dev) !== false) return false;
     const lastShed = this.state.lastDeviceShedMs[dev.id];
     if (!lastShed) return false;
-    const name = dev.name || dev.id;
+    const name = dev.name;
     const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (entry?.deviceClass === 'evcharger') {
       this.logDebug(
@@ -551,7 +551,7 @@ export class PlanExecutor {
     return applySteppedLoadShedOff(this.buildSteppedExecutorContext(), dev, snapshot, mode);
   }
 
-  public async applySheddingToDevice(deviceId: string, deviceName?: string, reason?: string): Promise<boolean> {
+  public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {
     if (this.capacityDryRun) return false;
     const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
     if (shouldSkipShedding({
@@ -563,7 +563,7 @@ export class PlanExecutor {
     })) {
       return false;
     }
-    const name = deviceName || deviceId;
+    const name = deviceName;
     const shedBehavior = this.getShedBehavior(deviceId);
     const targetCap = snapshotState?.targets?.[0]?.id;
     const shedTemp = shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null
@@ -736,7 +736,7 @@ export class PlanExecutor {
       try {
         if (shouldSkipUnavailable({
           snapshot,
-          name: dev.name || dev.id,
+          name: dev.name,
           operation: 'actuation',
           logDebug: logCapacityDebug,
         })) {
@@ -781,7 +781,7 @@ export class PlanExecutor {
         if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
       } catch (error) {
         this.error(
-          `Failed to apply action for ${dev.name || dev.id}; continuing with remaining devices`,
+          `Failed to apply action for ${dev.name}; continuing with remaining devices`,
           error,
         );
       }

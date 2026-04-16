@@ -62,7 +62,7 @@ export = {
       return null;
     }
   },
-  async homey_devices({ homey }: ApiContext): Promise<Array<{ id: string; name?: string; class?: string }>> {
+  async homey_devices({ homey }: ApiContext): Promise<Array<{ id: string; name: string; class?: string }>> {
     const app = getApp(homey);
     if (!app) return [];
     try {

@@ -17,7 +17,7 @@ import { DEVICE_CONTROL_PROFILES, OVERSHOOT_BEHAVIORS } from '../../../contracts
 
 type HomeyApiDevice = {
   id: string;
-  name?: string;
+  name: string;
   class?: string;
 };
 
@@ -49,11 +49,11 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
 const resolveDeviceOptionsFromSettings = (): DeviceOption[] => {
   const nameById = new Map<string, string>();
   state.latestDevices.forEach((device) => {
-    nameById.set(device.id, device.name || device.id);
+    nameById.set(device.id, device.name);
   });
   return Array.from(collectDeviceIdsFromSettings()).map((id) => ({
     id,
-    name: nameById.get(id) || id,
+    name: nameById.get(id) ?? `Unknown device (${id})`,
   }));
 };
 
@@ -203,7 +203,7 @@ const refreshUiAfterDeviceCleanup = () => {
 const resolveApiDeviceLabel = (device: HomeyApiDevice) => {
   const { id, name } = device;
   const className = typeof device.class === 'string' ? device.class : '';
-  const parts = [name || id || 'Unknown device'];
+  const parts = [`${name} (${id})`];
   if (className) parts.push(className);
   return parts.join(' · ');
 };
@@ -267,7 +267,11 @@ let apiDevicesCache: HomeyApiDevice[] = [];
 const fetchHomeyApiDevices = async (): Promise<HomeyApiDevice[]> => {
   const devices = await callApi<HomeyApiDevice[] | null>('GET', '/homey_devices');
   if (!Array.isArray(devices)) return [];
-  return devices.filter((device) => device && typeof device.id === 'string');
+  return devices.filter((device): device is HomeyApiDevice => (
+    Boolean(device)
+    && typeof device.id === 'string'
+    && typeof device.name === 'string'
+  ));
 };
 
 const refreshApiDevices = async (showSuccessToast = true) => {
@@ -389,13 +393,13 @@ export const initAdvancedDeviceCleanupHandlers = () => {
     }
     resetClearConfirmation();
     const device = state.latestDevices.find((entry) => entry.id === deviceId);
-    const deviceName = device?.name || deviceId;
+    const deviceLabel = device ? device.name : `device ${deviceId}`;
 
     try {
       setClearButtonBusy(true);
       await clearDeviceSettings(deviceId);
       refreshUiAfterDeviceCleanup();
-      await showToast(`Cleared PELS data for ${deviceName}.`, 'ok');
+      await showToast(`Cleared PELS data for ${deviceLabel}.`, 'ok');
     } catch (error) {
       await logSettingsError('Failed to clear device data', error, 'advancedDeviceCleanup');
       await showToastError(error, 'Failed to clear device data.');
@@ -454,7 +458,7 @@ export const initAdvancedDeviceLoggerHandlers = () => {
       await showToast('Device not found. Refresh the list and try again.', 'warn');
       return;
     }
-    const deviceName = device.name || device.id;
+    const deviceName = device.name;
 
     try {
       setApiDeviceButtonsBusy(true);
