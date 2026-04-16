@@ -26,7 +26,6 @@ export type ActivationAttemptState = {
   lastSetbackMs?: number;
   startedMs?: number;
   source?: ActivationAttemptSource;
-  stickReached?: boolean;
 };
 
 export type HeadroomCardState = {
