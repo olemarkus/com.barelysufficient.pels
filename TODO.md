@@ -72,11 +72,11 @@ file.
 
 ## P1 Simplification follow-ups
 
-- [ ] Keep simplifying `planReasons.ts` so decision flow continues moving toward bounded
-      machine-readable reason codes instead of burying planner control flow in display-string
+- [x] Keep simplifying `planReasons.ts` so decision flow now uses bounded internal reason codes
+      before rendering display strings, instead of keying planner control flow directly off prose
       formatting.
-      Why P1: recent cleanup landed `planReasonStrings.ts`, but `planReasons.ts` still mixes
-      decision logic and presentation more than it should.
+      Why P1: this landed the local decision/presentation split in `planReasons.ts` while keeping
+      emitted `reason` text stable for existing consumers.
       Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonStrings.ts`.
 - [ ] Move `planServiceInternals.ts` types into `lib/plan/planTypes.ts` and extract the
       snapshot-write path out of `planService.ts` so rebuild orchestration stops carrying

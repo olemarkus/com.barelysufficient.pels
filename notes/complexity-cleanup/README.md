@@ -49,16 +49,19 @@ shape.
 
 **Remaining follow-up:** none in this file; see `planRestore.ts` / restore-gate cleanup.
 
-### 2. `planReasons.ts` — partially landed
+### 2. `planReasons.ts` — mostly landed
 
-The first extraction has already landed: `planReasonStrings.ts` exists and carries some of the
-formatting burden. `planReasons.ts` is still larger and more interleaved than ideal, but the
-starting point is no longer the original monolith described in the first review.
+The first extraction landed earlier, and the local decision/presentation split is now in place:
+`planReasons.ts` makes bounded internal reason-code decisions and only renders final reason prose
+at the edge. The visible `reason` strings remain stable for existing plan/debug/diagnostic
+consumers.
 
-**Remaining simplification:** keep pushing decision flow toward machine-readable reason codes and
-collapse any leftover one-consumer formatting helpers back into a smaller `planReasons.ts` surface.
+**Remaining simplification:** downstream consumers such as `planLogging.ts` and
+`planDiagnostics.ts` still classify behavior from free-form reason strings. Keep that follow-up as
+separate scope instead of broadening the `planReasons.ts` cleanup PR.
 
-**Current size:** ~684 LOC.
+**Current size:** ~696 LOC. `planReasonStrings.ts` is ~260 LOC and stays separate for now because
+it now owns shared reason classification and rendering across multiple plan modules.
 
 ### 3. `planExecutor.ts` — partially landed
 
@@ -292,9 +295,11 @@ Items from the original refactoring spec that are deferred or dropped:
 
 ### Phase 2: Continue planReasons cleanup
 - [x] Extract reason-string builders into `planReasonStrings.ts`
-- [ ] Keep moving restore/shed decisions toward bounded machine-readable codes
-- [ ] Re-measure whether `planReasonStrings.ts` should stay separate or be folded back once the
+- [x] Keep moving restore/shed decisions toward bounded machine-readable codes
+- [x] Re-measure whether `planReasonStrings.ts` should stay separate or be folded back once the
       remaining formatting surface is smaller
+      Keep separate: it now carries shared reason classification plus rendering used outside
+      `planReasons.ts`, so folding it back would re-couple decision and presentation surfaces.
 
 ### Phase 4 follow-up: continue shrinking app.ts
 - [ ] Collapse one-liner delegates
