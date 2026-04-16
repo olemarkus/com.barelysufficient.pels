@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Stateful diagnostics orchestration stays consolidated in one service. */
 import type Homey from 'homey';
 import {
   getDateKeyInTimeZone,

@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Flow card registration remains centralized for the Homey app surface. */
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import CapacityGuard from '../lib/core/capacityGuard';
 import { FlowHomeyLike, TargetDeviceSnapshot } from '../lib/utils/types';

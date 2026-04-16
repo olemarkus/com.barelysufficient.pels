@@ -38,8 +38,11 @@ Two waiver mechanisms are in use today, with no consistent policy for choosing b
 | `lib/plan/planRestoreHelpers.ts` | 492 (at threshold; no pragma) |
 | `lib/dailyBudget/dailyBudgetManager.ts` | 504 (at threshold; no pragma) |
 | `lib/diagnostics/deviceDiagnosticsService.ts` | 1135 |
+| `lib/core/deviceManagerObservation.ts` | 735 |
 | `lib/app/appPowerHelpers.ts` | 898 |
 | `lib/app/appDebugHelpers.ts` | 732 |
+| `flowCards/registerFlowCards.ts` | 608 |
+| `packages/settings-ui/src/ui/deviceDetail.ts` | 955 |
 
 ### Files with a config-level override in `eslint.config.mjs`
 
@@ -106,6 +109,8 @@ file can be split before accepting the override.
 | `lib/plan/planRestoreHelpers.ts` | 492 | Already at threshold. Do not merge `planRestoreSupport.ts` into it; route that into `planRestoreSwap.ts` instead. |
 | `lib/dailyBudget/dailyBudgetManager.ts` | 504 | Redistribute into `dailyBudgetManagerPlan.ts` / `dailyBudgetManagerSnapshot.ts` (sibling files already exist). |
 | `lib/app/appDebugHelpers.ts` | 732 | Inline single-caller exports; keep the two actually-shared helpers. |
+| `lib/core/deviceManagerObservation.ts` | 735 | Recent move-only split from `deviceManager.ts`. Follow up by separating retained observation/freshness merge logic from debug-source capture helpers instead of adding a new override. |
+| `packages/settings-ui/src/ui/deviceDetail.ts` | 955 | Split save-path helpers, stepped-load draft/editor state, diagnostics refresh, and panel event/render wiring; discuss the split plan explicitly instead of silently blessing a long-lived override. |
 
 ### Bucket B — documented exception with a concrete ceiling
 
@@ -113,7 +118,8 @@ file can be split before accepting the override.
 |------|---------|----------------|-------------------|
 | `lib/plan/planExecutor.ts` | 782 | 800 | The control-type split has landed, but the remaining binary-control dispatch remains a single cohesive table to avoid the cognitive load of splitting into >=10 action files. |
 | `lib/core/deviceManager.ts` | 894 | 800 | Parsing / observation / settle extraction has already landed. Re-measure after follow-up cleanup to decide whether the override should target 800 or be dropped. |
-| `lib/diagnostics/deviceDiagnosticsService.ts` | 1135 | 700 | Stateful diagnostics orchestration. Revisit after the `notes/starvation/` rework, which may split this naturally. |
+| `lib/diagnostics/deviceDiagnosticsService.ts` | 1135 | 1200 | Stateful starvation diagnostics orchestration. Revisit after the `notes/starvation/` rollout finishes the remaining flow/insights/UI follow-up, which may split this naturally. |
+| `flowCards/registerFlowCards.ts` | 608 | 600 | Procedural flow-card registration remains a single low-churn app-surface module; keep one central registry unless it starts accumulating deeper behavioral branches. |
 
 The existing config overrides in `eslint.config.mjs` (`app.ts` 750, `drivers/pels_insights/device.ts`
 575, the two `lib/price/` files, `packages/settings-ui/src/ui/power.ts` 650) are Bucket B today by

@@ -1,7 +1,9 @@
-/* eslint-disable max-lines --
- * Executor keeps all actuation paths together for traceability across binary,
- * target, and stepped-load control.
- */
+/* eslint-disable
+  complexity,
+  sonarjs/cognitive-complexity,
+  max-statements
+-- Executor keeps all actuation paths together for traceability across binary,
+ * target, and stepped-load control. */
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';

@@ -1,6 +1,3 @@
-/* eslint-disable max-lines --
- * DeviceManager intentionally centralizes snapshot, realtime, and debug observation flows.
- */
 import Homey from 'homey';
 import { EventEmitter } from 'events';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
@@ -14,21 +11,15 @@ import {
     logEvSnapshotChanges,
     type DeviceCapabilityMap,
 } from './deviceManagerControl';
-import {
-    normalizeTargetCapabilityValue,
-} from '../utils/targetCapabilities';
-import {
-    type LiveDevicePowerWatts,
-} from './deviceManagerEnergy';
+import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
+import { type LiveDevicePowerWatts } from './deviceManagerEnergy';
 import {
     fetchDevicesByIds,
     fetchDevicesWithFallback,
     fetchLivePowerReport,
     type LivePowerReport,
 } from './deviceManagerFetch';
-import {
-    isRealtimeControlCapability,
-} from './deviceManagerRuntime';
+import { isRealtimeControlCapability } from './deviceManagerRuntime';
 import {
     clearLocalCapabilityWrite,
     formatBinaryState,
@@ -86,13 +77,11 @@ const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
-export type {
-    DeviceDebugObservedSource,
-    DeviceDebugObservedSources,
-} from './deviceManagerObservation';
+export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './deviceManagerObservation';
 
 const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
+const buildEmptyLivePowerReport = (): LivePowerReport => ({ byDeviceId: {}, homePowerW: null });
 
 export type SnapshotRefreshMetrics = {
     availableDevices: number;
@@ -107,6 +96,7 @@ export class DeviceManager extends EventEmitter {
     private logger: Logger;
     private homey: Homey.App;
     private latestSnapshot: TargetDeviceSnapshot[] = [];
+    private latestSnapshotById: Map<string, TargetDeviceSnapshot> = new Map();
     private latestHomePowerW: number | null = null;
     private powerState: Required<PowerEstimateState>;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
@@ -437,12 +427,13 @@ export class DeviceManager extends EventEmitter {
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
     getHomePowerW(): number | null { return this.latestHomePowerW; }
     async pollHomePowerW(): Promise<number | null> {
-        const report = await this.fetchLivePowerReport();
-        this.latestHomePowerW = report.homePowerW;
-        return report.homePowerW;
+        return this.updateHomePowerFromReport(await this.fetchLivePowerReport());
     }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.setSnapshot(snapshot); }
-    setSnapshot(snapshot: TargetDeviceSnapshot[]): void { this.latestSnapshot = snapshot; }
+    setSnapshot(snapshot: TargetDeviceSnapshot[]): void {
+        this.latestSnapshot = snapshot;
+        this.latestSnapshotById = new Map(snapshot.map((device) => [device.id, device]));
+    }
     /** Inject a device update directly into the reconcile path. Test-only. */
     injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
     /** Inject a per-capability event directly into the reconcile path. Test-only. */
@@ -538,9 +529,9 @@ export class DeviceManager extends EventEmitter {
             }
             const { devices: list, fetchSource } = fetchResult;
             const livePowerReport = options.includeLivePower === false
-                ? { byDeviceId: {}, homePowerW: null as number | null }
+                ? buildEmptyLivePowerReport()
                 : await this.fetchLivePowerReport();
-            this.latestHomePowerW = livePowerReport.homePowerW;
+            this.updateHomePowerFromReport(livePowerReport);
             const snapshot = this.parseDeviceList(list, livePowerReport.byDeviceId);
             mergeFresherCapabilityObservations({
                 state: this.observationState,
@@ -550,7 +541,7 @@ export class DeviceManager extends EventEmitter {
                 targetedRefreshPollAtMs: isTargetedRefresh ? start : undefined,
                 logger: this.logger,
             });
-            this.latestSnapshot = snapshot;
+            this.setSnapshot(snapshot);
             this.liveFeed?.updateTrackedDevices(snapshot.map((d) => d.id));
             recordSnapshotRefreshObservations({
                 state: this.observationState,
@@ -787,14 +778,14 @@ export class DeviceManager extends EventEmitter {
     }
 
     private async fetchLivePowerReport(): Promise<LivePowerReport> {
-        return fetchLivePowerReport({
-            logger: this.logger,
-        });
+        return fetchLivePowerReport({ logger: this.logger });
     }
 
-    getLiveFeedHealth(): LiveFeedHealth | null {
-        return this.liveFeed?.getHealth() ?? null;
+    private updateHomePowerFromReport(report: LivePowerReport): number | null {
+        this.latestHomePowerW = report.homePowerW;
+        return report.homePowerW;
     }
+    getLiveFeedHealth(): LiveFeedHealth | null { return this.liveFeed?.getHealth() ?? null; }
 
     private shouldTrackRealtimeDevice(deviceId: string): boolean {
         return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
@@ -811,11 +802,7 @@ export class DeviceManager extends EventEmitter {
         list: HomeyDeviceLike[],
         livePowerWByDeviceId: LiveDevicePowerWatts = {},
     ): TargetDeviceSnapshot[] {
-        return parseDeviceList({
-            list,
-            livePowerWByDeviceId,
-            deps: this.getParseDeviceDeps(),
-        });
+        return parseDeviceList({ list, livePowerWByDeviceId, deps: this.getParseDeviceDeps() });
     }
 
     private parseDevice(
@@ -823,12 +810,7 @@ export class DeviceManager extends EventEmitter {
         now: number,
         livePowerWByDeviceId: LiveDevicePowerWatts,
     ): TargetDeviceSnapshot | null {
-        return parseDevice({
-            device,
-            now,
-            livePowerWByDeviceId,
-            deps: this.getParseDeviceDeps(),
-        });
+        return parseDevice({ device, now, livePowerWByDeviceId, deps: this.getParseDeviceDeps() });
     }
 
     private getParseDeviceDeps() {
@@ -843,9 +825,7 @@ export class DeviceManager extends EventEmitter {
                 capsStatus: { targetCaps: string[]; hasPower: boolean },
                 powerEstimate: ReturnType<typeof estimatePower>,
             ) => isDevicePowerCapable({ device, capsStatus, powerEstimate }),
-            resolveLatestLocalWriteMs: (deviceId: string) => (
-                resolveLatestLocalWriteMs(this.observationState, deviceId)
-            ),
+            resolveLatestLocalWriteMs: (deviceId: string) => resolveLatestLocalWriteMs(this.observationState, deviceId),
         };
     }
 
@@ -855,9 +835,7 @@ export class DeviceManager extends EventEmitter {
             recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
             isLiveFeedHealthy: () => this.liveFeed?.isHealthy() === true,
             shouldTrackRealtimeDevice: (deviceId: string) => this.shouldTrackRealtimeDevice(deviceId),
-            getSnapshotById: (deviceId: string) => (
-                this.latestSnapshot.find((device) => device.id === deviceId)
-            ),
+            getSnapshotById: (deviceId: string) => this.latestSnapshotById.get(deviceId),
             emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => (
                 this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event)
             ),
@@ -865,10 +843,9 @@ export class DeviceManager extends EventEmitter {
     }
 
     private getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {
-        if (device.capabilitiesObj && typeof device.capabilitiesObj === 'object') {
-            return device.capabilitiesObj as DeviceCapabilityMap;
-        }
-        return {};
+        return device.capabilitiesObj && typeof device.capabilitiesObj === 'object'
+            ? device.capabilitiesObj as DeviceCapabilityMap
+            : {};
     }
 }
 

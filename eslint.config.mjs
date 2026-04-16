@@ -365,18 +365,74 @@ export default tseslint.config(
     },
   },
   {
+    // app.ts remains the central lifecycle/service wiring entrypoint while the remaining
+    // delegate, timer, and AppContext cleanup lands. Target: <=500 after complexity-cleanup
+    // Phases 4, 10, and 11 complete.
     files: ['app.ts'],
     rules: {
       'max-lines': ['warn', { max: 750, skipBlankLines: true, skipComments: true }],
     },
   },
   {
+    // DeviceManager still owns snapshot refresh, realtime drift reconciliation, and binary settle
+    // windows over one shared mutable snapshot. Target: <=800 after the post-Phase-7 helper
+    // cleanup trims the remaining orchestration bulk.
+    files: ['lib/core/deviceManager.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 800, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Stateful starvation diagnostics keep persistence, episode accounting, and Settings UI
+    // payload shaping in one service until the notes/starvation rollout finishes. Target: <=1200
+    // until that follow-up split is ready.
+    files: ['lib/diagnostics/deviceDiagnosticsService.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 1200, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // planExecutor keeps the remaining binary-control dispatch table local so the actuation path
+    // stays navigable in one place after the control-type split. Target: <=800 after the shared
+    // helper extraction from complexity-cleanup Phase 3 settles.
+    files: ['lib/plan/planExecutor.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 800, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Flow-card registration is a centralized, low-churn procedural surface for the Homey app.
+    // Target: <=600 unless the registration surface starts to accumulate real behavioral branches.
+    files: ['flowCards/registerFlowCards.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 600, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: [
+      'drivers/pels_insights/device.ts',
+    ],
+    rules: {
+      'max-lines': ['warn', { max: 575, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: ['lib/price/priceLowestFlowEvaluator.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 525, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // PriceService still coordinates spot/grid refresh, storage, and combined-price publication
+    // across the Homey/runtime boundary. Target: <=560 while that orchestration remains local.
     files: ['lib/price/priceService.ts'],
     rules: {
       'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
     },
   },
   {
+    // The power screen still co-locates usage read-model shaping with chart/day/week rendering for
+    // one UI surface. Target: <=650 while the page remains a single cohesive screen module.
     files: ['packages/settings-ui/src/ui/power.ts'],
     rules: {
       'max-lines': ['warn', { max: 650, skipBlankLines: true, skipComments: true }],
