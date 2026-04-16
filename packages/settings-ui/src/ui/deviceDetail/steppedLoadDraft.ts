@@ -20,10 +20,7 @@ import {
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
-import { OVERSHOOT_BEHAVIORS } from '../../../../contracts/src/settingsKeys.ts';
-import type { PersistedShedBehavior } from './shedBehavior.ts';
-import { readShedBehaviors } from './shedBehavior.ts';
-import { writeFreshSetting } from './settingsWrite.ts';
+import { writeShedBehaviors } from './shedBehavior.ts';
 
 let currentSteppedLoadDraft: SteppedLoadProfile | null = null;
 
@@ -176,7 +173,7 @@ export const closeSteppedLoadDraft = () => {
 export const initSteppedLoadDraftHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
   getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
-  persistDeviceControlProfile: (deviceId: string, profile: SteppedLoadProfile | null) => Promise<void>;
+  persistDeviceControlProfile: (deviceId: string, profile: SteppedLoadProfile | null) => Promise<boolean>;
   refreshOpenDeviceDetail: () => void;
 }) => {
   const appendDraftSteppedLoadStep = () => {
@@ -235,15 +232,12 @@ export const initSteppedLoadDraftHandlers = (params: {
     }
 
     currentSteppedLoadDraft = profile;
-    if (state.shedBehaviors[deviceId]?.action === 'set_step') {
+    if (deviceDetailShedAction && deviceDetailShedAction.value === 'set_step') {
       const lowestActiveStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-      const nextBehaviors = await writeFreshSetting<Record<string, PersistedShedBehavior>>({
-        key: OVERSHOOT_BEHAVIORS,
+      const nextBehaviors = await writeShedBehaviors({
         context: 'device detail',
         logMessage: 'Failed to save stepped-load profile',
         toastMessage: 'Failed to save stepped-load profile.',
-        fallbackValue: {},
-        readFresh: readShedBehaviors,
         mutate: (currentBehaviors) => {
           const currentBehavior = currentBehaviors[deviceId];
           if (currentBehavior?.action !== 'set_step') {
@@ -261,8 +255,10 @@ export const initSteppedLoadDraftHandlers = (params: {
       if (!nextBehaviors) return;
     }
 
-    await params.persistDeviceControlProfile(deviceId, profile);
-    params.refreshOpenDeviceDetail();
+    const didPersist = await params.persistDeviceControlProfile(deviceId, profile);
+    if (didPersist) {
+      params.refreshOpenDeviceDetail();
+    }
   };
 
   deviceDetailSteppedAddStep?.addEventListener('click', appendDraftSteppedLoadStep);

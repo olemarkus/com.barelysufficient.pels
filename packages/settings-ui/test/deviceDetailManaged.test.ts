@@ -395,4 +395,188 @@ describe('device detail managed state saves', () => {
     expect(state.deviceControlProfiles['heater-1']).toBeUndefined();
     expect(homey.__settingsStore.device_control_profiles).toEqual({});
   });
+
+  it('does not refresh another device panel when an earlier control-model save fails late', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    controlModelInput!.innerHTML = `
+      <option value="temperature_target">Temperature target</option>
+      <option value="stepped_load">Stepped load</option>
+    `;
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        device_control_profiles: {},
+      },
+    });
+    let rejectFirstProfileSave: (() => void) | null = null;
+    homey.set = vi.fn((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key === 'device_control_profiles') {
+        rejectFirstProfileSave = () => {
+          cb?.(new Error('Homey SDK not ready'));
+        };
+        return;
+      }
+      homey.__settingsStore[key] = value;
+      cb?.(null);
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [
+      buildDevice('heater-1', 'Hall Heater'),
+      buildDevice('heater-2', 'Bedroom Heater'),
+    ];
+    state.managedMap = { 'heater-1': true, 'heater-2': true };
+    state.controllableMap = { 'heater-1': true, 'heater-2': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {
+      'heater-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
+      'heater-2': { enabled: true, cheapDelta: 4, expensiveDelta: -4 },
+    };
+    state.capacityPriorities = { Home: { 'heater-1': 1, 'heater-2': 2 } };
+    state.modeTargets = {
+      Home: { 'heater-1': 20, 'heater-2': 18 },
+    };
+    state.deviceControlProfiles = {};
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+
+    openDeviceDetail('heater-1');
+    await flushPromises();
+    controlModelInput!.value = 'stepped_load';
+    controlModelInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    openDeviceDetail('heater-2');
+    await flushPromises();
+
+    const detailTitle = document.querySelector('#device-detail-title') as HTMLElement | null;
+    const cheapDeltaInput = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement | null;
+    cheapDeltaInput!.value = '99';
+
+    rejectFirstProfileSave!();
+    await flushPromises();
+    await flushPromises();
+
+    expect(detailTitle?.textContent).toBe('Bedroom Heater');
+    expect(cheapDeltaInput?.value).toBe('99');
+  });
+
+  it('serializes control-model saves so concurrent devices do not lose earlier updates', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    controlModelInput!.innerHTML = `
+      <option value="temperature_target">Temperature target</option>
+      <option value="stepped_load">Stepped load</option>
+    `;
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        device_control_profiles: {},
+      },
+    });
+    const originalSet = homey.set;
+    let resolveFirstSet: (() => void) | null = null;
+    let isFirstProfileSave = true;
+    homey.set = vi.fn((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key !== 'device_control_profiles') {
+        originalSet(key, value, cb);
+        return;
+      }
+      if (isFirstProfileSave) {
+        isFirstProfileSave = false;
+        resolveFirstSet = () => {
+          homey.__settingsStore[key] = value;
+          cb?.(null);
+        };
+        return;
+      }
+      homey.__settingsStore[key] = value;
+      cb?.(null);
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [
+      buildDevice('heater-1', 'Hall Heater'),
+      buildDevice('heater-2', 'Bedroom Heater'),
+    ];
+    state.managedMap = { 'heater-1': true, 'heater-2': true };
+    state.controllableMap = { 'heater-1': true, 'heater-2': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'heater-1': 1, 'heater-2': 2 } };
+    state.modeTargets = {
+      Home: { 'heater-1': 20, 'heater-2': 19 },
+    };
+    state.deviceControlProfiles = {};
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+
+    openDeviceDetail('heater-1');
+    await flushPromises();
+    controlModelInput!.value = 'stepped_load';
+    controlModelInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    openDeviceDetail('heater-2');
+    await flushPromises();
+    controlModelInput!.value = 'stepped_load';
+    controlModelInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(homey.__settingsStore.device_control_profiles).toEqual({});
+
+    resolveFirstSet!();
+    await flushPromises();
+    await flushPromises();
+
+    expect(Object.keys(homey.__settingsStore.device_control_profiles as Record<string, unknown>).sort()).toEqual([
+      'heater-1',
+      'heater-2',
+    ]);
+  });
 });
