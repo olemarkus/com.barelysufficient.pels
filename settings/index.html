@@ -379,58 +379,8 @@
           <span class="section-hint">Targeted diagnostics</span>
         </summary>
         <div class="collapse-content">
-          <div class="form-grid">
-            <label class="field checkbox-field">
-              <input id="debug-topic-plan" data-debug-topic="plan" type="checkbox">
-              <span class="checkbox-field__content">
-                <span class="field__label">Plan engine</span>
-                <small class="field__hint">Shedding, restore, and soft-limit decisions.</small>
-              </span>
-            </label>
-            <label class="field checkbox-field">
-              <input id="debug-topic-diagnostics" data-debug-topic="diagnostics" type="checkbox">
-              <span class="checkbox-field__content">
-                <span class="field__label">Device diagnostics</span>
-                <small class="field__hint">Per-device starvation, hysteresis, penalty, and diagnostics persistence.</small>
-              </span>
-            </label>
-            <label class="field checkbox-field">
-              <input id="debug-topic-price" data-debug-topic="price" type="checkbox">
-              <span class="checkbox-field__content">
-                <span class="field__label">Price optimization</span>
-                <small class="field__hint">Spot prices, tariffs, and price shaping.</small>
-              </span>
-            </label>
-            <label class="field checkbox-field">
-              <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
-              <span class="checkbox-field__content">
-                <span class="field__label">Daily budget</span>
-                <small class="field__hint">Daily plan and rollover.</small>
-              </span>
-            </label>
-            <label class="field checkbox-field">
-              <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">
-              <span class="checkbox-field__content">
-                <span class="field__label">Devices</span>
-                <small class="field__hint">Device snapshots and Homey API interactions.</small>
-              </span>
-            </label>
-            <label class="field checkbox-field">
-              <input id="debug-topic-settings" data-debug-topic="settings" type="checkbox">
-              <span class="checkbox-field__content">
-                <span class="field__label">Settings</span>
-                <small class="field__hint">Settings changes and housekeeping.</small>
-              </span>
-            </label>
-            <label class="field checkbox-field">
-              <input id="debug-topic-perf" data-debug-topic="perf" type="checkbox">
-              <span class="checkbox-field__content">
-                <span class="field__label">Performance</span>
-                <small class="field__hint">Hotpath counters and timings.</small>
-              </span>
-            </label>
-            <p class="muted">Select only what you need. Debug logging stays enabled across restarts.</p>
-          </div>
+          <div id="debug-logging-checkboxes" class="form-grid"></div>
+          <p class="muted">Select only what you need. Debug logging stays enabled across restarts.</p>
         </div>
       </details>
       <details class="settings-collapse" open>

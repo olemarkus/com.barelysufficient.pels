@@ -164,12 +164,7 @@ const buildDom = () => {
       <p id="price-optimization-empty" hidden></p>
     </section>
     <section class="panel hidden" data-panel="advanced">
-      <input id="debug-topic-plan" data-debug-topic="plan" type="checkbox">
-      <input id="debug-topic-diagnostics" data-debug-topic="diagnostics" type="checkbox">
-      <input id="debug-topic-price" data-debug-topic="price" type="checkbox">
-      <input id="debug-topic-daily-budget" data-debug-topic="daily_budget" type="checkbox">
-      <input id="debug-topic-devices" data-debug-topic="devices" type="checkbox">
-      <input id="debug-topic-settings" data-debug-topic="settings" type="checkbox">
+      <div id="debug-logging-checkboxes"></div>
       <form id="daily-budget-advanced-form">
         <input id="daily-budget-controlled-weight" type="number">
         <input id="daily-budget-price-flex-share" type="number">
@@ -261,6 +256,17 @@ describe('settings script', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].querySelector('.device-row__name')?.textContent).toContain('Heater');
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(true);
+  });
+
+  it('renders all debug logging topics including overview', async () => {
+    await loadSettingsScript();
+
+    const { DEBUG_LOGGING_TOPICS } = await import('../../shared-domain/src/utils/debugLogging.ts');
+    const renderedTopics = Array.from(document.querySelectorAll<HTMLInputElement>('[data-debug-topic]'))
+      .map((input) => input.dataset.debugTopic);
+
+    expect(renderedTopics).toEqual(DEBUG_LOGGING_TOPICS.map((topic) => topic.id));
+    expect(document.getElementById('debug-topic-overview')).toBeTruthy();
   });
 
   it('shows only the minimum temperature setting for temperature-target shed mode', async () => {
