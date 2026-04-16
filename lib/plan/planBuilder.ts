@@ -34,6 +34,7 @@ import {
 } from './planDailyBudgetWindow';
 import { recordActivationSetback } from './planActivationBackoff';
 import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
 
@@ -837,7 +838,7 @@ function resolveOvershootDevicePower(
   if (!device) return { kw: null, source: 'unknown' };
   const measuredPowerKw = resolveFiniteNumber(device.measuredPowerKw);
   if (measuredPowerKw !== null) return { kw: measuredPowerKw, source: 'measured' };
-  if (device.currentState === 'off' || device.currentOn === false) return { kw: 0, source: 'off' };
+  if (resolveEffectiveCurrentOn(device) === false) return { kw: 0, source: 'off' };
   const expectedPowerKw = resolveFiniteNumber(device.expectedPowerKw);
   if (expectedPowerKw !== null) return { kw: expectedPowerKw, source: 'expected' };
   const planningPowerKw = resolveFiniteNumber(device.planningPowerKw);

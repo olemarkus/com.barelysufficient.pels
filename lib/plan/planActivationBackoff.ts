@@ -4,6 +4,7 @@ import type {
   PlanEngineState,
 } from './planState';
 import type { DeviceDiagnosticsBackoffTransition } from '../diagnostics/deviceDiagnosticsService';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 
 export type { ActivationAttemptSource } from './planState';
 
@@ -169,7 +170,7 @@ export function isActivationObservationExplicitlyInactive(
 ): boolean {
   if (!observation) return false;
   if (observation.available === false) return true;
-  if (observation.currentOn === false) return true;
+  if (resolveEffectiveCurrentOn(observation) === false) return true;
   if (observation.currentState === 'off' || observation.currentState === 'inactive') return true;
   return false;
 }
@@ -179,8 +180,7 @@ export function isActivationObservationActiveNow(
 ): boolean {
   if (!observation) return false;
   if (observation.available === false) return false;
-  if (observation.currentOn === true) return true;
-  if (observation.currentState === 'on') return true;
+  if (resolveEffectiveCurrentOn(observation) === true) return true;
   return isFiniteNumber(observation.measuredPowerKw) && observation.measuredPowerKw > MIN_ACTIVE_MEASURED_POWER_KW;
 }
 

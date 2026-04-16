@@ -2,6 +2,7 @@ import type CapacityGuard from '../core/capacityGuard';
 import type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanContext } from './planContext';
+import { resolveEffectiveCurrentOn, resolveObservedCurrentState } from './planCurrentState';
 import { resolveCandidatePower } from './planCandidatePower';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
 import { buildPlanInputCapacityStateSummary } from './planLogging';
@@ -68,7 +69,11 @@ function resolveReducibleControlledLoadCandidatePowerKw(params: {
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): number | null {
   const { device, shedSet, limitSource, capacityBreached, getShedBehavior } = params;
-  if (device.controllable === false || device.currentOn === false || shedSet.has(device.id)) return null;
+  const effectiveCurrentOn = resolveEffectiveCurrentOn({
+    ...device,
+    currentState: resolveObservedCurrentState(device),
+  });
+  if (device.controllable === false || effectiveCurrentOn === false || shedSet.has(device.id)) return null;
   if (limitSource === 'daily' && !capacityBreached && device.budgetExempt === true) return null;
   const reduciblePowerKw = resolveReduciblePowerKw(device);
   if (reduciblePowerKw === null) return null;
@@ -173,7 +178,13 @@ export function countRemainingCandidates(params: {
   if (headroom === null || headroom >= 0) return 0;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return devices
-    .filter((d) => d.controllable !== false && d.currentOn !== false && !shedSet.has(d.id))
+    .filter((d) => {
+      const effectiveCurrentOn = resolveEffectiveCurrentOn({
+        ...d,
+        currentState: resolveObservedCurrentState(d),
+      });
+      return d.controllable !== false && effectiveCurrentOn !== false && !shedSet.has(d.id);
+    })
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
     .filter((d) => {
       if (resolveReduciblePowerKw(d) === null) return false;

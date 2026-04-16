@@ -38,6 +38,7 @@ export type DevicePlanDevice = {
   id: string;
   name: string;
   deviceClass?: string;
+  // Transitional snapshot field only. Planner truth must come from currentState.
   currentOn: boolean;
   currentState: string;
   plannedState: string;
@@ -129,6 +130,7 @@ export type PlanInputDevice = {
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   priority?: number;
+  // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;
   evChargingState?: string;
   powerKw?: number;
