@@ -1,4 +1,4 @@
-/* eslint-disable max-lines, max-lines-per-function, max-statements --
+/* eslint-disable max-lines, max-lines-per-function --
  * Power sample scheduling, backoff, and persistence are kept together for shared state handling.
  */
 import type Homey from 'homey';
@@ -24,6 +24,7 @@ export type PowerSampleRebuildState = {
   pendingPowerW?: number;
   pendingSoftLimitKw?: number;
   pendingReason?: string;
+  pendingDueMs?: number;
 };
 
 type RebuildDecision = {
@@ -92,6 +93,36 @@ const resolvePowerDelta = (params: {
   return { deltaW, deltaMeaningful: deltaW >= deltaThresholdW };
 };
 
+const shouldRebuildFromDecision = (params: {
+  isInitialSample: boolean;
+  controlBoundaryActive: boolean;
+  hardCapBreachActive: boolean;
+  planConvergenceActive?: boolean;
+  isInShortfall?: boolean;
+  backoffActive: boolean;
+  deltaMeaningful: boolean;
+  maxIntervalExceeded: boolean;
+}): boolean => {
+  const {
+    isInitialSample,
+    controlBoundaryActive,
+    hardCapBreachActive,
+    planConvergenceActive,
+    isInShortfall,
+    backoffActive,
+    deltaMeaningful,
+    maxIntervalExceeded,
+  } = params;
+  if (isInitialSample) return true;
+  if (backoffActive) return false;
+  // Let the first hard-cap breach force an urgent rebuild so shortfall detection can run,
+  // but an active tight-noop/mitigation holdoff still suppresses repeated breached samples.
+  if (hardCapBreachActive && !isInShortfall) return true;
+  return controlBoundaryActive
+    || (planConvergenceActive === true && deltaMeaningful)
+    || maxIntervalExceeded;
+};
+
 const resolveRebuildDecision = (params: {
   state: PowerSampleRebuildState;
   nowMs: number;
@@ -136,16 +167,16 @@ const resolveRebuildDecision = (params: {
     hardCapBreachActive,
     deltaMeaningful,
   });
-  // Ordinary power movement stays on the status-only path unless it crosses a real
-  // control boundary, the plan is still converging on a recent action, or the periodic
-  // convergence window expires.
-  const shouldRebuild = state.lastMs === 0
-    || (!backoffActive && (
-      controlBoundaryActive
-      || hardCapBreachActive
-      || (planConvergenceActive === true && deltaMeaningful)
-      || maxIntervalExceeded
-    ));
+  const shouldRebuild = shouldRebuildFromDecision({
+    isInitialSample: state.lastMs === 0,
+    controlBoundaryActive,
+    hardCapBreachActive,
+    planConvergenceActive,
+    isInShortfall,
+    backoffActive,
+    deltaMeaningful,
+    maxIntervalExceeded,
+  });
   return {
     shouldRebuild,
     controlBoundaryActive,
@@ -187,14 +218,7 @@ function isTightNoopBackoffActive(params: {
   hardCapBreachActive?: boolean;
   deltaMeaningful: boolean;
 }): boolean {
-  const {
-    state,
-    nowMs,
-    headroomTight,
-    isInShortfall,
-    hardCapBreachActive,
-    deltaMeaningful,
-  } = params;
+  const { state, nowMs, headroomTight, isInShortfall, hardCapBreachActive, deltaMeaningful } = params;
   if (!headroomTight && !isInShortfall && !hardCapBreachActive) return false;
   if (deltaMeaningful) return false;
   return isFutureMs(state.backoffUntilMs, nowMs)
@@ -362,10 +386,156 @@ const clearPendingState = (snapshot: PowerSampleRebuildState): PowerSampleRebuil
   pending: undefined,
   pendingResolve: undefined,
   timer: undefined,
+  pendingDueMs: undefined,
   pendingReason: undefined,
   pendingPowerW: undefined,
   pendingSoftLimitKw: undefined,
 });
+
+type PerformRebuildFn = (
+  snapshot: PowerSampleRebuildState,
+  reason: string,
+) => Promise<void>;
+
+const armPendingTimer = (params: {
+  getState: () => PowerSampleRebuildState;
+  setState: (state: PowerSampleRebuildState) => void;
+  dueMs: number;
+  fallbackReason: string;
+  performRebuild: PerformRebuildFn;
+  logError: (error: Error) => void;
+  resolve: () => void;
+}): ReturnType<typeof setTimeout> => {
+  const {
+    getState,
+    setState,
+    dueMs,
+    fallbackReason,
+    performRebuild,
+    logError,
+    resolve,
+  } = params;
+  return setTimeout(() => {
+    const latest = getState();
+    const reason = latest.pendingReason ?? fallbackReason;
+    const nextState = {
+      ...latest,
+      timer: undefined,
+      pendingDueMs: undefined,
+      lastMs: Date.now(),
+    };
+    setState(nextState);
+    performRebuild(nextState, reason)
+      .catch((error) => {
+        logError(error as Error);
+      })
+      .finally(() => {
+        const latest = getState();
+        setState(clearPendingState(latest));
+        resolve();
+      });
+  }, Math.max(0, dueMs - Date.now()));
+};
+
+const createPendingRebuild = (params: {
+  state: PowerSampleRebuildState;
+  getState: () => PowerSampleRebuildState;
+  setState: (state: PowerSampleRebuildState) => void;
+  currentPowerW: number | undefined;
+  softLimitKw: number | undefined;
+  triggerReason: string;
+  minIntervalMs: number;
+  performRebuild: PerformRebuildFn;
+  logError: (error: Error) => void;
+}): Promise<void> => {
+  const {
+    state,
+    getState,
+    setState,
+    currentPowerW,
+    softLimitKw,
+    triggerReason,
+    minIntervalMs,
+    performRebuild,
+    logError,
+  } = params;
+  const dueMs = state.lastMs + minIntervalMs;
+  let pendingResolve: (() => void) | undefined;
+  const pending = new Promise<void>((resolve) => {
+    pendingResolve = resolve;
+    const timer = armPendingTimer({
+      getState,
+      setState,
+      dueMs,
+      fallbackReason: triggerReason,
+      performRebuild,
+      logError,
+      resolve,
+    });
+    const latest = getState();
+    setState({
+      ...withPendingInputs(latest, currentPowerW, softLimitKw, triggerReason),
+      timer,
+      pendingDueMs: dueMs,
+      pendingResolve: resolve,
+    });
+  });
+  setState({ ...getState(), pending, pendingResolve });
+  return pending;
+};
+
+const coalescePendingRebuild = (params: {
+  latest: PowerSampleRebuildState;
+  getState: () => PowerSampleRebuildState;
+  setState: (state: PowerSampleRebuildState) => void;
+  currentPowerW: number | undefined;
+  softLimitKw: number | undefined;
+  triggerReason: string;
+  minIntervalMs: number;
+  performRebuild: PerformRebuildFn;
+  logError: (error: Error) => void;
+}): Promise<void> => {
+  const {
+    latest,
+    getState,
+    setState,
+    currentPowerW,
+    softLimitKw,
+    triggerReason,
+    minIntervalMs,
+    performRebuild,
+    logError,
+  } = params;
+  const nextState = withPendingInputs(latest, currentPowerW, softLimitKw, triggerReason);
+  const nextDueMs = latest.lastMs + minIntervalMs;
+  if (
+    typeof latest.pendingDueMs === 'number'
+    && nextDueMs < latest.pendingDueMs
+    && latest.pendingResolve
+  ) {
+    if (latest.timer) {
+      clearTimeout(latest.timer);
+    }
+    incPerfCounter('plan_rebuild_pending_rescheduled_total');
+    const timer = armPendingTimer({
+      getState,
+      setState,
+      dueMs: nextDueMs,
+      fallbackReason: triggerReason,
+      performRebuild,
+      logError,
+      resolve: latest.pendingResolve,
+    });
+    setState({
+      ...nextState,
+      timer,
+      pendingDueMs: nextDueMs,
+    });
+    return getState().pending ?? Promise.resolve();
+  }
+  setState(nextState);
+  return getState().pending ?? Promise.resolve();
+};
 
 const recordPowerSampleRebuildRequest = (reason: string): void => {
   incPerfCounters([
@@ -500,39 +670,31 @@ export function schedulePlanRebuildFromPowerSample(params: {
 
   if (!state.pending) {
     incPerfCounter('plan_rebuild_pending_created_total');
-    const waitMs = Math.max(0, minIntervalMs - elapsedMs);
-    let pendingResolve: (() => void) | undefined;
-    const pending = new Promise<void>((resolve) => {
-      pendingResolve = resolve;
-      const timer = setTimeout(() => {
-        const latest = getState();
-        const reason = latest.pendingReason ?? triggerReason;
-        const nextState = { ...latest, timer: undefined, lastMs: Date.now() };
-        setState(nextState);
-        performRebuild(nextState, reason)
-          .catch((error) => {
-            logError(error as Error);
-          })
-          .finally(() => {
-            const latest = getState();
-            setState(clearPendingState(latest));
-            resolve();
-          });
-      }, waitMs);
-      const latest = getState();
-      setState({
-        ...withPendingInputs(latest, currentPowerW, softLimitKw, triggerReason),
-        timer,
-        pendingResolve: resolve,
-      });
+    return createPendingRebuild({
+      state,
+      getState,
+      setState,
+      currentPowerW,
+      softLimitKw,
+      triggerReason,
+      minIntervalMs,
+      performRebuild,
+      logError,
     });
-    setState({ ...getState(), pending, pendingResolve });
-    return pending;
   }
   incPerfCounter('plan_rebuild_pending_coalesced_total');
   const latest = getState();
-  setState(withPendingInputs(latest, currentPowerW, softLimitKw, triggerReason));
-  return getState().pending ?? Promise.resolve();
+  return coalescePendingRebuild({
+    latest,
+    getState,
+    setState,
+    currentPowerW,
+    softLimitKw,
+    triggerReason,
+    minIntervalMs,
+    performRebuild,
+    logError,
+  });
 }
 
 export function schedulePlanRebuildFromSignal(params: {
