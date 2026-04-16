@@ -168,6 +168,14 @@ const clearPendingState = (snapshot: PowerSampleRebuildState): PowerSampleRebuil
   pendingSoftLimitKw: undefined,
 });
 
+const clearPendingExecutionHandleState = (snapshot: PowerSampleRebuildState): PowerSampleRebuildState => ({
+  ...snapshot,
+  pending: undefined,
+  pendingResolve: undefined,
+  timer: undefined,
+  pendingDueMs: undefined,
+});
+
 type PerformRebuildFn = (
   snapshot: PowerSampleRebuildState,
   reason: string,
@@ -195,7 +203,7 @@ const armPendingTimer = (params: {
     const latest = getState();
     const reason = latest.pendingReason ?? fallbackReason;
     const nextState = {
-      ...clearPendingState(latest),
+      ...clearPendingExecutionHandleState(latest),
       lastMs: Date.now(),
     };
     setState(nextState);

@@ -159,6 +159,48 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(state.pending).toBeUndefined();
   });
 
+  it('uses the latest coalesced sample values when a timed rebuild fires', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0, lastSoftLimitKw: 9 };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    const pending = schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 1000,
+      maxIntervalMs: 10000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9500,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.5,
+    });
+
+    schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 1000,
+      maxIntervalMs: 10000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9700,
+      limitKw: 10,
+      softLimitKw: 8.7,
+      headroomKw: -0.7,
+    });
+
+    vi.advanceTimersByTime(1000);
+    await pending;
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(state.lastRebuildPowerW).toBe(9700);
+    expect(state.lastSoftLimitKw).toBe(8.7);
+  });
+
   it('creates a pending rebuild when a boundary sample arrives within the min interval', () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
