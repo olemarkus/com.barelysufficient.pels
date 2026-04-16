@@ -172,6 +172,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'overshoot_entered',
       reasonCode: 'active_overshoot',
+      hardCapBreached: false,
       remainingReducibleControlledLoad: true,
       activeControlledDevices: 2,
     }));

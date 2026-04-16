@@ -10,7 +10,7 @@ import { buildSheddingPlan, type SheddingPlan } from './planShedding';
 import { buildPlanCapacityStateSummary, normalizePlanReason } from './planLogging';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
-import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from './planUsage';
+import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from './planUsage';
 import {
   formatHeadroomCooldownReason,
   resolveHeadroomCardCooldown,

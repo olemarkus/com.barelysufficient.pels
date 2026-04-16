@@ -81,13 +81,17 @@ export function resolveCandidatePower(device: PowerCandidate): number {
 }
 
 export function resolveLiveUsagePowerKw(device: LiveUsageCandidate): number | null {
+  if (device.currentState === 'off') {
+    return typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
+      ? Math.max(0, device.measuredPowerKw)
+      : 0;
+  }
   const preferred = resolvePreferredPowerSource({
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
   }, true);
   if (preferred) return preferred.value;
-  if (device.currentState === 'off') return 0;
   return null;
 }
 

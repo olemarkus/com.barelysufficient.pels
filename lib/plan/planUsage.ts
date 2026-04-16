@@ -3,6 +3,7 @@ import { resolveLiveUsagePowerKw } from './planPowerResolution';
 type UsageDevice = {
   controllable?: boolean;
   budgetExempt?: boolean;
+  currentOn?: boolean;
   currentState?: string;
   plannedState?: string;
   measuredPowerKw?: number;
@@ -13,9 +14,13 @@ type UsageDevice = {
 
 const resolveUsageKw = (dev: UsageDevice): number | null => {
   if (dev.plannedState === 'shed') {
-    return typeof dev.measuredPowerKw === 'number' && Number.isFinite(dev.measuredPowerKw)
-      ? Math.max(0, dev.measuredPowerKw)
-      : null;
+    if (typeof dev.measuredPowerKw === 'number' && Number.isFinite(dev.measuredPowerKw)) {
+      return Math.max(0, dev.measuredPowerKw);
+    }
+    if (dev.currentState === 'off' || dev.currentOn === false) {
+      return 0;
+    }
+    return null;
   }
   return resolveLiveUsagePowerKw(dev);
 };
@@ -46,10 +51,13 @@ export function splitControlledUsageKw(params: {
 }): { controlledKw: number | null; uncontrolledKw: number | null } {
   const { devices, totalKw } = params;
   const controlledKw = sumControlledUsageKw(devices);
+  const boundedControlledKw = totalKw !== null && controlledKw !== null
+    ? Math.min(totalKw, controlledKw)
+    : controlledKw;
   return {
-    controlledKw,
-    uncontrolledKw: totalKw !== null && controlledKw !== null
-      ? Math.max(0, totalKw - controlledKw)
+    controlledKw: boundedControlledKw,
+    uncontrolledKw: totalKw !== null && boundedControlledKw !== null
+      ? Math.max(0, totalKw - boundedControlledKw)
       : null,
   };
 }

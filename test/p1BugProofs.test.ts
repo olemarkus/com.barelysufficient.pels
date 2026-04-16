@@ -216,7 +216,8 @@ describe('P1 bug proofs', () => {
       id: 'dev-step',
       name: 'Tank',
       selectedStepId: 'off',
-      currentOn: true,
+      currentState: 'off',
+      currentOn: false,
       expectedPowerKw: 1.25,
       measuredPowerKw: undefined,
     });
