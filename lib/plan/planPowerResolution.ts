@@ -15,6 +15,7 @@ type PowerCandidate = {
 
 type LiveUsageCandidate = PowerCandidate & {
   currentState?: string;
+  currentOn?: boolean;
 };
 
 type RestorePowerCandidate = PowerCandidate & {
@@ -81,7 +82,7 @@ export function resolveCandidatePower(device: PowerCandidate): number {
 }
 
 export function resolveLiveUsagePowerKw(device: LiveUsageCandidate): number | null {
-  if (device.currentState === 'off') {
+  if (device.currentState === 'off' || device.currentOn === false) {
     return typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
       ? Math.max(0, device.measuredPowerKw)
       : 0;
