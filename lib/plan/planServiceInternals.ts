@@ -1,47 +1,6 @@
-import { buildPelsStatus } from '../core/pelsStatus';
-import type { DevicePlan } from './planTypes';
+import type { DevicePlan, PlanRebuildOutcome } from './planTypes';
 
 export const STATUS_POWER_BUCKET_MS = 30 * 1000;
-
-export type PlanChangeSet = {
-  actionSignature: string;
-  detailSignature: string;
-  metaSignature: string;
-  actionChanged: boolean;
-  detailChanged: boolean;
-  metaChanged: boolean;
-};
-
-export type PlanSnapshotWriteReason = 'action_changed' | 'detail_changed' | 'meta_only';
-export type PelsStatusWriteReason = 'initial' | 'action_changed' | 'throttle';
-
-export type StatusPlanChanges = Pick<
-  PlanChangeSet,
-  'actionChanged' | 'actionSignature' | 'detailSignature' | 'metaSignature'
->;
-
-export type PlanRebuildOutcome = {
-  buildMs: number;
-  changeMs: number;
-  snapshotMs: number;
-  snapshotWriteMs: number;
-  statusMs: number;
-  statusWriteMs: number;
-  applyMs: number;
-  actionChanged: boolean;
-  detailChanged: boolean;
-  metaChanged: boolean;
-  appliedActions: boolean;
-  deviceWriteCount: number;
-  hadShedding: boolean;
-  isDryRun: boolean;
-  failed: boolean;
-};
-
-export type PelsStatusComputation = {
-  result: ReturnType<typeof buildPelsStatus>;
-  statusJson: string;
-};
 
 export const createPlanRebuildOutcome = (isDryRun: boolean): PlanRebuildOutcome => ({
   buildMs: 0,

@@ -35,12 +35,12 @@ not on a priority rule.
 - Trigger: every power sample, and any "signal" event deriving headroom/hard-cap/shortfall.
 - Size: 893 LOC of which ~250 LOC is the scheduler/state machinery.
 
-### 3. `planService.pendingNonActionSnapshotTimer`
+### 3. `planSnapshotWriter.pendingNonActionSnapshotTimer`
 
 - Debounces non-action snapshot writes (status/headroom updates that do not cross a control
   boundary).
 - Separate timer, separate cancellation, separate reason-reduction rule.
-- Lives inside `PlanService` alongside the full rebuild queue.
+- Lives inside `PlanSnapshotWriter`, separate from the rebuild queue but still uncoordinated with it.
 
 ## Race window
 
@@ -138,8 +138,9 @@ Land this as Phase 9, now that Phase 8 has provided a stable decision module as 
    decision module in `appPowerRebuildPolicy.ts` decides which kind to raise. Route power-sample
    call sites through the new scheduler. Shrink the compatibility barrel and
    `appPowerRebuildScheduler.ts` accordingly.
-4. Port `planService.pendingNonActionSnapshotTimer` onto the `snapshot` intent kind. Route
-   snapshot write call sites through the new scheduler. `PlanService` stops owning the timer.
+4. Port `planSnapshotWriter.pendingNonActionSnapshotTimer` onto the `snapshot` intent kind. Route
+   snapshot write call sites through the new scheduler. `PlanSnapshotWriter` stops owning the
+   timer.
 5. Lint sweep: remove unused helpers from the three former locations.
 
 Each migration step is landable independently and the old coalescer keeps working until its

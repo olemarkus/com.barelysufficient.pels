@@ -4,7 +4,6 @@ import type Homey from 'homey';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
-import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import {
   buildDeviceOverviewTransitionSignature,
   formatDeviceOverview,
@@ -21,10 +20,6 @@ import {
 import {
   createPlanRebuildOutcome,
   hasShedding,
-  type PlanChangeSet,
-  type PlanRebuildOutcome,
-  type PlanSnapshotWriteReason,
-  type StatusPlanChanges,
 } from './planServiceInternals';
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
@@ -32,13 +27,21 @@ import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/lo
 import { withRebuildContext } from '../logging/logger';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
+import { PlanSnapshotWriter } from './planSnapshotWriter';
 import {
   buildLiveStatePlan,
   canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDriftAgainstIntent,
 } from './planReconcileState';
 import type { PlanEngine } from './planEngine';
-import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice } from './planTypes';
+import type {
+  DevicePlan,
+  PendingTargetObservationSource,
+  PlanChangeSet,
+  PlanRebuildOutcome,
+  PlanInputDevice,
+  StatusPlanChanges,
+} from './planTypes';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './planHeadroomDevice';
 import type { PlanActuationMode, PlanActuationResult } from './planExecutor';
 
@@ -95,15 +98,11 @@ export class PlanService {
   private latestPlanSnapshotUpdatedAtMs: number | null = null;
   private latestReconcilePlanSnapshot: DevicePlan | null = null;
   private lastOverviewSignatureByDeviceId = new Map<string, string>();
-  private lastPlanSnapshotWriteMs = 0;
-  private hasPendingNonActionSnapshot = false;
-  private pendingNonActionSnapshotReason: Exclude<PlanSnapshotWriteReason, 'action_changed'> = 'meta_only';
-  private pendingNonActionSnapshotPlan: DevicePlan | null = null;
-  private pendingNonActionSnapshotTimer?: ReturnType<typeof setTimeout>;
   private planOperationQueue: Promise<void> = Promise.resolve();
   private queuedRebuilds = 0;
   private currentBuildReason: string | null = null;
   private planStatusWriter: PlanStatusWriter;
+  private planSnapshotWriter: PlanSnapshotWriter;
 
   constructor(private deps: PlanServiceDeps) {
     this.planStatusWriter = new PlanStatusWriter({
@@ -113,6 +112,12 @@ export class PlanService {
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
       getLastPowerUpdate: deps.getLastPowerUpdate,
       error: deps.error,
+    });
+    this.planSnapshotWriter = new PlanSnapshotWriter({
+      homey: deps.homey,
+      error: deps.error,
+      structuredLog: deps.structuredLog,
+      debugStructured: deps.debugStructured,
     });
   }
 
@@ -412,121 +417,11 @@ export class PlanService {
   }
 
   private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): number {
-    const now = Date.now();
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
-    if (!changed) {
-      return this.flushPendingNonActionSnapshot(now);
-    }
-
-    if (changes.actionChanged) {
-      const writeMs = this.writePlanSnapshot(plan, 'action_changed', now);
-      this.clearPendingNonActionSnapshot();
+    const writeMs = this.planSnapshotWriter.update(plan, changes);
+    if (changed) {
       this.emitPlanUpdated(plan);
-      return writeMs;
     }
-
-    if (changes.detailChanged) {
-      const writeMs = this.writePlanSnapshot(plan, 'detail_changed', now);
-      this.clearPendingNonActionSnapshot();
-      this.emitPlanUpdated(plan);
-      return writeMs;
-    }
-
-    if (this.canWriteNonActionSnapshot(now)) {
-      const writeMs = this.writePlanSnapshot(plan, 'meta_only', now);
-      this.clearPendingNonActionSnapshot();
-      this.emitPlanUpdated(plan);
-      return writeMs;
-    }
-
-    this.schedulePendingNonActionSnapshot(plan, 'meta_only', now);
-    incPerfCounter('settings_set.device_plan_snapshot_meta_write_throttled_total');
-    this.emitPlanUpdated(plan);
-    return 0;
-  }
-
-  private canWriteNonActionSnapshot(nowMs: number): boolean {
-    if (this.lastPlanSnapshotWriteMs === 0) return true;
-    return nowMs - this.lastPlanSnapshotWriteMs >= DETAIL_SNAPSHOT_WRITE_THROTTLE_MS;
-  }
-
-  private resolveNonActionWaitMs(nowMs: number): number {
-    if (this.lastPlanSnapshotWriteMs === 0) return 0;
-    const elapsedMs = nowMs - this.lastPlanSnapshotWriteMs;
-    return Math.max(0, DETAIL_SNAPSHOT_WRITE_THROTTLE_MS - elapsedMs);
-  }
-
-  private schedulePendingNonActionSnapshot(
-    plan: DevicePlan,
-    reason: Exclude<PlanSnapshotWriteReason, 'action_changed'>,
-    nowMs: number,
-  ): void {
-    this.hasPendingNonActionSnapshot = true;
-    this.pendingNonActionSnapshotPlan = plan;
-    this.pendingNonActionSnapshotReason = reason;
-    this.deps.debugStructured?.({
-      event: 'plan_snapshot_write_throttled',
-      reasonCode: 'meta_only_throttled',
-      deviceCount: plan.devices.length,
-      totalKw: plan.meta.totalKw ?? null,
-      waitMs: this.resolveNonActionWaitMs(nowMs),
-      snapshotReason: reason,
-    });
-    if (this.pendingNonActionSnapshotTimer) return;
-
-    const waitMs = this.resolveNonActionWaitMs(nowMs);
-    this.pendingNonActionSnapshotTimer = setTimeout(() => {
-      this.pendingNonActionSnapshotTimer = undefined;
-      this.flushPendingNonActionSnapshot(Date.now());
-    }, waitMs);
-  }
-
-  private flushPendingNonActionSnapshot(nowMs: number): number {
-    if (!this.hasPendingNonActionSnapshot || !this.pendingNonActionSnapshotPlan) return 0;
-    if (!this.canWriteNonActionSnapshot(nowMs)) {
-      this.schedulePendingNonActionSnapshot(
-        this.pendingNonActionSnapshotPlan,
-        this.pendingNonActionSnapshotReason,
-        nowMs,
-      );
-      return 0;
-    }
-
-    const writeMs = this.writePlanSnapshot(
-      this.pendingNonActionSnapshotPlan,
-      this.pendingNonActionSnapshotReason,
-      nowMs,
-    );
-    this.clearPendingNonActionSnapshot();
-    incPerfCounter('settings_set.device_plan_snapshot_meta_write_flushed_total');
-    return writeMs;
-  }
-
-  private clearPendingNonActionSnapshot(): void {
-    if (this.pendingNonActionSnapshotTimer) {
-      clearTimeout(this.pendingNonActionSnapshotTimer);
-      this.pendingNonActionSnapshotTimer = undefined;
-    }
-    this.hasPendingNonActionSnapshot = false;
-    this.pendingNonActionSnapshotPlan = null;
-    this.pendingNonActionSnapshotReason = 'meta_only';
-  }
-
-  private writePlanSnapshot(plan: DevicePlan, reason: PlanSnapshotWriteReason, nowMs: number): number {
-    const writeStart = Date.now();
-    this.deps.homey.settings.set('device_plan_snapshot', plan);
-    this.lastPlanSnapshotWriteMs = nowMs;
-    const writeMs = Date.now() - writeStart;
-    this.deps.structuredLog?.info({
-      event: 'plan_snapshot_written',
-      reasonCode: reason,
-      deviceCount: plan.devices.length,
-      totalKw: plan.meta.totalKw ?? null,
-      writeMs,
-    });
-    addPerfDuration('settings_write_ms', writeMs);
-    incPerfCounter('settings_set.device_plan_snapshot');
-    incPerfCounter(`settings_set.device_plan_snapshot_reason.${reason}_total`);
     return writeMs;
   }
 
@@ -848,7 +743,7 @@ export class PlanService {
   }
 
   destroy(): void {
-    this.clearPendingNonActionSnapshot();
+    this.planSnapshotWriter.destroy();
   }
 }
 

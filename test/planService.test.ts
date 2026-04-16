@@ -139,6 +139,7 @@ describe('PlanService', () => {
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1, headroomKw: 4 }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 2, headroomKw: 3 }))
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 2, headroomKw: 3 })),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
@@ -194,6 +195,258 @@ describe('PlanService', () => {
       writeMs: expect.any(Number),
     }));
     expect(settingsSet).toHaveBeenCalledWith('device_plan_snapshot', expect.anything());
+  });
+
+  it('treats 0ms deferred snapshot writes as successful flushes', async () => {
+    let snapshotWriteCount = 0;
+    const settingsSet = vi.fn((key: string) => {
+      if (key !== 'device_plan_snapshot') return undefined;
+      snapshotWriteCount += 1;
+      if (snapshotWriteCount === 2) {
+        const frozenNow = Date.now();
+        vi.spyOn(Date, 'now').mockImplementation(() => frozenNow);
+      }
+      return undefined;
+    });
+    const structuredLog = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const planEngine = {
+      buildDevicePlanSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1, headroomKw: 4 }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 2, headroomKw: 3 }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 2, headroomKw: 3 })),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      structuredLog,
+    });
+
+    await service.rebuildPlanFromCache();
+    structuredLog.info.mockClear();
+    settingsSet.mockClear();
+
+    await service.rebuildPlanFromCache();
+    await vi.advanceTimersByTimeAsync(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
+    vi.restoreAllMocks();
+
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_snapshot_written',
+      reasonCode: 'meta_only',
+      writeMs: 0,
+    }));
+    expect(settingsSet).toHaveBeenCalledTimes(1);
+
+    structuredLog.info.mockClear();
+    await service.rebuildPlanFromCache();
+
+    expect(settingsSet).toHaveBeenCalledTimes(1);
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_snapshot_written',
+      reasonCode: 'meta_only',
+    }));
+  });
+
+  it('keeps deferred snapshot state and retries after a failed flush write', async () => {
+    let snapshotWriteCount = 0;
+    const settingsSet = vi.fn((key: string) => {
+      if (key !== 'device_plan_snapshot') return undefined;
+      snapshotWriteCount += 1;
+      if (snapshotWriteCount === 2) {
+        throw new Error('settings exploded');
+      }
+      return undefined;
+    });
+    const structuredLog = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const planEngine = {
+      buildDevicePlanSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1, headroomKw: 4 }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 2, headroomKw: 3 }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 2, headroomKw: 3 })),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      structuredLog,
+    });
+
+    await service.rebuildPlanFromCache();
+    structuredLog.info.mockClear();
+
+    await service.rebuildPlanFromCache();
+    await vi.advanceTimersByTimeAsync(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
+
+    expect(structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_snapshot_write_failed',
+      reasonCode: 'meta_only',
+      deviceCount: 1,
+      totalKw: 2,
+      err: expect.any(Error),
+    }));
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_snapshot_written',
+      reasonCode: 'meta_only',
+    }));
+
+    await service.rebuildPlanFromCache();
+
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_snapshot_written',
+      reasonCode: 'meta_only',
+      deviceCount: 1,
+      totalKw: 2,
+      writeMs: expect.any(Number),
+    }));
+  });
+
+  it('fails the rebuild when an immediate detail snapshot write throws', async () => {
+    let snapshotWriteCount = 0;
+    const settingsSet = vi.fn((key: string) => {
+      if (key !== 'device_plan_snapshot') return undefined;
+      snapshotWriteCount += 1;
+      if (snapshotWriteCount === 2) {
+        throw new Error('detail snapshot exploded');
+      }
+      return undefined;
+    });
+    const error = vi.fn();
+    const planEngine = {
+      buildDevicePlanSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(buildPlan(19, 'stable'))
+        .mockResolvedValueOnce(buildPlan(21, 'sensor_update')),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error,
+    });
+
+    const firstOutcome = await service.rebuildPlanFromCache();
+    const secondOutcome = await service.rebuildPlanFromCache();
+
+    expect(firstOutcome.failed).toBe(false);
+    expect(secondOutcome.failed).toBe(true);
+    expect(error).toHaveBeenCalledWith('Failed to rebuild plan', expect.any(Error));
+  });
+
+  it('reports deferred snapshot write failures through error when structured logging is unavailable', async () => {
+    let snapshotWriteCount = 0;
+    const settingsSet = vi.fn((key: string) => {
+      if (key !== 'device_plan_snapshot') return undefined;
+      snapshotWriteCount += 1;
+      if (snapshotWriteCount === 2) {
+        throw new Error('settings exploded');
+      }
+      return undefined;
+    });
+    const error = vi.fn();
+    const planEngine = {
+      buildDevicePlanSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1, headroomKw: 4 }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 2, headroomKw: 3 })),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error,
+    });
+
+    await service.rebuildPlanFromCache();
+    await service.rebuildPlanFromCache();
+    await vi.advanceTimersByTimeAsync(DETAIL_SNAPSHOT_WRITE_THROTTLE_MS);
+
+    expect(error).toHaveBeenCalledWith('Failed to write deferred device plan snapshot', expect.any(Error));
   });
 
   it('emits grouped structured plan debug summaries only when the summary changes', async () => {
@@ -2299,6 +2552,50 @@ describe('PlanService', () => {
     const snapshotWritesAfterDestroy = settingsSet.mock.calls
       .filter((call: unknown[]) => call[0] === 'device_plan_snapshot');
     expect(snapshotWritesAfterDestroy).toHaveLength(1);
+  });
+
+  it('ignores snapshot writer updates after destroy', async () => {
+    const settingsSet = vi.fn();
+    const planEngine = {
+      buildDevicePlanSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.0 }))
+        .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.2 })),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue(undefined),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+    });
+
+    await service.rebuildPlanFromCache();
+    service.destroy();
+
+    await service.rebuildPlanFromCache();
+
+    const snapshotWrites = settingsSet.mock.calls
+      .filter((call: unknown[]) => call[0] === 'device_plan_snapshot');
+    expect(snapshotWrites).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('skips applyPlanActions on identical rebuilds', async () => {

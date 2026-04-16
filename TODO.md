@@ -78,13 +78,12 @@ file.
       Why P1: this landed the local decision/presentation split in `planReasons.ts` while keeping
       emitted `reason` text stable for existing consumers.
       Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonStrings.ts`.
-- [ ] Move `planServiceInternals.ts` types into `lib/plan/planTypes.ts` and extract the
-      snapshot-write path out of `planService.ts` so rebuild orchestration stops carrying
-      persistence plumbing.
-      Why P1: `planService.ts` mixes rebuilds, timers, throttled settings writes, and metrics in
-      one place even though snapshot persistence is a separate concern.
-      Files: `lib/plan/planService.ts`, `lib/plan/planServiceInternals.ts`,
-      `lib/plan/planTypes.ts`.
+- [ ] Extract rebuild-metrics/tracing helpers out of `planService.ts` now that snapshot
+      persistence lives in `planSnapshotWriter.ts`.
+      Why P1: `planService.ts` no longer owns the throttled snapshot timer/write path, but it
+      still mixes rebuild orchestration with perf aggregation, trace recording, and completion
+      logging.
+      Files: `lib/plan/planService.ts`, new `lib/plan/planRebuildMetrics.ts`.
 - [ ] Continue shrinking `app.ts` after the helper extractions already landed. Snapshot refresh,
       Homey Energy polling, and stepped-load helper ownership have moved out; the remaining work
       is to reduce lifecycle/timer/wrapper bulk and remove the remaining trivial pass-through

@@ -94,19 +94,18 @@ after the current helper layout has settled.
 
 **Current size:** ~894 LOC after the landed extractions.
 
-### 6. `planService.ts` — 823 LOC, mixed concerns
+### 6. `planService.ts` — 763 LOC after snapshot-write extraction
 
-Contains rebuild orchestration, snapshot persistence (throttling, dedup, timers), and metrics
-measurement. These are genuinely separate concerns sharing a class for convenience.
+Rebuild orchestration still owns change detection, status updates, actuation, and rebuild metrics,
+but the throttled `device_plan_snapshot` persistence path now lives in `planSnapshotWriter.ts`.
+The shared `planServiceInternals.ts` types also moved into `planTypes.ts`.
 
-**Simplification:** Extract snapshot-write subsystem (~120 LOC) and rebuild-metrics helpers
-(~120 LOC) into their own modules. Also move `planServiceInternals.ts` types into `planTypes.ts`
-to resolve the blocked circular dependency.
+**Remaining simplification:** Extract rebuild-metrics helpers (~120 LOC) into their own module so
+`planService.ts` is left with orchestration and state transitions instead of also aggregating perf,
+trace, and completion-log plumbing.
 
-**Risk:** Medium. The snapshot writer uses timers and deferred writes that need careful lifecycle
-management.
-
-**Prerequisite:** Phase 1 (planServiceInternals.ts type relocation).
+**Risk:** Low-medium. The timer-backed snapshot writer lifecycle is already separated; the
+remaining metrics split is mostly plumbing but still touches trusted rebuild diagnostics.
 
 ### 7. `planRestore.ts` — 505 LOC, 8 sequential restore gates
 
@@ -145,7 +144,7 @@ Three distinct debouncers gate plan rebuilds and snapshot writes with different 
 - `lib/app/appFlowRebuildScheduler.ts` (FLOW_REBUILD_COOLDOWN_MS=1000) — flow-card-driven.
 - `schedulePlanRebuildFromSignal` in `appPowerHelpers.ts` — power-sample-driven with tight-noop
   exponential backoff.
-- `planService.pendingNonActionSnapshotTimer` — non-action snapshot writes.
+- `planSnapshotWriter.pendingNonActionSnapshotTimer` — non-action snapshot writes.
 
 They never coordinate. A flow rebuild and a signal rebuild can race, and each has its own
 cancellation and priority story.
@@ -296,7 +295,7 @@ Items from the original refactoring spec that are deferred or dropped:
       moving to `TimerRegistry` / `AppContext`
 
 ### Phase 5: Split planService
-- [ ] Extract snapshot-write subsystem into planSnapshotWriter.ts
+- [x] Extract snapshot-write subsystem into planSnapshotWriter.ts
 - [ ] Extract rebuild-metrics into planRebuildMetrics.ts
 
 ### Phase 6: Collapse planRestore gates
@@ -313,7 +312,7 @@ Items from the original refactoring spec that are deferred or dropped:
 - [ ] Design sign-off against `notes/complexity-cleanup/rebuild-scheduler-unification.md`
 - [ ] Three-coalescer race regression test before any code changes
 - [ ] Fold `appFlowRebuildScheduler.ts` contract into the unified scheduler
-- [ ] Fold `planService.pendingNonActionSnapshotTimer` into the unified scheduler
+- [ ] Fold `planSnapshotWriter.pendingNonActionSnapshotTimer` into the unified scheduler
 - [ ] Remove the old per-concern debouncers
 
 ### Phase 10: TimerRegistry
