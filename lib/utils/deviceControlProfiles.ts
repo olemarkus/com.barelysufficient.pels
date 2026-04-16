@@ -1,6 +1,3 @@
-/* eslint-disable
-  functional/immutable-data
--- runtime profile normalization keeps validation and object shaping together. */
 import type { DeviceControlProfile, DeviceControlProfiles, SteppedLoadProfile, SteppedLoadStep } from './types';
 
 export const POWER_HEURISTIC_ABSOLUTE_TOLERANCE_W = 350;
@@ -188,11 +185,11 @@ export const normalizeDeviceControlProfiles = (
   value: unknown,
 ): DeviceControlProfiles | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const next: DeviceControlProfiles = {};
-  for (const [deviceId, profileValue] of Object.entries(value)) {
-    if (!deviceId.trim()) continue;
-    const profile = normalizeDeviceControlProfile(profileValue);
-    if (profile) next[deviceId] = profile;
-  }
-  return next;
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([deviceId, profileValue]) => {
+      if (!deviceId.trim()) return [];
+      const profile = normalizeDeviceControlProfile(profileValue);
+      return profile ? [[deviceId, profile]] : [];
+    }),
+  );
 };
