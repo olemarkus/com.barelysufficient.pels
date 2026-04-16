@@ -31,6 +31,7 @@
 import type Homey from 'homey';
 import { io, type Manager as SocketIOManager, type Socket as SocketIOSocket } from 'socket.io-client';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
+import { isHomeyDeviceLike } from '../utils/types';
 import { resolveHomeyInstance } from './deviceManagerHomeyApi';
 import { normalizeError } from '../utils/errorUtils';
 
@@ -398,8 +399,18 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
         });
         return;
       }
+      if (!isHomeyDeviceLike(data)) {
+        this.health.ignoredLiveEventCount += 1;
+        this.logger.structuredLog?.info({
+          component: 'devices', source: 'web_api_subscription',
+          event: 'device_live_feed_event_ignored',
+          eventName, ignoreReason: 'missing_device_identity',
+          ignoredLiveEventCount: this.health.ignoredLiveEventCount,
+        });
+        return;
+      }
       this.health.liveEventCount += 1;
-      this.callbacks.onDeviceUpdate(data as HomeyDeviceLike);
+      this.callbacks.onDeviceUpdate(data);
     });
   }
 

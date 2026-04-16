@@ -294,7 +294,7 @@ export class AppDeviceControlHelpers {
 
   reportSteppedLoadActualStep(deviceId: string, stepId: string): ReportSteppedLoadActualStepResult {
     const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
-    const deviceName = snapshot?.name?.trim() ?? deviceId;
+    const deviceName = snapshot ? snapshot.name.trim() : `device ${deviceId}`;
     const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId[deviceId]?.stepId;
     const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId[deviceId];
     const changed = reportSteppedLoadActualStep({

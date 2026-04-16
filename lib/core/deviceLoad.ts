@@ -1,9 +1,7 @@
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { getRawDevice } from './deviceManagerHomeyApi';
 
-type DeviceInfo = {
-  id?: string;
-  data?: { id?: string };
+type RawHomeyManagerDevice = {
   settings?: { load?: number };
 };
 
@@ -32,7 +30,7 @@ async function getApiLoad(params: {
 }): Promise<number | null> {
   const { deviceId, error } = params;
   try {
-    const device = await getRawDevice(deviceId) as DeviceInfo;
+    const device = await getRawDevice(deviceId) as RawHomeyManagerDevice;
     if (device && typeof device.settings?.load === 'number') {
       return device.settings.load;
     }

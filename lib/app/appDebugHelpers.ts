@@ -9,6 +9,7 @@ import type {
 import { DEVICES_API_PATH, getRawDevices } from '../core/deviceManagerHomeyApi';
 import type { DevicePlan } from '../plan/planTypes';
 import type { HomeyDeviceLike } from '../utils/types';
+import { isHomeyDeviceLike } from '../utils/types';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { normalizeError } from '../utils/errorUtils';
 import { safeJsonStringify, sanitizeLogValue } from '../utils/logUtils';
@@ -46,8 +47,8 @@ type HomeyCapabilitySummary = {
 };
 
 type HomeyDeviceSummary = {
-  id?: string;
-  name?: string;
+  id: string;
+  name: string;
   class?: string;
   driverId?: string;
   available?: boolean;
@@ -384,7 +385,7 @@ const compactHomeyDevice = (device: HomeyDeviceLike): HomeyDeviceSummary => {
     ]),
   );
   return {
-    id: device.id ?? asString(device.data?.id),
+    id: device.id,
     name: device.name,
     class: device.class,
     ...(asString(record.driverId) ? { driverId: asString(record.driverId) } : {}),
@@ -451,7 +452,12 @@ const getRawManagerDeviceEntry = async (params: {
   try {
     const devices = await getRawDevices(DEVICES_API_PATH);
     const list = Array.isArray(devices) ? devices : Object.values(devices || {});
-    return (list.find((entry) => entry?.id === deviceId) as HomeyDeviceLike | undefined) ?? null;
+    for (const entry of list) {
+      if (isHomeyDeviceLike(entry) && entry.id === deviceId) {
+        return entry;
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -474,7 +480,6 @@ export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<Ho
   });
 }
 
-// eslint-disable-next-line complexity
 export async function logHomeyDeviceForDebug(params: {
   deviceId: string;
   deviceManager: DeviceManager;
@@ -506,7 +511,7 @@ export async function logHomeyDeviceForDebug(params: {
     return false;
   }
 
-  const label = device.name || deviceId;
+  const label = device.name;
   const safeLabel = sanitizeLogValue(label) || safeDeviceId;
   const listSummary = compactHomeyDevice(device);
   const listSettings = filterRelevantSettings(device.settings);
@@ -614,7 +619,7 @@ export async function logHomeyDeviceComparisonForDebug(params: {
     return false;
   }
 
-  const label = device.name || deviceId;
+  const label = device.name;
   const safeLabel = sanitizeLogValue(label) || safeDeviceId;
   const rawManagerEntry = await getRawManagerDeviceEntry({ deviceId });
   const pelsState = typeof getPelsDeviceState === 'function'

@@ -1,16 +1,14 @@
 import { FlowCard, FlowHomeyLike, TargetDeviceSnapshot } from '../lib/utils/types';
+import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 
-type DeviceRef = string | { id?: string; name?: string; data?: { id?: string } };
+type DeviceRef = RawFlowDeviceArg;
 
 type ActionCardHomey = Pick<FlowHomeyLike, 'flow'> & {
   flow: { getActionCard: (id: string) => FlowCard };
 };
 
 function extractDeviceId(payload: { device?: DeviceRef } | null): string {
-  const deviceIdRaw = typeof payload?.device === 'object' && payload?.device !== null
-    ? payload.device.id || payload.device.data?.id
-    : payload?.device;
-  const deviceId = (deviceIdRaw || '').trim();
+  const deviceId = getDeviceIdFromFlowArg(payload?.device);
   if (!deviceId) throw new Error('Device must be provided');
   return deviceId;
 }
@@ -45,7 +43,8 @@ async function assertNoConfiguredLoad(
 }
 
 function resolveDeviceName(snapshot: TargetDeviceSnapshot[], deviceId: string): string {
-  return snapshot.find((d) => d.id === deviceId)?.name || deviceId;
+  const device = snapshot.find((d) => d.id === deviceId);
+  return device ? device.name : `device ${deviceId}`;
 }
 
 export function registerExpectedPowerCard(
@@ -81,13 +80,12 @@ export function registerExpectedPowerCard(
   });
 
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const q = (query || '').toLowerCase();
     const snapshot = await deps.getSnapshot();
-    return snapshot
-      .filter((d) => d.controlModel !== 'stepped_load')
-      .filter((d) => !d.loadKw || d.loadKw <= 0)
-      .map((d) => ({ id: d.id, name: d.name || d.id }))
-      .filter((d) => !q || d.name.toLowerCase().includes(q))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return buildDeviceAutocompleteOptions(
+      snapshot
+        .filter((d) => d.controlModel !== 'stepped_load')
+        .filter((d) => !d.loadKw || d.loadKw <= 0),
+      query,
+    );
   });
 }

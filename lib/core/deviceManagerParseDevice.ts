@@ -1,6 +1,3 @@
-/* eslint-disable max-lines-per-function, max-statements --
- * parseDevice intentionally stays close to the previous inlined materialization pipeline.
- */
 import type { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import {
     getCapabilities,
@@ -94,10 +91,6 @@ export function parseDevice(params: {
     } = deps;
 
     const deviceId = getDeviceId(device);
-    if (!deviceId) {
-        logger.error('Device missing ID, skipping:', device.name || 'unknown');
-        return null;
-    }
     const deviceClassKey = resolveDeviceClassKey({
         device,
         experimentalEvSupportEnabled: providers.getExperimentalEvSupportEnabled?.() === true,
@@ -171,7 +164,7 @@ export function parseDevice(params: {
 
     return {
         id: deviceId,
-        name: device.name ?? deviceId,
+        name: device.name,
         targets,
         deviceClass: deviceClassKey,
         deviceType,

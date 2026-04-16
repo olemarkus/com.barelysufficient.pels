@@ -1,8 +1,9 @@
 import { BUDGET_EXEMPT_DEVICES, CONTROLLABLE_DEVICES } from '../lib/utils/settingsKeys';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import type { FlowCardDeps } from './registerFlowCards';
+import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 
-type DeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
+type DeviceArg = RawFlowDeviceArg;
 
 export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
   registerDeviceBooleanActionCard({
@@ -110,19 +111,12 @@ async function resolveDeviceFromArgs(args: unknown, deps: FlowCardDeps): Promise
 }
 
 async function getDeviceOptions(deps: FlowCardDeps, query: string): Promise<Array<{ id: string; name: string }>> {
-  const normalizedQuery = (query || '').toLowerCase();
   const snapshot = await deps.getSnapshot();
-  return snapshot
-    .map((device) => ({ id: device.id, name: device.name || device.id }))
-    .filter((device) => !normalizedQuery || device.name.toLowerCase().includes(normalizedQuery))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return buildDeviceAutocompleteOptions(snapshot, query);
 }
 
 function getDeviceIdFromArg(arg: DeviceArg): string {
-  const deviceIdRaw = typeof arg === 'object' && arg !== null
-    ? arg.id || arg.data?.id
-    : arg;
-  return (deviceIdRaw || '').trim();
+  return getDeviceIdFromFlowArg(arg);
 }
 
 async function setDeviceBooleanSetting(params: {
@@ -144,7 +138,8 @@ async function setDeviceBooleanSetting(params: {
   const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
   if (!deviceId) throw new Error(`${label[0].toUpperCase()}${label.slice(1)} device must be provided`);
   const snapshot = await deps.getSnapshot();
-  const deviceName = snapshot.find((device) => device.id === deviceId)?.name || deviceId;
+  const device = snapshot.find((entry) => entry.id === deviceId);
+  const deviceName = device ? device.name : `device ${deviceId}`;
   const existing = deps.homey.settings.get(settingKey);
   const next = {
     ...getBooleanSettingsRecord(existing),

@@ -72,8 +72,9 @@ describe('appDebugHelpers', () => {
     const log = vi.fn();
     const error = vi.fn();
     setRestClient({
-      get: vi.fn().mockResolvedValue({
-        'dev-1': {
+      get: vi.fn().mockResolvedValue([
+        null,
+        {
           id: 'dev-1',
           name: 'Kitchen Socket',
           capabilities: ['onoff'],
@@ -85,7 +86,7 @@ describe('appDebugHelpers', () => {
           },
           lastSeenAt: new Date('2026-03-12T10:02:30.000Z'),
         },
-      }),
+      ]),
       put: vi.fn(),
     });
 

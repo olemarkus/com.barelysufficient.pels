@@ -74,9 +74,15 @@ export type CapabilityValue<T> = {
     lastUpdated?: string | number | Date | null;
 };
 
+type UnknownRecord = Record<string, unknown>;
+
+const isUnknownRecord = (value: unknown): value is UnknownRecord => (
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
 export type HomeyDeviceLike = {
-    id?: string;
-    name?: string;
+    id: string;
+    name: string;
     class?: string;
     data?: { id?: string };
     virtualClass?: string;
@@ -103,3 +109,14 @@ export type HomeyDeviceLike = {
     zone?: { name?: string } | string;
     zoneName?: string;
 };
+
+export type RawHomeyDeviceLike = UnknownRecord & {
+    id?: unknown;
+    name?: unknown;
+};
+
+export const isHomeyDeviceLike = (value: unknown): value is HomeyDeviceLike => (
+    isUnknownRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.name === 'string'
+);

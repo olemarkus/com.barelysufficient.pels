@@ -106,8 +106,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     recentLocalCapabilityWrites,
     hasPendingBinarySettleWindow,
   } = params;
-  const deviceId = device.id || device.data?.id;
-  if (!deviceId) return { shouldReconcilePlan: false, changes: [], observedCapabilityIds: [] };
+  const deviceId = device.id;
 
   const parsed = parseDevice(device, Date.now());
   const snapshotIndex = latestSnapshot.findIndex((entry) => entry.id === deviceId);

@@ -10,9 +10,7 @@ const SUPPORTED_DEVICE_CLASSES = new Set([
   'evcharger',
 ]);
 
-export const getDeviceId = (device: HomeyDeviceLike): string | null => (
-  device.id || device.data?.id || null
-);
+export const getDeviceId = (device: HomeyDeviceLike): string => device.id;
 
 export const resolveDeviceClassKey = (params: {
   device: HomeyDeviceLike;
@@ -37,7 +35,7 @@ export const getIsAvailable = (device: HomeyDeviceLike): boolean => (
 );
 
 export const resolveDeviceLabel = (device: HomeyDeviceLike, deviceId: string): string => (
-  device.name ? `${device.name} (${deviceId})` : deviceId
+  `${device.name} (${deviceId})`
 );
 
 export const resolveZoneLabel = (device: HomeyDeviceLike): string => {

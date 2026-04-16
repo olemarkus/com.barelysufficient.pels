@@ -1,4 +1,5 @@
 import type { HomeyDeviceLike, Logger } from '../utils/types';
+import { isHomeyDeviceLike } from '../utils/types';
 import {
   extractLiveHomePowerWatts,
   extractLivePowerWattsByDeviceId,
@@ -27,8 +28,12 @@ export async function fetchDevicesWithFallback(params: {
   for (let attempt = 0; attempt <= DEVICE_FETCH_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
       const devices = await getRawDevices(DEVICES_API_PATH);
-      const list = Array.isArray(devices) ? devices : Object.values(devices || {});
-      logger.debug(`Manager API returned ${list.length} devices`);
+      const rawList = Array.isArray(devices) ? devices : Object.values(devices || {});
+      const list = rawList.filter(isHomeyDeviceLike);
+      logger.debug(
+        `Manager API returned ${list.length} devices`
+        + (rawList.length === list.length ? '' : ` (${rawList.length - list.length} invalid entries ignored)`),
+      );
       return {
         devices: list,
         fetchSource: 'raw_manager_devices',
@@ -65,7 +70,12 @@ export async function fetchDevicesByIds(params: {
   for (let i = 0; i < results.length; i += 1) {
     const result = results[i];
     if (result.status === 'fulfilled') {
-      devices.push(result.value);
+      if (isHomeyDeviceLike(result.value)) {
+        devices.push(result.value);
+      } else {
+        failedIds.push(deviceIds[i]);
+        logger.debug(`Targeted device fetch returned invalid payload for ${deviceIds[i]}`);
+      }
     } else {
       failedIds.push(deviceIds[i]);
       const err = result.reason as Error | undefined;

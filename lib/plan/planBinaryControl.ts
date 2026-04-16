@@ -297,7 +297,7 @@ export function syncPendingBinaryCommands(params: {
       changed = true;
       logDebug(buildPendingBinaryTimeoutLogMessage({
         pending,
-        name: liveDevice?.name || deviceId,
+        name: liveDevice ? liveDevice.name : `device ${deviceId}`,
         ageMs,
       }));
       continue;
@@ -309,7 +309,7 @@ export function syncPendingBinaryCommands(params: {
       delete state.pendingBinaryCommands[deviceId];
       changed = true;
       logDebug(
-        `Capacity: confirmed ${pending.capabilityId} for ${liveDevice.name || deviceId} `
+        `Capacity: confirmed ${pending.capabilityId} for ${liveDevice.name} `
         + `at ${formatPendingBinaryObservedValue(pending.capabilityId, observedValue)} via ${source}`,
       );
       continue;
@@ -327,7 +327,7 @@ export function syncPendingBinaryCommands(params: {
     pending.lastObservedAtMs = nowMs;
     changed = true;
     logDebug(
-      `Capacity: waiting for ${pending.capabilityId} confirmation for ${liveDevice.name || deviceId}; `
+      `Capacity: waiting for ${pending.capabilityId} confirmation for ${liveDevice.name}; `
       + `observed ${formatPendingBinaryObservedValue(pending.capabilityId, observedValue)} via ${source}, `
       + `expected ${formatPendingBinaryObservedValue(pending.capabilityId, pending.desired)}`,
     );

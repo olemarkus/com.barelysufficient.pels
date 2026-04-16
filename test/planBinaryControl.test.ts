@@ -647,7 +647,7 @@ describe('plan binary control helpers', () => {
     expect(changed).toBe(true);
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
     expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: cleared stale pending binary command for socket1: onoff=false after 20000ms (timeout 15000ms)',
+      'Capacity: cleared stale pending binary command for device socket1: onoff=false after 20000ms (timeout 15000ms)',
     );
   });
 
