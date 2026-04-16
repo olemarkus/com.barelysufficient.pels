@@ -177,9 +177,6 @@ class PelsApp extends Homey.App {
     error: (...args) => this.error(...args),
   });
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
-  private get postActuationRefreshTimer(): ReturnType<typeof setTimeout> | undefined {
-    return this.snapshotHelpers.getPostActuationRefreshTimer();
-  }
   private setExpectedOverride(deviceId: string, kw: number): boolean {
     if (this.getSteppedLoadProfile(deviceId)) {
       throw new Error(
@@ -946,28 +943,8 @@ class PelsApp extends Homey.App {
     this.homeyEnergyHelpers.start();
   }
 
-  private stopHomeyEnergyPoll(): void {
-    this.homeyEnergyHelpers.stop();
-  }
-
-  private async pollHomeyEnergyPower(): Promise<void> {
-    await this.homeyEnergyHelpers.pollNow();
-  }
-
   private startPeriodicSnapshotRefresh(): void {
     this.snapshotHelpers.startPeriodicSnapshotRefresh();
-  }
-
-  private async refreshStaleDeviceObservations(): Promise<void> {
-    await this.snapshotHelpers.refreshStaleDeviceObservations();
-  }
-
-  private scheduleNextSnapshotRefresh(): void {
-    this.snapshotHelpers.scheduleNextSnapshotRefresh();
-  }
-
-  private async pollStuckTargetConfirmations(): Promise<void> {
-    await this.snapshotHelpers.pollStuckTargetConfirmations();
   }
   private logPeriodicStatus(options: { includeDeviceHealth?: boolean } = {}): void {
     const periodicStatusParams = {
