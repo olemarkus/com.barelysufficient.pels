@@ -11,10 +11,6 @@ file.
       restore too early.
       Files: `lib/plan/planRestoreAdmission.ts`, `lib/plan/planRestoreSwap.ts`,
       `lib/plan/planConstants.ts`.
-- [ ] If cloud devices still show confirmation or drift gaps after the current freshness model,
-      add per-capability realtime subscriptions for managed control capabilities (`onoff`,
-      `evcharger_charging`, `target_temperature`).
-      Files: `lib/core/deviceManager.ts`.
 - [x] Move direct capability writes to the same confirmation-first model as binary settle and
       stepped-load callbacks so temperature and other writable capabilities do not rely on
       post-actuation polling as the normal success path.
