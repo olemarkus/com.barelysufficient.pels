@@ -125,20 +125,6 @@ export default tseslint.config(
       },
     },
   },
-  // Playwright/browser fixtures (run in the browser, but are plain JS files)
-  {
-    files: ['tests/e2e/fixtures/**/*.js'],
-    languageOptions: {
-      ecmaVersion: 2020,
-      sourceType: 'script',
-      globals: {
-        ...globals.browser,
-      },
-    },
-    rules: {
-      'no-console': 'off',
-    },
-  },
   {
     files: ['packages/settings-ui/tests/e2e/fixtures/**/*.js'],
     languageOptions: {
@@ -294,40 +280,6 @@ export default tseslint.config(
       'max-len': 'off',
     },
   },
-  {
-    files: ['tests/**/*.ts'],
-    languageOptions: {
-      globals: {
-        ...globals.node,
-      },
-      parserOptions: {
-        project: false,
-      },
-    },
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-floating-promises': 'off',
-      '@typescript-eslint/no-require-imports': 'off',
-      '@typescript-eslint/ban-ts-comment': 'off',
-      '@typescript-eslint/no-unsafe-assignment': 'off',
-      '@typescript-eslint/no-unsafe-member-access': 'off',
-      '@typescript-eslint/no-unsafe-call': 'off',
-      '@typescript-eslint/no-unused-vars': 'warn',
-      '@typescript-eslint/no-unsafe-function-type': 'off',
-      'n/no-missing-import': 'off',
-      'n/no-unpublished-import': 'off',
-      'n/no-unsupported-features/es-syntax': 'off',
-      'complexity': 'off',
-      'max-lines': 'off',
-      'max-lines-per-function': 'off',
-      'max-statements': 'off',
-      'functional/immutable-data': 'off',
-      'sonarjs/cognitive-complexity': 'off',
-      'sonarjs/no-identical-functions': 'off',
-      'sonarjs/no-duplicated-branches': 'off',
-      'max-len': 'off',
-    },
-  },
   // Settings UI files - browser environment
   {
     files: ['packages/settings-ui/src/**/*.ts', 'packages/contracts/src/**/*.ts', 'packages/shared-domain/src/**/*.ts'],
@@ -416,20 +368,6 @@ export default tseslint.config(
     files: ['app.ts'],
     rules: {
       'max-lines': ['warn', { max: 750, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    files: [
-      'drivers/pels_insights/device.ts',
-    ],
-    rules: {
-      'max-lines': ['warn', { max: 575, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    files: ['lib/price/priceLowestFlowEvaluator.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 525, skipBlankLines: true, skipComments: true }],
     },
   },
   {
