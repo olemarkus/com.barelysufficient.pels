@@ -17,6 +17,11 @@ type PowerCandidate = {
 type LiveUsageCandidate = PowerCandidate & {
   currentState?: string;
   currentOn?: boolean;
+  hasBinaryControl?: boolean;
+  plannedState?: string;
+  controlModel?: DeviceControlModel;
+  steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
 };
 
 type RestorePowerCandidate = PowerCandidate & {
@@ -78,17 +83,38 @@ function resolveHighestPowerSource(
   return best;
 }
 
+function isObservedOff(device: {
+  currentState?: string;
+  currentOn?: boolean;
+  hasBinaryControl?: boolean;
+}): boolean {
+  if (device.currentState === 'not_applicable' || device.hasBinaryControl === false) {
+    return device.currentOn === false;
+  }
+  return resolveEffectiveCurrentOn(device) === false;
+}
+
 export function resolveCandidatePower(device: PowerCandidate): number {
   return resolvePreferredPowerSource(device, true)?.value ?? 1;
 }
 
 export function resolveLiveUsagePowerKw(device: LiveUsageCandidate): number | null {
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
-  if (effectiveCurrentOn === false && device.currentState !== 'not_applicable') {
-    return typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
-      ? Math.max(0, device.measuredPowerKw)
-      : 0;
+  if (device.plannedState === 'shed') {
+    const measured = resolveFinitePowerKw(device.measuredPowerKw, true);
+    if (measured !== null) return measured;
+    return isObservedOff(device) ? 0 : null;
   }
+
+  if (isObservedOff(device)) {
+    const measured = resolveFinitePowerKw(device.measuredPowerKw, false);
+    if (measured !== null) return measured;
+    const highestKnownLivePower = resolveHighestPowerSource(device);
+    if (highestKnownLivePower) return highestKnownLivePower.value;
+    const zeroMeasured = resolveFinitePowerKw(device.measuredPowerKw, true);
+    if (zeroMeasured !== null) return zeroMeasured;
+    return 0;
+  }
+
   const preferred = resolvePreferredPowerSource({
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
