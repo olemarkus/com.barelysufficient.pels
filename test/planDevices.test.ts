@@ -725,6 +725,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       deps: buildTurnOffDeps(),
     });
 
-    expect(planDevice.expectedPowerKw).toBe(1);
+    expect(planDevice.expectedPowerKw).toBeUndefined();
   });
 });
