@@ -308,7 +308,7 @@ describe('MyApp initialization', () => {
     const infoSpy = vi.fn();
     vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
-    expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_feedback_reported',
       deviceId: 'dev-1',
@@ -333,13 +333,13 @@ describe('MyApp initialization', () => {
     const infoSpy = vi.fn();
     vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
-    (app as any).markSteppedLoadDesiredStepIssued({
+    (app as any).deviceControlHelpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: 'low',
       previousStepId: 'max',
     });
 
-    expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_feedback_confirmed',
       deviceId: 'dev-1',
@@ -365,22 +365,23 @@ describe('MyApp initialization', () => {
     const infoSpy = vi.fn();
     vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
-    (app as any).markSteppedLoadDesiredStepIssued({
+    (app as any).deviceControlHelpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
       desiredStepId: 'max',
       previousStepId: 'low',
     });
-    (app as any).deviceControlRuntimeState.steppedLoadDesiredByDeviceId['dev-1'] = {
-      ...(app as any).deviceControlRuntimeState.steppedLoadDesiredByDeviceId['dev-1'],
+    const runtimeState = (app as any).deviceControlHelpers.getRuntimeStateForTests();
+    runtimeState.steppedLoadDesiredByDeviceId['dev-1'] = {
+      ...runtimeState.steppedLoadDesiredByDeviceId['dev-1'],
       pending: false,
       status: 'stale',
     };
-    (app as any).deviceControlRuntimeState.steppedLoadReportedByDeviceId['dev-1'] = {
+    runtimeState.steppedLoadReportedByDeviceId['dev-1'] = {
       stepId: 'low',
       updatedAtMs: Date.now() - 1000,
     };
 
-    expect((app as any).reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_feedback_confirmed',
       deviceId: 'dev-1',
@@ -403,12 +404,12 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    expect((app as any).reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 
     const infoSpy = vi.fn();
     vi.spyOn(app as any, 'getStructuredLogger').mockReturnValue({ info: infoSpy });
 
-    expect((app as any).reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+    expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_feedback_external_change',
       deviceId: 'dev-1',
@@ -2160,7 +2161,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
 
-    (app as any).startPeriodicSnapshotRefresh();
+    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
     // Advance to :25 — should fire
     await vi.advanceTimersByTimeAsync(25 * 60 * 1000);
@@ -2184,7 +2185,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
     const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'scheduleNextSnapshotRefresh');
 
-    (app as any).startPeriodicSnapshotRefresh();
+    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
     vi.advanceTimersByTime(25 * 60 * 1000);
     await Promise.resolve();
@@ -2210,7 +2211,7 @@ describe('periodic snapshot refresh scheduling', () => {
     await initApp(app);
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
-    (app as any).startPeriodicSnapshotRefresh();
+    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
     // Advance 10 minutes — no scheduled refresh
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
@@ -2235,7 +2236,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
-    (app as any).startPeriodicSnapshotRefresh();
+    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
     await vi.advanceTimersByTimeAsync(60 * 1000);
 
@@ -2257,7 +2258,7 @@ describe('periodic snapshot refresh scheduling', () => {
       new Promise<void>((resolve) => { resolveRefresh = resolve; })
     ));
 
-    (app as any).startPeriodicSnapshotRefresh();
+    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
     await vi.advanceTimersByTimeAsync(60 * 1000);
     expect(refreshSpy).toHaveBeenCalledTimes(1);
 
@@ -2280,7 +2281,7 @@ describe('periodic snapshot refresh scheduling', () => {
     ));
     const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'scheduleNextSnapshotRefresh');
 
-    (app as any).startPeriodicSnapshotRefresh();
+    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
     vi.advanceTimersByTime(25 * 60 * 1000);
     await Promise.resolve();
@@ -2305,7 +2306,7 @@ describe('periodic snapshot refresh scheduling', () => {
     await initApp(app);
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
-    (app as any).startPeriodicSnapshotRefresh();
+    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
 
     // Should not fire during remaining 4 minutes of the hour
     await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
@@ -2362,9 +2363,9 @@ describe('periodic snapshot refresh scheduling', () => {
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const logDebugSpy = vi.spyOn(app as any, 'logDebug').mockImplementation(() => undefined);
 
-    (app as any).schedulePostActuationRefresh();
+    (app as any).snapshotHelpers.schedulePostActuationRefresh();
     const firstTimer = (app as any).snapshotHelpers.getPostActuationRefreshTimer();
-    (app as any).schedulePostActuationRefresh();
+    (app as any).snapshotHelpers.schedulePostActuationRefresh();
 
     expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBe(firstTimer);
     expect(refreshSpy).not.toHaveBeenCalled();
@@ -2374,13 +2375,13 @@ describe('periodic snapshot refresh scheduling', () => {
   it('clears post-actuation timer state on stop so it can be armed again', () => {
     const app = createApp();
 
-    (app as any).schedulePostActuationRefresh();
+    (app as any).snapshotHelpers.schedulePostActuationRefresh();
     expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBeDefined();
 
     (app as any).snapshotHelpers.stop();
     expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBeUndefined();
 
-    (app as any).schedulePostActuationRefresh();
+    (app as any).snapshotHelpers.schedulePostActuationRefresh();
     expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBeDefined();
   });
 
@@ -2388,7 +2389,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
-    (app as any).schedulePostActuationRefresh();
+    (app as any).snapshotHelpers.schedulePostActuationRefresh();
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(refreshSpy).toHaveBeenCalledTimes(1);
@@ -2399,11 +2400,11 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
 
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
-    (app as any).startHomeyEnergyPoll();
+    (app as any).homeyEnergyHelpers.start();
     expect((app as any).homeyEnergyHelpers.pollInterval).toBeDefined();
 
     mockHomeyInstance.settings.set('power_source', 'flow');
-    (app as any).startHomeyEnergyPoll();
+    (app as any).homeyEnergyHelpers.start();
 
     expect((app as any).homeyEnergyHelpers.pollInterval).toBeUndefined();
   });

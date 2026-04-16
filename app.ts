@@ -21,15 +21,8 @@ import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
 import { type DebugLoggingTopic } from './lib/utils/debugLogging';
 import {
-  createDeviceControlRuntimeState,
-  decorateSnapshotWithDeviceControl,
-  markSteppedLoadDesiredStepIssued,
+  AppDeviceControlHelpers,
   normalizeStoredDeviceControlProfiles,
-  pruneStaleSteppedLoadCommandStates,
-  reportSteppedLoadActualStep as reportSteppedLoadActualStepHelper,
-  type DeviceControlRuntimeState,
-  type ReportSteppedLoadActualStepResult,
-  type SteppedLoadDesiredRuntimeState,
 } from './lib/app/appDeviceControlHelpers';
 import {
   getAllModes as getAllModesHelper,
@@ -41,9 +34,7 @@ import {
 } from './lib/utils/settingsKeys';
 import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
-import {
-  resolveHomeyEnergyApiFromSdk, type HomeyEnergyApi,
-} from './lib/utils/homeyEnergy';
+import { resolveHomeyEnergyApiFromSdk } from './lib/utils/homeyEnergy';
 import {
   persistPowerTrackerStateForApp,
   prunePowerTrackerHistoryForApp,
@@ -91,7 +82,7 @@ import type { ObservedDeviceStateEvent } from './lib/core/deviceManagerRealtimeH
 import { emitSettingsUiPowerUpdatedForApp } from './lib/app/settingsUiAppRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
-import type { DeviceControlProfiles, SteppedLoadProfile } from './lib/utils/types';
+import type { DeviceControlProfiles } from './lib/utils/types';
 import { AppHomeyEnergyHelpers } from './lib/app/appHomeyEnergyHelpers';
 import {
   AppSnapshotHelpers,
@@ -120,7 +111,6 @@ class PelsApp extends Homey.App {
   private budgetExemptDevices: Record<string, boolean> = {};
   private deviceControlProfiles: DeviceControlProfiles = {};
   private deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
-  private deviceControlRuntimeState: DeviceControlRuntimeState = createDeviceControlRuntimeState();
   private experimentalEvSupportEnabled = false;
   private shedBehaviors: Record<string, ShedBehavior> = {};
   private debugLoggingTopics = new Set<DebugLoggingTopic>();
@@ -176,9 +166,15 @@ class PelsApp extends Homey.App {
     logDebug: (topic, ...args) => this.logDebug(topic, ...args),
     error: (...args) => this.error(...args),
   });
+  private readonly deviceControlHelpers = new AppDeviceControlHelpers({
+    getProfiles: () => this.deviceControlProfiles,
+    getDeviceSnapshots: () => this.deviceManager?.getSnapshot() ?? [],
+    getStructuredLogger: (component) => this.getStructuredLogger(component),
+    logDebug: (topic, ...args) => this.logDebug(topic, ...args),
+  });
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
   private setExpectedOverride(deviceId: string, kw: number): boolean {
-    if (this.getSteppedLoadProfile(deviceId)) {
+    if (this.deviceControlHelpers.getSteppedLoadProfile(deviceId)) {
       throw new Error(
         'Stepped load devices use configured planning power per step; '
         + 'expected power override is not supported.',
@@ -191,104 +187,6 @@ class PelsApp extends Homey.App {
     this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
     this.planService?.syncHeadroomCardTrackedUsage({ deviceId, trackedKw: kw });
     return true;
-  }
-  private getSteppedLoadProfile(deviceId: string): SteppedLoadProfile | null {
-    const profile = this.deviceControlProfiles[deviceId];
-    return profile?.model === 'stepped_load' ? profile : null;
-  }
-  private decorateTargetSnapshotList(snapshot: TargetDeviceSnapshot[]): TargetDeviceSnapshot[] {
-    pruneStaleSteppedLoadCommandStates(this.deviceControlRuntimeState);
-    return snapshot.map((device) => decorateSnapshotWithDeviceControl({
-      snapshot: device,
-      profiles: this.deviceControlProfiles,
-      runtimeState: this.deviceControlRuntimeState,
-    }));
-  }
-  private emitSteppedFeedbackLog(params: {
-    log: PinoLogger | undefined;
-    deviceId: string;
-    deviceName: string;
-    stepId: string;
-    previousReportedStepId: string | undefined;
-    previousDesired: SteppedLoadDesiredRuntimeState | undefined;
-  }): void {
-    const { log, deviceId, deviceName, stepId, previousReportedStepId, previousDesired } = params;
-    if (previousDesired?.stepId === stepId) {
-      log?.info({
-        event: 'stepped_feedback_confirmed',
-        deviceId, deviceName,
-        reportedStepId: stepId,
-        desiredStepId: previousDesired.stepId,
-        pending: previousDesired.pending,
-        stale: previousDesired.status === 'stale',
-      });
-    } else if (previousReportedStepId && previousReportedStepId !== stepId) {
-      log?.info({
-        event: 'stepped_feedback_external_change',
-        deviceId, deviceName,
-        previousStepId: previousReportedStepId,
-        newStepId: stepId,
-        desiredStepId: previousDesired?.stepId ?? null,
-      });
-    } else if (previousDesired?.stepId && previousDesired.stepId !== stepId) {
-      log?.info({
-        event: 'stepped_feedback_mismatch',
-        deviceId, deviceName,
-        reportedStepId: stepId,
-        desiredStepId: previousDesired.stepId,
-      });
-    } else {
-      log?.info({
-        event: 'stepped_feedback_reported',
-        deviceId, deviceName,
-        reportedStepId: stepId,
-      });
-    }
-  }
-  private reportSteppedLoadActualStep(deviceId: string, stepId: string): ReportSteppedLoadActualStepResult {
-    const snapshot = this.latestTargetSnapshot.find((device) => device.id === deviceId);
-    const deviceName = snapshot?.name?.trim() ?? deviceId;
-    const previousReportedStepId = this.deviceControlRuntimeState.steppedLoadReportedByDeviceId[deviceId]?.stepId;
-    const previousDesired = this.deviceControlRuntimeState.steppedLoadDesiredByDeviceId[deviceId];
-    const changed = reportSteppedLoadActualStepHelper({
-      runtimeState: this.deviceControlRuntimeState,
-      profiles: this.deviceControlProfiles,
-      deviceId,
-      stepId,
-    });
-
-    if (changed === 'invalid') {
-      this.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: invalid step '${stepId}'`);
-      return changed;
-    }
-    if (changed === 'unchanged') {
-      this.logDebug('devices', `Stepped load feedback unchanged for ${deviceName}: ${stepId}`);
-      return changed;
-    }
-    this.emitSteppedFeedbackLog({
-      log: this.getStructuredLogger('devices'),
-      deviceId, deviceName, stepId, previousReportedStepId, previousDesired,
-    });
-    return changed;
-  }
-  private markSteppedLoadDesiredStepIssued(params: {
-    deviceId: string;
-    desiredStepId: string;
-    previousStepId?: string;
-    issuedAtMs?: number;
-    pendingWindowMs?: number;
-  }): void {
-    markSteppedLoadDesiredStepIssued({
-      runtimeState: this.deviceControlRuntimeState,
-      deviceId: params.deviceId,
-      desiredStepId: params.desiredStepId,
-      previousStepId: params.previousStepId,
-      issuedAtMs: params.issuedAtMs,
-      pendingWindowMs: params.pendingWindowMs,
-    });
-  }
-  private getHomeyEnergyApi(): HomeyEnergyApi | null {
-    return resolveHomeyEnergyApiFromSdk(this.homey);
   }
   async onInit() {
     const deferStartupBootstrap = process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1';
@@ -344,7 +242,10 @@ class PelsApp extends Homey.App {
       setLastNotifiedOperatingMode: (mode) => { this.lastNotifiedOperatingMode = mode; },
       getOperatingMode: () => this.operatingMode,
       registerFlowCards: () => this.registerFlowCards(),
-      startPeriodicSnapshotRefresh: () => { this.startPeriodicSnapshotRefresh(); this.startHomeyEnergyPoll(); },
+      startPeriodicSnapshotRefresh: () => {
+        this.snapshotHelpers.startPeriodicSnapshotRefresh();
+        this.homeyEnergyHelpers.start();
+      },
       refreshSpotPrices: () => this.priceCoordinator.refreshSpotPrices(),
       refreshGridTariffData: () => this.priceCoordinator.refreshGridTariffData(),
       startPriceRefresh: () => this.priceCoordinator.startPriceRefresh(),
@@ -373,7 +274,7 @@ class PelsApp extends Homey.App {
   private initPriceCoordinator(): void {
     this.priceCoordinator = createPriceCoordinator({
       homey: this.homey,
-      getHomeyEnergyApi: () => this.getHomeyEnergyApi(),
+      getHomeyEnergyApi: () => resolveHomeyEnergyApiFromSdk(this.homey),
       getCurrentPriceLevel: () => this.getCurrentPriceLevel(),
       rebuildPlanFromCache: async (reason?: string) => { await this.planService?.rebuildPlanFromCache(reason); },
       log: (...args: unknown[]) => this.log(...args),
@@ -464,7 +365,7 @@ class PelsApp extends Homey.App {
       getPriorityForDevice: (deviceId) => this.getPriorityForDevice(deviceId),
       getShedBehavior: (deviceId) => this.getShedBehavior(deviceId),
       getDynamicSoftLimitOverride: () => this.getDynamicSoftLimitOverride(),
-      markSteppedLoadDesiredStepIssued: (params) => this.markSteppedLoadDesiredStepIssued(params),
+      markSteppedLoadDesiredStepIssued: (params) => this.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
       logTargetRetryComparison: async (params) => {
         await logHomeyDeviceComparisonForDebugFromApp({
           app: this,
@@ -506,7 +407,7 @@ class PelsApp extends Homey.App {
       isBudgetExempt: (deviceId) => this.isBudgetExempt(deviceId),
       isCurrentHourCheap: () => this.isCurrentHourCheap(),
       isCurrentHourExpensive: () => this.isCurrentHourExpensive(),
-      schedulePostActuationRefresh: () => this.schedulePostActuationRefresh(),
+      schedulePostActuationRefresh: () => this.snapshotHelpers.schedulePostActuationRefresh(),
       log: (...args: unknown[]) => this.log(...args),
       logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => this.logDebug(topic, ...args),
       error: (...args: unknown[]) => this.error(...args),
@@ -544,7 +445,7 @@ class PelsApp extends Homey.App {
       updateDebugLoggingEnabled: (logChange) => this.updateDebugLoggingEnabled(logChange),
       getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
       disableManagedEvDevices: () => this.disableManagedEvDevices(),
-      restartHomeyEnergyPoll: () => this.startHomeyEnergyPoll(),
+      restartHomeyEnergyPoll: () => this.homeyEnergyHelpers.restart(),
       log: (message: string) => this.log(message),
       error: (message: string, error: Error) => this.error(message, error),
     });
@@ -897,7 +798,9 @@ class PelsApp extends Homey.App {
       capacityGuard: this.capacityGuard,
       getFlowSnapshot: () => this.getFlowSnapshot(),
       refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
-      reportSteppedLoadActualStep: (deviceId, stepId) => this.reportSteppedLoadActualStep(deviceId, stepId),
+      reportSteppedLoadActualStep: (deviceId, stepId) => (
+        this.deviceControlHelpers.reportSteppedLoadActualStep(deviceId, stepId)
+      ),
       getDeviceLoadSetting: (deviceId) => this.getDeviceLoadSetting(deviceId),
       setExpectedOverride: (deviceId, kw) => this.setExpectedOverride(deviceId, kw),
       storeFlowPriceData: (kind, raw) => this.storeFlowPriceData(kind, raw),
@@ -939,13 +842,6 @@ class PelsApp extends Homey.App {
     const status = this.homey.settings.get('pels_status') as { priceLevel?: PriceLevel } | null;
     return (status?.priceLevel || this.planService?.getLastNotifiedPriceLevel() || PriceLevel.UNKNOWN) as PriceLevel;
   }
-  private startHomeyEnergyPoll(): void {
-    this.homeyEnergyHelpers.start();
-  }
-
-  private startPeriodicSnapshotRefresh(): void {
-    this.snapshotHelpers.startPeriodicSnapshotRefresh();
-  }
   private logPeriodicStatus(options: { includeDeviceHealth?: boolean } = {}): void {
     const periodicStatusParams = {
       capacityGuard: this.capacityGuard,
@@ -971,16 +867,13 @@ class PelsApp extends Homey.App {
   }
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
     const snapshot = this.deviceManager?.getSnapshot() ?? [];
-    return this.decorateTargetSnapshotList(snapshot);
+    return this.deviceControlHelpers.decorateTargetSnapshotList(snapshot);
   }
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
     this.deviceManager.setSnapshotForTests(snapshot);
   }
   parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
     return this.deviceManager.parseDeviceListForTests(list);
-  }
-  private schedulePostActuationRefresh(): void {
-    this.snapshotHelpers.schedulePostActuationRefresh();
   }
   private async refreshTargetDevicesSnapshot(
     options: RefreshTargetDevicesSnapshotOptions = {},
