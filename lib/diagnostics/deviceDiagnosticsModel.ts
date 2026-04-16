@@ -1,4 +1,3 @@
-/* eslint-disable functional/immutable-data -- Local mutable accumulators keep diagnostics aggregation cheap. */
 import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
@@ -231,6 +230,10 @@ const buildEmptyWindowSummary = (): DeviceDiagnosticsWindowSummary => ({
   maxRestoreToSetbackMs: null,
 });
 
+/* eslint-disable functional/immutable-data --
+ * Local summary aggregation uses mutable accumulators instead of rebuilding
+ * the diagnostics window object for each day.
+ */
 export const buildWindowSummary = (
   deviceState: PersistedDeviceDiagnostics | undefined,
   dateKeys: string[],
@@ -281,6 +284,7 @@ export const buildWindowSummary = (
   );
   return summary;
 };
+/* eslint-enable functional/immutable-data */
 
 export const getRecentDateKeys = (params: {
   currentDateKey: string;
@@ -291,6 +295,7 @@ export const getRecentDateKeys = (params: {
   const keys: string[] = [];
   for (let offset = 0; offset < params.count; offset += 1) {
     const date = new Date(currentDayStartMs + (12 * 60 * 60 * 1000) - (offset * 24 * 60 * 60 * 1000));
+    // eslint-disable-next-line functional/immutable-data -- Local key collection is a simple mutable accumulator.
     keys.push(getDateKeyInTimeZone(date, params.timeZone));
   }
   return keys;

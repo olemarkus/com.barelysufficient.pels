@@ -1,9 +1,7 @@
-/* eslint-disable
-  max-lines,
-  max-params,
-  no-param-reassign,
-  no-nested-ternary
--- extracted target-command actuation keeps the retry/confirmation pipeline together. */
+/* eslint-disable max-lines --
+ * Extracted target-command actuation keeps one cohesive retry/confirmation
+ * pipeline after the executor split.
+ */
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import {
@@ -14,6 +12,7 @@ import {
 } from './planTargetControl';
 import type {
   DevicePlan,
+  PendingTargetCommandStatus,
   PendingTargetObservationSource,
   ShedAction,
 } from './planTypes';
@@ -75,6 +74,26 @@ const waitForImmediateObservedState = async (): Promise<void> => {
   await Promise.resolve();
 };
 
+const resolveTargetCommandReasonCode = (params: {
+  mode: PlanActuationMode;
+  isRestoring: boolean;
+  attemptType: 'send' | 'retry';
+}): 'reconcile' | 'restore_from_shed' | 'retry_pending_confirmation' | 'plan_update' => {
+  const { mode, isRestoring, attemptType } = params;
+  if (mode === 'reconcile') return 'reconcile';
+  if (isRestoring) return 'restore_from_shed';
+  if (attemptType === 'retry') return 'retry_pending_confirmation';
+  return 'plan_update';
+};
+
+const resolveTargetCommandSkipReasonCode = (
+  pendingStatus: PendingTargetCommandStatus,
+): 'temporarily_unavailable' | 'waiting_for_confirmation' => (
+  pendingStatus === 'temporary_unavailable'
+    ? 'temporarily_unavailable'
+    : 'waiting_for_confirmation'
+);
+
 export const applyShedTemperaturePlan = async (
   ctx: PlanExecutorTargetContext,
   dev: PlanDevice,
@@ -125,12 +144,21 @@ export const applyTargetUpdate = async (
 
 export const trySetShedTemperature = async (
   ctx: PlanExecutorTargetContext,
-  deviceId: string,
-  name: string,
-  targetCap: string | undefined,
-  shedTemp: number | null,
-  canSetShedTemp: boolean,
+  params: {
+    deviceId: string;
+    name: string;
+    targetCap: string | undefined;
+    shedTemp: number | null;
+    canSetShedTemp: boolean;
+  },
 ): Promise<PlanActionHandleResult> => {
+  const {
+    deviceId,
+    name,
+    targetCap,
+    shedTemp,
+    canSetShedTemp,
+  } = params;
   if (!canSetShedTemp || !targetCap || shedTemp === null) return { handled: false, wrote: false };
   const now = Date.now();
   try {
@@ -259,13 +287,7 @@ const applyTargetUpdatePlan = async (
       previousValue: dev.currentTarget ?? null,
       mode,
       attemptType: result.attemptType,
-      reasonCode: mode === 'reconcile'
-        ? 'reconcile'
-        : isRestoring
-          ? 'restore_from_shed'
-          : result.attemptType === 'retry'
-            ? 'retry_pending_confirmation'
-            : 'plan_update',
+      reasonCode: resolveTargetCommandReasonCode({ mode, isRestoring, attemptType: result.attemptType }),
       operatingMode: ctx.operatingMode,
     });
 
@@ -336,9 +358,7 @@ const handleTargetCommandPreflight = (
   const remainingSec = Math.max(1, Math.ceil(decision.remainingMs / 1000));
   ctx.debugStructured?.({
     event: 'target_command_skipped',
-    reasonCode: decision.pending.status === 'temporary_unavailable'
-      ? 'temporarily_unavailable'
-      : 'waiting_for_confirmation',
+    reasonCode: resolveTargetCommandSkipReasonCode(decision.pending.status),
     deviceId,
     deviceName: name,
     capabilityId: targetCap,
@@ -474,6 +494,7 @@ const syncPendingTargetCommandAfterActuation = async (
   const latestObservedValueAfterActuation = getLatestObservedTargetValue(ctx, deviceId, targetCap);
   let pendingStillExists = hasMatchingPendingTargetCommand(ctx, deviceId, targetCap, desired);
   if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
+    // eslint-disable-next-line no-param-reassign -- Shared executor state update.
     delete ctx.state.pendingTargetCommands[deviceId];
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');

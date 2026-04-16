@@ -1,9 +1,3 @@
-/* eslint-disable
-  complexity,
-  no-nested-ternary,
-  functional/immutable-data,
-  no-param-reassign
--- runtime step-state decoration intentionally centralizes mutation and fallback resolution. */
 import {
   getSteppedLoadHighestStep,
   getSteppedLoadStep,
@@ -70,6 +64,29 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
   return 'binary_power';
 };
 
+const resolveSteppedLoadActualStepSource = (
+  reportedStepId: string | undefined,
+  heuristicStepId: string | undefined,
+): 'reported' | 'power_heuristic' | undefined => {
+  if (reportedStepId) return 'reported';
+  if (heuristicStepId) return 'power_heuristic';
+  return undefined;
+};
+
+const resolveSteppedLoadCurrentOn = (params: {
+  snapshot: TargetDeviceSnapshot;
+  profile: SteppedLoadProfile;
+  selectedStepId?: string;
+}): boolean => {
+  const { snapshot, profile, selectedStepId } = params;
+  if (snapshot.currentOn === false) return false;
+  if (!selectedStepId) return true;
+  return !isSteppedLoadOffStep(profile, selectedStepId);
+};
+
+/* eslint-disable complexity --
+ * Decoration resolves reported, heuristic, and fallback step state in one place.
+ */
 export const decorateSnapshotWithDeviceControl = (params: {
   snapshot: TargetDeviceSnapshot;
   profiles: DeviceControlProfiles;
@@ -95,11 +112,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const defaultStepId = getSteppedLoadHighestStep(profile)?.id;
   const selectedStepId = reportedStepId ?? heuristicStepId ?? defaultStepId;
   const actualStepId = reportedStepId ?? heuristicStepId;
-  const actualStepSource = reportedStepId
-    ? 'reported'
-    : heuristicStepId
-      ? 'power_heuristic'
-      : undefined;
+  const actualStepSource = resolveSteppedLoadActualStepSource(reportedStepId, heuristicStepId);
   const assumedStepId = reportedStepId ? undefined : heuristicStepId ?? defaultStepId;
   const planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);
 
@@ -116,8 +129,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
     // Preserve an explicit off state from the raw onoff capability for stepped devices. A device
     // at a non-zero step but with onoff=false is genuinely off — the step is configuration, not
     // power state. An explicit on state may still be overridden by an off-step selection.
-    currentOn: snapshot.currentOn !== false
-      && (selectedStepId ? !isSteppedLoadOffStep(profile, selectedStepId) : snapshot.currentOn),
+    currentOn: resolveSteppedLoadCurrentOn({ snapshot, profile, selectedStepId }),
     lastDesiredStepChangeAt: desired?.changedAtMs,
     lastStepCommandIssuedAt: desired?.lastIssuedAtMs,
     stepCommandRetryCount: desired?.retryCount,
@@ -126,6 +138,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
     stepCommandStatus: desired?.status ?? 'idle',
   };
 };
+/* eslint-enable complexity */
 
 export const markSteppedLoadDesiredStepIssued = (params: {
   runtimeState: DeviceControlRuntimeState;
@@ -149,6 +162,7 @@ export const markSteppedLoadDesiredStepIssued = (params: {
   const retryCount = shouldIncrementRetryCount
     ? previousDesired.retryCount + 1
     : 0;
+  /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
   runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
     stepId: desiredStepId,
     previousStepId,
@@ -160,6 +174,7 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     pending: true,
     status: 'pending',
   };
+  /* eslint-enable functional/immutable-data */
 };
 
 export const reportSteppedLoadActualStep = (params: {
@@ -182,13 +197,16 @@ export const reportSteppedLoadActualStep = (params: {
   }
 
   const previousReport = runtimeState.steppedLoadReportedByDeviceId[deviceId];
+  /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
   runtimeState.steppedLoadReportedByDeviceId[deviceId] = {
     stepId,
     updatedAtMs: reportedAtMs,
   };
+  /* eslint-enable functional/immutable-data */
 
   const desired = runtimeState.steppedLoadDesiredByDeviceId[deviceId];
   if (desired?.stepId === stepId) {
+    /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
     runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
       ...desired,
       retryCount: 0,
@@ -196,6 +214,7 @@ export const reportSteppedLoadActualStep = (params: {
       pending: false,
       status: 'success',
     };
+    /* eslint-enable functional/immutable-data */
   }
 
   return previousReport?.stepId !== stepId ? 'changed' : 'unchanged';
@@ -210,6 +229,9 @@ export const pruneStaleSteppedLoadCommandStates = (
     if (!desired.pending || typeof desired.lastIssuedAtMs !== 'number') continue;
     const pendingWindowMs = desired.pendingWindowMs ?? STEPPED_LOAD_COMMAND_STALE_MS;
     if (nowMs - desired.lastIssuedAtMs < pendingWindowMs) continue;
+    /* eslint-disable functional/immutable-data, no-param-reassign --
+     * Shared runtime cache update during stale-step pruning.
+     */
     runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
       ...desired,
       nextRetryAtMs:
@@ -219,6 +241,7 @@ export const pruneStaleSteppedLoadCommandStates = (
       pending: false,
       status: 'stale',
     };
+    /* eslint-enable functional/immutable-data, no-param-reassign */
     changed = true;
   }
   return changed;

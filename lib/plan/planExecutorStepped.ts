@@ -1,10 +1,7 @@
-/* eslint-disable
-  max-lines,
-  complexity,
-  max-params,
-  sonarjs/cognitive-complexity,
-  no-param-reassign
--- extracted stepped-load actuation remains a cohesive pipeline with invariant-heavy control flow. */
+/* eslint-disable max-lines --
+ * Extracted stepped-load actuation remains one cohesive invariant-heavy
+ * pipeline after the executor split.
+ */
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
@@ -62,10 +59,16 @@ export type PlanExecutorSteppedContext = {
   recordShedActuation: (deviceId: string, name: string | undefined, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string | undefined, now: number) => void;
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
-  getDesiredSteppedLoadTrigger: () => { trigger: (tokens?: object, state?: object) => Promise<unknown> } | undefined;
+  getDesiredSteppedLoadTrigger: () => {
+    trigger: (tokens?: object, state?: object) => Promise<unknown>;
+  } | undefined;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
 };
 
+/* eslint-disable complexity --
+ * Command dispatch still combines step validation, retry gating, and
+ * restore/shed transitions in one path.
+ */
 export const applySteppedLoadCommand = async (
   ctx: PlanExecutorSteppedContext,
   dev: PlanDevice,
@@ -142,7 +145,12 @@ export const applySteppedLoadCommand = async (
     now,
   });
 };
+/* eslint-enable complexity */
 
+/* eslint-disable max-params, complexity, sonarjs/cognitive-complexity --
+ * Restore evaluation still needs the full invariant context after the
+ * executor split.
+ */
 export const applySteppedLoadRestore = async (
   ctx: PlanExecutorSteppedContext,
   dev: PlanDevice,
@@ -197,10 +205,13 @@ export const applySteppedLoadRestore = async (
       dev,
       mode,
       reasonCode: 'no_keep_violation',
-      logMessage: `Capacity: skip stepped-load restore for ${name}, no keep violations detected`,
+      logMessage:
+        `Capacity: skip stepped-load restore for ${name}, `
+        + 'no keep violations detected',
     });
   }
   if (applyKeepInvariantShedBlock(ctx, dev, name, anyShedDevices, desiredStepId)) return false;
+  // eslint-disable-next-line no-param-reassign -- Shared executor state update.
   delete ctx.state.keepInvariantShedBlockedByDevice[dev.id];
   if (!snapshot) {
     return logSteppedLoadRestoreSkip(ctx, {
@@ -231,13 +242,20 @@ export const applySteppedLoadRestore = async (
       dev,
       mode,
       reasonCode: 'pre_restore_step_required',
-      logMessage: `Capacity: skip stepped-load restore for ${name}, required pre-restore step command was not issued`,
+      logMessage:
+        `Capacity: skip stepped-load restore for ${name}, `
+        + 'required pre-restore step command was not issued',
     });
   }
   if (!onoffViolated) return true;
   return executeSteppedLoadRestoreBinary(ctx, { dev, snapshot, mode, name, onoffViolated, stepViolated });
 };
+/* eslint-enable max-params, complexity, sonarjs/cognitive-complexity */
 
+/* eslint-disable complexity --
+ * Stepped-load shed-off still combines off-step validation with binary
+ * actuation and transition logging in one path.
+ */
 export const applySteppedLoadShedOff = async (
   ctx: PlanExecutorSteppedContext,
   dev: PlanDevice,
@@ -292,6 +310,7 @@ export const applySteppedLoadShedOff = async (
     return false;
   }
 };
+/* eslint-enable complexity */
 
 const logSteppedLoadCommandSkip = (
   ctx: PlanExecutorSteppedContext,
@@ -345,6 +364,10 @@ function getSameDesiredStepPendingState(
   return null;
 }
 
+/* eslint-disable complexity --
+ * Stepped-load command execution couples trigger dispatch with state tracking
+ * and restore/shed diagnostics.
+ */
 const executeSteppedLoadCommand = async (
   ctx: PlanExecutorSteppedContext,
   params: {
@@ -453,6 +476,7 @@ const executeSteppedLoadCommand = async (
     return false;
   }
 };
+/* eslint-enable complexity */
 
 const logSteppedLoadRestoreSkip = (
   ctx: PlanExecutorSteppedContext,
@@ -585,6 +609,7 @@ const applyKeepInvariantShedBlock = (
       lowestNonZeroStepId: lowestNonZeroStep.id,
       rejectionReason: 'shed_invariant',
     });
+    // eslint-disable-next-line no-param-reassign -- Shared executor state update.
     ctx.state.keepInvariantShedBlockedByDevice[dev.id] = {
       desiredStepId,
       lowestNonZeroStepId: lowestNonZeroStep.id,

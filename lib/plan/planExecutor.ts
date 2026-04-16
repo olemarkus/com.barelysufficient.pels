@@ -1,9 +1,7 @@
-/* eslint-disable
-  max-lines,
-  complexity,
-  sonarjs/cognitive-complexity,
-  max-statements
--- executor keeps the plan actuation paths together for traceability. */
+/* eslint-disable max-lines --
+ * Executor keeps all actuation paths together for traceability across binary,
+ * target, and stepped-load control.
+ */
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
@@ -331,6 +329,10 @@ export class PlanExecutor {
     };
   }
 
+  /* eslint-disable complexity, sonarjs/cognitive-complexity, max-statements --
+   * Restore actuation still owns the end-to-end binary restore gate and
+   * bookkeeping path.
+   */
   private async applyRestorePower(
     dev: DevicePlan['devices'][number],
     mode: PlanActuationMode,
@@ -442,6 +444,7 @@ export class PlanExecutor {
       this.state.pendingRestores.delete(dev.id);
     }
   }
+  /* eslint-enable complexity, sonarjs/cognitive-complexity, max-statements */
 
   private async applyTargetUpdate(
     dev: DevicePlan['devices'][number],
@@ -451,6 +454,10 @@ export class PlanExecutor {
     return applyTargetUpdate(this.buildTargetExecutorContext(), dev, snapshot, mode);
   }
 
+  /* eslint-disable complexity --
+   * Capacity-control-off restore still evaluates snapshot, availability, and
+   * actuation in one local path.
+   */
   private async applyUncontrolledRestore(
     dev: DevicePlan['devices'][number],
     snapshot?: TargetDeviceSnapshot,
@@ -516,6 +523,7 @@ export class PlanExecutor {
       return false;
     }
   }
+  /* eslint-enable complexity */
 
   private async applySteppedLoadCommand(
     dev: DevicePlan['devices'][number],
@@ -565,13 +573,13 @@ export class PlanExecutor {
     // Mark as pending before async operation
     this.state.pendingSheds.add(deviceId);
     try {
-      const shedTemperatureResult = await this.trySetShedTemperature(
+      const shedTemperatureResult = await this.trySetShedTemperature({
         deviceId,
         name,
         targetCap,
         shedTemp,
         canSetShedTemp,
-      );
+      });
       if (!shedTemperatureResult.handled) {
         return this.turnOffDevice(deviceId, name, reason);
       }
@@ -590,23 +598,20 @@ export class PlanExecutor {
     ));
   }
 
-  private async trySetShedTemperature(
-    deviceId: string,
-    name: string,
-    targetCap: string | undefined,
-    shedTemp: number | null,
-    canSetShedTemp: boolean,
-  ): Promise<PlanActionHandleResult> {
-    return trySetShedTemperature(
-      this.buildTargetExecutorContext(),
-      deviceId,
-      name,
-      targetCap,
-      shedTemp,
-      canSetShedTemp,
-    );
+  private async trySetShedTemperature(params: {
+    deviceId: string;
+    name: string;
+    targetCap: string | undefined;
+    shedTemp: number | null;
+    canSetShedTemp: boolean;
+  }): Promise<PlanActionHandleResult> {
+    return trySetShedTemperature(this.buildTargetExecutorContext(), params);
   }
 
+  /* eslint-disable complexity --
+   * Binary shed handling still combines capability discovery, skip diagnostics,
+   * and actuation logging in one path.
+   */
   private async turnOffDevice(deviceId: string, name: string, reason?: string): Promise<boolean> {
     const snapshotEntry = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
     const controlPlan = getBinaryControlPlan(snapshotEntry);
@@ -675,6 +680,7 @@ export class PlanExecutor {
       return false;
     }
   }
+  /* eslint-enable complexity */
 
   public async handleShortfall(deficitKw: number): Promise<void> {
     if (this.state.inShortfall) return; // Already in shortfall state
@@ -714,6 +720,10 @@ export class PlanExecutor {
     incPerfCounter('settings_set.capacity_in_shortfall');
   }
 
+  /* eslint-disable complexity, sonarjs/cognitive-complexity, max-statements --
+   * Plan execution still dispatches across all control models in one traceable
+   * loop.
+   */
   public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
     if (!plan || !Array.isArray(plan.devices)) return { deviceWriteCount: 0 };
 
@@ -778,6 +788,7 @@ export class PlanExecutor {
     }
     return { deviceWriteCount };
   }
+  /* eslint-enable complexity, sonarjs/cognitive-complexity, max-statements */
 
   private getRestoreLogSource(deviceId: string): 'shed_state' | 'current_plan' {
     const lastShedMs = this.state.lastDeviceShedMs[deviceId];
