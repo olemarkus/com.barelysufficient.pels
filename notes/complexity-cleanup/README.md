@@ -76,13 +76,16 @@ be extracted further once the post-split shape has settled.
 ### 4. `app.ts` — partially landed, still active
 
 Snapshot refresh, Homey Energy polling, and stepped-load helper ownership have already moved out
-via PRs #397 and #398. `app.ts` is still a hotspot because it remains the lifecycle / timer /
-service-wiring accumulation point.
+via PRs #397 and #398. The TimerRegistry / AppContext pass has now also landed, routing the
+remaining app-owned timers through a shared registry and collapsing the large startup/settings/
+flow-card callback bags into one context object. `app.ts` is still a hotspot because it remains
+the lifecycle / service-wiring accumulation point.
 
-**Remaining simplification:** continue collapsing one-line delegates, introduce `TimerRegistry`,
-and replace the init-time dependency bags with `AppContext`.
+**Remaining simplification:** decide whether the now-thin `appInit.ts` context adapter should be
+deleted, keep collapsing delegates that no longer buy readability or testability, and re-measure
+whether any further helper extraction is still justified.
 
-**Current size:** ~938 LOC after the helper extractions.
+**Current size:** ~924 LOC after the helper extractions plus TimerRegistry / AppContext.
 
 ### 5. `deviceManager.ts` — partially landed
 
@@ -290,9 +293,11 @@ Items from the original refactoring spec that are deferred or dropped:
       `planReasons.ts`, so folding it back would re-couple decision and presentation surfaces.
 
 ### Phase 4 follow-up: continue shrinking app.ts
-- [ ] Collapse one-liner delegates
-- [ ] Re-measure whether any cohesive runtime helper groups still justify extraction before
-      moving to `TimerRegistry` / `AppContext`
+- [x] Introduce `AppContext` and route startup/settings/flow-card wiring through `ctx`
+- [x] Introduce `TimerRegistry` and cover `onUninit` teardown with a regression test
+- [ ] Decide whether the thin `appInit.ts` context adapter should be deleted
+- [ ] Re-measure whether any cohesive runtime helper groups still justify extraction after the
+      TimerRegistry / AppContext landing
 
 ### Phase 5: Split planService
 - [x] Extract snapshot-write subsystem into planSnapshotWriter.ts
@@ -316,13 +321,13 @@ Items from the original refactoring spec that are deferred or dropped:
 - [ ] Remove the old per-concern debouncers
 
 ### Phase 10: TimerRegistry
-- [ ] Add `lib/app/timerRegistry.ts` (~40 LOC)
-- [ ] Migrate the ten timer fields on `app.ts` through the registry
-- [ ] Add a `onUninit` test asserting all registered timers are cleared
+- [x] Add `lib/app/timerRegistry.ts` (~40 LOC)
+- [x] Migrate the ten timer fields on `app.ts` through the registry
+- [x] Add a `onUninit` test asserting all registered timers are cleared
 
 ### Phase 11: AppContext + delete appInit.ts
-- [ ] Introduce `lib/app/appContext.ts` with the struct and the construction helper
-- [ ] Replace the four init-site callback bags with `ctx` references
-- [ ] Inline the ~40 one-line delegate getters
+- [x] Introduce `lib/app/appContext.ts` with the struct and the construction helper
+- [x] Replace the four init-site callback bags with `ctx` references
+- [ ] Inline the remaining one-line delegate getters
 - [ ] Move `resolveHasBinaryControl` to `lib/core/deviceManagerControl.ts`
 - [ ] Delete `lib/app/appInit.ts`

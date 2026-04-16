@@ -2455,4 +2455,29 @@ describe('periodic snapshot refresh scheduling', () => {
 
     expect((app as any).homeyEnergyHelpers.pollInterval).toBeUndefined();
   });
+
+  it('clears registered timers and flushes pending power tracker persistence on uninit', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+
+    const app = createApp();
+    await initApp(app);
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    const persistSpy = vi.spyOn(app as any, 'persistPowerTrackerState');
+
+    (app as any).startHeartbeat();
+    (app as any).startPowerTrackerPruning();
+    (app as any).snapshotHelpers.startPeriodicSnapshotRefresh();
+    (app as any).snapshotHelpers.schedulePostActuationRefresh();
+    (app as any).homeyEnergyHelpers.start();
+    (app as any).savePowerTracker({ lastTimestamp: Date.now() });
+
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    await app.onUninit?.();
+
+    expect(persistSpy).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

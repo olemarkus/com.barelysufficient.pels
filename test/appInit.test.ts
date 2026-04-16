@@ -1,4 +1,5 @@
 import { createPlanService } from '../lib/app/appInit';
+import type { AppContext } from '../lib/app/appContext';
 
 describe('app init plan service wiring', () => {
   it('derives binary control from legacy snapshot capabilities when controlCapabilityId is missing', () => {
@@ -8,9 +9,9 @@ describe('app init plan service wiring', () => {
         flow: { getTriggerCard: vi.fn() },
       } as never,
       planEngine: {} as never,
-      getCapacityDryRun: () => false,
-      getLastPowerUpdate: () => null,
-      getLatestTargetSnapshot: () => [
+      get capacityDryRun() { return false; },
+      get powerTracker() { return {} as never; },
+      get latestTargetSnapshot() { return [
         {
           id: 'socket-1',
           name: 'Socket',
@@ -26,16 +27,22 @@ describe('app init plan service wiring', () => {
           name: 'Thermostat',
           capabilities: ['measure_temperature', 'target_temperature'],
         },
-      ],
+      ] as any; },
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
       isBudgetExempt: () => false,
-      isCurrentHourCheap: () => false,
-      isCurrentHourExpensive: () => false,
+      debugLoggingTopics: new Set(),
+      snapshotHelpers: { schedulePostActuationRefresh: vi.fn() } as any,
+      priceCoordinator: {
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+      } as any,
+      getStructuredLogger: () => undefined,
+      getStructuredDebugEmitter: () => vi.fn() as any,
       log: vi.fn(),
       logDebug: vi.fn(),
       error: vi.fn(),
-    });
+    } as unknown as AppContext);
 
     const planDevices = (service as unknown as {
       deps: { getPlanDevices: () => Array<{ id: string; hasBinaryControl?: boolean }> };

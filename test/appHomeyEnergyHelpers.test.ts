@@ -1,4 +1,5 @@
 import { AppHomeyEnergyHelpers } from '../lib/app/appHomeyEnergyHelpers';
+import { TimerRegistry } from '../lib/app/timerRegistry';
 import { mockHomeyInstance } from './mocks/homey';
 
 describe('appHomeyEnergyHelpers', () => {
@@ -18,6 +19,7 @@ describe('appHomeyEnergyHelpers', () => {
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
     const helper = new AppHomeyEnergyHelpers({
       homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
       getDeviceManager: () => ({ pollHomePowerW } as any),
       recordPowerSample,
       logDebug: vi.fn(),
@@ -49,6 +51,7 @@ describe('appHomeyEnergyHelpers', () => {
     const pollHomePowerW = vi.fn().mockResolvedValue(null);
     const helper = new AppHomeyEnergyHelpers({
       homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
       getDeviceManager: () => ({ pollHomePowerW } as any),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       logDebug: vi.fn(),

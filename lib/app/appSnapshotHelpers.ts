@@ -7,6 +7,7 @@ import { getLatestDeviceObservationMs, isDeviceObservationStale } from '../plan/
 import type { PlanService } from '../plan/planService';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { toStableFingerprint } from '../utils/stableFingerprint';
+import type { TimerRegistry } from './timerRegistry';
 
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
@@ -45,6 +46,7 @@ export class AppSnapshotHelpers {
 
   constructor(private readonly deps: {
     homey: Homey.App['homey'];
+    timers: TimerRegistry;
     getDeviceManager: () => DeviceManager | undefined;
     getPlanEngine: () => PlanEngine | undefined;
     getPlanService: () => PlanService | undefined;
@@ -65,34 +67,43 @@ export class AppSnapshotHelpers {
   }
 
   startPeriodicSnapshotRefresh(): void {
-    if (this.snapshotRefreshTimer) clearTimeout(this.snapshotRefreshTimer);
+    if (this.snapshotRefreshTimer) {
+      this.deps.timers.clear('snapshotRefresh');
+      this.snapshotRefreshTimer = undefined;
+    }
     this.scheduleNextSnapshotRefresh();
     this.startStaleObservationRefreshFallback();
 
-    if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
-    this.targetConfirmationPollInterval = setInterval(() => {
-      this.pollStuckTargetConfirmations()
-        .catch((error) => this.deps.error('Pending target confirmation poll failed', error));
-    }, TARGET_CONFIRMATION_POLL_INTERVAL_MS);
+    if (this.targetConfirmationPollInterval) {
+      this.deps.timers.clear('targetConfirmationPoll');
+      this.targetConfirmationPollInterval = undefined;
+    }
+    this.targetConfirmationPollInterval = this.deps.timers.registerInterval(
+      'targetConfirmationPoll',
+      setInterval(() => {
+        this.pollStuckTargetConfirmations()
+          .catch((error) => this.deps.error('Pending target confirmation poll failed', error));
+      }, TARGET_CONFIRMATION_POLL_INTERVAL_MS),
+    );
   }
 
   stop(): void {
     this.staleObservationRefreshStopped = true;
     this.snapshotRefreshPending = false;
     if (this.snapshotRefreshTimer) {
-      clearTimeout(this.snapshotRefreshTimer);
+      this.deps.timers.clear('snapshotRefresh');
       this.snapshotRefreshTimer = undefined;
     }
     if (this.staleObservationRefreshTimer) {
-      clearTimeout(this.staleObservationRefreshTimer);
+      this.deps.timers.clear('staleObservationRefresh');
       this.staleObservationRefreshTimer = undefined;
     }
     if (this.targetConfirmationPollInterval) {
-      clearInterval(this.targetConfirmationPollInterval);
+      this.deps.timers.clear('targetConfirmationPoll');
       this.targetConfirmationPollInterval = undefined;
     }
     if (this.postActuationRefreshTimer) {
-      clearTimeout(this.postActuationRefreshTimer);
+      this.deps.timers.clear('postActuationRefresh');
       this.postActuationRefreshTimer = undefined;
     }
   }
@@ -174,7 +185,7 @@ export class AppSnapshotHelpers {
       next.setHours(now.getHours() + 1, SNAPSHOT_REFRESH_MINUTE_INTERVALS[0], 0, 0);
     }
 
-    const scheduledTimer = setTimeout(async () => {
+    const scheduledTimer = this.deps.timers.registerTimeout('snapshotRefresh', setTimeout(async () => {
       if (this.snapshotRefreshTimer !== scheduledTimer || this.staleObservationRefreshStopped) return;
       let refreshed = false;
       try {
@@ -185,13 +196,14 @@ export class AppSnapshotHelpers {
       } finally {
         this.deps.logPeriodicStatus({ includeDeviceHealth: refreshed });
         if (this.snapshotRefreshTimer === scheduledTimer) {
+          this.deps.timers.clear('snapshotRefresh');
           this.snapshotRefreshTimer = undefined;
         }
         if (!this.staleObservationRefreshStopped) {
           this.scheduleNextSnapshotRefresh();
         }
       }
-    }, next.getTime() - now.getTime());
+    }, next.getTime() - now.getTime()));
     this.snapshotRefreshTimer = scheduledTimer;
   }
 
@@ -218,15 +230,16 @@ export class AppSnapshotHelpers {
       'plan',
       `Scheduling post-actuation snapshot refresh in ${Math.round(POST_ACTUATION_REFRESH_DELAY_MS / 1000)} s`,
     );
-    this.postActuationRefreshTimer = setTimeout(async () => {
+    this.postActuationRefreshTimer = this.deps.timers.registerTimeout('postActuationRefresh', setTimeout(async () => {
       this.postActuationRefreshTimer = undefined;
+      this.deps.timers.clear('postActuationRefresh');
       this.deps.logDebug('plan', 'Running post-actuation targeted snapshot refresh');
       try {
         await this.refreshTargetDevicesSnapshot({ targeted: true, recordHomeyEnergySample: false });
       } catch (error) {
         this.deps.error('Post-actuation snapshot refresh failed:', error);
       }
-    }, POST_ACTUATION_REFRESH_DELAY_MS);
+    }, POST_ACTUATION_REFRESH_DELAY_MS));
   }
 
   private async runSnapshotRefreshCycle(
@@ -301,24 +314,32 @@ export class AppSnapshotHelpers {
 
   private startStaleObservationRefreshFallback(): void {
     this.staleObservationRefreshStopped = false;
-    if (this.staleObservationRefreshTimer) clearTimeout(this.staleObservationRefreshTimer);
+    if (this.staleObservationRefreshTimer) {
+      this.deps.timers.clear('staleObservationRefresh');
+      this.staleObservationRefreshTimer = undefined;
+    }
     this.scheduleStaleObservationRefreshFallback();
   }
 
   private scheduleStaleObservationRefreshFallback(): void {
     if (this.staleObservationRefreshStopped) return;
 
-    this.staleObservationRefreshTimer = setTimeout(async () => {
-      try {
-        await this.refreshStaleDeviceObservations();
-      } catch (error) {
-        this.deps.error('Stale device observation refresh failed', error);
-      } finally {
-        if (!this.staleObservationRefreshStopped) {
-          this.scheduleStaleObservationRefreshFallback();
+    this.staleObservationRefreshTimer = this.deps.timers.registerTimeout(
+      'staleObservationRefresh',
+      setTimeout(async () => {
+        this.deps.timers.clear('staleObservationRefresh');
+        this.staleObservationRefreshTimer = undefined;
+        try {
+          await this.refreshStaleDeviceObservations();
+        } catch (error) {
+          this.deps.error('Stale device observation refresh failed', error);
+        } finally {
+          if (!this.staleObservationRefreshStopped) {
+            this.scheduleStaleObservationRefreshFallback();
+          }
         }
-      }
-    }, STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS);
+      }, STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS),
+    );
   }
 
   private logDeviceFreshnessTransitions(

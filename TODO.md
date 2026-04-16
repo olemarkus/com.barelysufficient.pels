@@ -78,18 +78,25 @@ file.
       Why P1: this landed the local decision/presentation split in `planReasons.ts` while keeping
       emitted `reason` text stable for existing consumers.
       Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonStrings.ts`.
+- [ ] Move `planServiceInternals.ts` types into `lib/plan/planTypes.ts` and extract the
+      snapshot-write path out of `planService.ts` so rebuild orchestration stops carrying
+      persistence plumbing.
+      Why P1: `planService.ts` mixes rebuilds, timers, throttled settings writes, and metrics in
+      one place even though snapshot persistence is a separate concern.
+      Files: `lib/plan/planService.ts`, `lib/plan/planServiceInternals.ts`,
+      `lib/plan/planTypes.ts`.
 - [ ] Extract rebuild-metrics/tracing helpers out of `planService.ts` now that snapshot
       persistence lives in `planSnapshotWriter.ts`.
       Why P1: `planService.ts` no longer owns the throttled snapshot timer/write path, but it
       still mixes rebuild orchestration with perf aggregation, trace recording, and completion
       logging.
       Files: `lib/plan/planService.ts`, new `lib/plan/planRebuildMetrics.ts`.
-- [ ] Continue shrinking `app.ts` after the helper extractions already landed. Snapshot refresh,
-      Homey Energy polling, and stepped-load helper ownership have moved out; the remaining work
-      is to reduce lifecycle/timer/wrapper bulk and remove the remaining trivial pass-through
-      delegates where services can be passed directly.
-      Why P1: recent PRs reduced `app.ts`, but it is still the main wiring accumulation point and
-      still carries broad lifecycle plus timer orchestration.
+- [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
+      remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
+      deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
+      keep trimming any delegates that no longer buy readability or testability.
+      Why P1: the broad callback bags and timer teardown scatter are gone, but `app.ts` is still
+      the main lifecycle assembly point and still carries more wrapper surface than ideal.
       Files: `app.ts`, `lib/app/**`.
 - [ ] Unify the three plan-rebuild coalescers (`appFlowRebuildScheduler`,
       `schedulePlanRebuildFromSignal` in `appPowerHelpers.ts`, `planService` snapshot throttler)
@@ -110,12 +117,12 @@ file.
       Files: `lib/app/appPowerHelpers.ts`, `lib/app/appPowerRebuildPolicy.ts`,
       `lib/app/appPowerRebuildScheduler.ts`, `lib/app/appPowerSampleIngest.ts`,
       `test/appPowerHelpers.test.ts`.
-- [ ] Introduce a `TimerRegistry` helper and route the ten timer fields on `app.ts` through it so
+- [x] Introduce a `TimerRegistry` helper and route the ten timer fields on `app.ts` through it so
       `onUninit` cannot silently leak a newly added timer.
       Why P1: timer cleanup is enforced today only by author discipline; each new timer is a new
       failure mode. Centralising gives a uniform debug surface and a clean teardown.
       Files: `app.ts`, new `lib/app/timerRegistry.ts`.
-- [ ] Replace the four large dependency bags at `app.ts` init sites (init settings handler, init
+- [x] Replace the four large dependency bags at `app.ts` init sites (init settings handler, init
       plan engine, register flow cards, start app services — 22-28 callbacks each) with a single
       `AppContext` struct passed by reference.
       Why P1: the bags are the largest single source of `app.ts` bulk and they drift independently

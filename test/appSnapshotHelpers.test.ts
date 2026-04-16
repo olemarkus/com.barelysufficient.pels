@@ -1,4 +1,5 @@
 import { AppSnapshotHelpers } from '../lib/app/appSnapshotHelpers';
+import { TimerRegistry } from '../lib/app/timerRegistry';
 import { mockHomeyInstance } from './mocks/homey';
 
 describe('appSnapshotHelpers', () => {
@@ -16,6 +17,7 @@ describe('appSnapshotHelpers', () => {
   it('restarting periodic snapshot refresh replaces existing timers instead of duplicating them', () => {
     const helper = new AppSnapshotHelpers({
       homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
       getDeviceManager: () => ({ refreshSnapshot: vi.fn() } as any),
       getPlanEngine: () => undefined,
       getPlanService: () => ({
