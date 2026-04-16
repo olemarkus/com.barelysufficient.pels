@@ -139,7 +139,6 @@ describe('PlanExecutor restore logging', () => {
     state.activationAttemptByDevice['dev-1'] = {
       startedMs: now - 5_000,
       source: 'pels_restore',
-      stickReached: false,
     };
     const { executor, deviceManager, state: nextState } = buildExecutor(state);
 
