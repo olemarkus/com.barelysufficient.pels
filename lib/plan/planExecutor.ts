@@ -34,7 +34,6 @@ import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/lo
 import {
   applyShedTemperaturePlan,
   applyTargetUpdate,
-  dispatchTargetCommand,
   trySetShedTemperature,
   type PlanExecutorTargetContext,
 } from './planExecutorTarget';
@@ -87,13 +86,55 @@ type PlanActionHandleResult = {
   handled: boolean;
   wrote: boolean;
 };
-type TargetCommandDispatchResult =
-  | { applied: false; reason: 'skipped' | 'failed' }
-  | { applied: true; attemptType: 'send' | 'retry' };
 
 export class PlanExecutor {
   constructor(private deps: PlanExecutorDeps, private state: PlanEngineState) {
   }
+
+  private readonly boundLog = (...args: unknown[]): void => this.log(...args);
+  private readonly boundLogDebug = (...args: unknown[]): void => this.logDebug(...args);
+  private readonly boundError = (...args: unknown[]): void => this.error(...args);
+  private readonly boundGetShedBehavior = (deviceId: string) => this.getShedBehavior(deviceId);
+  private readonly boundBuildBinaryControlDeps = () => this.buildBinaryControlDeps();
+  private readonly boundMarkSteppedLoadDesiredStepIssued = (params: {
+    deviceId: string;
+    desiredStepId: string;
+    previousStepId?: string;
+    issuedAtMs?: number;
+    pendingWindowMs?: number;
+  }): void => this.markSteppedLoadDesiredStepIssued(params);
+  private readonly boundRecordShedActuation = (
+    deviceId: string,
+    name: string | undefined,
+    now: number,
+  ): void => this.recordShedActuation(deviceId, name, now);
+  private readonly boundRecordRestoreActuation = (
+    deviceId: string,
+    name: string | undefined,
+    now: number,
+  ): void => this.recordRestoreActuation(deviceId, name, now);
+  private readonly boundRecordActivationAttemptStarted = (
+    deviceId: string,
+    name: string | undefined,
+    now: number,
+  ): void => {
+    recordActivationAttemptStarted({
+      state: this.state,
+      diagnostics: this.deps.deviceDiagnostics,
+      deviceId,
+      name,
+      nowTs: now,
+    });
+  };
+  private readonly boundGetRestoreLogSource = (deviceId: string): 'shed_state' | 'current_plan' => (
+    this.getRestoreLogSource(deviceId)
+  );
+  private readonly boundGetDesiredSteppedLoadTrigger = () => (
+    this.deps.homey.flow?.getTriggerCard?.('desired_stepped_load_changed')
+  );
+
+  private targetExecutorContext?: PlanExecutorTargetContext;
+  private steppedExecutorContext?: PlanExecutorSteppedContext;
 
   private get deviceManager(): DeviceManager {
     return this.deps.deviceManager;
@@ -187,49 +228,59 @@ export class PlanExecutor {
   }
 
   private buildTargetExecutorContext(): PlanExecutorTargetContext {
-    return {
-      state: this.state,
-      deviceManager: this.deviceManager,
-      getShedBehavior: this.getShedBehavior.bind(this),
-      operatingMode: this.operatingMode,
-      syncLivePlanStateAfterTargetActuation: this.deps.syncLivePlanStateAfterTargetActuation,
-      logTargetRetryComparison: this.deps.logTargetRetryComparison,
-      structuredLog: this.deps.structuredLog,
-      debugStructured: this.deps.debugStructured,
-      log: this.log.bind(this),
-      logDebug: this.logDebug.bind(this),
-      error: this.error.bind(this),
-      recordShedActuation: (deviceId, name, now) => this.recordShedActuation(deviceId, name, now),
-      recordRestoreActuation: (deviceId, name, now) => this.recordRestoreActuation(deviceId, name, now),
-      recordActivationAttemptStarted: (deviceId, name, now) => {
-        recordActivationAttemptStarted({
-          state: this.state,
-          diagnostics: this.deps.deviceDiagnostics,
-          deviceId,
-          name,
-          nowTs: now,
-        });
-      },
-    };
+    if (!this.targetExecutorContext) {
+      this.targetExecutorContext = {
+        state: this.state,
+        deviceManager: this.deviceManager,
+        getShedBehavior: this.boundGetShedBehavior,
+        operatingMode: this.operatingMode,
+        syncLivePlanStateAfterTargetActuation: this.deps.syncLivePlanStateAfterTargetActuation,
+        logTargetRetryComparison: this.deps.logTargetRetryComparison,
+        structuredLog: this.deps.structuredLog,
+        debugStructured: this.deps.debugStructured,
+        log: this.boundLog,
+        logDebug: this.boundLogDebug,
+        error: this.boundError,
+        recordShedActuation: this.boundRecordShedActuation,
+        recordRestoreActuation: this.boundRecordRestoreActuation,
+        recordActivationAttemptStarted: this.boundRecordActivationAttemptStarted,
+        deviceDiagnostics: this.deps.deviceDiagnostics,
+      };
+    }
+
+    this.targetExecutorContext.state = this.state;
+    this.targetExecutorContext.operatingMode = this.operatingMode;
+    this.targetExecutorContext.syncLivePlanStateAfterTargetActuation = this.deps.syncLivePlanStateAfterTargetActuation;
+    this.targetExecutorContext.logTargetRetryComparison = this.deps.logTargetRetryComparison;
+    this.targetExecutorContext.structuredLog = this.deps.structuredLog;
+    this.targetExecutorContext.debugStructured = this.deps.debugStructured;
+    this.targetExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
+    return this.targetExecutorContext;
   }
 
   private buildSteppedExecutorContext(): PlanExecutorSteppedContext {
-    return {
-      state: this.state,
-      logDebug: this.logDebug.bind(this),
-      error: this.error.bind(this),
-      structuredLog: this.deps.structuredLog,
-      debugStructured: this.deps.debugStructured,
-      buildBinaryControlDeps: this.buildBinaryControlDeps.bind(this),
-      markSteppedLoadDesiredStepIssued: this.markSteppedLoadDesiredStepIssued.bind(this),
-      recordShedActuation: (deviceId, name, now) => this.recordShedActuation(deviceId, name, now),
-      recordRestoreActuation: (deviceId, name, now) => this.recordRestoreActuation(deviceId, name, now),
-      getRestoreLogSource: this.getRestoreLogSource.bind(this),
-      getDesiredSteppedLoadTrigger: () => (
-        this.deps.homey.flow?.getTriggerCard?.('desired_stepped_load_changed')
-      ),
-      deviceDiagnostics: this.deps.deviceDiagnostics,
-    };
+    if (!this.steppedExecutorContext) {
+      this.steppedExecutorContext = {
+        state: this.state,
+        logDebug: this.boundLogDebug,
+        error: this.boundError,
+        structuredLog: this.deps.structuredLog,
+        debugStructured: this.deps.debugStructured,
+        buildBinaryControlDeps: this.boundBuildBinaryControlDeps,
+        markSteppedLoadDesiredStepIssued: this.boundMarkSteppedLoadDesiredStepIssued,
+        recordShedActuation: this.boundRecordShedActuation,
+        recordRestoreActuation: this.boundRecordRestoreActuation,
+        getRestoreLogSource: this.boundGetRestoreLogSource,
+        getDesiredSteppedLoadTrigger: this.boundGetDesiredSteppedLoadTrigger,
+        deviceDiagnostics: this.deps.deviceDiagnostics,
+      };
+    }
+
+    this.steppedExecutorContext.state = this.state;
+    this.steppedExecutorContext.structuredLog = this.deps.structuredLog;
+    this.steppedExecutorContext.debugStructured = this.deps.debugStructured;
+    this.steppedExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
+    return this.steppedExecutorContext;
   }
 
   private async applyShedAction(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
@@ -546,18 +597,6 @@ export class PlanExecutor {
       shedTemp,
       canSetShedTemp,
     );
-  }
-
-  private async dispatchTargetCommand(params: {
-    deviceId: string;
-    name: string;
-    targetCap: string;
-    desired: number;
-    observedValue?: unknown;
-    skipContext: 'plan' | 'shedding' | 'overshoot';
-    actuationMode: PlanActuationMode;
-  }): Promise<TargetCommandDispatchResult> {
-    return dispatchTargetCommand(this.buildTargetExecutorContext(), params);
   }
 
   private async turnOffDevice(deviceId: string, name: string, reason?: string): Promise<boolean> {
