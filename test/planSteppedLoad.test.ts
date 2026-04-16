@@ -3,12 +3,12 @@ import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId,
-  resolveSteppedLoadCurrentState,
   resolveSteppedLoadImmediateReliefKw,
   resolveSteppedLoadInitialDesiredStepId,
   resolveSteppedLoadRestoreDeltaKw,
   resolveSteppedLoadSheddingTarget,
 } from '../lib/plan/planSteppedLoad';
+import { resolveObservedSteppedLoadCurrentState } from '../lib/plan/planCurrentState';
 import { steppedInputDevice, steppedPlanDevice, steppedProfile } from './utils/planTestUtils';
 
 describe('planSteppedLoad', () => {
@@ -232,13 +232,13 @@ describe('planSteppedLoad', () => {
   });
 
   it('resolves current state from binary onoff or stepped profile', () => {
-    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ selectedStepId: undefined }))).toBe('unknown');
-    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ currentOn: true, selectedStepId: 'low' }))).toBe('on');
-    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ currentOn: false, selectedStepId: 'low' }))).toBe('off');
-    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ currentOn: true, selectedStepId: 'off' }))).toBe('off');
-    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: true }))).toBe('on');
-    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: false }))).toBe('off');
-    expect(resolveSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: true }))).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ selectedStepId: undefined }))).toBe('unknown');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ currentOn: true, selectedStepId: 'low' }))).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ currentOn: false, selectedStepId: 'low' }))).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ currentOn: true, selectedStepId: 'off' }))).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: true }))).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: false }))).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: true }))).toBe('on');
   });
 
   it('uses planning power for restore math and measured power for immediate shed relief', () => {

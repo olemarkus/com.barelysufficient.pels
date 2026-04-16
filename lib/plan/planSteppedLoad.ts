@@ -12,10 +12,7 @@ import {
 } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile, SteppedLoadStep } from '../utils/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
-import {
-  resolveEffectiveCurrentOn,
-  resolveObservedSteppedLoadCurrentState,
-} from './planCurrentState';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 
 type StepCapableDevice = Pick<
   PlanInputDevice | DevicePlanDevice,
@@ -40,8 +37,6 @@ export const isSteppedLoadDevice = (
 const getSteppedLoadProfileForDevice = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>,
 ): SteppedLoadProfile | null => (isSteppedLoadDevice(device) ? (device.steppedLoadProfile ?? null) : null);
-
-export const resolveSteppedLoadCurrentState = resolveObservedSteppedLoadCurrentState;
 
 export const resolveSteppedLoadInitialDesiredStepId = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'>,
