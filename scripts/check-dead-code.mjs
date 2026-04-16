@@ -51,6 +51,9 @@ const allowedUnusedExportPatterns = [
   /^lib\/utils\/planRebuildTrace\.ts:\d+ - clearPlanRebuildTracesForTests$/,
   /^lib\/core\/deviceManagerHomeyApi\.ts:\d+ - setRestClient$/,
   /^lib\/core\/deviceManagerHomeyApi\.ts:\d+ - resetRestClient$/,
+  // Compatibility barrel exports kept intentionally while call sites migrate off appPowerHelpers.ts.
+  /^lib\/app\/appPowerHelpers\.ts:\d+ - schedulePlanRebuildFromPowerSample$/,
+  /^lib\/app\/appPowerHelpers\.ts:\d+ - recordDailyBudgetCap$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_BOOTSTRAP_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_DEVICES_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_PLAN_PATH$/,

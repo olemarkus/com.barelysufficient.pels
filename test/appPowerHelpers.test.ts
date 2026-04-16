@@ -13,12 +13,10 @@ import type { PowerTrackerState } from '../lib/core/powerTracker';
 import {
   recordDailyBudgetCap,
   recordPowerSampleForApp,
-} from '../lib/app/appPowerSampleIngest';
-import type { PowerSampleRebuildState } from '../lib/app/appPowerRebuildScheduler';
-import {
+  type PowerSampleRebuildState,
   schedulePlanRebuildFromPowerSample,
   schedulePlanRebuildFromSignal,
-} from '../lib/app/appPowerRebuildScheduler';
+} from '../lib/app/appPowerHelpers';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 
 const createCapacityGuardMock = (params: {
@@ -416,7 +414,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(state.lastSoftLimitKw).toBe(8);
   });
 
-  it('clears pending sample values after timed rebuild completes', async () => {
+  it('preserves a follow-up pending rebuild when a new boundary sample arrives during a timed rebuild', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 1000, lastSoftLimitKw: 9 };
     let resolveRebuild: (() => void) | undefined;
     const rebuildPlanFromCache = vi.fn().mockImplementation(
@@ -459,14 +457,20 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       headroomKw: -0.7,
     });
 
-    expect(second).toBe(first);
+    expect(second).not.toBe(first);
+    expect(state.pending).toBe(second);
     expect(state.pendingPowerW).toBe(9700);
     expect(state.pendingSoftLimitKw).toBe(8.7);
 
     resolveRebuild?.();
-    await first;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(state.pending).toBe(second);
+    await vi.runAllTimersAsync();
 
     expect(logError).not.toHaveBeenCalled();
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
     expect(state.pending).toBeUndefined();
     expect(state.pendingReason).toBeUndefined();
     expect(state.pendingPowerW).toBeUndefined();
