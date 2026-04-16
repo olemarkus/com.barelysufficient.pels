@@ -1488,7 +1488,7 @@ describe('MyApp initialization', () => {
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
-      await (app as any).pollStuckTargetConfirmations();
+      await (app as any).snapshotHelpers.pollStuckTargetConfirmations();
     } finally {
       nowSpy.mockRestore();
     }
@@ -2184,7 +2184,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
     const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'scheduleNextSnapshotRefresh');
 
-    (app as any).scheduleNextSnapshotRefresh();
+    (app as any).snapshotHelpers.scheduleNextSnapshotRefresh();
 
     vi.advanceTimersByTime(25 * 60 * 1000);
     await Promise.resolve();
@@ -2337,10 +2337,10 @@ describe('periodic snapshot refresh scheduling', () => {
     const logDebugSpy = vi.spyOn(app as any, 'logDebug').mockImplementation(() => undefined);
 
     (app as any).schedulePostActuationRefresh();
-    const firstTimer = (app as any).postActuationRefreshTimer;
+    const firstTimer = (app as any).snapshotHelpers.getPostActuationRefreshTimer();
     (app as any).schedulePostActuationRefresh();
 
-    expect((app as any).postActuationRefreshTimer).toBe(firstTimer);
+    expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBe(firstTimer);
     expect(refreshSpy).not.toHaveBeenCalled();
     expect(logDebugSpy).toHaveBeenCalledWith('plan', 'Post-actuation snapshot refresh already scheduled');
   });
