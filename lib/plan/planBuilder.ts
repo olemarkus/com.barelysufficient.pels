@@ -288,7 +288,9 @@ export class PlanBuilder {
       this.attributeOvershootToRecentRestores(deviceNameById, nowTs);
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.state.overshootLogged = false;
-      const durationMs = this.state.overshootStartedMs !== null ? nowTs - this.state.overshootStartedMs : 0;
+      const durationMs = this.state.overshootStartedMs !== null
+        ? Math.max(0, nowTs - this.state.overshootStartedMs)
+        : 0;
       this.state.overshootStartedMs = null;
       this.state.lastOvershootEscalationMs = null;
       this.state.lastOvershootMitigationMs = null;
