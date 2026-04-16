@@ -115,6 +115,7 @@ export class PlanService {
     });
     this.planSnapshotWriter = new PlanSnapshotWriter({
       homey: deps.homey,
+      error: deps.error,
       structuredLog: deps.structuredLog,
       debugStructured: deps.debugStructured,
     });

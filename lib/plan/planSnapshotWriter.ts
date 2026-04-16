@@ -7,9 +7,14 @@ import type { DevicePlan, PlanChangeSet, PlanSnapshotWriteReason } from './planT
 
 type PlanSnapshotWriterDeps = {
   homey: Homey.App['homey'];
+  error: (message: string, error: Error) => void;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
 };
+
+type DeferredPlanSnapshotWriteResult =
+  | { success: true; writeMs: number }
+  | { success: false };
 
 export class PlanSnapshotWriter {
   private stopped = false;
@@ -21,6 +26,7 @@ export class PlanSnapshotWriter {
   constructor(private deps: PlanSnapshotWriterDeps) {}
 
   update(plan: DevicePlan, changes: PlanChangeSet): number {
+    if (this.stopped) return 0;
     const now = Date.now();
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
     if (!changed) {
@@ -71,6 +77,7 @@ export class PlanSnapshotWriter {
     reason: 'meta_only',
     nowMs: number,
   ): void {
+    if (this.stopped) return;
     this.pendingNonActionSnapshotPlan = plan;
     this.pendingNonActionSnapshotReason = reason;
     this.deps.debugStructured?.({
@@ -85,8 +92,8 @@ export class PlanSnapshotWriter {
 
     const waitMs = this.resolveNonActionWaitMs(nowMs);
     this.pendingNonActionSnapshotTimer = setTimeout(() => {
-      if (this.stopped) return;
       this.pendingNonActionSnapshotTimer = undefined;
+      if (this.stopped) return;
       this.flushPendingNonActionSnapshot(Date.now());
     }, waitMs);
   }
@@ -103,14 +110,17 @@ export class PlanSnapshotWriter {
       return 0;
     }
 
-    const writeMs = this.writeDeferredPlanSnapshot(
+    const writeResult = this.writeDeferredPlanSnapshot(
       this.pendingNonActionSnapshotPlan,
       this.pendingNonActionSnapshotReason,
       nowMs,
     );
+    if (!writeResult.success) {
+      return 0;
+    }
     this.clearPendingNonActionSnapshot();
     incPerfCounter('settings_set.device_plan_snapshot_meta_write_flushed_total');
-    return writeMs;
+    return writeResult.writeMs;
   }
 
   private clearPendingNonActionSnapshot(): void {
@@ -126,18 +136,23 @@ export class PlanSnapshotWriter {
     plan: DevicePlan,
     reason: PlanSnapshotWriteReason,
     nowMs: number,
-  ): number {
+  ): DeferredPlanSnapshotWriteResult {
     try {
-      return this.writePlanSnapshot(plan, reason, nowMs);
+      return {
+        success: true,
+        writeMs: this.writePlanSnapshot(plan, reason, nowMs),
+      };
     } catch (error) {
+      const normalizedError = normalizeError(error);
       this.deps.structuredLog?.error({
         event: 'plan_snapshot_write_failed',
         reasonCode: reason,
         deviceCount: plan.devices.length,
         totalKw: plan.meta.totalKw ?? null,
-        err: normalizeError(error),
+        err: normalizedError,
       });
-      return 0;
+      this.deps.error('Failed to write deferred device plan snapshot', normalizedError);
+      return { success: false };
     }
   }
 

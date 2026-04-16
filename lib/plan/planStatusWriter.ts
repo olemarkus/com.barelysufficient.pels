@@ -14,10 +14,14 @@ import {
 } from './planServiceInternals';
 import type {
   DevicePlan,
-  PelsStatusComputation,
   PelsStatusWriteReason,
   StatusPlanChanges,
 } from './planTypes';
+
+type PelsStatusComputation = {
+  result: ReturnType<typeof buildPelsStatus>;
+  statusJson: string;
+};
 
 type PlanStatusWriterDeps = {
   homey: Homey.App['homey'];
