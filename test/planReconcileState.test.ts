@@ -200,6 +200,75 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
     });
 
+    it('does not treat restore preparation at low with pending confirmation as binary drift', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: 'low',
+        controlCapabilityId: 'onoff',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: false,
+        selectedStepId: 'low',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+        stepCommandPending: true,
+        binaryCommandPending: true,
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
+    it('does not treat full-shed step preparation as binary drift before low is confirmed', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'on',
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+        selectedStepId: 'max',
+        desiredStepId: 'off',
+        controlCapabilityId: 'onoff',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: true,
+        selectedStepId: 'max',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+        stepCommandPending: true,
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
+    it('treats restore preparation as drift when the pending step jumps to an unexpected value', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: 'low',
+        controlCapabilityId: 'onoff',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: false,
+        selectedStepId: 'max',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+        stepCommandPending: true,
+        binaryCommandPending: true,
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(true);
+    });
+
     it('does not force stepped set_step shedding to look binary-off when the device is correctly on at the shed step', () => {
       const plan = buildPlan([buildSteppedDevice({
         currentState: 'on',

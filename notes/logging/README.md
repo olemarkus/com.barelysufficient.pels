@@ -43,7 +43,7 @@ This note is for contributors changing runtime logging.
 - `stepped_load_command_requested`
 - `stepped_load_command_skipped`
 - `stepped_load_command_failed`
-- `restore_keep_invariant_enforced`
+- `stepped_load_binary_transition_applied`
 - `restore_command_skipped`
 - `device_snapshot_refresh_completed`
 - `target_devices_snapshot_written`

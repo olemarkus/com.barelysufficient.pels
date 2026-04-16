@@ -3,14 +3,12 @@
   complexity,
   max-params,
   sonarjs/cognitive-complexity,
-  no-param-reassign,
-  no-nested-ternary
+  no-param-reassign
 -- extracted stepped-load actuation remains a cohesive pipeline with invariant-heavy control flow. */
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
-  sortSteppedLoadSteps,
 } from '../utils/deviceControlProfiles';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import {
@@ -21,7 +19,12 @@ import {
 import { setBinaryControl } from './planBinaryControl';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
-import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from './planSteppedLoad';
+import {
+  isSteppedLoadDevice,
+  resolveSteppedKeepDesiredStepId,
+  resolveSteppedLoadTransition,
+  type SteppedLoadTransition,
+} from './planSteppedLoad';
 import type { PlanActuationMode } from './planExecutor';
 import type { DevicePlan } from './planTypes';
 import type { PlanEngineState } from './planState';
@@ -72,17 +75,19 @@ export const applySteppedLoadCommand = async (
   if (!isSteppedLoadDevice(dev)) return false;
   const profile = dev.steppedLoadProfile;
   if (!profile) return false;
-  const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
-  if (!desiredStepId || desiredStepId === dev.selectedStepId) return false;
-  const desiredStep = getSteppedLoadStep(profile, desiredStepId);
+  const plannedDesiredStepId = resolveSteppedKeepDesiredStepId(dev);
+  const transition = resolveSteppedLoadTransition(dev, plannedDesiredStepId);
+  const commandStepId = transition?.commandStepId ?? plannedDesiredStepId;
+  if (!commandStepId || commandStepId === dev.selectedStepId) return false;
+  const desiredStep = getSteppedLoadStep(profile, commandStepId);
   if (!desiredStep) {
     return logSteppedLoadCommandSkip(ctx, {
       dev,
       mode,
       reasonCode: 'missing_step',
-      logMessage: `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
-        + `desired step ${desiredStepId} is not in profile`,
-      fields: { desiredStepId },
+      logMessage: `Capacity: skip stepped-load command for ${dev.name}, `
+        + `desired step ${commandStepId} is not in profile`,
+      fields: { desiredStepId: commandStepId, plannedDesiredStepId: plannedDesiredStepId ?? null },
     });
   }
   if (dev.plannedState === 'shed') {
@@ -93,24 +98,24 @@ export const applySteppedLoadCommand = async (
         dev,
         mode,
         reasonCode: 'step_up_blocked',
-        logMessage: `Capacity: skip step command for ${dev.name || dev.id}, shed device has upward`
-          + ` desiredStepId=${desiredStepId} vs selectedStepId=${dev.selectedStepId ?? 'unknown'}`
+        logMessage: `Capacity: skip step command for ${dev.name}, shed device has upward`
+          + ` desiredStepId=${commandStepId} vs selectedStepId=${dev.selectedStepId ?? 'unknown'}`
           + ` (power ${selectedPowerW}W)`,
-        fields: { desiredStepId, selectedStepId: dev.selectedStepId ?? null },
+        fields: { desiredStepId: commandStepId, selectedStepId: dev.selectedStepId ?? null },
       });
     }
   }
   const now = Date.now();
   const previousStepId = dev.selectedStepId ?? dev.lastDesiredStepId;
-  const sameDesiredStepPendingState = getSameDesiredStepPendingState(dev, desiredStepId, now);
+  const sameDesiredStepPendingState = getSameDesiredStepPendingState(dev, commandStepId, now);
   if (sameDesiredStepPendingState === 'pending') {
     return logSteppedLoadCommandSkip(ctx, {
       dev,
       mode,
       reasonCode: 'waiting_for_confirmation',
-      logMessage: `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
-        + `awaiting confirmation of ${desiredStepId}`,
-      fields: { desiredStepId },
+      logMessage: `Capacity: skip stepped-load command for ${dev.name}, `
+        + `awaiting confirmation of ${commandStepId}`,
+      fields: { desiredStepId: commandStepId, plannedDesiredStepId: plannedDesiredStepId ?? null },
     });
   }
   if (sameDesiredStepPendingState === 'backoff') {
@@ -118,10 +123,10 @@ export const applySteppedLoadCommand = async (
       dev,
       mode,
       reasonCode: 'retry_backoff',
-      logMessage: `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
-        + `retry backoff for ${desiredStepId} remains active`,
+      logMessage: `Capacity: skip stepped-load command for ${dev.name}, `
+        + `retry backoff for ${commandStepId} remains active`,
       fields: {
-        desiredStepId,
+        desiredStepId: commandStepId,
         nextRetryAtMs: dev.nextStepCommandRetryAtMs ?? null,
         retryCount: dev.stepCommandRetryCount ?? 0,
       },
@@ -132,9 +137,8 @@ export const applySteppedLoadCommand = async (
     mode,
     options,
     desiredStep,
-    desiredStepId,
+    transition,
     previousStepId,
-    profile,
     now,
   });
 };
@@ -147,7 +151,7 @@ export const applySteppedLoadRestore = async (
   anyShedDevices: boolean,
   options: { preRestoreStepIssued?: boolean } = {},
 ): Promise<boolean> => {
-  const name = dev.name || dev.id;
+  const name = dev.name;
   if (dev.plannedState !== 'keep') {
     return logSteppedLoadRestoreSkip(ctx, {
       dev,
@@ -241,11 +245,12 @@ export const applySteppedLoadShedOff = async (
   mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (dev.plannedState !== 'shed') return false;
-  const atOffStep = dev.steppedLoadProfile && dev.selectedStepId
+  const atOffStep = dev.steppedLoadProfile
+    && dev.selectedStepId
     && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId);
   if (dev.shedAction !== 'turn_off' && !atOffStep) return false;
   if (!snapshot) return false;
-  const name = dev.name || dev.id;
+  const name = dev.name;
   try {
     const applied = await setBinaryControl({
       ...ctx.buildBinaryControlDeps(),
@@ -257,6 +262,10 @@ export const applySteppedLoadShedOff = async (
       actuationMode: mode,
     });
     if (!applied) return false;
+    if (mode === 'plan') {
+      const now = Date.now();
+      ctx.recordShedActuation(dev.id, name, now);
+    }
     ctx.structuredLog?.info({
       event: 'binary_command_applied',
       deviceId: dev.id,
@@ -264,7 +273,18 @@ export const applySteppedLoadShedOff = async (
       capabilityId: snapshot.controlCapabilityId ?? 'onoff',
       desired: false,
       mode,
-      reasonCode: mode === 'reconcile' ? 'reconcile_shed' : 'stepped_turn_off_shed',
+      reasonCode: mode === 'reconcile' ? 'reconcile_shed' : 'full_shed_to_off',
+    });
+    ctx.structuredLog?.info({
+      event: 'stepped_load_binary_transition_applied',
+      deviceId: dev.id,
+      deviceName: name,
+      desiredBinaryState: false,
+      effectiveTransition: 'full_shed_to_off',
+      stepPreparationPurpose: atOffStep ? null : 'prepare_for_off',
+      transitionPhase: 'binary_transition',
+      mode,
+      reasonCode: mode === 'reconcile' ? 'reconcile_shed' : 'full_shed_to_off',
     });
     return true;
   } catch (error) {
@@ -293,7 +313,7 @@ const logSteppedLoadCommandSkip = (
     event: 'stepped_load_command_skipped',
     reasonCode,
     deviceId: dev.id,
-    deviceName: dev.name || dev.id,
+    deviceName: dev.name,
     logContext: 'capacity',
     actuationMode: mode,
     ...fields,
@@ -332,9 +352,8 @@ const executeSteppedLoadCommand = async (
     mode: PlanActuationMode;
     options: { recordPlanActuation?: boolean };
     desiredStep: NonNullable<ReturnType<typeof getSteppedLoadStep>>;
-    desiredStepId: string;
+    transition: SteppedLoadTransition | null;
     previousStepId: string | undefined;
-    profile: NonNullable<PlanDevice['steppedLoadProfile']>;
     now: number;
   },
 ): Promise<boolean> => {
@@ -343,9 +362,8 @@ const executeSteppedLoadCommand = async (
     mode,
     options,
     desiredStep,
-    desiredStepId,
+    transition,
     previousStepId,
-    profile,
     now,
   } = params;
   const triggerCard = ctx.getDesiredSteppedLoadTrigger();
@@ -374,15 +392,19 @@ const executeSteppedLoadCommand = async (
       issuedAtMs: now,
       pendingWindowMs: resolveSteppedLoadCommandPendingMs(dev.communicationModel),
     });
-    const nextDirection = resolveSteppedLoadDirection(dev, profile, desiredStep.id, previousStepId);
     ctx.structuredLog?.info({
       event: 'stepped_load_command_requested',
       deviceId: dev.id,
-      deviceName: dev.name || dev.id,
+      deviceName: dev.name,
       previousStepId: previousStepId ?? null,
       desiredStepId: desiredStep.id,
+      plannedDesiredStepId: transition?.plannedDesiredStepId ?? desiredStep.id,
       planningPowerW,
-      direction: nextDirection,
+      commandPurpose: transition?.stepPreparationPurpose ? 'step_preparation' : 'step_adjustment',
+      stepPreparationPurpose: transition?.stepPreparationPurpose ?? null,
+      effectiveTransition: transition?.effectiveTransition ?? 'steady',
+      binaryTarget: transition?.binaryTarget ?? null,
+      transitionPhase: transition?.transitionPhase ?? 'settled',
       mode,
     });
     void Promise.resolve(triggerPromise).catch((error) => {
@@ -390,20 +412,23 @@ const executeSteppedLoadCommand = async (
         event: 'stepped_load_command_failed',
         reasonCode: 'flow_trigger_failed',
         deviceId: dev.id,
-        deviceName: dev.name || dev.id,
+        deviceName: dev.name,
         desiredStepId: desiredStep.id,
         planningPowerW,
         mode,
       });
-      ctx.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
+      ctx.error(`Failed to trigger stepped-load command for ${dev.name}`, error);
     });
     const shouldRecordPlanActuation = options.recordPlanActuation !== false;
     if (mode !== 'plan' || !shouldRecordPlanActuation) return true;
-    if (nextDirection === 'shed') {
+    if (transition?.effectiveTransition === 'step_down_while_on') {
       ctx.recordShedActuation(dev.id, dev.name, now);
       return true;
     }
-
+    if (
+      transition?.effectiveTransition !== 'step_up_while_on'
+      && transition?.effectiveTransition !== 'restore_from_off_at_low'
+    ) return true;
     ctx.recordRestoreActuation(dev.id, dev.name, now);
     recordActivationAttemptStarted({
       state: ctx.state,
@@ -419,33 +444,14 @@ const executeSteppedLoadCommand = async (
       event: 'stepped_load_command_failed',
       reasonCode: 'flow_trigger_failed',
       deviceId: dev.id,
-      deviceName: dev.name || dev.id,
-      desiredStepId,
+      deviceName: dev.name,
+      desiredStepId: desiredStep.id,
       planningPowerW,
       mode,
     });
-    ctx.error(`Failed to trigger stepped-load command for ${dev.name || dev.id}`, error);
+    ctx.error(`Failed to trigger stepped-load command for ${dev.name}`, error);
     return false;
   }
-};
-
-const resolveSteppedLoadDirection = (
-  dev: PlanDevice,
-  profile: NonNullable<PlanDevice['steppedLoadProfile']>,
-  desiredStepId: string,
-  previousStepId: string | undefined,
-): 'restore' | 'shed' => {
-  const previousStep = previousStepId ? getSteppedLoadStep(profile, previousStepId) : undefined;
-  const sortedStepIds = sortSteppedLoadSteps(profile.steps).map((step) => step.id);
-  const desiredIndex = sortedStepIds.indexOf(desiredStepId);
-  const previousIndex = previousStep ? sortedStepIds.indexOf(previousStep.id) : -1;
-  return previousStep && desiredIndex > previousIndex
-    ? 'restore'
-    : previousStep && desiredIndex < previousIndex
-      ? 'shed'
-      : dev.plannedState === 'shed'
-        ? 'shed'
-        : 'restore';
 };
 
 const logSteppedLoadRestoreSkip = (
@@ -469,7 +475,7 @@ const logSteppedLoadRestoreSkip = (
     event: 'restore_command_skipped',
     reasonCode,
     deviceId: dev.id,
-    deviceName: dev.name || dev.id,
+    deviceName: dev.name,
     logContext: 'capacity',
     actuationMode: mode,
   });
@@ -510,9 +516,13 @@ const executeSteppedLoadRestoreBinary = async (
     });
     if (!applied) return false;
     ctx.structuredLog?.info({
-      event: 'restore_keep_invariant_enforced',
+      event: 'stepped_load_binary_transition_applied',
       deviceId: dev.id,
       deviceName: name,
+      desiredBinaryState: true,
+      effectiveTransition: 'restore_from_off_at_low',
+      stepPreparationPurpose: stepViolated ? 'prepare_for_on' : null,
+      transitionPhase: 'binary_transition',
       mode,
       onoffViolated,
       stepViolated,
