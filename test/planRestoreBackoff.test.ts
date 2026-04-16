@@ -1,6 +1,7 @@
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PlanContext } from '../lib/plan/planContext';
 import {
+  ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   ACTIVATION_BACKOFF_STICK_WINDOW_MS,
   ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
   getActivationPenaltyLevel,
@@ -1212,7 +1213,7 @@ describe('restore admission — headroom and penalty gates', () => {
     // Set penalty level 4 with a fresh lastSetbackMs (block expired)
     state.activationAttemptByDevice[deviceId] = {
       penaltyLevel: 4,
-      lastSetbackMs: now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1_000,
+      lastSetbackMs: now - ACTIVATION_BACKOFF_CLEAR_WINDOW_MS - 1_000,
     };
 
     // base need: expected=2kW + buffer=0.3kW = 2.3kW
