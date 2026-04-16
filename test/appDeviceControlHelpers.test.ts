@@ -357,6 +357,42 @@ describe('appDeviceControlHelpers', () => {
     });
   });
 
+  it('resets retry escalation after a same-step command has already been confirmed', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+      pendingWindowMs: 90_000,
+    });
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'max',
+      reportedAtMs: 2_000,
+    })).toBe('changed');
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 3_000,
+      pendingWindowMs: 90_000,
+    });
+
+    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      retryCount: 0,
+      nextRetryAtMs: undefined,
+      pending: true,
+      status: 'pending',
+    });
+  });
+
   it('normalizes stored stepped-load profile maps', () => {
     expect(normalizeStoredDeviceControlProfiles({
       'dev-1': steppedProfiles['dev-1'],

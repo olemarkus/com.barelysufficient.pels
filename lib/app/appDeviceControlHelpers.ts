@@ -144,7 +144,9 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     pendingWindowMs,
   } = params;
   const previousDesired = runtimeState.steppedLoadDesiredByDeviceId[deviceId];
-  const retryCount = previousDesired?.stepId === desiredStepId
+  const shouldIncrementRetryCount = previousDesired?.stepId === desiredStepId
+    && previousDesired.status !== 'success';
+  const retryCount = shouldIncrementRetryCount
     ? previousDesired.retryCount + 1
     : 0;
   runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
