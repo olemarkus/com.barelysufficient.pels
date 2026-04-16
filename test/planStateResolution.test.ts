@@ -8,11 +8,11 @@ describe('plan state resolution', () => {
     })).toBe('not_applicable');
   });
 
-  it('returns off for fresh devices without binary control when currentOn is false', () => {
+  it('returns not_applicable for fresh devices without binary control when currentOn is false', () => {
     expect(resolveObservedCurrentState({
       currentOn: false,
       hasBinaryControl: false,
-    })).toBe('off');
+    })).toBe('not_applicable');
   });
 
   it('returns not_applicable for stale devices without binary control', () => {

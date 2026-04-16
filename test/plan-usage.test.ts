@@ -54,6 +54,13 @@ describe('sumControlledUsageKw', () => {
     expect(result).toBe(0);
   });
 
+  it('preserves unknown usage when currentOn is false but the live state is explicitly unknown', () => {
+    const result = sumControlledUsageKw([
+      { controllable: true, currentOn: false, currentState: 'unknown', expectedPowerKw: 1.2 },
+    ]);
+
+    expect(result).toBeCloseTo(1.2, 6);
+  });
   it('preserves measured usage for shed devices so live draw is still counted', () => {
     const result = sumControlledUsageKw([
       { controllable: true, plannedState: 'shed', measuredPowerKw: 0.4, expectedPowerKw: 1.2 },
