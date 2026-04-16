@@ -1,4 +1,7 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines --
+ * Bucket A: split render, save-path, stepped-load, and diagnostics responsibilities instead of
+ * adding a long-term config override.
+ */
 import {
   getSteppedLoadLowestActiveStep,
   normalizeSteppedLoadProfile,
