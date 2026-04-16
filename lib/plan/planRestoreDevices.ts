@@ -10,26 +10,42 @@ export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
     && device.plannedState !== 'shed';
 }
 
+type RestoreObservedState = 'off' | 'on' | 'target_only' | 'unknown';
+
+function resolveRestoreObservedState(device: DevicePlanDevice): RestoreObservedState {
+  if (device.currentState === 'not_applicable') {
+    const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
+    if (effectiveCurrentOn === false) return 'off';
+    if (effectiveCurrentOn === true) return 'on';
+    return 'target_only';
+  }
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
+  if (effectiveCurrentOn === false) return 'off';
+  if (effectiveCurrentOn === true) return 'on';
+  return 'unknown';
+}
+
 export function isBinaryRestoreCandidate(device: DevicePlanDevice): boolean {
-  return isRestoreLiveEligibleDevice(device) && resolveEffectiveCurrentOn(device) === false;
+  return isRestoreLiveEligibleDevice(device) && resolveRestoreObservedState(device) === 'off';
 }
 
 export function isSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
   if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
   if (!isRestoreLiveEligibleDevice(device)) return false;
-  return resolveEffectiveCurrentOn(device) === false
+  const observedState = resolveRestoreObservedState(device);
+  return observedState === 'off'
     || (
+      observedState === 'on'
+      && (
       device.selectedStepId !== undefined
       && device.selectedStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id
+      )
     );
 }
 
 export function isSwapRestoreCandidate(device: DevicePlanDevice): boolean {
-  return isRestoreLiveEligibleDevice(device)
-    && (
-      resolveEffectiveCurrentOn(device) === true
-      || device.currentState === 'not_applicable'
-    );
+  const observedState = resolveRestoreObservedState(device);
+  return isRestoreLiveEligibleDevice(device) && (observedState === 'on' || observedState === 'target_only');
 }
 
 export function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {

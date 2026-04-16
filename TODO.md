@@ -23,16 +23,6 @@ file.
 - [x] Startup should converge in one clean actionful rebuild unless genuinely new information
       arrives after the first pass.
       Files: startup helpers, `lib/plan/planService.ts`, startup orchestration tests.
-- [ ] Unify the power-resolution model used by shedding, restore admission, and live usage so the
-      same device does not resolve to different power depending on which subsystem asks.
-      Files: `lib/plan/planCandidatePower.ts`, `lib/plan/planRestoreSwap.ts`,
-      `lib/plan/planUsage.ts`, `lib/plan/planSteppedLoad.ts`.
-- [ ] Standardize restore eligibility rules across normal restore, stepped restore, and swap
-      restore so "can this device restore?" has one consistent answer.
-      Files: `lib/plan/planRestoreDevices.ts`, `lib/plan/planRestoreSwap.ts`.
-- [ ] Pick one source of truth for the controlled vs uncontrolled power split. Planning and
-      `PowerTracker` still derive it separately.
-      Files: `lib/core/powerTracker.ts`, `lib/plan/planBuilder.ts`, `lib/plan/planUsage.ts`.
 - [x] Avoid full plan rebuilds on every power sample. Power updates should normally refresh
       status/headroom and only trigger a full rebuild when a control boundary actually changed.
       Files: power update pipeline, rebuild scheduler, status/headroom path.
