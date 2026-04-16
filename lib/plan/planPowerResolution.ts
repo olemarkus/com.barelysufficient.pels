@@ -82,7 +82,14 @@ export function resolveCandidatePower(device: PowerCandidate): number {
 }
 
 export function resolveLiveUsagePowerKw(device: LiveUsageCandidate): number | null {
-  if (device.currentState === 'off' || device.currentOn === false) {
+  if (
+    device.currentState === 'off'
+    || (
+      device.currentOn === false
+      && device.currentState !== 'unknown'
+      && device.currentState !== 'not_applicable'
+    )
+  ) {
     return typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
       ? Math.max(0, device.measuredPowerKw)
       : 0;

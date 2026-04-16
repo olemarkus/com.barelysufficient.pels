@@ -26,7 +26,7 @@ export function resolveObservedCurrentState(device: ObservedCurrentStateInput): 
   }
 
   if (device.hasBinaryControl === false) {
-    return device.currentOn === false ? 'off' : 'not_applicable';
+    return 'not_applicable';
   }
 
   return device.currentOn ? 'on' : 'off';

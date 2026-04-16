@@ -167,7 +167,7 @@ function resolveExpectedPowerKw(
   });
   if (steppedExpectedPowerKw !== null) return steppedExpectedPowerKw;
   if (!hasKnownPowerFields(dev)) return undefined;
-  return resolveCandidatePower(dev) ?? undefined;
+  return resolveCandidatePower(dev);
 }
 
 function resolveSteppedExpectedPowerKw(params: {
