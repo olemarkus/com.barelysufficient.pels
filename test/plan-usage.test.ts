@@ -29,29 +29,29 @@ describe('sumControlledUsageKw', () => {
     expect(result).toBeCloseTo(2.0, 6);
   });
 
-  it('prefers measured usage even when a device is currently marked off', () => {
+  it('keeps measured off-state draw when present before falling back to controlled demand', () => {
     const result = sumControlledUsageKw([
       { controllable: true, currentState: 'off', measuredPowerKw: 0.15, expectedPowerKw: 1.2 },
       { controllable: true, currentState: 'off', expectedPowerKw: 0.8 },
     ]);
 
-    expect(result).toBeCloseTo(0.15, 6);
+    expect(result).toBeCloseTo(0.95, 6);
   });
 
-  it('returns zero for off devices when only expected or planning values are available', () => {
+  it('uses planning demand for off devices when telemetry is absent', () => {
     const result = sumControlledUsageKw([
       { controllable: true, currentState: 'off', expectedPowerKw: 1.2, planningPowerKw: 1.4 },
     ]);
 
-    expect(result).toBe(0);
+    expect(result).toBe(1.4);
   });
 
-  it('returns zero for snapshot-shaped off devices when only expected or planning values are available', () => {
+  it('uses the same off-device demand fallback for snapshot-shaped devices', () => {
     const result = sumControlledUsageKw([
       { controllable: true, currentOn: false, expectedPowerKw: 1.2, planningPowerKw: 1.4 },
     ]);
 
-    expect(result).toBe(0);
+    expect(result).toBe(1.4);
   });
 
   it('preserves unknown usage when currentOn is false but the live state is explicitly unknown', () => {
@@ -70,11 +70,37 @@ describe('sumControlledUsageKw', () => {
     expect(result).toBeCloseTo(1.0, 6);
   });
 
+  it('keeps shed-device accounting aligned with the shared live-usage helper for unknown live state', () => {
+    const result = sumControlledUsageKw([
+      { controllable: true, plannedState: 'shed', currentState: 'unknown', expectedPowerKw: 1.2 },
+    ]);
+
+    expect(result).toBeNull();
+  });
+
   it('treats shed devices observed off without a measurement as zero controlled usage', () => {
     expect(splitControlledUsageKw({
       totalKw: 1.25,
       devices: [
         { controllable: true, plannedState: 'shed', currentState: 'off', expectedPowerKw: 1.25 },
+      ],
+    })).toEqual({
+      controlledKw: 0,
+      uncontrolledKw: 1.25,
+    });
+  });
+
+  it('treats shed target-only devices explicitly observed off as zero controlled usage', () => {
+    expect(splitControlledUsageKw({
+      totalKw: 1.25,
+      devices: [
+        {
+          controllable: true,
+          plannedState: 'shed',
+          currentState: 'not_applicable',
+          currentOn: false,
+          expectedPowerKw: 1.25,
+        },
       ],
     })).toEqual({
       controlledKw: 0,

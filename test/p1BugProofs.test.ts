@@ -1,8 +1,8 @@
 import { recordPowerSampleForApp } from '../lib/app/appPowerHelpers';
 import type CapacityGuard from '../lib/core/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../lib/plan/planExecutor';
-import { resolveCandidatePower } from '../lib/plan/planCandidatePower';
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
+import { resolveLiveUsagePowerKw } from '../lib/plan/planPowerResolution';
 import { getOffDevices, getSteppedRestoreCandidates } from '../lib/plan/planRestoreDevices';
 import { estimateRestorePower } from '../lib/plan/planRestoreSwap';
 import { createPlanEngineState } from '../lib/plan/planState';
@@ -61,7 +61,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
 };
 
 describe('P1 bug proofs', () => {
-  it.fails('uses one power resolution model for an off keep device across restore, shedding, and live usage accounting', () => {
+  it('uses one power resolution model for an off keep device across restore, shedding, and live usage accounting', () => {
     const device = buildPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
@@ -70,7 +70,7 @@ describe('P1 bug proofs', () => {
       powerKw: 1,
     });
 
-    const candidatePower = resolveCandidatePower(device);
+    const candidatePower = resolveLiveUsagePowerKw(device);
     const restorePower = estimateRestorePower(device);
     const liveUsage = sumControlledUsageKw([device]);
 
@@ -179,7 +179,7 @@ describe('P1 bug proofs', () => {
     }));
   });
 
-  it.fails('applies the same unknown-state restore eligibility rules to stepped and non-stepped devices', () => {
+  it('applies the same unknown-state restore eligibility rules to stepped and non-stepped devices', () => {
     const devices = [
       buildPlanDevice({
         id: 'binary',

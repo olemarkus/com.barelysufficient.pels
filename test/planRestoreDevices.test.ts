@@ -226,4 +226,14 @@ describe('plan restore device helpers', () => {
     expect(isBinaryRestoreCandidate(stale)).toBe(false);
     expect(isBinaryRestoreCandidate(shed)).toBe(false);
   });
+
+  it('treats target-only devices with an explicit observed off state as off restore candidates', () => {
+    const targetOnlyOff = makeDevice({
+      id: 'target-only-off',
+      currentState: 'not_applicable',
+      currentOn: false,
+    });
+
+    expect(isBinaryRestoreCandidate(targetOnlyOff)).toBe(true);
+  });
 });

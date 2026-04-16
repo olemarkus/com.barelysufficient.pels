@@ -1,4 +1,3 @@
-import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveLiveUsagePowerKw } from './planPowerResolution';
 
 type UsageDevice = {
@@ -14,15 +13,6 @@ type UsageDevice = {
 };
 
 const resolveUsageKw = (dev: UsageDevice): number | null => {
-  if (dev.plannedState === 'shed') {
-    if (typeof dev.measuredPowerKw === 'number' && Number.isFinite(dev.measuredPowerKw)) {
-      return Math.max(0, dev.measuredPowerKw);
-    }
-    if (resolveEffectiveCurrentOn(dev) === false) {
-      return 0;
-    }
-    return null;
-  }
   return resolveLiveUsagePowerKw(dev);
 };
 

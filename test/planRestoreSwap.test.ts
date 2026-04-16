@@ -361,8 +361,8 @@ describe('resolveRestorePowerSource', () => {
   });
 });
 
-describe('estimateRestorePower vs resolveCandidatePower asymmetry', () => {
-  it('shedding and restore estimation intentionally diverge: restore uses the highest known demand', () => {
+describe('estimateRestorePower and resolveCandidatePower alignment', () => {
+  it('keeps active-device candidate power aligned with restore admission and leaves off-device demand to live-usage logic', () => {
     // A device drawing 3kW but configured for 1kW expected:
     // shedding still frees the observed 3kW, while restore admission also holds the line at 3kW
     // because admission now uses the highest known demand rather than a priority-ordered fallback.
@@ -381,8 +381,8 @@ describe('estimateRestorePower vs resolveCandidatePower asymmetry', () => {
       expectedPowerKw: 2,
       powerKw: 2.5,
     });
-    expect(resolveCandidatePower(offDevice)).toBe(0);   // shedding sees 0kW (off)
-    expect(estimateRestorePower(offDevice)).toBe(2.5);  // restore admission uses the higher configured demand
+    expect(resolveCandidatePower(offDevice)).toBe(0);     // raw candidate power remains state-agnostic
+    expect(estimateRestorePower(offDevice)).toBe(2.5);    // restore admission keeps the higher known demand
   });
 });
 
