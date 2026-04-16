@@ -1,4 +1,9 @@
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
+import type {
+  DeviceControlProfiles,
+  SteppedLoadProfile,
+  TargetDeviceSnapshot,
+} from '../../../../contracts/src/types.ts';
+import { normalizeDeviceControlProfiles } from '../../../../contracts/src/deviceControlProfiles.ts';
 import {
   deviceDetailDiagnosticsDisclosure,
   deviceDetailOverlay,
@@ -16,20 +21,20 @@ import {
   applyLocalDeviceControlProfile,
   createDefaultSteppedLoadProfile,
   getEffectiveControlModel,
-  saveDeviceControlProfiles,
 } from '../deviceControlProfiles.ts';
 import {
   supportsManagedDevice,
   supportsPowerDevice,
   supportsTemperatureDevice,
 } from '../deviceUtils.ts';
-import { logSettingsError } from '../logging.ts';
 import { renderPriorities } from '../modes.ts';
 import { renderPriceOptimization } from '../priceOptimization.ts';
 import { resolveManagedState, state } from '../state.ts';
-import { showToastError } from '../toast.ts';
 import { renderDeviceDetailModes } from './modes.ts';
-import { BUDGET_EXEMPT_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
+import {
+  BUDGET_EXEMPT_DEVICES,
+  DEVICE_CONTROL_PROFILES,
+} from '../../../../contracts/src/settingsKeys.ts';
 import {
   isDeviceDetailDiagnosticsExpanded,
   refreshDeviceDetailDiagnostics,
@@ -56,10 +61,11 @@ import {
   resolveSavedSteppedLoadProfile,
   updateSetStepOptionLabel,
 } from './steppedLoadDraft.ts';
-import { readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
 
 let currentDetailDeviceId: string | null = null;
 let pendingOpenDeviceId: string | null = null;
+const runSerializedDeviceControlProfileWrite = createSerializedAsyncRunner();
 
 const getCurrentDetailDeviceId = () => currentDetailDeviceId;
 
@@ -138,30 +144,41 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   }
 };
 
-const persistDeviceControlProfile = async (deviceId: string, profile: SteppedLoadProfile | null) => {
-  const previousProfiles = state.deviceControlProfiles;
-  const nextProfiles = { ...previousProfiles };
-  if (profile) {
-    nextProfiles[deviceId] = profile;
-  } else {
-    delete nextProfiles[deviceId];
-  }
-
-  state.deviceControlProfiles = nextProfiles;
-
-  try {
-    await saveDeviceControlProfiles();
-    applyLocalDeviceControlProfile(deviceId, profile);
-    refreshSharedDeviceViews();
-    notifyDevicesUpdated();
-  } catch (error) {
-    state.deviceControlProfiles = previousProfiles;
-    if (getCurrentDetailDeviceId() === deviceId) {
-      refreshOpenDeviceDetail();
-    }
-    throw error;
-  }
-};
+const persistDeviceControlProfile = async (deviceId: string, profile: SteppedLoadProfile | null): Promise<boolean> => (
+  runSerializedDeviceControlProfileWrite(async () => {
+    let didPersist = false;
+    await writeFreshSetting<DeviceControlProfiles>({
+      key: DEVICE_CONTROL_PROFILES,
+      context: 'device detail',
+      logMessage: 'Failed to save device control profile',
+      toastMessage: 'Failed to save device control profile.',
+      fallbackValue: {},
+      readFresh: normalizeDeviceControlProfiles,
+      mutate: (currentProfiles) => {
+        const nextProfiles = { ...currentProfiles };
+        if (profile) {
+          nextProfiles[deviceId] = profile;
+        } else {
+          delete nextProfiles[deviceId];
+        }
+        return nextProfiles;
+      },
+      commit: (nextProfiles) => {
+        state.deviceControlProfiles = nextProfiles;
+        applyLocalDeviceControlProfile(deviceId, profile);
+        refreshSharedDeviceViews();
+        notifyDevicesUpdated();
+        didPersist = true;
+      },
+      rollback: () => {
+        if (currentDetailDeviceId === deviceId) {
+          refreshOpenDeviceDetail();
+        }
+      },
+    });
+    return didPersist;
+  })
+);
 
 const refreshOpenDeviceDetail = () => {
   if (!currentDetailDeviceId) return;
@@ -307,15 +324,12 @@ const initDeviceDetailControlModelHandler = () => {
     const device = getDeviceById(deviceId);
     if (!device) return;
 
-    try {
-      const nextProfile = deviceDetailControlModel.value === 'stepped_load'
-        ? resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device)
-        : null;
-      await persistDeviceControlProfile(deviceId, nextProfile);
+    const nextProfile = deviceDetailControlModel.value === 'stepped_load'
+      ? resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device)
+      : null;
+    const didPersist = await persistDeviceControlProfile(deviceId, nextProfile);
+    if (didPersist) {
       refreshOpenDeviceDetail();
-    } catch (error) {
-      await logSettingsError('Failed to update control model', error, 'device detail');
-      await showToastError(error, 'Failed to update control model.');
     }
   });
 };
