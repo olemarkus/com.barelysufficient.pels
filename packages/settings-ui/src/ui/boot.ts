@@ -47,10 +47,13 @@ import { refreshDevices, renderDevices } from './devices.ts';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity.ts';
 import {
-  DEBUG_LOGGING_TOPICS,
+  DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   PRICE_OPTIMIZATION_ENABLED,
 } from '../../../contracts/src/settingsKeys.ts';
+import {
+  DEBUG_LOGGING_TOPICS as AVAILABLE_DEBUG_LOGGING_TOPICS,
+} from '../../../shared-domain/src/utils/debugLogging.ts';
 import {
   initModeHandlers,
   loadModeAndPriorities,
@@ -214,30 +217,13 @@ const initGridTariffHandlers = () => {
   });
 };
 
-const DEBUG_TOPICS: Array<{ topic: string; label: string; hint: string }> = [
-  { topic: 'plan', label: 'Plan engine', hint: 'Shedding, restore, and soft-limit decisions.' },
-  {
-    topic: 'diagnostics',
-    label: 'Device diagnostics',
-    hint: 'Per-device starvation, hysteresis, penalty, and diagnostics persistence.',
-  },
-  { topic: 'price', label: 'Price optimization', hint: 'Spot prices, tariffs, and price shaping.' },
-  { topic: 'daily_budget', label: 'Daily budget', hint: 'Daily plan and rollover.' },
-  { topic: 'devices', label: 'Devices', hint: 'Device snapshots and Homey API interactions.' },
-  {
-    topic: 'settings',
-    label: 'Settings',
-    hint: 'Settings checks and updates, including expected power flow cards.',
-  },
-  { topic: 'perf', label: 'Performance', hint: 'Hotpath counters and timings.' },
-];
-
 const initDebugLoggingCheckboxes = () => {
   const mount = document.getElementById('debug-logging-checkboxes');
   if (!mount) return;
-  DEBUG_TOPICS.forEach(({ topic, label, hint }) => {
-    const { element, input } = createCheckboxField({ id: `debug-topic-${topic}`, label, hint });
-    input.dataset.debugTopic = topic;
+  mount.replaceChildren();
+  AVAILABLE_DEBUG_LOGGING_TOPICS.forEach(({ id, label, description }) => {
+    const { element, input } = createCheckboxField({ id: `debug-topic-${id}`, label, hint: description });
+    input.dataset.debugTopic = id;
     mount.appendChild(element);
   });
 };
@@ -249,7 +235,7 @@ const initAdvancedHandlers = () => {
       const selected = inputs
         .filter((input) => input.checked && typeof input.dataset.debugTopic === 'string')
         .map((input) => input.dataset.debugTopic as string);
-      await setSetting(DEBUG_LOGGING_TOPICS, selected);
+      await setSetting(DEBUG_LOGGING_TOPICS_SETTING, selected);
       await setSetting('debug_logging_enabled', selected.length > 0);
       await showToast(
         selected.length ? 'Debug logging updated.' : 'Debug logging disabled.',
