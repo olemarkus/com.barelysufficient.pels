@@ -117,6 +117,137 @@ describe('DeviceManager', () => {
         });
     });
 
+    describe('parseDeviceListForTests', () => {
+        it('materializes the representative thermostat snapshot shape unchanged', () => {
+            const parsingDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                getPriority: (deviceId) => (deviceId === 'thermo-1' ? 7 : 0),
+                getControllable: (deviceId) => deviceId === 'thermo-1',
+                getManaged: (deviceId) => deviceId === 'thermo-1',
+                getBudgetExempt: (deviceId) => deviceId === 'thermo-1',
+                getCommunicationModel: (deviceId) => (deviceId === 'thermo-1' ? 'cloud' : 'local'),
+            });
+
+            const [parsed] = parsingDeviceManager.parseDeviceListForTests([{
+                id: 'thermo-1',
+                name: 'Hall Thermostat',
+                class: 'thermostat',
+                zoneName: 'Hallway',
+                capabilities: [
+                    'onoff',
+                    'measure_temperature',
+                    'target_temperature',
+                    'measure_power.l1',
+                ],
+                capabilitiesObj: {
+                    onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z', setable: true },
+                    measure_temperature: {
+                        value: 19.5,
+                        id: 'measure_temperature',
+                        units: '°C',
+                        lastUpdated: '2026-04-01T11:52:00.000Z',
+                    },
+                    target_temperature: {
+                        value: 21,
+                        id: 'target_temperature',
+                        units: '°C',
+                        min: 5,
+                        max: 30,
+                        step: 0.5,
+                        lastUpdated: '2026-04-01T11:51:00.000Z',
+                    },
+                    'measure_power.l1': {
+                        value: 730,
+                        id: 'measure_power.l1',
+                        lastUpdated: '2026-04-01T11:53:00.000Z',
+                    },
+                },
+                settings: { load: 900 },
+                available: false,
+            }]);
+
+            expect(parsed).toEqual(expect.objectContaining({
+                id: 'thermo-1',
+                name: 'Hall Thermostat',
+                zone: 'Hallway',
+                deviceClass: 'thermostat',
+                deviceType: 'temperature',
+                communicationModel: 'cloud',
+                priority: 7,
+                controllable: true,
+                managed: true,
+                budgetExempt: true,
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                currentTemperature: 19.5,
+                canSetControl: true,
+                available: false,
+                powerCapable: true,
+                powerKw: 0.9,
+                measuredPowerKw: 0.73,
+                expectedPowerKw: 0.9,
+                expectedPowerSource: 'load-setting',
+                loadKw: 0.9,
+                lastFreshDataMs: new Date('2026-04-01T11:52:00.000Z').getTime(),
+                lastUpdated: new Date('2026-04-01T11:52:00.000Z').getTime(),
+                lastLocalWriteMs: undefined,
+            }));
+            expect(parsed.targets).toEqual([{
+                id: 'target_temperature',
+                value: 21,
+                unit: '°C',
+                min: 5,
+                max: 30,
+                step: 0.5,
+            }]);
+            expect(parsed.capabilities).toEqual([
+                'onoff',
+                'measure_temperature',
+                'target_temperature',
+                'measure_power.l1',
+            ]);
+        });
+
+        it('keeps the synthesized currentOn fallback when onoff is missing a boolean value', () => {
+            const [parsed] = deviceManager.parseDeviceListForTests([{
+                id: 'thermo-2',
+                name: 'Bedroom Thermostat',
+                class: 'thermostat',
+                capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
+                capabilitiesObj: {
+                    onoff: { value: 'unexpected', id: 'onoff' },
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
+                },
+            }]);
+
+            expect(parsed).toEqual(expect.objectContaining({
+                id: 'thermo-2',
+                controlCapabilityId: 'onoff',
+                currentOn: true,
+                deviceType: 'temperature',
+            }));
+            expect(loggerMock.debug).toHaveBeenCalledWith(
+                expect.stringContaining('Snapshot missing boolean onoff value for Bedroom Thermostat (thermo-2); assuming device is on'),
+                'unexpected',
+            );
+        });
+
+        it('skips partial temperature devices that are missing measure_temperature', () => {
+            const parsed = deviceManager.parseDeviceListForTests([{
+                id: 'bad-thermo',
+                name: 'Broken Thermostat',
+                class: 'thermostat',
+                capabilities: ['onoff', 'target_temperature'],
+                capabilitiesObj: {
+                    onoff: { value: true, id: 'onoff' },
+                    target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
+                },
+            }]);
+
+            expect(parsed).toEqual([]);
+        });
+    });
+
     describe('refreshSnapshot', () => {
         it('populates snapshot with controllable devices', async () => {
             await deviceManager.init();
