@@ -572,6 +572,164 @@ describe('settings script', () => {
     );
   });
 
+  it('uses the current shed-action selection when saving the stepped-load profile', async () => {
+    const homey = installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      device_control_profiles: {
+        'dev-1': {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'eco', planningPowerW: 900 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+      },
+      overshoot_behaviors: {
+        'dev-1': { action: 'set_step' },
+      },
+    });
+    await loadSettingsScript();
+
+    (document.querySelector('#device-list .device-row') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+    await flushPromises();
+
+    const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+    const planningInputs = Array.from(
+      document.querySelectorAll('#device-detail-stepped-steps [data-step-field="planningPowerW"]'),
+    ) as HTMLInputElement[];
+
+    expect(shedAction.value).toBe('set_step');
+    // Simulate stale local state while the current panel still shows "set_step".
+    const { state } = await import('../src/ui/state.ts');
+    state.shedBehaviors['dev-1'] = { action: 'turn_off' };
+
+    planningInputs[1].value = '0';
+    planningInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+    planningInputs[2].value = '0';
+    planningInputs[2].dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    (document.querySelector('#device-detail-stepped-save') as HTMLButtonElement).click();
+    await flushPromises();
+    await flushPromises();
+
+    expect(homey.__settingsStore.overshoot_behaviors).toEqual({
+      'dev-1': { action: 'turn_off' },
+    });
+  });
+
+  it('serializes shed-behavior writes across auto-save and stepped-load saves', async () => {
+    const homey = installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Hall Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 55, unit: '°C' }],
+        },
+        {
+          id: 'dev-2',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      device_control_profiles: {
+        'dev-2': {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'eco', planningPowerW: 900 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+      },
+      overshoot_behaviors: {
+        'dev-2': { action: 'set_step' },
+      },
+    });
+    const originalSet = homey.set;
+    let overshootWriteCount = 0;
+    let resolveFirstOvershootWrite: (() => void) | null = null;
+    let resolveSecondOvershootWrite: (() => void) | null = null;
+    homey.set = vi.fn((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key !== 'overshoot_behaviors') {
+        originalSet(key, value, cb);
+        return;
+      }
+
+      overshootWriteCount += 1;
+      if (overshootWriteCount === 1) {
+        resolveFirstOvershootWrite = () => {
+          homey.__settingsStore[key] = value;
+          cb?.(null);
+        };
+        return;
+      }
+      if (overshootWriteCount === 2) {
+        resolveSecondOvershootWrite = () => {
+          homey.__settingsStore[key] = value;
+          cb?.(null);
+        };
+        return;
+      }
+
+      homey.__settingsStore[key] = value;
+      cb?.(null);
+    });
+    await loadSettingsScript();
+
+    const rows = Array.from(document.querySelectorAll('#device-list .device-row')) as HTMLElement[];
+
+    rows[0].click();
+    await waitFor(() => document.querySelector('#device-detail-title')?.textContent === 'Hall Heater');
+    await flushPromises();
+
+    const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+    shedAction.value = 'set_temperature';
+    shedAction.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    rows[1].click();
+    await waitFor(() => document.querySelector('#device-detail-title')?.textContent === 'Water Heater');
+    await flushPromises();
+
+    (document.querySelector('#device-detail-stepped-save') as HTMLButtonElement).click();
+    await flushPromises();
+
+    expect(overshootWriteCount).toBe(1);
+    expect(resolveSecondOvershootWrite).toBeNull();
+
+    resolveFirstOvershootWrite!();
+    await flushPromises();
+    await flushPromises();
+
+    expect(overshootWriteCount).toBe(2);
+    resolveSecondOvershootWrite!();
+    await flushPromises();
+    await flushPromises();
+
+    expect(homey.__settingsStore.overshoot_behaviors).toEqual({
+      'dev-1': { action: 'set_temperature', temperature: 55 },
+      'dev-2': { action: 'set_step' },
+    });
+  });
+
   it('restores shed behavior inputs when the shed-behavior write fails', async () => {
     const homey = installSettingsHomeyMock({
       target_devices_snapshot: [

@@ -23,6 +23,25 @@ export const readRecordSetting = <T>(
     : { ...fallbackValue }
 );
 
+export const createSerializedAsyncRunner = () => {
+  let pendingOperation: Promise<void> = Promise.resolve();
+
+  return async <T>(operation: () => Promise<T>): Promise<T> => {
+    const previousOperation = pendingOperation;
+    let releaseCurrentOperation!: () => void;
+    pendingOperation = new Promise<void>((resolve) => {
+      releaseCurrentOperation = resolve;
+    });
+
+    await previousOperation;
+    try {
+      return await operation();
+    } finally {
+      releaseCurrentOperation();
+    }
+  };
+};
+
 export const writeFreshSetting = async <T>(params: FreshSettingWriteParams<T>): Promise<T | null> => {
   const readFresh = params.readFresh ?? ((value: unknown) => (
     (value === undefined || value === null) ? params.fallbackValue : value as T

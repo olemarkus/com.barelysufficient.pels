@@ -24,7 +24,7 @@ import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
 } from '../../../../shared-domain/src/utils/airtreatmentShedTemperature.ts';
-import { readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
@@ -34,8 +34,33 @@ export type PersistedShedBehavior = {
   stepId?: string;
 };
 
+type ShedBehaviorWriteParams = {
+  context: string;
+  logMessage: string;
+  toastMessage: string;
+  mutate: (currentBehaviors: Record<string, PersistedShedBehavior>) => Record<string, PersistedShedBehavior>;
+  commit?: (nextBehaviors: Record<string, PersistedShedBehavior>) => Promise<void> | void;
+  rollback?: () => Promise<void> | void;
+};
+
 export const readShedBehaviors = (value: unknown, fallbackValue: Record<string, PersistedShedBehavior> = {}) => (
   readRecordSetting<PersistedShedBehavior>(value, fallbackValue)
+);
+
+const runSerializedShedBehaviorWrite = createSerializedAsyncRunner();
+
+export const writeShedBehaviors = async (params: ShedBehaviorWriteParams) => (
+  runSerializedShedBehaviorWrite(() => writeFreshSetting<Record<string, PersistedShedBehavior>>({
+    key: OVERSHOOT_BEHAVIORS,
+    context: params.context,
+    logMessage: params.logMessage,
+    toastMessage: params.toastMessage,
+    fallbackValue: {},
+    readFresh: readShedBehaviors,
+    mutate: params.mutate,
+    commit: params.commit,
+    rollback: params.rollback,
+  }))
 );
 
 const isTemperatureDeviceWithoutOnOff = (device: TargetDeviceSnapshot | null): boolean => (
@@ -319,13 +344,10 @@ const saveShedBehavior = async (params: {
     }
   }
 
-  await writeFreshSetting<Record<string, PersistedShedBehavior>>({
-    key: OVERSHOOT_BEHAVIORS,
+  await writeShedBehaviors({
     context: 'device detail',
     logMessage: 'Failed to save shed behavior',
     toastMessage: 'Failed to save shed behavior.',
-    fallbackValue: {},
-    readFresh: readShedBehaviors,
     mutate: (currentBehaviors) => ({
       ...currentBehaviors,
       [deviceId]: nextBehavior,
