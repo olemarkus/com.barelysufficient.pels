@@ -17,6 +17,7 @@ import {
   schedulePlanRebuildFromPowerSample,
   schedulePlanRebuildFromSignal,
 } from '../lib/app/appPowerHelpers';
+import { PlanRebuildScheduler } from '../lib/app/planRebuildScheduler';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 
 const createCapacityGuardMock = (params: {
@@ -221,8 +222,82 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     });
 
     expect(pending).toBe(state.pending);
-    expect(state.timer).toBeDefined();
+    expect(state.pendingDueMs).toBe(Date.now() + 1000);
     vi.clearAllTimers();
+  });
+
+  it('resolves the pending promise with the cancel reason when the scheduler cancels a queued rebuild', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    const pending = schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 1000,
+      maxIntervalMs: 10000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9500,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.5,
+    });
+
+    state.legacyScheduler?.cancelAll('test_cancel');
+
+    await expect(pending).resolves.toBe('test_cancel');
+    expect(state.pending).toBeUndefined();
+    expect(state.pendingDueMs).toBeUndefined();
+  });
+
+  it('does not overwrite a queued hard-cap rebuild when a lower-priority signal request is dropped', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 0 };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const scheduler = new PlanRebuildScheduler({
+      getNowMs: Date.now,
+      resolveDueAtMs: (_intent, currentState) => currentState.nowMs + 1000,
+      executeIntent: async () => undefined,
+    });
+
+    const hardCapPending = schedulePlanRebuildFromPowerSample({
+      scheduler,
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 1000,
+      maxIntervalMs: 10000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 10_600,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -1.6,
+      hardCapBreach: { breached: true, deficitKw: 0.6 },
+    });
+
+    const signalPending = schedulePlanRebuildFromPowerSample({
+      scheduler,
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 1000,
+      maxIntervalMs: 10000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 9_200,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.2,
+    });
+
+    expect(signalPending).toBe(hardCapPending);
+    expect(state.pending).toBe(hardCapPending);
+    expect(state.pendingReason).toBe('hard_cap_breach');
+    expect(state.pendingHardCapBreach).toEqual({ breached: true, deficitKw: 0.6 });
   });
 
   it('logs errors from scheduled boundary rebuilds', async () => {
@@ -246,7 +321,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     });
 
     vi.advanceTimersByTime(1000);
-    await pending;
+    await expect(pending).rejects.toThrow('boom');
 
     expect(logError).toHaveBeenCalledWith(expect.any(Error));
   });
@@ -566,7 +641,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     expect(logError).not.toHaveBeenCalled();
     expect(state.pending).toBeUndefined();
-    expect(state.timer).toBeUndefined();
+    expect(state.pendingDueMs).toBeUndefined();
   });
 
   it('backs off repeated tight-headroom no-op rebuilds', async () => {
@@ -758,7 +833,7 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
-  it('does not bypass tight no-op backoff for repeated hard-cap breaches once shortfall is active', async () => {
+  it('bypasses tight no-op backoff for hard-cap breaches even once shortfall is active', async () => {
     let state: PowerSampleRebuildState = {
       lastMs: Date.now(),
       lastRebuildPowerW: 9300,
@@ -789,10 +864,11 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       hardCapBreach: { breached: true, deficitKw: 0.1 },
     });
 
-    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('shortfall');
   });
 
-  it('does not bypass mitigation holdoff for repeated hard-cap breaches before shortfall is active', async () => {
+  it('bypasses mitigation holdoff for hard-cap breaches before shortfall is active', async () => {
     let state: PowerSampleRebuildState = {
       lastMs: Date.now(),
       lastRebuildPowerW: 9300,
@@ -821,8 +897,8 @@ describe('schedulePlanRebuildFromPowerSample', () => {
       hardCapBreach: { breached: true, deficitKw: 0.1 },
     });
 
-    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-    expect(state.mitigationHoldoffUntilMs).toBe(Date.now() + 15_000);
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('hard_cap_breach');
   });
 
   it('uses shortfall as the rebuild reason while shortfall is active', async () => {
@@ -951,7 +1027,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     expect(capacityGuard.isInShortfall()).toBe(true);
   });
 
-  it('respects tight no-op backoff during repeated hard-cap breaches', async () => {
+  it('bypasses tight no-op backoff during repeated hard-cap breaches', async () => {
     let state: PowerSampleRebuildState = {
       lastMs: Date.now() - 2500,
       lastRebuildPowerW: 9310,
@@ -988,9 +1064,9 @@ describe('schedulePlanRebuildFromSignal', () => {
       planConvergenceActive: true,
     });
 
-    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-    expect(state.backoffUntilMs).toBeGreaterThan(Date.now());
-    expect(getPerfSnapshot().counts.plan_rebuild_skipped_tight_noop_backoff_total).toBe(beforeSkippedBackoff + 1);
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('hard_cap_breach');
+    expect(getPerfSnapshot().counts.plan_rebuild_skipped_tight_noop_backoff_total ?? 0).toBe(beforeSkippedBackoff);
   });
 
   it('rebuilds immediately when the hard-cap threshold is breached below the soft limit', async () => {
@@ -1146,7 +1222,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     expect(capacityGuard.isInShortfall()).toBe(true);
   });
 
-  it('reschedules a pending stable timer when a hard-cap breach becomes urgent', async () => {
+  it('runs immediately when a hard-cap breach preempts a pending stable timer', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now(), lastRebuildPowerW: 5000, lastSoftLimitKw: 9.5 };
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
@@ -1197,16 +1273,9 @@ describe('schedulePlanRebuildFromSignal', () => {
       capacityGuard: urgentCapacityGuard,
     });
 
-    expect(state.pendingDueMs).toBe(Date.now() + 1000);
-
-    vi.advanceTimersByTime(999);
-    await Promise.resolve();
-    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(1);
-    await pending;
-
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('hard_cap_breach');
+    await pending;
   });
 
   it('enters shortfall when a tight no-op rebuild leaves the hard cap breached', async () => {

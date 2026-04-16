@@ -36,6 +36,8 @@ import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
 import { resolveHomeyEnergyApiFromSdk } from './lib/utils/homeyEnergy';
 import {
+  cancelPendingPowerRebuild,
+  executePendingPowerRebuild,
   persistPowerTrackerStateForApp,
   prunePowerTrackerHistoryForApp,
   updateDailyBudgetAndRecordCapForApp,
@@ -43,6 +45,7 @@ import {
   recordPowerSampleForApp,
   schedulePlanRebuildFromSignal,
 } from './lib/app/appPowerHelpers';
+import { PlanRebuildScheduler, type RebuildIntent } from './lib/app/planRebuildScheduler';
 import {
   createDeviceDiagnosticsService,
   createPlanEngine,
@@ -64,7 +67,6 @@ import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { startResourceWarningListeners as startResourceWarnings } from './lib/app/appResourceWarningHelpers';
-import { createFlowRebuildScheduler, type FlowRebuildScheduler } from './lib/app/appFlowRebuildScheduler';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
 import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
@@ -92,10 +94,18 @@ const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0
 // Let non-urgent power deltas settle before rebuilding the full plan again.
 const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
+const FLOW_REBUILD_COOLDOWN_MS = 1000;
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+const getAppPlanRebuildNowMs = (): number => (
+  process.env.NODE_ENV === 'test'
+  || typeof performance === 'undefined'
+  || typeof performance.now !== 'function'
+    ? Date.now()
+    : performance.now()
+);
 
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
@@ -127,6 +137,16 @@ class PelsApp extends Homey.App {
   private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
+  private readonly planRebuildScheduler = new PlanRebuildScheduler({
+    getNowMs: getAppPlanRebuildNowMs,
+    resolveDueAtMs: (intent, state) => this.resolvePlanRebuildDueAtMs(intent, state),
+    executeIntent: (intent) => this.executePlanRebuildIntent(intent),
+    shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
+    onIntentDropped: (dropped, kept) => this.onPlanRebuildIntentDropped(dropped, kept),
+    onPendingIntentReplaced: (previous, next) => this.onPlanRebuildPendingIntentReplaced(previous, next),
+    onIntentCancelled: (intent, reason) => this.onPlanRebuildIntentCancelled(intent, reason),
+    onIntentError: (intent, error) => this.onPlanRebuildIntentError(intent, error),
+  });
   private powerSampleLoop?: Promise<void>;
   private powerSampleRerunRequested = false;
   private pendingPowerSampleRequest?: { currentPowerW: number; nowMs: number };
@@ -138,7 +158,6 @@ class PelsApp extends Homey.App {
   private stopResourceWarningListeners?: () => void;
   private stopSettingsHandler?: () => void;
   private structuredLogger?: PinoLogger;
-  private flowRebuildScheduler?: FlowRebuildScheduler;
   private readonly snapshotHelpers = new AppSnapshotHelpers({
     homey: this.homey,
     getDeviceManager: () => this.deviceManager,
@@ -399,6 +418,7 @@ class PelsApp extends Homey.App {
     const deps: PlanServiceInitApp = {
       homey: this.homey,
       planEngine: this.planEngine,
+      scheduler: this.planRebuildScheduler,
       getCapacityDryRun: () => this.capacityDryRun,
       getLastPowerUpdate: () => this.powerTracker.lastTimestamp ?? null,
       getLatestTargetSnapshot: () => this.latestTargetSnapshot,
@@ -418,6 +438,86 @@ class PelsApp extends Homey.App {
       isPlanDebugEnabled: () => this.debugLoggingTopics.has('plan'),
     };
     this.planService = createPlanService(deps);
+  }
+  private getPlanRebuildNowMs(): number {
+    return this.planRebuildScheduler.now().nowMs;
+  }
+  private resolvePlanRebuildDueAtMs(intent: RebuildIntent, state: ReturnType<PlanRebuildScheduler['now']>): number {
+    const nowMs = state.nowMs;
+    if (intent.kind === 'hardCap') return nowMs;
+    if (intent.kind === 'signal') {
+      return this.powerSampleRebuildState.pendingDueMs ?? nowMs;
+    }
+    if (intent.kind === 'flow') {
+      if (state.activeIntent?.kind === 'flow') {
+        return Number.POSITIVE_INFINITY;
+      }
+      const lastCompletedAtMs = state.lastCompletedAtMsByKind.flow ?? Number.NEGATIVE_INFINITY;
+      return Math.max(nowMs, lastCompletedAtMs + FLOW_REBUILD_COOLDOWN_MS);
+    }
+    return this.planService?.getPendingSnapshotDueMs({
+      nowMs,
+      activeIntent: state.activeIntent,
+    }) ?? Number.POSITIVE_INFINITY;
+  }
+  private executePlanRebuildIntent(intent: RebuildIntent): Promise<void> {
+    if (intent.kind === 'signal' || intent.kind === 'hardCap') {
+      return executePendingPowerRebuild({
+        getState: () => this.powerSampleRebuildState,
+        setState: (state) => {
+          this.powerSampleRebuildState = state;
+        },
+        getNowMs: () => this.getPlanRebuildNowMs(),
+        rebuildPlanFromCache: (reason?: string) => this.planService.rebuildPlanFromCache(reason),
+      });
+    }
+    if (intent.kind === 'snapshot') {
+      this.planService?.flushPendingNonActionSnapshotFromScheduler(this.getPlanRebuildNowMs());
+      return Promise.resolve();
+    }
+    return this.planService.rebuildPlanFromCache(intent.reason).then(() => undefined);
+  }
+  private onPlanRebuildIntentDropped(dropped: RebuildIntent, kept: RebuildIntent): void {
+    this.logDebug(
+      'plan',
+      'Plan rebuild scheduler:'
+        + ` dropping ${dropped.kind}:${dropped.reason}`
+        + ` while ${kept.kind}:${kept.reason} remains scheduled`,
+    );
+  }
+  private onPlanRebuildPendingIntentReplaced(previous: RebuildIntent, next: RebuildIntent): void {
+    if (previous.kind === 'flow' && next.kind === 'flow') {
+      incPerfCounter('plan_rebuild_requested.flow_coalesced_total');
+      if (previous.reason !== next.reason) {
+        incPerfCounter('plan_rebuild_requested.flow_pending_source_replaced_total');
+      }
+    }
+    this.logDebug(
+      'plan',
+      `Plan rebuild scheduler: replacing pending ${previous.kind}:${previous.reason} with ${next.kind}:${next.reason}`,
+    );
+  }
+  private onPlanRebuildIntentCancelled(intent: RebuildIntent, reason: string): void {
+    if (intent.kind === 'signal' || intent.kind === 'hardCap') {
+      cancelPendingPowerRebuild({
+        getState: () => this.powerSampleRebuildState,
+        setState: (state) => {
+          this.powerSampleRebuildState = state;
+        },
+        reason,
+      });
+    }
+  }
+  private onPlanRebuildIntentError(intent: RebuildIntent, error: Error): void {
+    if (intent.kind === 'flow') {
+      this.error(`Flow rebuild scheduler failed for ${intent.reason}`, error);
+      return;
+    }
+    if (intent.kind === 'signal' || intent.kind === 'hardCap') {
+      this.error('PowerTracker: Failed to rebuild plan after power sample:', error);
+      return;
+    }
+    this.error('Plan rebuild scheduler failed to flush pending snapshot', error);
   }
   private initCapacityGuardProviders(): void {
     if (!this.capacityGuard) return;
@@ -457,7 +557,7 @@ class PelsApp extends Homey.App {
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
     this.stopUninitServices();
-    this.flowRebuildScheduler?.stop();
+    this.planRebuildScheduler.cancelAll('app_uninit');
     this.deviceDiagnosticsService?.destroy();
     this.planService?.destroy();
     this.priceCoordinator.stop();
@@ -467,7 +567,6 @@ class PelsApp extends Homey.App {
     if (this.powerTrackerSaveTimer) this.persistPowerTrackerState();
     if (this.powerTrackerPruneTimer) clearTimeout(this.powerTrackerPruneTimer);
     if (this.powerTrackerPruneInterval) clearInterval(this.powerTrackerPruneInterval);
-    if (this.powerSampleRebuildState.timer) clearTimeout(this.powerSampleRebuildState.timer);
     if (this.realtimeDeviceReconcileTimer) clearTimeout(this.realtimeDeviceReconcileTimer);
     this.snapshotHelpers.stop();
     this.homeyEnergyHelpers.stop();
@@ -714,24 +813,24 @@ class PelsApp extends Homey.App {
         getLatestTargetSnapshot: () => this.latestTargetSnapshot,
         powerTracker: this.powerTracker,
         capacityGuard: this.capacityGuard,
-        schedulePlanRebuild: () => schedulePlanRebuildFromSignal({
-          getState: () => this.powerSampleRebuildState,
-          setState: (state) => {
-            this.powerSampleRebuildState = state;
-          },
-          minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
-          stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS,
-          maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
-          currentPowerW,
-          capacitySettings: this.capacitySettings,
-          capacityGuard: this.capacityGuard,
-          planConvergenceActive,
-          rebuildPlanFromCache: (reason?: string) => this.planService.rebuildPlanFromCache(reason),
-          logError: (error) => {
-            // Log error but don't throw - state is already persisted
-            this.error('PowerTracker: Failed to rebuild plan after power sample:', error);
-          },
-        }),
+        schedulePlanRebuild: async () => {
+          await schedulePlanRebuildFromSignal({
+            scheduler: this.planRebuildScheduler,
+            getState: () => this.powerSampleRebuildState,
+            setState: (state) => {
+              this.powerSampleRebuildState = state;
+            },
+            getNowMs: () => this.getPlanRebuildNowMs(),
+            minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
+            stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS,
+            maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
+            rebuildPlanFromCache: (reason?: string) => this.planService.rebuildPlanFromCache(reason),
+            currentPowerW,
+            capacitySettings: this.capacitySettings,
+            capacityGuard: this.capacityGuard,
+            planConvergenceActive,
+          });
+        },
         saveState: (state) => this.savePowerTracker(state),
       });
       if (previousSampleTs === undefined || nowMs > previousSampleTs) {
@@ -781,11 +880,6 @@ class PelsApp extends Homey.App {
     }
   }
   private registerFlowCards(): void {
-    this.flowRebuildScheduler ??= createFlowRebuildScheduler({
-      rebuildPlanFromCache: async (reason) => { await this.planService.rebuildPlanFromCache(reason); },
-      logDebug: (...args: unknown[]) => this.logDebug('settings', ...args),
-      logError: (message, error) => this.error(message, error),
-    });
     const deps: FlowCardInitApp = {
       homey: this.homey,
       resolveModeName: (mode) => this.resolveModeName(mode),
@@ -806,7 +900,10 @@ class PelsApp extends Homey.App {
       getDeviceLoadSetting: (deviceId) => this.getDeviceLoadSetting(deviceId),
       setExpectedOverride: (deviceId, kw) => this.setExpectedOverride(deviceId, kw),
       storeFlowPriceData: (kind, raw) => this.storeFlowPriceData(kind, raw),
-      requestFlowPlanRebuild: (source) => this.flowRebuildScheduler?.requestRebuild(source),
+      requestFlowPlanRebuild: (source) => this.planRebuildScheduler.request({
+        kind: 'flow',
+        reason: `flow_card:${source}`,
+      }),
       evaluateHeadroomForDevice: (params) => this.evaluateHeadroomForDevice(params),
       loadDailyBudgetSettings: () => this.dailyBudgetService.loadSettings(),
       updateDailyBudgetState: (options) => this.dailyBudgetService.updateState(options),

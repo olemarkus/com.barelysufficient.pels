@@ -21,6 +21,7 @@ import type { CapacitySettingsSnapshot } from './appSettingsHelpers';
 import { PriceCoordinator } from '../price/priceCoordinator';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import type { PlanRebuildScheduler } from './planRebuildScheduler';
 
 export type { CapacitySettingsSnapshot };
 
@@ -114,6 +115,7 @@ export function createPlanEngine(app: PlanEngineInitApp): PlanEngine {
 export type PlanServiceInitApp = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;
+  scheduler?: PlanRebuildScheduler;
   getCapacityDryRun: () => boolean;
   getLastPowerUpdate: () => number | null;
   getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
@@ -137,6 +139,7 @@ export function createPlanService(app: PlanServiceInitApp): PlanService {
   return new PlanService({
     homey: app.homey,
     planEngine: app.planEngine,
+    scheduler: app.scheduler,
     getPlanDevices: () => app.getLatestTargetSnapshot().map((device) => ({
       ...device,
       hasBinaryControl: resolveHasBinaryControl(device),

@@ -3,11 +3,14 @@ import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/lo
 import { normalizeError } from '../utils/errorUtils';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../utils/timingConstants';
+import type { PlanRebuildIntent, PlanRebuildSchedulerLike } from './planRebuildSchedulerContract';
 import type { DevicePlan, PlanChangeSet, PlanSnapshotWriteReason } from './planTypes';
 
 type PlanSnapshotWriterDeps = {
   homey: Homey.App['homey'];
   error: (message: string, error: Error) => void;
+  getNowMs: () => number;
+  scheduler: PlanRebuildSchedulerLike;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
 };
@@ -21,13 +24,12 @@ export class PlanSnapshotWriter {
   private lastPlanSnapshotWriteMs = 0;
   private pendingNonActionSnapshotReason = 'meta_only' as const;
   private pendingNonActionSnapshotPlan: DevicePlan | null = null;
-  private pendingNonActionSnapshotTimer?: ReturnType<typeof setTimeout>;
 
   constructor(private deps: PlanSnapshotWriterDeps) {}
 
   update(plan: DevicePlan, changes: PlanChangeSet): number {
     if (this.stopped) return 0;
-    const now = Date.now();
+    const now = this.deps.getNowMs();
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
     if (!changed) {
       return this.flushPendingNonActionSnapshot(now);
@@ -61,6 +63,26 @@ export class PlanSnapshotWriter {
     this.clearPendingNonActionSnapshot();
   }
 
+  getPendingSnapshotDueMs(params: {
+    nowMs: number;
+    activeIntent: PlanRebuildIntent | null;
+  }): number {
+    const { nowMs, activeIntent } = params;
+    if (this.stopped || !this.pendingNonActionSnapshotPlan) {
+      return Number.POSITIVE_INFINITY;
+    }
+    if (activeIntent?.kind === 'snapshot') {
+      return Number.POSITIVE_INFINITY;
+    }
+    return this.canWriteNonActionSnapshot(nowMs)
+      ? nowMs
+      : nowMs + this.resolveNonActionWaitMs(nowMs);
+  }
+
+  flushPendingNonActionSnapshotFromScheduler(nowMs: number): number {
+    return this.flushPendingNonActionSnapshot(nowMs);
+  }
+
   private canWriteNonActionSnapshot(nowMs: number): boolean {
     if (this.lastPlanSnapshotWriteMs === 0) return true;
     return nowMs - this.lastPlanSnapshotWriteMs >= DETAIL_SNAPSHOT_WRITE_THROTTLE_MS;
@@ -88,14 +110,17 @@ export class PlanSnapshotWriter {
       waitMs: this.resolveNonActionWaitMs(nowMs),
       snapshotReason: reason,
     });
-    if (this.pendingNonActionSnapshotTimer) return;
-
-    const waitMs = this.resolveNonActionWaitMs(nowMs);
-    this.pendingNonActionSnapshotTimer = setTimeout(() => {
-      this.pendingNonActionSnapshotTimer = undefined;
-      if (this.stopped) return;
-      this.flushPendingNonActionSnapshot(Date.now());
-    }, waitMs);
+    const schedulerState = this.deps.scheduler.now();
+    if (schedulerState.activeIntent?.kind === 'snapshot') {
+      return;
+    }
+    if (
+      schedulerState.pendingIntent?.kind === 'snapshot'
+      && schedulerState.pendingIntent.reason === reason
+    ) {
+      return;
+    }
+    this.deps.scheduler.request({ kind: 'snapshot', reason });
   }
 
   private flushPendingNonActionSnapshot(nowMs: number): number {
@@ -124,10 +149,6 @@ export class PlanSnapshotWriter {
   }
 
   private clearPendingNonActionSnapshot(): void {
-    if (this.pendingNonActionSnapshotTimer) {
-      clearTimeout(this.pendingNonActionSnapshotTimer);
-      this.pendingNonActionSnapshotTimer = undefined;
-    }
     this.pendingNonActionSnapshotPlan = null;
     this.pendingNonActionSnapshotReason = 'meta_only';
   }

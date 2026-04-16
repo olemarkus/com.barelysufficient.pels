@@ -4,6 +4,7 @@ import {
   MockDevice,
   MockDriver,
 } from './mocks/homey';
+import { schedulePlanRebuildFromPowerSample } from '../lib/app/appPowerHelpers';
 import type { LiveFeedHealth } from '../lib/core/deviceLiveFeed';
 
 // Prevent real socket.io connections in app tests.
@@ -149,6 +150,7 @@ describe('MyApp initialization', () => {
   afterEach(async () => {
     await cleanupApps();
     vi.clearAllTimers();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -582,6 +584,51 @@ describe('MyApp initialization', () => {
       .rejects.toThrow(`Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
     await expect(setBudgetListener({ budget_kwh: MAX_DAILY_BUDGET_KWH + 1 }))
       .rejects.toThrow(`Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
+  });
+
+  it('clears a queued power rebuild and resolves its pending promise on uninit', async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+
+    (app as any).powerSampleRebuildState = {
+      ...(app as any).powerSampleRebuildState,
+      lastMs: (app as any).getPlanRebuildNowMs(),
+    };
+    let powerSampleRebuildState = (app as any).powerSampleRebuildState;
+    const pending = schedulePlanRebuildFromPowerSample({
+      scheduler: (app as any).planRebuildScheduler,
+      getState: () => powerSampleRebuildState,
+      setState: (next) => {
+        powerSampleRebuildState = next;
+        (app as any).powerSampleRebuildState = next;
+      },
+      getNowMs: () => (app as any).getPlanRebuildNowMs(),
+      minIntervalMs: 1000,
+      maxIntervalMs: 10_000,
+      rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
+      logError: vi.fn(),
+      currentPowerW: 9500,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -0.5,
+    });
+
+    expect((app as any).planRebuildScheduler.now().hasTimer).toBe(true);
+
+    await (app as any).onUninit();
+
+    await expect(pending).resolves.toBe('app_uninit');
+    expect((app as any).planRebuildScheduler.now().hasTimer).toBe(false);
+    expect((app as any).powerSampleRebuildState.pending).toBeUndefined();
   });
 
   it('enable_device_capacity_control flow card enables capacity control', async () => {
