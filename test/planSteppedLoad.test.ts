@@ -3,6 +3,7 @@ import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId,
+  resolveSteppedLoadTransition,
   resolveSteppedLoadImmediateReliefKw,
   resolveSteppedLoadInitialDesiredStepId,
   resolveSteppedLoadRestoreDeltaKw,
@@ -76,6 +77,20 @@ describe('planSteppedLoad', () => {
       selectedStepId: normalizedKeepDesiredStepId,
       desiredStepId: normalizedKeepDesiredStepId,
     }))).toBe(normalizedKeepDesiredStepId);
+  });
+
+  it('classifies restore_from_off_at_low with the lowest active command step even when desired step is higher', () => {
+    const transition = resolveSteppedLoadTransition(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'max',
+      controlCapabilityId: 'onoff',
+    }));
+
+    expect(transition?.effectiveTransition).toBe('restore_from_off_at_low');
+    expect(transition?.commandStepId).toBe('low');
+    expect(transition?.stepPreparationPurpose).toBe('prepare_for_on');
   });
 
   it('is idempotent when re-run on its own normalized keep-step output', () => {

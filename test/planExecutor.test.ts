@@ -894,7 +894,7 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(structuredLog.info).not.toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'restore_keep_invariant_enforced' }),
+      expect.objectContaining({ event: 'stepped_load_binary_transition_applied' }),
     );
   });
 
@@ -1131,7 +1131,80 @@ describe('PlanExecutor stepped loads', () => {
       deviceId: 'dev-1',
       deviceName: 'Tank',
       desired: false,
-      reasonCode: 'stepped_turn_off_shed',
+      reasonCode: 'full_shed_to_off',
+    }));
+  });
+
+  it('prepares a turn_off stepped shed at the lowest non-zero step before binary off', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager, deps, state } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      desiredStepId: 'low',
+      plannedDesiredStepId: 'off',
+      commandPurpose: 'step_preparation',
+      stepPreparationPurpose: 'prepare_for_off',
+      effectiveTransition: 'full_shed_to_off',
+      binaryTarget: false,
+    }));
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_binary_transition_applied',
+      desiredBinaryState: false,
+      effectiveTransition: 'full_shed_to_off',
+      stepPreparationPurpose: 'prepare_for_off',
+      transitionPhase: 'binary_transition',
+    }));
+    expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+  });
+
+  it('records restore actuation when a plan-mode restore starts by moving from off-step to low', async () => {
+    const state = createPlanEngineState();
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor } = buildExecutor(state, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'max',
+    }));
+
+    expect(state.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
+      source: 'tracked_step_up',
+      startedMs: expect.any(Number),
     }));
   });
 
@@ -1291,7 +1364,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       deviceId: 'dev-1',
       previousStepId: 'off',
       desiredStepId: 'low',
-      direction: 'restore',
+      plannedDesiredStepId: 'low',
+      commandPurpose: 'step_preparation',
+      stepPreparationPurpose: 'prepare_for_on',
+      effectiveTransition: 'restore_from_off_at_low',
+      binaryTarget: true,
       mode: 'reconcile',
     }));
   });
@@ -1405,7 +1482,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       deviceId: 'dev-1',
       previousStepId: 'max',
       desiredStepId: 'low',
-      direction: 'shed',
+      plannedDesiredStepId: 'low',
+      commandPurpose: 'step_adjustment',
+      stepPreparationPurpose: null,
+      effectiveTransition: 'step_down_while_on',
+      binaryTarget: null,
       mode: 'reconcile',
     }));
   });

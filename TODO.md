@@ -50,6 +50,9 @@ file.
       recovery or stale lifecycle state. The new overshoot diagnostics now include plan and power
       sample age fields to make that call easier.
       Files: overshoot lifecycle/state handling, incident tests/log review.
+- [ ] Sweep logging and diagnostics to ensure `deviceId` is always the identity field and
+      `deviceName` stays a plain label without `name || id` fallback rewriting.
+      Files: structured logging call sites, diagnostics helpers, executor/reconcile logging.
 
 ## P1 UI and product follow-ups
 
