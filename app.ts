@@ -575,13 +575,6 @@ class PelsApp extends Homey.App {
       this.persistPowerTrackerState();
     }
     this.timers.clearAll();
-    this.powerSampleRebuildState = {
-      ...this.powerSampleRebuildState,
-      timer: undefined,
-      pending: undefined,
-      pendingResolve: undefined,
-      pendingDueMs: undefined,
-    };
     this.snapshotHelpers.stop();
     this.homeyEnergyHelpers.stop();
   }
@@ -773,10 +766,10 @@ class PelsApp extends Homey.App {
     this.persistPowerTrackerState();
   }
   private startPowerTrackerPruning(): void {
-    this.timers.registerTimeout('powerTrackerPruneInitial', setTimeout(
-      () => this.prunePowerTrackerHistory(),
-      POWER_TRACKER_PRUNE_INITIAL_DELAY_MS,
-    ));
+    this.timers.registerTimeout('powerTrackerPruneInitial', setTimeout(() => {
+      this.timers.clear('powerTrackerPruneInitial');
+      this.prunePowerTrackerHistory();
+    }, POWER_TRACKER_PRUNE_INITIAL_DELAY_MS));
     this.timers.registerInterval('powerTrackerPruneInterval', setInterval(
       () => this.prunePowerTrackerHistory(),
       POWER_TRACKER_PRUNE_INTERVAL_MS,
