@@ -47,6 +47,7 @@ describe('appDeviceControlHelpers', () => {
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 61_000)).toBe(false);
     expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
       stepId: 'max',
+      retryCount: 0,
       pending: true,
       status: 'pending',
       pendingWindowMs: 180_000,
@@ -55,6 +56,8 @@ describe('appDeviceControlHelpers', () => {
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 181_001)).toBe(true);
     expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
       stepId: 'max',
+      retryCount: 0,
+      nextRetryAtMs: 211_000,
       pending: false,
       status: 'stale',
       pendingWindowMs: 180_000,
@@ -245,6 +248,7 @@ describe('appDeviceControlHelpers', () => {
     expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
       changedAtMs: 4242,
       lastIssuedAtMs: 4242,
+      retryCount: 0,
       pending: true,
       status: 'pending',
     });
@@ -310,6 +314,44 @@ describe('appDeviceControlHelpers', () => {
 
     expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
       stepId: 'max',
+      retryCount: 0,
+      pending: true,
+      status: 'pending',
+    });
+  });
+
+  it('increments stepped-load retry metadata when the same desired step is re-issued', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+      pendingWindowMs: 90_000,
+    });
+
+    expect(pruneStaleSteppedLoadCommandStates(runtimeState, 91_001)).toBe(true);
+    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      retryCount: 0,
+      nextRetryAtMs: 121_000,
+      pending: false,
+      status: 'stale',
+    });
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 122_000,
+      pendingWindowMs: 90_000,
+    });
+
+    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      retryCount: 1,
+      nextRetryAtMs: undefined,
       pending: true,
       status: 'pending',
     });

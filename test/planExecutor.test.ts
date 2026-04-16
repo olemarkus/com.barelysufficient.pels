@@ -731,6 +731,66 @@ describe('PlanExecutor stepped loads', () => {
     expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
   });
 
+  it('does not re-trigger a stale stepped-load command before its retry backoff elapses', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-12T11:00:00.000Z'));
+
+    try {
+      const now = Date.now();
+      const { executor, deps, desiredSteppedTrigger } = buildExecutor();
+
+      await executor.applyPlanActions(steppedPlan({
+        lastDesiredStepId: 'max',
+        stepCommandPending: false,
+        stepCommandStatus: 'stale',
+        lastStepCommandIssuedAt: now - 10_000,
+        stepCommandRetryCount: 0,
+        nextStepCommandRetryAtMs: now + 20_000,
+      }));
+
+      expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+      expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a stale stepped-load command after its retry backoff elapses', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-12T11:00:00.000Z'));
+
+    try {
+      const now = Date.now();
+      const { executor, deps, desiredSteppedTrigger } = buildExecutor();
+
+      await executor.applyPlanActions(steppedPlan({
+        lastDesiredStepId: 'max',
+        stepCommandPending: false,
+        stepCommandStatus: 'stale',
+        lastStepCommandIssuedAt: now - 40_000,
+        stepCommandRetryCount: 0,
+        nextStepCommandRetryAtMs: now - 1,
+      }));
+
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+        step_id: 'max',
+        planning_power_w: 3000,
+        previous_step_id: 'low',
+      }, {
+        deviceId: 'dev-1',
+      });
+      expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith({
+        deviceId: 'dev-1',
+        desiredStepId: 'max',
+        previousStepId: 'low',
+        issuedAtMs: expect.any(Number),
+        pendingWindowMs: expect.any(Number),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('restores a stepped device to on when it has keep intent but currentOn is false', async () => {
     const snapshot = [
       {

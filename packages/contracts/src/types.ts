@@ -56,6 +56,8 @@ export type TargetDeviceSnapshot = {
     actualStepSource?: SteppedLoadActualStepSource;
     lastDesiredStepChangeAt?: number;
     lastStepCommandIssuedAt?: number;
+    stepCommandRetryCount?: number;
+    nextStepCommandRetryAtMs?: number;
     stepCommandPending?: boolean;
     stepCommandStatus?: SteppedLoadCommandStatus;
     powerCapable?: boolean;
