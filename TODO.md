@@ -63,7 +63,7 @@ file.
 
 ## P1 UI and product follow-ups
 
-- [ ] Clean up stepped-load retry/backoff behavior so delayed feedback does not trigger clumsy
+- [x] Clean up stepped-load retry/backoff behavior so delayed feedback does not trigger clumsy
       re-requests while a previous desired step is still plausibly in flight.
       Files: stepped-load planning/executor feedback logic and tests.
 - [ ] Treat stepped-load upward transitions for already-on devices as mode transitions, not
