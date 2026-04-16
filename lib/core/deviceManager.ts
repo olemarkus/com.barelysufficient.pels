@@ -388,8 +388,10 @@ export class DeviceManager extends EventEmitter {
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
-        if (deviceId && result.currentSnapshot) this.latestSnapshotById.set(deviceId, result.currentSnapshot);
-        else if (deviceId) this.latestSnapshotById.delete(deviceId);
+        if (deviceId && result.currentSnapshot !== undefined) {
+            if (result.currentSnapshot) this.latestSnapshotById.set(deviceId, result.currentSnapshot);
+            else this.latestSnapshotById.delete(deviceId);
+        }
         if (deviceId && result.hadChanges) {
             recordDeviceUpdateObservation({
                 state: this.observationState,
@@ -841,11 +843,9 @@ export class DeviceManager extends EventEmitter {
             emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => (
                 this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event)
             ),
-        };
-    }
-    private syncLatestSnapshotIndex(): void {
-        this.latestSnapshotById = new Map(this.latestSnapshot.map((device) => [device.id, device]));
-    }
+        }; }
+    private syncLatestSnapshotIndex(): void { this.latestSnapshotById
+        = new Map(this.latestSnapshot.map((device) => [device.id, device])); }
 
     private getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {
         return device.capabilitiesObj && typeof device.capabilitiesObj === 'object'

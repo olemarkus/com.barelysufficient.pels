@@ -935,6 +935,36 @@ describe('DeviceManager', () => {
             managedDeviceManager.destroy();
         });
 
+        it('keeps the snapshot index entry when an unmanaged device.update is ignored', async () => {
+            const managedState: Record<string, boolean> = { dev1: true };
+            const managedDeviceManager = new DeviceManager(
+                homeyMock,
+                loggerMock,
+                { getManaged: (deviceId) => managedState[deviceId] === true },
+            );
+            await managedDeviceManager.init();
+            await managedDeviceManager.refreshSnapshot();
+
+            const getSnapshotById = (managedDeviceManager as any).getBinarySettleDeps().getSnapshotById as
+                (deviceId: string) => unknown;
+            expect(getSnapshotById('dev1')).toEqual(expect.objectContaining({ id: 'dev1' }));
+
+            managedState.dev1 = false;
+            managedDeviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['measure_power', 'onoff'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 2000, id: 'measure_power' },
+                    onoff: { value: true, id: 'onoff' },
+                },
+            });
+
+            expect(getSnapshotById('dev1')).toEqual(expect.objectContaining({ id: 'dev1' }));
+            managedDeviceManager.destroy();
+        });
+
         it('updates local state on power change via device.update', async () => {
             await deviceManager.refreshSnapshot();
 

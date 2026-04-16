@@ -23,7 +23,7 @@ export type HandleRealtimeDeviceUpdateResult = {
   shouldReconcilePlan: boolean;
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
-  currentSnapshot: TargetDeviceSnapshot | null;
+  currentSnapshot: TargetDeviceSnapshot | null | undefined;
 };
 
 type BinarySettleOutcome = 'settled' | 'drift' | 'none';
@@ -68,7 +68,7 @@ export function handleRealtimeDeviceUpdate(params: {
       shouldReconcilePlan: false,
       changes: [],
       observedCapabilityIds: [],
-      currentSnapshot: null,
+      currentSnapshot: undefined,
     };
   }
   const label = device.name;
