@@ -1,4 +1,6 @@
 export {
+  cancelPendingPowerRebuild,
+  executePendingPowerRebuild,
   type PowerSampleRebuildState,
   schedulePlanRebuildFromPowerSample,
   schedulePlanRebuildFromSignal,

@@ -33,6 +33,11 @@ import {
   canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDriftAgainstIntent,
 } from './planReconcileState';
+import type {
+  PlanRebuildIntent,
+  PlanRebuildSchedulerLike,
+  PlanRebuildSchedulerState,
+} from './planRebuildSchedulerContract';
 import type { PlanEngine } from './planEngine';
 import type {
   DevicePlan,
@@ -46,6 +51,98 @@ import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './planHe
 import type { PlanActuationMode, PlanActuationResult } from './planExecutor';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
+
+const createPlanSnapshotFallbackScheduler = (deps: {
+  getNowMs: () => number;
+  resolveDueAtMs: (state: PlanRebuildSchedulerState) => number;
+  executeSnapshot: (nowMs: number) => void;
+}): PlanRebuildSchedulerLike => {
+  let activeIntent: PlanRebuildIntent | null = null;
+  let pendingIntent: PlanRebuildIntent | null = null;
+  let pendingDueMs: number | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const lastCompletedAtMsByKind: PlanRebuildSchedulerState['lastCompletedAtMsByKind'] = {};
+
+  const clearTimer = (): void => {
+    if (!timer) return;
+    clearTimeout(timer);
+    timer = undefined;
+  };
+
+  const buildState = (nowMs: number): PlanRebuildSchedulerState => ({
+    nowMs,
+    activeIntent,
+    pendingIntent,
+    pendingDueMs,
+    hasTimer: timer !== undefined,
+    lastCompletedAtMsByKind: { ...lastCompletedAtMsByKind },
+  });
+
+  const dispatchPendingIntent = (): void => {
+    if (!pendingIntent || activeIntent) return;
+    const nowMs = deps.getNowMs();
+    const dueMs = deps.resolveDueAtMs(buildState(nowMs));
+    pendingDueMs = dueMs;
+    if (!Number.isFinite(dueMs)) {
+      pendingIntent = null;
+      pendingDueMs = null;
+      return;
+    }
+    if (Number.isFinite(dueMs) && dueMs > nowMs) {
+      timer = setTimeout(() => {
+        timer = undefined;
+        dispatchPendingIntent();
+      }, Math.max(0, dueMs - nowMs));
+      return;
+    }
+    pendingIntent = null;
+    pendingDueMs = null;
+    activeIntent = { kind: 'snapshot', reason: 'meta_only' };
+    deps.executeSnapshot(nowMs);
+    lastCompletedAtMsByKind.snapshot = deps.getNowMs();
+    activeIntent = null;
+  };
+
+  const refreshPendingSchedule = (): void => {
+    if (!pendingIntent || activeIntent) {
+      clearTimer();
+      return;
+    }
+    const nowMs = deps.getNowMs();
+    const dueMs = deps.resolveDueAtMs(buildState(nowMs));
+    pendingDueMs = dueMs;
+    if (!Number.isFinite(dueMs)) {
+      clearTimer();
+      return;
+    }
+    if (dueMs <= nowMs) {
+      clearTimer();
+      dispatchPendingIntent();
+      return;
+    }
+    clearTimer();
+    timer = setTimeout(() => {
+      timer = undefined;
+      dispatchPendingIntent();
+    }, Math.max(0, dueMs - nowMs));
+  };
+
+  return {
+    request(intent): void {
+      if (intent.kind !== 'snapshot') return;
+      pendingIntent = intent;
+      refreshPendingSchedule();
+    },
+    cancelAll(): void {
+      clearTimer();
+      pendingIntent = null;
+      pendingDueMs = null;
+    },
+    now(): PlanRebuildSchedulerState {
+      return buildState(deps.getNowMs());
+    },
+  };
+};
 
 const buildPlanHeadroomLogFields = (plan: DevicePlan | null): Record<string, number | boolean | null> => {
   const meta = plan?.meta;
@@ -78,6 +175,7 @@ export type PlanServiceDeps = {
   isCurrentHourExpensive: () => boolean;
   getCombinedPrices: () => unknown;
   getLastPowerUpdate: () => number | null;
+  scheduler?: PlanRebuildSchedulerLike;
   schedulePostActuationRefresh?: () => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
@@ -103,8 +201,24 @@ export class PlanService {
   private currentBuildReason: string | null = null;
   private planStatusWriter: PlanStatusWriter;
   private planSnapshotWriter: PlanSnapshotWriter;
+  private readonly scheduler: PlanRebuildSchedulerLike;
+  private readonly ownsScheduler: boolean;
 
   constructor(private deps: PlanServiceDeps) {
+    let snapshotWriterForScheduler: PlanSnapshotWriter | null = null;
+    this.ownsScheduler = !deps.scheduler;
+    this.scheduler = deps.scheduler ?? createPlanSnapshotFallbackScheduler({
+      getNowMs: () => Date.now(),
+      resolveDueAtMs: (state) => (
+        snapshotWriterForScheduler?.getPendingSnapshotDueMs({
+          nowMs: state.nowMs,
+          activeIntent: state.activeIntent,
+        }) ?? Number.POSITIVE_INFINITY
+      ),
+      executeSnapshot: (nowMs) => {
+        snapshotWriterForScheduler?.flushPendingNonActionSnapshotFromScheduler(nowMs);
+      },
+    });
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
       getCombinedPrices: deps.getCombinedPrices,
@@ -116,9 +230,12 @@ export class PlanService {
     this.planSnapshotWriter = new PlanSnapshotWriter({
       homey: deps.homey,
       error: deps.error,
+      getNowMs: () => this.scheduler.now().nowMs,
+      scheduler: this.scheduler,
       structuredLog: deps.structuredLog,
       debugStructured: deps.debugStructured,
     });
+    snapshotWriterForScheduler = this.planSnapshotWriter;
   }
 
   buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -748,6 +865,20 @@ export class PlanService {
 
   destroy(): void {
     this.planSnapshotWriter.destroy();
+    if (this.ownsScheduler) {
+      this.scheduler.cancelAll('plan_service_destroy');
+    }
+  }
+
+  getPendingSnapshotDueMs(params: {
+    nowMs: number;
+    activeIntent: PlanRebuildIntent | null;
+  }): number {
+    return this.planSnapshotWriter.getPendingSnapshotDueMs(params);
+  }
+
+  flushPendingNonActionSnapshotFromScheduler(nowMs: number): number {
+    return this.planSnapshotWriter.flushPendingNonActionSnapshotFromScheduler(nowMs);
   }
 }
 

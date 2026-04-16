@@ -17,6 +17,8 @@ export type RebuildDecision = {
   backoffActive: boolean;
 };
 
+export type RebuildIntentKind = 'hardCap' | 'signal';
+
 export type RebuildOutcome = {
   actionChanged: boolean;
   appliedActions: boolean;
@@ -69,16 +71,13 @@ export const shouldRebuildFromDecision = (params: {
     controlBoundaryActive,
     hardCapBreachActive,
     planConvergenceActive,
-    isInShortfall,
     backoffActive,
     deltaMeaningful,
     maxIntervalExceeded,
   } = params;
   if (isInitialSample) return true;
+  if (hardCapBreachActive) return true;
   if (backoffActive) return false;
-  // Let the first hard-cap breach force an urgent rebuild so shortfall detection can run,
-  // but an active tight-noop/mitigation holdoff still suppresses repeated breached samples.
-  if (hardCapBreachActive && !isInShortfall) return true;
   return controlBoundaryActive
     || (planConvergenceActive === true && deltaMeaningful)
     || maxIntervalExceeded;
@@ -167,6 +166,12 @@ export const resolveRebuildReason = (params: {
   return 'unknown';
 };
 
+export const resolveRebuildIntentKind = (params: {
+  hardCapBreach?: HardCapBreach;
+}): RebuildIntentKind => (
+  params.hardCapBreach?.breached === true ? 'hardCap' : 'signal'
+);
+
 export const isTightReason = (reason: string): boolean => (
   reason === 'headroom_tight' || reason === 'shortfall' || reason === 'hard_cap_breach'
 );
@@ -179,8 +184,8 @@ export function isTightNoopBackoffActive(params: {
   hardCapBreachActive?: boolean;
   deltaMeaningful: boolean;
 }): boolean {
-  const { state, nowMs, headroomTight, isInShortfall, hardCapBreachActive, deltaMeaningful } = params;
-  if (!headroomTight && !isInShortfall && !hardCapBreachActive) return false;
+  const { state, nowMs, headroomTight, isInShortfall, deltaMeaningful } = params;
+  if (!headroomTight && !isInShortfall) return false;
   if (deltaMeaningful) return false;
   return isFutureMs(state.backoffUntilMs, nowMs)
     || isFutureMs(state.mitigationHoldoffUntilMs, nowMs);

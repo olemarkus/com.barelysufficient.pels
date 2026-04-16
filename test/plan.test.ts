@@ -1491,7 +1491,7 @@ describe('Device plan snapshot', () => {
 
     // Soft-limit changes alone no longer trigger an immediate rebuild.
     // Force the periodic max-interval rebuild path for this restore check.
-    (app as any).powerSampleRebuildState.lastMs = Date.now() - 200;
+    (app as any).powerSampleRebuildState.lastMs = (app as any).getPlanRebuildNowMs() - 200;
     await (app as any).recordPowerSample(500);
     plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('keep');
