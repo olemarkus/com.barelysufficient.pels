@@ -77,7 +77,7 @@ import {
   initDailyBudgetTuningHandlers,
   loadDailyBudgetTuningSettings,
 } from './dailyBudgetTuning.ts';
-import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail.ts';
+import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import {
   initAdvancedDeviceCleanupHandlers,

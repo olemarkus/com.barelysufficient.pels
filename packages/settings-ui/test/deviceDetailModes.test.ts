@@ -48,7 +48,7 @@ describe('device detail target writes', () => {
     state.capacityPriorities = { Home: { 'heater-1': 1 } };
     state.modeTargets = { Home: { 'heater-1': 20 }, Away: { 'heater-1': 18 } };
 
-    const { renderDeviceDetailModes } = await import('../src/ui/deviceDetailModes.ts');
+    const { renderDeviceDetailModes } = await import('../src/ui/deviceDetail/modes.ts');
     renderDeviceDetailModes(state.latestDevices[0]);
 
     const homeInput = document.querySelector('#device-detail-modes .detail-mode-temp[data-mode="Home"]') as HTMLInputElement | null;

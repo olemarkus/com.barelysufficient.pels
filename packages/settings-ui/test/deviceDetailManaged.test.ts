@@ -47,9 +47,13 @@ const buildDom = () => {
   `;
 };
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
-  id: 'heater-1',
-  name: 'Hall Heater',
+const buildDevice = (
+  id: string,
+  name: string,
+  overrides: Partial<TargetDeviceSnapshot> = {},
+): TargetDeviceSnapshot => ({
+  id,
+  name,
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
   deviceType: 'temperature',
   powerCapable: true,
@@ -58,7 +62,7 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevic
   ...overrides,
 });
 
-describe('device detail budget exemption', () => {
+describe('device detail managed state saves', () => {
   beforeEach(() => {
     vi.resetModules();
     buildDom();
@@ -68,7 +72,7 @@ describe('device detail budget exemption', () => {
     vi.clearAllMocks();
   });
 
-  it('loads and saves budget exempt status from the device detail panel', async () => {
+  it('keeps the currently open device panel stable when an earlier managed save resolves late', async () => {
     vi.doMock('../src/ui/devices.ts', () => ({
       renderDevices: vi.fn(),
     }));
@@ -89,74 +93,33 @@ describe('device detail budget exemption', () => {
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
       settings: {
-        budget_exempt_devices: { 'heater-1': true },
+        managed_devices: { 'heater-1': true, 'heater-2': false },
       },
     });
     homeyModule.setHomeyClient(homey);
+
+    let resolveFresh: ((value: unknown) => void) | null = null;
+    const freshRead = new Promise<unknown>((resolve) => {
+      resolveFresh = resolve;
+    });
+    vi.spyOn(homeyModule, 'getSettingFresh').mockReturnValueOnce(freshRead);
+
     const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
     const { state } = await import('../src/ui/state.ts');
 
-    state.latestDevices = [buildDevice()];
-    state.managedMap = { 'heater-1': true };
-    state.controllableMap = { 'heater-1': true };
-    state.budgetExemptMap = { 'heater-1': true };
-    state.priceOptimizationSettings = {};
-    state.capacityPriorities = { Home: { 'heater-1': 1 } };
-    state.modeTargets = { Home: { 'heater-1': 20 } };
-    state.activeMode = 'Home';
-    state.editingMode = 'Home';
-
-    initDeviceDetailHandlers();
-    openDeviceDetail('heater-1');
-    await flushPromises();
-
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    expect(budgetExemptInput).not.toBeNull();
-    expect(budgetExemptInput?.checked).toBe(true);
-
-    budgetExemptInput!.checked = false;
-    budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
-    await flushPromises();
-
-    expect(homey.set).toHaveBeenCalledWith(
-      'budget_exempt_devices',
-      {},
-      expect.any(Function),
-    );
-    expect(state.budgetExemptMap['heater-1']).toBeUndefined();
-  });
-
-  it('prefers the device snapshot when the budget exempt map is still empty', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
-
-    const homeyModule = await import('../src/ui/homey.ts');
-    const homey = createHomeyMock();
-    homeyModule.setHomeyClient(homey);
-    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
-    const { state } = await import('../src/ui/state.ts');
-
-    state.latestDevices = [buildDevice({ budgetExempt: true })];
-    state.managedMap = { 'heater-1': true };
-    state.controllableMap = { 'heater-1': true };
+    state.latestDevices = [
+      buildDevice('heater-1', 'Hall Heater'),
+      buildDevice('heater-2', 'Bedroom Heater'),
+    ];
+    state.managedMap = { 'heater-1': true, 'heater-2': false };
+    state.controllableMap = { 'heater-1': true, 'heater-2': false };
     state.budgetExemptMap = {};
     state.priceOptimizationSettings = {};
-    state.capacityPriorities = { Home: { 'heater-1': 1 } };
-    state.modeTargets = { Home: { 'heater-1': 20 } };
+    state.capacityPriorities = { Home: { 'heater-1': 1, 'heater-2': 2 } };
+    state.modeTargets = {
+      Home: { 'heater-1': 20, 'heater-2': 18 },
+      Away: { 'heater-1': 16, 'heater-2': 14 },
+    };
     state.activeMode = 'Home';
     state.editingMode = 'Home';
 
@@ -164,11 +127,26 @@ describe('device detail budget exemption', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    expect(budgetExemptInput?.checked).toBe(true);
+    const managedInput = document.querySelector('#device-detail-managed') as HTMLInputElement | null;
+    const detailTitle = document.querySelector('#device-detail-title') as HTMLElement | null;
+
+    managedInput!.checked = false;
+    managedInput!.dispatchEvent(new Event('change', { bubbles: true }));
+
+    openDeviceDetail('heater-2');
+    await flushPromises();
+    expect(detailTitle?.textContent).toBe('Bedroom Heater');
+    expect(managedInput?.checked).toBe(false);
+
+    resolveFresh!({ 'heater-1': true, 'heater-2': false });
+    await flushPromises();
+    await flushPromises();
+
+    expect(detailTitle?.textContent).toBe('Bedroom Heater');
+    expect(managedInput?.checked).toBe(false);
   });
 
-  it('merges budget exempt updates with the latest persisted map', async () => {
+  it('restores the controllable checkbox when saving fails', async () => {
     vi.doMock('../src/ui/devices.ts', () => ({
       renderDevices: vi.fn(),
     }));
@@ -189,186 +167,19 @@ describe('device detail budget exemption', () => {
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock({
       settings: {
-        budget_exempt_devices: { 'other-device': true },
-      },
-    });
-    homeyModule.setHomeyClient(homey);
-    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
-    const { state } = await import('../src/ui/state.ts');
-
-    state.latestDevices = [buildDevice({ budgetExempt: false })];
-    state.managedMap = { 'heater-1': true };
-    state.controllableMap = { 'heater-1': true };
-    state.budgetExemptMap = {};
-    state.priceOptimizationSettings = {};
-    state.capacityPriorities = { Home: { 'heater-1': 1 } };
-    state.modeTargets = { Home: { 'heater-1': 20 } };
-    state.activeMode = 'Home';
-    state.editingMode = 'Home';
-
-    initDeviceDetailHandlers();
-    openDeviceDetail('heater-1');
-    await flushPromises();
-
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    expect(budgetExemptInput?.checked).toBe(false);
-
-    budgetExemptInput!.checked = true;
-    budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
-    await flushPromises();
-
-    expect(homey.set).toHaveBeenCalledWith(
-      'budget_exempt_devices',
-      { 'other-device': true, 'heater-1': true },
-      expect.any(Function),
-    );
-    expect(state.budgetExemptMap).toEqual({ 'other-device': true, 'heater-1': true });
-  });
-
-  it('bypasses a stale cached budget exempt map when saving changes', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
-
-    const homeyModule = await import('../src/ui/homey.ts');
-    const homey = createHomeyMock({
-      settings: {
-        budget_exempt_devices: { 'stale-device': true },
-      },
-    });
-    homeyModule.setHomeyClient(homey);
-    await homeyModule.getSetting('budget_exempt_devices');
-    homey.__settingsStore.budget_exempt_devices = { 'fresh-device': true };
-    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
-    const { state } = await import('../src/ui/state.ts');
-
-    state.latestDevices = [buildDevice({ budgetExempt: false })];
-    state.managedMap = { 'heater-1': true };
-    state.controllableMap = { 'heater-1': true };
-    state.budgetExemptMap = {};
-    state.priceOptimizationSettings = {};
-    state.capacityPriorities = { Home: { 'heater-1': 1 } };
-    state.modeTargets = { Home: { 'heater-1': 20 } };
-    state.activeMode = 'Home';
-    state.editingMode = 'Home';
-
-    initDeviceDetailHandlers();
-    openDeviceDetail('heater-1');
-    await flushPromises();
-
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    budgetExemptInput!.checked = true;
-    budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
-    await flushPromises();
-
-    expect(homey.set).toHaveBeenCalledWith(
-      'budget_exempt_devices',
-      { 'fresh-device': true, 'heater-1': true },
-      expect.any(Function),
-    );
-  });
-
-  it('lets a local uncheck override a stale snapshot budget flag', async () => {
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToastError: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError: vi.fn().mockResolvedValue(undefined),
-    }));
-
-    const homeyModule = await import('../src/ui/homey.ts');
-    const homey = createHomeyMock({
-      settings: {
-        budget_exempt_devices: { 'heater-1': true },
-      },
-    });
-    homeyModule.setHomeyClient(homey);
-    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
-    const { state } = await import('../src/ui/state.ts');
-
-    state.latestDevices = [buildDevice({ budgetExempt: true })];
-    state.managedMap = { 'heater-1': true };
-    state.controllableMap = { 'heater-1': true };
-    state.budgetExemptMap = { 'heater-1': true };
-    state.priceOptimizationSettings = {};
-    state.capacityPriorities = { Home: { 'heater-1': 1 } };
-    state.modeTargets = { Home: { 'heater-1': 20 } };
-    state.activeMode = 'Home';
-    state.editingMode = 'Home';
-
-    initDeviceDetailHandlers();
-    openDeviceDetail('heater-1');
-    await flushPromises();
-
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    expect(budgetExemptInput?.checked).toBe(true);
-
-    budgetExemptInput!.checked = false;
-    budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
-    await flushPromises();
-
-    expect(budgetExemptInput?.checked).toBe(false);
-    expect(state.latestDevices[0].budgetExempt).toBe(false);
-  });
-
-  it('handles budget exempt read failures without mutating the map', async () => {
-    const logSettingsError = vi.fn().mockResolvedValue(undefined);
-    const showToastError = vi.fn().mockResolvedValue(undefined);
-    vi.doMock('../src/ui/devices.ts', () => ({
-      renderDevices: vi.fn(),
-    }));
-    vi.doMock('../src/ui/modes.ts', () => ({
-      renderPriorities: vi.fn(),
-    }));
-    vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
-      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
-    }));
-    vi.doMock('../src/ui/toast.ts', () => ({
-      showToastError,
-    }));
-    vi.doMock('../src/ui/logging.ts', () => ({
-      logSettingsError,
-    }));
-
-    const homeyModule = await import('../src/ui/homey.ts');
-    const homey = createHomeyMock({
-      settings: {
-        budget_exempt_devices: { 'other-device': true },
+        controllable_devices: { 'heater-1': true },
       },
     });
     homeyModule.setHomeyClient(homey);
     vi.spyOn(homeyModule, 'getSettingFresh').mockRejectedValueOnce(new Error('Homey SDK not ready'));
+
     const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
     const { state } = await import('../src/ui/state.ts');
 
-    state.latestDevices = [buildDevice()];
+    state.latestDevices = [buildDevice('heater-1', 'Hall Heater')];
     state.managedMap = { 'heater-1': true };
     state.controllableMap = { 'heater-1': true };
-    state.budgetExemptMap = { 'other-device': true };
+    state.budgetExemptMap = {};
     state.priceOptimizationSettings = {};
     state.capacityPriorities = { Home: { 'heater-1': 1 } };
     state.modeTargets = { Home: { 'heater-1': 20 } };
@@ -379,18 +190,209 @@ describe('device detail budget exemption', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    budgetExemptInput!.checked = true;
-    budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    const controllableInput = document.querySelector('#device-detail-controllable') as HTMLInputElement | null;
+    expect(controllableInput?.checked).toBe(true);
+
+    controllableInput!.checked = false;
+    controllableInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
-    expect(logSettingsError).toHaveBeenCalledWith('Failed to update budget exempt device', expect.any(Error), 'device detail');
-    expect(showToastError).toHaveBeenCalled();
-    expect(homey.set).not.toHaveBeenCalledWith(
-      'budget_exempt_devices',
-      expect.anything(),
-      expect.any(Function),
-    );
-    expect(state.budgetExemptMap).toEqual({ 'other-device': true });
+    expect(controllableInput?.checked).toBe(true);
+    expect(state.controllableMap['heater-1']).toBe(true);
+  });
+
+  it('restores the managed checkbox when saving fails', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        managed_devices: { 'heater-1': true },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+    vi.spyOn(homeyModule, 'getSettingFresh').mockRejectedValueOnce(new Error('Homey SDK not ready'));
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('heater-1', 'Hall Heater')];
+    state.managedMap = { 'heater-1': true };
+    state.controllableMap = { 'heater-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'heater-1': 1 } };
+    state.modeTargets = { Home: { 'heater-1': 20 } };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('heater-1');
+    await flushPromises();
+
+    const managedInput = document.querySelector('#device-detail-managed') as HTMLInputElement | null;
+    expect(managedInput?.checked).toBe(true);
+
+    managedInput!.checked = false;
+    managedInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(managedInput?.checked).toBe(true);
+    expect(state.managedMap['heater-1']).toBe(true);
+  });
+
+  it('keeps the delta section state tied to the currently open device when an earlier price-opt save resolves late', async () => {
+    const savePriceOptimizationSettings = vi.fn<() => Promise<void>>();
+    let resolveSave: (() => void) | null = null;
+    savePriceOptimizationSettings.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
+
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings,
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(createHomeyMock());
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [
+      buildDevice('heater-1', 'Hall Heater'),
+      buildDevice('heater-2', 'Bedroom Heater'),
+    ];
+    state.managedMap = { 'heater-1': false, 'heater-2': true };
+    state.controllableMap = { 'heater-1': false, 'heater-2': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {
+      'heater-1': { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
+      'heater-2': { enabled: true, cheapDelta: 4, expensiveDelta: -4 },
+    };
+    state.capacityPriorities = { Home: { 'heater-1': 1, 'heater-2': 2 } };
+    state.modeTargets = {
+      Home: { 'heater-1': 20, 'heater-2': 18 },
+      Away: { 'heater-1': 16, 'heater-2': 14 },
+    };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('heater-1');
+    await flushPromises();
+
+    const cheapDeltaInput = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement | null;
+    const deltaSection = document.querySelector('#device-detail-delta-section') as HTMLElement | null;
+
+    cheapDeltaInput!.value = '6';
+    cheapDeltaInput!.dispatchEvent(new Event('change', { bubbles: true }));
+
+    openDeviceDetail('heater-2');
+    await flushPromises();
+    expect(deltaSection?.style.display).toBe('block');
+
+    resolveSave!();
+    await flushPromises();
+    await flushPromises();
+
+    expect(deltaSection?.style.display).toBe('block');
+  });
+
+  it('restores the control model when saving the profile fails', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    controlModelInput!.innerHTML = `
+      <option value="temperature_target">Temperature target</option>
+      <option value="stepped_load">Stepped load</option>
+    `;
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        device_control_profiles: {},
+      },
+    });
+    const originalSet = homey.set;
+    homey.set = vi.fn((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key === 'device_control_profiles') {
+        cb?.(new Error('Homey SDK not ready'));
+        return;
+      }
+      originalSet(key, value, cb);
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('heater-1', 'Hall Heater')];
+    state.managedMap = { 'heater-1': true };
+    state.controllableMap = { 'heater-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'heater-1': 1 } };
+    state.modeTargets = { Home: { 'heater-1': 20 } };
+    state.deviceControlProfiles = {};
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('heater-1');
+    await flushPromises();
+
+    expect(controlModelInput?.value).toBe('temperature_target');
+
+    controlModelInput!.value = 'stepped_load';
+    controlModelInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    await flushPromises();
+
+    expect(controlModelInput?.value).toBe('temperature_target');
+    expect(state.deviceControlProfiles['heater-1']).toBeUndefined();
+    expect(homey.__settingsStore.device_control_profiles).toEqual({});
   });
 });

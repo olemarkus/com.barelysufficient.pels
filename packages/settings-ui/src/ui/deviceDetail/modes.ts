@@ -1,16 +1,16 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
 import {
   getPrimaryTargetCapability,
   getTargetCapabilityStep,
   normalizeTargetCapabilityValue,
-} from '../../../contracts/src/targetCapabilities.ts';
-import { deviceDetailModes } from './dom.ts';
-import { state } from './state.ts';
-import { showToastError } from './toast.ts';
-import { logSettingsError } from './logging.ts';
-import { supportsTemperatureDevice } from './deviceUtils.ts';
-import { debouncedSetSetting } from './utils.ts';
-import { renderPriorities } from './modes.ts';
+} from '../../../../contracts/src/targetCapabilities.ts';
+import { deviceDetailModes } from '../dom.ts';
+import { state } from '../state.ts';
+import { showToastError } from '../toast.ts';
+import { logSettingsError } from '../logging.ts';
+import { supportsTemperatureDevice } from '../deviceUtils.ts';
+import { debouncedSetSetting } from '../utils.ts';
+import { renderPriorities } from '../modes.ts';
 
 const getAllModes = () => {
   const modes = new Set([state.activeMode]);
