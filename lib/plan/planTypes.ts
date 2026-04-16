@@ -150,11 +150,6 @@ export type PlanRebuildOutcome = {
   failed: boolean;
 };
 
-export type PelsStatusComputation = {
-  result: ReturnType<typeof import('../core/pelsStatus').buildPelsStatus>;
-  statusJson: string;
-};
-
 export type PlanInputDevice = {
   id: string;
   name: string;
