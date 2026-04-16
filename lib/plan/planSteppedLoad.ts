@@ -13,6 +13,7 @@ import {
 import type { SteppedLoadProfile, SteppedLoadStep } from '../utils/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
+import type { ShedAction } from './planTypes';
 
 type StepCapableDevice = Pick<
   PlanInputDevice | DevicePlanDevice,
@@ -27,6 +28,38 @@ type StepSheddingCapableDevice = Pick<
   | 'stepCommandPending'
   | 'stepCommandStatus'
 >;
+
+type StepTransitionCapableDevice = {
+  controlModel?: StepCapableDevice['controlModel'];
+  steppedLoadProfile?: StepCapableDevice['steppedLoadProfile'];
+  selectedStepId?: StepCapableDevice['selectedStepId'];
+  desiredStepId?: StepCapableDevice['desiredStepId'];
+  currentState?: string;
+  currentOn?: boolean;
+  controlCapabilityId?: DevicePlanDevice['controlCapabilityId'];
+  plannedState?: string;
+  shedAction?: ShedAction;
+};
+
+export type SteppedLoadEffectiveTransition =
+  | 'full_shed_to_off'
+  | 'restore_from_off_at_low'
+  | 'step_down_while_on'
+  | 'step_up_while_on'
+  | 'steady';
+
+export type SteppedLoadPreparationPurpose = 'prepare_for_off' | 'prepare_for_on' | null;
+
+export type SteppedLoadTransitionPhase = 'step_preparation' | 'binary_transition' | 'settled';
+
+export type SteppedLoadTransition = {
+  effectiveTransition: SteppedLoadEffectiveTransition;
+  stepPreparationPurpose: SteppedLoadPreparationPurpose;
+  binaryTarget: boolean | null;
+  commandStepId: string | undefined;
+  plannedDesiredStepId: string | undefined;
+  transitionPhase: SteppedLoadTransitionPhase;
+};
 
 export const isSteppedLoadDevice = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>,
@@ -45,6 +78,69 @@ export const resolveSteppedLoadInitialDesiredStepId = (
   if (!profile) return undefined;
   return getSteppedLoadStep(profile, device.selectedStepId)?.id ?? undefined;
 };
+
+/* eslint-disable complexity, sonarjs/cognitive-complexity */
+export const resolveSteppedLoadTransition = (
+  device: StepTransitionCapableDevice,
+  plannedDesiredStepId = device.desiredStepId,
+): SteppedLoadTransition | null => {
+  const profile = getSteppedLoadProfileForDevice(device);
+  if (!profile) return null;
+
+  const currentOn = resolveEffectiveCurrentOn(device);
+  const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
+  const desiredStep = getSteppedLoadStep(profile, plannedDesiredStepId);
+  const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
+  if (device.plannedState === 'shed' && device.shedAction === 'turn_off') {
+    const commandStepId = lowestActiveStep?.id ?? desiredStep?.id ?? plannedDesiredStepId;
+    const stepPrepared = commandStepId !== undefined && selectedStep?.id === commandStepId;
+    return {
+      effectiveTransition: 'full_shed_to_off',
+      stepPreparationPurpose: commandStepId ? 'prepare_for_off' : null,
+      binaryTarget: false,
+      commandStepId,
+      plannedDesiredStepId,
+      transitionPhase: stepPrepared ? 'binary_transition' : 'step_preparation',
+    };
+  }
+
+  if (device.plannedState === 'keep' && currentOn === false) {
+    const commandStepId = lowestActiveStep?.id ?? desiredStep?.id;
+    const stepPrepared = commandStepId !== undefined && selectedStep?.id === commandStepId;
+    return {
+      effectiveTransition: 'restore_from_off_at_low',
+      stepPreparationPurpose: commandStepId ? 'prepare_for_on' : null,
+      binaryTarget: true,
+      commandStepId,
+      plannedDesiredStepId,
+      transitionPhase: stepPrepared ? 'binary_transition' : 'step_preparation',
+    };
+  }
+
+  const commandStepId = desiredStep?.id;
+  if (!selectedStep || !desiredStep || commandStepId === undefined || commandStepId === selectedStep.id) {
+    return {
+      effectiveTransition: 'steady',
+      stepPreparationPurpose: null,
+      binaryTarget: null,
+      commandStepId,
+      plannedDesiredStepId,
+      transitionPhase: 'settled',
+    };
+  }
+
+  return {
+    effectiveTransition: desiredStep.planningPowerW < selectedStep.planningPowerW
+      ? 'step_down_while_on'
+      : 'step_up_while_on',
+    stepPreparationPurpose: null,
+    binaryTarget: null,
+    commandStepId,
+    plannedDesiredStepId,
+    transitionPhase: 'settled',
+  };
+};
+/* eslint-enable complexity, sonarjs/cognitive-complexity */
 
 export const resolveSteppedKeepDesiredStepId = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'desiredStepId'>
