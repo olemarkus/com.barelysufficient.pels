@@ -156,6 +156,43 @@ describe('activation backoff', () => {
     expect(clearedInfo.attemptOpen).toBe(false);
   });
 
+  it('emits stick-reached only once per attempt and closes on explicit inactive observation', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    const firstSync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + ACTIVATION_BACKOFF_STICK_WINDOW_MS,
+      observation: { currentOn: true, available: true, measuredPowerKw: 1.2 },
+    });
+    expect(firstSync.transitions).toMatchObject([{ kind: 'stick_reached', deviceId: 'dev-1' }]);
+
+    const secondSync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + ACTIVATION_BACKOFF_STICK_WINDOW_MS + 60_000,
+      observation: { currentOn: true, available: true, measuredPowerKw: 1.2 },
+    });
+    expect(secondSync.transitions).toEqual([]);
+
+    const inactiveSync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + ACTIVATION_BACKOFF_STICK_WINDOW_MS + 2 * 60_000,
+      observation: { currentOn: false, available: true },
+    });
+    expect(inactiveSync.attemptOpen).toBe(false);
+    expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
+  });
+
   it('preserves penalty when a tracked device disappears from snapshot cleanup', () => {
     const state = createPlanEngineState();
     const now = Date.now();
@@ -255,6 +292,30 @@ describe('activation backoff', () => {
     expect(result.restoredOneThisCycle).toBe(false);
     expect(result.planDevices[0]?.plannedState).toBe('shed');
     expect(result.planDevices[0]?.reason).toContain('activation backoff');
+  });
+
+  it('refreshes the restore block even when a setback happens after stick is reached', () => {
+    const state = createPlanEngineState();
+    const now = Date.now();
+    state.activationAttemptByDevice['dev-1'] = { penaltyLevel: 1 };
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: now - ACTIVATION_BACKOFF_STICK_WINDOW_MS - 30_000,
+    });
+
+    const setback = recordActivationSetback({
+      state,
+      deviceId: 'dev-1',
+      nowTs: now - 5_000,
+    });
+
+    expect(setback.bumped).toBe(false);
+    expect(setback.transition).toMatchObject({ kind: 'setback_after_stick', deviceId: 'dev-1' });
+    expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-1', nowTs: now }))
+      .toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 5_000);
   });
 
   it('allows restore again once the activation setback window expires', () => {
