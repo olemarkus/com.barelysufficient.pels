@@ -115,6 +115,46 @@ export type DevicePlan = {
   devices: DevicePlanDevice[];
 };
 
+export type PlanChangeSet = {
+  actionSignature: string;
+  detailSignature: string;
+  metaSignature: string;
+  actionChanged: boolean;
+  detailChanged: boolean;
+  metaChanged: boolean;
+};
+
+export type PlanSnapshotWriteReason = 'action_changed' | 'detail_changed' | 'meta_only';
+export type PelsStatusWriteReason = 'initial' | 'action_changed' | 'throttle';
+
+export type StatusPlanChanges = Pick<
+  PlanChangeSet,
+  'actionChanged' | 'actionSignature' | 'detailSignature' | 'metaSignature'
+>;
+
+export type PlanRebuildOutcome = {
+  buildMs: number;
+  changeMs: number;
+  snapshotMs: number;
+  snapshotWriteMs: number;
+  statusMs: number;
+  statusWriteMs: number;
+  applyMs: number;
+  actionChanged: boolean;
+  detailChanged: boolean;
+  metaChanged: boolean;
+  appliedActions: boolean;
+  deviceWriteCount: number;
+  hadShedding: boolean;
+  isDryRun: boolean;
+  failed: boolean;
+};
+
+export type PelsStatusComputation = {
+  result: ReturnType<typeof import('../core/pelsStatus').buildPelsStatus>;
+  statusJson: string;
+};
+
 export type PlanInputDevice = {
   id: string;
   name: string;

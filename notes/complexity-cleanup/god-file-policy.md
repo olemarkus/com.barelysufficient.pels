@@ -31,7 +31,7 @@ Two waiver mechanisms are in use today, with no consistent policy for choosing b
 | `app.ts` | 938 (still has a config override at 750; the pragma is now the main waiver) |
 | `lib/core/deviceManager.ts` | 894 |
 | `lib/plan/planBuilder.ts` | 888 |
-| `lib/plan/planService.ts` | 823 |
+| `lib/plan/planService.ts` | 763 |
 | `lib/plan/planReasons.ts` | 683 |
 | `lib/plan/planShedding.ts` | 650 |
 | `lib/plan/planRestore.ts` | 505 (currently at threshold; no pragma) |
@@ -101,7 +101,7 @@ file can be split before accepting the override.
 |------|---------|-------------|
 | `app.ts` | 938 | Phases 4, 10, 11 (helper extractions partly landed; remaining work is delegate/timer/context cleanup). Remove the 750 config override once under 500. |
 | `lib/app/appPowerHelpers.ts` | 898 | Phase 8 (split into three focused modules). |
-| `lib/plan/planService.ts` | 823 | Phase 5 (extract snapshot-write + rebuild-metrics). |
+| `lib/plan/planService.ts` | 763 | Phase 5 (snapshot-write extraction landed; rebuild-metrics remains). |
 | `lib/plan/planBuilder.ts` | 888 | Extract phase helpers (context/shedding/restore/overshoot) so builder becomes orchestrator at ~300. |
 | `lib/plan/planShedding.ts` | 650 | Candidate split by shed-action kind; scope during Phase 2 reason cleanup. |
 | `lib/plan/planReasons.ts` | 683 | Phase 2 (decision/presentation split) plus category split (shedding / restore / price). |
