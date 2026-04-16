@@ -47,7 +47,7 @@ import {
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
-import { loadShedBehaviors } from './deviceDetail.ts';
+import { loadShedBehaviors } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';

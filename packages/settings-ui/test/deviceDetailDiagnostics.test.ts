@@ -140,7 +140,7 @@ describe('device detail diagnostics', () => {
       },
     });
     homeyModule.setHomeyClient(homey);
-    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
     const { state } = await import('../src/ui/state.ts');
 
     state.latestDevices = [buildDevice()];
@@ -198,7 +198,7 @@ describe('device detail diagnostics', () => {
     const homeyModule = await import('../src/ui/homey.ts');
     const homey = createHomeyMock();
     homeyModule.setHomeyClient(homey);
-    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
     const { state } = await import('../src/ui/state.ts');
 
     state.latestDevices = [buildDevice({
@@ -269,7 +269,7 @@ describe('device detail diagnostics', () => {
       },
     });
     homeyModule.setHomeyClient(homey);
-    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail.ts');
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
     const { state } = await import('../src/ui/state.ts');
 
     state.latestDevices = [buildDevice()];

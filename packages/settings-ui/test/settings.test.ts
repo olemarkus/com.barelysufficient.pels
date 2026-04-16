@@ -496,6 +496,127 @@ describe('settings script', () => {
     expect(stepOption.textContent).toBe('Set to step "max"');
   });
 
+  it('does not persist the stepped-load profile when the shed-behavior write fails', async () => {
+    const homey = installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      device_control_profiles: {
+        'dev-1': {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+      },
+      overshoot_behaviors: {
+        'dev-1': { action: 'set_step' },
+      },
+    });
+    const originalSet = homey.set;
+    homey.set = vi.fn((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key === 'overshoot_behaviors') {
+        cb?.(new Error('Homey SDK not ready'));
+        return;
+      }
+      originalSet(key, value, cb);
+    });
+    await loadSettingsScript();
+
+    (document.querySelector('#device-list .device-row') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+    await flushPromises();
+
+    const planningInputs = Array.from(
+      document.querySelectorAll('#device-detail-stepped-steps [data-step-field="planningPowerW"]'),
+    ) as HTMLInputElement[];
+    const saveButton = document.querySelector('#device-detail-stepped-save') as HTMLButtonElement;
+
+    planningInputs[1].value = '900';
+    planningInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    saveButton.click();
+    await flushPromises();
+    await flushPromises();
+
+    expect(homey.__settingsStore.device_control_profiles).toEqual({
+      'dev-1': {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    });
+    expect(homey.set).not.toHaveBeenCalledWith(
+      'device_control_profiles',
+      expect.anything(),
+      expect.any(Function),
+    );
+  });
+
+  it('restores shed behavior inputs when the shed-behavior write fails', async () => {
+    const homey = installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Water Heater',
+          deviceType: 'temperature',
+          powerCapable: true,
+          capabilities: ['onoff', 'measure_power', 'target_temperature'],
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+        },
+      ],
+      overshoot_behaviors: {
+        'dev-1': { action: 'set_temperature', temperature: 55 },
+      },
+    });
+    const originalSet = homey.set;
+    homey.set = vi.fn((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key === 'overshoot_behaviors') {
+        cb?.(new Error('Homey SDK not ready'));
+        return;
+      }
+      originalSet(key, value, cb);
+    });
+    await loadSettingsScript();
+
+    (document.querySelector('#device-list .device-row') as HTMLElement).click();
+    await waitFor(() => document.querySelector('#device-detail-overlay')?.hasAttribute('hidden') === false);
+    await flushPromises();
+
+    const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+    const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
+    const tempInput = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
+
+    expect(shedAction.value).toBe('set_temperature');
+    expect(tempInput.value).toBe('55');
+    expect(tempRow.hidden).toBe(false);
+
+    shedAction.value = 'turn_off';
+    shedAction.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    await flushPromises();
+
+    expect(shedAction.value).toBe('set_temperature');
+    expect(tempInput.value).toBe('55');
+    expect(tempRow.hidden).toBe(false);
+    expect(homey.__settingsStore.overshoot_behaviors).toEqual({
+      'dev-1': { action: 'set_temperature', temperature: 55 },
+    });
+  });
+
   it('hides both shed temperature and shed step rows when shed mode is turn off', async () => {
     installSettingsHomeyMock({
       target_devices_snapshot: [

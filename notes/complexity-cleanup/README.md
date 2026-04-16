@@ -245,10 +245,6 @@ candidates because they remove indirection without opening a wide correctness su
    persistence are separate concepts and are currently coupled for convenience.
 3. **`app.ts` wiring cleanup.** The biggest local win now is finishing the delegate/timer/context
    cleanup after the snapshot-refresh / Homey Energy / stepped-load helper extractions landed.
-4. **Settings UI `deviceDetail.ts`.** Not part of the original runtime cleanup, but it is now a
-   real simplification candidate: render logic, stepped-load draft state, diagnostics refresh, and
-   repeated `setSetting(...)` save paths all live in one file.
-
 If these get promoted, keep the same rule as above: one concept per PR. Do not bundle
 the `planRestore.ts` gate rewrite with unrelated correctness work, and do not mix the remaining
 `app.ts` wiring cleanup with unrelated runtime behavior changes.
@@ -282,6 +278,9 @@ Items from the original refactoring spec that are deferred or dropped:
 - [x] Phase 4 (partial): extract snapshot refresh / Homey Energy / stepped-load runtime helpers
       from `app.ts` via PRs #397 and #398
 - [x] Phase 7: extract `deviceManager` parsing / observation / binary-settle internals via PR #400
+- [x] Split Settings UI device detail into focused `deviceDetail/` modules so render wiring,
+      shed behavior, stepped-load draft state, diagnostics, and price-optimization handlers no
+      longer share one max-lines-exempt file
 
 ### Phase 2: Continue planReasons cleanup
 - [x] Extract reason-string builders into `planReasonStrings.ts`

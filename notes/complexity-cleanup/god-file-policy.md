@@ -42,7 +42,6 @@ Two waiver mechanisms are in use today, with no consistent policy for choosing b
 | `lib/app/appPowerHelpers.ts` | 898 |
 | `lib/app/appDebugHelpers.ts` | 732 |
 | `flowCards/registerFlowCards.ts` | 608 |
-| `packages/settings-ui/src/ui/deviceDetail.ts` | 955 |
 
 ### Files with a config-level override in `eslint.config.mjs`
 
@@ -110,7 +109,6 @@ file can be split before accepting the override.
 | `lib/dailyBudget/dailyBudgetManager.ts` | 504 | Redistribute into `dailyBudgetManagerPlan.ts` / `dailyBudgetManagerSnapshot.ts` (sibling files already exist). |
 | `lib/app/appDebugHelpers.ts` | 732 | Inline single-caller exports; keep the two actually-shared helpers. |
 | `lib/core/deviceManagerObservation.ts` | 735 | Recent move-only split from `deviceManager.ts`. Follow up by separating retained observation/freshness merge logic from debug-source capture helpers instead of adding a new override. |
-| `packages/settings-ui/src/ui/deviceDetail.ts` | 955 | Split save-path helpers, stepped-load draft/editor state, diagnostics refresh, and panel event/render wiring; discuss the split plan explicitly instead of silently blessing a long-lived override. |
 
 ### Bucket B — documented exception with a concrete ceiling
 

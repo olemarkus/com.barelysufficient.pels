@@ -92,11 +92,6 @@ file.
       Why P1: recent PRs reduced `app.ts`, but it is still the main wiring accumulation point and
       still carries broad lifecycle plus timer orchestration.
       Files: `app.ts`, `lib/app/**`.
-- [ ] Split `packages/settings-ui/src/ui/deviceDetail.ts` by responsibility and centralize the
-      repeated setting-write / refresh / error-handling flow.
-      Why P1: the device detail panel mixes render logic, stepped-load draft state, diagnostics
-      refresh, and repeated `setSetting(...)` save paths in one 900+ line file.
-      Files: `packages/settings-ui/src/ui/deviceDetail.ts`, related device-detail helpers/tests.
 - [ ] Unify the three plan-rebuild coalescers (`appFlowRebuildScheduler`,
       `schedulePlanRebuildFromSignal` in `appPowerHelpers.ts`, `planService` snapshot throttler)
       into a single `PlanRebuildScheduler` with prioritised intents so rebuild/snapshot/hardCap
