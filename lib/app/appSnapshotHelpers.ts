@@ -78,10 +78,23 @@ export class AppSnapshotHelpers {
 
   stop(): void {
     this.staleObservationRefreshStopped = true;
-    if (this.snapshotRefreshTimer) clearTimeout(this.snapshotRefreshTimer);
-    if (this.staleObservationRefreshTimer) clearTimeout(this.staleObservationRefreshTimer);
-    if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
-    if (this.postActuationRefreshTimer) clearTimeout(this.postActuationRefreshTimer);
+    this.snapshotRefreshPending = false;
+    if (this.snapshotRefreshTimer) {
+      clearTimeout(this.snapshotRefreshTimer);
+      this.snapshotRefreshTimer = undefined;
+    }
+    if (this.staleObservationRefreshTimer) {
+      clearTimeout(this.staleObservationRefreshTimer);
+      this.staleObservationRefreshTimer = undefined;
+    }
+    if (this.targetConfirmationPollInterval) {
+      clearInterval(this.targetConfirmationPollInterval);
+      this.targetConfirmationPollInterval = undefined;
+    }
+    if (this.postActuationRefreshTimer) {
+      clearTimeout(this.postActuationRefreshTimer);
+      this.postActuationRefreshTimer = undefined;
+    }
   }
 
   async refreshTargetDevicesSnapshot(
@@ -100,56 +113,8 @@ export class AppSnapshotHelpers {
     try {
       do {
         this.snapshotRefreshPending = false;
-        this.deps.logDebug('devices', 'Refreshing target devices snapshot');
-        await deviceManager.refreshSnapshot({
-          includeLivePower: options.fast !== true,
-          targetedRefresh: options.targeted,
-        });
-
-        const snapshot = this.deps.getLatestTargetSnapshot();
-        this.logDeviceFreshnessTransitions(
-          snapshot.filter((device) => this.deps.resolveManagedState(device.id)),
-          'snapshot_refresh',
-        );
-        await this.deps.getPlanService()?.syncLivePlanState('snapshot_refresh');
-        this.deps.getPlanService()?.syncHeadroomCardState({
-          devices: snapshot,
-          cleanupMissingDevices: true,
-        });
-
-        const existingSnapshot = this.deps.homey.settings.get('target_devices_snapshot') as unknown;
-        if (
-          toPersistedTargetSnapshotFingerprint(existingSnapshot)
-          !== toPersistedTargetSnapshotFingerprint(snapshot)
-        ) {
-          this.deps.homey.settings.set('target_devices_snapshot', snapshot);
-          this.deps.getStructuredLogger('devices')?.info({
-            event: 'target_devices_snapshot_written',
-            reasonCode: options.targeted === true ? 'targeted_refresh' : 'snapshot_refresh',
-            deviceCount: snapshot.length,
-            targetedRefresh: options.targeted === true,
-          });
-        } else {
-          this.deps.getStructuredLogger('devices')?.debug({
-            event: 'target_devices_snapshot_write_skipped',
-            reasonCode: 'unchanged',
-            deviceCount: snapshot.length,
-            targetedRefresh: options.targeted === true,
-          });
-          this.deps.logDebug('devices', 'Target devices snapshot unchanged, skipping settings write');
-        }
-
-        this.deps.disableUnsupportedDevices(snapshot);
-        if (
-          options.recordHomeyEnergySample !== false
-          && this.deps.homey.settings.get('power_source') === 'homey_energy'
-        ) {
-          const homePowerW = deviceManager.getHomePowerW();
-          if (typeof homePowerW === 'number') {
-            await this.deps.recordPowerSample(homePowerW);
-          }
-        }
-      } while (this.snapshotRefreshPending);
+        await this.runSnapshotRefreshCycle(deviceManager, options);
+      } while (this.snapshotRefreshPending && !this.staleObservationRefreshStopped);
     } finally {
       this.isSnapshotRefreshing = false;
       this.snapshotRefreshPending = false;
@@ -159,8 +124,9 @@ export class AppSnapshotHelpers {
   async refreshStaleDeviceObservations(): Promise<void> {
     if (!this.deps.getDeviceManager() || this.isSnapshotRefreshing) return;
 
+    const nowMs = this.deps.getNow().getTime();
     const snapshot = this.deps.getLatestTargetSnapshot().filter((device) => this.deps.resolveManagedState(device.id));
-    this.logDeviceFreshnessTransitions(snapshot, 'stale_observation_check');
+    this.logDeviceFreshnessTransitions(snapshot, 'stale_observation_check', nowMs);
     const staleDevices = snapshot.filter((device) => isDeviceObservationStale(device));
     if (staleDevices.length === 0) return;
 
@@ -208,17 +174,25 @@ export class AppSnapshotHelpers {
       next.setHours(now.getHours() + 1, SNAPSHOT_REFRESH_MINUTE_INTERVALS[0], 0, 0);
     }
 
-    this.snapshotRefreshTimer = setTimeout(async () => {
+    const scheduledTimer = setTimeout(async () => {
+      if (this.snapshotRefreshTimer !== scheduledTimer || this.staleObservationRefreshStopped) return;
       let refreshed = false;
       try {
         await this.refreshTargetDevicesSnapshot({ targeted: true });
         refreshed = true;
       } catch (error) {
         this.deps.error('Periodic snapshot refresh failed', error);
+      } finally {
+        this.deps.logPeriodicStatus({ includeDeviceHealth: refreshed });
+        if (this.snapshotRefreshTimer === scheduledTimer) {
+          this.snapshotRefreshTimer = undefined;
+        }
+        if (!this.staleObservationRefreshStopped) {
+          this.scheduleNextSnapshotRefresh();
+        }
       }
-      this.deps.logPeriodicStatus({ includeDeviceHealth: refreshed });
-      this.scheduleNextSnapshotRefresh();
     }, next.getTime() - now.getTime());
+    this.snapshotRefreshTimer = scheduledTimer;
   }
 
   async pollStuckTargetConfirmations(): Promise<void> {
@@ -255,6 +229,76 @@ export class AppSnapshotHelpers {
     }, POST_ACTUATION_REFRESH_DELAY_MS);
   }
 
+  private async runSnapshotRefreshCycle(
+    deviceManager: DeviceManager,
+    options: RefreshTargetDevicesSnapshotOptions,
+  ): Promise<void> {
+    this.deps.logDebug('devices', 'Refreshing target devices snapshot');
+    await deviceManager.refreshSnapshot({
+      includeLivePower: options.fast !== true,
+      targetedRefresh: options.targeted,
+    });
+
+    const snapshot = this.deps.getLatestTargetSnapshot();
+    this.logDeviceFreshnessTransitions(
+      snapshot.filter((device) => this.deps.resolveManagedState(device.id)),
+      'snapshot_refresh',
+    );
+    await this.deps.getPlanService()?.syncLivePlanState('snapshot_refresh');
+    this.deps.getPlanService()?.syncHeadroomCardState({
+      devices: snapshot,
+      cleanupMissingDevices: true,
+    });
+    this.persistTargetSnapshot(snapshot, options);
+    this.deps.disableUnsupportedDevices(snapshot);
+    await this.recordImplicitHomeyEnergySample(deviceManager, options);
+  }
+
+  private persistTargetSnapshot(
+    snapshot: TargetDeviceSnapshot[],
+    options: RefreshTargetDevicesSnapshotOptions,
+  ): void {
+    const existingSnapshot = this.deps.homey.settings.get('target_devices_snapshot') as unknown;
+    if (
+      toPersistedTargetSnapshotFingerprint(existingSnapshot)
+      !== toPersistedTargetSnapshotFingerprint(snapshot)
+    ) {
+      this.deps.homey.settings.set('target_devices_snapshot', snapshot);
+      this.deps.getStructuredLogger('devices')?.info({
+        event: 'target_devices_snapshot_written',
+        reasonCode: options.targeted === true ? 'targeted_refresh' : 'snapshot_refresh',
+        deviceCount: snapshot.length,
+        targetedRefresh: options.targeted === true,
+      });
+      return;
+    }
+
+    this.deps.getStructuredLogger('devices')?.debug({
+      event: 'target_devices_snapshot_write_skipped',
+      reasonCode: 'unchanged',
+      deviceCount: snapshot.length,
+      targetedRefresh: options.targeted === true,
+    });
+    this.deps.logDebug('devices', 'Target devices snapshot unchanged, skipping settings write');
+  }
+
+  private async recordImplicitHomeyEnergySample(
+    deviceManager: DeviceManager,
+    options: RefreshTargetDevicesSnapshotOptions,
+  ): Promise<void> {
+    if (
+      options.recordHomeyEnergySample === false
+      || this.deps.homey.settings.get('power_source') !== 'homey_energy'
+    ) {
+      return;
+    }
+
+    const homePowerW = deviceManager.getHomePowerW();
+    if (typeof homePowerW === 'number') {
+      await this.deps.recordPowerSample(homePowerW);
+    }
+  }
+
   private startStaleObservationRefreshFallback(): void {
     this.staleObservationRefreshStopped = false;
     if (this.staleObservationRefreshTimer) clearTimeout(this.staleObservationRefreshTimer);
@@ -277,13 +321,16 @@ export class AppSnapshotHelpers {
     }, STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS);
   }
 
-  private logDeviceFreshnessTransitions(snapshot: TargetDeviceSnapshot[], source: string): void {
+  private logDeviceFreshnessTransitions(
+    snapshot: TargetDeviceSnapshot[],
+    source: string,
+    nowMs = this.deps.getNow().getTime(),
+  ): void {
     const activeDeviceIds = new Set(snapshot.map((device) => device.id));
     for (const deviceId of this.deviceObservationStaleById.keys()) {
       if (!activeDeviceIds.has(deviceId)) this.deviceObservationStaleById.delete(deviceId);
     }
 
-    const nowMs = Date.now();
     for (const device of snapshot) {
       const isStale = isDeviceObservationStale(device);
       const wasStale = this.deviceObservationStaleById.get(device.id);

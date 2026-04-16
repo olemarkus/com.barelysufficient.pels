@@ -15,7 +15,10 @@ export class AppHomeyEnergyHelpers {
   }) {}
 
   start(): void {
-    if (this.pollInterval) clearInterval(this.pollInterval);
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = undefined;
+    }
     if (this.deps.homey.settings.get('power_source') !== 'homey_energy') return;
 
     this.pollNow()
